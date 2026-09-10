@@ -74,6 +74,42 @@ class InvestigationTaskOwnerRow9Test(unittest.IsolatedAsyncioTestCase):
             {"RW-ROW9-FWL", "RW-ROW9-LAWYER2"},
         )
 
+    async def test_visible_menu_capability_does_not_turn_personal_view_into_admin_view(self):
+        async with self.sessions() as db:
+            db.add_all([
+                User(username="fwl", display_name="范文玲", department="调查部", password_hash="x", role="manager"),
+                BusinessRecord(
+                    module="task", serial_no="RW-ROW9-CAPABILITY-OWN", title="本人调查子任务",
+                    customer="CODEX客户", status="待接收", owner="fwl", department="调查部",
+                    data={"investigation_record_id": 9002, "initiator": "other"},
+                ),
+                BusinessRecord(
+                    module="task", serial_no="RW-ROW9-CAPABILITY-OTHER", title="其他调查子任务",
+                    customer="CODEX客户", status="待接收", owner="other", department="调查部",
+                    data={"investigation_record_id": 9002, "initiator": "fwl"},
+                ),
+            ])
+            await db.commit()
+
+            assigned = await list_records(
+                module="task", keyword="", record_status="", scope="all", statuses="",
+                customer_id=None, customer="", customer_no="", exclude_archived=False,
+                investigation_view="assigned", page=1, page_size=100,
+                identity={
+                    "username": "fwl",
+                    "role": "admin",
+                    "_actual_role": "manager",
+                    "_actual_role_ids": ["manager"],
+                    "_page_menu_capability": True,
+                },
+                db=db,
+            )
+
+        self.assertEqual(
+            {item["serial_no"] for item in assigned["items"]},
+            {"RW-ROW9-CAPABILITY-OWN"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

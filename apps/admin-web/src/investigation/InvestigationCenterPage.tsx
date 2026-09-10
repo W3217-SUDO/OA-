@@ -309,6 +309,14 @@ export default function InvestigationCenterPage({
   const [assignForm] = Form.useForm();
   const [feeForm] = Form.useForm();
   const [evidenceEditForm] = Form.useForm();
+  const actualRoleIds = profile.actual_role_ids?.length
+    ? profile.actual_role_ids
+    : profile.actual_role
+      ? [profile.actual_role]
+      : profile.role_ids?.length
+        ? profile.role_ids
+        : [profile.role];
+  const isActualAdmin = actualRoleIds.includes("admin");
   const certificateWarehouseId = Form.useWatch("warehouse_id", certificateForm) as number | undefined;
   const storageLocationOptions = (warehouseId: number | undefined) =>
     (warehouseCatalog.find((warehouse) => warehouse.id === Number(warehouseId))?.locations || [])
@@ -496,7 +504,7 @@ export default function InvestigationCenterPage({
     const statuses = clueStatusesByRoute[initialTab] || [];
     if (statuses.length)
       result = result.filter((row) => statuses.includes(row.status));
-    if (initialTab === "investigation-task-published" && profile.role !== "admin") {
+    if (initialTab === "investigation-task-published" && !isActualAdmin) {
       const names = [profile.username, profile.display_name].filter(Boolean);
       result = result.filter((row) =>
         names.includes(String(row.data.publisher || row.owner || "")),
@@ -512,7 +520,7 @@ export default function InvestigationCenterPage({
       );
     if (
       initialTab === "investigation-task-sub-published" &&
-      profile.role !== "admin" &&
+      !isActualAdmin &&
       Boolean(profile.username)
     ) {
       const names = [profile.username, profile.display_name].filter(Boolean);
@@ -522,7 +530,7 @@ export default function InvestigationCenterPage({
     }
     if (
       initialTab === "investigation-task-sub-mine" &&
-      profile.role !== "admin" &&
+      !isActualAdmin &&
       Boolean(profile.username)
     ) {
       const names = [profile.username, profile.display_name].filter(Boolean);
@@ -2020,7 +2028,7 @@ export default function InvestigationCenterPage({
           width: 170,
           render: (_: unknown, r: Row) => {
             const canHandle =
-              profile.role === "admin" || r.owner === profile.username;
+              isActualAdmin || r.owner === profile.username;
             return (
               <Space size={0}>
                 {canHandle && ["待接收", "待处理"].includes(r.status) && (
@@ -2602,7 +2610,7 @@ export default function InvestigationCenterPage({
         },
       );
     return base;
-  }, [tab, initialTab, investigationActions, profile]);
+  }, [tab, initialTab, investigationActions, profile, isActualAdmin]);
   const meta = moduleMeta[tab];
   const canReviewClue = visibleRows.some((row) =>
     Boolean(investigationActions[String(row.id)]?.review_clue),
@@ -2685,7 +2693,7 @@ export default function InvestigationCenterPage({
     selectedClues.includes(row.id),
   );
   const selectedRow = selectedRows.length === 1 ? selectedRows[0] : null;
-  const isAdminAccount = [profile.role, ...(profile.role_ids || [])].includes("admin");
+  const isAdminAccount = isActualAdmin;
   const actionLabels = [
     ...(originalButtons[initialTab] || ["查询"]),
     ...(isClue ? ["导出线索", "导出交接清单"] : []),

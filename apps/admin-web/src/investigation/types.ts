@@ -72,6 +72,8 @@ export type Profile = {
   display_name: string;
   role: string;
   role_ids?: string[];
+  actual_role?: string;
+  actual_role_ids?: string[];
   department?: string;
 };
 

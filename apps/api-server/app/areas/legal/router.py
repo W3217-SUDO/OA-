@@ -573,6 +573,16 @@ async def list_records(
     from app.core.system import (
         _allowed_field_keys,
     )
+    actual_role_ids = identity.get("_actual_role_ids")
+    if isinstance(actual_role_ids, (list, tuple, set)):
+        actual_admin = "admin" in {str(value).strip() for value in actual_role_ids}
+    else:
+        actual_role = identity.get("_actual_role")
+        actual_admin = (
+            str(actual_role).strip() == "admin"
+            if actual_role is not None
+            else identity.get("role") == "admin"
+        )
     await _require_record_module_menu(module, identity, db, action="查看")
     if module in {"notary", "case"}:
         await _apply_notary_auto_conversion(db)
@@ -651,7 +661,7 @@ async def list_records(
                 BusinessRecord.data["investigation_module"].as_string() == "investigation",
             )
             conditions.append(investigation_subtask)
-            if investigation_view == "published" and identity.get("role") != "admin":
+            if investigation_view == "published" and not actual_admin:
                 publisher_expr = func.lower(func.coalesce(
                     BusinessRecord.data["initiator"].as_string(),
                     BusinessRecord.data["publisher"].as_string(),
@@ -667,14 +677,14 @@ async def list_records(
                     publisher_expr == identity["username"].lower(),
                     and_(legacy_publisher_missing, func.lower(BusinessRecord.owner) == identity["username"].lower()),
                 ))
-            elif investigation_view == "assigned" and identity.get("role") != "admin":
+            elif investigation_view == "assigned" and not actual_admin:
                 # "My investigation tasks" must be private to the assignee.
                 # The normal data scope may include a supervisor's department,
                 # tasks they initiated, or records shared for collaboration,
                 # none of which makes another investigator's child task a
                 # personal task.
                 conditions.append(func.lower(BusinessRecord.owner) == identity["username"].lower())
-        elif investigation_view == "assigned" and identity.get("role") != "admin":
+        elif investigation_view == "assigned" and not actual_admin:
             # "My investigation tasks" must be private to the assignee.  The
             # normal data scope may include a supervisor's department, tasks
             # they initiated, or records shared for collaboration, none of
