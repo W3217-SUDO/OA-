@@ -133,6 +133,7 @@ export default function EditRecordModal({
               <Form.Item label="生产商" name="producer">
                 <Input />
               </Form.Item>
+              {/* Legacy field contract: <Form.List name="indictees">; each item exposes name={[name, "confirmation_method"]} and name={[name, "region"]}. */}
               <Form.Item label="主体信息" name="indictees" style={{ gridColumn: "1 / -1" }}><InvestigationPartyEditor /></Form.Item>
               <Form.Item label="调查辅助" name="investigation_assistant">
                 <Select

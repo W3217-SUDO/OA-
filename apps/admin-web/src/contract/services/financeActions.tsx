@@ -105,16 +105,19 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
         setPaymentSaving(true);
         try {
             const values = await paymentForm.validateFields();
-            const lines = selectedPaymentObjectKeys.map((key) => ({ contract_object_id: Number(key), amount: Number(paymentAmounts[Number(key)] || 0) }));
+            const lines = selectedPaymentObjectKeys.map((key) => {
+                const row = paymentCandidates.find((item) => (item.case_fee_id || item.contract_object_id) === Number(key));
+                return { contract_object_id: row?.contract_object_id, case_fee_id: row?.case_fee_id, amount: Number(paymentAmounts[Number(key)] || 0) };
+            });
             if (!lines.length) {
-                message.error("请至少选择一条合同标的");
+                message.error("请至少选择一笔案件费用");
                 return;
             }
             if (lines.some((line) => !line.amount || line.amount <= 0)) {
-                message.error("请选择合同标的并填写本次支付金额");
+                message.error("请选择案件费用并填写本次支付金额");
                 return;
             }
-            const exceeding = lines.find((line) => line.amount > Number(paymentCandidates.find((item) => item.contract_object_id === line.contract_object_id)?.remaining_amount || 0) + 0.0001);
+            const exceeding = lines.find((line) => line.amount > Number(paymentCandidates.find((item) => (item.case_fee_id || item.contract_object_id) === (line.case_fee_id || line.contract_object_id))?.remaining_amount || 0) + 0.0001);
             if (exceeding) {
                 message.error("本次支付金额不能超过待付余额");
                 return;

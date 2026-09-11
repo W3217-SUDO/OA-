@@ -590,7 +590,7 @@ export function ContractList({
             <Button onClick={() => needSelected(() => onSeal(selected!))}>合同用印</Button>
             {initialView === "contract-mine" && (
               <Button
-                disabled={!selected || !["审批通过", "已完成", "A", "Approved", "approved"].includes(selected.status)}
+                disabled={!selected || !selectedContractCapabilities.canArchive}
                 onClick={() => needSelected(() => onArchive(selected!))}
               >
                 合同归档

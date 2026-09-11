@@ -204,7 +204,7 @@ export default function ContractCenterPage({
   const [paymentTypeCreating, setPaymentTypeCreating] = useState(false);
   const [selectedPaymentObjectKeys, setSelectedPaymentObjectKeys] = useState<Key[]>([]);
   const [paymentAmounts, setPaymentAmounts] = useState<Record<number, number>>({});
-  const [invoiceSubjects, setInvoiceSubjects] = useState<Array<{fee_id:number;fee_no:string;case_record_id?:number;case_no:string;fee_type:string;amount:number;invoiceable_amount:number;expense_scope:string}>>([]);
+  const [invoiceSubjects, setInvoiceSubjects] = useState<Array<{fee_id:number;fee_no:string;case_record_id?:number;case_no:string;case_title?:string;fee_type:string;amount:number;invoiceable_amount:number;expense_scope:string}>>([]);
   const [selectedInvoiceObjectKeys, setSelectedInvoiceObjectKeys] = useState<Key[]>([]);
   const [objectEditing, setObjectEditing] = useState<{id?:number}|null>(null);
   const [objectCases, setObjectCases] = useState<Array<{id:number;serial_no:string;title:string;customer:string}>>([]);

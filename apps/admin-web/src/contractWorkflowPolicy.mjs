@@ -230,8 +230,9 @@ export const contractListActionPolicy = (status) => {
   return { canPayment: approved && !archived, canInvoice: !archived, canCreateCase };
 };
 export const contractSecondaryActionPolicy = (status) => {
-  const archived = ["已归档", "Archived", "archived"].includes(String(status || "").trim());
-  return { canEdit: !archived, canInvestigation: !archived, canArchive: !archived };
+  const normalized = String(status || "").trim();
+  const terminal = ["归档中", "归档审核中", "已归档", "已回收", "已删除", "已作废", "Archived", "archived"].includes(normalized);
+  return { canEdit: !terminal, canInvestigation: !terminal, canArchive: !terminal };
 };
 export const contractWorkflowActionPolicy = (profile = {}, contract = {}, options = {}) => {
   const status = String(contract?.status || options.status || "").trim();
@@ -254,7 +255,9 @@ export const contractWorkflowActionPolicy = (profile = {}, contract = {}, option
     canCreate: hasMenuAccess(profile, CONTRACT_WORKSPACE_MENUS),
     canEdit: allowed("update", editable),
     canSubmit: allowed("submit", editable),
-    canChange: allowed("change", secondaryPolicy.canEdit && !pendingChange),
+    // Contract changes are applied immediately; an old pending_change payload
+    // must not keep the edit action disabled after the workflow migration.
+    canChange: allowed("change", secondaryPolicy.canEdit),
     canReviewChange: allowed("changeReview", pendingChange, true),
     canPayment: allowed("payment", listPolicy.canPayment),
     canInvoice: allowed("invoice", listPolicy.canInvoice),

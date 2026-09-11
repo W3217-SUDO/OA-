@@ -3,6 +3,7 @@ from app.core.dependencies import (
     BaseModel, Field, Literal, date, datetime,
     field_validator,
 )
+from pydantic import model_validator
 
 
 class DifyRequest(BaseModel):
@@ -1809,6 +1810,9 @@ class InvoiceApplicationInput(BaseModel):
     contract_record_id: int | None = None
     case_record_id: int | None = None
     case_fee_ids: list[int] = Field(default_factory=list, max_length=100)
+    # Itemized service lines from the legacy invoice page. Kept as JSON so
+    # different fee catalogs can carry their own description/unit/tax fields.
+    service_items: list[dict] = Field(default_factory=list, max_length=100)
 
 
 class InvoiceIssueInput(BaseModel):
@@ -2484,8 +2488,18 @@ class ContractArchiveClosureInput(BaseModel):
 
 
 class ContractPaymentLineInput(BaseModel):
-    contract_object_id: int = Field(gt=0)
+    # Legacy contract payment screens select individual case-fee rows. Keep
+    # contract_object_id for backwards compatibility, while allowing the
+    # precise fee row to be submitted when available.
+    contract_object_id: int | None = Field(default=None, gt=0)
+    case_fee_id: int | None = Field(default=None, gt=0)
     amount: float = Field(gt=0, le=999999999)
+
+    @model_validator(mode="after")
+    def require_target(self):
+        if not self.contract_object_id and not self.case_fee_id:
+            raise ValueError("必须选择合同标的或案件费用")
+        return self
 
 
 class ContractPaymentApplicationInput(BaseModel):

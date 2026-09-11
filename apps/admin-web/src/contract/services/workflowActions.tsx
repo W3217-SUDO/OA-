@@ -608,7 +608,7 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
                 if (!attachmentFeedback.ok)
                     throw new Error(attachmentFeedback.message);
             }
-            message.success("合同变更已提交审批");
+            message.success("合同变更已直接保存");
             setChanging(null);
             setChangeFile(null);
             await load();

@@ -128,7 +128,7 @@ export type SealAsset = { id: number; code: string; name: string; seal_type: str
 
 export type CustomerRef = { id: number; serial_no: string; title: string; owner: string; data: { customer_managers?: string[] } };
 
-export type ContractPaymentCandidate = { contract_object_id:number; case_record_id:number; case_no:string; case_title:string; fee_type:string; contract_amount:number; reserved_amount:number; remaining_amount:number; remark:string };
+export type ContractPaymentCandidate = { contract_object_id:number; case_fee_id?:number; case_record_id:number; case_no:string; case_title:string; fee_type:string; contract_amount:number; reserved_amount:number; remaining_amount:number; remark:string };
 
 export type PaymentTypeOption = { value:number; label:string; id:number; code:string; name:string; nature:string; payee:string; account_bank:string; account:string };
 

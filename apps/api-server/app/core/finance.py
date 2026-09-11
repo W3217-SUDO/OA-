@@ -454,7 +454,7 @@ def _fee_matches_contract_object(fee: BusinessRecord, item: ContractObject, case
 
 
 async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: dict, db: AsyncSession) -> list[dict]:
-    """Return each visible contract subject with its remaining payable amount.
+    """Return individual case-fee rows with their remaining payable amount.
 
     Pending, approved-for-payment and paid applications reserve the amount so
     the same subject cannot be submitted twice while an earlier request is in
@@ -468,6 +468,7 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
     ).order_by(ContractObject.id))).all()
     object_ids = [item.id for item in objects]
     used_by_object: dict[int, float] = {}
+    used_by_fee: dict[int, float] = {}
     if object_ids:
         active_payment_ids = select(BusinessRecord.id).where(
             BusinessRecord.module == "contract_payment",
@@ -481,23 +482,47 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
             used_by_object[line.contract_object_id] = _round_fee_amount(
                 used_by_object.get(line.contract_object_id, 0) + line.requested_amount
             )
+        active_records = (await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "contract_payment",
+            BusinessRecord.status.in_(["待审批", "待付款", "已付款", "已核销"]),
+        ))).all()
+        for record in active_records:
+            for line in (record.data or {}).get("lines", []):
+                fee_id = int(line.get("case_fee_id") or 0)
+                if fee_id:
+                    used_by_fee[fee_id] = _round_fee_amount(used_by_fee.get(fee_id, 0) + float(line.get("amount") or 0))
     rows: list[dict] = []
     for item in objects:
         case = await _ensure_record_visible(item.case_record_id, identity, db)
         if case.module != "case":
             continue
-        used = used_by_object.get(item.id, 0)
-        rows.append({
-            "contract_object_id": item.id,
-            "case_record_id": case.id,
-            "case_no": case.serial_no,
-            "case_title": case.title,
-            "fee_type": item.fee_type,
-            "contract_amount": item.amount,
-            "reserved_amount": used,
-            "remaining_amount": max(_round_fee_amount(item.amount - used), 0),
-            "remark": item.remark,
-        })
+        fee_rows = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "finance",
+            or_(
+                BusinessRecord.data["case_id"].as_integer() == case.id,
+                BusinessRecord.data["case_no"].as_string() == case.serial_no,
+            ),
+        ).order_by(BusinessRecord.id))).all())
+        matched = [fee for fee in fee_rows if _fee_matches_contract_object(fee, item, case)]
+        if not matched:
+            matched = [None]
+        for fee in matched:
+            data = fee.data if fee else {}
+            fee_id = fee.id if fee else None
+            amount = _round_fee_amount(float(data.get("amount") or item.amount) if fee else item.amount)
+            used = used_by_fee.get(fee_id, 0) if fee_id else used_by_object.get(item.id, 0)
+            rows.append({
+                "contract_object_id": item.id,
+                "case_fee_id": fee_id,
+                "case_record_id": case.id,
+                "case_no": case.serial_no,
+                "case_title": case.title,
+                "fee_type": str(data.get("fee_type_path") or data.get("fee_type_name") or data.get("fee_type") or item.fee_type),
+                "contract_amount": amount,
+                "reserved_amount": used,
+                "remaining_amount": max(_round_fee_amount(amount - used), 0),
+                "remark": str(data.get("remark") or item.remark or ""),
+            })
     return rows
 
 

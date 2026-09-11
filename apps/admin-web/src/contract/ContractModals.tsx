@@ -6,6 +6,7 @@ Button,
 Card,
 Checkbox,
 DatePicker,
+Divider,
 Empty,
 Form,
 Input,
@@ -487,14 +488,14 @@ export function ContractChangeModal({
       <Card
         className="panel contract-create-page"
         title={`合同变更：${changing?.serial_no || ""}`}
-        extra={<Space><Button onClick={onCancel}>取消</Button><Button type="primary" onClick={onOk}>提交变更审批</Button></Space>}
+        extra={<Space><Button onClick={onCancel}>取消</Button><Button type="primary" onClick={onOk}>保存变更</Button></Space>}
       >
         {content}
       </Card>
     );
   }
   return (
-    <Modal width={820} open={open} title={`合同变更：${changing?.serial_no || ""}`} okText="提交变更审批" cancelText="取消" onOk={onOk} onCancel={onCancel}>
+    <Modal width={820} open={open} title={`合同变更：${changing?.serial_no || ""}`} okText="保存变更" cancelText="取消" onOk={onOk} onCancel={onCancel}>
       {content}
     </Modal>
   );
@@ -650,15 +651,15 @@ export function ContractPaymentModal({
       <Alert
         showIcon
         type="info"
-        message="按合同标的逐项申请"
-        description="勾选需要付款的合同标的并填写本次支付金额；系统将保留已提交、待付款和已付款金额，阻止重复超额申请。"
+        message="按案件费用明细逐项申请"
+        description="勾选具体案件费用并填写本次支付金额；系统会保留审批中、待付款和已付款金额，阻止同一费用重复超额申请。"
         style={{ marginBottom: 12 }}
       />
       <Table<ContractPaymentCandidate>
-        rowKey="contract_object_id"
+        rowKey={(row) => row.case_fee_id || row.contract_object_id}
         size="small"
         pagination={false}
-        locale={{ emptyText: "当前合同没有可付款的合同标的" }}
+        locale={{ emptyText: "当前合同没有可付款的案件费用" }}
         dataSource={paymentCandidates}
         rowSelection={{
           selectedRowKeys: selectedPaymentObjectKeys,
@@ -667,7 +668,7 @@ export function ContractPaymentModal({
         columns={[
           { title: "案号", dataIndex: "case_no", width: 140 },
           { title: "案件名称", dataIndex: "case_title", ellipsis: true },
-          { title: "费用类型", dataIndex: "fee_type", width: 120 },
+          { title: "费用类型", dataIndex: "fee_type", width: 150 },
           { title: "合同金额", dataIndex: "contract_amount", width: 105, render: (value) => Number(value).toFixed(2) },
           { title: "已占用", dataIndex: "reserved_amount", width: 100, render: (value) => Number(value).toFixed(2) },
           { title: "待付余额", dataIndex: "remaining_amount", width: 105, render: (value) => Number(value).toFixed(2) },
@@ -676,13 +677,13 @@ export function ContractPaymentModal({
             width: 130,
             render: (_, row) => (
               <InputNumber
-                disabled={!selectedPaymentObjectKeys.includes(row.contract_object_id)}
+                disabled={!selectedPaymentObjectKeys.includes(row.case_fee_id || row.contract_object_id)}
                 min={0.01}
                 max={row.remaining_amount}
                 precision={2}
-                value={paymentAmounts[row.contract_object_id]}
+                value={paymentAmounts[row.case_fee_id || row.contract_object_id]}
                 style={{ width: "100%" }}
-                onChange={(value) => onPaymentAmountChange(row.contract_object_id, Number(value || 0))}
+                onChange={(value) => onPaymentAmountChange(row.case_fee_id || row.contract_object_id, Number(value || 0))}
               />
             ),
           },
@@ -743,7 +744,7 @@ interface ContractInvoiceModalProps {
   invoiceTarget: Contract | null;
   invoiceForm: FormInstance;
   invoiceSaving: boolean;
-  invoiceSubjects: Array<{ fee_id: number; fee_no: string; case_record_id?: number; case_no: string; fee_type: string; amount: number; invoiceable_amount: number; expense_scope: string }>;
+  invoiceSubjects: Array<{ fee_id: number; fee_no: string; case_record_id?: number; case_no: string; case_title?: string; fee_type: string; amount: number; invoiceable_amount: number; expense_scope: string }>;
   selectedInvoiceObjectKeys: Key[];
   onInvoiceSelectionChange: (keys: Key[]) => void;
   onCancel: () => void;
@@ -826,6 +827,31 @@ export function ContractInvoiceModal({
         <Form.Item label="备注" name="remark">
           <Input.TextArea rows={2} />
         </Form.Item>
+        <Form.List name="service_items" initialValue={[{}]}>
+          {(fields, { add, remove }) => (
+            <>
+              <Divider titlePlacement="start" plain>发票服务项</Divider>
+              {fields.map((field) => (
+                <Space key={field.key} align="baseline" style={{ display: "flex", marginBottom: 8 }}>
+                  <Form.Item {...field} name={[field.name, "service_name"]} rules={[{ required: true, message: "请输入服务名称" }]}>
+                    <Input placeholder="服务名称" />
+                  </Form.Item>
+                  <Form.Item {...field} name={[field.name, "quantity"]}>
+                    <InputNumber min={1} precision={2} placeholder="数量" />
+                  </Form.Item>
+                  <Form.Item {...field} name={[field.name, "unit_price"]}>
+                    <InputNumber min={0} precision={2} placeholder="单价" />
+                  </Form.Item>
+                  <Form.Item {...field} name={[field.name, "tax_rate"]}>
+                    <InputNumber min={0} max={100} precision={2} addonAfter="%" placeholder="税率" />
+                  </Form.Item>
+                  {fields.length > 1 && <Button type="link" danger onClick={() => remove(field.name)}>删除</Button>}
+                </Space>
+              ))}
+              <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>新增服务项</Button>
+            </>
+          )}
+        </Form.List>
       </Form>
       <Table
         rowKey="fee_id"
@@ -835,6 +861,7 @@ export function ContractInvoiceModal({
         locale={{ emptyText: "当前合同没有可开票的案件费用" }}
         rowSelection={{ selectedRowKeys: selectedInvoiceObjectKeys, onChange: onInvoiceSelectionChange }}
         columns={[
+          { title: "案件名称", dataIndex: "case_title", width: 180, ellipsis: true },
           { title: "案号", dataIndex: "case_no", width: 150 },
           { title: "费用编号", dataIndex: "fee_no", width: 150 },
           { title: "费用类型", dataIndex: "fee_type", width: 130 },
