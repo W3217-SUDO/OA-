@@ -7,11 +7,9 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import get_db
 from .legacy_models import AwsOfficialDocument, HrRole, HrRolePermission, HrStaff, IprUser, IprUserRole, SysMenu
-from .api.agent import router as agent_router
 
 settings = get_settings()
 app = FastAPI(title="Sunhold Legacy Parity API", version="0.1.0")
-app.include_router(agent_router)
 
 OFFICIAL_DOCUMENT_STATUS_NAMES = {
     10: "待审核",
