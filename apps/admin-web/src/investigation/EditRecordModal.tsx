@@ -2,6 +2,7 @@ import { Modal, Form, Input, Select, Radio, DatePicker, Cascader, Space, Button 
 import type { Row, PersonOption, Contract } from "./types";
 import { INVESTIGATION_REGION_GROUPS } from "../investigationRegionOptions.mjs";
 import { CLUE_INFRINGEMENT_METHOD_OPTIONS, CLUE_SALES_CHANNEL_OPTIONS } from "./constants";
+import InvestigationPartyEditor from "./InvestigationPartyEditor";
 
 interface EditRecordModalProps {
   open: boolean;
@@ -132,26 +133,7 @@ export default function EditRecordModal({
               <Form.Item label="生产商" name="producer">
                 <Input />
               </Form.Item>
-              <Form.List name="indictees">
-                {(fields, { add, remove }) => (
-                  <Form.Item label="主体信息" style={{ gridColumn: "1 / -1" }}>
-                    <Space direction="vertical" style={{ width: "100%" }}>
-                      {fields.map(({ key, name }) => (
-                        <Space key={key} wrap align="start">
-                          <Form.Item name={[name, "nature"]} noStyle><Select placeholder="主体性质" style={{ width: 120 }} options={["企业", "个体工商户", "自然人", "其他"].map(value => ({ value, label: value }))} /></Form.Item>
-                          <Form.Item name={[name, "name"]} noStyle rules={[{ required: true, message: "请输入主体名称" }]}><Input placeholder="主体名称" style={{ width: 180 }} /></Form.Item>
-                          <Form.Item name={[name, "confirmation_method"]} noStyle><Select placeholder="确认方式" style={{ width: 130 }} options={["现场确认", "工商查询", "网络核验", "客户提供", "其他"].map(value => ({ value, label: value }))} /></Form.Item>
-                          <Form.Item name={[name, "identity_no"]} noStyle><Input placeholder="证件/统一社会信用代码" style={{ width: 190 }} /></Form.Item>
-                          <Form.Item name={[name, "region"]} noStyle><Cascader placeholder="所属地区" style={{ width: 170 }} changeOnSelect showSearch options={INVESTIGATION_REGION_GROUPS.map(({ province, cities }) => ({ value: province, label: province, children: cities.map(city => ({ value: city, label: city })) }))} /></Form.Item>
-                          <Form.Item name={[name, "business_address"]} noStyle><Input placeholder="经营地址" style={{ width: 180 }} /></Form.Item>
-                          <Button danger onClick={() => remove(name)}>删除</Button>
-                        </Space>
-                      ))}
-                      <Button type="dashed" onClick={() => add({ nature: "企业", name: "", confirmation_method: "", identity_no: "", region: [], business_address: "" })}>新增主体</Button>
-                    </Space>
-                  </Form.Item>
-                )}
-              </Form.List>
+              <Form.Item label="主体信息" name="indictees" style={{ gridColumn: "1 / -1" }}><InvestigationPartyEditor /></Form.Item>
               <Form.Item label="调查辅助" name="investigation_assistant">
                 <Select
                   allowClear

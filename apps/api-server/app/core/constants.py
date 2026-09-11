@@ -308,6 +308,7 @@ DEFAULT_SYSTEM_PARAMETERS = [
     ("case_type", "140", "法律顾问", {"letter_code": "GW"}),
     ("case_type", "150", "仲裁", {"letter_code": "ZC"}),
     ("fee_type", "OFFICIAL", "官方费用", {"parent_code": ""}),
+    ("fee_type", "11010010", "差旅费", {"parent_code": "OFFICIAL", "legacy_code": "11010010"}),
     ("fee_type", "AGENCY", "代理费", {"parent_code": ""}),
     ("fee_type", "OTHER", "其他费用", {"parent_code": ""}),
     ("fee_type", "INTERNAL", "内部费用", {"parent_code": ""}),
@@ -558,7 +559,7 @@ INVESTIGATION_CREATE_STATUS_BY_MODULE = {
 INVESTIGATION_EDIT_DATA_FIELDS = {
     "region", "address", "right_type", "deadline", "priority", "platform",
     "product", "source", "infringement_method", "sales_channel", "store_url", "shop_name", "shop_id", "has_product", "producer",
-    "indictee", "investigation_assistant", "investigated_at", "customer_manager",
+    "indictee", "indictees", "investigation_assistant", "investigated_at", "customer_manager",
     "start_date", "end_date", "authorized_from", "authorized_to", "authorization_scope",
     "province", "city", "district",
 }

@@ -1046,8 +1046,12 @@ async def update_investigation_parties(record_id: int, body: InvestigationPartyI
     data["indictees"] = body.indictees
     if body.producers and isinstance(body.producers[0], dict):
         data["producer"] = str(body.producers[0].get("name") or body.producers[0].get("producer") or "")
+    else:
+        data["producer"] = ""
     if body.indictees and isinstance(body.indictees[0], dict):
         data["indictee"] = str(body.indictees[0].get("name") or body.indictees[0].get("indictee") or "")
+    else:
+        data["indictee"] = ""
     record.data = data
     db.add(WorkflowEvent(record_id=record.id, action="更新调查主体", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"生产商 {len(body.producers)} 条；被调查主体 {len(body.indictees)} 条"))
     await db.commit(); await db.refresh(record)

@@ -296,8 +296,10 @@ export default function ClueDetailHeader({
                 key: "indictee",
                 label: "主体信息",
                 children:
+                  (Array.isArray(investigationDetail.data.indictees)
+                    ? investigationDetail.data.indictees.map((item: any) => [item.nature, item.name, item.confirmation_method, item.identity_no, item.legal_representative, Array.isArray(item.region) ? item.region.join("/") : item.region, item.business_address || item.address].filter(Boolean).join(" / ")).join("；")
+                    : "") ||
                   investigationDetail.data.indictee ||
-                  investigationDetail.data.indictees ||
                   investigationDetail.data.subject ||
                   "—",
               },
