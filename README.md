@@ -54,7 +54,7 @@ Run the local demo from two terminals (production hosts are never contacted):
 ```powershell
 # terminal 1
 cd backend
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8002
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8012
 
 # terminal 2
 cd frontend
