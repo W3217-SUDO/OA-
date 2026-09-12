@@ -30,7 +30,7 @@ from app.models_shared import (
     ArchiveCheckInput, ArchiveReviewInput, AttachmentBatchInput, CaseAgentDecisionInput, CaseAgentMessageInput,
     CaseAiDraftCreateInput, CaseAiDraftPromoteInput, CaseAiDraftUpdateInput, CaseArbitrationBasicInput, CaseAssignmentInput,
     CaseAssistedFeeConfirmInput, CaseAssistedFeeCreateInput, CaseAssistedFeeUpdateInput, CaseAttachmentMoveInput, CaseAttachmentRenameInput,
-    CaseBatchFeeInput, CaseBatchUpdateInput, CaseCommissionBatchInput, CaseCounselBasicInput, CaseCourtInfoInput,
+    CaseBatchDeleteInput, CaseBatchFeeInput, CaseBatchUpdateInput, CaseCommissionBatchInput, CaseCounselBasicInput, CaseCourtInfoInput,
     CaseCreateInput, CaseCreationCompleteInput, CaseCreationReviewInput, CaseDocumentFolderInput, CaseDocumentFolderRenameInput,
     CaseEventBatchDeleteInput, CaseEventInput, CaseEventUpdateInput, CaseExecutionStatusInput, CaseHearingLawyerInput,
     CaseJudicialInput, CaseLitigantsInput, CaseLogInput, CaseMergeInput, CaseNormalBasicInput,
@@ -2183,25 +2183,24 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
 @router.delete(f"{settings.api_prefix}/cases/{{case_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_case(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Delete a company case and its case-owned operational records."""
-    from app.core.permissions import (
-        _ensure_record_module,
-    )
+    await _delete_company_cases([case_id], identity, db)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+async def _delete_case_owned_records(record: BusinessRecord, db: AsyncSession) -> list[Path]:
     from app.core.tasks import (
         _delete_task_notifications,
     )
-    if identity.get("role") not in {"admin", "manager"}:
-        raise HTTPException(status_code=403, detail="仅管理员或管理人员可以删除案件")
-    record = await _ensure_record_module(case_id, "case", identity, db)
-    if record.status in {"已归档", "已合并"}:
-        raise HTTPException(status_code=409, detail="已归档或已合并案件不能删除")
-    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == case_id))).all())
-    attachment_paths = [Path(item.path) for item in attachments]
-    for attachment in attachments:
-        await db.delete(attachment)
+    case_id = record.id
     related_tasks = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "task",
         BusinessRecord.data["case_id"].as_integer() == case_id,
     ))).all())
+    owned_ids = [case_id, *(task.id for task in related_tasks)]
+    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id.in_(owned_ids)))).all())
+    attachment_paths = [Path(item.path) for item in attachments]
+    for attachment in attachments:
+        await db.delete(attachment)
     for task in related_tasks:
         await _delete_task_notifications(task.id, db)
         await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == task.id))
@@ -2211,11 +2210,47 @@ async def delete_case(case_id: int, identity: dict = Depends(current_identity), 
     await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id == case_id))
     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == case_id))
     await db.delete(record)
-    await db.commit()
-    for path in attachment_paths:
-        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-            path.unlink()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return attachment_paths
+
+
+async def _delete_company_cases(case_ids: list[int], identity: dict, db: AsyncSession) -> dict:
+    from app.core.permissions import _record_scope_conditions
+
+    if identity.get("role") not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="仅管理员或管理人员可以删除案件")
+    attachment_paths: list[Path] = []
+    try:
+        # Lock and validate the complete selection before any deletion can flush.
+        records = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.id.in_(case_ids), BusinessRecord.module == "case",
+            *(await _record_scope_conditions(identity, db)),
+        ).order_by(BusinessRecord.id).with_for_update())).all())
+        if len(records) != len(case_ids):
+            raise HTTPException(status_code=404, detail="选中的案件不存在或无权访问，整批未删除")
+        if any(record.status in {"已归档", "已合并"} for record in records):
+            raise HTTPException(status_code=409, detail="包含已归档或已合并案件，整批未删除")
+        for record in records:
+            attachment_paths.extend(await _delete_case_owned_records(record, db))
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="案件存在不能删除的关联记录，整批未删除") from exc
+    except Exception:
+        await db.rollback()
+        raise
+
+    logger.info("Company case deletion committed: operator=%s case_ids=%s", identity["username"], case_ids)
+    cleanup_pending = 0
+    for path in set(attachment_paths):
+        try:
+            if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+                # Imported attachments may share a physical file with another record.
+                if not await db.scalar(select(FileAttachment.id).where(FileAttachment.path == str(path)).limit(1)):
+                    path.unlink()
+        except (OSError, SQLAlchemyError):
+            cleanup_pending += 1
+            logger.exception("Case deletion committed; attachment cleanup pending for case_ids=%s", case_ids)
+    return {"deleted": len(records), "case_ids": case_ids, "cleanup_pending": cleanup_pending}
 
 
 @router.get(f"{settings.api_prefix}/cases/{{case_id}}/assisted-fees")
@@ -6486,3 +6521,8 @@ async def export_case_archive(body: ArchiveExportInput, identity: dict = Depends
     if body.format == "csv":
         return _csv_response(f"案件归档清单-{date.today()}.csv", headers, rows)
     return _excel_response(f"案件归档清单-{date.today()}.xls", headers, rows)
+
+
+@router.post(f"{settings.api_prefix}/cases/batch-delete")
+async def delete_cases_batch(body: CaseBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await _delete_company_cases(body.case_ids, identity, db)

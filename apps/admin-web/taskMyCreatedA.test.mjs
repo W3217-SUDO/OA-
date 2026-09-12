@@ -2,8 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const source = await readFile(new URL('./src/TaskCenterPage.tsx', import.meta.url), 'utf8')
-const api = await readFile(new URL('../api-server/app/main.py', import.meta.url), 'utf8')
+let source = ''
+for (const name of ['TaskCenterPage.tsx', 'TaskList.tsx', 'TaskCreateModal.tsx', 'TaskDetail.tsx', 'TaskActionModals.tsx', 'types.ts', 'constants.ts']) {
+  source += await readFile(new URL(`./src/tp/${name}`, import.meta.url), 'utf8')
+}
+let api = ''
+for (const name of ['areas/tp/router.py', 'core/tasks.py', 'models_shared.py']) {
+  api += await readFile(new URL(`../api-server/app/${name}`, import.meta.url), 'utf8')
+}
 
 test('事务中心我的任务 exposes list filters, pagination, create/detail and attachment controls', () => {
   assert.match(source, /任务编号/)
@@ -18,13 +24,16 @@ test('事务中心我的任务 exposes list filters, pagination, create/detail a
   assert.match(source, /撤回任务/)
 })
 
-test('事务中心任务 API validates owner/status, withdrawal reason, attachments and precise batch deletion', () => {
-  assert.match(api, /batch-delete/)
-  assert.match(api, /任务发起人或系统管理员可以撤回任务/)
+test('事务中心任务 API validates initiator-only withdrawal, reasons, batch lifecycle and material uploads', () => {
+  // Legacy TaskDetail.cshtml comments out deletion links; TaskList has no active delete command.
+  assert.match(api, /tasks\/batch-lifecycle/)
+  assert.match(api, /只有任务发起人可以撤回任务/)
+  assert.match(api, /只有待接收或处理中的任务可以撤回/)
+  assert.match(api, /撤回任务必须填写撤回原因/)
   assert.match(api, /批量撤回任务必须填写撤回原因/)
-  assert.match(api, /任务存在子任务，不能删除/)
-  assert.match(api, /file_attachments/) 
-  assert.match(api, /record\.module == "task"/) 
+  assert.match(api, /只有任务参与人可以上传任务资料附件/)
+  assert.match(api, /请至少选择一个任务资料附件/)
+  assert.match(api, /attachments\.append\(attachment\)/)
 })
 
 test('事务中心我发起的任务 restores the legacy batch acceptance action with dedicated server validation', () => {

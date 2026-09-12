@@ -87,6 +87,9 @@ export function HandoffModal(props: HandoffModalProps) {
               }))}
             />
         </Form.Item>
+        <Form.Item label="交接结束时间" name="end_at">
+          <DatePicker showTime style={{ width: "100%" }} placeholder="请选择日期和时间" />
+        </Form.Item>
         <Form.Item label="转交说明" name="comment">
           <Input.TextArea rows={3} />
         </Form.Item>

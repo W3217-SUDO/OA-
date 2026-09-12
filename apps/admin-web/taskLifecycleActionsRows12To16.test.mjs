@@ -2,21 +2,25 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-const source = fs.readFileSync(new URL("./src/TaskCenterPage.tsx", import.meta.url), "utf8");
+const center = fs.readFileSync(new URL("./src/tp/TaskCenterPage.tsx", import.meta.url), "utf8");
+const list = fs.readFileSync(new URL("./src/tp/TaskList.tsx", import.meta.url), "utf8");
+const detail = fs.readFileSync(new URL("./src/tp/TaskDetail.tsx", import.meta.url), "utf8");
+const source = `${center}\n${list}\n${detail}`;
 
 test("created-task completed and rejected detail actions match legacy workflow", () => {
-  assert.match(source, /statusTab === "finished"[\s\S]*?>验收任务<\/Button>/);
-  assert.match(source, /\["已完成", "待确认", "已拒绝"\]\.includes\(communication\.workflow_status \|\| communication\.status\)/);
-  assert.match(source, />重启任务<\/Button>/);
-  assert.match(source, />确认完成<\/Button>/);
+  assert.match(list, /canManageInitiatedTask && statusTab === "finished" && \([\s\S]*?onConfirmTask\(selected\)[\s\S]*?验收任务/);
+  assert.match(list, /\(canManageInitiatedTask \|\| canManageCompanyCreatedTask\) &&[\s\S]*?selected\?\.status === "已拒绝"[\s\S]*?onResendTask\(selected\)/);
+  assert.match(list, /\["已完成", "待确认"\]\.includes\([\s\S]*?!selected\?\.auto_completed[\s\S]*?onRestartTask\(selected\)/);
+  assert.match(center, /onConfirmTask=\{\(row\) => void simpleAction\(row, "confirm"\)\}[\s\S]*?onRestartTask=\{\(row\) => void simpleAction\(row, "restart"\)\}/);
+  assert.match(detail, /isInitiatedTaskContext && \["已完成", "待确认", "已拒绝"\]\.includes\(communication\.workflow_status \|\| communication\.status\)[\s\S]*?onSimpleAction\(communication, "restart"\)[\s\S]*?onSimpleAction\(communication, "confirm"\)/);
   assert.doesNotMatch(source, /canManageInitiatedTask && <Button onClick=\{openCreateTask\}>新增任务/);
 });
 
 test("accepted-task pending and processing footers expose only valid lifecycle actions", () => {
-  assert.match(source, /statusTab === "pending" && <Button onClick=\{acceptSelectedTask\}>接受任务<\/Button>/);
-  assert.match(source, /statusTab === "pending"[\s\S]*?simpleAction\(row, "complete"\)[\s\S]*?openTaskHandoff/);
-  assert.match(source, /statusTab === "processing"[\s\S]*?完成任务[\s\S]*?转交任务/);
-  assert.doesNotMatch(source, /canManageAcceptedTask && <Button onClick=\{acceptSelectedTask\}>/);
+  assert.match(list, /canManageAcceptedTask && statusTab === "pending" && \([\s\S]*?onAcceptSelected[\s\S]*?接受任务/);
+  assert.match(list, /canManageAcceptedTask && statusTab === "pending" && \([\s\S]*?onCompleteSelected[\s\S]*?onOpenHandoff\(selected\)/);
+  assert.match(list, /canManageAcceptedTask && statusTab === "processing" && \([\s\S]*?onCompleteOne\(selected\)[\s\S]*?onOpenHandoff\(selected\)/);
+  assert.match(center, /onAcceptSelected=\{acceptSelectedTask\}[\s\S]*?onCompleteSelected=\{\(\) => requireOne\(\(row\) => void simpleAction\(row, "complete"\)\)\}[\s\S]*?onCompleteOne=\{\(row\) => void simpleAction\(row, "complete"\)\}[\s\S]*?onOpenHandoff=\{openTaskHandoff\}/);
   assert.match(source, /isInitiatedTaskContext &&[\s\S]*?row\.initiator === profile\.username/);
 });
 

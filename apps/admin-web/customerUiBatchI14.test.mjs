@@ -27,7 +27,7 @@ test("share recipients trim, remove blanks, dedupe, and preserve order", () => {
   assert.deepEqual(normalizeCustomerRecipients(" alice, bob "), ["alice", "bob"])
 })
 
-test("share request refuses empty recipients and emits backend payload", () => {
+test("share request refuses blank recipients and emits backend payload", () => {
   assert.equal(buildCustomerShareRequest(12, [" ", ""], "x"), null)
   assert.deepEqual(buildCustomerShareRequest(12, [" alice ", "alice"], " note "), {
     method: "post",
@@ -51,7 +51,11 @@ test("directory autocomplete matches both account and display name", async () =>
   assert.equal(matchesDirectoryOption("zhang", { value: "zhangsan", label: "张三（zhangsan）" }), true)
   assert.equal(matchesDirectoryOption("张三", { value: "zhangsan", label: "张三（zhangsan）" }), true)
   assert.equal(matchesDirectoryOption("lisi", { value: "zhangsan", label: "张三（zhangsan）" }), false)
-  const page = await readFile(new URL("./src/CustomerCenterPage.tsx", import.meta.url), "utf8")
+  const page = (await Promise.all([
+    "./src/crm/CustomerCreatePage.tsx",
+    "./src/crm/CustomerCreateEditModal.tsx",
+    "./src/crm/CustomerModals.tsx",
+  ].map((path) => readFile(new URL(path, import.meta.url), "utf8")))).join("\n")
   assert.equal((page.match(/filterOption=\{matchesDirectoryOption\}/g) || []).length, 5)
   assert.match(page, /label="客户来源"[\s\S]*filterOption=\{matchesDirectoryOption\}/)
   assert.match(page, /label="客户联系人账号"[\s\S]*filterOption=\{matchesDirectoryOption\}/)
@@ -69,7 +73,7 @@ test("document and contact photo preflight enforce old upload constraints", () =
 })
 
 test("page wires zero-byte upload codes to explicit empty-file feedback", async () => {
-  const page = await readFile(new URL("./src/CustomerCenterPage.tsx", import.meta.url), "utf8")
+  const page = await readFile(new URL("./src/crm/CustomerCenterPage.tsx", import.meta.url), "utf8")
   assert.match(page, /validation\.code === "empty" \? "文件没有任何内容"/)
   assert.match(page, /validation\.code === "empty" \? "照片文件为空"/)
   assert.match(page, /validateCustomerUploadFile\(documentFile\)/)

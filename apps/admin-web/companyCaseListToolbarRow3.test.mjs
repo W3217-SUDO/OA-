@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-const source = fs.readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta.url), "utf8");
+const source = ["./src/legal/CaseCenterPage.tsx", "./src/legal/constants.tsx", "./src/legal/services/workflowActions.tsx"]
+  .map(path => fs.readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
 const css = fs.readFileSync(new URL("./src/case-center.css", import.meta.url), "utf8");
 
 test("公司案件各普通类型复用完整列表工具栏", () => {
@@ -17,13 +18,13 @@ test("公司案件各普通类型复用完整列表工具栏", () => {
 });
 
 test("删除案件只在公司案件范围内并保留能力校验和确认流程", () => {
-  assert.match(source, /if \(!isCompanyCaseListRoute\(initialView\) \|\| !getCaseCapability\(row\)\.can_delete_case\)/);
+  assert.match(source, /if \(!isCompanyCaseListRoute\(initialView\) \|\| rows\.some\(\(row\) => !getCaseCapability\(row\)\.can_delete_case\)\)/);
   assert.match(source, /canDeleteSelectedCompanyCase/);
   assert.match(source, /aria-label="删除案件"/);
   assert.match(source, /disabled=\{!canDeleteSelectedCompanyCase\}/);
-  assert.match(source, /selectedCase&&void deleteCompanyCase\(selectedCase\)/);
+  assert.match(source, /void deleteCompanyCase\(selectedCases\)/);
   assert.match(source, /title: "删除案件"/);
-  assert.match(source, /api\.delete\(`\/cases\/\$\{row\.id\}`\)/);
+  assert.match(source, /api\.post\("\/cases\/batch-delete", \{ case_ids: caseIds \}\)/);
 });
 
 console.log("company case list toolbar row 3 contract passed");

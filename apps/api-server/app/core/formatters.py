@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from datetime import tzinfo
 from app.core.constants import (
     AI_SPACE_CATEGORY, CASE_DEFENDANT_FIELDS, CASE_DOCUMENT_FOLDER_HEADERS, CASE_EVENT_TIME_ZONE, CASE_PLAINTIFF_FIELDS,
     CONTRACT_PERSON_NAME_PLACEHOLDER, PERSON_NAME_PLACEHOLDER, RECORD_PERSON_FIELDS_BY_MODULE, RECORD_PERSON_LIST_FIELDS_BY_MODULE, UPLOAD_ROOT,
@@ -397,7 +398,7 @@ def _dashboard_text(value: object) -> str:
     return "、".join(dict.fromkeys(values))
 
 
-def _parse_customer_contact_at(value: object) -> datetime | None:
+def _parse_customer_contact_at(value: object, *, naive_timezone: tzinfo | None = None) -> datetime | None:
     raw_value = str(value or "").strip()
     if not raw_value:
         return None
@@ -405,8 +406,10 @@ def _parse_customer_contact_at(value: object) -> datetime | None:
         parsed = datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
     except ValueError:
         return None
-    # Normalize explicit offsets and Z to one UTC-naive timeline.  Historical
-    # naive values keep their wall-clock meaning for backward compatibility.
+    # Existing callers retain naive wall-clock values; range queries can supply
+    # the known source zone so naive and offset timestamps share a UTC timeline.
+    if parsed.tzinfo is None and naive_timezone is not None:
+        parsed = parsed.replace(tzinfo=naive_timezone)
     if parsed.tzinfo is not None:
         parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
     return parsed

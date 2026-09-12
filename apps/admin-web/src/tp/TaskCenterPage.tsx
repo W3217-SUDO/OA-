@@ -484,6 +484,7 @@ export default function TaskCenterPage({
     const values = await handoffForm.validateFields();
     if (!beginTaskAction()) return;
     try {
+      values.end_at = values.end_at ? values.end_at.format("YYYY-MM-DDTHH:mm:ss") : undefined;
       await api.post(`/tasks/${handoff.id}/handoff`, values);
       message.success("任务已交接，5 日内未重新开始将自动完成");
       setHandoff(null);
@@ -848,7 +849,7 @@ export default function TaskCenterPage({
 
   const openTaskHandoff = async (row: TaskRow) => {
     setHandoff(row);
-    handoffForm.setFieldsValue({ recipient: "", comment: "" });
+    handoffForm.setFieldsValue({ recipient: "", comment: "", end_at: undefined });
     setHandoffDirectoryLoading(true);
     try {
       const { data } = await api.get("/users/directory");

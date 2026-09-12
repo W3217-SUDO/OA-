@@ -208,7 +208,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
             after_events = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())
         self.assertEqual(after_events, before_events)
 
-    async def test_release_accepts_migrated_status_but_rejects_public_or_recycled(self):
+    async def test_release_accepts_migrated_and_recycled_status_but_rejects_public(self):
         async with self.sessions() as db:
             customer = await db.get(BusinessRecord, self.customer_id)
             customer.status = "历史迁移状态"
@@ -228,9 +228,10 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
             customer.status = "已回收"
             customer.owner = "customer-admin"
             await db.commit()
-        recycled = await self.client.post(f"{API}/customers/{self.customer_id}/release", json={"comment": "回收站不可释放"})
+        recycled = await self.client.post(f"{API}/customers/{self.customer_id}/release", json={"comment": "回收站进入公海"})
         self.assertEqual(recycled.status_code, status.HTTP_200_OK, recycled.text)
-        self.assertFalse(recycled.json()["IsSuccess"])
+        self.assertEqual(recycled.json()["status"], "公海")
+        self.assertEqual(recycled.json()["owner"], "公海")
 
     async def test_auto_customer_serial_uses_legacy_short_sequence(self):
         serial_prefix = f"SHKH{datetime.now():%y}"

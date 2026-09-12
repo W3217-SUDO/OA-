@@ -507,6 +507,17 @@ class CaseHearingLawyerInput(BaseModel):
     comment: str = Field(default="", max_length=500)
 
 
+class CaseBatchDeleteInput(BaseModel):
+    case_ids: list[int] = Field(min_length=1, max_length=200)
+
+    @field_validator("case_ids")
+    @classmethod
+    def validate_case_ids(cls, value: list[int]) -> list[int]:
+        if any(case_id <= 0 for case_id in value) or len(set(value)) != len(value):
+            raise ValueError("案件 ID 必须为正整数且不能重复")
+        return value
+
+
 class CaseBatchUpdateInput(BaseModel):
     case_ids: list[int] = Field(default_factory=list, max_length=100)
     case_nos: list[str] = Field(default_factory=list, max_length=100)
@@ -1555,6 +1566,7 @@ class VipTaskMessageReadInput(BaseModel):
 class TaskHandoffInput(BaseModel):
     recipient: str
     comment: str = ""
+    end_at: datetime | None = None
 
 
 class TaskActionInput(BaseModel):
@@ -2240,8 +2252,16 @@ class ReportInput(BaseModel):
 
 
 class CustomerShareInput(BaseModel):
-    recipients: list[str] = Field(min_length=1, max_length=200)
+    recipients: list[str] = Field(max_length=200)
     comment: str = ""
+
+    @field_validator("recipients")
+    @classmethod
+    def validate_recipients(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(item.strip() for item in value if item.strip()))
+        if value and not normalized:
+            raise ValueError("共享人员不能仅包含空白值；取消共享请提交空列表")
+        return normalized
 
 
 class CustomerActionInput(BaseModel):

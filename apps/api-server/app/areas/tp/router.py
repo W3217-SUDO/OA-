@@ -15,6 +15,7 @@ from app.models_shared import (
     TaskExceptionReviewInput, TaskHandoffInput, TaskInput, VipTaskInput, VipTaskMessageInput,
     VipTaskMessageReadInput, VipTaskNodeInput, VipTaskNodeUpdateInput, VipTaskUpdateInput,
 )
+from app.models import SystemParameter
 from fastapi import APIRouter
 
 router = APIRouter()
@@ -1241,11 +1242,65 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
     recipient = await _active_task_username(body.recipient, db, field_name="接收人")
     if recipient == previous_owner:
         raise HTTPException(status_code=422, detail="任务不能转交给当前负责人")
-    auto_at = date.today() + timedelta(days=5)
+    data = task.data or {}
+    now = datetime.now()
+
+    def _task_datetime(value):
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value.replace(tzinfo=None)
+        raw_value = str(value).strip().replace("Z", "+00:00")
+        try:
+            return datetime.fromisoformat(raw_value).replace(tzinfo=None)
+        except ValueError:
+            try:
+                return datetime.combine(date.fromisoformat(raw_value), datetime.max.time())
+            except ValueError:
+                return None
+
+    start_at = _task_datetime(data.get("start_at") or data.get("task_begin_time") or data.get("TaskBeginTime")) or _task_datetime(task.created_at)
+    existing_end_at = _task_datetime(data.get("end_at") or data.get("deadline") or data.get("task_end_time") or data.get("TaskEndTime"))
+    requested_end_at = body.end_at.replace(tzinfo=None) if body.end_at else None
+    if requested_end_at is not None:
+        if requested_end_at < now:
+            raise HTTPException(status_code=422, detail="交接结束时间不能早于当前时间")
+        if start_at and requested_end_at <= start_at:
+            raise HTTPException(status_code=422, detail="交接结束时间必须晚于任务开始时间")
+    from app.core.task_type_rules import handoff_skip_days
+
+    parameters = list((await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "legacy_task_type",
+        SystemParameter.is_active.is_(True),
+    ))).all())
+    handoff_limit_days = handoff_skip_days(data, parameters)
+    candidate_end_at = requested_end_at or existing_end_at
+    handoff_end_at = candidate_end_at
+    if handoff_end_at is not None and handoff_limit_days is not None:
+        limit_at = now + timedelta(days=handoff_limit_days)
+        # Legacy TaskNodeService uses NodeEndTime.Subtract(limit).Days > 0.
+        # Keep that whole-day threshold instead of a stricter instant-by-instant min.
+        if (handoff_end_at - limit_at).days > 0:
+            handoff_end_at = limit_at
+    if handoff_end_at is not None and start_at and handoff_end_at <= start_at:
+        if requested_end_at is not None:
+            raise HTTPException(status_code=422, detail="交接结束时间必须晚于任务开始时间且不超过任务类型期限")
+        # A historical malformed range cannot be made valid by this handoff.
+        # Preserve it rather than creating a new start/end inversion.
+        handoff_end_at = existing_end_at
+    auto_at = now.date() + timedelta(days=5)
     task.owner = recipient
     task.status = "待接收"
-    task.data = {**(task.data or {}), "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": str(auto_at), "handoff_restarted": False}
-    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="任务交接", from_status=previous_status, to_status="待接收", operator=identity["username"], comment=f"{previous_owner} 交接给 {recipient}；未重新开始将于 {auto_at} 自动完成。{body.comment}"), db, content="任务已交接.")
+    deadline_updates = {}
+    if handoff_end_at is not None and (requested_end_at is not None or handoff_end_at != existing_end_at):
+        deadline_updates = {
+            "deadline": str(handoff_end_at.date()), "end_at": handoff_end_at.isoformat(timespec="seconds"),
+            "handoff_requested_end_at": body.end_at.isoformat(timespec="seconds") if body.end_at else "",
+            "handoff_limit_days": handoff_limit_days,
+        }
+    task.data = {**data, **deadline_updates, "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": str(auto_at), "handoff_restarted": False}
+    deadline_comment = f"；交接结束时间：{handoff_end_at.isoformat(timespec='seconds')}" if deadline_updates else ""
+    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="任务交接", from_status=previous_status, to_status="待接收", operator=identity["username"], comment=f"{previous_owner} 交接给 {recipient}；未重新开始将于 {auto_at} 自动完成{deadline_comment}。{body.comment}"), db, content="任务已交接.")
     await db.commit()
     await db.refresh(task)
     return _task_dict(task)

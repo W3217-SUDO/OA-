@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const source = readFileSync(new URL("./src/CaseCenterPage.tsx", import.meta.url), "utf8");
+const source = readFileSync(new URL("./src/legal/CaseCenterPage.tsx", import.meta.url), "utf8");
 const modalStart = source.indexOf('<Drawer open={Boolean(caseTaskCreateCase)}');
 const modalEnd = source.indexOf('</Drawer>', modalStart) + '</Drawer>'.length;
 const taskModal = source.slice(modalStart, modalEnd);

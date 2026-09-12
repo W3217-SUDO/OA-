@@ -528,27 +528,38 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             message.error(error?.response?.data?.detail || "立案审批失败");
         }
     };
-    const deleteCompanyCase = async (row: CaseRow) => {
-        const { initialView, getCaseCapability, setSelectedCaseKeys, loadOrdinaryCases, caseQuery, originalPage, originalPageSize } = context;
-        if (!isCompanyCaseListRoute(initialView) || !getCaseCapability(row).can_delete_case) {
-            return message.warning("当前账号没有删除该案件的权限");
+    const deleteCompanyCase = async (rows: CaseRow[]) => {
+        const { initialView, getCaseCapability, selectedCaseKeys, setSelectedCaseKeys, loadOrdinaryCases, caseQuery, originalPage, originalPageSize, counselListMode, loadCounselCases, counselPage, counselPageSize } = context;
+        if (!rows.length) return message.warning("请先选择案件");
+        const caseIds = rows.map((row) => row.id);
+        if (rows.length !== selectedCaseKeys.length || !selectedCaseKeys.every((key) => caseIds.some((id) => String(id) === String(key)))) {
+            return message.warning("所选案件已不在当前列表，请重新选择");
+        }
+        if (!isCompanyCaseListRoute(initialView) || rows.some((row) => !getCaseCapability(row).can_delete_case)) {
+            return message.warning("所选案件包含无权删除或状态不允许删除的记录");
         }
         Modal.confirm({
             title: "删除案件",
-            content: `确认删除案件“${row.serial_no} ${row.title}”吗？案件任务、附件、费用、排期和操作记录也会一并删除。`,
+            content: `确认删除选中的 ${rows.length} 条案件吗？案件任务、附件、费用、排期和操作记录也会一并删除；任一案件不能删除时整批不执行。`,
             okText: "删除",
             cancelText: "取消",
             okButtonProps: { danger: true },
             onOk: async () => {
                 try {
-                    await api.delete(`/cases/${row.id}`);
-                    message.success("案件已删除");
+                    const { data } = await api.post("/cases/batch-delete", { case_ids: caseIds });
+                    if (data.cleanup_pending) message.warning(`已删除 ${data.deleted} 条案件，部分附件文件清理待处理`);
+                    else message.success(`已删除 ${data.deleted} 条案件`);
                     setSelectedCaseKeys([]);
-                    await loadOrdinaryCases(caseQuery, originalPage, originalPageSize);
                 }
                 catch (error: any) {
                     message.error(error?.response?.data?.detail || "案件删除失败");
                     throw error;
+                }
+                try {
+                    if (counselListMode) await loadCounselCases(caseQuery, counselPage, counselPageSize);
+                    else await loadOrdinaryCases(caseQuery, originalPage, originalPageSize);
+                } catch {
+                    message.warning("案件已删除，列表刷新失败，请重新查询");
                 }
             },
         });

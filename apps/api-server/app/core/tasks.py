@@ -1,5 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 import calendar
+import math
 
 from app.core.constants import (
     CASE_EVENT_COMPLETED_STATUS, logger,
@@ -1201,6 +1202,140 @@ async def _ensure_phase_automatic_tasks(
     return created
 
 
+_LEGACY_AGENCY_FEE_TYPE_IDS = {"11020010", "11020020", "11020030", "11020040"}
+
+
+def _numeric_task_rule_value(value: object) -> float | None:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
+
+
+def _legacy_case_fee_matches_case(fee: BusinessRecord, case_record: BusinessRecord) -> bool:
+    """Match a fee only through an explicit current or retained legacy case key."""
+    data = fee.data or {}
+    current_case_ids = [data.get("case_id"), data.get("case_record_id")]
+    explicit_current_ids = {str(value) for value in current_case_ids if value not in (None, "")}
+    if explicit_current_ids:
+        return explicit_current_ids == {str(case_record.id)}
+
+    current_case_nos = {case_record.serial_no}
+    current_case_nos.update(str((case_record.data or {}).get(key) or "").strip() for key in (
+        "legacy_system_case_no", "legacy_case_no", "case_no",
+    ))
+    current_case_nos.discard("")
+    fee_case_nos = {str(data.get(key) or "").strip() for key in ("case_no", "legacy_case_no")}
+    if fee_case_nos.intersection(current_case_nos):
+        return True
+
+    legacy_case_ids = set()
+    legacy_case_id = (case_record.data or {}).get("legacy_case_id")
+    if legacy_case_id not in (None, ""):
+        legacy_case_ids.add(str(legacy_case_id))
+    legacy = data.get("legacy_record")
+    if isinstance(legacy, dict):
+        fee_legacy_case_id = legacy.get("CaseId")
+        return fee_legacy_case_id not in (None, "") and str(fee_legacy_case_id) in legacy_case_ids
+    return False
+
+
+def _legacy_agency_fee_amounts(fee: BusinessRecord) -> tuple[bool, tuple[float, float] | None]:
+    """Return whether this is a target fee and, when provable, its two totals."""
+    data = fee.data or {}
+    legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
+    fee_type_id = next((str(value).strip() for value in (
+        data.get("case_fee_type_id"), data.get("legacy_case_fee_type_id"), data.get("fee_type_code"),
+        legacy.get("CaseFeeTypeId"),
+    ) if value not in (None, "")), "")
+    if fee_type_id not in _LEGACY_AGENCY_FEE_TYPE_IDS:
+        return False, None
+    active_value = data.get("legacy_is_actived", legacy.get("IsActived", data.get("is_active")))
+    if active_value is False or str(active_value or "").strip().upper() in {"F", "N", "0", "FALSE"}:
+        return False, None
+    raw_amount = data.get("amount") if data.get("amount") is not None else legacy.get("Amount")
+    raw_cashed = data.get("cashed_amount")
+    if raw_cashed is None:
+        raw_cashed = data.get("received_amount")
+    if raw_cashed is None:
+        # SQL Server's ISNULL(CashedAmount, 0) makes a legacy NULL an unpaid
+        # balance. A missing current receipt amount carries the same meaning.
+        raw_cashed = legacy.get("CashedAmount")
+    amount = _numeric_task_rule_value(raw_amount)
+    cashed = 0.0 if raw_cashed is None else _numeric_task_rule_value(raw_cashed)
+    if amount is None or cashed is None:
+        return True, None
+    return True, (amount, cashed)
+
+
+def _case_fee_received_amounts(fees: list[BusinessRecord], payments: list[IncomingPayment]) -> dict[int, float]:
+    """Index explicit receipt-to-fee links once for the complete rule scan."""
+    from app.core.finance import (
+        _case_fee_link_maps, _resolve_case_fee_link_id,
+    )
+
+    fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
+    received_by_fee = {fee_id: 0.0 for fee_id in fee_ids}
+    for payment in payments:
+        for allocation in payment.allocations or []:
+            if not isinstance(allocation, dict):
+                continue
+            nested_linked = False
+            for settlement_item in allocation.get("settlement_items") or []:
+                if not isinstance(settlement_item, dict):
+                    continue
+                fee_id = _resolve_case_fee_link_id(settlement_item, fee_ids, legacy_fee_ids)
+                if fee_id in received_by_fee:
+                    amount = _numeric_task_rule_value(settlement_item.get("amount") or settlement_item.get("settlement_amount"))
+                    if amount is not None:
+                        received_by_fee[fee_id] += amount
+                    nested_linked = True
+            if nested_linked:
+                continue
+            fee_id = _resolve_case_fee_link_id(allocation, fee_ids, legacy_fee_ids)
+            if not fee_id:
+                try:
+                    fee_id = int(allocation.get("finance_record_id") or 0)
+                except (TypeError, ValueError):
+                    fee_id = 0
+            if fee_id in received_by_fee:
+                amount = _numeric_task_rule_value(allocation.get("amount"))
+                if amount is not None:
+                    received_by_fee[fee_id] += amount
+    return received_by_fee
+
+
+def _case_has_outstanding_legacy_agency_fee(
+    case_record: BusinessRecord,
+    fees: list[BusinessRecord],
+    received_by_fee: dict[int, float],
+) -> bool | None:
+    """Return whether verified old-type agency fees remain unpaid; None means no proof."""
+    verified_fees: dict[int, tuple[BusinessRecord, float, float]] = {}
+    for fee in fees:
+        if not _legacy_case_fee_matches_case(fee, case_record):
+            continue
+        is_target_fee, amounts = _legacy_agency_fee_amounts(fee)
+        if not is_target_fee:
+            continue
+        if amounts is None:
+            return None
+        if amounts is not None:
+            verified_fees[fee.id] = (fee, *amounts)
+    if not verified_fees:
+        return None
+
+    for fee_id, (_, amount, recorded_cashed) in verified_fees.items():
+        # Imported FAM_Case_Fee.CashedAmount and current receipt allocations
+        # describe the same balance. Use the greater proved total, never a
+        # customer/case-name estimate and never both totals added together.
+        cashed = max(recorded_cashed, received_by_fee.get(fee_id, 0.0))
+        if amount - cashed > 0.001:
+            return True
+    return False
+
+
 async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | None = None) -> int:
     effective_today = today or date.today()
     task_count_before = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
@@ -1210,11 +1345,10 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
     cases_by_id = {item.id: item for item in cases}
     cases_by_no = {item.serial_no: item for item in cases}
     related_records = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module.in_({"contract", "invoice", "refund", "warehouse", "notary", "case_fee"}),
+        BusinessRecord.module.in_({"contract", "finance", "invoice", "refund", "warehouse", "notary", "case_fee"}),
     ))).all())
-    receipts = list((await db.scalars(select(IncomingPayment).where(
-        IncomingPayment.received_date <= effective_today - timedelta(days=30),
-    ))).all())
+    all_payments = list((await db.scalars(select(IncomingPayment))).all())
+    receipts = [item for item in all_payments if item.received_date <= effective_today - timedelta(days=30)]
     receipts_by_case_id: dict[int, list[IncomingPayment]] = {}
     receipts_by_case_no: dict[str, list[IncomingPayment]] = {}
     for receipt in receipts:
@@ -1294,6 +1428,8 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
     # Complete tasks whose source business state has already reached the old
     # service's terminal condition. This also repairs missed historical events.
     tasks = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all())
+    case_fees = [item for item in related_records if item.module in {"finance", "case_fee"}]
+    received_by_fee = _case_fee_received_amounts(case_fees, all_payments)
     for task in tasks:
         data = task.data or {}
         case_record = cases_by_id.get(int(data.get("case_id") or 0)) if str(data.get("case_id") or "").isdigit() else None
@@ -1304,10 +1440,10 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
             await _finish_legacy_auto_task(task, db, reason="案件已归档，结算归档任务自动完成")
         if case_record and task_kind.startswith("notary_audit:") and case_record.status not in {"等待审核公证书", "审核公证书"}:
             await _finish_legacy_auto_task(task, db, reason="案件已离开公证审核阶段，审核公证书任务自动完成")
-        if case_record and task_kind.startswith("agency_fee_collection:") and (
-            receipts_by_case_id.get(case_record.id) or receipts_by_case_no.get(case_record.serial_no)
-        ):
-            await _finish_legacy_auto_task(task, db, reason="案件代理费已到账，催收代理费任务自动完成")
+        if case_record and task_kind.startswith("agency_fee_collection:"):
+            outstanding = _case_has_outstanding_legacy_agency_fee(case_record, case_fees, received_by_fee)
+            if outstanding is False:
+                await _finish_legacy_auto_task(task, db, reason="指定代理费类型已全部到账，催收代理费任务自动完成")
 
     for source in related_records:
         data = source.data or {}
@@ -1344,8 +1480,9 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
                         started_on=effective_today, deadline=effective_today + timedelta(days=30),
                         trigger_at=invoice_date + timedelta(days=90), trigger_source_id=f"invoice:{source.id}:90d",
                     )
-                    if receipts_by_case_id.get(case_record.id) or receipts_by_case_no.get(case_record.serial_no):
-                        await _finish_legacy_auto_task(collection_task, db, reason="案件代理费已到账，催收代理费任务自动完成")
+                    outstanding = _case_has_outstanding_legacy_agency_fee(case_record, case_fees, received_by_fee)
+                    if outstanding is False:
+                        await _finish_legacy_auto_task(collection_task, db, reason="指定代理费类型已全部到账，催收代理费任务自动完成")
 
         if source.module == "contract":
             end_date = _task_rule_date(data.get("end_date") or data.get("contract_end_date"))
@@ -1449,8 +1586,11 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
         BusinessRecord.module == "task",
     )) or 0)
     changed = max(task_count_after - task_count_before, 0)
-    if changed:
-        await db.commit()
+    # This scheduler routine owns its scan transaction. Completion helpers can
+    # flush during notification lookups, so Session.dirty is not a reliable
+    # commit gate. Commit every successful scan; failures propagate to the
+    # scheduler, whose exception path rolls the whole transaction back.
+    await db.commit()
     return changed
 
 

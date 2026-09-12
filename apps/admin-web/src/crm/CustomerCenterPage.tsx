@@ -596,7 +596,7 @@ export default function CustomerCenterPage({
     const v = await shareForm.validateFields();
     const request = buildCustomerShareRequest(sharing.id, v.recipients, v.comment);
     if (!request) {
-      message.warning("请先添加至少一位共享人员");
+      message.warning("共享人员信息无效，请重新选择");
       return;
     }
     try {
@@ -604,7 +604,7 @@ export default function CustomerCenterPage({
       const legacySharePayload = { recipients: v.recipients, comment: v.comment || "" };
       const response = await api.post(request.url || shareUrl, request.data || legacySharePayload);
       assertCustomerMutationSuccess(response?.data);
-      message.success("客户共享成功");
+      message.success(request.data.recipients.length ? "客户共享设置已保存" : "已取消客户共享");
       setSharing(null);
       setSelectedRowKeys([]);
       await load();

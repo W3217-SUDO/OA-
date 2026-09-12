@@ -2447,10 +2447,11 @@ export default function CaseCenterPage({
   }, [caseFileTypeCatalog, caseRelations, selectedBatchCases]);
   const selectedCase = (counselListMode?counselCases:originalCases).find((row) => selectedCaseKeySet.has(String(row.id)));
   const selectedCaseCapability = getCaseCapability(selectedCase);
+  const selectedCases = (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeySet.has(String(row.id)));
   const canDeleteSelectedCompanyCase = isCompanyCaseListRoute(initialView)
     && ["admin", "manager"].includes(profile.role || "")
-    && selectedCaseCapability.can_delete_case;
-  const selectedCases = (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeySet.has(String(row.id)));
+    && selectedCases.length > 0 && selectedCases.length === selectedCaseKeys.length
+    && selectedCases.every((row) => getCaseCapability(row).can_delete_case);
   const legacyCaseListOperationState = getLegacyCaseListOperationState({
     role: profile.role || "",
     status: selectedCase?.status || "",
@@ -3009,8 +3010,8 @@ export default function CaseCenterPage({
             {isCompanyCaseListRoute(initialView)&&<Button
               aria-label="删除案件"
               disabled={!canDeleteSelectedCompanyCase}
-              title={!selectedCase ? "请先选择一条案件" : canDeleteSelectedCompanyCase ? "删除选中的公司案件" : "当前账号或案件状态不允许删除"}
-              onClick={()=>selectedCase&&void deleteCompanyCase(selectedCase)}
+              title={!selectedCaseKeys.length ? "请先选择案件" : canDeleteSelectedCompanyCase ? `删除选中的 ${selectedCases.length} 条公司案件` : "当前账号、所选案件状态或选择范围不允许删除"}
+              onClick={()=>void deleteCompanyCase(selectedCases)}
             >删除案件</Button>}
             {["admin","manager"].includes(profile.role||"")&&selectedCase?.status==="待立案审批"&&<Button onClick={()=>void reviewCaseCreation(selectedCase,true)}>立案审批通过</Button>}
             {["admin","manager"].includes(profile.role||"")&&selectedCase?.status==="待立案审批"&&<Button danger onClick={()=>void reviewCaseCreation(selectedCase,false)}>立案审批驳回</Button>}

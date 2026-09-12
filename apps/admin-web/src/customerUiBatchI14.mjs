@@ -30,7 +30,8 @@ export const normalizeCustomerRecipients = (value) => {
 export const buildCustomerShareRequest = (customerId, recipients, comment = "") => {
   const id = String(customerId ?? "").trim()
   const normalized = normalizeCustomerRecipients(recipients)
-  if (!id || !normalized.length) return null
+  const explicitlyCleared = Array.isArray(recipients) && recipients.length === 0
+  if (!id || (!normalized.length && !explicitlyCleared)) return null
   return {
     method: "post",
     url: `/customers/${encodeURIComponent(id)}/share`,

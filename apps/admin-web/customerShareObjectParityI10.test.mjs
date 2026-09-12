@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { normalizeSharedObjectValues } from './src/customerParity.mjs'
 
-const pageSource = await readFile(new URL('./src/CustomerCenterPage.tsx', import.meta.url), 'utf8')
+const pageSource = await readFile(new URL('./src/crm/CustomerCenterPage.tsx', import.meta.url), 'utf8')
 
 test('shared-object projection accepts legacy DTOs, trims and de-duplicates recipients', () => {
   assert.deepEqual(

@@ -369,7 +369,7 @@ export function CustomerModals({
       <Modal
         open={Boolean(sharing)}
         title={`共享客户：${sharing?.title || ""}`}
-        okText="确认共享"
+        okText="保存共享设置"
         onOk={onShare}
         onCancel={onCloseShare}
       >
@@ -377,7 +377,6 @@ export function CustomerModals({
           <Form.Item
             label="共享人员"
             name="recipients"
-            rules={[{ required: true }]}
           >
             <Select
               mode="multiple"

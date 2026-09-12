@@ -1,4 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from calendar import monthrange
+from datetime import timezone
 from app.core.constants import (
     CASE_DEFENDANT_FIELDS, CASE_PLAINTIFF_FIELDS, CASE_THIRD_PARTY_FIELDS, CUSTOMER_CREATE_DATA_FIELDS, CUSTOMER_CREATE_STATUSES,
     CUSTOMER_LEVELS, CUSTOMER_MODIFICATION_ACTIONS, CUSTOMER_SYSTEM_DATA_FIELDS, FIELD_PERMISSION_DATA_KEYS, UPLOAD_ROOT,
@@ -700,7 +702,7 @@ async def release_customer(customer_id: int, body: CustomerActionInput, identity
     )
     try:
         customer = await _locked_customer_or_404(customer_id, identity, db)
-        if customer.status in {"公海", "已回收"}: raise HTTPException(status_code=409, detail="当前客户状态不能释放到公海")
+        if customer.status == "公海": raise HTTPException(status_code=409, detail="当前客户状态不能释放到公海")
         old = customer.status; customer.status = "公海"; customer.owner = "公海"
         customer.data = {
             **(customer.data or {}),
@@ -730,7 +732,7 @@ async def share_customer(customer_id: int, body: CustomerShareInput, identity: d
         customer = await _locked_customer_or_404(customer_id, identity, db)
         await _require_record_owner_or_manager(customer, identity, db)
         if customer.status in {"公海", "已回收"}: raise HTTPException(status_code=409, detail="公海或回收站客户不能共享")
-        recipients = await _resolve_active_customer_managers(body.recipients, db)
+        recipients = await _resolve_active_customer_managers(body.recipients, db) if body.recipients else []
         active_employees = (await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "hr",
             BusinessRecord.status.not_in({"离职", "停用"}),
@@ -751,9 +753,12 @@ async def share_customer(customer_id: int, body: CustomerShareInput, identity: d
         redundant = sorted(set(recipients) & ({str(customer.owner or "").strip()} | customer_managers))
         if redundant:
             raise HTTPException(status_code=422, detail=f"客户负责人或管理人无需重复共享：{'、'.join(redundant)}")
-        existing = set((customer.data or {}).get("shared_with", [])); existing.update(recipients)
-        customer.data = {**(customer.data or {}), "shared_with": sorted(existing), "is_shared": "是", "shared_at": datetime.now().isoformat(timespec="seconds")}
-        db.add(_customer_event(customer, "共享客户", identity, body.comment or f"共享给：{'、'.join(recipients)}")); await db.commit(); await db.refresh(customer)
+        previous = (customer.data or {}).get("shared_with", [])
+        customer.data = {**(customer.data or {}), "shared_with": recipients, "is_shared": "是" if recipients else "否", "shared_at": datetime.now().isoformat(timespec="seconds")}
+        audit_comment = f"共享人员：{previous} -> {recipients}"
+        if body.comment.strip():
+            audit_comment += f"；说明：{body.comment.strip()}"
+        db.add(_customer_event(customer, "共享客户", identity, audit_comment)); await db.commit(); await db.refresh(customer)
         return await _record_dict_for_identity(customer, identity, db)
     except HTTPException as exc:
         return _legacy_customer_business_failure_response(exc)
@@ -1671,11 +1676,25 @@ async def list_customers(
         if current_user.role != "admin":
             visible_ids = await _visible_record_ids(identity, db)
             candidate_rows = [item for item in candidate_rows if item.id in visible_ids]
-    if scope == "recent_contact":
-        candidate_rows = [
-            item for item in candidate_rows
-            if _parse_customer_contact_at((item.data or {}).get("last_contact_at")) is not None
-        ]
+    recent_timestamps: dict[int, datetime] = {}
+    if scope in {"recent_contact", "recent_update"}:
+        # Match DateTime.Now.AddMonths(-1), including month-end clamping.
+        local_now = datetime.now().astimezone()
+        previous_year = local_now.year - 1 if local_now.month == 1 else local_now.year
+        previous_month = 12 if local_now.month == 1 else local_now.month - 1
+        local_start = local_now.replace(
+            year=previous_year, month=previous_month,
+            day=min(local_now.day, monthrange(previous_year, previous_month)[1]),
+        )
+        window_start = local_start.astimezone(timezone.utc).replace(tzinfo=None)
+        window_end = local_now.astimezone(timezone.utc).replace(tzinfo=None)
+        for item in candidate_rows:
+            value = (item.data or {}).get("last_contact_at") if scope == "recent_contact" else item.updated_at
+            # Contact JSON may contain historical local time; DB timestamps are UTC.
+            timestamp = _parse_customer_contact_at(value, naive_timezone=local_now.tzinfo if scope == "recent_contact" else timezone.utc)
+            if timestamp is not None and window_start <= timestamp <= window_end:
+                recent_timestamps[item.id] = timestamp
+        candidate_rows = [item for item in candidate_rows if item.id in recent_timestamps]
     if scope == "recent_update":
         latest_modifier_by_record: dict[int, str] = {}
         candidate_ids = [item.id for item in candidate_rows]
@@ -1707,7 +1726,7 @@ async def list_customers(
     if scope == "recent_contact":
         candidate_rows.sort(
             key=lambda item: (
-                _parse_customer_contact_at((item.data or {}).get("last_contact_at")) or datetime.min,
+                recent_timestamps[item.id],
                 item.id,
             ),
             reverse=True,
@@ -1715,7 +1734,7 @@ async def list_customers(
     if scope == "recent_update":
         candidate_rows.sort(
             key=lambda item: (
-                _parse_customer_contact_at(item.updated_at) or datetime.min,
+                recent_timestamps[item.id],
                 item.id,
             ),
             reverse=True,
