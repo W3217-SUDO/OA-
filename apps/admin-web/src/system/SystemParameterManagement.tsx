@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
@@ -93,6 +93,9 @@ export function SystemParameterManagement({
   onRelationEditorClose,
   onSelectedRelationTargetIdsChange,
 }: SystemParameterManagementProps) {
+  const [parameterPage, setParameterPage] = useState(1);
+  const [parameterPageSize, setParameterPageSize] = useState(15);
+  useEffect(() => setParameterPage(1), [category, keyword, secondaryKeyword]);
   const title = `${categoryTitle[category]}列表`;
   const usesParentCode = ["fee_type", "cause", "case_file_type", "district"].includes(
     category,
@@ -454,10 +457,15 @@ export function SystemParameterManagement({
             ),
           }}
           pagination={{
-            defaultPageSize: 15,
+            current: parameterPage,
+            pageSize: parameterPageSize,
             showSizeChanger: true,
             pageSizeOptions: ["10", "15", "20", "50", "100", "200"],
             showTotal: (total) => `共 ${total} 条`,
+            onChange: (page, pageSize) => {
+              setParameterPage(page);
+              setParameterPageSize(pageSize);
+            },
           }}
           scroll={{ x: 1100 }}
         />

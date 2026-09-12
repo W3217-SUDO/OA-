@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Card,
   Empty,
@@ -10,6 +11,8 @@ interface SystemConfigListProps {
 }
 
 export function SystemConfigList({ configs }: SystemConfigListProps) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
   const empty = (
     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
   );
@@ -39,11 +42,16 @@ export function SystemConfigList({ configs }: SystemConfigListProps) {
           dataSource={configs}
           locale={{ emptyText: empty }}
           pagination={{
-            defaultPageSize: 15,
+            current: page,
+            pageSize,
             showSizeChanger: true,
             pageSizeOptions: ["10", "15", "20", "50", "100", "200"],
             showQuickJumper: true,
             showTotal: (total) => `共有${total}条`,
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            },
           }}
         />
       </Card>
