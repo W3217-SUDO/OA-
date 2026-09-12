@@ -568,7 +568,7 @@ async def list_records(
         _apply_notary_auto_conversion,
     )
     from app.core.permissions import (
-        _case_mine_scope_condition, _record_scope_conditions, _require_record_module_menu,
+        _case_mine_scope_condition, _record_scope_conditions, _require_record_module_menu, _user_has_job_permission,
     )
     from app.core.system import (
         _allowed_field_keys,
@@ -584,6 +584,11 @@ async def list_records(
             else identity.get("role") == "admin"
         )
     await _require_record_module_menu(module, identity, db, action="查看")
+    clue_audit_scope = module == "clue" and scope == "audit"
+    if clue_audit_scope:
+        audit_user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
+        if not audit_user or not await _user_has_job_permission(audit_user, "线索审批", db):
+            return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
     if module in {"notary", "case"}:
         await _apply_notary_auto_conversion(db)
     conditions = [BusinessRecord.module == module]
@@ -594,7 +599,7 @@ async def list_records(
         module == "contract"
         and scope == "department"
         and identity.get("role") in {"admin", "manager"}
-    ):
+    ) and not clue_audit_scope:
         # Department contracts are classified by the linked customer's active
         # managers below. Applying the contract row's stamped department first
         # would discard rows whose legacy department is stale.

@@ -70,6 +70,7 @@ async def export_investigation_handover(ids: str = "", identity: dict = Depends(
 @router.get(f"{settings.api_prefix}/investigations/action-capabilities")
 async def investigation_action_capabilities(
     record_ids: str = Query(default="", max_length=1200),
+    scope: str = Query(default="all", pattern="^(all|audit)$"),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """Return the current user's real investigation actions for visible records.
@@ -90,13 +91,16 @@ async def investigation_action_capabilities(
         return {"items": {}}
     if len(requested_ids) > 100:
         raise HTTPException(status_code=422, detail="一次最多查询 100 条调查记录的操作权限")
+    user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
+    can_review_clue = bool(user and await _user_has_job_permission(user, "线索审批", db))
+    if scope == "audit" and not can_review_clue:
+        return {"items": {}}
+    record_scope = () if scope == "audit" else tuple(await _record_scope_conditions(identity, db))
     records = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(requested_ids),
         BusinessRecord.module.in_({"clue", "notary"}),
-        *(await _record_scope_conditions(identity, db)),
+        *record_scope,
     ))).all())
-    user = await db.scalar(select(User).where(User.username == identity["username"]))
-    can_review_clue = bool(user and await _user_has_job_permission(user, "线索审批", db))
     can_review_notary = bool(user and await _user_has_job_permission(user, "公证审核", db))
     can_register_certificate = bool(user and await _user_has_job_permission(user, "公证书号码登记", db))
     customer_names = {record.customer.strip() for record in records if record.module == "clue" and record.customer.strip()}
@@ -925,6 +929,9 @@ async def get_investigation_clue_workspace(clue_id: int, identity: dict = Depend
     from app.core.storage import (
         _attachment_dict,
     )
+    from app.core.formatters import (
+        _user_display_map,
+    )
     from app.core.system import (
         _optional_record_id, _record_dict,
     )
@@ -949,6 +956,39 @@ async def get_investigation_clue_workspace(clue_id: int, identity: dict = Depend
     attachments = list((await db.scalars(select(FileAttachment).where(
         FileAttachment.record_id.in_(record_ids),
     ).order_by(FileAttachment.created_at.asc(), FileAttachment.id.asc()))).all())
+    uploader_users = await _user_display_map({item.uploader for item in attachments}, db)
+    uploader_names = {
+        username: str(user.display_name or "").strip()
+        for username, user in uploader_users.items()
+        if str(user.display_name or "").strip()
+    }
+    source_task = None
+    source_task_data: dict = {}
+    source_task_id = _optional_record_id(clue_data.get("source_task_id"))
+    if source_task_id:
+        source_task = await db.get(BusinessRecord, source_task_id)
+        if source_task:
+            source_task_data = dict(source_task.data or {})
+    source_task_assigner = str(
+        source_task_data.get("assigner")
+        or source_task_data.get("assigned_by")
+        or (source_task.owner if source_task else "")
+    ).strip()
+    source_task_users = await _user_display_map({source_task_assigner}, db)
+    source_task_assigner_display_name = str(
+        source_task_users.get(source_task_assigner.lower()).display_name
+        if source_task_assigner.lower() in source_task_users
+        else ""
+    ).strip()
+    clue_payload = _record_dict(clue)
+    if source_task:
+        clue_payload["data"] = {
+            **clue_payload["data"],
+            "source_task_start_date": source_task_data.get("start_date") or source_task_data.get("authorized_from") or "",
+            "source_task_end_date": source_task_data.get("end_date") or source_task_data.get("deadline") or source_task_data.get("authorized_to") or "",
+            "source_task_assigner": source_task_assigner,
+            "source_task_assigner_display_name": source_task_assigner_display_name,
+        }
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     def can_manage(item: BusinessRecord) -> bool:
         return bool(
@@ -957,12 +997,12 @@ async def get_investigation_clue_workspace(clue_id: int, identity: dict = Depend
             or (identity.get("role") == "manager" and user and item.department == user.department)
         )
     return {
-        "clue": _record_dict(clue),
-        "clue_files": [_attachment_dict(item, clue) for item in attachments if item.record_id == clue.id],
+        "clue": clue_payload,
+        "clue_files": [_attachment_dict(item, clue, uploader_names) for item in attachments if item.record_id == clue.id],
         "evidence": [
             {
                 **_record_dict(item),
-                "files": [_attachment_dict(file, item) for file in attachments if file.record_id == item.id],
+                "files": [_attachment_dict(file, item, uploader_names) for file in attachments if file.record_id == item.id],
                 "can_edit": can_manage(item),
                 "can_delete": can_manage(item) and item.status != "已入卷",
             }

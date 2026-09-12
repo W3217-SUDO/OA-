@@ -195,6 +195,8 @@ const clueStatusesByRoute: Record<string, string[]> = {
   "clue-company-refused": ["已驳回", "已拒绝"],
 };
 
+const internalClueAuditTabs = new Set(["clue-audit-pending", "clue-audit-refused"]);
+
 export default function InvestigationCenterPage({
   initialTab,
   onNavigate,
@@ -415,7 +417,9 @@ export default function InvestigationCenterPage({
                 module,
                 page_size: 100,
                 scope:
-                  initialTab.includes("-my-") ||
+                  internalClueAuditTabs.has(initialTab)
+                    ? "audit"
+                    : initialTab.includes("-my-") ||
                   (initialTab.startsWith("investigation-task-") &&
                   !initialTab.startsWith("investigation-task-sub-"))
                     ? "mine"
@@ -466,6 +470,7 @@ export default function InvestigationCenterPage({
           .get("/investigations/action-capabilities", {
             params: {
               record_ids: capabilityRows.map((row) => row.id).join(","),
+              scope: internalClueAuditTabs.has(initialTab) ? "audit" : "all",
             },
           })
           .then((capabilities) =>
@@ -1462,6 +1467,13 @@ export default function InvestigationCenterPage({
       .then(({ data }) => {
         if (!cancelled) {
           setClueWorkspace(data);
+          if (data.clue) {
+            setInvestigationDetail((current) =>
+              current && current.id === data.clue.id
+                ? { ...current, ...data.clue }
+                : current,
+            );
+          }
           setSelectedEvidenceId(null);
         }
       })
@@ -2385,13 +2397,7 @@ export default function InvestigationCenterPage({
                       clueReviewForm.setFieldsValue({ approved: true });
                     }}
                   >
-                    内部审批
-                  </Button>
-                )}
-              {investigationActions[String(r.id)]?.review_clue &&
-                r.status === "待审批" && (
-                  <Button type="link" onClick={() => void openTurnOnAudit(r)}>
-                    转交审核人
+                    审批
                   </Button>
                 )}
               {investigationActions[String(r.id)]?.review_customer_clue &&
@@ -2686,7 +2692,7 @@ export default function InvestigationCenterPage({
     "clue-my-refused": ["查询", "修改", "提交", "批量提交", "新增文件", "批量删除"],
     "clue-my-no-fee": ["查询", "修改", "申请费用"],
     "clue-my-fee": ["查询", "修改"],
-    "clue-audit-pending": ["查询", "刷新", "修改", "审批", "转交审核人"],
+    "clue-audit-pending": ["查询", "刷新", "修改", "审批"],
     "clue-audit-customer": ["查询", "刷新", "修改", "审批"],
   };
   const selectedRows = visibleRows.filter((row) =>
@@ -3597,11 +3603,7 @@ export default function InvestigationCenterPage({
                     type={label === "查询" ? "primary" : "default"}
                     onClick={() => runOriginalAction(label)}
                   >
-                    {label === "审批" && initialTab === "clue-audit-customer"
-                      ? "客户审核"
-                      : label === "审批" && initialTab === "clue-audit-pending"
-                        ? "内部审批"
-                        : label}
+                      {label}
                   </Button>
                 ))}
               </div>
@@ -3708,11 +3710,7 @@ export default function InvestigationCenterPage({
                   }
                   return (
                     <Button key={label} onClick={() => runOriginalAction(label)}>
-                      {label === "审批" && initialTab === "clue-audit-customer"
-                        ? "客户审核"
-                        : label === "审批" && initialTab === "clue-audit-pending"
-                          ? "内部审批"
-                          : label}
+                      {label}
                     </Button>
                   );
                 })}

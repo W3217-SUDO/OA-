@@ -11,6 +11,31 @@ interface ClueDetailHeaderProps {
   onOpenLinkedNotary: (recordId?: number, certificateNo?: string) => void;
 }
 
+function formatSubjectDisplay(value: unknown): string {
+  const subjects = Array.isArray(value) ? value : value ? [value] : [];
+  return subjects
+    .map((subject, index) => {
+      if (!subject || typeof subject !== "object") return String(subject || "");
+      const item = subject as Record<string, unknown>;
+      const fields = [
+        ["主体名称", item.name],
+        ["经营性质", item.nature],
+        ["确认方式", item.confirmation_method],
+        ["证件号码", item.identity_no],
+        ["法定代表人", item.legal_representative],
+        ["所在地区", Array.isArray(item.region) ? item.region.join("/") : item.region],
+        ["经营地址", item.business_address || item.address],
+      ]
+        .filter(([, field]) => field !== undefined && field !== null && String(field).trim())
+        .map(([label, field]) => `${label}：${String(field)}`);
+      return fields.length ? `主体${index + 1}（${fields.join("；")}）` : "";
+    })
+    .filter(Boolean)
+    .join("；");
+}
+
+const evidenceStatuses = new Set(["待取证", "已取证", "待公证", "已转案件"]);
+
 export default function ClueDetailHeader({
   investigationDetail,
   projectedPersonDisplayName,
@@ -19,6 +44,9 @@ export default function ClueDetailHeader({
   onOpenLinkedCase,
   onOpenLinkedNotary,
 }: ClueDetailHeaderProps) {
+  const showEvidenceFields =
+    investigationDetail?.module !== "clue" ||
+    evidenceStatuses.has(investigationDetail.status);
   const investigationDetailItems = investigationDetail
     ? [
         {
@@ -79,12 +107,12 @@ export default function ClueDetailHeader({
         {
           key: "started-at",
           label: "开始时间",
-          children: investigationDetail.data.started_at || investigationDetail.data.start_date || investigationDetail.data.authorized_from || "—",
+          children: investigationDetail.data.started_at || investigationDetail.data.start_date || investigationDetail.data.authorized_from || investigationDetail.data.source_task_start_date || "—",
         },
         {
           key: "ended-at",
           label: "结束时间",
-          children: investigationDetail.data.ended_at || investigationDetail.data.end_date || investigationDetail.data.deadline || investigationDetail.data.authorized_to || "—",
+          children: investigationDetail.data.ended_at || investigationDetail.data.end_date || investigationDetail.data.deadline || investigationDetail.data.authorized_to || investigationDetail.data.source_task_end_date || "—",
         },
         {
           key: "source-owner",
@@ -100,9 +128,11 @@ export default function ClueDetailHeader({
           children:
             projectedPersonDisplayName(
               investigationDetail.data.assigner_display_name ||
-                investigationDetail.data.assigned_by_display_name,
+                investigationDetail.data.assigned_by_display_name ||
+                investigationDetail.data.source_task_assigner_display_name,
               investigationDetail.data.assigner ||
-                investigationDetail.data.assigned_by,
+                investigationDetail.data.assigned_by ||
+                investigationDetail.data.source_task_assigner,
             ),
         },
         ...((investigationDetail.data.parent_task_no || investigationDetail.data.investigation_no)
@@ -296,12 +326,11 @@ export default function ClueDetailHeader({
                 key: "indictee",
                 label: "主体信息",
                 children:
-                  (Array.isArray(investigationDetail.data.indictees)
-                    ? investigationDetail.data.indictees.map((item: any) => [item.nature, item.name, item.confirmation_method, item.identity_no, item.legal_representative, Array.isArray(item.region) ? item.region.join("/") : item.region, item.business_address || item.address].filter(Boolean).join(" / ")).join("；")
-                    : "") ||
-                  investigationDetail.data.indictee ||
-                  investigationDetail.data.subject ||
-                  "—",
+                  formatSubjectDisplay(
+                    investigationDetail.data.indictees ||
+                      investigationDetail.data.indictee ||
+                      investigationDetail.data.subject,
+                  ) || "—",
               },
               {
                 key: "assistant",
@@ -313,43 +342,47 @@ export default function ClueDetailHeader({
                       investigationDetail.data.assistant,
                   ),
               },
-              {
-                key: "collected-at",
-                label: "取证日期",
-                children: investigationDetail.data.collected_at || "—",
-              },
-              {
-                key: "notary-institution",
-                label: "取证机构",
-                children: investigationDetail.data.notary_institution || "—",
-              },
-              {
-                key: "certificate-no",
-                label: "公证书号",
-                children: investigationDetail.data.certificate_no || "—",
-              },
-              {
-                key: "invoice-no",
-                label: "发票号",
-                children: investigationDetail.data.invoice_no || "—",
-              },
-              {
-                key: "warehouse",
-                label: "证物存放处",
-                children:
-                  investigationDetail.data.warehouse ||
-                  investigationDetail.data.certificate_storage_location ||
-                  "—",
-              },
-              {
-                key: "evidence-status",
-                label: "证物状态",
-                children:
-                  investigationDetail.data.evidence_status ||
-                  investigationDetail.data.warehouse_status ||
-                  investigationDetail.data.storage_status ||
-                  "—",
-              },
+              ...(showEvidenceFields
+                ? [
+                    {
+                      key: "collected-at",
+                      label: "取证日期",
+                      children: investigationDetail.data.collected_at || "—",
+                    },
+                    {
+                      key: "notary-institution",
+                      label: "取证机构",
+                      children: investigationDetail.data.notary_institution || "—",
+                    },
+                    {
+                      key: "certificate-no",
+                      label: "公证书号",
+                      children: investigationDetail.data.certificate_no || "—",
+                    },
+                    {
+                      key: "invoice-no",
+                      label: "发票号",
+                      children: investigationDetail.data.invoice_no || "—",
+                    },
+                    {
+                      key: "warehouse",
+                      label: "证物存放处",
+                      children:
+                        investigationDetail.data.warehouse ||
+                        investigationDetail.data.certificate_storage_location ||
+                        "—",
+                    },
+                    {
+                      key: "evidence-status",
+                      label: "证物状态",
+                      children:
+                        investigationDetail.data.evidence_status ||
+                        investigationDetail.data.warehouse_status ||
+                        investigationDetail.data.storage_status ||
+                        "—",
+                    },
+                  ]
+                : []),
               {
                 key: "investigator-remark",
                 label: "调查员备注",

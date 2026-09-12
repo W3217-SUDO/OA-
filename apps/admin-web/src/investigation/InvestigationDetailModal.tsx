@@ -38,6 +38,10 @@ export default function InvestigationDetailModal({
   onDownloadFile,
   onDeleteEvidence,
 }: InvestigationDetailModalProps) {
+  const showEvidence = Boolean(
+    investigationDetail &&
+      ["待取证", "已取证", "待公证", "已转案件"].includes(investigationDetail.status),
+  );
   return (
     <Modal
       width={1040}
@@ -58,6 +62,7 @@ export default function InvestigationDetailModal({
         <ClueEvidencePanel
           clueWorkspace={clueWorkspace}
           clueWorkspaceLoading={clueWorkspaceLoading}
+          showEvidence={showEvidence}
           selectedEvidenceId={selectedEvidenceId}
           onSelectEvidence={onSelectEvidence}
           onEditEvidence={onEditEvidence}
