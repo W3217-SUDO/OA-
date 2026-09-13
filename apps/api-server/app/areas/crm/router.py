@@ -989,7 +989,8 @@ async def download_customer_contact_photo(customer_id: int, contact_id: str, ide
 @router.put(f"{settings.api_prefix}/customers/{{customer_id}}/managers")
 async def update_customer_managers(customer_id: int, body: CustomerManagersInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.crm import (
-        _customer_event, _customer_or_404, _prioritize_new_customer_managers, _resolve_active_customer_managers,
+        _cascade_customer_owner_change, _customer_event, _customer_or_404,
+        _prioritize_new_customer_managers, _resolve_active_customer_managers,
     )
     from app.core.legacy_sync import (
         _legacy_customer_business_failure_response,
@@ -1005,9 +1006,10 @@ async def update_customer_managers(customer_id: int, body: CustomerManagersInput
         existing_managers = list(data.get("customer_managers") or [customer.owner])
         requested_managers = await _resolve_active_customer_managers(body.managers, db)
         managers = _prioritize_new_customer_managers(existing_managers, requested_managers)
+        original_owner = customer.owner
         history = list(data.get("assignment_history") or [])
         history.append({
-            "from_owner": customer.owner,
+            "from_owner": original_owner,
             "to_owner": managers[0],
             "managers": managers,
             "operator": identity["username"],
@@ -1016,7 +1018,16 @@ async def update_customer_managers(customer_id: int, body: CustomerManagersInput
         })
         customer.owner = managers[0]
         customer.data = {**data, "customer_managers": managers, "assignment_history": history}
-        db.add(_customer_event(customer, "更新客户管理人", identity, body.comment or f"客户管理人：{'、'.join(managers)}"))
+        cascade_detail = ""
+        if original_owner != managers[0]:
+            cascade_result = await _cascade_customer_owner_change(customer, original_owner, managers[0], db)
+            parts = []
+            if cascade_result.get("case", 0) > 0: parts.append(f"案件{cascade_result['case']}条")
+            if cascade_result.get("contract", 0) > 0: parts.append(f"合同{cascade_result['contract']}条")
+            if cascade_result.get("investigation", 0) > 0: parts.append(f"调查{cascade_result['investigation']}条")
+            if parts:
+                cascade_detail = f"；级联更新：{'、'.join(parts)}"
+        db.add(_customer_event(customer, "更新客户管理人", identity, (body.comment or f"客户管理人：{'、'.join(managers)}") + cascade_detail))
         await db.commit(); await db.refresh(customer)
         return await _record_dict_for_identity(customer, identity, db)
     except HTTPException as exc:

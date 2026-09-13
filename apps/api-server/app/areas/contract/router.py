@@ -270,6 +270,13 @@ async def revoke_contract_draft(contract_id: int, identity: dict = Depends(curre
         await db.delete(attachment)
     await db.execute(delete(ContractEvent).where(ContractEvent.contract_record_id == contract.id))
     await db.execute(delete(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id))
+    await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == contract.id))
+    await db.delete(contract)
+    await db.commit()
+    for path in attachment_paths:
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
+            path.unlink()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(f"{settings.api_prefix}/contracts/delete")
@@ -286,15 +293,6 @@ async def delete_company_contract_records(body: ContractWholeDeleteInput, identi
         _delete_contract_records,
     )
     return await _delete_contract_records(body, identity, db, allow_company_contract=True)
-
-
-    await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == contract.id))
-    await db.delete(contract)
-    await db.commit()
-    for path in attachment_paths:
-        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-            path.unlink()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(f"{settings.api_prefix}/contracts/{{contract_id}}/approvals")

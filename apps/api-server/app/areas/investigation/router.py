@@ -299,6 +299,9 @@ async def update_investigation_record(record_id: int, body: RecordUpdate, identi
                 raise HTTPException(status_code=422, detail="请选择当前权利人的合同")
             if contract.status in {"已删除", "已取消", "已作废"}:
                 raise HTTPException(status_code=422, detail="该合同已失效，请重新选择")
+            existing_contract_id = int(record.data.get("contract_id") or 0) or None
+            if existing_contract_id and existing_contract_id != contract.id:
+                raise HTTPException(status_code=422, detail="该调查授权合同已绑定，不能更换为其他合同")
             regions = incoming_data.get("authorization_regions") or []
             if not isinstance(regions, list) or len(regions) > 500 or any(
                 not isinstance(path, list) or not 1 <= len(path) <= 2
@@ -1274,6 +1277,9 @@ async def close_investigation(record_id: int, body: TaskActionInput, identity: d
     clues = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "clue", BusinessRecord.data["source_task_id"].as_integer().in_(task_ids)))).all()) if task_ids else []
     active_clues = [item for item in clues if item.status not in {"已转案件", "已驳回"}]
     if active_clues: raise HTTPException(status_code=409, detail=f"仍有 {len(active_clues)} 条调查线索未转案或未驳回")
+    linked_cases = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.data["investigation_record_id"].as_integer() == investigation.id))).all()) if investigation.data.get("investigation_record_id") else []
+    open_cases = [item for item in linked_cases if item.status not in {"已结案", "已撤销", "已驳回"}]
+    if open_cases: raise HTTPException(status_code=409, detail=f"仍有 {len(open_cases)} 个关联案件未结案")
     previous = investigation.status; investigation.status = "已完成"
     report_content = "\n".join([
         f"调查任务：{investigation.serial_no}｜{investigation.title}", f"客户：{investigation.customer}",
