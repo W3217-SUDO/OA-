@@ -572,7 +572,7 @@ async def _cascade_customer_owner_change(
     customer_name = _normalize_customer_name(customer.title)
 
     # 与旧系统一致的级联顺序：案件 → 合同 → 调查
-    cascade_modules = ["case", "contract", "investigation"]
+    cascade_modules = ["case", "contract", "investigation", "clue"]
     result: dict[str, int] = {}
 
     for module in cascade_modules:
