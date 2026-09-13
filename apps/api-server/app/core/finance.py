@@ -840,8 +840,6 @@ async def _validate_invoice_source_links(
     from app.core.permissions import (
         _ensure_record_visible, _record_scope_conditions,
     )
-    if require_source and not body.contract_record_id:
-        raise HTTPException(status_code=422, detail="新建发票申请必须关联合同")
     case_record = await _finance_linked_case(body.case_no, identity, db)
     if body.case_record_id:
         linked_case = await _ensure_record_visible(body.case_record_id, identity, db)
@@ -865,16 +863,22 @@ async def _validate_invoice_source_links(
         case_fees = list((await db.scalars(select(BusinessRecord).where(
             BusinessRecord.id.in_(case_fee_ids), BusinessRecord.module == "finance",
             *(await _record_scope_conditions(identity, db)),
-        ))).all())
+        ).with_for_update())).all())
         if len(case_fees) != len(case_fee_ids):
             raise HTTPException(status_code=404, detail="部分案件费用不存在或无权访问")
+        fees_by_id = {fee.id: fee for fee in case_fees}
+        case_fees = [fees_by_id[fee_id] for fee_id in case_fee_ids]
         linked_case_nos = {str((item.data or {}).get("case_no") or "").strip() for item in case_fees} - {""}
-        if len(linked_case_nos) > 1:
-            raise HTTPException(status_code=409, detail="同一张发票只能关联同一案件的费用")
         if case_record and linked_case_nos and case_record.serial_no not in linked_case_nos:
             raise HTTPException(status_code=409, detail="发票案件与所选案件费用不一致")
-        if not case_record and linked_case_nos:
+        if not case_record and len(linked_case_nos) == 1:
             case_record = await _finance_linked_case(next(iter(linked_case_nos)), identity, db)
+        mismatched_customers = [
+            fee.serial_no for fee in case_fees
+            if fee.customer and fee.customer.strip() != body.customer.strip()
+        ]
+        if mismatched_customers:
+            raise HTTPException(status_code=409, detail="所选案件费用必须属于发票客户：" + "、".join(mismatched_customers))
     if require_source and contract_record:
         for fee in case_fees:
             if not _fee_matches_contract(fee, contract_record):
@@ -884,27 +888,39 @@ async def _validate_invoice_source_links(
         BusinessRecord.status.not_in(INVOICE_RELEASED_STATUSES),
         *(await _record_scope_conditions(identity, db)),
     ))).all())
-    active_by_fee: dict[int, BusinessRecord] = {}
+    active_amount_by_fee: dict[int, float] = {}
     for invoice in active_invoices:
         if exclude_invoice_id is not None and invoice.id == exclude_invoice_id:
             continue
-        for fee_id in _invoice_linked_fee_ids(invoice.data or {}):
-            active_by_fee.setdefault(fee_id, invoice)
-    if require_source:
-        duplicate_ids = [fee.id for fee in case_fees if fee.id in active_by_fee]
-        if duplicate_ids:
-            raise HTTPException(status_code=409, detail="所选案件费用已经申请开票，不能重复申请")
-        available = sum(max(float((fee.data or {}).get("amount") or 0), 0) for fee in case_fees)
-        if float(body.amount) > available:
-            raise HTTPException(status_code=422, detail="开票金额不能超过所选案件费用可开票金额")
+        invoice_data = invoice.data or {}
+        invoice_allocations = list(invoice_data.get("case_fee_allocations") or [])
+        if invoice_allocations:
+            for allocation in invoice_allocations:
+                try:
+                    fee_id = int(allocation.get("fee_id") or 0)
+                    amount = _round_fee_amount(float(allocation.get("amount") or 0))
+                except (AttributeError, TypeError, ValueError):
+                    continue
+                if fee_id:
+                    active_amount_by_fee[fee_id] = _round_fee_total([active_amount_by_fee.get(fee_id, 0), amount])
+        else:
+            linked_ids = list(_invoice_linked_fee_ids(invoice_data))
+            if len(linked_ids) == 1:
+                fee_id = linked_ids[0]
+                active_amount_by_fee[fee_id] = _round_fee_total([
+                    active_amount_by_fee.get(fee_id, 0), float(invoice_data.get("amount") or 0),
+                ])
     allocations: list[dict] = []
-    remaining = float(body.amount)
-    for index, fee in enumerate(case_fees):
-        fee_amount = max(float((fee.data or {}).get("amount") or 0), 0)
-        allocated = remaining if index == len(case_fees) - 1 else min(remaining, fee_amount)
-        allocated = round(max(allocated, 0), 2)
-        allocations.append({"fee_id": fee.id, "amount": allocated})
-        remaining = round(max(remaining - allocated, 0), 2)
+    remaining = _round_fee_amount(float(body.amount))
+    for fee in case_fees:
+        fee_amount = max(_round_fee_amount(float((fee.data or {}).get("amount") or 0)), 0)
+        available = max(_round_fee_total([fee_amount, -active_amount_by_fee.get(fee.id, 0)]), 0)
+        allocated = min(remaining, available)
+        allocations.append({"fee_id": fee.id, "amount": allocated, "available_before": available})
+        remaining = max(_round_fee_total([remaining, -allocated]), 0)
+    if remaining > 0.001 and allocations:
+        allocations[-1]["amount"] = _round_fee_total([allocations[-1]["amount"], remaining])
+        allocations[-1]["over_amount"] = remaining
     return case_record, contract_record, case_fees, allocations
 
 
@@ -1316,7 +1332,7 @@ async def _invoice_case_fee_rows(
         has_active_application = bool(linked_invoices)
         display_status = "已开票" if has_issued_invoice else ("已申请" if has_active_application else "未开票")
         remaining_invoice_amount = round(max(fee_amount - invoiced_amount, 0), 2)
-        if invoice_status == "未开票" and has_active_application:
+        if invoice_status == "未开票" and remaining_invoice_amount <= 0.001:
             continue
         if invoice_status == "已开票" and not has_issued_invoice:
             continue
@@ -1353,7 +1369,9 @@ async def _invoice_case_fee_rows(
             continue
         if not contains(item.customer or (linked_case.customer if linked_case else ""), customer) or not contains(paid_org, paid_organization):
             continue
-        if invoice_status and display_status != invoice_status:
+        if invoice_status == "已开票" and display_status != "已开票":
+            continue
+        if invoice_status not in {"", "未开票", "已开票"} and display_status != invoice_status:
             continue
         if invoice_from and (not invoice_date or invoice_date < invoice_from):
             continue
@@ -1927,6 +1945,8 @@ def _settlement_amounts_for_fee(
         settlement_amount = _round_fee_ratio(float(explicit_total), current_amount, fee_total)
     elif kind == "agency":
         settlement_amount = _round_fee_ratio(current_amount, 0.8)
+    elif kind == "other":
+        settlement_amount = 0.0
     else:
         settlement_amount = _round_fee_amount(current_amount)
 
@@ -2034,7 +2054,11 @@ async def _general_settlement_rows(
 
     for payment in payments:
         payment_allocations = list(payment.allocations or [])
-        if not payment_allocations or (not include_active_receipts and payment.id in active_receipt_ids):
+        if (
+            not payment_allocations
+            or _round_fee_amount(payment.allocated_amount) + 0.001 < _round_fee_amount(payment.amount)
+            or (not include_active_receipts and payment.id in active_receipt_ids)
+        ):
             continue
         details: list[dict] = []
         for allocation in payment_allocations:
@@ -2079,7 +2103,8 @@ async def _general_settlement_rows(
                     })
                 continue
             case_key = str((linked_case.id if linked_case else 0) or allocation.get("case_no") or "")
-            candidates = fees_by_case.get(case_key, [])
+            allocation_fee = fees_by_id.get(int(allocation.get("fee_record_id") or 0))
+            candidates = [allocation_fee] if allocation_fee else fees_by_case.get(case_key, [])
             for fee in candidates:
                 if remaining <= 0.001:
                     break

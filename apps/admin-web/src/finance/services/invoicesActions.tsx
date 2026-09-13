@@ -308,7 +308,7 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
         }
     };
     const createInvoice = async () => {
-        const { invoiceForm, cases, contracts, invoiceCandidateFees, fees, invoiceEditTarget, invoices, setInvoiceOpen, setInvoiceEditTarget, load } = context;
+        const { invoiceForm, cases, contracts, invoiceCandidateFees, fees, invoiceEditTarget, setInvoiceOpen, setInvoiceEditTarget, load } = context;
         const v = await invoiceForm.validateFields();
         const linked = buildInvoiceApplicationPayload({
             values: v,
@@ -320,15 +320,6 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
         if (linked.ok === false) {
             message.error(linked.error);
             return;
-        }
-        if (!invoiceEditTarget) {
-            const selectedFeeIds = new Set((linked.payload.case_fee_ids || []).map(Number));
-            const duplicateInvoice = invoices.find((invoice) => !["已撤回", "已作废"].includes(invoice.status) &&
-                (invoice.data?.case_fee_ids || []).some((feeId: number) => selectedFeeIds.has(Number(feeId))));
-            if (duplicateInvoice) {
-                message.error("所选案件费用已经申请开票，不能重复申请");
-                return;
-            }
         }
         try {
             if (invoiceEditTarget) {

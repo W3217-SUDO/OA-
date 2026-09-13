@@ -471,6 +471,8 @@ export const buildInvoiceSourceFields = (
   const data = first.data || {};
   const contract = findInvoiceContract(first, contracts);
   const contractData = contract?.data || {};
+  const selectedCaseNos = [...new Set(selectedFees.map((fee) => invoiceText(fee.data?.case_no)).filter(Boolean))];
+  const selectedContractIds = [...new Set(selectedFees.map((fee) => Number(fee.data?.contract_id || fee.data?.contract_record_id || 0)).filter(Boolean))];
   const customerDefaults = buildInvoiceCustomerDefaults(
     customerRows,
     first.customer || data.customer || contract?.customer,
@@ -478,13 +480,13 @@ export const buildInvoiceSourceFields = (
     data.customer_id || data.customer_record_id || contractData.customer_id,
   );
   return {
-    case_no: invoiceText(data.case_no),
-    case_record_id: data.case_id || data.case_record_id || undefined,
+    case_no: selectedCaseNos.length === 1 ? selectedCaseNos[0] : "",
+    case_record_id: selectedCaseNos.length === 1 ? data.case_id || data.case_record_id || undefined : undefined,
     contract_record_id:
-      data.contract_id || data.contract_record_id || contract?.id || undefined,
-    contract_no: invoiceText(data.contract_no || contract?.serial_no),
+      selectedContractIds.length === 1 ? data.contract_id || data.contract_record_id || contract?.id || undefined : undefined,
+    contract_no: selectedContractIds.length === 1 ? invoiceText(data.contract_no || contract?.serial_no) : "",
     external_contract_no: invoiceText(
-      data.external_contract_no || contractData.external_contract_no,
+      selectedContractIds.length === 1 ? data.external_contract_no || contractData.external_contract_no : "",
     ),
     ...customerDefaults,
     amount: Number(

@@ -35,10 +35,6 @@ export const buildInvoiceApplicationPayload = ({
   if (contractId != null && !contractRecord) {
     return { ok: false, error: "关联合同不存在或无权访问" };
   }
-  if (requireSource && contractId == null) {
-    return { ok: false, error: "新建发票申请必须关联合同" };
-  }
-
   const requestedFeeIds = Array.isArray(values.case_fee_ids)
     ? values.case_fee_ids
     : values.case_fee_ids == null || values.case_fee_ids === ""

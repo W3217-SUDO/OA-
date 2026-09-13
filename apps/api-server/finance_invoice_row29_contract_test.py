@@ -1,4 +1,4 @@
-"""Row 29 contract/fee binding and duplicate invoice application regression tests."""
+"""Invoice source binding, remaining balance and high-invoice regression tests."""
 
 import unittest
 
@@ -71,29 +71,64 @@ class FinanceInvoiceRow29ContractTest(unittest.IsolatedAsyncioTestCase):
         values.update(overrides)
         return InvoiceApplicationInput(**values)
 
-    async def test_candidate_is_bound_and_second_application_is_blocked(self):
+    async def _cleanup(self, db, invoice_ids):
+        await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id.in_(invoice_ids)))
+        await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_(invoice_ids)))
+        await db.commit()
+
+    async def test_partial_application_preserves_remaining_balance(self):
         async with self.sessions() as db:
             before = await list_invoice_case_fees(scope="company", invoice_status="未开票", page=1, page_size=15, identity=IDENTITY, db=db)
             self.assertEqual([row["id"] for row in before["items"]], [self.fee_id])
-            created = await create_invoice_application(self.payload(), IDENTITY, db)
-            self.assertEqual(created["data"]["contract_id"], self.contract_id)
+            first = await create_invoice_application(self.payload(amount=40), IDENTITY, db)
+            self.assertEqual(first["data"]["contract_id"], self.contract_id)
+            self.assertEqual(first["data"]["case_fee_allocations"][0]["amount"], 40.0)
+            after_first = await list_invoice_case_fees(scope="company", invoice_status="未开票", page=1, page_size=15, identity=IDENTITY, db=db)
+            self.assertEqual([row["id"] for row in after_first["items"]], [self.fee_id])
+            self.assertEqual(after_first["items"][0]["data"]["remaining_invoice_amount"], 60.0)
+            second = await create_invoice_application(self.payload(amount=60), IDENTITY, db)
+            self.assertEqual(second["data"]["case_fee_allocations"][0]["amount"], 60.0)
+            after_second = await list_invoice_case_fees(scope="company", invoice_status="未开票", page=1, page_size=15, identity=IDENTITY, db=db)
+            self.assertEqual(after_second["items"], [])
+            await self._cleanup(db, [first["id"], second["id"]])
+
+    async def test_high_invoice_records_over_amount_and_contract_can_derive_from_fees(self):
+        async with self.sessions() as db:
+            created = await create_invoice_application(self.payload(amount=120, contract_record_id=None), IDENTITY, db)
             self.assertEqual(created["data"]["case_fee_ids"], [self.fee_id])
-            self.assertEqual(created["data"]["case_fee_allocations"], [{"fee_id": self.fee_id, "amount": 100.0}])
-            after = await list_invoice_case_fees(scope="company", invoice_status="未开票", page=1, page_size=15, identity=IDENTITY, db=db)
-            self.assertEqual(after["items"], [])
-            with self.assertRaises(HTTPException) as duplicate:
-                await create_invoice_application(self.payload(), IDENTITY, db)
-            self.assertEqual(duplicate.exception.status_code, 409)
-            with self.assertRaises(HTTPException) as missing_contract:
-                await create_invoice_application(self.payload(contract_record_id=None), IDENTITY, db)
-            self.assertEqual(missing_contract.exception.status_code, 422)
+            self.assertEqual(created["data"]["contract_ids"], [self.contract_id])
+            self.assertEqual(created["data"]["invoice_over_amount"], 20.0)
+            self.assertEqual(created["data"]["case_fee_allocations"][0]["amount"], 120.0)
+            self.assertEqual(created["data"]["case_fee_allocations"][0]["over_amount"], 20.0)
             with self.assertRaises(HTTPException) as missing_fee:
                 await create_invoice_application(self.payload(case_fee_ids=[]), IDENTITY, db)
             self.assertEqual(missing_fee.exception.status_code, 422)
-            invoice_ids = [created["id"]]
-            await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id.in_(invoice_ids)))
-            await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_(invoice_ids)))
-            await db.commit()
+            await self._cleanup(db, [created["id"]])
+
+    async def test_same_customer_can_combine_multiple_cases_and_contracts(self):
+        async with self.sessions() as db:
+            contract = BusinessRecord(module="contract", serial_no="CODEX-812-ROW29-CONTRACT-2", title="第二合同", customer="CODEX-812-ROW29-CUSTOMER", status="已生效", owner=IDENTITY["username"], department=IDENTITY["department"], data={})
+            db.add(contract)
+            await db.flush()
+            case = BusinessRecord(module="case", serial_no="CODEX-812-ROW29-CASE-2", title="第二案件", customer=contract.customer, status="办理中", owner=IDENTITY["username"], department=IDENTITY["department"], data={"contract_id": contract.id, "contract_no": contract.serial_no})
+            db.add(case)
+            await db.flush()
+            fee = BusinessRecord(module="finance", serial_no="CODEX-812-ROW29-FEE-2", title="第二代理费", customer=case.customer, status="已付款", owner=IDENTITY["username"], department=IDENTITY["department"], data={"amount": 50, "fee_type": "代理费", "case_id": case.id, "case_no": case.serial_no, "contract_id": contract.id, "contract_no": contract.serial_no})
+            db.add(fee)
+            await db.flush()
+
+            created = await create_invoice_application(self.payload(
+                amount=150,
+                case_no="",
+                case_record_id=None,
+                contract_record_id=None,
+                case_fee_ids=[self.fee_id, fee.id],
+            ), IDENTITY, db)
+            self.assertEqual(set(created["data"]["case_ids"]), {self.case_id, case.id})
+            self.assertEqual(set(created["data"]["contract_ids"]), {self.contract_id, contract.id})
+            self.assertEqual(created["data"]["invoice_over_amount"], 0.0)
+            self.assertEqual([row["amount"] for row in created["data"]["case_fee_allocations"]], [100.0, 50.0])
+            await self._cleanup(db, [created["id"]])
 
 
 if __name__ == "__main__":

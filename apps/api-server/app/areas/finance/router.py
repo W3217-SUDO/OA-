@@ -1201,6 +1201,37 @@ async def export_finance_fee_query(
     return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
 
 
+async def _invoice_source_metadata(case_fees: list[BusinessRecord], db: AsyncSession) -> tuple[list[BusinessRecord], list[int], list[str], list[int], list[str]]:
+    contract_ids: list[int] = []
+    contract_nos: list[str] = []
+    case_ids: list[int] = []
+    case_nos: list[str] = []
+    for fee in case_fees:
+        data = fee.data or {}
+        contract_id = int(data.get("contract_id") or data.get("contract_record_id") or 0)
+        contract_no = str(data.get("contract_no") or "").strip()
+        case_id = int(data.get("case_id") or data.get("case_record_id") or 0)
+        case_no = str(data.get("case_no") or "").strip()
+        if contract_id and contract_id not in contract_ids:
+            contract_ids.append(contract_id)
+        if contract_no and contract_no not in contract_nos:
+            contract_nos.append(contract_no)
+        if case_id and case_id not in case_ids:
+            case_ids.append(case_id)
+        if case_no and case_no not in case_nos:
+            case_nos.append(case_no)
+    contracts = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "contract",
+        or_(BusinessRecord.id.in_(contract_ids), BusinessRecord.serial_no.in_(contract_nos)),
+    ))).all()) if contract_ids or contract_nos else []
+    for contract in contracts:
+        if contract.id not in contract_ids:
+            contract_ids.append(contract.id)
+        if contract.serial_no not in contract_nos:
+            contract_nos.append(contract.serial_no)
+    return contracts, contract_ids, contract_nos, case_ids, case_nos
+
+
 @router.post(f"{settings.api_prefix}/finance/invoices", status_code=status.HTTP_201_CREATED)
 async def create_invoice_application(body: InvoiceApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contracts import _contract_allows_finance_application
@@ -1213,21 +1244,32 @@ async def create_invoice_application(body: InvoiceApplicationInput, identity: di
     case_record, contract_record, case_fees, allocations = await _validate_invoice_source_links(
         body, identity, db, require_source=True,
     )
-    if contract_record and not _contract_allows_finance_application(contract_record):
-        raise HTTPException(status_code=409, detail="归档或已终止合同不能新建开票申请")
+    source_contracts, contract_ids, contract_nos, case_ids, case_nos = await _invoice_source_metadata(case_fees, db)
+    blocked_contracts = [item.serial_no for item in source_contracts if not _contract_allows_finance_application(item)]
+    if blocked_contracts:
+        raise HTTPException(status_code=409, detail="归档或已终止合同不能新建开票申请：" + "、".join(blocked_contracts))
+    contract_bodies = {str((item.data or {}).get("contract_body") or "律所").strip() for item in source_contracts}
+    if len(contract_bodies) > 1:
+        raise HTTPException(status_code=409, detail="平台合同与律所合同不能合并开票")
     if "专用" in body.invoice_type and not all(value.strip() for value in (body.invoice_address, body.invoice_phone, body.bank_name, body.bank_account)):
         raise HTTPException(status_code=422, detail="增值税专用发票必须填写注册地址、注册电话、开户银行和银行账号")
     case_fee_ids = [fee.id for fee in case_fees]
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
     serial = f"FP{datetime.now():%Y%m%d%H%M%S%f}"
-    data = body.model_dump(); data["case_fee_ids"] = case_fee_ids; data["case_fee_allocations"] = allocations; data["amount"] = _round_fee_amount(body.amount); data["extra_amount"] = _round_fee_amount(body.extra_amount); data["applicant"] = identity.get("display_name") or identity["username"]; data["case_id"] = case_record.id if case_record else None; data["contract_id"] = contract_record.id if contract_record else None
+    data = body.model_dump(); data["case_fee_ids"] = case_fee_ids; data["case_fee_allocations"] = allocations; data["invoice_over_amount"] = _round_fee_amount(sum(float(row.get("over_amount") or 0) for row in allocations)); data["amount"] = _round_fee_amount(body.amount); data["extra_amount"] = _round_fee_amount(body.extra_amount); data["applicant"] = identity.get("display_name") or identity["username"]; data["case_id"] = case_record.id if case_record else (case_ids[0] if len(case_ids) == 1 else None); data["contract_id"] = contract_record.id if contract_record else (contract_ids[0] if len(contract_ids) == 1 else None); data["case_ids"] = case_ids; data["case_nos"] = case_nos; data["contract_ids"] = contract_ids; data["contract_nos"] = contract_nos
     if contract_record:
         data["contract_body"] = (contract_record.data or {}).get("contract_body")
         data["accounting_center"] = "平台财务中心" if str(data["contract_body"] or "").strip() == "平台" else "财务中心"
         data["finance_scope"] = "platform" if data["accounting_center"] == "平台财务中心" else "firm"
+    elif source_contracts:
+        data["contract_body"] = next(iter(contract_bodies), "律所")
+        data["accounting_center"] = "平台财务中心" if data["contract_body"] == "平台" else "财务中心"
+        data["finance_scope"] = "platform" if data["accounting_center"] == "平台财务中心" else "firm"
     if case_record: data["case_no"] = case_record.serial_no
+    elif len(case_nos) == 1: data["case_no"] = case_nos[0]
     if contract_record: data["contract_no"] = contract_record.serial_no
+    elif len(contract_nos) == 1: data["contract_no"] = contract_nos[0]
     item = BusinessRecord(module="invoice", serial_no=serial, title=f"{body.customer}发票申请", customer=body.customer.strip(), status="草稿", owner=identity["username"], department=user.department, description=body.remark, data=data)
     db.add(item); await db.flush()
     db.add(WorkflowEvent(record_id=item.id, action="创建发票申请", to_status=item.status, operator=identity["username"], comment=f"{body.invoice_type}：{data['amount']:.2f} 元"))
@@ -1253,20 +1295,45 @@ async def update_invoice_application(invoice_id: int, body: InvoiceApplicationIn
             require_source=True,
             exclude_invoice_id=invoice_id,
         )
+        from app.core.contracts import _contract_allows_finance_application
+        source_contracts, contract_ids, contract_nos, case_ids, case_nos = await _invoice_source_metadata(case_fees, db)
+        blocked_contracts = [item.serial_no for item in source_contracts if not _contract_allows_finance_application(item)]
+        if blocked_contracts:
+            raise HTTPException(status_code=409, detail="归档或已终止合同不能新建开票申请：" + "、".join(blocked_contracts))
+        contract_bodies = {str((item.data or {}).get("contract_body") or "律所").strip() for item in source_contracts}
+        if len(contract_bodies) > 1:
+            raise HTTPException(status_code=409, detail="平台合同与律所合同不能合并开票")
         case_fee_ids = [fee.id for fee in case_fees]
         existing_data = dict(item.data or {})
         data = {**existing_data, **body.model_dump()}
         data["case_fee_ids"] = case_fee_ids
         data["case_fee_allocations"] = allocations
+        data["invoice_over_amount"] = _round_fee_amount(sum(float(row.get("over_amount") or 0) for row in allocations))
         data["amount"] = _round_fee_amount(body.amount)
         data["extra_amount"] = _round_fee_amount(body.extra_amount)
         data["applicant"] = existing_data.get("applicant") or identity.get("display_name") or identity["username"]
-        data["case_id"] = case_record.id if case_record else None
-        data["contract_id"] = contract_record.id if contract_record else None
+        data["case_id"] = case_record.id if case_record else (case_ids[0] if len(case_ids) == 1 else None)
+        data["contract_id"] = contract_record.id if contract_record else (contract_ids[0] if len(contract_ids) == 1 else None)
+        data["case_ids"] = case_ids
+        data["case_nos"] = case_nos
+        data["contract_ids"] = contract_ids
+        data["contract_nos"] = contract_nos
         if case_record:
             data["case_no"] = case_record.serial_no
+        elif len(case_nos) == 1:
+            data["case_no"] = case_nos[0]
+        else:
+            data["case_no"] = ""
         if contract_record:
             data["contract_no"] = contract_record.serial_no
+        elif len(contract_nos) == 1:
+            data["contract_no"] = contract_nos[0]
+        else:
+            data["contract_no"] = ""
+        if source_contracts:
+            data["contract_body"] = next(iter(contract_bodies), "律所")
+            data["accounting_center"] = "平台财务中心" if data["contract_body"] == "平台" else "财务中心"
+            data["finance_scope"] = "platform" if data["accounting_center"] == "平台财务中心" else "firm"
         previous_status = item.status
         item.title = f"{body.customer}发票申请"
         item.customer = body.customer.strip()
@@ -2505,6 +2572,88 @@ async def incoming_payment_allocation_candidates(payment_id: int, identity: dict
     }
 
 
+_INACTIVE_SETTLEMENT_STATUSES = {"已拒绝", "已驳回", "已退回", "已撤回", "已作废"}
+
+
+async def _active_settlements_by_receipt(
+    db: AsyncSession,
+    receipt_ids: set[int],
+    *,
+    exclude_application_ids: set[int] | None = None,
+) -> dict[int, BusinessRecord]:
+    if not receipt_ids:
+        return {}
+    records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance_settlement",
+        BusinessRecord.status.not_in(_INACTIVE_SETTLEMENT_STATUSES),
+    ))).all())
+    excluded = exclude_application_ids or set()
+    result: dict[int, BusinessRecord] = {}
+    for record in records:
+        if record.id in excluded:
+            continue
+        receipt_id = int((record.data or {}).get("receipt_id") or 0)
+        if receipt_id in receipt_ids:
+            result.setdefault(receipt_id, record)
+    return result
+
+
+async def _revert_incoming_allocation(allocation: dict, db: AsyncSession, *, payment_id: int) -> None:
+    from app.core.finance import (
+        _round_fee_amount,
+    )
+
+    amount = _round_fee_amount(float(allocation.get("amount") or 0))
+    plan = await db.get(ReceivablePlan, int(allocation.get("receivable_plan_id") or 0))
+    if plan:
+        plan.received_amount = max(_round_fee_amount(plan.received_amount - amount), 0)
+        plan.status = "待收款" if plan.received_amount <= 0 else "部分收款"
+    fee = await db.get(BusinessRecord, int(allocation.get("fee_record_id") or 0))
+    if fee and fee.module == "finance":
+        fee_data = dict(fee.data or {})
+        current_received = float(fee_data.get("received_amount") or fee_data.get("cashed_amount") or 0)
+        remaining_received = max(_round_fee_amount(current_received - amount), 0)
+        fee_data["received_amount"] = remaining_received
+        if remaining_received <= 0.001:
+            for key in ("received_at", "cashed_date", "incoming_payment_id", "receipt_no"):
+                fee_data.pop(key, None)
+        elif int(fee_data.get("incoming_payment_id") or 0) == payment_id:
+            remaining_receipts = list((await db.scalars(select(IncomingPayment).where(
+                IncomingPayment.id != payment_id,
+            ).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all())
+            latest = next((receipt for receipt in remaining_receipts if any(
+                int(row.get("fee_record_id") or 0) == fee.id for row in (receipt.allocations or [])
+            )), None)
+            if latest:
+                fee_data["incoming_payment_id"] = latest.id
+                fee_data["receipt_no"] = latest.receipt_no
+                fee_data["received_at"] = latest.received_date.isoformat()
+                fee_data["cashed_date"] = latest.received_date.isoformat()
+            else:
+                for key in ("received_at", "cashed_date", "incoming_payment_id", "receipt_no"):
+                    fee_data.pop(key, None)
+        fee.data = fee_data
+    tx = await db.get(FinanceTransaction, int(allocation.get("transaction_id") or 0))
+    if tx:
+        await db.delete(tx)
+
+
+def _settlement_financial_snapshot(data: dict) -> dict:
+    from app.core.finance import (
+        _round_fee_amount,
+    )
+
+    amount_keys = (
+        "receipt_amount", "allocated_amount", "remaining_amount", "assigned_official_fee",
+        "assigned_agency_fee", "assigned_other_fee", "agency_settlement_amount", "archive_fee",
+        "actual_settlement_amount",
+    )
+    return {
+        **{key: _round_fee_amount(float(data.get(key) or 0)) for key in amount_keys},
+        "allocation_details": data.get("allocation_details") or [],
+    }
+
+
 @router.post(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}/allocate")
 async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAllocateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.crm import (
@@ -2666,12 +2815,11 @@ async def delete_incoming_payment(payment_id: int, identity: dict = Depends(curr
     if identity.get("role") != "admin": raise HTTPException(status_code=403, detail="仅管理员可删除银行到账")
     item = await db.get(IncomingPayment, payment_id)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
+    active_settlement = (await _active_settlements_by_receipt(db, {item.id})).get(item.id)
+    if active_settlement:
+        raise HTTPException(status_code=409, detail=f"到账已关联{active_settlement.status}结算 {active_settlement.serial_no}，不能删除")
     for allocation in item.allocations or []:
-        plan = await db.get(ReceivablePlan, int(allocation.get("receivable_plan_id") or 0)); amount = float(allocation.get("amount") or 0)
-        if plan:
-            plan.received_amount = max(_round_fee_amount(plan.received_amount - amount), 0); plan.status = "待收款" if plan.received_amount <= 0 else "部分收款"
-        tx = await db.get(FinanceTransaction, int(allocation.get("transaction_id") or 0))
-        if tx: await db.delete(tx)
+        await _revert_incoming_allocation(allocation, db, payment_id=item.id)
     await db.delete(item); await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -2783,19 +2931,20 @@ async def revoke_incoming_payment_allocations(body: IncomingPaymentRevokeInput, 
     payment_ids = list(dict.fromkeys(body.payment_ids))
     items = list((await db.scalars(select(IncomingPayment).where(IncomingPayment.id.in_(payment_ids)))).all())
     if len(items) != len(payment_ids): raise HTTPException(status_code=404, detail="部分银行到账记录不存在")
+    active_settlements = await _active_settlements_by_receipt(db, set(payment_ids))
+    if active_settlements:
+        blocked = [f"{item.receipt_no}（{active_settlements[item.id].status}）" for item in items if item.id in active_settlements]
+        raise HTTPException(status_code=409, detail="以下到账已有有效结算，不能撤销分配：" + "、".join(blocked))
     revoked = 0
     for item in items:
         if not (item.allocations or item.allocated_amount > 0):
             continue
         for allocation in item.allocations or []:
             plan = await db.get(ReceivablePlan, int(allocation.get("receivable_plan_id") or 0)); amount = float(allocation.get("amount") or 0)
-            if plan:
-                plan.received_amount = max(_round_fee_amount(plan.received_amount - amount), 0); plan.status = "待收款" if plan.received_amount <= 0 else "部分收款"
             contract = await db.get(BusinessRecord, int(allocation.get("contract_id") or 0))
             if contract:
                 db.add(WorkflowEvent(record_id=contract.id, action="撤销银行回款分配", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"{item.receipt_no}｜{plan.phase if plan else ''}｜{amount:.2f} 元。{body.comment}"))
-            tx = await db.get(FinanceTransaction, int(allocation.get("transaction_id") or 0))
-            if tx: await db.delete(tx)
+            await _revert_incoming_allocation(allocation, db, payment_id=item.id)
         item.allocations = []; item.allocated_amount = 0; item.status = "待分配"
         revoked += 1
     await db.commit()
@@ -3010,11 +3159,20 @@ async def apply_general_settlements(body: FinanceSettlementApplyInput, identity:
         _general_settlement_rows,
     )
     receipt_ids = list(dict.fromkeys(body.receipt_ids))
+    locked_receipts = list((await db.scalars(select(IncomingPayment).where(
+        IncomingPayment.id.in_(receipt_ids),
+    ).with_for_update())).all())
+    if len(locked_receipts) != len(receipt_ids):
+        raise HTTPException(status_code=404, detail="部分回款不存在")
+    active_settlements = await _active_settlements_by_receipt(db, set(receipt_ids))
+    if active_settlements:
+        blocked = [active_settlements[receipt_id].serial_no for receipt_id in receipt_ids if receipt_id in active_settlements]
+        raise HTTPException(status_code=409, detail="部分回款已有有效结算申请：" + "、".join(blocked))
     rows = await _general_settlement_rows(identity, db, receipt_ids=set(receipt_ids))
     rows_by_id = {int(row["id"]): row for row in rows}
     missing = [str(receipt_id) for receipt_id in receipt_ids if receipt_id not in rows_by_id]
     if missing:
-        raise HTTPException(status_code=409, detail="部分回款已申请结算、尚未分配或无权办理：" + "、".join(missing))
+        raise HTTPException(status_code=409, detail="部分回款尚未完整分配或无权办理：" + "、".join(missing))
     created: list[BusinessRecord] = []
     now_key = datetime.now().strftime("%Y%m%d%H%M%S%f")
     for index, receipt_id in enumerate(receipt_ids):
@@ -3603,6 +3761,9 @@ async def list_general_settlement_applications(
 
 @router.post(f"{settings.api_prefix}/finance/general-settlements/applications/reapply")
 async def reapply_general_settlement_applications(body: FinanceSettlementReapplyInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance import (
+        _general_settlement_rows,
+    )
     from app.core.permissions import (
         _settlement_application_scope,
     )
@@ -3621,13 +3782,38 @@ async def reapply_general_settlement_applications(body: FinanceSettlementReapply
     invalid = [record.serial_no for record in records if record.status not in allowed_from]
     if invalid:
         raise HTTPException(status_code=409, detail="仅已拒绝或已退回结算可以重新申请：" + "、".join(invalid))
+    receipt_ids = [int((record.data or {}).get("receipt_id") or 0) for record in records]
+    if any(not receipt_id for receipt_id in receipt_ids):
+        raise HTTPException(status_code=409, detail="结算申请缺少来源回款，不能重新申请")
+    if len(set(receipt_ids)) != len(receipt_ids):
+        raise HTTPException(status_code=409, detail="同一批次不能重复重提同一笔回款")
+    locked_receipts = list((await db.scalars(select(IncomingPayment).where(
+        IncomingPayment.id.in_(receipt_ids),
+    ).with_for_update())).all())
+    if len(locked_receipts) != len(receipt_ids):
+        raise HTTPException(status_code=409, detail="部分来源回款不存在，不能重新申请")
+    active_settlements = await _active_settlements_by_receipt(
+        db, set(receipt_ids), exclude_application_ids=set(application_ids),
+    )
+    if active_settlements:
+        blocked = [active_settlements[receipt_id].serial_no for receipt_id in receipt_ids if receipt_id in active_settlements]
+        raise HTTPException(status_code=409, detail="来源回款已有其他有效结算申请：" + "、".join(blocked))
+    current_rows = await _general_settlement_rows(
+        identity, db, receipt_ids=set(receipt_ids), include_active_receipts=True,
+    )
+    current_by_receipt = {int(row["id"]): row for row in current_rows}
+    missing_receipts = [str(receipt_id) for receipt_id in receipt_ids if receipt_id not in current_by_receipt]
+    if missing_receipts:
+        raise HTTPException(status_code=409, detail="部分来源回款未完整分配或当前不可结算：" + "、".join(missing_receipts))
     reapplied_at = datetime.now().isoformat(timespec="seconds")
     for record in records:
         previous_status = record.status
+        receipt_id = int((record.data or {}).get("receipt_id") or 0)
+        current_data = dict(current_by_receipt[receipt_id].get("data") or {})
         record.status = "待审批"
         record.description = comment
         record.data = {
-            **(record.data or {}),
+            **current_data,
             "applied_by": identity["username"],
             "applied_at": reapplied_at,
             "reapplied_by": identity["username"],
@@ -3648,6 +3834,9 @@ async def reapply_general_settlement_applications(body: FinanceSettlementReapply
 
 @router.post(f"{settings.api_prefix}/finance/general-settlements/applications/review")
 async def review_general_settlement_applications(body: FinanceSettlementReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance import (
+        _general_settlement_rows,
+    )
     from app.core.permissions import (
         _settlement_application_scope,
     )
@@ -3664,6 +3853,22 @@ async def review_general_settlement_applications(body: FinanceSettlementReviewIn
     invalid = [record.serial_no for record in records if record.status != "待审批"]
     if invalid:
         raise HTTPException(status_code=409, detail="仅待审批结算申请可以审核：" + "、".join(invalid))
+    if body.approved:
+        receipt_ids = {int((record.data or {}).get("receipt_id") or 0) for record in records}
+        if 0 in receipt_ids:
+            raise HTTPException(status_code=409, detail="结算申请缺少来源回款，不能审批")
+        current_rows = await _general_settlement_rows(
+            identity, db, receipt_ids=receipt_ids, include_active_receipts=True,
+        )
+        current_by_receipt = {int(row["id"]): row for row in current_rows}
+        stale = []
+        for record in records:
+            receipt_id = int((record.data or {}).get("receipt_id") or 0)
+            current = current_by_receipt.get(receipt_id)
+            if not current or _settlement_financial_snapshot(record.data or {}) != _settlement_financial_snapshot(current.get("data") or {}):
+                stale.append(record.serial_no)
+        if stale:
+            raise HTTPException(status_code=409, detail="结算来源金额或分配已变化，请退回后重新申请：" + "、".join(stale))
     target_status = "待付款" if body.approved else "已拒绝"
     action = "同意结算" if body.approved else "拒绝结算"
     reviewed_at = datetime.now().isoformat(timespec="seconds")

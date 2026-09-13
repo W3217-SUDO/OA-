@@ -7,8 +7,8 @@
 - 行号：财务中心审计 FC-01。
 - 原始问题（逐字）：`参考这个跟旧系统源码找到财务这块的逻辑问题`
 - 补充说明（逐字）：`逻辑这块还有大量问题`；`财务中心`
-- 实施指令（逐字）：`修复部署`；`1`
-- 当前状态：用户选择第 1 项并授权修复部署。
+- 实施指令（逐字）：`修复部署`；`1`；`全部问题都要改完啊`
+- 当前状态：第 1 项并入财务中心 11 项统一整改和一次发布。
 - VibeHub 术语核对：以脱敏短词“数据一致性”“结算规则”调用解析器，无可靠匹配，未采用不相关链接。
 
 ## 2. 截图分析
@@ -100,5 +100,5 @@
 
 - 实际改动提交：见本文件所在功能提交及其后续正式发布提交。
 - 与修改清单不一致之处及原因：计算中发现二进制浮点数配合向上取整会使 `70.40 - 7.04` 变为 `63.37`，已在同一金额服务中改为十进制定点比例和汇总，属于 D1/D2 的金额准确性范围。
-- 测试结果与证据路径：`python -m unittest incoming_payment_case_fee_row15_test.py`（3 项通过）；`case_fee_receipt_projection_row30_test.py`、`case_fee_legacy_links_row19_test.py`（3 项通过）；`incoming_allocation_cases_row15_test.py`、`incoming_allocation_customer_match_row8_test.py`（2 项通过）；`backend_gap_f_contract_test.py`（14 项通过）；`python -m py_compile ...` 通过；`npm.cmd run build` 通过。
-- 发布状态：本地实现与生产构建已完成，待正式发布。
+- 测试结果与证据路径：`python -m unittest incoming_payment_case_fee_row15_test.py case_fee_receipt_projection_row30_test.py case_fee_legacy_links_row19_test.py incoming_allocation_cases_row15_test.py incoming_allocation_customer_match_row8_test.py finance_invoice_row29_contract_test.py`（18 项通过）；`python -m py_compile app/core/finance.py app/areas/finance/router.py app/models_shared.py` 通过；前端发票载荷断言通过；`npm.cmd run build` 通过。
+- 发布状态：11 项本地实现与统一生产构建已完成，待正式发布；发布后由用户在 8089 验收。

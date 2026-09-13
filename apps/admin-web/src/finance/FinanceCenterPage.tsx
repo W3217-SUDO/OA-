@@ -1469,12 +1469,10 @@ export default function FinanceCenterPage({
     const first = buildInvoiceSourceFields([selectedFees[0]], contracts, customers);
     const mismatched = selectedFees.some((fee) => {
       const source = buildInvoiceSourceFields([fee], contracts, customers);
-      return source.case_no !== first.case_no ||
-        Number(source.contract_record_id || 0) !== Number(first.contract_record_id || 0) ||
-        source.customer !== first.customer;
+      return source.customer !== first.customer;
     });
     if (mismatched) {
-      message.warning("一次申请开票只能选择同一案件、合同和客户下的费用。");
+      message.warning("一次申请开票只能选择同一客户下的费用。");
       return;
     }
     setInvoiceSelectedFeeIds(nextIds);
