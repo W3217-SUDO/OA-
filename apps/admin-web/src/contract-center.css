@@ -266,6 +266,29 @@
 .contract-finance-information > .ant-form { max-width: 1000px; }
 .contract-finance-page .ant-table-wrapper { min-width: 0; }
 .contract-finance-page .ant-space { flex-wrap: wrap; }
+.contract-payment-step-bar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); list-style: none; margin: 22px 0 12px; padding: 0; gap: 3px; }
+.contract-payment-step-bar li { position: relative; text-align: center; background: #c9c9c9; color: #fff; padding: 3px 12px; font-size: 12px; min-height: 24px; }
+.contract-payment-step-bar li[aria-current] { background: #00a2c4; }
+.contract-payment-step-bar li:not(:last-child)::after { content: ""; position: absolute; right: -8px; top: 0; width: 14px; height: 100%; background: inherit; clip-path: polygon(0 0, 30% 0, 100% 50%, 30% 100%, 0 100%, 70% 50%); z-index: 1; }
+.contract-finance-page:has(.contract-payment-step-bar) .contract-finance-information { padding: 16px 12px 12px; }
+.contract-finance-page:has(.contract-payment-step-bar) .contract-finance-summary { max-width: 1100px; gap: 2px 24px; font-size: 12px; margin: 4px 0 12px; }
+.contract-payment-legacy-form { width: min(820px, 100%); }
+.contract-payment-legacy-form .ant-form-item { margin-bottom: 4px; }
+.contract-payment-legacy-form .ant-form-item-label { flex: 0 0 72px; text-align: left; }
+.contract-payment-legacy-form .ant-form-item-label > label { height: 25px; font-size: 12px; color: #697683; }
+.contract-payment-legacy-form .ant-form-item-control { flex: 1; min-width: 0; }
+.contract-payment-legacy-form .ant-input { min-height: 25px; padding: 2px 6px; border: 0; border-radius: 0; font-size: 12px; }
+.contract-payment-legacy-form .ant-btn-link { height: 25px; padding: 0; font-size: 12px; }
+.contract-payment-legacy-form > .ant-btn-primary { margin-top: 10px; }
+.contract-payment-unit-picker .ant-modal-content { border-radius: 0; padding: 10px 20px; }
+.contract-payment-unit-picker .ant-modal-title { font-size: 14px; font-weight: 400; }
+.contract-payment-unit-query { margin: 6px 0 8px; }
+.contract-payment-unit-query label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.contract-payment-unit-query .ant-input { width: 176px; }
+.contract-payment-unit-query .ant-select { width: 100px; }
+.contract-payment-unit-picker .ant-table-cell { font-size: 12px; padding: 4px 6px !important; overflow-wrap: anywhere; }
+.contract-payment-unit-picker .ant-table-thead th { font-weight: 400; color: #64717c; background: #f4f7f9; }
+.contract-payment-unit-picker .ant-modal-footer { border-top: 1px solid #e1e5e9; padding-top: 10px; margin-top: 28px; }
 @media (max-width: 760px) {
   .contract-finance-summary { grid-template-columns: minmax(0, 1fr); }
   .contract-finance-page .form-grid { grid-template-columns: minmax(0, 1fr); }

@@ -2575,7 +2575,7 @@ def _finance_payment_type_dict(item: SystemParameter) -> dict:
     }
 
 
-async def _active_payment_type_rows(db: AsyncSession, keyword: str = "") -> list[dict]:
+async def _active_payment_type_rows(db: AsyncSession, keyword: str = "", *, include_incomplete_accounts: bool = False) -> list[dict]:
     items = list((await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "payment_type",
         SystemParameter.is_active.is_(True),
@@ -2583,7 +2583,7 @@ async def _active_payment_type_rows(db: AsyncSession, keyword: str = "") -> list
     term = keyword.strip().casefold()
     result = [
         data for data in (_finance_payment_type_dict(item) for item in items)
-        if data["payee"] and data["account_bank"] and data["account"]
+        if data["payee"] and (include_incomplete_accounts or (data["account_bank"] and data["account"]))
     ]
     result = [item for item in result if item["payee"]]
     if term:

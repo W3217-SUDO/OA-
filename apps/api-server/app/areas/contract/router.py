@@ -1103,7 +1103,7 @@ async def contract_payment_candidates(contract_id: int, identity: dict = Depends
         _ensure_record_module,
     )
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
-    payment_types = await _active_payment_type_rows(db)
+    payment_types = await _active_payment_type_rows(db, include_incomplete_accounts=True)
     return {
         "contract": {"id": contract.id, "serial_no": contract.serial_no, "title": contract.title, "customer": contract.customer, "owner": contract.owner, "status": contract.status},
         "payment_types": [

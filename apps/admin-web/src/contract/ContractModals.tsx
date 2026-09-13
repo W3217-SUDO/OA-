@@ -19,7 +19,8 @@ Table,
 Timeline
 } from "antd";
 import dayjs from "dayjs";
-import type { Key } from "react";
+import { useEffect, useState, type Key } from "react";
+import { ContractPaymentUnitPicker } from "./ContractPaymentUnitPicker";
 import { AttachmentPreviewContent } from "../components/common/AttachmentContent";
 import {
 CONTRACT_ATTACHMENT_ACCEPT,
@@ -585,7 +586,6 @@ export function ContractPaymentModal({
   paymentTarget,
   paymentForm,
   paymentTypes,
-  paymentTypeSearch,
   selectedPaymentObjectKeys,
   paymentAmounts,
   paymentCandidates,
@@ -593,16 +593,18 @@ export function ContractPaymentModal({
   paymentSaving,
   onCancel,
   onOk,
-  onPaymentTypeSearch,
   onOpenPaymentTypeCreator,
   onPaymentObjectSelectionChange,
   onPaymentAmountChange,
 }: ContractPaymentModalProps) {
+  const [unitPickerOpen, setUnitPickerOpen] = useState(false);
+  const applicationDate = Form.useWatch("application_date", paymentForm);
+  useEffect(() => { setUnitPickerOpen(false); }, [open, paymentTarget?.id]);
   if (!open || !paymentTarget) return null;
   return (
     <section className="contract-finance-page" aria-label="申请付款">
       <header><h2>申请付款</h2><Button disabled={paymentSaving} onClick={onCancel}>返回合同</Button></header>
-      <Steps size="small" current={0} items={["付款信息填写", "提交申请", "财务审批", "财务付款"].map((title) => ({ title }))} />
+      <ol className="contract-payment-step-bar">{["付款信息填写", "提交申请", "财务审批", "财务付款"].map((title, index) => <li key={title} aria-current={index === 0 ? "step" : undefined}>{title}</li>)}</ol>
       <div className="contract-finance-information">
       <dl className="contract-finance-summary">
         <div><dt>合同编号</dt><dd>{paymentTarget.serial_no}</dd></div>
@@ -610,40 +612,21 @@ export function ContractPaymentModal({
         <div><dt>客户名称</dt><dd>{paymentTarget.customer}</dd></div>
         <div><dt>申请编号</dt><dd>提交后生成</dd></div>
         <div><dt>销售代表</dt><dd>{String(paymentTarget.data.source_person || paymentTarget.owner || "—")}</dd></div>
-        <div><dt>申请日期</dt><dd>{dayjs().format("YYYY年MM月DD日")}</dd></div>
+        <div><dt>申请日期</dt><dd>{applicationDate?.format?.("YYYY年MM月DD日") || dayjs().format("YYYY年MM月DD日")}</dd></div>
       </dl>
-      <Form form={paymentForm} layout="vertical">
+      <Form form={paymentForm} layout="horizontal" className="contract-payment-legacy-form" colon={false}>
         <Form.Item label="交款人" name="payer_name"><Input maxLength={200} /></Form.Item>
-        <div className="form-grid">
-          <Form.Item label="收款单位" name="payment_type_id" rules={[{ required: true, message: "请选择系统付款单位" }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              placeholder="输入关键字选择收款单位"
-              options={paymentTypes}
-              onSearch={onPaymentTypeSearch}
-              notFoundContent={
-                <Button type="link" icon={<PlusOutlined />} onClick={onOpenPaymentTypeCreator}>
-                  新增“{paymentTypeSearch || "付款单位"}”
-                </Button>
-              }
-            />
-          </Form.Item>
-          <Form.Item label="新增单位">
-            <Button icon={<PlusOutlined />} onClick={onOpenPaymentTypeCreator}>
-              新增付款单位
-            </Button>
-          </Form.Item>
-          <Form.Item label="申请日期" name="application_date" rules={[{ required: true }]}>
-            <DatePicker style={{ width: "100%" }} />
-          </Form.Item>
-        </div>
+        <Form.Item name="payment_type_id" hidden rules={[{ required: true, message: "请选择付款单位" }]}><InputNumber /></Form.Item>
+        <Form.Item label={<Button type="link" onClick={() => setUnitPickerOpen(true)}>收款单位</Button>}>
+          <Input readOnly aria-label="已选收款单位" value={selectedContractPaymentType?.payee || ""} onClick={() => setUnitPickerOpen(true)} />
+        </Form.Item>
+        <Form.Item name="application_date" hidden rules={[{ required: true }]}><DatePicker /></Form.Item>
         <Form.Item label="开户行"><Input readOnly value={selectedContractPaymentType?.account_bank || ""} /></Form.Item>
         <Form.Item label="账号信息"><Input readOnly value={selectedContractPaymentType?.account || ""} /></Form.Item>
         <Form.Item label="备注" name="remark">
-          <Input.TextArea rows={2} />
+          <Input maxLength={2000} />
         </Form.Item>
-        <Button type="primary" loading={paymentSaving} onClick={onOk}>提交</Button>
+        <Button type="primary" loading={paymentSaving} onClick={() => selectedContractPaymentType ? onOk() : setUnitPickerOpen(true)}>提交</Button>
       </Form>
       </div>
       <Divider titlePlacement="start" plain>付款信息</Divider>
@@ -661,13 +644,11 @@ export function ContractPaymentModal({
         columns={[
           { title: "序号", width: 65, render: (_value, _row, index) => index + 1 },
           { title: "案件类型", dataIndex: "case_type", width: 100, render: (value) => value || "—" },
-          { title: "案号", dataIndex: "case_no", width: 140 },
           { title: "案件名称", dataIndex: "case_title", ellipsis: true },
+          { title: "案号", dataIndex: "case_no", width: 140 },
           { title: "费用类型", dataIndex: "fee_type", width: 150 },
-          { title: "合同金额", dataIndex: "contract_amount", width: 105, render: (value) => Number(value).toFixed(2) },
           { title: "通知时间", dataIndex: "inform_date", width: 110, render: (value) => value || "—" },
-          { title: "已占用", dataIndex: "reserved_amount", width: 100, render: (value) => Number(value).toFixed(2) },
-          { title: "待付余额", dataIndex: "remaining_amount", width: 105, render: (value) => Number(value).toFixed(2) },
+          { title: "待付金额", dataIndex: "remaining_amount", width: 105, render: (value) => Number(value).toFixed(2) },
           {
             title: "本次支付",
             width: 130,
@@ -683,9 +664,20 @@ export function ContractPaymentModal({
               />
             ),
           },
+          Table.SELECTION_COLUMN,
           { title: "备注", width: 180, render: (_, row) => <Input maxLength={1000} defaultValue={paymentForm.getFieldValue(["line_remarks", contractPaymentCandidateKey(row)])} onChange={(event) => paymentForm.setFieldValue(["line_remarks", contractPaymentCandidateKey(row)], event.target.value)} /> },
         ]}
       />
+      <ContractPaymentUnitPicker open={unitPickerOpen} options={paymentTypes} selectedId={selectedContractPaymentType?.value}
+        onCancel={() => setUnitPickerOpen(false)} onCreate={onOpenPaymentTypeCreator}
+        onSelect={(row) => {
+          if (selectedContractPaymentType?.value !== row.value) {
+            onPaymentObjectSelectionChange([]);
+            for (const key of Object.keys(paymentAmounts)) onPaymentAmountChange(key, 0);
+          }
+          paymentForm.setFieldValue("payment_type_id", row.value);
+          setUnitPickerOpen(false);
+        }} />
     </section>
   );
 }

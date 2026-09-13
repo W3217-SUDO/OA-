@@ -82,7 +82,6 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
             const values = await paymentTypeCreateForm.validateFields();
             const { data } = await api.post(`/contracts/${paymentTarget.id}/payment-types`, values);
             setPaymentTypes((items) => [...items.filter((item) => item.value !== data.value), data]);
-            paymentForm.setFieldValue("payment_type_id", data.value);
             setPaymentTypeCreateOpen(false);
             paymentTypeCreateForm.resetFields();
             setPaymentTypeSearch("");
