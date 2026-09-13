@@ -25,3 +25,10 @@
 ## 验证与状态
 
 发布执行中。最终版本、提交、服务健康及同步证据以服务器queue/ledger与本记录后续补充为准；业务结果待用户验收。
+
+## 1.1.111启动失败及修复
+
+- 发布提交26c2d0fb启动检查失败：新增POST commission-preview后legal router共143条，但main.py最后注册范围仍到142，导致末尾POST cases/batch-delete漏挂。编译不能覆盖模块加载时的注册校验。
+- 发布脚本已回滚活动代码至fb906a5b及原前端产物，/health返回ok；queue记录1.1.111 failed、rollback-health-1。无数据库变更。
+- 本地`import app.main`已复现同一缺路由错误。修正main.py最后的legal切片结束位置至143，继续保留verify_route_coverage对缺失/重复注册的硬校验，未关闭检查。
+- 重发前要求本地应用模块加载和路由注册检查通过（不启动lifespan、不连接数据库、不执行业务请求），然后领取新版本并重新本地构建。失败版本1.1.111保留，不复用、不修改既有标签。
