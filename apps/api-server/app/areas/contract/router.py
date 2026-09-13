@@ -958,7 +958,7 @@ async def contract_invoice_candidates(contract_id: int, identity: dict = Depends
     """Return individual, currently invoiceable case-fee rows for a contract."""
     from app.core.constants import INVOICE_RELEASED_STATUSES
     from app.core.contracts import _contract_allows_downstream_creation
-    from app.core.finance import _invoice_linked_fee_ids, _round_fee_amount
+    from app.core.finance import _fee_matches_contract, _invoice_linked_fee_ids, _round_fee_amount
     from app.core.permissions import _ensure_record_module, _record_scope_conditions, _require_record_module_menu
 
     await _require_record_module_menu("contract", identity, db, action="查看")
@@ -974,7 +974,10 @@ async def contract_invoice_candidates(contract_id: int, identity: dict = Depends
         ),
         *(await _record_scope_conditions(identity, db)),
     ]
-    fees = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.id))).all())
+    fees = [
+        fee for fee in (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.id))).all()
+        if _fee_matches_contract(fee, contract)
+    ]
     active_invoices = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "invoice", BusinessRecord.status.not_in(INVOICE_RELEASED_STATUSES),
         *(await _record_scope_conditions(identity, db)),
@@ -1155,18 +1158,21 @@ async def list_contract_payment_applications(contract_id: int, identity: dict = 
         lines = (await db.scalars(select(ContractPaymentLine).where(ContractPaymentLine.payment_record_id == item.id).order_by(ContractPaymentLine.id))).all()
         line_payload = [{"id": line.id, "contract_object_id": line.contract_object_id, "case_record_id": line.case_record_id, "fee_type": line.fee_type, "requested_amount": line.requested_amount} for line in lines]
         snapshots = (item.data or {}).get("lines", [])
-        if snapshots:
+        if snapshots and line_payload:
             for payload, snapshot in zip(line_payload, snapshots):
                 payload["case_fee_id"] = snapshot.get("case_fee_id")
-        if not line_payload and (item.data or {}).get("legacy_kind") == "ap_payment":
+        if not line_payload and snapshots:
             line_payload = [
                 {
+                    "contract_object_id": line.get("contract_object_id"),
+                    "case_fee_id": line.get("case_fee_id"),
                     "legacy_case_fee_id": line.get("legacy_case_fee_id"),
+                    "case_record_id": line.get("case_id") or line.get("case_record_id"),
                     "case_no": line.get("case_no", ""),
                     "fee_type": line.get("fee_type", ""),
-                    "requested_amount": float(line.get("settlement_amount", 0) or 0),
+                    "requested_amount": float(line.get("amount", line.get("settlement_amount", 0)) or 0),
                 }
-                for line in (item.data or {}).get("lines", [])
+                for line in snapshots
             ]
         result.append({**await _record_dict_for_identity(item, identity, db), "lines": line_payload})
     return {"items": result, "total": len(result)}
@@ -1192,17 +1198,26 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
         raise HTTPException(status_code=409, detail="仅审批通过或已完成的合同可以发起合同付款")
     payment_type = await _active_payment_type(body.payment_type_id, db)
     payment_type_data = _finance_payment_type_dict(payment_type)
-    line_inputs = list({(line.case_fee_id or line.contract_object_id): line for line in body.lines}.values())
+    if any(line.case_fee_id and line.contract_object_id for line in body.lines):
+        raise HTTPException(status_code=422, detail="每条付款明细只能选择案件费用或合同标的之一")
+
+    def line_key(line: ContractPaymentLineInput) -> tuple[str, int]:
+        return ("case_fee", line.case_fee_id) if line.case_fee_id else ("contract_object", line.contract_object_id)
+
+    line_inputs = list({line_key(line): line for line in body.lines}.values())
     if len(line_inputs) != len(body.lines):
         raise HTTPException(status_code=422, detail="同一案件费用只能提交一次")
     candidate_rows = await _contract_payment_candidate_rows(contract, identity, db)
-    candidates = {(item.get("case_fee_id") or item["contract_object_id"]): item for item in candidate_rows}
-    invalid = [str(line.case_fee_id or line.contract_object_id) for line in line_inputs if (line.case_fee_id or line.contract_object_id) not in candidates]
+    candidates = {
+        ("case_fee", item["case_fee_id"]) if item.get("case_fee_id") else ("contract_object", item["contract_object_id"]): item
+        for item in candidate_rows
+    }
+    invalid = [str(line.case_fee_id or line.contract_object_id) for line in line_inputs if line_key(line) not in candidates]
     if invalid:
         raise HTTPException(status_code=404, detail="部分合同标的不存在或无权访问：" + "、".join(invalid))
     normalized_lines: list[tuple[ContractPaymentLineInput, dict]] = []
     for line in line_inputs:
-        candidate = candidates[line.case_fee_id or line.contract_object_id]
+        candidate = candidates[line_key(line)]
         amount = _round_fee_amount(line.amount)
         if amount <= 0 or amount > float(candidate["remaining_amount"]) + 0.0001:
             raise HTTPException(status_code=422, detail=f"案件 {candidate['case_no']} 的本次支付金额不能超过待付余额")
@@ -1211,12 +1226,13 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
     if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
     total = _round_fee_amount(sum(_round_fee_amount(line.amount) for line, _ in normalized_lines))
     serial = f"CP{datetime.now():%Y%m%d%H%M%S%f}"
-    snapshot = [{"contract_object_id": item["contract_object_id"], "case_fee_id": item.get("case_fee_id"), "case_id": item["case_record_id"], "case_no": item["case_no"], "fee_type": item["fee_type"], "amount": _round_fee_amount(line.amount)} for line, item in normalized_lines]
+    snapshot = [{"contract_object_id": item.get("contract_object_id"), "case_fee_id": item.get("case_fee_id"), "case_id": item["case_record_id"], "case_no": item["case_no"], "fee_type": item["fee_type"], "amount": _round_fee_amount(line.amount)} for line, item in normalized_lines]
     accounting_center = "平台财务中心" if str((contract.data or {}).get("contract_body") or "").strip() == "平台" else "财务中心"
     payment = BusinessRecord(module="contract_payment", serial_no=serial, title=f"{contract.serial_no}合同付款申请", customer=contract.customer, status="待审批", owner=contract.owner, department=user.department, description=body.remark.strip(), data={"contract_id": contract.id, "contract_no": contract.serial_no, "contract_body": (contract.data or {}).get("contract_body"), "accounting_center": accounting_center, "finance_scope": "platform" if accounting_center == "平台财务中心" else "firm", "payment_type_id": payment_type.id, "payment_type_code": payment_type.code, "payment_type": payment_type.name, "payment_nature": payment_type_data["nature"], "payee": payment_type_data["payee"], "account_bank": payment_type_data["account_bank"], "account": payment_type_data["account"], "application_date": body.application_date.isoformat(), "amount": total, "lines": snapshot, "applicant": identity["username"]})
     db.add(payment); await db.flush()
     for line, candidate in normalized_lines:
-        db.add(ContractPaymentLine(payment_record_id=payment.id, contract_object_id=candidate["contract_object_id"], case_record_id=candidate["case_record_id"], fee_type=candidate["fee_type"], requested_amount=_round_fee_amount(line.amount)))
+        if candidate.get("source") == "contract_object":
+            db.add(ContractPaymentLine(payment_record_id=payment.id, contract_object_id=candidate["contract_object_id"], case_record_id=candidate["case_record_id"], fee_type=candidate["fee_type"], requested_amount=_round_fee_amount(line.amount)))
     db.add(WorkflowEvent(record_id=payment.id, action="提交合同付款申请", to_status="待审批", operator=identity["username"], comment=f"{payment_type_data['payee']}｜{total:.2f} 元"))
     db.add(WorkflowEvent(record_id=contract.id, action="发起合同付款申请", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"{serial}｜{total:.2f} 元"))
     await db.commit(); await db.refresh(payment)

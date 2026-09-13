@@ -294,8 +294,32 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         const caseIds = selectedCaseKeys.map(Number);
         if (!caseIds.length)
             return message.warning("请选择需要新增费用的法律顾问案件");
+        const caseContracts: Array<{ case_id: number; contract_record_id: number }> = Array.isArray(values.case_contracts)
+            ? values.case_contracts.map((item: any) => ({
+                case_id: Number(item?.case_id),
+                contract_record_id: Number(item?.contract_record_id),
+            }))
+            : [];
+        if (values.expense_scope !== "内部") {
+            const selectedCaseIds = new Set(caseIds);
+            const uniqueCaseIds = new Set(caseContracts.map((item: { case_id: number; contract_record_id: number }) => item.case_id));
+            if (caseContracts.length !== caseIds.length
+                || caseContracts.some((item: { case_id: number; contract_record_id: number }) => !selectedCaseIds.has(item.case_id) || !item.contract_record_id)
+                || uniqueCaseIds.size !== caseIds.length) {
+                return message.warning("请为每个案件分别选择当前客户名下的有效合同");
+            }
+        }
         try {
-            const { data } = await api.post("/cases/batch-fees", { case_ids: caseIds, amount: values.amount, fee_type_id: values.fee_type_id, expense_scope: values.expense_scope, expense_subtype: values.expense_subtype, handler: values.handler || profile.username, description: values.description || "" });
+            const { data } = await api.post("/cases/batch-fees", {
+                case_ids: caseIds,
+                ...(values.expense_scope === "内部" ? {} : { case_contracts: caseContracts }),
+                amount: values.amount,
+                fee_type_id: values.fee_type_id,
+                expense_scope: values.expense_scope,
+                expense_subtype: values.expense_subtype,
+                handler: values.handler || profile.username,
+                description: values.description || "",
+            });
             message.success(`已为 ${data.created} 个案件创建费用草稿`);
             setBatchFeeOpen(false);
             batchFeeForm.resetFields();
@@ -337,17 +361,15 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         const preferredSubtype = expenseScope === "平台" && agencyPreset ? PLATFORM_AGENCY_FEE_SUBTYPE : expenseSubtype || "";
         const initialTypeId = initialFeeTypeId(feeTypeCatalog, expenseScope, preset, preferredSubtype);
         const initialType = feeTypeSelection(feeTypeCatalog, initialTypeId);
-        const linkedContractId = Number(row.data.contract_record_id || row.data.contract_id) || undefined;
-        const initialContractId = eligibleContracts.some((option) => option.value === linkedContractId)
-            ? linkedContractId
-            : eligibleContracts[0]?.value;
         feeForm.resetFields();
         feeForm.setFieldsValue({ source_file_type: sourceFileType, items: [{
                     title: `${row.title}案件费用`, amount: row.data.amount || undefined,
-                    contract_record_id: initialContractId,
+                    // Fees belong to the contract selected for that fee, not the case header contract.
+                    contract_record_id: undefined,
                     expense_scope: expenseScope, fee_type_id: initialTypeId,
                     expense_subtype: initialType?.name,
                     fee_type: initialType?.base_fee_type,
+                    commission_mode: initialType?.base_fee_type === "代理费" ? "automatic" : undefined,
                     commission_details: [],
                     handler: profile.username || row.owner, court: row.data.court || "", payee: expenseScope === "内部" ? undefined : row.data.court || "",
                     deadline: undefined, description: "",
@@ -416,7 +438,16 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         try {
             const commonPayload = { customer: feeCase?.customer || editingFeeRow?.customer || "", case_no: feeCase?.serial_no || editingFeeRow?.data.case_no || "", case_record_id: feeCase?.id || editingFeeRow?.data.case_id };
             if (editingFeeRow) {
-                const payload = { ...feeValues, ...commonPayload, deadline: feeValues.deadline ? formatRequiredDate(feeValues.deadline, "截止日期") : undefined };
+                const { commission_mode, commission_details, ...feePayload } = feeValues;
+                const payload = {
+                    ...feePayload,
+                    ...commonPayload,
+                    deadline: feeValues.deadline ? formatRequiredDate(feeValues.deadline, "截止日期") : undefined,
+                    ...(feeValues.fee_type === "代理费" ? {
+                        commission_mode: commission_mode === "manual" ? "manual" : "automatic",
+                        commission_details: Array.isArray(commission_details) ? commission_details : [],
+                    } : {}),
+                };
                 const endpoint = isInternalCaseFee(editingFeeRow) ? `/finance/internal-fees/${editingFeeRow.id}` : `/finance/fees/${editingFeeRow.id}`;
                 const { data } = await api.put(endpoint, payload);
                 message.success(`费用 ${data.serial_no} 已保存`);
@@ -429,7 +460,16 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             else {
                 const created: CaseRow[] = [];
                 for (const item of feeValues.items || []) {
-                    const payload = { ...item, ...commonPayload, deadline: item.deadline ? formatRequiredDate(item.deadline, "截止日期") : undefined };
+                    const { commission_mode, commission_details, ...feePayload } = item;
+                    const payload = {
+                        ...feePayload,
+                        ...commonPayload,
+                        deadline: item.deadline ? formatRequiredDate(item.deadline, "截止日期") : undefined,
+                        ...(item.fee_type === "代理费" ? {
+                            commission_mode: commission_mode === "manual" ? "manual" : "automatic",
+                            commission_details: Array.isArray(commission_details) ? commission_details : [],
+                        } : {}),
+                    };
                     const endpoint = item.expense_scope === "内部" ? "/finance/internal-fees" : "/finance/fees";
                     const { data } = await api.post(endpoint, payload);
                     created.push(data);

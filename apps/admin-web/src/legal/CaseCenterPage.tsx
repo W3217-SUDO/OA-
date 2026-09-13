@@ -42,6 +42,7 @@ import type { Key } from "react";
 import { useEffect,useMemo,useRef,useState,type ClipboardEvent } from "react";
 import { DEFAULT_AGENT_SKILL } from "../agentSkillRouting";
 import { api } from "../api";
+import { FeeCommissionEditor } from "../finance/FeeCommissionEditor";
 import { rememberBusinessRecordDetailTarget } from "../businessRecordDetailNavigation";
 import "../case-center.css";
 import { caseAssistantDisplayValues } from "../caseAssistantDisplay";
@@ -224,16 +225,13 @@ statusColors
 import { CaseAgentDrawer } from "./CaseAgentDrawer";
 import { CaseCreateWizard } from "./CaseCreateWizard";
 import {
-CaseAssistedFeesPanel,
 CaseCaseLogsPanel,
 CaseCaseTasksPanel,
 CaseCluesPanel,
 CaseCustomerTasksPanel,
 CaseDetailHeader,
 CaseDocumentsPanel,
-CaseEventsPanel,
 CaseFeesPanel,
-CaseRemindersPanel,
 CaseSystemLogsPanel,
 } from "./CaseDetail";
 
@@ -517,6 +515,11 @@ export default function CaseCenterPage({
   const [caseLogTarget, setCaseLogTarget] = useState<CaseRow | null>(null);
   const [batchUpdateOpen, setBatchUpdateOpen] = useState(false);
   const [batchFeeOpen, setBatchFeeOpen] = useState(false);
+  const [batchFeeContractOptionsByCase, setBatchFeeContractOptionsByCase] = useState<Record<number, { value: number; label: string }[]>>({});
+  const [batchFeeContractsLoading, setBatchFeeContractsLoading] = useState(false);
+  const batchFeeContractRequestRef = useRef(0);
+  const batchFeeContractAbortRef = useRef<AbortController | null>(null);
+  const batchFeeContractOptionsCacheRef = useRef(new Map<string, { value: number; label: string }[]>());
   const [clueConversionOpen, setClueConversionOpen] = useState(false);
   const [editingCounselCase, setEditingCounselCase] = useState<CaseRow | null>(null);
   const [editingNormalCase, setEditingNormalCase] = useState<CaseRow | null>(null);
@@ -563,9 +566,6 @@ export default function CaseCenterPage({
   const [caseTaskDetailLoading, setCaseTaskDetailLoading] = useState(false);
   const [refundCompleting, setRefundCompleting] = useState<CaseRow | null>(null);
   const [caseTasks, setCaseTasks] = useState<TaskRow[]>([]);
-  const [caseTaskVipFilter, setCaseTaskVipFilter] = useState<"all" | "vip" | "normal">("all");
-  const [counselDetailTaskVipFilter, setCounselDetailTaskVipFilter] = useState<"all" | "vip" | "normal">("all");
-  const [counselDetailCustomerTaskVipFilter, setCounselDetailCustomerTaskVipFilter] = useState<"all" | "vip" | "normal">("all");
   const [caseTaskPage, setCaseTaskPage] = useState(CASE_TASK_DEFAULT_PAGE);
   const [caseTaskPageSize, setCaseTaskPageSize] = useState(CASE_TASK_DEFAULT_PAGE_SIZE);
   const [caseTaskTotal, setCaseTaskTotal] = useState(0);
@@ -766,10 +766,6 @@ export default function CaseCenterPage({
     get setActiveCounselDetailTab() { return setActiveCounselDetailTab; },
     get setViewingCounselCase() { return setViewingCounselCase; },
     get counselDetailCaseIdRef() { return counselDetailCaseIdRef; },
-    get setCounselDetailAssistedFees() { return setCounselDetailAssistedFees; },
-    get setCounselDetailAssistedFeeTotal() { return setCounselDetailAssistedFeeTotal; },
-    get loadCounselDetailAssistedFees() { return loadCounselDetailAssistedFees; },
-    get counselDetailAssistedFeePageSize() { return counselDetailAssistedFeePageSize; },
     get setLegacyLsHistoryCaseIds() { return setLegacyLsHistoryCaseIds; },
     get setSelectedCounselAttachmentKeys() { return setSelectedCounselAttachmentKeys; },
     get setSelectedCounselCaseEventKeys() { return setSelectedCounselCaseEventKeys; },
@@ -777,8 +773,6 @@ export default function CaseCenterPage({
     get setExpandedCounselDocGroups() { return setExpandedCounselDocGroups; },
     get contracts() { return contracts; },
     get caseCustomers() { return caseCustomers; },
-    get counselDetailTaskVipFilter() { return counselDetailTaskVipFilter; },
-    get counselDetailCustomerTaskVipFilter() { return counselDetailCustomerTaskVipFilter; },
     get setCounselDetailHistory() { return setCounselDetailHistory; },
     get applyCounselDetailTaskPageState() { return applyCounselDetailTaskPageState; },
     get applyCounselDetailCustomerTaskPageState() { return applyCounselDetailCustomerTaskPageState; },
@@ -786,10 +780,6 @@ export default function CaseCenterPage({
     get setCounselDetailCustomerAttachments() { return setCounselDetailCustomerAttachments; },
     get setCounselDetailContractAttachments() { return setCounselDetailContractAttachments; },
     get setCounselDocumentFolderTree() { return setCounselDocumentFolderTree; },
-    get setCounselReminders() { return setCounselReminders; },
-    get setCounselCaseEvents() { return setCounselCaseEvents; },
-    get setCounselCaseEventCapabilities() { return setCounselCaseEventCapabilities; },
-    get setCounselCaseEventsError() { return setCounselCaseEventsError; },
     get setCounselLogs() { return setCounselLogs; },
     get setCounselDetailCapabilities() { return setCounselDetailCapabilities; },
     get setCounselDetailFinance() { return setCounselDetailFinance; },
@@ -995,15 +985,12 @@ export default function CaseCenterPage({
     get setCounselPageSize() { return setCounselPageSize; },
     get caseTaskPage() { return caseTaskPage; },
     get caseTaskPageSize() { return caseTaskPageSize; },
-    get caseTaskVipFilter() { return caseTaskVipFilter; },
     get applyCaseTaskPageState() { return applyCaseTaskPageState; },
     get counselDetailTaskPage() { return counselDetailTaskPage; },
     get counselDetailTaskPageSize() { return counselDetailTaskPageSize; },
-    get counselDetailTaskVipFilter() { return counselDetailTaskVipFilter; },
     get applyCounselDetailTaskPageState() { return applyCounselDetailTaskPageState; },
     get counselDetailCustomerTaskPage() { return counselDetailCustomerTaskPage; },
     get counselDetailCustomerTaskPageSize() { return counselDetailCustomerTaskPageSize; },
-    get counselDetailCustomerTaskVipFilter() { return counselDetailCustomerTaskVipFilter; },
     get applyCounselDetailCustomerTaskPageState() { return applyCounselDetailCustomerTaskPageState; },
     get counselDetailCluePage() { return counselDetailCluePage; },
     get counselDetailCluePageSize() { return counselDetailCluePageSize; },
@@ -2299,7 +2286,9 @@ export default function CaseCenterPage({
     const expenseSubtype = normalizeFeeSubtypeForScope(expenseScope, row.data.expense_subtype || "官费");
     const feeTypeId = Number(row.data.fee_type_id) || initialFeeTypeId(feeTypeCatalog, expenseScope, "", expenseSubtype);
     const feeType = feeTypeSelection(feeTypeCatalog, feeTypeId);
-    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: expenseScope, fee_type_id: feeTypeId, expense_subtype: feeType?.name || expenseSubtype, fee_type: feeType?.base_fee_type || row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", base_amount: row.data.base_amount ?? 0, reference_commission: row.data.reference_commission ?? 0, document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "", commission_details: isInternalCaseFee(row) ? [] : Array.isArray(row.data.commission_details) ? row.data.commission_details : [] });
+    const commissionDetails = isInternalCaseFee(row) ? [] : Array.isArray(row.data.commission_details) ? row.data.commission_details : [];
+    const commissionMode = row.data.commission_mode === "automatic" ? "automatic" : "manual";
+    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: expenseScope, fee_type_id: feeTypeId, expense_subtype: feeType?.name || expenseSubtype, fee_type: feeType?.base_fee_type || row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", base_amount: row.data.base_amount ?? 0, reference_commission: row.data.reference_commission ?? 0, document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "", commission_mode: feeType?.base_fee_type === "代理费" ? commissionMode : undefined, commission_details: commissionDetails });
     setEditingFeeRow(row);
   };
 
@@ -2434,6 +2423,68 @@ export default function CaseCenterPage({
     () => (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeySet.has(String(row.id))),
     [counselCases, counselListMode, originalCases, selectedCaseKeySet],
   );
+  const loadBatchFeeContractOptions = async (expenseScope: string) => {
+    batchFeeContractAbortRef.current?.abort();
+    const controller = new AbortController();
+    batchFeeContractAbortRef.current = controller;
+    const requestId = ++batchFeeContractRequestRef.current;
+    if (!batchFeeOpen || !["律所", "平台"].includes(expenseScope)) {
+      setBatchFeeContractOptionsByCase({});
+      setBatchFeeContractsLoading(false);
+      return;
+    }
+    setBatchFeeContractsLoading(true);
+    try {
+      const rowsByCustomer = new Map<string, CaseRow[]>();
+      selectedBatchCases.forEach((row) => {
+        const customerKey = String(row.data.customer_id || row.data.customer_record_id || row.customer || row.data.customer || row.id);
+        const cacheKey = `${expenseScope}:${customerKey}`;
+        rowsByCustomer.set(cacheKey, [...(rowsByCustomer.get(cacheKey) || []), row]);
+      });
+      const entries = Array.from(rowsByCustomer.entries());
+      const optionsByCustomer = new Map<string, { value: number; label: string }[]>();
+      let nextIndex = 0;
+      const loadNext = async () => {
+        while (nextIndex < entries.length) {
+          const [cacheKey, rows] = entries[nextIndex++];
+          const cached = batchFeeContractOptionsCacheRef.current.get(cacheKey);
+          if (cached) {
+            optionsByCustomer.set(cacheKey, cached);
+            continue;
+          }
+          const { data } = await api.get(`/cases/${rows[0].id}/fee-contracts`, {
+            params: { expense_scope: expenseScope },
+            signal: controller.signal,
+          });
+          const options = (data.items || []).map((contract: ContractRow) => ({ value: contract.id, label: `${contract.serial_no}｜${contract.title}` }));
+          batchFeeContractOptionsCacheRef.current.set(cacheKey, options);
+          optionsByCustomer.set(cacheKey, options);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(4, entries.length) }, () => loadNext()));
+      if (batchFeeContractRequestRef.current !== requestId) return;
+      const optionsByCase: Record<number, { value: number; label: string }[]> = {};
+      rowsByCustomer.forEach((rows, cacheKey) => rows.forEach((row) => {
+        optionsByCase[row.id] = optionsByCustomer.get(cacheKey) || [];
+      }));
+      setBatchFeeContractOptionsByCase(optionsByCase);
+    }
+    catch (error: any) {
+      if (batchFeeContractRequestRef.current !== requestId) return;
+      setBatchFeeContractOptionsByCase({});
+      message.error(error?.response?.data?.detail || "批量费用合同加载失败");
+    }
+    finally {
+      if (batchFeeContractRequestRef.current === requestId) setBatchFeeContractsLoading(false);
+    }
+  };
+  useEffect(() => {
+    void loadBatchFeeContractOptions(String(batchExpenseScope || ""));
+    return () => {
+      batchFeeContractRequestRef.current += 1;
+      batchFeeContractAbortRef.current?.abort();
+    };
+  }, [batchExpenseScope, batchFeeOpen, selectedBatchCases]);
   const batchFeeSourceFileTypeOptions = useMemo(() => {
     const caseTypes = [...new Set(selectedBatchCases.map((row) => String(row.data.case_type || "")))];
     if (!caseTypes.length) return [];
@@ -3018,7 +3069,7 @@ export default function CaseCenterPage({
             {counselListMode&&<>
               <Button onClick={()=>selectedCase?void openCounselDetail(selectedCase):message.warning("请先选择案件")}>查看详情</Button>
               {(["admin","manager"].includes(profile.role||""))&&<Button onClick={()=>{if(!selectedCaseKeys.length)return message.warning("请选择需要修改的案件");batchUpdateForm.resetFields();setBatchUpdateOpen(true);}}>批量修改</Button>}
-              {canCreateSelectedCaseFees&&<Button onClick={()=>{const feeTypeId=initialFeeTypeId(feeTypeCatalog,"律所");const feeType=feeTypeSelection(feeTypeCatalog,feeTypeId);batchFeeForm.resetFields();batchFeeForm.setFieldsValue({expense_scope:"律所",fee_type_id:feeTypeId,expense_subtype:feeType?.name,handler:profile.username});setBatchFeeOpen(true);}}>批量新增费用</Button>}
+              {canCreateSelectedCaseFees&&<Button onClick={()=>{const feeTypeId=initialFeeTypeId(feeTypeCatalog,"律所");const feeType=feeTypeSelection(feeTypeCatalog,feeTypeId);batchFeeForm.resetFields();batchFeeForm.setFieldsValue({expense_scope:"律所",fee_type_id:feeTypeId,expense_subtype:feeType?.name,handler:profile.username,case_contracts:selectedBatchCases.map((row)=>({case_id:row.id,contract_record_id:undefined}))});setBatchFeeOpen(true);}}>批量新增费用</Button>}
             </>}
             <Dropdown
               trigger={["click"]}
@@ -3517,7 +3568,7 @@ export default function CaseCenterPage({
               <Form.Item label="金额" name="amount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item name="expense_subtype" hidden><Input /></Form.Item><Form.Item name="fee_type" hidden><Input /></Form.Item><Form.Item label="经办人员" name="handler" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="收款单位" name="payee"><Input /></Form.Item><Form.Item label="缴费法院/机构" name="court"><Input /></Form.Item><Form.Item label="缴费通知文号" name="document_no"><Input /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item>
             </div>
               <Form.Item label="说明" name="description"><Input.TextArea rows={2} /></Form.Item>
-              {feeBaseType === "代理费" && <Form.List name="commission_details">{(fields, { add, remove }) => <section className="case-fee-commission-details"><div className="case-fee-commission-header"><strong>员工提成</strong><Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ commission_type: "员工提成" })}>新建员工提成</Button></div>{fields.map((field) => <div className="case-fee-commission-row" key={field.key}><Form.Item {...field} name={[field.name, "employee_username"]} label="员工" rules={[{ required: true, message: "请选择员工" }]}><Select showSearch optionFilterProp="label" options={feeEmployeeOptions} /></Form.Item><Form.Item {...field} name={[field.name, "commission_type"]} label="提成类型" rules={[{ required: true }]}><Input /></Form.Item><Form.Item {...field} name={[field.name, "amount"]} label="提成金额" rules={[{ required: true, message: "请输入提成金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item {...field} name={[field.name, "remark"]} label="备注"><Input /></Form.Item><Button danger type="text" aria-label="删除员工提成" icon={<MinusCircleOutlined />} onClick={() => remove(field.name)} /></div>)}</section>}</Form.List>}
+              <FeeCommissionEditor form={feeForm} isAgencyFee={feeBaseType === "代理费"} people={feeEmployeeOptions} caseId={viewingCounselCase?.id} className="case-fee-commission-details" />
           </>}
         </Form>
       </Modal>
@@ -3546,8 +3597,9 @@ export default function CaseCenterPage({
                 <Form.Item name={[field.name, "reference_commission"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入实际金额" }]}><InputNumber precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
-                <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
+                <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined, commission_mode: undefined, commission_details: [] })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
                 <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_subtype"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
+                {feeItems[field.name]?.fee_type === "代理费" && <div style={{ gridColumn: "1 / -1" }}><FeeCommissionEditor form={feeForm} isAgencyFee people={feeEmployeeOptions} watchPrefix={["items", field.name]} fieldPrefix={[field.name]} caseId={feeCase?.id} className="case-fee-commission-details" /></div>}
               </div>)}
             </div> : <div className="case-fee-entry-table">
               <div className="case-fee-entry-head"><span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></div>
@@ -3558,8 +3610,9 @@ export default function CaseCenterPage({
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0.01} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
                 <Form.Item name={[field.name, "deadline"]}><DatePicker /></Form.Item>
-                <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
+                <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined, commission_mode: undefined, commission_details: [] })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
                 <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_subtype"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
+                {feeItems[field.name]?.fee_type === "代理费" && <div style={{ gridColumn: "1 / -1" }}><FeeCommissionEditor form={feeForm} isAgencyFee people={feeEmployeeOptions} watchPrefix={["items", field.name]} fieldPrefix={[field.name]} caseId={feeCase?.id} className="case-fee-commission-details" /></div>}
               </div>)}
             </div>}</Form.List>
           </Form>
@@ -3991,42 +4044,6 @@ export default function CaseCenterPage({
                 handleInternalFeeAction={handleInternalFeeAction}
                 openInformDateBatchUpdate={openInformDateBatchUpdate}
               />},
-              {key:"assisted-fees",label:"资助费用",children:<CaseAssistedFeesPanel
-                assistedFees={counselDetailAssistedFees}
-                assistedFeePage={counselDetailAssistedFeePage}
-                assistedFeePageSize={counselDetailAssistedFeePageSize}
-                assistedFeeTotal={counselDetailAssistedFeeTotal}
-                capabilities={counselDetailCapabilities}
-                caseId={viewingCounselCase?.id}
-                onRefresh={loadCounselDetailAssistedFees}
-                onPageChange={loadCounselDetailAssistedFees}
-                casePersonDisplayName={casePersonDisplayName}
-                onCreateClick={() => { assistedFeeForm.resetFields(); setAssistedFeeEditor(null); setAssistedFeeModalOpen(true); }}
-                onEditClick={(row) => { assistedFeeForm.setFieldsValue({assisted_type:row.assisted_type,amount:row.amount ?? undefined,remark:row.remark}); setAssistedFeeEditor(row); setAssistedFeeModalOpen(true); }}
-                onConfirmClick={(row) => { assistedFeeConfirmForm.setFieldsValue({confirmed_date:dayjs(),remark:""}); setAssistedFeeConfirming(row); }}
-                onDeleteClick={deleteCounselDetailAssistedFee}
-              />},
-              {key:"case-events",label:"案件事件",children:<CaseEventsPanel
-                casePersonDisplayName={casePersonDisplayName}
-                events={counselCaseEvents}
-                selectedKeys={selectedCounselCaseEventKeys}
-                setSelectedKeys={setSelectedCounselCaseEventKeys}
-                capabilities={counselCaseEventCapabilities}
-                submitting={caseEventSubmitting}
-                error={counselCaseEventsError}
-                onRefresh={loadCounselCaseEvents}
-                onCreate={() => openCaseEventEditor()}
-                onEdit={(row) => openCaseEventEditor(row)}
-                onDelete={deleteCounselCaseEvent}
-                onBatchDelete={deleteCounselCaseEvents}
-              />},
-              {key:"reminders",label:"案件提醒",children:<CaseRemindersPanel
-                reminders={counselReminders}
-                capabilities={counselDetailCapabilities}
-                casePersonDisplayName={casePersonDisplayName}
-                onCreate={() => { reminderForm.resetFields(); setReminderOpen(true); }}
-                onDelete={deleteCounselReminder}
-              />},
               {key:"case-logs",label:"案件日志",children:<CaseCaseLogsPanel
                 logs={counselLogs}
                 capabilities={counselDetailCapabilities}
@@ -4042,25 +4059,17 @@ export default function CaseCenterPage({
               {key:"tasks",label:"案件任务",children:<CaseCaseTasksPanel
                 tasks={counselDetailTasks}
                 pagination={counselDetailTaskPagination}
-                vipFilter={counselDetailTaskVipFilter}
-                setVipFilter={setCounselDetailTaskVipFilter}
                 capabilities={counselDetailCapabilities}
                 viewingCase={viewingCounselCase}
                 casePersonDisplayName={casePersonDisplayName}
-                onVipFilterChange={loadCounselDetailTasksPage}
-                taskPageSize={counselDetailTaskPageSize}
                 onOpenTask={openRelatedTask}
                 onCreateTask={openCaseTaskCreator}
               />},
               {key:"customer-tasks",label:"客户任务",children:<CaseCustomerTasksPanel
                 tasks={counselDetailCustomerTasks}
                 pagination={counselDetailCustomerTaskPagination}
-                vipFilter={counselDetailCustomerTaskVipFilter}
-                setVipFilter={setCounselDetailCustomerTaskVipFilter}
                 viewingCase={viewingCounselCase}
                 casePersonDisplayName={casePersonDisplayName}
-                onVipFilterChange={loadCounselDetailCustomerTasksPage}
-                taskPageSize={counselDetailCustomerTaskPageSize}
                 onOpenTask={openRelatedTask}
               />},
               {key:"clues",label:"线索信息",children:<CaseCluesPanel
@@ -4085,10 +4094,6 @@ export default function CaseCenterPage({
           />
             </div>
             <aside className="case-detail-side-panel">
-              <section>
-                <div className="case-detail-side-title"><span>案件提醒</span>{counselDetailCapabilities.can_create_reminder && <Button type="link" size="small" icon={<PlusOutlined />} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增提醒</Button>}</div>
-                {counselReminders.length?counselReminders.slice(0,5).map((item)=><p key={item.id}>{item.data.reminder_date || item.data.deadline}　{item.description}</p>):<p className="case-detail-empty">暂无提醒</p>}
-              </section>
               <section>
                 <div className="case-detail-side-title"><span>案件日志</span>{counselDetailCapabilities.can_create_log && <Space size={0}><Button type="link" size="small" icon={<PlusOutlined />} onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button type="link" size="small" onClick={()=>openCounselLogCreator("refund")}>退费日志</Button></Space>}</div>
                 {counselLogs.length?counselLogs.slice(0,5).map((item)=><p key={item.id}>{item.created_at}　{item.content}</p>):<p className="case-detail-empty">暂无日志</p>}
@@ -4271,27 +4276,6 @@ export default function CaseCenterPage({
           </Form.Item>
         </Form>
       </Modal>
-      <Modal open={reminderOpen} title={`新增案件提醒：${viewingCounselCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={createCounselReminder} onCancel={()=>setReminderOpen(false)}>
-        <Form form={reminderForm} layout="vertical">
-          <div className="form-grid"><Form.Item label="提醒日期" name="reminder_date" rules={[{required:true,message:"请选择提醒日期"}]}><DatePicker style={{width:"100%"}}/></Form.Item><Form.Item label="截止日期" name="deadline" rules={[{required:true,message:"请选择截止日期"}]}><DatePicker style={{width:"100%"}}/></Form.Item></div>
-          <Form.Item label="提醒内容" name="content" rules={[{required:true,message:"请输入提醒内容"},{max:1000}]}><Input.TextArea rows={4}/></Form.Item>
-          <Alert type="info" showIcon title="提醒日期不能晚于截止日期；保存和删除都会写入案件审计记录。"/>
-        </Form>
-      </Modal>
-      <Modal width={680} open={caseEventOpen} title={`${editingCaseEvent ? "编辑" : "新增"}案件事件：${viewingCounselCase?.serial_no || ""}`} okText={editingCaseEvent ? "保存修改" : "创建事件"} cancelText="取消" confirmLoading={caseEventSubmitting} cancelButtonProps={{disabled:caseEventSubmitting}} onOk={saveCaseEvent} onCancel={()=>{setCaseEventOpen(false);setEditingCaseEvent(null);caseEventForm.resetFields();}} destroyOnHidden>
-        <Form form={caseEventForm} layout="vertical">
-          <div className="form-grid">
-            <Form.Item label="事件类型" name="event_type" rules={[{required:true,message:"请输入事件类型"},{max:100}]}><Input placeholder="例如：举证期限、答辩期限" maxLength={100}/></Form.Item>
-            <Form.Item label="事件时间" name="event_time" rules={[{required:true,message:"请选择事件时间"}]}><DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{width:"100%"}}/></Form.Item>
-            <Form.Item label="截止日期" name="deadline"><DatePicker style={{width:"100%"}}/></Form.Item>
-            {editingCaseEvent && <Form.Item label="事件状态" name="status" rules={[{required:true}]}><Select options={[{value:"待处理",label:"待处理"},{value:"已完成",label:"已完成"}]}/></Form.Item>}
-          </div>
-          <Form.Item label="事件内容" name="content" rules={[{required:true,message:"请输入事件内容"},{max:2000}]}><Input.TextArea rows={4} maxLength={2000} showCount/></Form.Item>
-          <Form.Item name="reminder_enabled" valuePropName="checked"><Checkbox>启用提醒</Checkbox></Form.Item>
-          <Form.Item noStyle shouldUpdate={(previous, current) => previous.reminder_enabled !== current.reminder_enabled}>{({getFieldValue})=><Form.Item label="提醒时间" name="remind_at"><DatePicker disabled={!getFieldValue("reminder_enabled")} showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{width:"100%"}} placeholder="启用提醒后可设置"/></Form.Item>}</Form.Item>
-          <Alert type="info" showIcon title="已逾期状态由系统根据未完成事件和截止日期自动计算；创建、修改和删除均会写入案件操作日志。"/>
-        </Form>
-      </Modal>
       <Modal open={caseLogOpen} title={`${caseLogKind === "refund" ? "新增退费日志" : "新增案件日志"}：${caseLogTarget?.serial_no || viewingCounselCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={createCounselLog} onCancel={()=>{setCaseLogOpen(false);setCaseLogTarget(null);}}>
         <Form form={caseLogForm} layout="vertical"><Form.Item label="日志内容" name="content" rules={[{required:true,message:"请输入日志内容"},{max:1000}]}><Input.TextArea rows={5}/></Form.Item></Form>
       </Modal>
@@ -4309,12 +4293,25 @@ export default function CaseCenterPage({
         <Form form={batchFeeForm} layout="vertical">
           <div className="form-grid">
             <Form.Item label="关联材料类型" name="source_file_type" rules={caseRelations ? [{required:true,message:"请选择关联材料类型"}] : []}><Select allowClear options={batchFeeSourceFileTypeOptions} onChange={()=>batchFeeForm.setFieldsValue({fee_type_id:undefined,expense_subtype:undefined})}/></Form.Item>
-            <Form.Item label="费用归属" name="expense_scope" rules={[{required:true}]}><Select options={["律所","平台","内部"].map(value=>({value,label:value}))} onChange={()=>batchFeeForm.setFieldsValue({fee_type_id:undefined,expense_subtype:undefined})}/></Form.Item>
+            <Form.Item label="费用归属" name="expense_scope" rules={[{required:true}]}><Select options={["律所","平台","内部"].map(value=>({value,label:value}))} onChange={()=>batchFeeForm.setFieldsValue({fee_type_id:undefined,expense_subtype:undefined,case_contracts:selectedBatchCases.map((row)=>({case_id:row.id,contract_record_id:undefined}))})}/></Form.Item>
             <Form.Item label="费用类型" name="fee_type_id" rules={[{required:true,message:"请选择末级费用类型"}]}><TreeSelect showSearch treeNodeFilterProp="title" treeDefaultExpandAll treeData={batchFeeTypeTreeOptions} placeholder="请选择系统费用类型" onChange={(value)=>{const option=feeTypeSelection(feeTypeCatalog,value);batchFeeForm.setFieldValue("expense_subtype",option?.name);}}/></Form.Item>
             <Form.Item name="expense_subtype" hidden><Input /></Form.Item>
             <Form.Item label="单案金额" name="amount" rules={[{required:true,message:"请输入单案金额"}]}><InputNumber min={0.01} max={100000000} precision={2} style={{width:"100%"}}/></Form.Item>
             <Form.Item label="经办人账号" name="handler" rules={[{required:true,message:"请输入经办人账号"}]}><Input/></Form.Item>
           </div>
+          {batchExpenseScope !== "内部" && <Form.List name="case_contracts">{(fields) => <div className="case-fee-entry-table" style={{ marginBottom: 12 }}>
+            <div className="case-fee-entry-head"><span>案号</span><span>客户</span><span>关联合同</span></div>
+            {fields.map((field) => {
+              const row = selectedBatchCases[field.name];
+              if (!row) return null;
+              return <div className="case-fee-entry-row" key={field.key}>
+                <span className="case-fee-static-value">{row.serial_no}</span>
+                <span className="case-fee-static-value">{row.customer || "—"}</span>
+                <Form.Item name={[field.name, "case_id"]} hidden><Input /></Form.Item>
+                <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: `请选择 ${row.serial_no} 的合同` }]}><Select showSearch optionFilterProp="label" placeholder="请选择当前客户合同" loading={batchFeeContractsLoading} options={batchFeeContractOptionsByCase[row.id] || []} notFoundContent={batchFeeContractsLoading ? "合同加载中" : "该客户下暂无可用合同"} /></Form.Item>
+              </div>;
+            })}
+          </div>}</Form.List>}
           <Form.Item label="费用说明" name="description"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
@@ -4478,18 +4475,6 @@ export default function CaseCenterPage({
           title="分配包含公证材料的案件时，系统会自动生成公证书及公证费发票原件交接任务。扫描文员提交完成后，文书人员 5 日内可退回重启。"
           style={{ marginBottom: 16 }}
         />
-        <Space style={{ marginBottom: 12 }}>
-          <span>VIP筛选</span>
-          <Select
-            value={caseTaskVipFilter}
-            style={{ width: 130 }}
-            options={[{ value: "all", label: "全部任务" }, { value: "vip", label: "仅VIP任务" }, { value: "normal", label: "非VIP任务" }]}
-            onChange={(value: "all" | "vip" | "normal") => {
-              setCaseTaskVipFilter(value);
-              if (taskCase) void loadCaseTasksPage(taskCase, CASE_TASK_DEFAULT_PAGE, caseTaskPageSize, value).catch((error: any) => message.error(error?.response?.data?.detail || "VIP任务筛选失败"));
-            }}
-          />
-        </Space>
         <Table
           rowKey="id"
           size="small"

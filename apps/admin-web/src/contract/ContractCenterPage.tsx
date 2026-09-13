@@ -77,6 +77,7 @@ ContractSubmitModal,
 InvestigationRegionPickerModal,
 PaymentTypeCreateModal,
 } from "./ContractModals";
+import { findContractPaymentCandidate } from "./contractPaymentCandidateKey";
 import { useContractAttachmentPreview } from "./hooks/useContractAttachmentPreview";
 import { createContractDocumentsActions } from "./services/documentsActions";
 import { createContractFinanceActions } from "./services/financeActions";
@@ -203,7 +204,7 @@ export default function ContractCenterPage({
   const [paymentTypeCreateOpen, setPaymentTypeCreateOpen] = useState(false);
   const [paymentTypeCreating, setPaymentTypeCreating] = useState(false);
   const [selectedPaymentObjectKeys, setSelectedPaymentObjectKeys] = useState<Key[]>([]);
-  const [paymentAmounts, setPaymentAmounts] = useState<Record<number, number>>({});
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<string, number>>({});
   const [invoiceSubjects, setInvoiceSubjects] = useState<Array<{fee_id:number;fee_no:string;case_record_id?:number;case_no:string;case_title?:string;fee_type:string;amount:number;invoiceable_amount:number;expense_scope:string}>>([]);
   const [selectedInvoiceObjectKeys, setSelectedInvoiceObjectKeys] = useState<Key[]>([]);
   const [objectEditing, setObjectEditing] = useState<{id?:number}|null>(null);
@@ -833,6 +834,7 @@ export default function ContractCenterPage({
     get paymentCandidates() { return paymentCandidates; },
     get viewing() { return viewing; },
     get openViewing() { return openViewing; },
+    get onNavigate() { return onNavigate; },
     get invoiceTarget() { return invoiceTarget; },
     get setInvoiceSaving() { return setInvoiceSaving; },
     get invoiceForm() { return invoiceForm; },
@@ -1050,11 +1052,9 @@ export default function ContractCenterPage({
     setPaymentAmounts((previous) => {
       const next = { ...previous };
       keys.forEach((key) => {
-        const id = Number(key);
-        if (next[id] === undefined) {
-          next[id] = Number(
-            paymentCandidates.find((item) => item.contract_object_id === id)?.remaining_amount || 0,
-          );
+        const candidateKey = String(key);
+        if (next[candidateKey] === undefined) {
+          next[candidateKey] = Number(findContractPaymentCandidate(paymentCandidates, candidateKey)?.remaining_amount || 0);
         }
       });
       return next;
@@ -1694,8 +1694,8 @@ export default function ContractCenterPage({
         onPaymentTypeSearch={setPaymentTypeSearch}
         onOpenPaymentTypeCreator={openContractPaymentTypeCreator}
         onPaymentObjectSelectionChange={handlePaymentObjectSelectionChange}
-        onPaymentAmountChange={(objectId, value) =>
-          setPaymentAmounts((previous) => ({ ...previous, [objectId]: value }))
+        onPaymentAmountChange={(candidateKey, value) =>
+          setPaymentAmounts((previous) => ({ ...previous, [candidateKey]: value }))
         }
       />
 

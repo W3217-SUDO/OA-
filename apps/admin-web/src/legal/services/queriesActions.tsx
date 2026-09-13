@@ -112,15 +112,12 @@ export interface CaseQueriesDependencies {
     readonly setCounselPageSize: React.Dispatch<React.SetStateAction<number>>;
     readonly caseTaskPage: number;
     readonly caseTaskPageSize: number;
-    readonly caseTaskVipFilter: "normal" | "all" | "vip";
     readonly applyCaseTaskPageState: (payload: any, fallbackPage: number, fallbackPageSize: number) => CaseTaskPageState;
     readonly counselDetailTaskPage: number;
     readonly counselDetailTaskPageSize: number;
-    readonly counselDetailTaskVipFilter: "normal" | "all" | "vip";
     readonly applyCounselDetailTaskPageState: (payload: any, fallbackPage: number, fallbackPageSize: number) => CaseTaskPageState;
     readonly counselDetailCustomerTaskPage: number;
     readonly counselDetailCustomerTaskPageSize: number;
-    readonly counselDetailCustomerTaskVipFilter: "normal" | "all" | "vip";
     readonly applyCounselDetailCustomerTaskPageState: (payload: any, fallbackPage: number, fallbackPageSize: number) => CaseTaskPageState;
     readonly counselDetailCluePage: number;
     readonly counselDetailCluePageSize: number;
@@ -370,24 +367,24 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             setLoading(false);
         }
     };
-    const loadCaseTasksPage = async (row: CaseRow, nextPage = context.caseTaskPage, nextPageSize = context.caseTaskPageSize, nextVipFilter = context.caseTaskVipFilter) => {
-        const { caseTaskPage, caseTaskPageSize, caseTaskVipFilter, applyCaseTaskPageState } = context;
+    const loadCaseTasksPage = async (row: CaseRow, nextPage = context.caseTaskPage, nextPageSize = context.caseTaskPageSize) => {
+        const { caseTaskPage, caseTaskPageSize, applyCaseTaskPageState } = context;
         const { data } = await api.get(`/cases/${row.id}/tasks`, {
-            params: { page: nextPage, page_size: nextPageSize, is_vip: nextVipFilter === "all" ? undefined : nextVipFilter === "vip" },
+            params: { page: nextPage, page_size: nextPageSize },
         });
         return applyCaseTaskPageState(data, nextPage, nextPageSize);
     };
-    const loadCounselDetailTasksPage = async (row: CaseRow, nextPage = context.counselDetailTaskPage, nextPageSize = context.counselDetailTaskPageSize, nextVipFilter = context.counselDetailTaskVipFilter) => {
-        const { counselDetailTaskPage, counselDetailTaskPageSize, counselDetailTaskVipFilter, applyCounselDetailTaskPageState } = context;
+    const loadCounselDetailTasksPage = async (row: CaseRow, nextPage = context.counselDetailTaskPage, nextPageSize = context.counselDetailTaskPageSize) => {
+        const { counselDetailTaskPage, counselDetailTaskPageSize, applyCounselDetailTaskPageState } = context;
         const { data } = await api.get(`/cases/${row.id}/tasks`, {
-            params: { page: nextPage, page_size: nextPageSize, scope: "case", is_vip: nextVipFilter === "all" ? undefined : nextVipFilter === "vip" },
+            params: { page: nextPage, page_size: nextPageSize, scope: "case" },
         });
         return applyCounselDetailTaskPageState(data, nextPage, nextPageSize);
     };
-    const loadCounselDetailCustomerTasksPage = async (row: CaseRow, nextPage = context.counselDetailCustomerTaskPage, nextPageSize = context.counselDetailCustomerTaskPageSize, nextVipFilter = context.counselDetailCustomerTaskVipFilter) => {
-        const { counselDetailCustomerTaskPage, counselDetailCustomerTaskPageSize, counselDetailCustomerTaskVipFilter, applyCounselDetailCustomerTaskPageState } = context;
+    const loadCounselDetailCustomerTasksPage = async (row: CaseRow, nextPage = context.counselDetailCustomerTaskPage, nextPageSize = context.counselDetailCustomerTaskPageSize) => {
+        const { counselDetailCustomerTaskPage, counselDetailCustomerTaskPageSize, applyCounselDetailCustomerTaskPageState } = context;
         const { data } = await api.get(`/cases/${row.id}/tasks`, {
-            params: { page: nextPage, page_size: nextPageSize, scope: "customer", is_vip: nextVipFilter === "all" ? undefined : nextVipFilter === "vip" },
+            params: { page: nextPage, page_size: nextPageSize, scope: "customer" },
         });
         return applyCounselDetailCustomerTaskPageState(data, nextPage, nextPageSize);
     };

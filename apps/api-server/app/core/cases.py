@@ -485,9 +485,11 @@ def _case_conflict_entities(record: BusinessRecord) -> list[str]:
 
 def _case_commission_person_tokens(data: dict, fields: tuple[str, ...]) -> list[str]:
     # A role is stored in both stable username and legacy display-name aliases.
-    # Use the first populated projection so migrated aliases cannot add stale or
-    # duplicate people to the same commission calculation.
-    for field in fields:
+    # Stable accounts win independently of the caller's display-field ordering.
+    # Never merge a display projection after selecting a populated account field.
+    account_fields = tuple(field for field in fields if field.endswith(("_usernames", "_username")))
+    display_fields = tuple(field for field in fields if field not in account_fields)
+    for field in (*account_fields, *display_fields):
         raw = data.get(field)
         tokens: list[str] = []
         values = raw if isinstance(raw, list) else [raw]
@@ -501,7 +503,25 @@ def _case_commission_person_tokens(data: dict, fields: tuple[str, ...]) -> list[
     return []
 
 
-async def _commission_scheme_for_case(employee_id: int, case_date: date, db: AsyncSession) -> dict | None:
+def _case_commission_role_person_tokens(data: dict, role: dict) -> list[str]:
+    tokens = _case_commission_person_tokens(data, role["fields"])
+    if tokens or role["key"] != "hearing":
+        return tokens
+    # Match the case header's first-handling-lawyer fallback without changing roles.
+    return _case_commission_person_tokens(data, (
+        "handling_lawyer_usernames", "handling_lawyer_username", "handling_lawyers",
+    ))[:1]
+
+
+def _round_case_commission_amount(value: float) -> float:
+    """Use the finance rounding rule lazily so the cases module has no import cycle."""
+    from app.core.finance import (
+        _round_fee_amount,
+    )
+    return _round_fee_amount(value)
+
+
+async def _commission_scheme_record_for_case(employee_id: int, case_date: date, db: AsyncSession) -> HrSubrecord | None:
     records = list((await db.scalars(select(HrSubrecord).where(
         HrSubrecord.employee_id == employee_id,
         HrSubrecord.kind == "commission",
@@ -514,8 +534,129 @@ async def _commission_scheme_for_case(employee_id: int, case_date: date, db: Asy
         except ValueError:
             continue
         if start <= case_date and (end is None or case_date <= end):
-            return data
+            return record
     return None
+
+
+async def _commission_scheme_for_case(employee_id: int, case_date: date, db: AsyncSession) -> dict | None:
+    record = await _commission_scheme_record_for_case(employee_id, case_date, db)
+    return dict(record.data or {}) if record else None
+
+
+def _is_agency_fee_record(item: BusinessRecord) -> bool:
+    data = item.data or {}
+    fee_types = {
+        str(value or "").strip()
+        for value in (data.get("expense_subtype"), data.get("fee_type"), data.get("base_fee_type"), item.title)
+        if str(value or "").strip()
+    }
+    return any("代理费" in fee_type for fee_type in fee_types)
+
+
+async def _case_commission_preview_for_amount(
+    case_record: BusinessRecord,
+    base_amount: float,
+    db: AsyncSession,
+    *,
+    employee_index: dict[str, BusinessRecord | None] | None = None,
+    active_users_by_username: dict[str, User] | None = None,
+    scheme_cache: dict[tuple[int, date], HrSubrecord | None] | None = None,
+) -> dict:
+    from app.core.formatters import (
+        _dashboard_case_date,
+    )
+    from app.core.system import (
+        _commission_employee_index,
+    )
+    base_amount = _round_case_commission_amount(base_amount)
+    if base_amount <= 0:
+        raise HTTPException(status_code=422, detail="所选代理费金额必须大于 0")
+
+    employee_index = employee_index if employee_index is not None else await _commission_employee_index(db)
+    if active_users_by_username is None:
+        active_users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
+        active_users_by_username = {user.username.lower(): user for user in active_users}
+    scheme_cache = scheme_cache if scheme_cache is not None else {}
+    case_data = case_record.data or {}
+    resolved_case_date = _dashboard_case_date(case_record)
+    case_date = resolved_case_date.date() if resolved_case_date != datetime.min else date.today()
+    rows: list[dict] = []
+    missing: list[str] = []
+    personnel: list[dict] = []
+    seen_role_employees: set[tuple[str, int]] = set()
+    for role in CASE_COMMISSION_ROLES:
+        for token in _case_commission_role_person_tokens(case_data, role):
+            employee = employee_index.get(token.lower())
+            if not employee:
+                reason = "人员关联存在同名或重复档案歧义" if token.lower() in employee_index else "人员未关联到在职员工档案"
+                missing.append(f"{token}（{role['label']}）：{reason}")
+                continue
+            pair = (str(role["key"]), employee.id)
+            if pair in seen_role_employees:
+                continue
+            seen_role_employees.add(pair)
+            employee_data = employee.data or {}
+            username = str((employee_data.get("username") if "username" in employee_data else employee.owner) or "").strip()
+            account_employee = employee_index.get(username.lower()) if username else None
+            if username and (account_employee is None or account_employee.id != employee.id):
+                missing.append(f"{token}（{role['label']}）：当前账号未唯一绑定此员工档案，不能确定提成收款人")
+                continue
+            user = active_users_by_username.get(username.lower()) if username else None
+            display_name = str(employee.title or token).strip()
+            if not user:
+                missing.append(f"{display_name}（{role['label']}）：人员未关联有效登录账号（账号未绑定、不存在或已停用）")
+                continue
+            username = user.username
+            display_name = str(user.display_name or employee.title or token).strip()
+            personnel.append({"role": role["label"], "username": username, "display_name": display_name})
+            scheme_key = (employee.id, case_date)
+            if scheme_key not in scheme_cache:
+                scheme_cache[scheme_key] = await _commission_scheme_record_for_case(employee.id, case_date, db)
+            scheme_record = scheme_cache[scheme_key]
+            if scheme_record is None:
+                missing.append(f"{display_name}（{role['label']}）：无覆盖案件日期 {case_date} 的有效提成方案")
+                continue
+            scheme = dict(scheme_record.data or {}) if scheme_record else {}
+            rate = float(scheme.get(role["rate_field"]) or 0)
+            fixed = float(scheme.get(role["fixed_field"]) or 0)
+            if rate <= 0 and fixed <= 0:
+                missing.append(f"{display_name}（{role['label']}）：有效方案的角色比例与固定提成均为零")
+                continue
+            if rate > 0:
+                amount = _round_case_commission_amount(base_amount * rate)
+                rows.append({
+                    "preview_key": f"{role['key']}:{employee.id}:rate",
+                    "case_no": case_record.serial_no, "commission_role": role["label"],
+                    "commission_type": role["rate_name"], "expense_subtype": role["subtype"],
+                    "employee_username": username, "employee_display_name": display_name,
+                    "base_amount": base_amount, "rate": rate, "fixed_amount": 0,
+                    "reference_commission": amount, "actual_amount": amount, "remark": "",
+                    "calculation_source": "case_commission_scheme", "calculation_kind": "rate",
+                    "scheme_id": scheme_record.id if scheme_record else None,
+                    "scheme_start_date": str(scheme.get("start_date") or ""),
+                    "scheme_end_date": str(scheme.get("end_date") or ""),
+                })
+            if fixed > 0:
+                amount = _round_case_commission_amount(fixed)
+                rows.append({
+                    "preview_key": f"{role['key']}:{employee.id}:fixed",
+                    "case_no": case_record.serial_no, "commission_role": role["label"],
+                    "commission_type": role["fixed_name"], "expense_subtype": role["subtype"],
+                    "employee_username": username, "employee_display_name": display_name,
+                    "base_amount": base_amount, "rate": 0, "fixed_amount": amount,
+                    "reference_commission": amount, "actual_amount": amount, "remark": "",
+                    "calculation_source": "case_commission_scheme", "calculation_kind": "fixed",
+                    "scheme_id": scheme_record.id if scheme_record else None,
+                    "scheme_start_date": str(scheme.get("start_date") or ""),
+                    "scheme_end_date": str(scheme.get("end_date") or ""),
+                })
+    if not rows and not missing:
+        missing.append("案件未设置可提成的案件人员")
+    return {
+        "case": {"id": case_record.id, "serial_no": case_record.serial_no, "title": case_record.title},
+        "case_date": str(case_date), "personnel": personnel, "items": rows,
+        "missing_messages": list(dict.fromkeys(missing)),
+    }
 
 
 async def _case_commission_preview(
@@ -524,17 +665,8 @@ async def _case_commission_preview(
     identity: dict,
     db: AsyncSession,
 ) -> dict:
-    from app.core.finance import (
-        _round_fee_amount,
-    )
-    from app.core.formatters import (
-        _dashboard_case_date,
-    )
     from app.core.permissions import (
         _case_detail_action_capabilities, _ensure_record_module,
-    )
-    from app.core.system import (
-        _commission_employee_index,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     if not (await _case_detail_action_capabilities(case_record, identity, db))["can_create_finance"]:
@@ -545,80 +677,130 @@ async def _case_commission_preview(
         raise HTTPException(status_code=404, detail="所选案件费用不存在")
     if int(source_data.get("case_id") or 0) != case_record.id and str(source_data.get("case_no") or "") != case_record.serial_no:
         raise HTTPException(status_code=409, detail="所选费用不属于当前案件")
-    source_fee_types = {
-        str(value or "").strip()
-        for value in (
-            source_data.get("expense_subtype"), source_data.get("fee_type"),
-            source_data.get("base_fee_type"), source_fee.title,
-        )
-        if str(value or "").strip()
-    }
-    if not any("代理费" in fee_type for fee_type in source_fee_types):
+    if not _is_agency_fee_record(source_fee):
         raise HTTPException(status_code=422, detail="新建提成必须选择一条代理费")
-    base_amount = _round_fee_amount(float(source_data.get("amount") or 0))
-    if base_amount <= 0:
-        raise HTTPException(status_code=422, detail="所选代理费金额必须大于 0")
-
-    employee_index = await _commission_employee_index(db)
-    case_data = case_record.data or {}
-    resolved_case_date = _dashboard_case_date(case_record)
-    case_date = resolved_case_date.date() if resolved_case_date != datetime.min else date.today()
-    rows: list[dict] = []
-    missing: list[str] = []
-    personnel: list[dict] = []
-    seen_role_employees: set[tuple[str, int]] = set()
-    for role in CASE_COMMISSION_ROLES:
-        for token in _case_commission_person_tokens(case_data, role["fields"]):
-            employee = employee_index.get(token.lower())
-            if not employee:
-                missing.append(f"{token}未设{role['label']}提成")
-                continue
-            pair = (str(role["key"]), employee.id)
-            if pair in seen_role_employees:
-                continue
-            seen_role_employees.add(pair)
-            employee_data = employee.data or {}
-            username = str(employee_data.get("username") or employee.owner or "").strip()
-            display_name = str(employee.title or token).strip()
-            personnel.append({"role": role["label"], "username": username, "display_name": display_name})
-            scheme = await _commission_scheme_for_case(employee.id, case_date, db)
-            rate = float((scheme or {}).get(role["rate_field"]) or 0)
-            fixed = float((scheme or {}).get(role["fixed_field"]) or 0)
-            if rate <= 0 and fixed <= 0:
-                missing.append(f"{display_name}未设{role['label']}提成")
-                continue
-            if rate > 0:
-                amount = _round_fee_amount(base_amount * rate)
-                rows.append({
-                    "preview_key": f"{role['key']}:{employee.id}:rate",
-                    "case_no": case_record.serial_no, "commission_role": role["label"],
-                    "commission_type": role["rate_name"], "expense_subtype": role["subtype"],
-                    "employee_username": username, "employee_display_name": display_name,
-                    "base_amount": base_amount, "rate": rate, "fixed_amount": 0,
-                    "reference_commission": amount, "actual_amount": amount, "remark": "",
-                })
-            if fixed > 0:
-                amount = _round_fee_amount(fixed)
-                rows.append({
-                    "preview_key": f"{role['key']}:{employee.id}:fixed",
-                    "case_no": case_record.serial_no, "commission_role": role["label"],
-                    "commission_type": role["fixed_name"], "expense_subtype": role["subtype"],
-                    "employee_username": username, "employee_display_name": display_name,
-                    "base_amount": base_amount, "rate": 0, "fixed_amount": amount,
-                    "reference_commission": amount, "actual_amount": amount, "remark": "",
-                })
+    base_amount = _round_case_commission_amount(float(source_data.get("amount") or 0))
+    preview = await _case_commission_preview_for_amount(case_record, base_amount, db)
     return {
-        "case": {"id": case_record.id, "serial_no": case_record.serial_no, "title": case_record.title},
+        **preview,
         "source_fee": {
             "id": source_fee.id, "serial_no": source_fee.serial_no,
             "amount": base_amount, "fee_type": "代理费",
-            "refund_amount": _round_fee_amount(float(source_data.get("refund_amount") or source_data.get("refund_requested_amount") or 0)),
-            "invoice_over_amount": _round_fee_amount(float(source_data.get("invoice_over_amount") or source_data.get("over_invoice_amount") or 0)),
-            "cost_over_amount": _round_fee_amount(float(source_data.get("cost_over_amount") or source_data.get("over_invoice_cost") or 0)),
+            "refund_amount": _round_case_commission_amount(float(source_data.get("refund_amount") or source_data.get("refund_requested_amount") or 0)),
+            "invoice_over_amount": _round_case_commission_amount(float(source_data.get("invoice_over_amount") or source_data.get("over_invoice_amount") or 0)),
+            "cost_over_amount": _round_case_commission_amount(float(source_data.get("cost_over_amount") or source_data.get("over_invoice_cost") or 0)),
         },
-        "case_date": str(case_date), "personnel": personnel, "items": rows,
-        "missing_messages": list(dict.fromkeys(missing)),
     }
+
+
+def _case_commission_detail_from_preview(item: dict, remark: str = "") -> dict:
+    return {
+        "employee_username": item["employee_username"],
+        "employee_display_name": item["employee_display_name"],
+        "payee": item["employee_display_name"],
+        "commission_type": item["commission_type"],
+        "commission_role": item["commission_role"],
+        "amount": item["actual_amount"],
+        "actual_commission": item["actual_amount"],
+        "base_amount": item["base_amount"],
+        "reference_commission": item["reference_commission"],
+        "rate": item["rate"],
+        "fixed_amount": item["fixed_amount"],
+        "remark": remark,
+        "calculation_source": "case_commission_scheme",
+        "calculation_key": item["preview_key"],
+        "calculation_kind": item["calculation_kind"],
+        "scheme_id": item["scheme_id"],
+        "scheme_start_date": item["scheme_start_date"],
+        "scheme_end_date": item["scheme_end_date"],
+    }
+
+
+def _commission_amount(detail: dict) -> float:
+    try:
+        return _round_case_commission_amount(float(detail.get("actual_commission") or detail.get("amount") or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _case_commission_personnel_changed(before: dict, after: dict) -> bool:
+    return any(
+        _case_commission_role_person_tokens(before, role)
+        != _case_commission_role_person_tokens(after, role)
+        for role in CASE_COMMISSION_ROLES
+    )
+
+
+async def _recalculate_case_draft_commissions(case_record: BusinessRecord, db: AsyncSession, operator: str) -> dict:
+    """Refresh only server-derived rows on agency-fee drafts after role changes."""
+    candidates = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance",
+        BusinessRecord.status == "草稿",
+        or_(
+            BusinessRecord.data["case_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+        ),
+    ))).all())
+    drafts = [
+        item for item in candidates
+        if _is_agency_fee_record(item)
+    ]
+    if not drafts:
+        return {"updated_fee_ids": [], "missing_messages": []}
+    from app.core.system import (
+        _commission_employee_index,
+    )
+    employee_index = await _commission_employee_index(db)
+    active_users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
+    active_users_by_username = {user.username.lower(): user for user in active_users}
+    scheme_cache: dict[tuple[int, date], HrSubrecord | None] = {}
+    plans: list[tuple[BusinessRecord, dict, list[str]]] = []
+    missing_messages: list[str] = []
+    for fee in drafts:
+        data = dict(fee.data or {})
+        details = data.get("commission_details") if isinstance(data.get("commission_details"), list) else []
+        automatic = [item for item in details if isinstance(item, dict) and item.get("calculation_source") == "case_commission_scheme"]
+        if data.get("commission_mode") != "automatic":
+            continue
+        preview = await _case_commission_preview_for_amount(
+            case_record, float(data.get("amount") or 0), db,
+            employee_index=employee_index,
+            active_users_by_username=active_users_by_username,
+            scheme_cache=scheme_cache,
+        )
+        remarks = {str(item.get("calculation_key") or ""): str(item.get("remark") or "") for item in automatic}
+        generated = [
+            _case_commission_detail_from_preview(item, remarks.get(item["preview_key"], ""))
+            for item in preview["items"]
+        ]
+        total = sum(_commission_amount(item) for item in generated)
+        fee_amount = _round_case_commission_amount(float(data.get("amount") or 0))
+        if total > fee_amount + 0.001:
+            raise HTTPException(
+                status_code=409,
+                detail=f"案件 {case_record.serial_no} 的草稿代理费 {fee.serial_no} 重算后员工提成合计不能大于律师代理费金额",
+            )
+        next_data = {
+            **data,
+            "commission_mode": "automatic",
+            "commission_details": generated,
+            "commission_missing_messages": preview["missing_messages"],
+            "commission_recalculated_at": datetime.now().isoformat(timespec="seconds"),
+            "commission_recalculated_by": operator,
+        }
+        plans.append((fee, next_data, preview["missing_messages"]))
+        missing_messages.extend(preview["missing_messages"])
+    updated_fee_ids = []
+    for fee, data, _missing in plans:
+        fee.data = data
+        updated_fee_ids.append(fee.id)
+    if updated_fee_ids:
+        db.add(WorkflowEvent(
+            record_id=case_record.id, action="重算草稿代理费提成",
+            from_status=case_record.status, to_status=case_record.status, operator=operator,
+            comment=f"已重算草稿代理费：{'、'.join(str(item) for item in updated_fee_ids)}",
+        ))
+    return {"updated_fee_ids": updated_fee_ids, "missing_messages": list(dict.fromkeys(missing_messages))}
 
 
 def _case_event_status(item: CaseEvent) -> str:

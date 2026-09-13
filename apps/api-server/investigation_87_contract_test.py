@@ -3,6 +3,7 @@
 import unittest
 from datetime import date
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -126,7 +127,7 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(case.data["client_position"], "原告")
         self.assertEqual(case.data["cause_or_charge"], "商标侵权")
 
-    async def test_case_without_source_contract_can_still_be_created(self):
+    async def test_case_without_source_contract_is_rejected_without_mutating_clue(self):
         async with self.sessions() as db:
             db.add_all([
                 User(username="admin", display_name="管理员", department="上海", password_hash="x", role="admin", is_active=True),
@@ -146,12 +147,112 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
                 ),
                 IDENTITY, db,
             )
-            case = await db.get(BusinessRecord, result["created_ids"][0])
+            await db.refresh(clue)
+            cases = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case"))).all())
+
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["failed"], 1)
+        self.assertIn("未解析到同客户合同", result["errors"][0]["error"])
+        self.assertEqual(cases, [])
+        self.assertEqual(clue.status, "已取证")
+        self.assertNotIn("converted_case_id", clue.data)
+
+    async def test_case_with_ambiguous_source_contract_is_rejected_without_mutating_clue(self):
+        async with self.sessions() as db:
+            db.add_all([
+                User(username="admin", display_name="管理员", department="上海", password_hash="x", role="admin", is_active=True),
+                User(username="fwl", display_name="范文林", department="上海", password_hash="x", role="user", is_active=True),
+            ])
+            first_contract = BusinessRecord(
+                module="contract", serial_no="HT-CODEX-87-AMBIGUOUS-A", title="CODEX歧义合同A", customer="CODEX客户",
+                status="审批通过", owner="admin", department="上海", data={},
+            )
+            second_contract = BusinessRecord(
+                module="contract", serial_no="HT-CODEX-87-AMBIGUOUS-B", title="CODEX歧义合同B", customer="CODEX客户",
+                status="审批通过", owner="admin", department="上海", data={},
+            )
+            db.add_all([first_contract, second_contract])
+            await db.flush()
+            task = BusinessRecord(
+                module="task", serial_no="RW-CODEX-87-AMBIGUOUS", title="歧义来源调查任务", customer="CODEX客户",
+                status="已完成", owner="admin", department="上海", data={"contract_id": first_contract.id},
+            )
+            db.add(task)
+            await db.flush()
+            clue = BusinessRecord(
+                module="clue", serial_no="XS-CODEX-87-AMBIGUOUS", title="歧义合同已取证线索", customer="CODEX客户",
+                status="已取证", owner="admin", department="上海",
+                data={"source_task_id": task.id, "contract_id": second_contract.id, "cause_or_charge": "商标侵权"},
+            )
+            db.add(clue)
+            await db.commit()
+            result = await batch_create_cases_from_clues(
+                BatchClueCaseInput(
+                    clue_ids=[clue.id], case_type="民事案件", cause_or_charge="商标侵权",
+                    handling_lawyer="管理员", assistant="fwl",
+                ),
+                IDENTITY, db,
+            )
+            await db.refresh(clue)
+            cases = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case"))).all())
+
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["failed"], 1)
+        self.assertIn("匹配到多个合同", result["errors"][0]["error"])
+        self.assertEqual(cases, [])
+        self.assertEqual(clue.status, "已取证")
+        self.assertNotIn("converted_case_id", clue.data)
+
+    async def test_mixed_batch_keeps_partial_success_when_another_clue_has_no_contract(self):
+        async with self.sessions() as db:
+            db.add_all([
+                User(username="admin", display_name="管理员", department="上海", password_hash="x", role="admin", is_active=True),
+                User(username="fwl", display_name="范文林", department="上海", password_hash="x", role="user", is_active=True),
+            ])
+            contract = BusinessRecord(
+                module="contract", serial_no="HT-CODEX-87-MIXED", title="CODEX混合批次合同", customer="CODEX客户",
+                status="审批通过", owner="admin", department="上海", data={},
+            )
+            db.add(contract)
+            await db.flush()
+            task = BusinessRecord(
+                module="task", serial_no="RW-CODEX-87-MIXED", title="混合批次来源调查任务", customer="CODEX客户",
+                status="已完成", owner="admin", department="上海", data={"contract_id": contract.id},
+            )
+            db.add(task)
+            await db.flush()
+            linked_clue = BusinessRecord(
+                module="clue", serial_no="XS-CODEX-87-MIXED-LINKED", title="有合同已取证线索", customer="CODEX客户",
+                status="已取证", owner="admin", department="上海",
+                data={"source_task_id": task.id, "cause_or_charge": "商标侵权"},
+            )
+            unlinked_clue = BusinessRecord(
+                module="clue", serial_no="XS-CODEX-87-MIXED-UNLINKED", title="无合同已取证线索", customer="CODEX客户",
+                status="已取证", owner="admin", department="上海", data={"cause_or_charge": "商标侵权"},
+            )
+            db.add_all([linked_clue, unlinked_clue])
+            await db.commit()
+            result = await batch_create_cases_from_clues(
+                BatchClueCaseInput(
+                    clue_ids=[linked_clue.id, unlinked_clue.id], case_type="民事案件", cause_or_charge="商标侵权",
+                    handling_lawyer="管理员", assistant="fwl",
+                ),
+                IDENTITY, db,
+            )
+            await db.refresh(linked_clue)
+            await db.refresh(unlinked_clue)
+            cases = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case"))).all())
 
         self.assertEqual(result["created"], 1)
-        self.assertEqual(case.status, "等待公证书")
-        self.assertIsNone(case.data["contract_id"])
-        self.assertEqual(case.customer, "CODEX客户")
+        self.assertEqual(result["failed"], 1)
+        self.assertEqual(result["errors"][0]["clue_id"], unlinked_clue.id)
+        self.assertIn("未解析到同客户合同", result["errors"][0]["error"])
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0].data["contract_id"], contract.id)
+        self.assertEqual(linked_clue.status, "已转案件")
+        self.assertIn("converted_case_id", linked_clue.data)
+        self.assertEqual(unlinked_clue.status, "已取证")
+        self.assertNotIn("converted_case_id", unlinked_clue.data)
 
     async def test_legacy_clue_binding_repairs_source_task_and_customer_before_case_generation(self):
         async with self.sessions() as db:

@@ -1108,21 +1108,39 @@ def _vip_message_dict(message: VipTaskMessage) -> dict:
     }
 
 
-async def _commission_employee_index(db: AsyncSession) -> dict[str, BusinessRecord]:
+async def _commission_employee_index(db: AsyncSession) -> dict[str, BusinessRecord | None]:
     employees = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "hr"))).all())
     users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
     users_by_username = {user.username.lower(): user for user in users}
-    index: dict[str, BusinessRecord] = {}
+    accounts: dict[str, BusinessRecord | None] = {}
+    aliases: dict[str, BusinessRecord | None] = {}
+
+    def bind(index: dict[str, BusinessRecord | None], key: str, employee: BusinessRecord) -> None:
+        if key not in index:
+            index[key] = employee
+        elif index[key] is not None and index[key].id != employee.id:
+            index[key] = None
+
     for employee in employees:
         data = employee.data or {}
         if data.get("is_active") is False or employee.status in {"离职", "停用"}:
             continue
-        username = str(data.get("username") or employee.owner or "").strip()
+        # An explicitly empty username is an unlinked HR profile; owner is its creator.
+        username = str((data.get("username") if "username" in data else employee.owner) or "").strip()
+        owner = str(employee.owner or "").strip()
         user = users_by_username.get(username.lower()) if username else None
-        for value in (username, employee.owner, employee.title, user.display_name if user else ""):
+        if username:
+            bind(accounts, username.lower(), employee)
+        # Retain legacy owner lookup for diagnosis, but never treat it as proof
+        # that a conflicting data.username belongs to this employee.
+        historical_owner = owner if username and owner.lower() not in users_by_username else ""
+        for value in (employee.title, historical_owner, user.display_name if user else ""):
             key = str(value or "").strip().lower()
             if key:
-                index.setdefault(key, employee)
+                bind(aliases, key, employee)
+    # Account identifiers take precedence over names, regardless of query order.
+    index = {key: employee for key, employee in aliases.items() if key not in users_by_username}
+    index.update(accounts)
     return index
 
 

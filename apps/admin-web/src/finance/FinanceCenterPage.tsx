@@ -849,7 +849,6 @@ export default function FinanceCenterPage({
   const watchedFeeType = Form.useWatch("fee_type", feeForm);
   const [feeTypeOverride, setFeeTypeOverride] = useState("");
   const selectedFeeType = watchedFeeType || feeTypeOverride;
-  const feeCommissionDetails = Form.useWatch("commission_details", feeForm) || [];
   const invoiceFeeOptions = useMemo(() => {
     if (!invoiceEditTarget) return invoiceCandidateFees;
     return Array.from(
@@ -1385,6 +1384,16 @@ export default function FinanceCenterPage({
   };
   const openFeeEdit = (row: Fee) => {
     const data = row.data || {};
+    const commissionDetails = Array.isArray(data.commission_details)
+      ? data.commission_details.map((detail: Record<string, any>) => ({
+          ...detail,
+          employee_username: detail.employee_username || detail.username || "",
+          commission_type: detail.commission_type || "员工提成",
+          amount: detail.amount ?? detail.actual_commission,
+          remark: detail.remark || "",
+        }))
+      : [];
+    const commissionMode = data.commission_mode === "automatic" ? "automatic" : "manual";
     feeForm.setFieldsValue({
       title: row.title,
       customer: row.customer,
@@ -1400,14 +1409,8 @@ export default function FinanceCenterPage({
       case_no: data.case_no || "",
       case_record_id: data.case_record_id || data.case_id || undefined,
       contract_record_id: data.contract_record_id || data.contract_id || undefined,
-      commission_details: Array.isArray(data.commission_details)
-        ? data.commission_details.map((detail: Record<string, any>) => ({
-            employee_username: detail.employee_username || detail.username || "",
-            commission_type: detail.commission_type || "员工提成",
-            amount: detail.amount ?? detail.actual_commission,
-            remark: detail.remark || "",
-          }))
-        : [],
+      commission_mode: data.fee_type === "代理费" ? commissionMode : undefined,
+      commission_details: commissionDetails,
     });
     setFeeTypeOverride(data.fee_type || "");
     setFeeEditTarget(row);
@@ -5490,7 +5493,6 @@ export default function FinanceCenterPage({
     selectedFeeType,
     createFee,
     closeFeeModal,
-    feeCommissionDetails,
 
     // Legacy history
     legacyFinanceRows,

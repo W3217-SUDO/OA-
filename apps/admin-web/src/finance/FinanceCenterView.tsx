@@ -36,6 +36,7 @@ refundPageSizeOptions,
 refundStatusOptions,
 } from "../financeRefundHelpers.mjs";
 import { FeeReviewDrawer } from "./FeeReviewDrawer";
+import { FeeCommissionEditor } from "./FeeCommissionEditor";
 import { FinanceStatsCards } from "./FinanceStatsCards";
 import { IncomingAllocationModal } from "./IncomingAllocationModal";
 import { LegacyHistoryPanel } from "./LegacyHistoryPanel";
@@ -458,7 +459,6 @@ export interface FinanceCenterViewProps {
   selectedFeeType: string;
   createFee: () => Promise<void>;
   closeFeeModal: () => void;
-  feeCommissionDetails: any[];
 
   // Legacy history
   legacyFinanceRows: any[];
@@ -875,7 +875,6 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
     selectedFeeType,
     createFee,
     closeFeeModal,
-    feeCommissionDetails,
     legacyFinanceRows,
     legacyFinanceLoading,
     legacyFinanceMeta,
@@ -3961,76 +3960,11 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
           <Form.Item label="说明" name="description">
             <Input.TextArea rows={2} />
           </Form.Item>
-          {selectedFeeType === "代理费" && (
-            <Form.List name="commission_details">
-              {(fields, { add, remove }) => (
-                <section className="finance-fee-commission-details">
-                  <div className="finance-fee-commission-header">
-                    <strong>员工提成</strong>
-                    <Button
-                      type="dashed"
-                      icon={<PlusOutlined />}
-                      onClick={() =>
-                        add({ commission_type: "员工提成", amount: undefined, remark: "" })
-                      }
-                    >
-                      新建员工提成
-                    </Button>
-                  </div>
-                  {fields.map((field) => (
-                    <div className="finance-fee-commission-row" key={field.key}>
-                      <Form.Item
-                        {...field}
-                        name={[field.name, "employee_username"]}
-                        label="员工"
-                        rules={[{ required: true, message: "请选择员工" }]}
-                      >
-                        <Select
-                          showSearch
-                          optionFilterProp="label"
-                          options={financePeople.map((person) => ({
-                            value: person.username,
-                            label: person.label,
-                          }))}
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        {...field}
-                        name={[field.name, "commission_type"]}
-                        label="提成类型"
-                        rules={[{ required: true }]}
-                      >
-                        <Input />
-                      </Form.Item>
-                      <Form.Item
-                        {...field}
-                        name={[field.name, "amount"]}
-                        label="提成金额"
-                        rules={[{ required: true, message: "请输入提成金额" }]}
-                      >
-                        <InputNumber min={0.01} precision={2} style={{ width: "100%" }} />
-                      </Form.Item>
-                      <Form.Item {...field} name={[field.name, "remark"]} label="备注">
-                        <Input />
-                      </Form.Item>
-                      <Button
-                        danger
-                        type="text"
-                        aria-label="删除员工提成"
-                        icon={<DeleteOutlined />}
-                        onClick={() => remove(field.name)}
-                      />
-                    </div>
-                  ))}
-                  {feeCommissionDetails.length > 0 && (
-                    <div className="finance-fee-commission-total">
-                      已分配员工提成：{feeCommissionDetails.reduce((sum: number, detail: Record<string, any>) => sum + Number(detail?.amount || 0), 0).toFixed(2)}
-                    </div>
-                  )}
-                </section>
-              )}
-            </Form.List>
-          )}
+          <FeeCommissionEditor
+            form={feeForm}
+            isAgencyFee={selectedFeeType === "代理费"}
+            people={financePeople.map((person) => ({ value: person.username, label: person.label }))}
+          />
         </Form>
       </Modal>
       <Drawer

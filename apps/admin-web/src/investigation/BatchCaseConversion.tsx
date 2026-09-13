@@ -26,6 +26,9 @@ export default function BatchCaseConversion({
   onCancel,
   onBindContract,
 }: BatchCaseConversionProps) {
+  const unresolvedContracts = resolvedClueContracts.filter((item) => !item.contract);
+  const hasUnresolvedContracts = unresolvedContracts.length > 0;
+
   return (
     <Modal
       open={open}
@@ -34,22 +37,23 @@ export default function BatchCaseConversion({
       cancelText="取消"
       onOk={onOk}
       onCancel={onCancel}
+      okButtonProps={{ disabled: hasUnresolvedContracts }}
     >
       <Steps current={batchStep} size="small" items={[{ title: "基本信息" }, { title: "生成结果" }]} style={{ marginBottom: 20 }} />
       <Alert
         type="info"
         showIcon
-        title="合同由线索来源调查任务自动绑定；每条已取证线索生成一个新案待分配案件。"
+        title="每条线索必须从来源调查任务解析到唯一有效的同客户合同后才能生成案件。"
         style={{ marginBottom: 15 }}
       />
       <Form form={batchForm} layout="vertical">
         {batchStep === 0 && <>
           <Descriptions size="small" bordered column={1} items={resolvedClueContracts.map((item) => ({ key: item.clue_id, label: `${item.clue_no || "线索"}｜${item.customer || ""}`, children: item.contract ? `${item.contract.serial_no}｜${item.contract.title}` : item.error || "未解析到合同" }))} />
-          {resolvedClueContracts.some((item) => !item.contract) && (
+          {hasUnresolvedContracts && (
             selectedClues.length === 1 && contractOptions.length > 0 ? (
               <>
                 <Form.Item
-                  label="补充来源任务合同（可选）"
+                  label="补绑来源任务合同"
                   name="source_contract_record_id"
                   style={{ marginTop: 16 }}
                 >
@@ -64,15 +68,15 @@ export default function BatchCaseConversion({
                   />
                 </Form.Item>
                 <Button onClick={onBindContract}>
-                  绑定并自动带入
+                  绑定合同后继续
                 </Button>
               </>
             ) : (
               <Alert
-                type="info"
+                type="error"
                 showIcon
-                message="来源调查任务未自动关联合同"
-                description="本次可继续生成案件；案件将保留客户和线索关联，合同关联可在后续补全。"
+                message="本次不能生成案件"
+                description="请取消后逐条补绑唯一有效的同客户合同，再重新选择线索生成案件。"
                 style={{ marginTop: 16 }}
               />
             )

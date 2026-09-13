@@ -1565,12 +1565,14 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         if clue_data.get("converted_case_id") or clue.status == "已转案件": errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索已经转为案件"}); continue
         if clue.status not in {"已取证", "待公证"}: errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "线索完成取证登记后才能转案件"}); continue
         contract, contract_error = await _resolve_clue_source_contract(clue, identity, db)
-        if contract and not _contract_allows_downstream_creation(contract):
+        if contract_error or not contract:
+            errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": f"生成案件前必须绑定唯一有效的同客户合同：{contract_error or '线索来源调查任务未解析到同客户合同'}"}); continue
+        if not _contract_allows_downstream_creation(contract):
             errors.append({"clue_id": clue_id, "clue_no": clue.serial_no, "error": "来源任务关联合同状态不支持生成案件"}); continue
-        contract_data = (contract.data or {}) if contract else {}
-        case_customer = contract.customer if contract else clue.customer
-        case_department = contract.department if contract else clue.department
-        contract_reference = contract.serial_no if contract else "未关联合同"
+        contract_data = contract.data or {}
+        case_customer = contract.customer
+        case_department = contract.department
+        contract_reference = contract.serial_no
         requested_handling_lawyer = body.handling_lawyer.strip()
         if requested_handling_lawyer:
             handling_lawyers, handling_usernames = await _resolve_active_case_people(
@@ -1609,7 +1611,7 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
             or str(clue_data.get("notary_institution") or "").strip() in {"时间戳", "权利卫士", "时间戳取证"}
         )
         case_data = _case_team_payload(
-            {"contract_id": contract.id if contract else None, "contract_no": contract.serial_no if contract else "", "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title if contract else "", "clue_id": clue.id, "clue_record_id": clue.id, "investigation_clue_id": clue.id, "investigation_clue_ids": [clue.id], "clue_no": clue.serial_no, "investigation_clue": clue.serial_no, "investigation_clue_nos": [clue.serial_no], "source_evidence_method": clue_data.get("evidence_method", ""), "source_is_timestamp_evidence": timestamp_evidence, "source_notary_institution": clue_data.get("notary_institution", ""), "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": body.client_position.strip() or clue_data.get("client_position", "原告"), "cause_or_charge": cause_or_charge, "cause_of_action": cause_or_charge, "investigator": clue_data.get("investigator") or clue.owner, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "case_register_date": case_register_date, "filing_date": case_register_date, "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"},
+            {"contract_id": contract.id, "contract_no": contract.serial_no, "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title, "clue_id": clue.id, "clue_record_id": clue.id, "investigation_clue_id": clue.id, "investigation_clue_ids": [clue.id], "clue_no": clue.serial_no, "investigation_clue": clue.serial_no, "investigation_clue_nos": [clue.serial_no], "source_evidence_method": clue_data.get("evidence_method", ""), "source_is_timestamp_evidence": timestamp_evidence, "source_notary_institution": clue_data.get("notary_institution", ""), "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": body.client_position.strip() or clue_data.get("client_position", "原告"), "cause_or_charge": cause_or_charge, "cause_of_action": cause_or_charge, "investigator": clue_data.get("investigator") or clue.owner, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "case_register_date": case_register_date, "filing_date": case_register_date, "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"},
             handling_lawyers,
             handling_usernames,
             assistant,

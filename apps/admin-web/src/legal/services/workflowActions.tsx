@@ -10,8 +10,8 @@ import { getCaseReminderDateValidationError } from "../../caseFifthBatchParity.m
 import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCasePhaseChangePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload } from "../../caseSecondBatchParity";
 import { buildCaseHearingPayload, buildCaseUnarchiveReviewPayload, getCaseArchiveReviewValidationError, getCaseHearingValidationError, getCaseUnarchiveReviewValidationError } from "../../caseWorkflowFrontendParity.mjs";
 import { formatRequiredDate } from "../../formSafety";
-import { ARCHIVE_LOCKED_STATUSES, CASE_LITIGANT_PARTY_LABELS, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE, getCompanyScheduleCourtLevels, isCompanyCaseListRoute, noCaseDetailWriteCapability, noCaseEventCapabilities } from "../constants";
-import type { AttachmentRow, CaseAssistedFee, CaseClueEvidenceRow, CaseClueWorkspace, CaseDetailCapabilities, CaseEventCapabilities, CaseEventRow, CaseFileTypeOption, CaseLitigantCandidate, CaseLitigantPartyField, CaseLogKind, CaseLogRow, CasePhaseOption, CaseReminderRow, CaseRow, CaseTaskKind, CaseTaskPageState, ContractRow, Profile } from "../types";
+import { ARCHIVE_LOCKED_STATUSES, CASE_LITIGANT_PARTY_LABELS, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE, getCompanyScheduleCourtLevels, isCompanyCaseListRoute, noCaseDetailWriteCapability } from "../constants";
+import type { AttachmentRow, CaseClueEvidenceRow, CaseClueWorkspace, CaseDetailCapabilities, CaseEventRow, CaseFileTypeOption, CaseLitigantCandidate, CaseLitigantPartyField, CaseLogKind, CaseLogRow, CasePhaseOption, CaseRow, CaseTaskKind, CaseTaskPageState, ContractRow, Profile } from "../types";
 /** legal workflow operations; dependencies are read when each operation runs. */
 export interface CaseWorkflowDependencies {
     readonly createDefendantEditorForm: FormInstance<any>;
@@ -73,10 +73,6 @@ export interface CaseWorkflowDependencies {
     readonly setActiveCounselDetailTab: React.Dispatch<React.SetStateAction<string>>;
     readonly setViewingCounselCase: React.Dispatch<React.SetStateAction<CaseRow | null>>;
     readonly counselDetailCaseIdRef: React.RefObject<number | null>;
-    readonly setCounselDetailAssistedFees: React.Dispatch<React.SetStateAction<CaseAssistedFee[]>>;
-    readonly setCounselDetailAssistedFeeTotal: React.Dispatch<React.SetStateAction<number>>;
-    readonly loadCounselDetailAssistedFees: (caseId: number, page?: number, pageSize?: number) => Promise<void>;
-    readonly counselDetailAssistedFeePageSize: number;
     readonly setLegacyLsHistoryCaseIds: React.Dispatch<React.SetStateAction<Record<number, number>>>;
     readonly setSelectedCounselAttachmentKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
     readonly setSelectedCounselCaseEventKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
@@ -84,8 +80,6 @@ export interface CaseWorkflowDependencies {
     readonly setExpandedCounselDocGroups: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
     readonly contracts: ContractRow[];
     readonly caseCustomers: CaseRow[];
-    readonly counselDetailTaskVipFilter: "normal" | "all" | "vip";
-    readonly counselDetailCustomerTaskVipFilter: "normal" | "all" | "vip";
     readonly setCounselDetailHistory: React.Dispatch<React.SetStateAction<any[]>>;
     readonly applyCounselDetailTaskPageState: (payload: any, fallbackPage: number, fallbackPageSize: number) => CaseTaskPageState;
     readonly applyCounselDetailCustomerTaskPageState: (payload: any, fallbackPage: number, fallbackPageSize: number) => CaseTaskPageState;
@@ -93,10 +87,6 @@ export interface CaseWorkflowDependencies {
     readonly setCounselDetailCustomerAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;
     readonly setCounselDetailContractAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;
     readonly setCounselDocumentFolderTree: React.Dispatch<React.SetStateAction<CaseFileTypeOption[]>>;
-    readonly setCounselReminders: React.Dispatch<React.SetStateAction<CaseReminderRow[]>>;
-    readonly setCounselCaseEvents: React.Dispatch<React.SetStateAction<CaseEventRow[]>>;
-    readonly setCounselCaseEventCapabilities: React.Dispatch<React.SetStateAction<CaseEventCapabilities>>;
-    readonly setCounselCaseEventsError: React.Dispatch<React.SetStateAction<string>>;
     readonly setCounselLogs: React.Dispatch<React.SetStateAction<CaseLogRow[]>>;
     readonly setCounselDetailCapabilities: React.Dispatch<React.SetStateAction<CaseDetailCapabilities>>;
     readonly setCounselDetailFinance: React.Dispatch<React.SetStateAction<CaseRow[]>>;
@@ -612,7 +602,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         }
     };
     const openCounselDetail = async (row: CaseRow, preferredTab?: string) => {
-        const { isCaseDetailView, initialView, originalPage, originalPageSize, caseQuery, onNavigate, counselDetailClueRequestRef, setCounselDetailClues, setCounselDetailClueKeyword, setCounselDetailClueSearchInput, setCounselDetailCluePage, setCounselDetailCluePageSize, setCounselDetailClueTotal, setCounselDetailCluePages, setActiveCounselDetailTab, setViewingCounselCase, counselDetailCaseIdRef, setCounselDetailAssistedFees, setCounselDetailAssistedFeeTotal, loadCounselDetailAssistedFees, counselDetailAssistedFeePageSize, setLegacyLsHistoryCaseIds, setSelectedCounselAttachmentKeys, setSelectedCounselCaseEventKeys, setActiveCounselDocCategory, setExpandedCounselDocGroups, contracts, caseCustomers, counselDetailTaskVipFilter, counselDetailCustomerTaskVipFilter, setCounselDetailHistory, applyCounselDetailTaskPageState, applyCounselDetailCustomerTaskPageState, setCounselDetailAttachments, setCounselDetailCustomerAttachments, setCounselDetailContractAttachments, setCounselDocumentFolderTree, setCounselReminders, setCounselCaseEvents, setCounselCaseEventCapabilities, setCounselCaseEventsError, setCounselLogs, setCounselDetailCapabilities, setCounselDetailFinance, applyCounselDetailCluePageState } = context;
+        const { isCaseDetailView, initialView, originalPage, originalPageSize, caseQuery, onNavigate, counselDetailClueRequestRef, setCounselDetailClues, setCounselDetailClueKeyword, setCounselDetailClueSearchInput, setCounselDetailCluePage, setCounselDetailCluePageSize, setCounselDetailClueTotal, setCounselDetailCluePages, setActiveCounselDetailTab, setViewingCounselCase, counselDetailCaseIdRef, setLegacyLsHistoryCaseIds, setSelectedCounselAttachmentKeys, setSelectedCounselCaseEventKeys, setActiveCounselDocCategory, setExpandedCounselDocGroups, contracts, caseCustomers, setCounselDetailHistory, applyCounselDetailTaskPageState, applyCounselDetailCustomerTaskPageState, setCounselDetailAttachments, setCounselDetailCustomerAttachments, setCounselDetailContractAttachments, setCounselDocumentFolderTree, setCounselLogs, setCounselDetailCapabilities, setCounselDetailFinance, applyCounselDetailCluePageState } = context;
         if (!isCaseDetailView) {
             sessionStorage.setItem("sunhold:case-detail-tab", preferredTab || "documents");
             const serialNo = String(row.serial_no || `案件-${row.id}`).trim();
@@ -643,9 +633,6 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             const detailRecord = recordRes.data as CaseRow;
             setViewingCounselCase(detailRecord);
             counselDetailCaseIdRef.current = detailRecord.id;
-            setCounselDetailAssistedFees([]);
-            setCounselDetailAssistedFeeTotal(0);
-            void loadCounselDetailAssistedFees(detailRecord.id, 1, counselDetailAssistedFeePageSize);
             void api.get<{
                 legacy_case_id: number;
             }>(`/legacy-ls-history/current-records/${detailRecord.id}`)
@@ -667,17 +654,15 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             const customerRecordId = Number(detailRecord.data.customer_record_id || detailRecord.data.customer_id)
                 || caseCustomers.find((item) => item.title === detailRecord.customer)?.id;
             const emptyAttachmentResponse = { data: { items: [] } };
-            const [historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, eventRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes] = await Promise.allSettled([
+            const [historyRes, taskRes, customerTaskRes, attachmentRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes] = await Promise.allSettled([
                 api.get(`/records/${row.id}/history`),
                 api.get(`/cases/${row.id}/tasks`, {
-                    params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "case", is_vip: counselDetailTaskVipFilter === "all" ? undefined : counselDetailTaskVipFilter === "vip" },
+                    params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "case" },
                 }),
                 api.get(`/cases/${row.id}/tasks`, {
-                    params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "customer", is_vip: counselDetailCustomerTaskVipFilter === "all" ? undefined : counselDetailCustomerTaskVipFilter === "vip" },
+                    params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "customer" },
                 }),
                 api.get("/attachments", { params: { record_id: row.id, page_size: 200 } }),
-                api.get(`/cases/${row.id}/reminders`),
-                api.get(`/cases/${row.id}/events`),
                 api.get(`/cases/${row.id}/logs`),
                 api.get(`/cases/${row.id}/action-capabilities`),
                 api.get(`/cases/${row.id}/relations`, { params: { clue_page: 1, clue_page_size: 10 } }),
@@ -702,10 +687,6 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             setCounselDetailCustomerAttachments(customerAttachmentRes.status === "fulfilled" ? customerAttachmentRes.value.data.items || [] : []);
             setCounselDetailContractAttachments(contractAttachmentRes.status === "fulfilled" ? contractAttachmentRes.value.data.items || [] : []);
             setCounselDocumentFolderTree(folderRes.status === "fulfilled" && Array.isArray(folderRes.value.data?.tree) ? folderRes.value.data.tree : []);
-            setCounselReminders(reminderRes.status === "fulfilled" ? reminderRes.value.data.items || [] : []);
-            setCounselCaseEvents(eventRes.status === "fulfilled" ? eventRes.value.data.items || [] : []);
-            setCounselCaseEventCapabilities(eventRes.status === "fulfilled" ? eventRes.value.data.capabilities || noCaseEventCapabilities : noCaseEventCapabilities);
-            setCounselCaseEventsError(eventRes.status === "rejected" ? "案件事件加载失败，请重试" : "");
             setCounselLogs(logRes.status === "fulfilled" ? logRes.value.data.items || [] : []);
             setCounselDetailCapabilities(capabilityRes.status === "fulfilled" ? capabilityRes.value.data || noCaseDetailWriteCapability : noCaseDetailWriteCapability);
             setCounselDetailFinance(relationRes.status === "fulfilled" ? relationRes.value.data.fees || [] : []);
@@ -716,7 +697,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             else if (relationRes.status === "rejected" && clueRequestId === counselDetailClueRequestRef.current) {
                 applyCounselDetailCluePageState({ clues: [], clue_total: 0 }, 1, 10);
             }
-            if ([historyRes, taskRes, customerTaskRes, attachmentRes, reminderRes, eventRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes].some((result) => result.status === "rejected")) {
+            if ([historyRes, taskRes, customerTaskRes, attachmentRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes].some((result) => result.status === "rejected")) {
                 message.warning("部分案件附加信息加载失败，已打开基础详情");
             }
         }

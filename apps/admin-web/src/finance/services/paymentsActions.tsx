@@ -277,10 +277,22 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
     const createFee = async () => {
         const { feeForm, feeEditTarget, closeFeeModal, load } = context;
         const v = await feeForm.validateFields();
+        const payload = String(v.fee_type || "") === "代理费"
+            ? {
+                ...v,
+                commission_mode: v.commission_mode === "manual" ? "manual" : "automatic",
+                commission_details: Array.isArray(v.commission_details) ? v.commission_details : [],
+            }
+            : (() => {
+                const { commission_mode, commission_details, ...feePayload } = v;
+                void commission_mode;
+                void commission_details;
+                return feePayload;
+            })();
         try {
             feeEditTarget
-                ? await api.put(`/finance/fees/${feeEditTarget.id}`, v)
-                : await api.post("/finance/fees", v);
+                ? await api.put(`/finance/fees/${feeEditTarget.id}`, payload)
+                : await api.post("/finance/fees", payload);
             message.success(feeEditTarget ? "费用已更新" : "费用已创建");
             closeFeeModal();
             load();

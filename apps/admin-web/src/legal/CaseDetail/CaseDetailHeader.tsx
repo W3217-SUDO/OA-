@@ -19,6 +19,28 @@ interface CaseDetailHeaderProps {
   returnToCaseList: () => void;
 }
 
+export function caseHeaderHearingLawyers(data: Record<string, unknown>): string[] {
+  // Keep field precedence and token normalization aligned with core/cases.py.
+  const firstPopulated = (fields: string[]): string[] => {
+    for (const field of fields) {
+      const raw = data[field];
+      const values = Array.isArray(raw) ? raw : [raw];
+      const tokens = values.flatMap((value) => String(value || "").split(/[,，、;/；\n]+/))
+        .map((value) => value.trim())
+        .filter((value) => value && !["—", "-", "无", "未分配", "【待补充中文姓名】"].includes(value));
+      if (tokens.length) return [...new Set(tokens)];
+    }
+    return [];
+  };
+  const explicit = firstPopulated([
+    "hearing_lawyer_usernames", "hearing_lawyer_username", "court_lawyer_username",
+    "hearing_lawyers", "hearing_lawyer", "court_lawyer",
+  ]);
+  return explicit.length ? explicit : firstPopulated([
+    "handling_lawyer_usernames", "handling_lawyer_username", "handling_lawyers",
+  ]).slice(0, 1);
+}
+
 export const CaseDetailHeader = ({
   viewingCase,
   casePersonDisplayName,
@@ -41,7 +63,7 @@ export const CaseDetailHeader = ({
             <colgroup><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/></colgroup>
             <tbody>
               <tr><th>我方案号</th><td>{viewingCase.serial_no||"—"}</td><th>起诉案由</th><td>{viewingCase.data.cause_or_charge||viewingCase.data.cause_of_action||"—"}</td><th>案件阶段</th><td>{viewingCase.status||"—"}</td><th>原告</th><td>{viewingCase.data.plaintiff||viewingCase.customer||"—"}</td></tr>
-              <tr><th>案件名称</th><td colSpan={3}>{viewingCase.title||"—"}</td><th>开庭律师</th><td>{casePersonDisplayName(viewingCase.data.hearing_lawyer||viewingCase.data.handling_lawyers?.[0],viewingCase.data.hearing_lawyer_display_name)}</td><th>被告</th><td>{viewingCase.data.defendant||viewingCase.data.opponent||caseDetailNames(viewingCase.data.defendants)}</td></tr>
+              <tr><th>案件名称</th><td colSpan={3}>{viewingCase.title||"—"}</td><th>开庭律师</th><td>{casePersonDisplayNames(caseHeaderHearingLawyers(viewingCase.data))}</td><th>被告</th><td>{viewingCase.data.defendant||viewingCase.data.opponent||caseDetailNames(viewingCase.data.defendants)}</td></tr>
               <tr><th>案件参与人</th><td colSpan={7}>{legacyCaseParticipantDisplayNames(viewingCase.data)}</td></tr>
               <tr><th>原告代理人</th><td colSpan={3}>{renderCaseLitigantAgentSummary(viewingCase.data.plaintiff_agents)}</td><th>被告代理人</th><td colSpan={3}>{renderCaseLitigantAgentSummary(viewingCase.data.defendant_agents)}</td></tr>
               <tr><th>第三人代理人</th><td colSpan={7}>{renderCaseLitigantAgentSummary(viewingCase.data.third_party_agents)}</td></tr>

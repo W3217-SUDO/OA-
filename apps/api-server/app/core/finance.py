@@ -242,14 +242,15 @@ async def _finance_fee_commission_details(
     if not details:
         return []
     usernames = [detail.employee_username.strip().lower() for detail in details]
-    if len(set(usernames)) != len(usernames):
-        raise HTTPException(status_code=422, detail="同一员工只能新增一条提成")
+    detail_keys = [(username, detail.commission_type.strip()) for detail, username in zip(details, usernames)]
+    if len(set(detail_keys)) != len(detail_keys):
+        raise HTTPException(status_code=422, detail="同一员工的同一提成类型只能新增一条")
     users = list((await db.scalars(select(User).where(
         func.lower(User.username).in_(usernames),
         User.is_active.is_(True),
     ))).all())
     users_by_username = {user.username.lower(): user for user in users}
-    if len(users_by_username) != len(usernames):
+    if len(users_by_username) != len(set(usernames)):
         raise HTTPException(status_code=422, detail="员工提成只能选择系统中已启用的员工")
     normalized = []
     total = 0.0
@@ -265,14 +266,140 @@ async def _finance_fee_commission_details(
             "amount": amount,
             "actual_commission": amount,
             "remark": detail.remark.strip(),
+            "calculation_source": "manual",
         })
     if total > fee_amount + 0.001:
         raise HTTPException(status_code=422, detail="员工提成合计不能大于律师代理费金额")
     return normalized
 
 
+async def _finance_fee_commission_payload(
+    body: FinanceFeeInput,
+    fee_amount: float,
+    db: AsyncSession,
+    *,
+    case_record: BusinessRecord | None,
+    existing_data: dict | None = None,
+) -> dict:
+    """Resolve manual or server-derived agency-fee commission rows for one draft."""
+    if body.fee_type != "代理费":
+        return {
+            "commission_mode": None,
+            "commission_details": await _finance_fee_commission_details(body, fee_amount, db),
+            "commission_missing_messages": [],
+        }
+    if body.commission_mode is not None:
+        mode = body.commission_mode
+    elif existing_data is not None:
+        existing_mode = str(existing_data.get("commission_mode") or "").strip()
+        mode = existing_mode if existing_mode in {"automatic", "manual"} else "manual"
+    else:
+        mode = "manual" if body.commission_details else "automatic"
+    if mode == "manual":
+        if existing_data is not None and "commission_details" not in body.model_fields_set:
+            existing_details = existing_data.get("commission_details")
+            return {
+                "commission_mode": "manual",
+                "commission_details": existing_details if isinstance(existing_details, list) else [],
+                "commission_missing_messages": [],
+            }
+        return {
+            "commission_mode": "manual",
+            "commission_details": await _finance_fee_commission_details(body, fee_amount, db),
+            "commission_missing_messages": [],
+        }
+    if not case_record:
+        raise HTTPException(status_code=422, detail="自动提成必须关联案件")
+    from app.core.cases import (
+        _case_commission_detail_from_preview, _case_commission_preview_for_amount,
+    )
+    preview = await _case_commission_preview_for_amount(case_record, fee_amount, db)
+    generated = [
+        _case_commission_detail_from_preview(item)
+        for item in preview["items"]
+    ]
+    total = sum(
+        _round_fee_amount(float(item.get("actual_commission") or item.get("amount") or 0))
+        for item in generated
+    )
+    if total > fee_amount + 0.001:
+        raise HTTPException(status_code=422, detail="员工提成合计不能大于律师代理费金额")
+    return {
+        "commission_mode": "automatic",
+        "commission_details": generated,
+        "commission_missing_messages": preview["missing_messages"],
+    }
+
+
 def _case_fee_contract_body(contract: BusinessRecord) -> str:
     return str((contract.data or {}).get("contract_body") or "律所").strip()
+
+
+def _fee_contract_record_id(fee: BusinessRecord) -> int:
+    data = fee.data or {}
+    try:
+        return int(data.get("contract_id") or data.get("contract_record_id") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _fee_matches_contract(fee: BusinessRecord, contract: BusinessRecord) -> bool:
+    """Match a fee to its own explicit contract, never its case header contract."""
+    data = fee.data or {}
+    contract_id = _fee_contract_record_id(fee)
+    contract_no = str(data.get("contract_no") or "").strip()
+    if contract_id:
+        return contract_id == contract.id and (not contract_no or contract_no == contract.serial_no)
+    return bool(contract_no) and contract_no == contract.serial_no
+
+
+def _is_contract_payment_case_fee(item: BusinessRecord) -> bool:
+    """Keep payment candidates to live case-fee records, not finance side records."""
+    data = item.data or {}
+    if item.module != "finance" or item.status in {"已删除", "已作废", "不缴费"}:
+        return False
+    if str(data.get("legacy_kind") or "").strip() == "ap_payment":
+        return False
+    if str(data.get("fee_type") or "").strip() not in FINANCE_FEE_TYPES:
+        return False
+    return bool(data.get("case_id") or data.get("case_record_id") or str(data.get("case_no") or "").strip())
+
+
+async def _active_contract_payment_fee_reservations(
+    fee_ids: set[int],
+    db: AsyncSession,
+    *,
+    contract: BusinessRecord | None = None,
+) -> dict[int, float]:
+    if not fee_ids:
+        return {}
+    conditions = [
+        BusinessRecord.module == "contract_payment",
+        BusinessRecord.status.in_(["待审批", "待付款", "已付款", "已核销"]),
+    ]
+    if contract:
+        conditions.append(or_(
+            BusinessRecord.data["contract_id"].as_integer() == contract.id,
+            BusinessRecord.data["contract_record_id"].as_integer() == contract.id,
+            BusinessRecord.data["contract_no"].as_string() == contract.serial_no,
+        ))
+    reservations: dict[int, float] = {}
+    for record in (await db.scalars(select(BusinessRecord).where(*conditions))).all():
+        if contract and not _fee_matches_contract(record, contract):
+            continue
+        for line in (record.data or {}).get("lines", []):
+            if not isinstance(line, dict):
+                continue
+            try:
+                fee_id = int(line.get("case_fee_id") or 0)
+            except (TypeError, ValueError):
+                continue
+            if fee_id not in fee_ids:
+                continue
+            reservations[fee_id] = _round_fee_amount(
+                reservations.get(fee_id, 0) + float(line.get("amount") or 0)
+            )
+    return reservations
 
 
 async def _resolve_case_fee_contract(
@@ -291,14 +418,7 @@ async def _resolve_case_fee_contract(
         if _case_fee_contract_body(contract_record) != scope:
             raise HTTPException(status_code=409, detail=f"新增{scope}费用必须选择合同主体为{scope}的合同")
         return contract_record
-    candidates = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "contract",
-        BusinessRecord.customer == case_record.customer,
-    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
-    matched = next((item for item in candidates if _case_fee_contract_body(item) == scope), None)
-    if not matched:
-        raise HTTPException(status_code=409, detail=f"当前案件客户名下没有{scope}合同，无法新增{scope}费用")
-    return matched
+    raise HTTPException(status_code=422, detail=f"新增{scope}案件费用必须明确关联合同，不能按案件头部合同推断")
 
 
 async def _internal_fee_mutation_target(fee_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
@@ -427,6 +547,8 @@ def _fee_matches_contract_object(fee: BusinessRecord, item: ContractObject, case
         _case_fee_display_type,
     )
     data = fee.data or {}
+    if _fee_contract_record_id(fee) != item.contract_record_id:
+        return False
     try:
         explicit_object_id = int(data.get("contract_object_id") or 0)
     except (TypeError, ValueError):
@@ -466,63 +588,134 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
     objects = (await db.scalars(select(ContractObject).where(
         ContractObject.contract_record_id == contract.id
     ).order_by(ContractObject.id))).all()
-    object_ids = [item.id for item in objects]
     used_by_object: dict[int, float] = {}
     used_by_fee: dict[int, float] = {}
-    if object_ids:
-        active_payment_ids = select(BusinessRecord.id).where(
+    active_records = [
+        record for record in (await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "contract_payment",
             BusinessRecord.status.in_(["待审批", "待付款", "已付款", "已核销"]),
-        )
+            or_(
+                BusinessRecord.data["contract_id"].as_integer() == contract.id,
+                BusinessRecord.data["contract_record_id"].as_integer() == contract.id,
+                BusinessRecord.data["contract_no"].as_string() == contract.serial_no,
+            ),
+        ))).all()
+        if _fee_matches_contract(record, contract)
+    ]
+    active_record_ids = {record.id for record in active_records}
+    snapshot_fee_objects: set[tuple[int, int]] = set()
+    for record in active_records:
+        for line in (record.data or {}).get("lines", []):
+            if not isinstance(line, dict):
+                continue
+            try:
+                fee_id = int(line.get("case_fee_id") or 0)
+                object_id = int(line.get("contract_object_id") or 0)
+            except (TypeError, ValueError):
+                continue
+            if fee_id:
+                used_by_fee[fee_id] = _round_fee_amount(used_by_fee.get(fee_id, 0) + float(line.get("amount") or 0))
+                if object_id:
+                    snapshot_fee_objects.add((record.id, object_id))
+    object_ids = [item.id for item in objects]
+    if object_ids and active_record_ids:
         lines = (await db.scalars(select(ContractPaymentLine).where(
             ContractPaymentLine.contract_object_id.in_(object_ids),
-            ContractPaymentLine.payment_record_id.in_(active_payment_ids),
+            ContractPaymentLine.payment_record_id.in_(active_record_ids),
         ))).all()
         for line in lines:
+            if (line.payment_record_id, line.contract_object_id) in snapshot_fee_objects:
+                continue
             used_by_object[line.contract_object_id] = _round_fee_amount(
                 used_by_object.get(line.contract_object_id, 0) + line.requested_amount
             )
-        active_records = (await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "contract_payment",
-            BusinessRecord.status.in_(["待审批", "待付款", "已付款", "已核销"]),
-        ))).all()
-        for record in active_records:
-            for line in (record.data or {}).get("lines", []):
-                fee_id = int(line.get("case_fee_id") or 0)
-                if fee_id:
-                    used_by_fee[fee_id] = _round_fee_amount(used_by_fee.get(fee_id, 0) + float(line.get("amount") or 0))
     rows: list[dict] = []
+    fee_records = [
+        fee for fee in (await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "finance",
+            or_(
+                BusinessRecord.data["contract_id"].as_integer() == contract.id,
+                BusinessRecord.data["contract_record_id"].as_integer() == contract.id,
+                BusinessRecord.data["contract_no"].as_string() == contract.serial_no,
+            ),
+        ).order_by(BusinessRecord.id))).all()
+        if _is_contract_payment_case_fee(fee) and _fee_matches_contract(fee, contract)
+    ]
+    fee_ids = {fee.id for fee in fee_records}
+    direct_paid_by_fee: dict[int, float] = {}
+    if fee_ids:
+        transactions = await db.scalars(select(FinanceTransaction).where(
+            FinanceTransaction.finance_record_id.in_(fee_ids),
+            FinanceTransaction.transaction_type == "付款",
+        ))
+        for transaction in transactions:
+            direct_paid_by_fee[transaction.finance_record_id] = _round_fee_amount(
+                direct_paid_by_fee.get(transaction.finance_record_id, 0) + float(transaction.amount or 0)
+            )
+    for fee in fee_records:
+        data = fee.data or {}
+        try:
+            case_id = int(data.get("case_id") or data.get("case_record_id") or 0)
+        except (TypeError, ValueError):
+            case_id = 0
+        case = await _ensure_record_visible(case_id, identity, db) if case_id else await _finance_linked_case(
+            str(data.get("case_no") or "").strip(), identity, db,
+        )
+        if not case or case.module != "case":
+            continue
+        matching_objects = [item for item in objects if item.case_record_id == case.id and _fee_matches_contract_object(fee, item, case)]
+        if any(used_by_object.get(item.id, 0) > 0 for item in matching_objects):
+            continue
+        amount = _round_fee_amount(float(data.get("amount") or 0))
+        if amount <= 0:
+            continue
+        direct_committed = max(
+            direct_paid_by_fee.get(fee.id, 0),
+            _round_fee_amount(float(data.get("paid_amount") or 0)),
+            _round_fee_amount(float(data.get("payment_requested_amount") or 0)),
+        )
+        used = _round_fee_amount(used_by_fee.get(fee.id, 0) + direct_committed)
+        rows.append({
+            "source": "case_fee",
+            "contract_object_id": None,
+            "case_fee_id": fee.id,
+            "case_record_id": case.id,
+            "case_no": case.serial_no,
+            "case_title": case.title,
+            "fee_type": str(data.get("fee_type_path") or data.get("fee_type_name") or data.get("fee_type") or fee.title),
+            "contract_amount": amount,
+            "reserved_amount": used,
+            "remaining_amount": max(_round_fee_amount(amount - used), 0),
+            "remark": str(data.get("remark") or fee.description or ""),
+        })
     for item in objects:
         case = await _ensure_record_visible(item.case_record_id, identity, db)
         if case.module != "case":
             continue
-        fee_rows = list((await db.scalars(select(BusinessRecord).where(
+        case_finance_records = (await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "finance",
             or_(
                 BusinessRecord.data["case_id"].as_integer() == case.id,
                 BusinessRecord.data["case_no"].as_string() == case.serial_no,
             ),
-        ).order_by(BusinessRecord.id))).all())
-        matched = [fee for fee in fee_rows if _fee_matches_contract_object(fee, item, case)]
-        if not matched:
-            matched = [None]
-        for fee in matched:
-            data = fee.data if fee else {}
-            fee_id = fee.id if fee else None
-            amount = _round_fee_amount(float(data.get("amount") or item.amount) if fee else item.amount)
-            used = used_by_fee.get(fee_id, 0) if fee_id else used_by_object.get(item.id, 0)
-            rows.append({
-                "contract_object_id": item.id,
-                "case_fee_id": fee_id,
-                "case_record_id": case.id,
-                "case_no": case.serial_no,
-                "case_title": case.title,
-                "fee_type": str(data.get("fee_type_path") or data.get("fee_type_name") or data.get("fee_type") or item.fee_type),
-                "contract_amount": amount,
-                "reserved_amount": used,
-                "remaining_amount": max(_round_fee_amount(amount - used), 0),
-                "remark": str(data.get("remark") or item.remark or ""),
-            })
+        ))).all()
+        if any(_is_contract_payment_case_fee(record) for record in case_finance_records):
+            continue
+        amount = _round_fee_amount(item.amount)
+        used = used_by_object.get(item.id, 0)
+        rows.append({
+            "source": "contract_object",
+            "contract_object_id": item.id,
+            "case_fee_id": None,
+            "case_record_id": case.id,
+            "case_no": case.serial_no,
+            "case_title": case.title,
+            "fee_type": item.fee_type,
+            "contract_amount": amount,
+            "reserved_amount": used,
+            "remaining_amount": max(_round_fee_amount(amount - used), 0),
+            "remark": item.remark or "",
+        })
     return rows
 
 
@@ -663,17 +856,8 @@ async def _validate_invoice_source_links(
         if not case_record and linked_case_nos:
             case_record = await _finance_linked_case(next(iter(linked_case_nos)), identity, db)
     if require_source and contract_record:
-        contract_id = contract_record.id
-        contract_no = contract_record.serial_no
         for fee in case_fees:
-            data = fee.data or {}
-            fee_contract_id = data.get("contract_id") or data.get("contract_record_id")
-            fee_contract_no = str(data.get("contract_no") or "").strip()
-            if fee_contract_id is None and case_record:
-                case_data = case_record.data or {}
-                fee_contract_id = case_data.get("contract_id") or case_data.get("contract_record_id")
-                fee_contract_no = fee_contract_no or str(case_data.get("contract_no") or "").strip()
-            if (fee_contract_id is not None and int(fee_contract_id) != contract_id) or (fee_contract_no and fee_contract_no != contract_no):
+            if not _fee_matches_contract(fee, contract_record):
                 raise HTTPException(status_code=409, detail="所选案件费用必须属于当前合同")
     active_invoices = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "invoice",

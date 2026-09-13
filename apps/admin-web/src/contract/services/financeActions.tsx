@@ -6,6 +6,7 @@ import { api } from "../../api";
 import type { ContractMutationGate } from "../../contractMutationGate.mjs";
 import { extractContractErrorMessage, normalizeContractActionResponse } from "../../contractWorkflowPolicy.mjs";
 import { formatRequiredDate } from "../../formSafety";
+import { contractPaymentCandidateKey, findContractPaymentCandidate } from "../contractPaymentCandidateKey";
 import type { Contract, ContractPaymentCandidate, ContractWorkflowCapabilities, PaymentTypeOption } from "../types";
 /** contract finance operations; dependencies are read when each operation runs. */
 export interface ContractFinanceDependencies {
@@ -16,7 +17,7 @@ export interface ContractFinanceDependencies {
     readonly setPaymentCandidates: React.Dispatch<React.SetStateAction<ContractPaymentCandidate[]>>;
     readonly setPaymentTypes: React.Dispatch<React.SetStateAction<PaymentTypeOption[]>>;
     readonly setSelectedPaymentObjectKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
-    readonly setPaymentAmounts: React.Dispatch<React.SetStateAction<Record<number, number>>>;
+    readonly setPaymentAmounts: React.Dispatch<React.SetStateAction<Record<string, number>>>;
     readonly paymentTarget: Contract | null;
     readonly setPaymentTypeCreating: React.Dispatch<React.SetStateAction<boolean>>;
     readonly paymentTypeCreateForm: FormInstance<any>;
@@ -30,12 +31,13 @@ export interface ContractFinanceDependencies {
     }>;
     readonly setPaymentSaving: React.Dispatch<React.SetStateAction<boolean>>;
     readonly selectedPaymentObjectKeys: React.Key[];
-    readonly paymentAmounts: Record<number, number>;
+    readonly paymentAmounts: Record<string, number>;
     readonly paymentCandidates: ContractPaymentCandidate[];
     readonly viewing: Contract | null;
     readonly openViewing: (contract: Contract, options?: {
         detailTab?: string | undefined;
     }) => Promise<void>;
+    readonly onNavigate?: (key: string) => void;
     readonly invoiceTarget: Contract | null;
     readonly setInvoiceSaving: React.Dispatch<React.SetStateAction<boolean>>;
     readonly invoiceForm: FormInstance<any>;
@@ -106,8 +108,8 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
         try {
             const values = await paymentForm.validateFields();
             const lines = selectedPaymentObjectKeys.map((key) => {
-                const row = paymentCandidates.find((item) => (item.case_fee_id || item.contract_object_id) === Number(key));
-                return { contract_object_id: row?.contract_object_id, case_fee_id: row?.case_fee_id, amount: Number(paymentAmounts[Number(key)] || 0) };
+                const row = findContractPaymentCandidate(paymentCandidates, key);
+                return { contract_object_id: row?.contract_object_id ?? null, case_fee_id: row?.case_fee_id ?? null, amount: Number(paymentAmounts[String(key)] || 0) };
             });
             if (!lines.length) {
                 message.error("请至少选择一笔案件费用");
@@ -117,7 +119,7 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
                 message.error("请选择案件费用并填写本次支付金额");
                 return;
             }
-            const exceeding = lines.find((line) => line.amount > Number(paymentCandidates.find((item) => (item.case_fee_id || item.contract_object_id) === (line.case_fee_id || line.contract_object_id))?.remaining_amount || 0) + 0.0001);
+            const exceeding = lines.find((line) => line.amount > Number(findContractPaymentCandidate(paymentCandidates, contractPaymentCandidateKey(line))?.remaining_amount || 0) + 0.0001);
             if (exceeding) {
                 message.error("本次支付金额不能超过待付余额");
                 return;
@@ -152,7 +154,7 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
         }
     };
     const createContractInvoice = async () => {
-        const { invoiceTarget, contractMutationGates, contractCapabilities, denyContractAction, setInvoiceSaving, invoiceForm, viewing, openViewing, setInvoiceTarget, invoiceSubjects, selectedInvoiceObjectKeys } = context;
+        const { invoiceTarget, contractMutationGates, contractCapabilities, denyContractAction, setInvoiceSaving, invoiceForm, viewing, openViewing, onNavigate, setInvoiceTarget, invoiceSubjects, selectedInvoiceObjectKeys } = context;
         if (!invoiceTarget || !contractMutationGates.current.invoice.tryEnter())
             return;
         if (!contractCapabilities(invoiceTarget).canInvoice) {
@@ -191,11 +193,31 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
             if (!feedback.ok)
                 throw new Error(feedback.message);
             const { data } = response;
-            message.success(`发票申请 ${data.serial_no} 已创建并关联合同`);
-            if (viewing?.id === invoiceTarget.id)
-                await openViewing(invoiceTarget);
+            const refreshViewingContract = async () => {
+                if (viewing?.id !== invoiceTarget.id)
+                    return;
+                try {
+                    await openViewing(invoiceTarget);
+                }
+                catch {
+                    message.warning("合同详情刷新失败，请稍后手动刷新");
+                }
+            };
+            try {
+                await api.post(`/finance/invoices/${data.id}/submit`, { comment: String(values.remark || "").trim() });
+            }
+            catch (submitError: any) {
+                message.error(`发票申请 ${data.serial_no} 已创建为草稿，但提交审批失败：${extractContractErrorMessage(submitError, "请在我的开票继续提交该草稿")}。系统未重复创建草稿。`);
+                setInvoiceTarget(null);
+                invoiceForm.resetFields();
+                await refreshViewingContract();
+                onNavigate?.("finance-invoice-mine");
+                return;
+            }
             setInvoiceTarget(null);
             invoiceForm.resetFields();
+            message.success(`发票申请 ${data.serial_no} 已提交审批并关联合同`);
+            await refreshViewingContract();
         }
         catch (error: any) {
             if (error?.errorFields)

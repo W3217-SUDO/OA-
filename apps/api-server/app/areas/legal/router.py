@@ -30,7 +30,7 @@ from app.models_shared import (
     ArchiveCheckInput, ArchiveReviewInput, AttachmentBatchInput, CaseAgentDecisionInput, CaseAgentMessageInput,
     CaseAiDraftCreateInput, CaseAiDraftPromoteInput, CaseAiDraftUpdateInput, CaseArbitrationBasicInput, CaseAssignmentInput,
     CaseAssistedFeeConfirmInput, CaseAssistedFeeCreateInput, CaseAssistedFeeUpdateInput, CaseAttachmentMoveInput, CaseAttachmentRenameInput,
-    CaseBatchDeleteInput, CaseBatchFeeInput, CaseBatchUpdateInput, CaseCommissionBatchInput, CaseCounselBasicInput, CaseCourtInfoInput,
+    CaseBatchDeleteInput, CaseBatchFeeContractInput, CaseBatchFeeInput, CaseBatchUpdateInput, CaseCommissionBatchInput, CaseCommissionPreviewInput, CaseCounselBasicInput, CaseCourtInfoInput,
     CaseCreateInput, CaseCreationCompleteInput, CaseCreationReviewInput, CaseDocumentFolderInput, CaseDocumentFolderRenameInput,
     CaseEventBatchDeleteInput, CaseEventInput, CaseEventUpdateInput, CaseExecutionStatusInput, CaseHearingLawyerInput,
     CaseJudicialInput, CaseLitigantsInput, CaseLogInput, CaseMergeInput, CaseNormalBasicInput,
@@ -822,6 +822,26 @@ async def preview_case_commissions(
     return await _case_commission_preview(case_id, source_fee_id, identity, db)
 
 
+@router.post(f"{settings.api_prefix}/cases/{{case_id}}/commission-preview")
+async def preview_case_commissions_for_amount(
+    case_id: int,
+    body: CaseCommissionPreviewInput,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.cases import (
+        _case_commission_preview_for_amount,
+    )
+    from app.core.permissions import (
+        _case_detail_action_capabilities, _ensure_record_module,
+    )
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    if not (await _case_detail_action_capabilities(case_record, identity, db))["can_create_finance"]:
+        raise HTTPException(status_code=403, detail="当前账号没有新增案件提成权限")
+    preview = await _case_commission_preview_for_amount(case_record, body.amount, db)
+    return {**preview, "source_fee": {"id": None, "serial_no": "", "amount": body.amount, "fee_type": "代理费"}}
+
+
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/commissions", status_code=status.HTTP_201_CREATED)
 async def create_case_commissions(
     case_id: int,
@@ -916,7 +936,7 @@ async def create_case_commissions(
 @router.post(f"{settings.api_prefix}/cases/batch-update")
 async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.cases import (
-        _case_team_payload, _resolve_active_case_people,
+        _case_commission_personnel_changed, _case_team_payload, _recalculate_case_draft_commissions, _resolve_active_case_people,
     )
     from app.core.permissions import (
         _record_dict_for_identity, _record_scope_conditions, _require_case_creation_completed,
@@ -936,6 +956,14 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
     handling_usernames: list[str] | None = None
     assistant_value: str | None = None
     assistant_username: str | None = None
+    hearing_value: str | None = None
+    hearing_username: str | None = None
+    if body.hearing_lawyer is not None:
+        hearing_values, hearing_usernames = await _resolve_active_case_people(
+            [body.hearing_lawyer] if body.hearing_lawyer.strip() else [], db, field_name="开庭律师",
+        )
+        hearing_value = hearing_values[0] if hearing_values else ""
+        hearing_username = hearing_usernames[0] if hearing_usernames else ""
     if body.handling_lawyers is not None:
         handling_lawyers, handling_usernames = await _resolve_active_case_people(body.handling_lawyers, db, field_name="经办律师")
         if not handling_lawyers:
@@ -965,11 +993,13 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
         _require_case_creation_completed(case)
         if case.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail=f"案件 {case.serial_no} 已进入归档流程，不能批量修改")
-        data = dict(case.data or {})
+        before_data = dict(case.data or {})
+        data = dict(before_data)
         changes = []
         if body.hearing_lawyer is not None:
-            changes.append(f"开庭律师：{data.get('hearing_lawyer', '')} → {body.hearing_lawyer.strip()}")
-            data["hearing_lawyer"] = body.hearing_lawyer.strip()
+            changes.append(f"开庭律师：{data.get('hearing_lawyer', '')} → {hearing_value or ''}")
+            data["hearing_lawyer"] = hearing_value or ""
+            data["hearing_lawyer_username"] = hearing_username or ""
         if body.handling_lawyers is not None:
             changes.append(f"经办律师：{','.join(data.get('handling_lawyers') or [])} → {','.join(handling_lawyers or [])}")
             data = _case_team_payload(data, handling_lawyers or [], handling_usernames or [], data.get("assistant", ""), str(data.get("assistant_username") or ""))
@@ -986,6 +1016,8 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
             changes.append(f"诉讼标的：{data.get('litigation_amount', 0)} → {body.litigation_amount}")
             data["litigation_amount"] = body.litigation_amount
         case.data = data
+        if _case_commission_personnel_changed(before_data, data):
+            await _recalculate_case_draft_commissions(case, db, identity["username"])
         db.add(WorkflowEvent(record_id=case.id, action="批量修改案件", from_status=case.status, to_status=case.status, operator=identity["username"], comment="；".join(changes + ([body.comment.strip()] if body.comment.strip() else []))))
     await db.commit()
     for case in cases:
@@ -1602,7 +1634,9 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
     from app.core.permissions import (
         _record_dict_for_identity, _record_scope_conditions,
     )
-    case_ids = list(dict.fromkeys(body.case_ids))
+    if len(set(body.case_ids)) != len(body.case_ids):
+        raise HTTPException(status_code=422, detail="批量费用案件不能重复")
+    case_ids = list(body.case_ids)
     cases = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "case", BusinessRecord.id.in_(case_ids),
         *(await _record_scope_conditions(identity, db)),
@@ -1624,12 +1658,29 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
     if not handler_user:
         raise HTTPException(status_code=422, detail="费用经办人不存在或已停用")
     ordered_cases = sorted(cases, key=lambda item: case_ids.index(item.id))
+    contract_ids_by_case: dict[int, int] = {}
+    for mapping in body.case_contracts:
+        if mapping.case_id not in case_ids:
+            raise HTTPException(status_code=422, detail=f"案件 {mapping.case_id} 不在本次批量费用范围内")
+        if mapping.case_id in contract_ids_by_case:
+            raise HTTPException(status_code=422, detail=f"案件 {mapping.case_id} 存在重复合同映射")
+        contract_ids_by_case[mapping.case_id] = mapping.contract_record_id
+    if body.expense_scope != "内部":
+        missing_contract_cases = [item.serial_no for item in ordered_cases if item.id not in contract_ids_by_case]
+        if missing_contract_cases:
+            raise HTTPException(status_code=422, detail="非内部案件费用必须逐案明确合同：" + "、".join(missing_contract_cases))
     contracts_by_case: dict[int, BusinessRecord | None] = {}
     for case_record in ordered_cases:
         if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail=f"案件 {case_record.serial_no} 已进入归档流程，不能新增费用")
+        contract_record = None
+        contract_id = contract_ids_by_case.get(case_record.id)
+        if contract_id:
+            contract_record = await db.get(BusinessRecord, contract_id)
+            if not contract_record or contract_record.module != "contract":
+                raise HTTPException(status_code=422, detail=f"案件 {case_record.serial_no} 选择的关联记录不是合同")
         contracts_by_case[case_record.id] = await _resolve_case_fee_contract(
-            case_record, None, body.expense_scope, identity, db,
+            case_record, contract_record, body.expense_scope, identity, db,
         )
     created: list[BusinessRecord] = []
     amount = _round_fee_amount(body.amount)
@@ -1643,8 +1694,8 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
             data={"amount": amount, **fee_snapshot,
                   "expense_scope": body.expense_scope,
                   "is_refund": False, "case_no": case_record.serial_no, "case_id": case_record.id,
-                  "contract_id": contract_record.id if contract_record else (case_record.data or {}).get("contract_record_id"),
-                  "contract_no": contract_record.serial_no if contract_record else (case_record.data or {}).get("contract_no", ""),
+                  "contract_id": contract_record.id if contract_record else None,
+                  "contract_no": contract_record.serial_no if contract_record else "",
                   "handler": handler, "court": (case_record.data or {}).get("court", ""),
                   "document_no": "", "payee": (case_record.data or {}).get("court", "")},
         )
@@ -2855,7 +2906,7 @@ async def complete_case_creation(case_id: int, body: CaseCreationCompleteInput, 
 @router.put(f"{settings.api_prefix}/cases/{{case_id}}/counsel-basic")
 async def update_counsel_case_basic(case_id: int, body: CaseCounselBasicInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.cases import (
-        _case_team_payload, _resolve_active_case_people,
+        _case_commission_personnel_changed, _case_team_payload, _recalculate_case_draft_commissions, _resolve_active_case_people,
     )
     from app.core.permissions import (
         _ensure_record_module, _require_case_action,
@@ -2888,12 +2939,15 @@ async def update_counsel_case_basic(case_id: int, body: CaseCounselBasicInput, i
         raise HTTPException(status_code=422, detail="请至少保留一名有效经办律师")
     old_summary = f"{case_record.title}｜{case_data.get('counsel_type', '')}｜{case_data.get('counsel_start', '')}至{case_data.get('counsel_end', '')}"
     case_record.title = title
-    case_record.data = _case_team_payload({
+    updated_case_data = _case_team_payload({
         **case_data,
         "counsel_type": counsel_type,
         "counsel_start": str(body.counsel_start),
         "counsel_end": str(body.counsel_end),
     }, handling_lawyers, handling_usernames, assistant, assistant_username)
+    case_record.data = updated_case_data
+    if _case_commission_personnel_changed(case_data, updated_case_data):
+        await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     db.add(WorkflowEvent(
         record_id=case_record.id,
         action="修改法律顾问案件基本信息",
@@ -2915,7 +2969,8 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     record PATCH so archived cases and the case lifecycle cannot be bypassed.
     """
     from app.core.cases import (
-        _active_case_phase_values, _case_team_payload, _prioritize_new_case_assistants, _resolve_active_case_people,
+        _active_case_phase_values, _case_commission_personnel_changed, _case_team_payload, _prioritize_new_case_assistants,
+        _recalculate_case_draft_commissions, _resolve_active_case_people,
     )
     from app.core.crm import (
         _customer_or_404,
@@ -2984,7 +3039,7 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     case_record.title = title
     case_record.customer = customer.title
     case_record.status = phase
-    case_record.data = _case_team_payload({
+    updated_case_data = _case_team_payload({
         **case_data,
         "customer_record_id": customer.id,
         "customer_id": customer.id,
@@ -3001,6 +3056,9 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         "clue_record_id": clue_ids[0] if clue_ids else None,
         "clue_no": clue_nos[0] if clue_nos else "",
     }, handling_lawyers, handling_usernames, assistant_values, assistant_usernames)
+    case_record.data = updated_case_data
+    if _case_commission_personnel_changed(case_data, updated_case_data):
+        await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     if phase != previous_status:
         case_record.data = {**case_record.data, "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
         await _ensure_execution_application_reminder_task(
@@ -3026,7 +3084,8 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
 async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasicInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Keep the old arbitration edit branch isolated from normal/counsel cases."""
     from app.core.cases import (
-        _active_case_phase_values, _case_team_payload, _resolve_active_case_people,
+        _active_case_phase_values, _case_commission_personnel_changed, _case_team_payload, _recalculate_case_draft_commissions,
+        _resolve_active_case_people,
     )
     from app.core.crm import (
         _customer_or_404,
@@ -3068,13 +3127,16 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
     previous_status = case_record.status
     old_summary = f"{case_record.customer}｜{case_record.title}｜{case_record.status}｜{case_data.get('cause_or_charge', '')}"
     case_record.title, case_record.customer, case_record.status = title, customer.title, phase
-    case_record.data = _case_team_payload({
+    updated_case_data = _case_team_payload({
         **case_data, "customer_record_id": customer.id, "customer_id": customer.id, "customer_no": customer.serial_no,
         "cause_or_charge": cause_or_charge, "investigator": investigator_values[0] if investigator_values else "",
         "investigation_clue_ids": clue_ids, "investigation_clue_nos": clue_nos,
         "investigation_clue_id": clue_ids[0] if clue_ids else None, "investigation_clue": "、".join(clue_nos),
         "clue_record_id": clue_ids[0] if clue_ids else None, "clue_no": clue_nos[0] if clue_nos else "",
     }, lawyers, lawyer_usernames, assistant_values[0] if assistant_values else "", assistant_usernames[0] if assistant_usernames else "")
+    case_record.data = updated_case_data
+    if _case_commission_personnel_changed(case_data, updated_case_data):
+        await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     if phase != previous_status:
         case_record.data = {**case_record.data, "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
     db.add(WorkflowEvent(record_id=case_record.id, action="修改仲裁案件基本信息", from_status=previous_status, to_status=case_record.status, operator=identity["username"], comment=f"修改前：{old_summary}" + (f"｜说明：{body.comment.strip()}" if body.comment.strip() else "")))
@@ -3814,7 +3876,7 @@ async def decide_case_agent_action(
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/assign")
 async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.cases import (
-        _case_team_payload, _resolve_active_case_people,
+        _case_commission_personnel_changed, _case_team_payload, _recalculate_case_draft_commissions, _resolve_active_case_people,
     )
     from app.core.permissions import (
         _ensure_record_module,
@@ -3836,11 +3898,14 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
     manager_values, _ = await _resolve_active_case_people([body.customer_manager] if body.customer_manager.strip() else [], db, field_name="客户管理人")
     assistant = assistant_values[0] if assistant_values else ""
     assistant_username = assistant_usernames[0] if assistant_usernames else ""
+    previous_case_data = dict(case_record.data or {})
     case_data = _case_team_payload({
         **(case_record.data or {}), "customer_manager": manager_values[0] if manager_values else "",
         "hearing_lawyer": hearing_values[0],
     }, handling_lawyers, handling_usernames, assistant, assistant_username)
     case_record.data = case_data
+    if _case_commission_personnel_changed(previous_case_data, case_data):
+        await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     if case_record.status == "新案待分配":
         case_record.status = "文书准备"
     db.add(WorkflowEvent(record_id=case_record.id, action="案件人员分配", from_status=previous, to_status=case_record.status, operator=identity["username"], comment=f"开庭律师：{case_data['hearing_lawyer']}；经办律师：{','.join(handling_lawyers)}；助理：{assistant}。{body.comment}"))
@@ -3874,7 +3939,7 @@ async def update_case_hearing_lawyer(
     detail-page maintenance operation.
     """
     from app.core.cases import (
-        _resolve_active_case_people,
+        _case_commission_personnel_changed, _recalculate_case_draft_commissions, _resolve_active_case_people,
     )
     from app.core.permissions import (
         _ensure_record_module,
@@ -3889,11 +3954,14 @@ async def update_case_hearing_lawyer(
     hearing_values, hearing_usernames = await _resolve_active_case_people(
         [body.hearing_lawyer], db, field_name="开庭律师",
     )
-    case_data = dict(case_record.data or {})
+    before_case_data = dict(case_record.data or {})
+    case_data = dict(before_case_data)
     previous_hearing_lawyer = str(case_data.get("hearing_lawyer") or "")
     case_data["hearing_lawyer"] = hearing_values[0]
     case_data["hearing_lawyer_username"] = hearing_usernames[0]
     case_record.data = case_data
+    if _case_commission_personnel_changed(before_case_data, case_data):
+        await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     db.add(WorkflowEvent(
         record_id=case_record.id,
         action="修改开庭律师",

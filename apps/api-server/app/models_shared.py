@@ -599,8 +599,14 @@ class CaseAssistedFeeConfirmInput(BaseModel):
     remark: str = Field(default="", max_length=1000)
 
 
+class CaseBatchFeeContractInput(BaseModel):
+    case_id: int = Field(gt=0)
+    contract_record_id: int = Field(gt=0)
+
+
 class CaseBatchFeeInput(BaseModel):
     case_ids: list[int] = Field(min_length=1, max_length=100)
+    case_contracts: list[CaseBatchFeeContractInput] = Field(default_factory=list, max_length=100)
     amount: float = Field(gt=0, le=100000000)
     fee_type_id: int | None = Field(default=None, gt=0)
     expense_scope: str = Field(pattern="^(律所|平台|内部)$")
@@ -1663,6 +1669,7 @@ class FinanceFeeInput(BaseModel):
     contract_record_id: int | None = None
     case_record_id: int | None = None
     deadline: date | None = None
+    commission_mode: Literal["automatic", "manual"] | None = None
     commission_details: list[FinanceFeeCommissionDetailInput] = Field(default_factory=list)
 
 
@@ -1734,6 +1741,11 @@ class CaseCommissionCreateItemInput(BaseModel):
 class CaseCommissionBatchInput(BaseModel):
     source_fee_id: int = Field(gt=0)
     items: list[CaseCommissionCreateItemInput] = Field(min_length=1, max_length=100)
+
+
+class CaseCommissionPreviewInput(BaseModel):
+    """Preview server-derived commission rows before the agency fee exists."""
+    amount: float = Field(gt=0)
 
 
 class FinanceActionInput(BaseModel):

@@ -39,6 +39,7 @@ ContractPaymentCandidate,
 PaymentTypeOption,
 Step
 } from "./types";
+import { contractPaymentCandidateKey } from "./contractPaymentCandidateKey";
 
 // ==================== 合同标的编辑 Modal ====================
 interface ContractObjectEditModalProps {
@@ -567,7 +568,7 @@ interface ContractPaymentModalProps {
   paymentTypes: PaymentTypeOption[];
   paymentTypeSearch: string;
   selectedPaymentObjectKeys: Key[];
-  paymentAmounts: Record<number, number>;
+  paymentAmounts: Record<string, number>;
   paymentCandidates: ContractPaymentCandidate[];
   selectedContractPaymentType: PaymentTypeOption | undefined;
   paymentSaving: boolean;
@@ -576,7 +577,7 @@ interface ContractPaymentModalProps {
   onPaymentTypeSearch: (value: string) => void;
   onOpenPaymentTypeCreator: () => void;
   onPaymentObjectSelectionChange: (keys: Key[]) => void;
-  onPaymentAmountChange: (objectId: number, value: number) => void;
+  onPaymentAmountChange: (candidateKey: string, value: number) => void;
 }
 
 export function ContractPaymentModal({
@@ -656,7 +657,7 @@ export function ContractPaymentModal({
         style={{ marginBottom: 12 }}
       />
       <Table<ContractPaymentCandidate>
-        rowKey={(row) => row.case_fee_id || row.contract_object_id}
+        rowKey={contractPaymentCandidateKey}
         size="small"
         pagination={false}
         locale={{ emptyText: "当前合同没有可付款的案件费用" }}
@@ -677,13 +678,13 @@ export function ContractPaymentModal({
             width: 130,
             render: (_, row) => (
               <InputNumber
-                disabled={!selectedPaymentObjectKeys.includes(row.case_fee_id || row.contract_object_id)}
+                disabled={!selectedPaymentObjectKeys.includes(contractPaymentCandidateKey(row))}
                 min={0.01}
                 max={row.remaining_amount}
                 precision={2}
-                value={paymentAmounts[row.case_fee_id || row.contract_object_id]}
+                value={paymentAmounts[contractPaymentCandidateKey(row)]}
                 style={{ width: "100%" }}
-                onChange={(value) => onPaymentAmountChange(row.case_fee_id || row.contract_object_id, Number(value || 0))}
+                onChange={(value) => onPaymentAmountChange(contractPaymentCandidateKey(row), Number(value || 0))}
               />
             ),
           },
@@ -809,19 +810,19 @@ export function ContractInvoiceModal({
           <Form.Item label="开票内容" name="invoice_content" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="交付方式" name="delivery_method">
+          <Form.Item label="交付方式" name="delivery_method" rules={[{ required: true, message: "请选择交付方式" }]}>
             <Select
               options={["电子发票", "邮寄纸质发票", "现场领取"].map((value) => ({ value, label: value }))}
             />
           </Form.Item>
-          <Form.Item label="接收邮箱" name="email">
+          <Form.Item label="接收邮箱" name="email" dependencies={["delivery_method"]} rules={[({ getFieldValue }) => ({ required: getFieldValue("delivery_method") === "电子发票", message: "电子发票必须填写接收邮箱" })]}>
             <Input />
           </Form.Item>
           <Form.Item label="联系电话" name="recipient_phone">
             <Input />
           </Form.Item>
         </div>
-        <Form.Item label="邮寄地址" name="delivery_address">
+        <Form.Item label="邮寄地址" name="delivery_address" dependencies={["delivery_method"]} rules={[({ getFieldValue }) => ({ required: getFieldValue("delivery_method") !== "电子发票", message: "纸质发票或现场领取必须填写交付地址" })]}>
           <Input />
         </Form.Item>
         <Form.Item label="备注" name="remark">

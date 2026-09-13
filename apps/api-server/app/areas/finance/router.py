@@ -36,7 +36,7 @@ router = APIRouter()
 @router.put(f"{settings.api_prefix}/finance/fees/{{fee_id}}")
 async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
-        _case_fee_type_snapshot, _editable_finance_fee, _finance_fee_commission_details, _resolve_case_fee_contract, _resolve_case_fee_type_master,
+        _case_fee_type_snapshot, _editable_finance_fee, _finance_fee_commission_payload, _resolve_case_fee_contract, _resolve_case_fee_type_master,
         _round_fee_amount,
     )
     from app.core.permissions import (
@@ -75,15 +75,20 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
             raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
         _validate_finance_fee_scope_subtype(body.expense_scope, body.expense_subtype, body.fee_type)
     contract_record = None
-    if body.contract_record_id:
-        contract_record = await db.get(BusinessRecord, body.contract_record_id) if case_record else await _ensure_record_visible(body.contract_record_id, identity, db)
+    try:
+        existing_contract_id = int(data.get("contract_id") or data.get("contract_record_id") or 0)
+    except (TypeError, ValueError):
+        existing_contract_id = 0
+    requested_contract_id = body.contract_record_id or existing_contract_id or None
+    if requested_contract_id:
+        contract_record = await db.get(BusinessRecord, requested_contract_id) if case_record else await _ensure_record_visible(requested_contract_id, identity, db)
         if not contract_record: raise HTTPException(status_code=404, detail="关联合同不存在")
         if contract_record.module != "contract": raise HTTPException(status_code=422, detail="关联记录不是合同")
         if case_record and contract_record.customer != case_record.customer:
             raise HTTPException(status_code=409, detail="关联合同必须属于当前案件客户")
     contract_record = await _resolve_case_fee_contract(case_record, contract_record, body.expense_scope, identity, db)
-    commission_details = await _finance_fee_commission_details(body, amount, db)
-    data.update({"amount": amount, **fee_snapshot, "expense_scope": body.expense_scope or "", "handler": body.handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, "case_no": body.case_no, "case_id": case_record.id if case_record else body.case_record_id, "contract_id": body.contract_record_id, "contract_no": contract_record.serial_no if contract_record else str(data.get("contract_no") or ""), "deadline": str(body.deadline) if body.deadline else "", "commission_details": commission_details, "is_refund": fee_snapshot["fee_type"] == "内部费用" and amount < 0})
+    commission = await _finance_fee_commission_payload(body, amount, db, case_record=case_record, existing_data=data)
+    data.update({"amount": amount, **fee_snapshot, "expense_scope": body.expense_scope or "", "handler": body.handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else body.case_record_id, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", **commission, "is_refund": fee_snapshot["fee_type"] == "内部费用" and amount < 0})
     item.title = body.title; item.customer = body.customer; item.owner = body.handler; item.description = body.description; item.data = data
     db.add(WorkflowEvent(record_id=item.id, action="修改费用草稿", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{item.serial_no}：{body.title} {amount:.2f}"))
     await db.commit(); await db.refresh(item)
@@ -2903,7 +2908,7 @@ async def finance_contract_ledger(contract_id: int, identity: dict = Depends(cur
 @router.post(f"{settings.api_prefix}/finance/fees", status_code=status.HTTP_201_CREATED)
 async def create_finance_fee(body: FinanceFeeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
-        _case_fee_type_snapshot, _finance_fee_commission_details, _finance_linked_case, _resolve_case_fee_contract, _resolve_case_fee_type_master,
+        _case_fee_type_snapshot, _finance_fee_commission_payload, _finance_linked_case, _resolve_case_fee_contract, _resolve_case_fee_type_master,
         _round_fee_amount,
     )
     from app.core.permissions import (
@@ -2955,9 +2960,9 @@ async def create_finance_fee(body: FinanceFeeInput, identity: dict = Depends(cur
     if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
     handler = identity["username"] if identity.get("role") == "user" else body.handler
     amount = _round_fee_amount(body.amount)
-    commission_details = await _finance_fee_commission_details(body, amount, db)
+    commission = await _finance_fee_commission_payload(body, amount, db, case_record=case_record)
     serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}"
-    item = BusinessRecord(module="finance", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=handler, department=user.department, description=body.description, data={"amount": amount, **fee_snapshot, "expense_scope": body.expense_scope or "", "is_refund": fee_snapshot["fee_type"] == "内部费用" and amount < 0, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else None, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", "handler": handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, "commission_details": commission_details})
+    item = BusinessRecord(module="finance", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=handler, department=user.department, description=body.description, data={"amount": amount, **fee_snapshot, "expense_scope": body.expense_scope or "", "is_refund": fee_snapshot["fee_type"] == "内部费用" and amount < 0, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else None, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", "handler": handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, **commission})
     db.add(item); await db.flush()
     db.add(WorkflowEvent(record_id=item.id, action="创建费用", to_status="草稿", operator=identity["username"], comment=f"{fee_snapshot['fee_type_path']}：{amount:.2f} 元"))
     await db.commit(); await db.refresh(item)
@@ -4445,7 +4450,7 @@ async def create_finance_fee_payment_type(
 @router.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/submit")
 async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
-        _active_payment_type, _finance_fee_readiness, _finance_payment_type_dict, _round_fee_amount,
+        _active_contract_payment_fee_reservations, _active_payment_type, _finance_fee_readiness, _finance_payment_type_dict, _round_fee_amount,
     )
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity, _require_record_owner_or_manager,
@@ -4458,6 +4463,18 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
         raise HTTPException(status_code=409, detail="当前状态不能申请付款" if is_payment_request else "当前状态不能提交审批")
     data = item.data or {}
     if not is_payment_request:
+        commission_missing = []
+        if data.get("fee_type") == "代理费" and data.get("commission_mode") == "automatic":
+            commission_missing = [
+                str(message).strip()
+                for message in (data.get("commission_missing_messages") or [])
+                if str(message).strip()
+            ]
+        if commission_missing:
+            raise HTTPException(
+                status_code=422,
+                detail="自动提成缺少人员或有效提成方案：" + "、".join(commission_missing),
+            )
         missing = []
         if not data.get("handler"): missing.append("经办人员")
         if not data.get("case_no"): missing.append("关联案号")
@@ -4491,7 +4508,8 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
             FinanceTransaction.transaction_type == "付款",
         )) or 0))
         previous_requested = _round_fee_amount(float(data.get("payment_requested_amount") or 0))
-        remaining = _round_fee_amount(abs(float(data.get("amount") or 0)) - paid - previous_requested)
+        contract_reserved = (await _active_contract_payment_fee_reservations({item.id}, db)).get(item.id, 0)
+        remaining = _round_fee_amount(abs(float(data.get("amount") or 0)) - paid - previous_requested - contract_reserved)
         if requested > remaining + 0.001:
             raise HTTPException(status_code=409, detail=f"申请付款金额不能超过未付款金额 {remaining:.2f}")
         applied_at = datetime.now().isoformat(timespec="seconds")

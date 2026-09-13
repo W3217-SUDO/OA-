@@ -3812,6 +3812,15 @@ export default function InvestigationCenterPage({
         systemPersonOptions={systemPersonOptions}
         onOk={async () => {
           if (batchStep === 0) {
+            const unresolvedContracts = resolvedClueContracts.filter((item) => !item.contract);
+            if (unresolvedContracts.length) {
+              message.warning(
+                unresolvedContracts.length === 1
+                  ? `${unresolvedContracts[0].clue_no || "该线索"}${unresolvedContracts[0].error || "未解析到合同"}，请先补绑唯一有效的同客户合同`
+                  : `${unresolvedContracts.length} 条线索未解析到唯一有效的同客户合同，请逐条补绑后再生成案件`,
+              );
+              return;
+            }
             try {
               const values = await batchForm.validateFields([
                 "client_position",
