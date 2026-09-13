@@ -550,6 +550,68 @@ async def _customer_linked_business_counts(customer: BusinessRecord, db: AsyncSe
     return counts
 
 
+async def _cascade_customer_owner_change(
+    customer: BusinessRecord, original_owner: str, new_owner: str, db: AsyncSession,
+) -> dict[str, int]:
+    """级联更新客户关联业务的负责人，对齐旧系统 CustomerOwnerChange 行为。
+
+    旧系统执行顺序：案件 owner → 合同 owner → 客户 owner → 调查 owner。
+    匹配条件：原 owner + 客户 ID 精准匹配，仅更新 owner 字段。
+    返回各模块更新的记录数。
+
+    匹配策略（与旧系统语义对齐）：
+    1. data.customer_id / data.customer_record_id == 客户.id（硬条件）
+    2. 若上述字段为空，按 customer_no 匹配（兜底）
+    3. 再按 record.customer 名称匹配（最终兜底，仅当无 customer_id 时生效）
+    """
+    from app.core.formatters import (
+        _normalize_customer_name,
+    )
+    customer_id = customer.id
+    customer_no = str(customer.serial_no or "").strip()
+    customer_name = _normalize_customer_name(customer.title)
+
+    # 与旧系统一致的级联顺序：案件 → 合同 → 调查
+    cascade_modules = ["case", "contract", "investigation"]
+    result: dict[str, int] = {}
+
+    for module in cascade_modules:
+        records = (await db.scalars(
+            select(BusinessRecord)
+            .where(
+                BusinessRecord.module == module,
+                BusinessRecord.owner == original_owner,
+            )
+            .with_for_update()
+        )).all()
+
+        updated = 0
+        for record in records:
+            data = record.data or {}
+            rec_customer_id = None
+            try:
+                rec_customer_id = int(data.get("customer_id") or data.get("customer_record_id") or 0) or None
+            except (TypeError, ValueError):
+                rec_customer_id = None
+
+            linked = False
+            if rec_customer_id is not None:
+                # 硬条件：customer_id 必须精准匹配；名称不一致也以 customer_id 为准
+                linked = rec_customer_id == customer_id
+            elif customer_no and str(data.get("customer_no") or "").strip() == customer_no:
+                linked = True
+            elif record.customer and _normalize_customer_name(record.customer) == customer_name:
+                linked = True
+            if not linked:
+                continue
+            record.owner = new_owner
+            updated += 1
+
+        result[module] = updated
+
+    return result
+
+
 async def _next_customer_serial_no(db: AsyncSession) -> str:
     """Allocate the next visible customer number using the legacy SHKH rule."""
     serial_prefix = f"SHKH{datetime.now():%y}"
