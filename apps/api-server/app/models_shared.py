@@ -2526,6 +2526,7 @@ class ContractPaymentLineInput(BaseModel):
     contract_object_id: int | None = Field(default=None, gt=0)
     case_fee_id: int | None = Field(default=None, gt=0)
     amount: float = Field(gt=0, le=999999999)
+    remark: str = Field(default="", max_length=1000)
 
     @model_validator(mode="after")
     def require_target(self):
@@ -2536,6 +2537,7 @@ class ContractPaymentLineInput(BaseModel):
 
 class ContractPaymentApplicationInput(BaseModel):
     payment_type_id: int = Field(gt=0)
+    payer_name: str = Field(default="", max_length=200)
     application_date: date
     remark: str = Field(default="", max_length=2000)
     lines: list[ContractPaymentLineInput] = Field(min_length=1, max_length=100)

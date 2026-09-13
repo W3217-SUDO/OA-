@@ -598,20 +598,22 @@ export function ContractPaymentModal({
   onPaymentObjectSelectionChange,
   onPaymentAmountChange,
 }: ContractPaymentModalProps) {
+  if (!open || !paymentTarget) return null;
   return (
-    <Modal
-      open={open}
-      title={`合同付款：${paymentTarget?.serial_no || ""}`}
-      width={980}
-      okText="提交合同付款申请"
-      cancelText="取消"
-      confirmLoading={paymentSaving}
-      closable={!paymentSaving}
-      onOk={onOk}
-      cancelButtonProps={{ disabled: paymentSaving }}
-      onCancel={onCancel}
-    >
+    <section className="contract-finance-page" aria-label="申请付款">
+      <header><h2>申请付款</h2><Button disabled={paymentSaving} onClick={onCancel}>返回合同</Button></header>
+      <Steps size="small" current={0} items={["付款信息填写", "提交申请", "财务审批", "财务付款"].map((title) => ({ title }))} />
+      <div className="contract-finance-information">
+      <dl className="contract-finance-summary">
+        <div><dt>合同编号</dt><dd>{paymentTarget.serial_no}</dd></div>
+        <div><dt>合同名称</dt><dd>{paymentTarget.title}</dd></div>
+        <div><dt>客户名称</dt><dd>{paymentTarget.customer}</dd></div>
+        <div><dt>申请编号</dt><dd>提交后生成</dd></div>
+        <div><dt>销售代表</dt><dd>{String(paymentTarget.data.source_person || paymentTarget.owner || "—")}</dd></div>
+        <div><dt>申请日期</dt><dd>{dayjs().format("YYYY年MM月DD日")}</dd></div>
+      </dl>
       <Form form={paymentForm} layout="vertical">
+        <Form.Item label="交款人" name="payer_name"><Input maxLength={200} /></Form.Item>
         <div className="form-grid">
           <Form.Item label="收款单位" name="payment_type_id" rules={[{ required: true, message: "请选择系统付款单位" }]}>
             <Select
@@ -636,30 +638,20 @@ export function ContractPaymentModal({
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
         </div>
-        {selectedContractPaymentType && (
-          <Alert
-            type="info"
-            showIcon
-            message={selectedContractPaymentType.payee}
-            description={`性质：${selectedContractPaymentType.nature || "—"}　开户行：${selectedContractPaymentType.account_bank || "—"}　账号信息：${selectedContractPaymentType.account || "—"}`}
-            style={{ marginBottom: 12 }}
-          />
-        )}
-        <Form.Item label="申请说明" name="remark">
+        <Form.Item label="开户行"><Input readOnly value={selectedContractPaymentType?.account_bank || ""} /></Form.Item>
+        <Form.Item label="账号信息"><Input readOnly value={selectedContractPaymentType?.account || ""} /></Form.Item>
+        <Form.Item label="备注" name="remark">
           <Input.TextArea rows={2} />
         </Form.Item>
+        <Button type="primary" loading={paymentSaving} onClick={onOk}>提交</Button>
       </Form>
-      <Alert
-        showIcon
-        type="info"
-        message="按案件费用明细逐项申请"
-        description="勾选具体案件费用并填写本次支付金额；系统会保留审批中、待付款和已付款金额，阻止同一费用重复超额申请。"
-        style={{ marginBottom: 12 }}
-      />
+      </div>
+      <Divider titlePlacement="start" plain>付款信息</Divider>
       <Table<ContractPaymentCandidate>
         rowKey={contractPaymentCandidateKey}
         size="small"
         pagination={false}
+        scroll={{ x: 1150 }}
         locale={{ emptyText: "当前合同没有可付款的案件费用" }}
         dataSource={paymentCandidates}
         rowSelection={{
@@ -667,10 +659,13 @@ export function ContractPaymentModal({
           onChange: (keys) => onPaymentObjectSelectionChange(keys),
         }}
         columns={[
+          { title: "序号", width: 65, render: (_value, _row, index) => index + 1 },
+          { title: "案件类型", dataIndex: "case_type", width: 100, render: (value) => value || "—" },
           { title: "案号", dataIndex: "case_no", width: 140 },
           { title: "案件名称", dataIndex: "case_title", ellipsis: true },
           { title: "费用类型", dataIndex: "fee_type", width: 150 },
           { title: "合同金额", dataIndex: "contract_amount", width: 105, render: (value) => Number(value).toFixed(2) },
+          { title: "通知时间", dataIndex: "inform_date", width: 110, render: (value) => value || "—" },
           { title: "已占用", dataIndex: "reserved_amount", width: 100, render: (value) => Number(value).toFixed(2) },
           { title: "待付余额", dataIndex: "remaining_amount", width: 105, render: (value) => Number(value).toFixed(2) },
           {
@@ -688,9 +683,10 @@ export function ContractPaymentModal({
               />
             ),
           },
+          { title: "备注", width: 180, render: (_, row) => <Input maxLength={1000} defaultValue={paymentForm.getFieldValue(["line_remarks", contractPaymentCandidateKey(row)])} onChange={(event) => paymentForm.setFieldValue(["line_remarks", contractPaymentCandidateKey(row)], event.target.value)} /> },
         ]}
       />
-    </Modal>
+    </section>
   );
 }
 
@@ -763,19 +759,16 @@ export function ContractInvoiceModal({
   onCancel,
   onOk,
 }: ContractInvoiceModalProps) {
+  if (!open || !invoiceTarget) return null;
   return (
-    <Modal
-      open={open}
-      title={`合同开票：${invoiceTarget?.serial_no || ""}`}
-      okText="创建开票申请"
-      cancelText="取消"
-      confirmLoading={invoiceSaving}
-      closable={!invoiceSaving}
-      onOk={onOk}
-      cancelButtonProps={{ disabled: invoiceSaving }}
-      onCancel={onCancel}
-      width={920}
-    >
+    <section className="contract-finance-page" aria-label="申请开票">
+      <header><h2>申请开票</h2><Button disabled={invoiceSaving} onClick={onCancel}>返回合同</Button></header>
+      <Steps size="small" current={0} items={["开票信息填写", "提交申请", "财务审批", "财务开票"].map((title) => ({ title }))} />
+      <dl className="contract-finance-summary">
+        <div><dt>合同编号</dt><dd>{invoiceTarget.serial_no}</dd></div>
+        <div><dt>合同名称</dt><dd>{invoiceTarget.title}</dd></div>
+        <div><dt>客户名称</dt><dd>{invoiceTarget.customer}</dd></div>
+      </dl>
       <Form form={invoiceForm} layout="vertical">
         <div className="form-grid">
           <Form.Item label="开票金额" name="amount" rules={[{ required: true }]}>
@@ -854,10 +847,12 @@ export function ContractInvoiceModal({
           )}
         </Form.List>
       </Form>
+      <Divider titlePlacement="start" plain>开票费用明细</Divider>
       <Table
         rowKey="fee_id"
         size="small"
         pagination={false}
+        scroll={{ x: 900 }}
         dataSource={invoiceSubjects}
         locale={{ emptyText: "当前合同没有可开票的案件费用" }}
         rowSelection={{ selectedRowKeys: selectedInvoiceObjectKeys, onChange: onInvoiceSelectionChange }}
@@ -870,7 +865,8 @@ export function ContractInvoiceModal({
           { title: "可开票金额", dataIndex: "invoiceable_amount", width: 120, render: (value) => Number(value || 0).toFixed(2) },
         ]}
       />
-    </Modal>
+      <Button type="primary" loading={invoiceSaving} onClick={onOk} style={{ marginTop: 16 }}>提交申请</Button>
+    </section>
   );
 }
 

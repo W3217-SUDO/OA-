@@ -119,6 +119,10 @@ export default function ContractCenterPage({
   const isContractInvestigationView = initialView.startsWith("contract-investigation-");
   const contractChangeRouteMatch = initialView.match(/^contract-change-(\d+)-(.+)$/);
   const isContractChangeView = Boolean(contractChangeRouteMatch);
+  const financeRouteMatch = initialView.match(/^contract-(payment|invoice)-apply-(\d+)-(.+)$/);
+  const isContractFinanceView = Boolean(financeRouteMatch);
+  const [financePageError, setFinancePageError] = useState("");
+  const [financePageLoading, setFinancePageLoading] = useState(false);
   const contractDetailRouteMatch = initialView.match(/^contract-detail-(\d+)-(.+)$/);
   const contractInvestigationRouteMatch = initialView.match(/^contract-investigation-(\d+)-(.+)$/);
   const contractPreviewRouteMatch = initialView.match(/^contract-preview-(.+)$/);
@@ -503,6 +507,7 @@ export default function ContractCenterPage({
   };
 
   useEffect(() => {
+    if (isContractFinanceView) return;
     if (isContractDetailView || isContractInvestigationView || initialView === "contract-new") {
       void load();
       return;
@@ -813,7 +818,7 @@ export default function ContractCenterPage({
     if (isContractInvestigationView) onNavigate?.(consumeContractDetailReturnView());
   };
 
-  const { openContractPayment, createContractPaymentType, createContractPayment, createContractInvoice } = createContractFinanceActions({
+  const { createContractPaymentType, createContractPayment, createContractInvoice } = createContractFinanceActions({
     get contractCapabilities() { return contractCapabilities; },
     get denyContractAction() { return denyContractAction; },
     get paymentForm() { return paymentForm; },
@@ -848,31 +853,6 @@ export default function ContractCenterPage({
     setPaymentTypeCreateOpen(true);
   };
 
-  const openContractInvoice = async (contract: Contract) => {
-    if (!contractCapabilities(contract).canInvoice) {
-      denyContractAction();
-      return;
-    }
-    const invoiceDue = Number(contract.data.invoice_should || 0) - Number(contract.data.invoice_opened || 0);
-    invoiceForm.resetFields();
-    invoiceForm.setFieldsValue({
-      amount: invoiceDue > 0 ? invoiceDue : contract.data.amount,
-      invoice_title: contract.customer,
-      invoice_type: "增值税普通发票",
-      invoice_content: "法律服务费",
-      delivery_method: "电子发票",
-    });
-    try {
-      const { data } = await api.get(`/contracts/${contract.id}/invoice-candidates`);
-      setInvoiceSubjects(data.items || []);
-      setSelectedInvoiceObjectKeys([]);
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || "合同关联案件费用加载失败");
-      return;
-    }
-    setInvoiceTarget(contract);
-  };
-
   const startCaseFromContract = (contract: Contract) => {
     if (!contractListActionPolicy(contract.status).canCreateCase) {
       message.warning("只能从审批中、审批通过或已完成的合同新建案件");
@@ -886,6 +866,63 @@ export default function ContractCenterPage({
     rememberCaseContractContext(sessionStorage, context);
     onNavigate?.("case-new");
   };
+  const startContractFinance = (kind: "payment" | "invoice", contract: Contract) => {
+    sessionStorage.setItem("sunhold:contract-finance-return", initialView);
+    onNavigate?.(`contract-${kind}-apply-${contract.id}-${encodeURIComponent(contract.serial_no)}`);
+  };
+  const returnFromContractFinance = () => {
+    const saved = sessionStorage.getItem("sunhold:contract-finance-return") || "contract-mine";
+    onNavigate?.(saved.startsWith("contract-") && !saved.includes("-apply-") ? saved : "contract-mine");
+  };
+  useEffect(() => {
+    if (!financeRouteMatch) {
+      setPaymentTarget(null);
+      setInvoiceTarget(null);
+      return;
+    }
+    let cancelled = false;
+    setPaymentTarget(null);
+    setInvoiceTarget(null);
+    setFinancePageError("");
+    setFinancePageLoading(true);
+    void (async () => {
+      try {
+        const [record, me] = await Promise.all([api.get(`/records/${financeRouteMatch[2]}`), api.get("/auth/me")]);
+        if (cancelled) return;
+        const contract = record.data as Contract;
+        if (record.data.module !== "contract") throw new Error("关联记录不是合同");
+        if (contract.serial_no !== decodeURIComponent(financeRouteMatch[3])) throw new Error("合同编号与页面不一致，请从合同列表重新进入");
+        const capabilities = contractWorkflowActionPolicy(me.data, contract);
+        const allowed = financeRouteMatch[1] === "payment" ? capabilities.canPayment : capabilities.canInvoice;
+        if (!allowed) throw new Error("合同已归档、已终止或当前账号没有合同菜单权限");
+        setProfile(me.data);
+        if (financeRouteMatch[1] === "payment") {
+          paymentForm.resetFields();
+          paymentForm.setFieldsValue({ payer_name: contract.customer, application_date: dayjs(), remark: "" });
+          const { data } = await api.get(`/contracts/${contract.id}/payment-candidates`);
+          if (cancelled) return;
+          setPaymentCandidates(data.items || []);
+          setPaymentTypes(data.payment_types || []);
+          setSelectedPaymentObjectKeys([]);
+          setPaymentAmounts({});
+          setPaymentTarget(contract);
+        } else {
+          invoiceForm.resetFields();
+          invoiceForm.setFieldsValue({ invoice_title: contract.customer, invoice_type: "增值税普通发票", invoice_content: "法律服务费", delivery_method: "电子发票" });
+          const { data } = await api.get(`/contracts/${contract.id}/invoice-candidates`);
+          if (cancelled) return;
+          setInvoiceSubjects(data.items || []);
+          setSelectedInvoiceObjectKeys([]);
+          setInvoiceTarget(contract);
+        }
+      } catch (error: any) {
+        if (!cancelled) setFinancePageError(extractContractErrorMessage(error, "合同申请页面加载失败"));
+      } finally {
+        if (!cancelled) setFinancePageLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [initialView]);
   const buildContractExportParams = () => {
     const { page: _page, page_size: _pageSize, ...exportParams } = buildContractListRequestParams(
       initialView,
@@ -1063,7 +1100,9 @@ export default function ContractCenterPage({
 
   return (
     <>
-      {initialView !== "contract-new" && !isContractDetailView && !isContractInvestigationView && !isContractChangeView && (
+      {isContractFinanceView && financePageLoading && <p role="status">正在加载申请信息…</p>}
+      {isContractFinanceView && financePageError && <div role="alert"><p>{financePageError}</p><Button onClick={returnFromContractFinance}>返回合同</Button></div>}
+      {initialView !== "contract-new" && !isContractDetailView && !isContractInvestigationView && !isContractChangeView && !isContractFinanceView && (
         <ContractList
           initialView={initialView}
           queryForm={queryForm}
@@ -1107,8 +1146,8 @@ export default function ContractCenterPage({
           onDeleteCompany={deleteCompanyContract}
           onArchive={archiveContract}
           onChangeContract={openChange}
-          onPayment={(contract) => void openContractPayment(contract)}
-          onInvoice={(contract) => void openContractInvoice(contract)}
+          onPayment={(contract) => startContractFinance("payment", contract)}
+          onInvoice={(contract) => startContractFinance("invoice", contract)}
           onInvestigation={(contract) => void openInvestigation(contract)}
           onApprove={(contract) => void openReview(contract)}
           onReviewChange={reviewChange}
@@ -1674,7 +1713,7 @@ export default function ContractCenterPage({
       />
 
       <ContractPaymentModal
-        open={Boolean(paymentTarget)}
+        open={isContractFinanceView && financeRouteMatch?.[1] === "payment" && Boolean(paymentTarget)}
         paymentTarget={paymentTarget}
         paymentForm={paymentForm}
         paymentTypes={paymentTypes}
@@ -1689,6 +1728,7 @@ export default function ContractCenterPage({
           setPaymentTarget(null);
           setSelectedPaymentObjectKeys([]);
           setPaymentAmounts({});
+          if (isContractFinanceView) returnFromContractFinance();
         }}
         onOk={createContractPayment}
         onPaymentTypeSearch={setPaymentTypeSearch}
@@ -1711,18 +1751,22 @@ export default function ContractCenterPage({
       />
 
       <ContractInvoiceModal
-        open={Boolean(invoiceTarget)}
+        open={isContractFinanceView && financeRouteMatch?.[1] === "invoice" && Boolean(invoiceTarget)}
         invoiceTarget={invoiceTarget}
         invoiceForm={invoiceForm}
         invoiceSaving={invoiceSaving}
         invoiceSubjects={invoiceSubjects}
         selectedInvoiceObjectKeys={selectedInvoiceObjectKeys}
-        onInvoiceSelectionChange={setSelectedInvoiceObjectKeys}
+        onInvoiceSelectionChange={(keys) => {
+          setSelectedInvoiceObjectKeys(keys);
+          invoiceForm.setFieldValue("amount", invoiceSubjects.filter((item) => keys.includes(item.fee_id)).reduce((sum, item) => sum + Number(item.invoiceable_amount || 0), 0));
+        }}
         onCancel={() => {
           if (invoiceSaving) return;
           setInvoiceTarget(null);
           setInvoiceSubjects([]);
           setSelectedInvoiceObjectKeys([]);
+          if (isContractFinanceView) returnFromContractFinance();
         }}
         onOk={createContractInvoice}
       />

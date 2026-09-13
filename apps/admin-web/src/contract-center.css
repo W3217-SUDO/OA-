@@ -254,3 +254,19 @@
 .page-workbench > .contract-original-panel { display: flex; height: 100%; min-height: 0; flex-direction: column; }
 .page-workbench > .contract-original-panel > .ant-card-body { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
 .contract-original-panel .ant-table-wrapper { min-width: 0; min-height: 0; overflow: hidden; }
+.contract-finance-page { width: 100%; min-width: 0; padding: 12px; background: #fff; }
+.contract-finance-page > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #ddd; margin-bottom: 20px; padding-bottom: 10px; }
+.contract-finance-page h2 { font-size: 16px; margin: 0; letter-spacing: 0; }
+.contract-finance-page > .ant-steps { margin-bottom: 16px; }
+.contract-finance-information { background: #eef1f3; padding: 16px; }
+.contract-finance-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 24px; margin: 16px 0; }
+.contract-finance-summary > div { display: flex; gap: 8px; min-width: 0; }
+.contract-finance-summary dt { color: #626b73; flex-shrink: 0; }
+.contract-finance-summary dd { margin: 0; overflow-wrap: anywhere; }
+.contract-finance-information > .ant-form { max-width: 1000px; }
+.contract-finance-page .ant-table-wrapper { min-width: 0; }
+.contract-finance-page .ant-space { flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .contract-finance-summary { grid-template-columns: minmax(0, 1fr); }
+  .contract-finance-page .form-grid { grid-template-columns: minmax(0, 1fr); }
+}

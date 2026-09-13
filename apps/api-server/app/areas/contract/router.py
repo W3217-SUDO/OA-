@@ -957,13 +957,13 @@ async def contract_archive_subjects(contract_id: int, identity: dict = Depends(c
 async def contract_invoice_candidates(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Return individual, currently invoiceable case-fee rows for a contract."""
     from app.core.constants import INVOICE_RELEASED_STATUSES
-    from app.core.contracts import _contract_allows_downstream_creation
+    from app.core.contracts import _contract_allows_finance_application
     from app.core.finance import _fee_matches_contract, _invoice_linked_fee_ids, _round_fee_amount
     from app.core.permissions import _ensure_record_module, _record_scope_conditions, _require_record_module_menu
 
     await _require_record_module_menu("contract", identity, db, action="查看")
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
-    if not _contract_allows_downstream_creation(contract):
+    if not _contract_allows_finance_application(contract):
         raise HTTPException(status_code=409, detail="归档或已终止合同不能新建开票申请")
     conditions = [
         BusinessRecord.module == "finance",
@@ -1180,7 +1180,7 @@ async def list_contract_payment_applications(contract_id: int, identity: dict = 
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-applications", status_code=status.HTTP_201_CREATED)
 async def create_contract_payment_application(contract_id: int, body: ContractPaymentApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.contracts import _contract_allows_downstream_creation
+    from app.core.contracts import _contract_allows_finance_application
     from app.core.finance import (
         _active_payment_type, _contract_payment_candidate_rows, _finance_payment_type_dict, _round_fee_amount,
     )
@@ -1190,12 +1190,8 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_contract_action(identity, db, "contract.payment.create", "发起付款申请")
     await _require_record_owner_or_manager(contract, identity, db)
-    if not _contract_allows_downstream_creation(contract):
+    if not _contract_allows_finance_application(contract):
         raise HTTPException(status_code=409, detail="归档或已终止合同不能发起合同付款")
-    if contract.status == "审批中":
-        raise HTTPException(status_code=409, detail="审批中或已归档合同不能发起合同付款")
-    if contract.status not in {CONTRACT_APPROVED_STATUS, "已完成"}:
-        raise HTTPException(status_code=409, detail="仅审批通过或已完成的合同可以发起合同付款")
     payment_type = await _active_payment_type(body.payment_type_id, db)
     payment_type_data = _finance_payment_type_dict(payment_type)
     if any(line.case_fee_id and line.contract_object_id for line in body.lines):
@@ -1230,6 +1226,8 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
     accounting_center = "平台财务中心" if str((contract.data or {}).get("contract_body") or "").strip() == "平台" else "财务中心"
     payment = BusinessRecord(module="contract_payment", serial_no=serial, title=f"{contract.serial_no}合同付款申请", customer=contract.customer, status="待审批", owner=contract.owner, department=user.department, description=body.remark.strip(), data={"contract_id": contract.id, "contract_no": contract.serial_no, "contract_body": (contract.data or {}).get("contract_body"), "accounting_center": accounting_center, "finance_scope": "platform" if accounting_center == "平台财务中心" else "firm", "payment_type_id": payment_type.id, "payment_type_code": payment_type.code, "payment_type": payment_type.name, "payment_nature": payment_type_data["nature"], "payee": payment_type_data["payee"], "account_bank": payment_type_data["account_bank"], "account": payment_type_data["account"], "application_date": body.application_date.isoformat(), "amount": total, "lines": snapshot, "applicant": identity["username"]})
     db.add(payment); await db.flush()
+    payment.data = {**payment.data, "payer_name": body.payer_name.strip() or contract.customer,
+                    "lines": [{**item, "remark": line.remark.strip()} for item, (line, _) in zip(snapshot, normalized_lines)]}
     for line, candidate in normalized_lines:
         if candidate.get("source") == "contract_object":
             db.add(ContractPaymentLine(payment_record_id=payment.id, contract_object_id=candidate["contract_object_id"], case_record_id=candidate["case_record_id"], fee_type=candidate["fee_type"], requested_amount=_round_fee_amount(line.amount)))

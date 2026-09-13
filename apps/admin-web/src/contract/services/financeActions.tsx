@@ -53,6 +53,7 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
             return;
         }
         paymentForm.resetFields();
+        paymentForm.setFieldsValue({ payer_name: contract.customer, application_date: dayjs(), remark: "" });
         setPaymentTarget(contract);
         setPaymentCandidates([]);
         setPaymentTypes([]);
@@ -109,7 +110,7 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
             const values = await paymentForm.validateFields();
             const lines = selectedPaymentObjectKeys.map((key) => {
                 const row = findContractPaymentCandidate(paymentCandidates, key);
-                return { contract_object_id: row?.contract_object_id ?? null, case_fee_id: row?.case_fee_id ?? null, amount: Number(paymentAmounts[String(key)] || 0) };
+                return { contract_object_id: row?.contract_object_id ?? null, case_fee_id: row?.case_fee_id ?? null, amount: Number(paymentAmounts[String(key)] || 0), remark: String(paymentForm.getFieldValue(["line_remarks", String(key)]) || "") };
             });
             if (!lines.length) {
                 message.error("请至少选择一笔案件费用");
@@ -142,6 +143,7 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
             setPaymentTypes([]);
             setSelectedPaymentObjectKeys([]);
             setPaymentAmounts({});
+            context.onNavigate?.("finance-payment-mine");
         }
         catch (error: any) {
             if (error?.errorFields)
@@ -218,6 +220,7 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
             invoiceForm.resetFields();
             message.success(`发票申请 ${data.serial_no} 已提交审批并关联合同`);
             await refreshViewingContract();
+            onNavigate?.("finance-invoice-mine");
         }
         catch (error: any) {
             if (error?.errorFields)

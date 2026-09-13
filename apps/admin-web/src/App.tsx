@@ -938,6 +938,8 @@ function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): s
     return "客户查看";
   }
   if (normalizedKey.startsWith("contract-investigation-")) return "新建调查任务";
+  if (normalizedKey.startsWith("contract-payment-apply-")) return "合同付款";
+  if (normalizedKey.startsWith("contract-invoice-apply-")) return "合同开票";
   const menuLabel = flattenMenu(items).find((item) => item.key === normalizedKey)?.label;
   return menuLabel || routePageLabels[normalizedKey] || "业务页面";
 }
@@ -1776,6 +1778,8 @@ export default function App() {
     (active.startsWith("contract-detail-") &&
       Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
     (active.startsWith("contract-change-") &&
+      Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
+    ((active.startsWith("contract-payment-apply-") || active.startsWith("contract-invoice-apply-")) &&
       Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
     (active.startsWith("customer-detail-") &&
       Array.from(grantedMenuKeys).some((key) => key.startsWith("customer-"))) ||

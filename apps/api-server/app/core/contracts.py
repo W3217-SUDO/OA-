@@ -20,6 +20,12 @@ def _contract_allows_downstream_creation(contract: BusinessRecord | None) -> boo
     return bool(contract and contract.module == "contract" and contract.status not in blocked)
 
 
+def _contract_allows_finance_application(contract: BusinessRecord | None) -> bool:
+    """Contract approval is independent of payment/invoice application approval."""
+    blocked = {"归档中", "归档审核中", "已归档", "已回收", "已删除", "已作废", "Archived", "archived"}
+    return bool(contract and contract.module == "contract" and contract.status and contract.status not in blocked)
+
+
 def _valid_contract_person_name(value: object, username: object = "") -> str:
     name = unicodedata.normalize("NFKC", str(value or "")).strip()
     compact_name = re.sub(r"\s+", "", name)

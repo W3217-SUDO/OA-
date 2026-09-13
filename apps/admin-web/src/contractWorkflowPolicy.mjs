@@ -224,10 +224,9 @@ export const contractAuditActionPolicy = (view) => {
 };
 export const contractListActionPolicy = (status) => {
   const normalized = String(status || "").trim();
-  const archived = ["已归档", "Archived", "archived"].includes(normalized);
-  const approved = ["审批通过", "A", "Approved", "approved"].includes(normalized);
+  const financeAllowed = Boolean(normalized) && !["归档中", "归档审核中", "已归档", "已回收", "已删除", "已作废", "Archived", "archived"].includes(normalized);
   const canCreateCase = ["审批中", "审批通过", "已完成", "A", "Approved", "approved"].includes(normalized);
-  return { canPayment: approved && !archived, canInvoice: !archived, canCreateCase };
+  return { canPayment: financeAllowed, canInvoice: financeAllowed, canCreateCase };
 };
 export const contractSecondaryActionPolicy = (status) => {
   const normalized = String(status || "").trim();
