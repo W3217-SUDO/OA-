@@ -785,6 +785,22 @@ def _round_fee_amount(value: float) -> float:
     return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_UP))
 
 
+def _round_fee_ratio(value: float, numerator: float, denominator: float = 1) -> float:
+    return float(
+        (Decimal(str(value)) * Decimal(str(numerator)) / Decimal(str(denominator))).quantize(
+            Decimal("0.01"), rounding=ROUND_UP,
+        )
+    )
+
+
+def _round_fee_total(values) -> float:
+    return float(
+        sum((Decimal(str(value)) for value in values), Decimal("0")).quantize(
+            Decimal("0.01"), rounding=ROUND_UP,
+        )
+    )
+
+
 async def _finance_linked_case(case_no: str, identity: dict, db: AsyncSession) -> BusinessRecord | None:
     from app.core.permissions import (
         _record_scope_conditions,
@@ -1891,6 +1907,44 @@ def _settlement_fee_kind(fee_type: str) -> str:
     return "other"
 
 
+def _settlement_amounts_for_fee(
+    fee: BusinessRecord | None,
+    fee_type: str,
+    current_amount: float,
+    linked_case: BusinessRecord | None,
+) -> tuple[float, float]:
+    """Calculate the authoritative settlement snapshot for one receipt allocation."""
+    from app.core.formatters import (
+        _case_fee_display_type,
+    )
+
+    fee_data = (fee.data or {}) if fee else {}
+    authoritative_type = _case_fee_display_type(fee) if fee else fee_type
+    kind = _settlement_fee_kind(authoritative_type or fee_type)
+    fee_total = abs(_round_fee_amount(float(fee_data.get("amount") or current_amount)))
+    explicit_total = fee_data.get("settlement_amount")
+    if explicit_total is not None and fee_total:
+        settlement_amount = _round_fee_ratio(float(explicit_total), current_amount, fee_total)
+    elif kind == "agency":
+        settlement_amount = _round_fee_ratio(current_amount, 0.8)
+    else:
+        settlement_amount = _round_fee_amount(current_amount)
+
+    case_data = (linked_case.data or {}) if linked_case else {}
+    case_stage = str(case_data.get("case_stage") or (linked_case.status if linked_case else "")).strip()
+    is_archived = bool(fee_data.get("fee_archived")) or case_stage in {"已归档", "亏损归档"}
+    explicit_archive = fee_data.get("archive_fee")
+    if is_archived:
+        archive_fee = 0.0
+    elif explicit_archive is not None and fee_total:
+        archive_fee = _round_fee_ratio(float(explicit_archive), current_amount, fee_total)
+    elif kind == "agency" and "退费" not in authoritative_type:
+        archive_fee = _round_fee_ratio(settlement_amount, 0.1)
+    else:
+        archive_fee = 0.0
+    return settlement_amount, archive_fee
+
+
 async def _general_settlement_rows(
     identity: dict,
     db: AsyncSession,
@@ -1992,10 +2046,17 @@ async def _general_settlement_rows(
             explicit_items = list(allocation.get("settlement_items") or [])
             if explicit_items:
                 for explicit in explicit_items:
-                    fee_type = str(explicit.get("fee_type") or "其他费用")
                     current_amount = _round_fee_amount(float(explicit.get("amount") or explicit.get("settlement_amount") or 0))
                     explicit_fee = fees_by_id.get(int(explicit.get("fee_record_id") or 0))
+                    fee_type = _case_fee_display_type(explicit_fee) if explicit_fee else str(explicit.get("fee_type") or "其他费用")
                     explicit_fee_total = abs(_round_fee_amount(float(((explicit_fee.data or {}) if explicit_fee else {}).get("amount") or current_amount)))
+                    if explicit_fee:
+                        settlement_amount, archive_fee = _settlement_amounts_for_fee(
+                            explicit_fee, fee_type, current_amount, linked_case,
+                        )
+                    else:
+                        settlement_amount = _round_fee_amount(float(explicit.get("settlement_amount") or 0))
+                        archive_fee = _round_fee_amount(float(explicit.get("archive_fee") or 0))
                     details.append({
                         "fee_id": explicit.get("fee_record_id"),
                         "case_id": linked_case.id if linked_case else allocation.get("case_id"),
@@ -2008,8 +2069,8 @@ async def _general_settlement_rows(
                         "fee_allocated_amount": current_amount,
                         "current_amount": current_amount,
                         "allocated_at": allocation.get("allocated_at", ""),
-                        "settlement_amount": _round_fee_amount(float(explicit.get("settlement_amount") or 0)),
-                        "archive_fee": _round_fee_amount(float(explicit.get("archive_fee") or 0)),
+                        "settlement_amount": settlement_amount,
+                        "archive_fee": archive_fee,
                         "customer": linked_case.customer if linked_case else payment.claimed_customer,
                         "handling_lawyer": case_data.get("handling_lawyers") or case_data.get("handling_lawyer") or linked_case.owner if linked_case else "",
                         "assistant": case_data.get("assistant") or case_data.get("lawyer_assistant", ""),
@@ -2030,20 +2091,9 @@ async def _general_settlement_rows(
                     continue
                 fee_type = _case_fee_display_type(fee)
                 kind = _settlement_fee_kind(fee_type)
-                explicit_total = fee_data.get("settlement_amount")
-                if explicit_total is not None and fee_total:
-                    settlement_amount = _round_fee_amount(float(explicit_total) * current_amount / fee_total)
-                elif kind == "agency":
-                    settlement_amount = _round_fee_amount(current_amount * 0.8)
-                else:
-                    settlement_amount = current_amount
-                explicit_archive = fee_data.get("archive_fee")
-                if explicit_archive is not None and fee_total:
-                    archive_fee = _round_fee_amount(float(explicit_archive) * current_amount / fee_total)
-                elif kind == "agency" and "退费" not in fee_type:
-                    archive_fee = _round_fee_amount(settlement_amount * 0.1)
-                else:
-                    archive_fee = 0.0
+                settlement_amount, archive_fee = _settlement_amounts_for_fee(
+                    fee, fee_type, current_amount, linked_case,
+                )
                 details.append({
                     "fee_id": fee.id,
                     "case_id": linked_case.id if linked_case else allocation.get("case_id"),
@@ -2114,13 +2164,16 @@ async def _general_settlement_rows(
             continue
         if not contains(row_assistant, assistant) or not contains(row_manager, customer_manager) or not contains(row_source, source_person):
             continue
-        assigned = _round_fee_amount(sum(float(item["current_amount"]) for item in details))
-        official = _round_fee_amount(sum(float(item["current_amount"]) for item in details if item["kind"] == "official"))
-        agency = _round_fee_amount(sum(float(item["current_amount"]) for item in details if item["kind"] == "agency"))
-        other = _round_fee_amount(sum(float(item["current_amount"]) for item in details if item["kind"] == "other"))
-        agency_settlement = _round_fee_amount(sum(float(item["settlement_amount"]) for item in details if item["kind"] == "agency"))
-        archive_fee = _round_fee_amount(sum(float(item["archive_fee"]) for item in details))
-        actual = _round_fee_amount(sum(float(item["settlement_amount"]) for item in details) - archive_fee)
+        assigned = _round_fee_total(item["current_amount"] for item in details)
+        official = _round_fee_total(item["current_amount"] for item in details if item["kind"] == "official")
+        agency = _round_fee_total(item["current_amount"] for item in details if item["kind"] == "agency")
+        other = _round_fee_total(item["current_amount"] for item in details if item["kind"] == "other")
+        agency_settlement = _round_fee_total(item["settlement_amount"] for item in details if item["kind"] == "agency")
+        archive_fee = _round_fee_total(item["archive_fee"] for item in details)
+        actual = _round_fee_total([
+            *(item["settlement_amount"] for item in details),
+            -archive_fee,
+        ])
         rows.append({
             "id": payment.id,
             "serial_no": payment.receipt_no,

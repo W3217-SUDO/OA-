@@ -1941,8 +1941,8 @@ class IncomingPaymentSettlementItem(BaseModel):
     fee_record_id: int | None = None
     fee_type: str = Field(min_length=1, max_length=64)
     amount: float = Field(gt=0)
-    settlement_amount: float = Field(ge=0)
-    archive_fee: float = Field(ge=0)
+    settlement_amount: float | None = Field(default=None, ge=0)
+    archive_fee: float | None = Field(default=None, ge=0)
 
 
 class IncomingPaymentAllocationItem(BaseModel):

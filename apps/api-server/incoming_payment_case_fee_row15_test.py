@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.config import settings
+from app.core.finance import _general_settlement_rows
 from app.database import Base, get_db
 from app.main import app
 from app.models import BusinessRecord, IncomingPayment, ReceivablePlan, User
@@ -44,6 +45,7 @@ class IncomingPaymentCaseFeeRow15Test(unittest.IsolatedAsyncioTestCase):
             await db.commit()
             self.fee_id = fee.id
             self.payment_id = payment.id
+            self.case_id = case_record.id
             self.case_no = case_record.serial_no
 
         self.previous_overrides = dict(app.dependency_overrides)
@@ -75,17 +77,80 @@ class IncomingPaymentCaseFeeRow15Test(unittest.IsolatedAsyncioTestCase):
             "amount": 88.0,
             "case_no": self.case_no,
             "payment_method": "bank",
-            "settlement_items": [{"fee_record_id": self.fee_id, "fee_type": "agency", "amount": 88.0, "settlement_amount": 88.0, "archive_fee": 0.0}],
+            "settlement_items": [{"fee_record_id": self.fee_id, "fee_type": "agency", "amount": 88.0}],
         }]})
         self.assertEqual(allocation.status_code, 200, allocation.text)
         self.assertEqual(allocation.json()["status"], "已分配")
-        self.assertEqual(allocation.json()["allocations"][0]["settlement_items"][0]["fee_record_id"], self.fee_id)
+        settlement = allocation.json()["allocations"][0]["settlement_items"][0]
+        self.assertEqual(settlement["fee_record_id"], self.fee_id)
+        self.assertEqual(settlement["settlement_amount"], 70.4)
+        self.assertEqual(settlement["archive_fee"], 7.04)
 
         async with self.sessions() as db:
             plan = await db.scalar(select(ReceivablePlan))
             self.assertIsNotNone(plan)
             self.assertEqual(plan.amount, 88.0)
             self.assertEqual(plan.received_amount, 88.0)
+
+    async def test_server_ignores_client_settlement_values_and_waives_archive_after_case_archive(self) -> None:
+        async with self.sessions() as db:
+            case_record = await db.get(BusinessRecord, self.case_id)
+            case_record.status = "已归档"
+            await db.commit()
+
+        allocation = await self.client.post(f"{API}/finance/incoming-payments/{self.payment_id}/allocate", json={"allocations": [{
+            "receivable_plan_id": None,
+            "fee_record_id": self.fee_id,
+            "amount": 88.0,
+            "case_no": self.case_no,
+            "payment_method": "bank",
+            "settlement_items": [{
+                "fee_record_id": self.fee_id,
+                "fee_type": "伪造费用类型",
+                "amount": 88.0,
+                "settlement_amount": 88.0,
+                "archive_fee": 66.0,
+            }],
+        }]})
+        self.assertEqual(allocation.status_code, 200, allocation.text)
+        settlement = allocation.json()["allocations"][0]["settlement_items"][0]
+        self.assertEqual(settlement["fee_type"], "agency")
+        self.assertEqual(settlement["settlement_amount"], 70.4)
+        self.assertEqual(settlement["archive_fee"], 0.0)
+
+    async def test_pending_settlement_recalculates_existing_client_authored_values(self) -> None:
+        allocation = await self.client.post(f"{API}/finance/incoming-payments/{self.payment_id}/allocate", json={"allocations": [{
+            "receivable_plan_id": None,
+            "fee_record_id": self.fee_id,
+            "amount": 88.0,
+            "case_no": self.case_no,
+            "payment_method": "bank",
+            "settlement_items": [{
+                "fee_record_id": self.fee_id,
+                "fee_type": "agency",
+                "amount": 88.0,
+                "settlement_amount": 88.0,
+                "archive_fee": 0.0,
+            }],
+        }]})
+        self.assertEqual(allocation.status_code, 200, allocation.text)
+
+        async with self.sessions() as db:
+            payment = await db.get(IncomingPayment, self.payment_id)
+            allocations = [dict(item) for item in payment.allocations]
+            allocations[0]["settlement_items"] = [{
+                **allocations[0]["settlement_items"][0],
+                "settlement_amount": 88.0,
+                "archive_fee": 0.0,
+            }]
+            payment.allocations = allocations
+            await db.commit()
+
+            rows = await _general_settlement_rows(ADMIN, db)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["data"]["agency_settlement_amount"], 70.4)
+            self.assertEqual(rows[0]["data"]["archive_fee"], 7.04)
+            self.assertEqual(rows[0]["data"]["actual_settlement_amount"], 63.36)
 
 
 if __name__ == "__main__":

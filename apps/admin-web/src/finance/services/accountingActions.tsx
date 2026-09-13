@@ -133,8 +133,6 @@ export function createFinanceAccountingActions(context: FinanceAccountingDepende
                     fee_record_id: row.fee_record_id || undefined,
                     fee_type: row.fee_type || "代理费",
                     amount: Number(allocationAmounts[row.key] || 0),
-                    settlement_amount: Number(allocationAmounts[row.key] || 0),
-                    archive_fee: 0,
                 }],
         }));
         if (allocations.some((entry) => entry.amount <= 0)) {

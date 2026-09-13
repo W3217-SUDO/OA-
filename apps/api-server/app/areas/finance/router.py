@@ -2511,10 +2511,10 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
         _case_is_for_allocation_customer,
     )
     from app.core.finance import (
-        _incoming_payment_dict, _round_fee_amount,
+        _incoming_payment_dict, _round_fee_amount, _settlement_amounts_for_fee,
     )
     from app.core.formatters import (
-        _record_belongs_to_customer,
+        _case_fee_display_type, _record_belongs_to_customer,
     )
     from app.core.permissions import (
         _ensure_record_module, _record_scope_conditions,
@@ -2532,7 +2532,7 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
     ))
     total = _round_fee_amount(sum(entry.amount for entry in body.allocations)); remaining_payment = _round_fee_amount(item.amount - item.allocated_amount)
     if total > remaining_payment + 0.001: raise HTTPException(status_code=409, detail=f"分配金额超过到账未分配余额 {remaining_payment:.2f} 元")
-    prepared: list[tuple[IncomingPaymentAllocationItem, ReceivablePlan, BusinessRecord, BusinessRecord | None, BusinessRecord | None]] = []
+    prepared: list[tuple[IncomingPaymentAllocationItem, ReceivablePlan, BusinessRecord, BusinessRecord | None, BusinessRecord | None, list[dict]]] = []
     plan_totals: dict[int, float] = {}
     fee_totals: dict[int, float] = {}
     for entry in body.allocations:
@@ -2540,12 +2540,6 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
             classified_total = _round_fee_amount(sum(item.amount for item in entry.settlement_items))
             if abs(classified_total - _round_fee_amount(entry.amount)) > 0.001:
                 raise HTTPException(status_code=422, detail="结算费用明细金额之和必须等于本次分配金额")
-            invalid_settlement = [item.fee_type for item in entry.settlement_items if item.settlement_amount + 0.001 < item.archive_fee]
-            if invalid_settlement:
-                raise HTTPException(status_code=422, detail="归档费不能大于结算金额：" + "、".join(invalid_settlement))
-            excessive_settlement = [item.fee_type for item in entry.settlement_items if item.settlement_amount > item.amount + 0.001]
-            if excessive_settlement:
-                raise HTTPException(status_code=422, detail="结算金额不能大于分配金额：" + "、".join(excessive_settlement))
         plan = await db.get(ReceivablePlan, entry.receivable_plan_id) if entry.receivable_plan_id else None
         fee_record = await _ensure_record_module(entry.fee_record_id, "finance", identity, db) if entry.fee_record_id else None
         if not plan and not fee_record:
@@ -2622,18 +2616,32 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
                 raise HTTPException(status_code=409, detail=f"案件 {entry.case_no} 的客户与到账认领客户不一致")
             if not _case_is_for_allocation_customer(case_record, claimed_customer_record, item.claimed_customer):
                 raise HTTPException(status_code=409, detail=f"案件 {entry.case_no} 的诉讼当事人与到账认领客户不一致")
+        canonical_settlement_items: list[dict] = []
         for settlement in entry.settlement_items:
+            settlement_fee = fee_record
             if settlement.fee_record_id is None:
-                continue
-            fee_record = await _ensure_record_module(settlement.fee_record_id, "finance", identity, db)
-            fee_data = fee_record.data or {}
-            if not _record_belongs_to_customer(fee_record, claimed_customer_record, item.claimed_customer):
-                raise HTTPException(status_code=409, detail=f"费用 {fee_record.serial_no} 的客户与到账认领客户不一致")
-            if case_record and int(fee_data.get("case_id") or 0) not in {0, case_record.id} and str(fee_data.get("case_no") or "") != case_record.serial_no:
-                raise HTTPException(status_code=409, detail=f"费用 {fee_record.serial_no} 不属于案件 {case_record.serial_no}")
-        prepared.append((entry, plan, contract, case_record, fee_record))
+                settlement_fee = fee_record
+            else:
+                settlement_fee = await _ensure_record_module(settlement.fee_record_id, "finance", identity, db)
+                fee_data = settlement_fee.data or {}
+                if not _record_belongs_to_customer(settlement_fee, claimed_customer_record, item.claimed_customer):
+                    raise HTTPException(status_code=409, detail=f"费用 {settlement_fee.serial_no} 的客户与到账认领客户不一致")
+                if case_record and int(fee_data.get("case_id") or 0) not in {0, case_record.id} and str(fee_data.get("case_no") or "") != case_record.serial_no:
+                    raise HTTPException(status_code=409, detail=f"费用 {settlement_fee.serial_no} 不属于案件 {case_record.serial_no}")
+            fee_type = _case_fee_display_type(settlement_fee) if settlement_fee else settlement.fee_type
+            settlement_amount, archive_fee = _settlement_amounts_for_fee(
+                settlement_fee, fee_type, _round_fee_amount(settlement.amount), case_record,
+            )
+            canonical_settlement_items.append({
+                "fee_record_id": settlement_fee.id if settlement_fee else None,
+                "fee_type": fee_type,
+                "amount": _round_fee_amount(settlement.amount),
+                "settlement_amount": settlement_amount,
+                "archive_fee": archive_fee,
+            })
+        prepared.append((entry, plan, contract, case_record, fee_record, canonical_settlement_items))
     allocation_rows = list(item.allocations or [])
-    for entry, plan, contract, case_record, fee_record in prepared:
+    for entry, plan, contract, case_record, fee_record, canonical_settlement_items in prepared:
         amount = _round_fee_amount(entry.amount); plan.received_amount = _round_fee_amount(plan.received_amount + amount); plan.status = "已收款" if plan.received_amount + 0.001 >= plan.amount else "部分收款"
         if fee_record:
             fee_data = dict(fee_record.data or {})
@@ -2644,7 +2652,7 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
             fee_data["receipt_no"] = item.receipt_no
             fee_record.data = fee_data
         tx = FinanceTransaction(finance_record_id=contract.id, transaction_type="回款", amount=amount, transaction_date=item.received_date, voucher_no=item.bank_reference, counterparty=item.payer_name, operator=identity["username"], remark=f"银行到账 {item.receipt_no} 分配至 {contract.serial_no}｜{plan.phase}" + (f"｜案件 {case_record.serial_no}" if case_record else ""))
-        db.add(tx); await db.flush(); row = {"receivable_plan_id": plan.id, "fee_record_id": fee_record.id if fee_record else None, "contract_id": contract.id, "contract_no": contract.serial_no, "phase": plan.phase, "case_id": case_record.id if case_record else None, "case_no": case_record.serial_no if case_record else "", "amount": amount, "payment_method": entry.payment_method.strip(), "settlement_items": [settlement.model_dump() for settlement in entry.settlement_items], "transaction_id": tx.id, "allocated_by": identity["username"], "allocated_at": datetime.now().isoformat(timespec="seconds")}; allocation_rows.append(row)
+        db.add(tx); await db.flush(); row = {"receivable_plan_id": plan.id, "fee_record_id": fee_record.id if fee_record else None, "contract_id": contract.id, "contract_no": contract.serial_no, "phase": plan.phase, "case_id": case_record.id if case_record else None, "case_no": case_record.serial_no if case_record else "", "amount": amount, "payment_method": entry.payment_method.strip(), "settlement_items": canonical_settlement_items, "transaction_id": tx.id, "allocated_by": identity["username"], "allocated_at": datetime.now().isoformat(timespec="seconds")}; allocation_rows.append(row)
         db.add(WorkflowEvent(record_id=contract.id, action="分配银行回款", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"{item.receipt_no}｜{plan.phase}｜{amount:.2f} 元。{body.comment}"))
     item.allocated_amount = _round_fee_amount(item.allocated_amount + total); item.allocations = allocation_rows; item.status = "已分配" if item.allocated_amount + 0.001 >= item.amount else "部分分配"
     await db.commit(); await db.refresh(item); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
