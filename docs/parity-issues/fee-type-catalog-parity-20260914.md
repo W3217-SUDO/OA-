@@ -44,6 +44,8 @@ SystemParameterManagement.tsx调用feeTypeTreeRows并直接显示storage code，
 本地限定备份：scoped-backups/fee-parameters-local-20260914/parameters.json，SHA256（规范JSON正文）4ab09c55a77809ec36695d6aa558de02ca70d77f93c8610624928a21fe55acf4。
 范围：完整system_parameters 560条；全部7张外键/软关联表查询结果为0条，仍保存表名和空数组。修复后565条，更新61旧项、新增5分类，原ID/code保留；事务内重新读取并验证幂等通过。
 线上只读预检：更新63条（58旧项+5分类）、新增3停用占位项。发布前必须生成对应版本的独立生产备份，不使用本地库备份替代。
+v1.1.130生产备份已直接流式保存到本地scoped-backups/v1.1.130-fee-parameters：完整参数表7189条、关联财务记录120条，其余6张外键关系表各0条；JSON非空且源/本地SHA256一致：09dc2b61e3a22171f2ce42f8bb59751df9d29ac764fead679d6bed44e6f92208。
+激活时将已验证备份通过SSH标准输入送入服务端内存文件描述符，仅用于基线校验及失败时精确回滚，不落地服务器备份。正式构建v1.1.130通过。
 
 ## 8. 用户验收入口
 系统中心 → 系统参数 → 费用类型：列表、按名称查询、新增费用类型、修改费用类型。
