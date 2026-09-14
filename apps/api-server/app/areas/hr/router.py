@@ -227,8 +227,6 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     await _require_hr_employee_target_access(employee, identity, db)
     if body.role not in {"admin", "manager", "auditor", "user"}: raise HTTPException(status_code=422, detail="角色值无效")
     if body.left_at and body.left_at < body.joined_at: raise HTTPException(status_code=422, detail="离职日期不能早于入职日期")
-    department = await db.scalar(select(Department).where(Department.name == body.department, Department.is_active.is_(True)))
-    if not department: raise HTTPException(status_code=422, detail="所选部门不存在或已停用")
     current_position = str((employee.data or {}).get("position") or "").strip()
     position_role = await db.scalar(select(JobRole).where(JobRole.name == body.position, JobRole.is_active.is_(True)))
     if body.position != current_position:
@@ -265,6 +263,19 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     username = stored_username or (str(employee.owner or "").strip().lower() if account_type == "员工账号" else "")
     display_name = await _require_unique_hr_display_name(body.display_name, db, employee_id=employee.id, linked_username=username)
     user = await db.scalar(select(User).where(User.username == username)) if username else None
+    requested_department = body.department.strip()
+    current_department = str((user.department if user and user.department else employee.department) or "").strip()
+    department_changed = requested_department != current_department
+    creating_customer_login = account_type == "客户账号" and not stored_username
+    if department_changed or creating_customer_login:
+        department = await db.scalar(
+            select(Department).where(
+                Department.name == requested_department,
+                Department.is_active.is_(True),
+            )
+        )
+        if not department:
+            raise HTTPException(status_code=422, detail="所选部门不存在或已停用")
     if account_type == "客户账号" and not stored_username:
         if requested_username == "admin" or not re.fullmatch(r"[a-z0-9._-]{2,64}", requested_username):
             raise HTTPException(status_code=422, detail="客户账号用户名只能包含小写字母、数字、点、下划线或短横线")
@@ -287,7 +298,10 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     if not user:
         previous_status = employee.status
         profile = {**(employee.data or {}), **body.data, **role_binding, "account_type": account_type, "employee_no": employee.serial_no, "company": employee.customer, "position": body.position, "email": body.email.strip(), "mobile": body.mobile.strip(), "office_phone": body.office_phone.strip(), "joined_at": str(body.joined_at), "left_at": str(body.left_at) if body.left_at else ""}
-        employee.title = display_name; employee.department = body.department.strip(); employee.data = profile
+        employee.title = display_name
+        if department_changed:
+            employee.department = requested_department
+        employee.data = profile
         db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"账号类型：{account_type}；未关联系统登录账号"))
         await db.commit(); await db.refresh(employee)
         return {"employee": _record_dict(employee), "user": None}
@@ -303,9 +317,13 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     existing_role_ids = _system_user_role_ids(user)
     preserved_secondary_roles = [role for role in existing_role_ids[1:] if role != effective_role]
     next_role_ids = [effective_role, *preserved_secondary_roles] if account_type == "员工账号" else ["user"]
-    user.display_name = display_name; user.department = body.department.strip(); user.role = next_role_ids[0]; user.role_ids = next_role_ids; user.is_active = body.is_active; user.profile = profile
+    user.display_name = display_name
+    if department_changed:
+        user.department = requested_department
+        employee.department = requested_department
+    user.role = next_role_ids[0]; user.role_ids = next_role_ids; user.is_active = body.is_active; user.profile = profile
     contract_approval_enabled = bool(profile.get("contract_approval_enabled"))
-    employee.title = display_name; employee.department = body.department.strip(); employee.data = {**(employee.data or {}), **profile, "contract_approval_enabled": contract_approval_enabled, "username": username, "role": effective_role, "is_active": body.is_active}
+    employee.title = display_name; employee.data = {**(employee.data or {}), **profile, "contract_approval_enabled": contract_approval_enabled, "username": username, "role": effective_role, "is_active": body.is_active}
     db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"部门：{employee.department}；职务：{body.position}；账号：{'启用' if body.is_active else '停用'}"))
     await db.commit(); await db.refresh(employee); await db.refresh(user)
     return {"employee": _record_dict(employee), "user": _system_user_dict(user)}
