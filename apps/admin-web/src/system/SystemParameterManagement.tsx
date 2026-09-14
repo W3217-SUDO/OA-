@@ -31,8 +31,9 @@ import {
   formatTime,
   caseFileTypeParentOptions,
   isCaseFileTypeParentValid,
-  feeTypeParentOptions,
-  feeTypeTreeRows,
+  feeTypeCatalogRows,
+  feeTypeDisplayCode,
+  feeTypeGroupOptions,
   feeTypeRootName,
   cleanCompanyDigitsInputEvent,
 } from "./constants";
@@ -97,7 +98,7 @@ export function SystemParameterManagement({
   const [parameterPageSize, setParameterPageSize] = useState(15);
   useEffect(() => setParameterPage(1), [category, keyword, secondaryKeyword]);
   const title = `${categoryTitle[category]}列表`;
-  const usesParentCode = ["fee_type", "cause", "case_file_type", "district"].includes(
+  const usesParentCode = ["cause", "case_file_type", "district"].includes(
     category,
   );
   const visibleParameters = parameters.filter(
@@ -108,7 +109,7 @@ export function SystemParameterManagement({
         : String(row.extra.parent_code || "").includes(secondaryKeyword)),
   );
   const parameterDataSource = category === "fee_type"
-    ? feeTypeTreeRows(visibleParameters)
+    ? feeTypeCatalogRows(parameters).filter((row) => row.name.includes(keyword.trim()))
     : visibleParameters;
 
   const auditColumns = [
@@ -174,7 +175,7 @@ export function SystemParameterManagement({
             关联费用类型
           </Button>
         )}
-        {category !== "case_type" && (
+        {category !== "case_type" && category !== "fee_type" && (
           <Popconfirm title="确认删除？" onConfirm={() => onRemoveParameter(row)}>
             <Button type="link" danger icon={<DeleteOutlined />} />
           </Popconfirm>
@@ -199,7 +200,7 @@ export function SystemParameterManagement({
       ];
     if (category === "fee_type")
       return [
-        { title: "类型代码", dataIndex: "code", width: 120 },
+        { title: "类型代码", key: "code", width: 120, render: (_, row) => feeTypeDisplayCode(row) },
         { title: "类型名称", dataIndex: "name", width: 180 },
         {
           title: "类型大类",
@@ -393,7 +394,7 @@ export function SystemParameterManagement({
             <span>
               {category === "court"
                 ? "法院名称"
-                : usesParentCode
+                  : usesParentCode || category === "fee_type"
                   ? `${categoryTitle[category]}名称`
                   : categoryPlaceholder[category]}
             </span>
@@ -502,7 +503,7 @@ export function SystemParameterManagement({
           <div className="system-modal-grid">
             <Form.Item
               label={category === "case_type" ? "类型字母名称" : category === "fee_type" ? "类型ID" : "代码"}
-              name="code"
+              name={category === "fee_type" && editingParameter ? undefined : "code"}
               rules={[
                 {
                   required: true,
@@ -514,8 +515,10 @@ export function SystemParameterManagement({
               ]}
             >
               <Input
+                disabled={category === "fee_type" && !!editingParameter}
+                value={category === "fee_type" && editingParameter ? feeTypeDisplayCode(editingParameter) : undefined}
                 inputMode={numericCode ? "numeric" : undefined}
-                maxLength={numericCode ? 7 : undefined}
+                maxLength={numericCode && category !== "fee_type" ? 7 : undefined}
                 onInput={
                   numericCode ? cleanCompanyDigitsInputEvent : undefined
                 }
@@ -552,7 +555,7 @@ export function SystemParameterManagement({
               return (
                 <Form.Item
                   key={item.key}
-                  label={item.label}
+                  label={isFeeTypeParent ? "类型大类" : item.label}
                   name={item.key}
                   rules={
                     isCaseFileTypeParent || isFeeTypeParent
@@ -560,7 +563,7 @@ export function SystemParameterManagement({
                           {
                             validator: async (_, value) => {
                               const valid = isFeeTypeParent
-                                ? !value || feeTypeParentOptions(parameters, editingParameter?.id).some((option) => option.value === value)
+                                ? !!value && feeTypeGroupOptions(parameters).some((option) => option.value === value)
                                 : isCaseFileTypeParentValid(value, parameters, editingParameter?.id);
                               if (valid) return;
                               throw new Error(isFeeTypeParent
@@ -576,12 +579,12 @@ export function SystemParameterManagement({
                 >
                   {isCaseFileTypeParent || isFeeTypeParent ? (
                     <Select
-                      allowClear
+                      allowClear={!isFeeTypeParent}
                       showSearch
                       optionFilterProp="label"
-                      placeholder={isFeeTypeParent ? "不选择表示新增费用大类" : "请选择上级文件类型"}
+                      placeholder={isFeeTypeParent ? "请选择类型大类" : "请选择上级文件类型"}
                       options={isFeeTypeParent
-                        ? feeTypeParentOptions(parameters, editingParameter?.id)
+                        ? feeTypeGroupOptions(parameters)
                         : caseFileTypeParentOptions(parameters, editingParameter?.id)}
                     />
                   ) : (
@@ -607,7 +610,7 @@ export function SystemParameterManagement({
               name="is_active"
               valuePropName="checked"
             >
-              <Switch checkedChildren="是" unCheckedChildren="否" />
+              <Switch disabled={category === "fee_type" && !!editingParameter && Number(editingParameter.extra.legacy_id) < 0} checkedChildren="是" unCheckedChildren="否" />
             </Form.Item>
           </div>
           )}

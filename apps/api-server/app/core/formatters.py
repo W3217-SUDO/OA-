@@ -338,6 +338,9 @@ async def _normalized_fee_type_extra(code: str, extra: dict, db: AsyncSession) -
     ))
     if not parent or parent.code == code:
         raise HTTPException(status_code=422, detail="上级费用类型不存在或不可用")
+    for key in ("legacy_group_id", "base_fee_type", "expense_scopes"):
+        if key in (parent.extra or {}):
+            normalized[key] = parent.extra[key]
     return normalized
 
 

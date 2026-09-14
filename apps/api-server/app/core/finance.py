@@ -197,7 +197,7 @@ def _fee_type_catalog(items: list[SystemParameter]) -> list[dict]:
             "base_fee_type": base_fee_type,
             "expense_scopes": scopes,
             "has_children": bool(child_codes.get(item.code)),
-            "selectable": item.is_active and not any(by_code[code].is_active for code in child_codes.get(item.code, []) if code in by_code) and bool(scopes),
+            "selectable": item.is_active and not str((item.extra or {}).get("legacy_id", item.code)).startswith("-") and not any(by_code[code].is_active for code in child_codes.get(item.code, []) if code in by_code) and bool(scopes),
         })
         result.append(row)
     return result

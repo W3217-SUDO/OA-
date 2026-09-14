@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from datetime import timezone
 from app.core.constants import (
     CASE_EXECUTION_STATUSES, CASE_PARTY_SEPARATOR, CONTRACT_APPROVED_STATUS, DEFAULT_MENU_LABEL_BY_KEY, FIELD_KEYS,
     FIELD_PERMISSION_DATA_KEYS, HR_SUBRECORD_KINDS, IPR_CASE_KINDS, MENU_PARENT_BY_KEY, PARAMETER_REFERENCE_FIELDS,
@@ -357,11 +358,15 @@ async def _rename_system_username(user: User, requested_username: str, identity:
 
 
 def _system_parameter_dict(item: SystemParameter) -> dict:
+    def audit_time(value):
+        if value and (item.extra or {}).get("legacy_audit_utc") and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
     return {
         "id": item.id, "category": item.category, "category_name": SYSTEM_PARAMETER_CATEGORIES.get(item.category, item.category),
         "code": item.code, "name": item.name, "extra": item.extra or {}, "sort_order": item.sort_order,
         "is_active": item.is_active, "created_by": item.created_by, "updated_by": item.updated_by,
-        "created_at": item.created_at, "updated_at": item.updated_at,
+        "created_at": audit_time(item.created_at), "updated_at": audit_time(item.updated_at),
     }
 
 

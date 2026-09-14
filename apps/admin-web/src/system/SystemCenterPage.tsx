@@ -102,7 +102,7 @@ export default function SystemCenterPage({
     setLoading(true);
     try {
       const { data } = await api.get("/system/parameters", {
-        params: { category, keyword: search },
+        params: { category, keyword: category === "fee_type" ? "" : search },
       });
       setParameters(data.items);
     } catch (error: any) {
@@ -329,7 +329,7 @@ export default function SystemCenterPage({
       category,
       code: paymentUnit
         ? editingParameter?.code || `PAYEE-${Date.now()}`
-        : value.code,
+        : category === "fee_type" && editingParameter ? editingParameter.code : value.code,
       name: paymentUnit ? value.nature : value.name,
       sort_order: paymentUnit
         ? editingParameter?.sort_order || parameters.length + 1

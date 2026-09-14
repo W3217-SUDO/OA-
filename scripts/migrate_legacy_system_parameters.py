@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 from sqlalchemy import select
@@ -11,6 +12,21 @@ from app.database import SessionLocal
 from app.models import SystemParameter
 
 ACTOR = "legacy_system_parameter_migration"
+FEE_GROUP_NAMES = {1: "官费", 2: "代理费", 3: "其他费用", 4: "内部提成", 5: "第三方费用", 6: "平台费用"}
+FEE_GROUP_BASES = {1: "官方费用", 2: "代理费", 3: "其他费用", 4: "内部费用", 5: "其他费用", 6: "其他费用"}
+
+def source_audit(row: dict[str, Any]) -> dict[str, Any]:
+    result = {}
+    for source, target in (("CreateUser", "created_by"), ("ChangeUser", "updated_by")):
+        if clean(row.get(source)):
+            result[target] = clean(row[source])
+    for source, target in (("CreateTime", "created_at"), ("ChangeTime", "updated_at")):
+        if row.get(source):
+            value = row[source] if isinstance(row[source], datetime) else datetime.fromisoformat(str(row[source]))
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone(timedelta(hours=8)))
+            result[target] = value.astimezone(timezone.utc)
+    return result
 
 def clean(value: Any) -> str:
     return "" if value is None else str(value).strip()
@@ -31,7 +47,7 @@ def read_source(server: str, database: str, driver: str) -> dict[str, list[dict[
         raise RuntimeError("pyodbc is required to read the legacy SQL Server") from exc
     connection_string = f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};Trusted_Connection=yes;ApplicationIntent=ReadOnly;TrustServerCertificate=yes;"
     queries = {
-        "fee_type": "SELECT FeeTypeId,FeeTypeName,TypeId,CaseTypeId,OfficeName,CPCOfficeName,FeeTypeCode,IsActived FROM dbo.BAS_Case_FeeType ORDER BY FeeTypeId",
+        "fee_type": "SELECT * FROM dbo.BAS_Case_FeeType WHERE CaseTypeId > 0 ORDER BY FeeTypeId",
         "cause": "SELECT CauseId,CauseName,ParentCauseId FROM dbo.BAS_Causes ORDER BY CauseId",
         "payment_type": "SELECT PaymentTypeId,CaseFeeTypeId,PaymentTypeName,OrganizationName,Account,AccountBank,Remark,IsActived FROM dbo.FAM_AP_PaymentType ORDER BY PaymentTypeId",
     }
@@ -46,8 +62,8 @@ def read_source(server: str, database: str, driver: str) -> dict[str, list[dict[
 
 def normalize(source: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
-    fee_group_names = {1: "官方费用", 2: "律师费用", 3: "提成费用", 4: "第三方费用", 5: "内部费用"}
-    fee_group_bases = {1: "官方费用", 2: "代理费", 3: "其他费用", 4: "其他费用", 5: "内部费用"}
+    fee_group_names = FEE_GROUP_NAMES
+    fee_group_bases = FEE_GROUP_BASES
     used_fee_groups = sorted({int(field(row, "TypeId", "type_id", "费用类型大类ID", default=0)) for row in source["fee_type"] if field(row, "TypeId", "type_id", "费用类型大类ID", default=0) not in (None, "")})
     for type_id in used_fee_groups:
         result.append({
@@ -58,12 +74,16 @@ def normalize(source: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
         })
     for row in source["fee_type"]:
         legacy_id = int(field(row, "FeeTypeId", "CaseFeeTypeId", "fee_type_id", "费用类型ID"))
-        # Negative rows are the old selector's "请选择..." placeholders, not
-        # payable leaf values. The real hierarchy is TypeId -> FeeTypeId.
-        if legacy_id < 0:
-            continue
+        # Keep legacy placeholders visible in maintenance, always inactive.
         type_id = int(field(row, "TypeId", "type_id", "费用类型大类ID", default=0))
         result.append({"category": "fee_type", "code": f"LEGACY-FEE-{legacy_id}", "name": clean(field(row, "FeeTypeName", "CaseFeeTypeName", "name", "费用类型名称")), "is_active": enabled(field(row, "IsActived", "is_active", "启用", default=True)), "sort_order": type_id * 100000000 + legacy_id, "extra": {"legacy_id": legacy_id, "legacy_code": clean(field(row, "FeeTypeCode", "code", "费用类型编码", default=legacy_id)), "legacy_group_id": type_id, "parent_code": f"LEGACY-FEE-GROUP-{type_id}", "base_fee_type": fee_group_bases.get(type_id, "其他费用"), "expense_scopes": ["law_firm", "platform", "internal"], "case_type_id": field(row, "CaseTypeId", "case_type_id", "案件类型ID"), "office_name": clean(field(row, "OfficeName", "office_name")), "cpc_office_name": clean(field(row, "CPCOfficeName", "cpc_office_name"))}})
+        result[-1].update(source_audit(row))
+        result[-1]["is_active"] = legacy_id > 0 and result[-1]["is_active"]
+        result[-1]["extra"]["is_invoiced"] = enabled(row.get("IsInvoiced", True))
+        if row.get("CreateTime") or row.get("ChangeTime"):
+            result[-1]["extra"]["legacy_audit_utc"] = True
+    for row in result:
+        row["extra"]["expense_scopes"] = ["internal"] if row["extra"]["legacy_group_id"] == 4 else ["law_firm", "platform"]
     for row in source["cause"]:
         legacy_id = int(field(row, "CauseId", "cause_id", "案由ID"))
         parent_id = int(field(row, "ParentCauseId", "parent_cause_id", "父案由ID", default=0) or 0)
@@ -90,11 +110,6 @@ async def migrate(rows: list[dict[str, Any]], apply: bool) -> dict[str, dict[str
     stats = {category: {"source": 0, "created": 0, "updated": 0, "deleted": 0} for category in ("fee_type", "cause", "payment_type")}
     async with SessionLocal() as db:
         existing = list((await db.scalars(select(SystemParameter).where(SystemParameter.category.in_(stats)))).all())
-        for item in existing:
-            legacy_id = (item.extra or {}).get("legacy_id")
-            if item.category == "fee_type" and isinstance(legacy_id, int) and legacy_id < 0 and item.created_by == ACTOR:
-                await db.delete(item)
-                stats["fee_type"]["deleted"] += 1
         by_key = {(item.category, item.code): item for item in existing}
         by_legacy = {(item.category, str((item.extra or {}).get("legacy_id"))): item for item in existing if (item.extra or {}).get("legacy_id") is not None}
         for row in rows:
@@ -103,15 +118,26 @@ async def migrate(rows: list[dict[str, Any]], apply: bool) -> dict[str, dict[str
             legacy_id = row["extra"].get("legacy_id")
             item = by_key.get((category, row["code"])) or (by_legacy.get((category, str(legacy_id))) if legacy_id is not None else None)
             if item is None:
-                db.add(SystemParameter(created_by=ACTOR, updated_by=ACTOR, **row))
+                values = {"created_by": ACTOR, "updated_by": ACTOR, **row}
+                for key in ("created_at", "updated_at"):
+                    if isinstance(values.get(key), str):
+                        values[key] = datetime.fromisoformat(values[key])
+                db.add(SystemParameter(**values))
                 stats[category]["created"] += 1
             else:
-                item.code = row["code"]
+                if category != "fee_type":
+                    item.code = row["code"]
                 item.name = row["name"]
-                item.extra = row["extra"]
+                item.extra = {**(item.extra or {}), **row["extra"]}
                 item.sort_order = row["sort_order"]
                 item.is_active = row["is_active"]
                 item.updated_by = ACTOR
+                for key in ("created_by", "updated_by", "created_at", "updated_at"):
+                    if key in row:
+                        value = row[key]
+                        if key.endswith("_at") and isinstance(value, str):
+                            value = datetime.fromisoformat(value)
+                        setattr(item, key, value)
                 stats[category]["updated"] += 1
         if apply:
             await db.commit()
@@ -134,7 +160,7 @@ def main() -> int:
         rows = normalize(read_source(args.server, args.database, args.driver))
     if args.export_json:
         args.export_json.parent.mkdir(parents=True, exist_ok=True)
-        args.export_json.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+        args.export_json.write_text(json.dumps(rows, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         print(json.dumps({"exported": len(rows), "path": str(args.export_json)}, ensure_ascii=False))
         return 0
     print(json.dumps(asyncio.run(migrate(rows, args.apply)), ensure_ascii=False, sort_keys=True))

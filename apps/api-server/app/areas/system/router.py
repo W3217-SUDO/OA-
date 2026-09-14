@@ -738,6 +738,13 @@ async def create_system_parameter(body: SystemParameterInput, identity: dict = D
     else:
         duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == body.category, or_(SystemParameter.code == code, SystemParameter.name == name)))
     if duplicate: raise HTTPException(status_code=409, detail="同一分类下参数代码或名称已存在")
+    if body.category == "fee_type":
+        legacy_match = await db.scalar(select(SystemParameter.id).where(
+            SystemParameter.category == "fee_type",
+            SystemParameter.extra["legacy_id"].as_string() == code,
+        ))
+        if legacy_match:
+            raise HTTPException(status_code=409, detail="费用类型编号已存在")
     next_extra = body.extra
     await _validate_parameter_parent(body.category, code, next_extra, db)
     if body.category == "fee_type":
@@ -767,16 +774,28 @@ async def update_system_parameter(parameter_id: int, body: SystemParameterUpdate
     code = body.code.strip() if body.code is not None else item.code
     name = body.name.strip() if body.name is not None else item.name
     next_extra = body.extra if body.extra is not None else (item.extra or {})
+    if item.category == "fee_type" and (item.extra or {}).get("legacy_id") is not None:
+        if code != item.code:
+            raise HTTPException(status_code=422, detail="旧费用类型编号不可修改")
+        if int(item.extra["legacy_id"]) < 0 and body.is_active is True:
+            raise HTTPException(status_code=422, detail="旧系统选择占位项不能启用为费用")
     if item.category == "payment_type":
         candidates = list((await db.scalars(select(SystemParameter).where(SystemParameter.category == item.category, SystemParameter.id != item.id))).all())
         next_payee = str(next_extra.get("payee") or "").strip().casefold()
         duplicate = next((candidate for candidate in candidates if candidate.code == code or (next_payee and str((candidate.extra or {}).get("payee") or "").strip().casefold() == next_payee)), None)
+    elif item.category == "fee_type" and name == item.name:
+        # Legacy fee names may repeat across groups. Updating other fields must
+        # not reject an unchanged historical name.
+        duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == item.category, SystemParameter.id != item.id, SystemParameter.code == code))
     else:
         duplicate = await db.scalar(select(SystemParameter).where(SystemParameter.category == item.category, SystemParameter.id != item.id, or_(SystemParameter.code == code, SystemParameter.name == name)))
     if duplicate: raise HTTPException(status_code=409, detail="同一分类下参数代码、名称或收款单位已存在")
     await _validate_parameter_parent(item.category, code, next_extra, db, current_id=item.id)
     if item.category == "fee_type":
-        next_extra = await _normalized_fee_type_extra(code, next_extra, db)
+        normalized = await _normalized_fee_type_extra(code, next_extra, db)
+        # Identity and provenance are server-owned; the maintenance form only
+        # submits parent_code. Keep the legacy link on every edit.
+        next_extra = {**(item.extra or {}), **normalized}
         active_children = list((await db.scalars(select(SystemParameter).where(
             SystemParameter.category == "fee_type",
             SystemParameter.extra["parent_code"].as_string() == item.code,
