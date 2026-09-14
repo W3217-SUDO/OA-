@@ -116,6 +116,12 @@ test("CPI07 rejected original payment editor preserves source types, rounds mone
   for (const amounts of [{ "fee:5": 81 }, { "fee:5": NaN }, { "fee:5": 0 }, { "fee:5": Infinity }]) assert.throws(() => lifecycle.contractPaymentEditPayload(v, ["fee:5"], candidates, amounts));
   assert.throws(() => lifecycle.contractPaymentEditPayload(v, ["fee:404"], candidates, { "fee:404": 2 }));
 });
+test("approved fee is projected into the waiting-payment tab even when legacy payment_status is stale", () => {
+  assert.equal(lifecycle.paymentLifecycleStatus({ status: "已审批", data: { payment_status: "待审批" } }), "待付款");
+  assert.equal(lifecycle.paymentLifecycleStatus({ status: "部分付款", data: { payment_status: "待审批" } }), "待付款");
+  assert.equal(lifecycle.paymentLifecycleStatus({ status: "已付款", data: { payment_status: "待付款" } }), "已付款");
+  assert.equal(lifecycle.paymentLifecycleStatus({ status: "草稿", data: { payment_status: "不缴费" } }), "不缴费");
+});
 test("CPI09 unified query sends one filtered page and preserves backend order/total without merging or truncation", async () => {
   const records = Array.from({ length: 30 }, (_, index) => ({ id: index + 1, module: index % 2 ? "contract_payment" : "finance" }));
   const calls = [];

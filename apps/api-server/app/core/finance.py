@@ -1541,22 +1541,7 @@ async def _invoice_case_fee_rows(
         certificate_no = str(data.get("certificate_no") or data.get("notary_no") or case_data.get("certificate_no") or case_data.get("notary_no") or "")
         court_name = str(data.get("court_name") or data.get("court") or case_data.get("court_name") or case_data.get("first_instance_court") or "")
         paid_org = str(data.get("paid_organization") or data.get("payee") or court_name)
-        display_payment_status = str(data.get("payment_status") or "").strip()
-        if not display_payment_status:
-            if str(data.get("writeoff_status") or "") == "待核销":
-                display_payment_status = "待核销"
-            else:
-                display_payment_status = {
-                    "草稿": "创建待提交",
-                    "待审批": "待审批",
-                    "已审批": "待付款",
-                    "部分付款": "待付款",
-                    "已付款": "已付款",
-                    "已退回": "已驳回",
-                    "已驳回": "已驳回",
-                    "已拒绝": "已驳回",
-                    "已作废": "已作废",
-                }.get(item.status, item.status)
+        display_payment_status = _finance_fee_payment_status(item)
         if not contains(data.get("case_no") or (linked_case.serial_no if linked_case else ""), case_no):
             continue
         if not contains(court_no, court_case_no) or not contains(certificate_no, notary_no):
@@ -2958,9 +2943,33 @@ async def _review_finance_fee_records(items: list[BusinessRecord], approved: boo
             "内部提成退费审批通过" if approved else "内部提成退费审批驳回"
         ) if is_refund else ("费用审批通过" if approved else "费用审批驳回")
         item.status = target_status
-        if is_refund and not data.get("is_refund"):
-            item.data = {**data, "is_refund": True}
+        item.data = {
+            **data,
+            "payment_status": "待付款" if approved else "已驳回",
+            **({"is_refund": True} if is_refund else {}),
+        }
         db.add(WorkflowEvent(record_id=item.id, action=action, from_status="待审批", to_status=target_status, operator=identity["username"], comment=normalized_comment))
+
+
+def _finance_fee_payment_status(item: BusinessRecord) -> str:
+    """Project one authoritative fee lifecycle into the legacy payment tabs."""
+    data = item.data or {}
+    if str(data.get("writeoff_status") or "").strip() == "待核销":
+        return "待核销"
+    lifecycle_status = {
+        "待审批": "待审批",
+        "已审批": "待付款",
+        "部分付款": "待付款",
+        "已付款": "已付款",
+        "已退回": "已驳回",
+        "已驳回": "已驳回",
+        "已拒绝": "已驳回",
+        "已作废": "已作废",
+    }.get(item.status)
+    if lifecycle_status:
+        return lifecycle_status
+    explicit = str(data.get("payment_status") or "").strip()
+    return explicit or ({"草稿": "创建待提交"}.get(item.status, item.status))
 
 
 def _case_assisted_fee_dict(row: CaseAssistedFee) -> dict:

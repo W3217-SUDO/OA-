@@ -79,7 +79,7 @@ import { FinanceCenterView } from "./FinanceCenterView";
 import { InvoiceDetailTables } from "./InvoiceDetailTables";
 import { ContractPaymentEditPage } from "./ContractPaymentEditPage";
 import { fetchInvoiceRecord, invoiceEditValues, invoiceObjectFees } from "./invoiceDetails.mjs";
-import { canEditContractPayment, isContractPayment } from "./paymentLifecycle.mjs";
+import { canEditContractPayment, isContractPayment, paymentLifecycleStatus } from "./paymentLifecycle.mjs";
 import { useFinanceRuntimeContext } from "./hooks/useFinanceRuntimeContext";
 import { createFinanceAccountingActions } from "./services/accountingActions";
 import { createFinanceDocumentsActions } from "./services/documentsActions";
@@ -1868,24 +1868,7 @@ export default function FinanceCenterPage({
         (data.case_no && data.case_no === item.serial_no),
     );
   };
-  const paymentStatus = (fee: Fee) => {
-    if (fee.data.payment_status) return fee.data.payment_status;
-    if (fee.data.writeoff_status === "待核销") return "待核销";
-    return (
-      (
-        {
-          草稿: "创建待提交",
-          待审批: "待审批",
-          已审批: "待付款",
-          部分付款: "待付款",
-          已付款: "已付款",
-          已退回: "已驳回",
-          已驳回: "已驳回",
-          已作废: "已作废",
-        } as Record<string, string>
-      )[fee.status] || fee.status
-    );
-  };
+  const paymentStatus = (fee: Fee) => paymentLifecycleStatus(fee);
   const isInternalRefundFee = (fee: Fee) =>
     fee.data?.fee_type === "内部费用" &&
     (fee.data?.is_refund === true || Number(fee.data?.amount || 0) < 0);

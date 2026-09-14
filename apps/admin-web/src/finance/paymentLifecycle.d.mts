@@ -1,6 +1,7 @@
 export function isContractPayment(row: any): boolean;
 export function paymentActionPath(row: any, action: string): string;
 export function canEditContractPayment(row: any): boolean;
+export function paymentLifecycleStatus(row: any): string;
 export function unifiedPaymentQueryParams(params: Record<string, any>): Record<string, any>;
 export function paymentLineKey(row: any): string;
 export function contractPaymentEditPayload(values: Record<string, any>, selectedKeys: string[], candidates: any[], amounts: Record<string, number | null>, remarks?: Record<string, string>): {

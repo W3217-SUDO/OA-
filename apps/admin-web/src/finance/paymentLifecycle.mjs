@@ -8,6 +8,22 @@ export const canEditContractPayment = (row) => isContractPayment(row) &&
   ["草稿", "已驳回", "已退回"].includes(row.status) &&
   row.data?.writeoff_status !== "已核销" && Number(row.data?.paid_amount || 0) === 0;
 
+export const paymentLifecycleStatus = (row) => {
+  if (String(row?.data?.writeoff_status || "").trim() === "待核销") return "待核销";
+  const canonical = {
+    待审批: "待审批",
+    已审批: "待付款",
+    部分付款: "待付款",
+    已付款: "已付款",
+    已退回: "已驳回",
+    已驳回: "已驳回",
+    已拒绝: "已驳回",
+    已作废: "已作废",
+  }[row?.status];
+  if (canonical) return canonical;
+  return String(row?.data?.payment_status || (row?.status === "草稿" ? "创建待提交" : row?.status) || "").trim();
+};
+
 export const unifiedPaymentQueryParams = (params) => {
   const { module, ...query } = params;
   return { ...query, page: Math.max(1, Number(query.page) || 1), page_size: Math.min(500, Math.max(1, Number(query.page_size) || 15)) };

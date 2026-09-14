@@ -183,6 +183,27 @@ class ContractPaymentLifecycleTest(unittest.IsolatedAsyncioTestCase):
         invalid = await self.client.get("/api/v1/finance/payment-applications/query", params={"page_size": 501})
         self.assertEqual(invalid.status_code, 422)
 
+    async def test_query_waiting_payment_recovers_approved_fee_with_stale_extended_status(self):
+        stale = self.record(
+            "finance", "STALE-WAITING", status="已审批",
+            data={
+                "legacy_kind": "ap_payment",
+                "amount": 10,
+                "applicant": "admin",
+                "fee_type": "官方费用",
+                "payment_status": "待审批",
+            },
+        )
+        await self.db.commit()
+        result = await query_payments(
+            {"statuses": "待付款", "keyword": "STALE-WAITING", "page": 1, "page_size": 20},
+            ADMIN,
+            self.db,
+        )
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["items"][0]["id"], stale.id)
+        self.assertEqual(result["items"][0]["data"]["payment_status"], "待付款")
+
     async def test_query_filters_apply_equally_to_both_sources_before_paging(self):
         original = await self.create()
         self.record("finance", "MATCH", status="待审批", data={"legacy_kind": "ap_payment", "amount": 60,

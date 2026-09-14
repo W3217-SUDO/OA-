@@ -287,12 +287,16 @@ async def query_payments(filters, identity, db):
         conditions.append(computed_scope == finance_scope)
     if filters.get("keyword"):
         conditions.append(record.serial_no.ilike(f"%{filters['keyword'].strip()}%"))
-    display_status = func.coalesce(func.nullif(data["payment_status"].as_string(), ""), case(
+    display_status = case(
         (data["writeoff_status"].as_string() == "待核销", "待核销"),
         (record.status.in_(["草稿", "待提交"]), "创建待提交"),
+        (record.status == "待审批", "待审批"),
         (record.status.in_(["已审批", "部分付款"]), "待付款"),
-        (record.status == "已退回", "已驳回"), else_=record.status,
-    ))
+        (record.status == "已付款", "已付款"),
+        (record.status.in_(["已退回", "已驳回", "已拒绝"]), "已驳回"),
+        (record.status == "已作废", "已作废"),
+        else_=func.coalesce(func.nullif(data["payment_status"].as_string(), ""), record.status),
+    )
     selected_statuses = [value.strip() for value in filters.get("statuses", "").split(",") if value.strip()]
     if filters.get("record_status"):
         selected_statuses.append(filters["record_status"].strip())
@@ -356,5 +360,9 @@ async def query_payments(filters, identity, db):
     rows = list((await db.scalars(select(record).where(*conditions).order_by(
         record.created_at.desc(), record.id.desc(),
     ).offset((page - 1) * page_size).limit(page_size))).all())
-    return {"items": await _contract_customer_record_dicts(rows, allowed, db, identity=identity),
-            "total": total, "page": page, "page_size": page_size, "totals": totals}
+    items = await _contract_customer_record_dicts(rows, allowed, db, identity=identity)
+    from app.core.finance import _finance_fee_payment_status
+    for source, payload in zip(rows, items):
+        if source.module == "finance":
+            payload["data"] = {**(payload.get("data") or {}), "payment_status": _finance_fee_payment_status(source)}
+    return {"items": items, "total": total, "page": page, "page_size": page_size, "totals": totals}

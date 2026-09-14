@@ -4854,14 +4854,14 @@ async def mark_finance_fee_refund_not_required(fee_id: int, body: FinanceActionI
 
 @router.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/approve")
 async def approve_finance_fee(fee_id: int, body: FinanceActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance import (
+        _review_finance_fee_records,
+    )
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity,
     )
     item = await _ensure_record_module(fee_id, "finance", identity, db)
-    if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有费用审批权限")
-    if item.status != "待审批": raise HTTPException(status_code=409, detail="仅待审批费用可以通过")
-    item.status = "已审批"
-    db.add(WorkflowEvent(record_id=item.id, action="费用审批通过", from_status="待审批", to_status="已审批", operator=identity["username"], comment=body.comment))
+    await _review_finance_fee_records([item], True, body.comment, identity, db)
     await db.commit(); await db.refresh(item); return await _record_dict_for_identity(item, identity, db)
 
 
@@ -5066,6 +5066,7 @@ async def create_finance_transaction(body: FinanceTransactionInput, identity: di
         if body.transaction_type == "付款":
             paid_total = float(paid or 0) + body.amount
             record.status = "已付款" if paid_total + 0.001 >= float((record.data or {}).get("amount", 0)) else "部分付款"
+            record.data = {**(record.data or {}), "payment_status": "已付款" if record.status == "已付款" else "待付款"}
         db.add(WorkflowEvent(record_id=record.id, action=f"登记{body.transaction_type}", from_status=previous, to_status=record.status, operator=identity["username"], comment=f"{body.amount:.2f} 元；{body.remark}"))
     await db.commit(); await db.refresh(item)
     return _finance_transaction_dict(item, record, users_by_username=await _user_display_map({item.operator}, db))
@@ -5086,6 +5087,7 @@ async def delete_finance_transaction(transaction_id: int, identity: dict = Depen
         paid = float(await db.scalar(select(func.coalesce(func.sum(FinanceTransaction.amount), 0)).where(FinanceTransaction.finance_record_id == record.id, FinanceTransaction.transaction_type == "付款")) or 0)
         fee_amount = float((record.data or {}).get("amount", 0))
         record.status = "已审批" if paid <= 0 else ("已付款" if paid + 0.001 >= fee_amount else "部分付款")
+        record.data = {**(record.data or {}), "payment_status": "待付款" if record.status in {"已审批", "部分付款"} else "已付款"}
     await db.commit()
     for path in paths:
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
