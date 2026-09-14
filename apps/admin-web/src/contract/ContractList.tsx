@@ -8,6 +8,7 @@ Input,
 Select,
 Space,
 Table,
+Tooltip,
 Tag,message
 } from "antd";
 import dayjs from "dayjs";
@@ -122,6 +123,17 @@ export function ContractList({
   onExportCsv,
 }: ContractListProps) {
   const textCell = (value: string) => displayContractStatus(value);
+  const customerManagerCell = (value: unknown) => {
+    const fullNames = peopleNames(value);
+    const names = fullNames.split("、").map((name) => name.trim()).filter(Boolean);
+    return (
+      <Tooltip title={names.length > 1 ? fullNames : undefined} trigger={["hover", "focus"]}>
+        <span className="contract-cell-text" tabIndex={names.length > 1 ? 0 : undefined}>
+          {names[0] || "—"}
+        </span>
+      </Tooltip>
+    );
+  };
 
   const moneyColumn = (title: string, key: (typeof moneyKeys)[number]) => ({
     title: (
@@ -171,9 +183,9 @@ export function ContractList({
       title: "客户管理人",
       key: "customerManager",
       width: 120,
-      ellipsis: true,
+      ellipsis: { showTitle: false },
       render: (_: unknown, r: Contract) =>
-        peopleNames(
+        customerManagerCell(
           (r.data as any).customer_manager_display_names ||
             (r.data as any).customer_manager ||
             (r.data as any).customer_managers ||
@@ -316,7 +328,7 @@ export function ContractList({
       key: "customerManager",
       width: 100,
       render: (_: unknown, r: Contract) =>
-        peopleNames(
+        customerManagerCell(
           (r.data as any).customer_manager_display_names || r.data.customer_manager || (r.data as any).customer_managers,
         ),
     },
