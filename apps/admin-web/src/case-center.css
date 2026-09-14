@@ -196,6 +196,16 @@
 .case-fee-row-actions{display:flex;align-items:center;justify-content:center}
 .case-fee-row-actions .ant-btn{width:24px;padding:0}
 .case-fee-drawer-footer{display:flex;justify-content:flex-end}
+.case-commission-drawer .ant-drawer-body{padding:12px 14px}
+.case-commission-table .ant-table-cell{padding:0!important;text-align:center}
+.case-commission-table .ant-table-thead .ant-table-cell{height:34px;padding:4px!important;background:#fafafa;color:#222;font-weight:600}
+.case-commission-table .ant-select,.case-commission-table .ant-input,.case-commission-table .ant-input-number{width:100%}
+.case-commission-table .ant-select-selector,.case-commission-table .ant-input,.case-commission-table .ant-input-number{border:0!important;border-radius:0!important;box-shadow:none!important}
+.case-commission-table .ant-input-number-input{text-align:right}
+.case-commission-table .case-commission-key-input{background:#fff500}
+.case-commission-table .case-commission-key-input input{background:#fff500}
+.case-commission-table .case-commission-sync-head{height:auto;padding:0;color:#1677ff;font-weight:600}
+.case-commission-table .ant-tag{max-width:100px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .case-fee-empty-state{display:flex;min-height:180px;align-items:flex-start;justify-content:center;gap:4px;padding-top:34px;color:#444}
 .case-fee-empty-state>.anticon{margin-top:6px;color:#18a058}
 .case-fee-empty-state .ant-btn-link{height:auto;padding:2px 3px}

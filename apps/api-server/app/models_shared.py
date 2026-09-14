@@ -1734,6 +1734,7 @@ class FinanceFeeInformLinksInput(BaseModel):
 
 class CaseCommissionCreateItemInput(BaseModel):
     preview_key: str = Field(min_length=1, max_length=256)
+    base_amount: float | None = Field(default=None, gt=0)
     actual_amount: float = Field(gt=0)
     remark: str = Field(default="", max_length=1000)
 

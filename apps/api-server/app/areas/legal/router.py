@@ -865,7 +865,17 @@ async def create_case_commissions(
         template = templates.get(item.preview_key)
         if not template:
             raise HTTPException(status_code=422, detail=f"第{index}行提成项目已失效，请重新打开新增提成窗口")
-        normalized.append((template, _round_fee_amount(item.actual_amount), item.remark.strip()))
+        base_amount = _round_fee_amount(item.base_amount if item.base_amount is not None else template["base_amount"])
+        reference_commission = (
+            _round_fee_amount(template["fixed_amount"])
+            if template["calculation_kind"] == "fixed"
+            else _round_fee_amount(base_amount * template["rate"])
+        )
+        normalized.append(({
+            **template,
+            "base_amount": base_amount,
+            "reference_commission": reference_commission,
+        }, _round_fee_amount(item.actual_amount), item.remark.strip()))
     actor = await db.scalar(select(User).where(User.username == identity["username"]));
     if not actor:
         raise HTTPException(status_code=401, detail="当前用户不存在")

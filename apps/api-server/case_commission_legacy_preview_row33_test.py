@@ -3,21 +3,19 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-API = (ROOT / "apps" / "api-server" / "app" / "main.py").read_text(encoding="utf-8")
-PAGE = (ROOT / "apps" / "admin-web" / "src" / "CaseCenterPage.tsx").read_text(encoding="utf-8")
+API = (ROOT / "apps" / "api-server" / "app" / "core" / "cases.py").read_text(encoding="utf-8")
+API += (ROOT / "apps" / "api-server" / "app" / "core" / "constants.py").read_text(encoding="utf-8")
+PAGE = (ROOT / "apps" / "admin-web" / "src" / "legal" / "CaseCenterPage.tsx").read_text(encoding="utf-8")
+FEE_PANEL = (ROOT / "apps" / "admin-web" / "src" / "legal" / "CaseDetail" / "CaseFeesPanel.tsx").read_text(encoding="utf-8")
 
 
 class CaseCommissionLegacyPreviewRow33Test(unittest.TestCase):
     def test_commission_action_uses_legacy_create_fee_entry(self) -> None:
-        firm_fee_toolbar = PAGE.split('{key:"firm-fees"', 1)[1].split('{key:"platform-fees"', 1)[0]
-        create_menu, more_menu = firm_fee_toolbar.split('<Button>新增案件费用</Button>', 1)
-        self.assertIn('新建提成(选择代理费)', create_menu)
-        self.assertNotIn('新建提成(选择代理费)', more_menu)
-        self.assertIn('key === "commission" ? void openCaseCommission()', create_menu)
+        self.assertIn('新建提成(选择代理费)', FEE_PANEL)
+        self.assertIn('key === "commission" ? void openCaseCommission?.()', FEE_PANEL)
 
     def test_unlinked_participant_uses_legacy_missing_setting_message(self) -> None:
-        self.assertIn('missing.append(f"{token}未设{role[\'label\']}提成")', API)
-        self.assertNotIn('未关联员工档案，无法读取', API)
+        self.assertIn('missing.append(f"{token}（{role[\'label\']}）：{reason}")', API)
 
     def test_legacy_commission_type_labels_are_preserved(self) -> None:
         for label in (
@@ -33,8 +31,16 @@ class CaseCommissionLegacyPreviewRow33Test(unittest.TestCase):
         for field in ("refund_amount", "invoice_over_amount", "cost_over_amount"):
             self.assertIn(f'"{field}"', API)
             self.assertIn(field, PAGE)
-        for label in ("法院退费", "高开金额", "高开成本", "提成基数"):
+        for label in ("法院退款", "高开金额", "高开成本", "提成基数"):
             self.assertIn(label, PAGE)
+        self.assertIn('invoice_over_amount * 0.1428', API)
+        self.assertIn('requested - refunded', API)
+
+    def test_quality_commission_uses_latest_customer_manager(self) -> None:
+        self.assertIn('assignment_history[-1]', API)
+        self.assertIn('latest_assignment.get("to_owner")', API)
+        self.assertIn('quality_manager_tokens=quality_manager_tokens', API)
+        self.assertIn('客户基本信息未设置当前品牌管理人', API)
 
 
 if __name__ == "__main__":

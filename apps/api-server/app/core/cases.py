@@ -561,6 +561,7 @@ async def _case_commission_preview_for_amount(
     employee_index: dict[str, BusinessRecord | None] | None = None,
     active_users_by_username: dict[str, User] | None = None,
     scheme_cache: dict[tuple[int, date], HrSubrecord | None] | None = None,
+    quality_manager_tokens: list[str] | None = None,
 ) -> dict:
     from app.core.formatters import (
         _dashboard_case_date,
@@ -585,7 +586,8 @@ async def _case_commission_preview_for_amount(
     personnel: list[dict] = []
     seen_role_employees: set[tuple[str, int]] = set()
     for role in CASE_COMMISSION_ROLES:
-        for token in _case_commission_role_person_tokens(case_data, role):
+        role_tokens = quality_manager_tokens if role["key"] == "quality" and quality_manager_tokens is not None else _case_commission_role_person_tokens(case_data, role)
+        for token in role_tokens:
             employee = employee_index.get(token.lower())
             if not employee:
                 reason = "人员关联存在同名或重复档案歧义" if token.lower() in employee_index else "人员未关联到在职员工档案"
@@ -679,16 +681,135 @@ async def _case_commission_preview(
         raise HTTPException(status_code=409, detail="所选费用不属于当前案件")
     if not _is_agency_fee_record(source_fee):
         raise HTTPException(status_code=422, detail="新建提成必须选择一条代理费")
-    base_amount = _round_case_commission_amount(float(source_data.get("amount") or 0))
-    preview = await _case_commission_preview_for_amount(case_record, base_amount, db)
+    from app.core.finance import (
+        _invoice_json_fee_condition, _invoice_linked_fee_ids,
+    )
+    case_fees = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance",
+        or_(
+            BusinessRecord.data["case_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+        ),
+    ))).all())
+    external_case_fees = [
+        fee for fee in case_fees
+        if str((fee.data or {}).get("expense_scope") or "律所").strip() != "内部"
+    ]
+    fee_ids = {fee.id for fee in external_case_fees}
+
+    linked_refunds = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "refund",
+        BusinessRecord.data["fee_record_id"].as_integer().in_(fee_ids),
+    ))).all()) if fee_ids else []
+    refunds_by_fee: dict[int, list[BusinessRecord]] = {}
+    for refund in linked_refunds:
+        try:
+            refund_fee_id = int((refund.data or {}).get("fee_record_id") or 0)
+        except (TypeError, ValueError):
+            continue
+        refunds_by_fee.setdefault(refund_fee_id, []).append(refund)
+    refund_amount = 0.0
+    for fee in external_case_fees:
+        fee_data = fee.data or {}
+        fee_refunds = [item for item in refunds_by_fee.get(fee.id, []) if item.status not in {"已驳回", "已作废"}]
+        if fee_refunds:
+            requested = sum(float((item.data or {}).get("amount") or 0) for item in fee_refunds)
+            refunded = sum(float((item.data or {}).get("amount") or 0) for item in fee_refunds if item.status == "已退款")
+        else:
+            requested = float(fee_data.get("refund_requested_amount") or fee_data.get("refund_amount") or 0)
+            refunded = float(fee_data.get("refunded_amount") or 0)
+        refund_amount += max(requested - refunded, 0)
+
+    invoice_over_amount = 0.0
+    if fee_ids:
+        invoices = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "invoice",
+            BusinessRecord.status.not_in({"已撤回", "已作废"}),
+            or_(
+                BusinessRecord.data["case_id"].as_integer() == case_record.id,
+                BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+                _invoice_json_fee_condition(BusinessRecord.data, fee_ids),
+            ),
+        ))).all())
+        for invoice in invoices:
+            invoice_data = invoice.data or {}
+            matching_allocations = []
+            for row in invoice_data.get("case_fee_allocations") or []:
+                if not isinstance(row, dict):
+                    continue
+                try:
+                    allocation_fee_id = int(row.get("fee_id") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if allocation_fee_id in fee_ids:
+                    matching_allocations.append(row)
+            if matching_allocations:
+                invoice_over_amount += sum(float(row.get("over_amount") or 0) for row in matching_allocations)
+            elif _invoice_linked_fee_ids(invoice_data) & fee_ids or str(invoice_data.get("case_no") or "") == case_record.serial_no:
+                invoice_over_amount += float(invoice_data.get("invoice_over_amount") or invoice_data.get("extra_amount") or 0)
+
+    invoice_over_amount = _round_case_commission_amount(invoice_over_amount)
+    cost_over_amount = _round_case_commission_amount(round(invoice_over_amount * 0.1428, 2))
+    selected_amount = _round_case_commission_amount(float(source_data.get("amount") or 0))
+    base_amount = _round_case_commission_amount(selected_amount - cost_over_amount)
+    if base_amount <= 0:
+        raise HTTPException(status_code=422, detail="扣除高开成本后的提成基数必须大于 0")
+    case_data = case_record.data or {}
+    customer_record = None
+    try:
+        customer_id = int(case_data.get("customer_id") or case_data.get("customer_record_id") or 0)
+    except (TypeError, ValueError):
+        customer_id = 0
+    if customer_id:
+        candidate = await db.get(BusinessRecord, customer_id)
+        if candidate and candidate.module == "customer":
+            customer_record = candidate
+    if customer_record is None:
+        customer_no = str(case_data.get("customer_no") or "").strip()
+        if customer_no:
+            customer_record = await db.scalar(select(BusinessRecord).where(
+                BusinessRecord.module == "customer", BusinessRecord.serial_no == customer_no,
+            ))
+    if customer_record is None and case_record.customer.strip():
+        matching_customers = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "customer", BusinessRecord.title == case_record.customer.strip(),
+        ).limit(2))).all())
+        if len(matching_customers) == 1:
+            customer_record = matching_customers[0]
+
+    quality_manager_tokens: list[str] = []
+    quality_manager_source = ""
+    if customer_record:
+        customer_data = customer_record.data or {}
+        assignment_history = customer_data.get("assignment_history") if isinstance(customer_data.get("assignment_history"), list) else []
+        latest_assignment = assignment_history[-1] if assignment_history and isinstance(assignment_history[-1], dict) else {}
+        latest_manager = str(latest_assignment.get("to_owner") or "").strip()
+        if not latest_manager:
+            history_managers = latest_assignment.get("managers") if isinstance(latest_assignment.get("managers"), list) else []
+            latest_manager = str(history_managers[0] if history_managers else "").strip()
+        if not latest_manager:
+            current_managers = customer_data.get("customer_managers") if isinstance(customer_data.get("customer_managers"), list) else []
+            latest_manager = str(current_managers[0] if current_managers else customer_record.owner or "").strip()
+        if latest_manager:
+            quality_manager_tokens = [latest_manager]
+            quality_manager_source = f"客户基本信息：{customer_record.serial_no}"
+
+    preview = await _case_commission_preview_for_amount(
+        case_record, base_amount, db, quality_manager_tokens=quality_manager_tokens,
+    )
+    if not quality_manager_tokens:
+        preview["missing_messages"] = list(dict.fromkeys([
+            *preview["missing_messages"], "客户基本信息未设置当前品牌管理人，无法生成品管提成",
+        ]))
     return {
         **preview,
+        "quality_manager_source": quality_manager_source,
         "source_fee": {
             "id": source_fee.id, "serial_no": source_fee.serial_no,
-            "amount": base_amount, "fee_type": "代理费",
-            "refund_amount": _round_case_commission_amount(float(source_data.get("refund_amount") or source_data.get("refund_requested_amount") or 0)),
-            "invoice_over_amount": _round_case_commission_amount(float(source_data.get("invoice_over_amount") or source_data.get("over_invoice_amount") or 0)),
-            "cost_over_amount": _round_case_commission_amount(float(source_data.get("cost_over_amount") or source_data.get("over_invoice_cost") or 0)),
+            "amount": base_amount, "source_amount": selected_amount, "fee_type": "代理费",
+            "refund_amount": _round_case_commission_amount(refund_amount),
+            "invoice_over_amount": invoice_over_amount,
+            "cost_over_amount": cost_over_amount,
         },
     }
 

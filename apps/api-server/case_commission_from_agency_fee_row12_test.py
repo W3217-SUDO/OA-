@@ -148,9 +148,74 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows["开庭提成"]["reference_commission"], 420)
         self.assertEqual(rows["案源固定提成"]["reference_commission"], 300)
         self.assertEqual(rows["调查提成"]["reference_commission"], 840)
-        self.assertIn("律师助理乙未设文书提成", data["missing_messages"])
+        self.assertTrue(any("律师助理乙" in message and "文书" in message for message in data["missing_messages"]))
         self.assertEqual(data["case_date"], "2024-06-15")
         self.assertFalse(any("历史" in message for message in data["missing_messages"]))
+
+    async def test_preview_uses_latest_customer_brand_manager_and_live_finance_summary(self):
+        async with self.sessions() as db:
+            for username, display_name in (("row12-quality-old", "旧品管"), ("row12-quality-new", "新品管")):
+                db.add(User(
+                    username=username, display_name=display_name, department=IDENTITY["department"],
+                    role="user", password_hash="x", is_active=True,
+                ))
+                employee = BusinessRecord(
+                    module="hr", serial_no=f"CODEX-831-R12-{username}", title=display_name,
+                    customer="", status="在职", owner=username, department=IDENTITY["department"],
+                    data={"username": username, "is_active": True},
+                )
+                db.add(employee)
+                await db.flush()
+                db.add(HrSubrecord(
+                    employee_id=employee.id, kind="commission",
+                    data={"start_date": "2020-01-01", "end_date": "", "quality_rate": 0.04, "quality_fixed": 0},
+                    created_by=IDENTITY["username"], updated_by=IDENTITY["username"],
+                ))
+            customer = BusinessRecord(
+                module="customer", serial_no="CODEX-831-R12-CUSTOMER", title="第12行客户",
+                customer="第12行客户", status="跟进中", owner="row12-quality-new",
+                department=IDENTITY["department"],
+                data={
+                    "customer_managers": ["row12-quality-new", "row12-quality-old"],
+                    "assignment_history": [
+                        {"to_owner": "row12-quality-old", "created_at": "2024-01-01T00:00:00"},
+                        {"to_owner": "row12-quality-new", "created_at": "2026-09-14T00:00:00"},
+                    ],
+                },
+            )
+            db.add(customer)
+            await db.flush()
+            case = await db.get(BusinessRecord, self.case_id)
+            case.data = {**(case.data or {}), "customer_id": customer.id, "coordinator_username": "row12-quality-old"}
+            other_fee = await db.get(BusinessRecord, self.other_fee_id)
+            other_fee.data = {**(other_fee.data or {}), "refund_requested_amount": 500, "refunded_amount": 100}
+            db.add(BusinessRecord(
+                module="invoice", serial_no="CODEX-831-R12-INVOICE", title="第12行发票",
+                customer=case.customer, status="已开票", owner=IDENTITY["username"],
+                department=IDENTITY["department"],
+                data={
+                    "case_id": case.id, "case_no": case.serial_no, "case_fee_ids": [self.fee_id],
+                    "case_fee_allocations": [{"fee_id": self.fee_id, "amount": 8500, "over_amount": 100}],
+                    "invoice_over_amount": 100,
+                },
+            ))
+            await db.commit()
+
+        response = await self.client.get(
+            f"{API}/cases/{self.case_id}/commission-preview",
+            params={"source_fee_id": self.fee_id},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        quality_rows = [item for item in data["items"] if item["commission_role"] == "品管"]
+        self.assertEqual([item["employee_username"] for item in quality_rows], ["row12-quality-new"])
+        self.assertEqual(quality_rows[0]["commission_type"], "品牌管理费")
+        self.assertEqual(data["source_fee"]["refund_amount"], 400)
+        self.assertEqual(data["source_fee"]["invoice_over_amount"], 100)
+        self.assertEqual(data["source_fee"]["cost_over_amount"], 14.28)
+        self.assertEqual(data["source_fee"]["amount"], 8385.72)
+        self.assertEqual(quality_rows[0]["reference_commission"], 335.43)
+        self.assertEqual(data["quality_manager_source"], "客户基本信息：CODEX-831-R12-CUSTOMER")
 
     async def test_batch_create_is_atomic_and_persists_source_relation(self):
         preview = (await self.client.get(
@@ -161,7 +226,7 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         response = await self.client.post(f"{API}/cases/{self.case_id}/commissions", json={
             "source_fee_id": self.fee_id,
             "items": [
-                {"preview_key": selected[0]["preview_key"], "actual_amount": 400, "remark": "调整后金额"},
+                {"preview_key": selected[0]["preview_key"], "base_amount": 8000, "actual_amount": 400, "remark": "调整后金额"},
                 {"preview_key": selected[1]["preview_key"], "actual_amount": selected[1]["actual_amount"], "remark": ""},
             ],
         })
@@ -177,7 +242,10 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
                 BusinessRecord.data["source_fee_id"].as_integer() == self.fee_id,
             ))).all())
             self.assertEqual(len(rows), 2)
-            self.assertTrue(all((row.data or {}).get("base_amount") == 8400 for row in rows))
+            rows_by_type = {(row.data or {}).get("commission_type"): row for row in rows}
+            self.assertEqual((rows_by_type[selected[0]["commission_type"]].data or {}).get("base_amount"), 8000)
+            self.assertEqual((rows_by_type[selected[0]["commission_type"]].data or {}).get("reference_commission"), 400)
+            self.assertEqual((rows_by_type[selected[1]["commission_type"]].data or {}).get("base_amount"), 8400)
             self.assertTrue(all(row.status == "待审批" for row in rows))
             self.assertTrue(all((row.data or {}).get("payment_status") == "待审批" for row in rows))
             self.assertTrue(all((row.data or {}).get("payment_application_no") == result["application_no"] for row in rows))
@@ -218,9 +286,9 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         data = response.json()
-        self.assertIn("外部合作律师未设开庭提成", data["missing_messages"])
-        self.assertIn("外部合作律师未设文书提成", data["missing_messages"])
-        self.assertIn("外部合作律师未设案源提成", data["missing_messages"])
+        self.assertTrue(any("外部合作律师" in message and "开庭" in message for message in data["missing_messages"]))
+        self.assertTrue(any("外部合作律师" in message and "文书" in message for message in data["missing_messages"]))
+        self.assertTrue(any("外部合作律师" in message and "案源" in message for message in data["missing_messages"]))
         self.assertTrue(any(item["commission_type"] == "调查提成" for item in data["items"]))
 
     async def test_non_agency_fee_is_rejected(self):

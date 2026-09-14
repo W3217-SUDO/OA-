@@ -1004,6 +1004,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 source_fee_id: caseCommissionPreview.source_fee.id,
                 items: caseCommissionRows.map((row) => ({
                     preview_key: row.preview_key,
+                    base_amount: row.base_amount,
                     actual_amount: row.actual_amount,
                     remark: row.remark || "",
                 })),

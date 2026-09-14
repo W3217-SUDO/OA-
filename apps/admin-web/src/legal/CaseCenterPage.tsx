@@ -2794,6 +2794,44 @@ export default function CaseCenterPage({
   const updateCaseCommissionRow = (clientKey: string, patch: Partial<CaseCommissionPreviewRow>) => {
     setCaseCommissionRows((rows) => rows.map((row) => row.client_key === clientKey ? { ...row, ...patch } : row));
   };
+  const commissionAmountForBase = (row: CaseCommissionPreviewRow, baseAmount: number) => {
+    const amount = row.calculation_kind === "fixed" ? Number(row.fixed_amount || 0) : baseAmount * Number(row.rate || 0);
+    return Math.round((amount + Number.EPSILON) * 100) / 100;
+  };
+  const updateCaseCommissionBase = (clientKey: string, value: number) => {
+    setCaseCommissionRows((rows) => rows.map((row) => {
+      if (row.client_key !== clientKey) return row;
+      const reference = commissionAmountForBase(row, value);
+      return { ...row, base_amount: value, reference_commission: reference, actual_amount: reference };
+    }));
+  };
+  const selectCaseCommissionTemplate = (clientKey: string, previewKey: string) => {
+    const template = caseCommissionPreview?.items.find((item) => item.preview_key === previewKey);
+    if (!template) return;
+    setCaseCommissionRows((rows) => rows.map((row) => row.client_key === clientKey
+      ? { ...template, client_key: clientKey, remark: row.remark || "" }
+      : row));
+  };
+  const syncFirstCommissionField = (field: "commission_type" | "base_amount" | "actual_amount" | "remark") => {
+    setCaseCommissionRows((rows) => {
+      if (rows.length < 2) return rows;
+      const first = rows[0];
+      if (field === "commission_type") {
+        return rows.map((row, index) => index === 0 ? row : {
+          ...first,
+          client_key: row.client_key,
+          remark: row.remark,
+        });
+      }
+      if (field === "base_amount") {
+        return rows.map((row) => {
+          const reference = commissionAmountForBase(row, first.base_amount);
+          return { ...row, base_amount: first.base_amount, reference_commission: reference, actual_amount: reference };
+        });
+      }
+      return rows.map((row) => ({ ...row, [field]: first[field] }));
+    });
+  };
 
   const handleInternalFeeAction=(key:string)=>{
     if(key==="create")return openCaseFeeBySubtype("内部","内部费用");
@@ -3632,7 +3670,7 @@ export default function CaseCenterPage({
         open={Boolean(caseCommissionPreview)}
         title="新增提成"
         placement="right"
-        width={720}
+        width={700}
         onClose={closeCaseCommission}
         destroyOnHidden
         className="case-commission-drawer"
@@ -3641,7 +3679,6 @@ export default function CaseCenterPage({
           {!caseCommissionResult && <Button type="primary" loading={caseCommissionSubmitting} onClick={() => void submitCaseCommissions()}>申请付款</Button>}
         </Space>}
       >
-        <Steps size="small" current={caseCommissionResult ? 1 : 0} items={[{ title: "新增提成" }, { title: "申请结果" }]} style={{ marginBottom: 16 }} />
         {caseCommissionResult ? <>
           <Alert type="success" showIcon title={`付款申请 ${caseCommissionResult.application_no} 已提交审批`} style={{ marginBottom: 12 }} />
           <Table
@@ -3665,11 +3702,12 @@ export default function CaseCenterPage({
           title="温馨提示"
           description={<ol>
             <li>申请付款按照每个案号生成一个申请单。</li>
-            <li>法院退费：{caseCommissionPreview?.source_fee.refund_amount ?? 0} 元。</li>
+            <li>点击表格头部（费用类型、基数、实际金额、备注）会把第一行数据同步到各行。</li>
+            <li>基数用于计算提成的分母，点击基数会把第一行数据同步到各行，同时自动计算提成。</li>
+            <li>法院退款：{caseCommissionPreview?.source_fee.refund_amount ?? 0} 元。</li>
             <li>高开金额：{caseCommissionPreview?.source_fee.invoice_over_amount ?? 0} 元；高开成本：{caseCommissionPreview?.source_fee.cost_over_amount ?? 0} 元。</li>
-            <li>提成基数取当前选中的代理费金额：{caseCommissionPreview?.source_fee.amount ?? 0} 元。</li>
-            <li>人员及参考提成按案件日期有效的员工提成设置自动生成，实际金额可按业务调整。</li>
-            <li>点击操作栏的加号可复制当前提成行；每一行单独生成一条内部提成记录。</li>
+            <li>提成基数：{caseCommissionPreview?.source_fee.amount ?? 0} 元。</li>
+            <li>品管人员：{caseCommissionPreview?.personnel.find((item) => item.role === "品管")?.display_name || "未设置"}（{caseCommissionPreview?.quality_manager_source || "客户基本信息未关联"}）。</li>
           </ol>}
         />
         {!!caseCommissionPreview?.missing_messages.length && <Alert
@@ -3682,27 +3720,40 @@ export default function CaseCenterPage({
         <Table<CaseCommissionPreviewRow>
           rowKey="client_key"
           size="small"
+          bordered
+          tableLayout="fixed"
           pagination={false}
-          scroll={{ x: 1030 }}
+          className="case-commission-table"
           locale={{ emptyText: caseCommissionLoading ? "正在读取案件人员提成设置..." : "没有可生成的提成项目" }}
           dataSource={caseCommissionRows}
           columns={[
-            { title: "案号", dataIndex: "case_no", width: 145 },
-            { title: "费用类型", dataIndex: "commission_type", width: 140 },
-            { title: "支付对象", dataIndex: "employee_display_name", width: 120 },
-            { title: "基数", dataIndex: "base_amount", width: 100, align: "right" },
-            { title: "参考提成", dataIndex: "reference_commission", width: 110, align: "right" },
-            { title: "实际金额", width: 120, render: (_, row) => <InputNumber
+            { title: "案号", dataIndex: "case_no", width: 82 },
+            { title: <Button type="link" className="case-commission-sync-head" onClick={() => syncFirstCommissionField("commission_type")}>费用类型</Button>, width: 94, render: (_, row) => <Select
+              value={row.preview_key}
+              options={(caseCommissionPreview?.items || []).map((item) => ({ value: item.preview_key, label: item.commission_type }))}
+              onChange={(value) => selectCaseCommissionTemplate(row.client_key, value)}
+            /> },
+            { title: "支付对象", dataIndex: "employee_display_name", width: 92, render: (value) => <Tag color="cyan" closable={false}>{value}</Tag> },
+            { title: <Button type="link" className="case-commission-sync-head" onClick={() => syncFirstCommissionField("base_amount")}>基数</Button>, width: 62, render: (_, row) => <InputNumber
               min={0.01}
               precision={2}
+              className="case-commission-key-input"
+              value={row.base_amount}
+              onChange={(value) => updateCaseCommissionBase(row.client_key, Number(value || 0))}
+            /> },
+            { title: "参考提成", dataIndex: "reference_commission", width: 70, align: "right", render: (value) => Number(value || 0).toFixed(2) },
+            { title: <Button type="link" className="case-commission-sync-head" onClick={() => syncFirstCommissionField("actual_amount")}>实际金额</Button>, width: 70, render: (_, row) => <InputNumber
+              min={0.01}
+              precision={2}
+              className="case-commission-key-input"
               value={row.actual_amount}
               onChange={(value) => updateCaseCommissionRow(row.client_key, { actual_amount: Number(value || 0) })}
             /> },
-            { title: "备注", width: 220, render: (_, row) => <Input
+            { title: <Button type="link" className="case-commission-sync-head" onClick={() => syncFirstCommissionField("remark")}>备注</Button>, width: 126, render: (_, row) => <Input
               value={row.remark}
               onChange={(event) => updateCaseCommissionRow(row.client_key, { remark: event.target.value })}
             /> },
-            { title: "操作", width: 90, fixed: "right", render: (_, row) => <Space size={0}>
+            { title: "操作", width: 58, render: (_, row) => <Space size={0}>
               <Button type="text" aria-label="新增提成行" icon={<PlusOutlined />} onClick={() => cloneCaseCommissionRow(row)} />
               <Button type="text" danger aria-label="删除提成行" icon={<CloseOutlined />} onClick={() => setCaseCommissionRows((rows) => rows.filter((item) => item.client_key !== row.client_key))} />
             </Space> },

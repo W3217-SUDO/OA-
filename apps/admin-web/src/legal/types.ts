@@ -54,6 +54,9 @@ export type CaseCommissionPreviewRow = {
   employee_username: string;
   employee_display_name: string;
   base_amount: number;
+  rate: number;
+  fixed_amount: number;
+  calculation_kind: "rate" | "fixed";
   reference_commission: number;
   actual_amount: number;
   remark: string;
@@ -65,12 +68,14 @@ export type CaseCommissionPreview = {
     id: number;
     serial_no: string;
     amount: number;
+    source_amount?: number;
     fee_type: string;
     refund_amount: number;
     invoice_over_amount: number;
     cost_over_amount: number;
   };
   personnel: Array<{ role: string; username: string; display_name: string }>;
+  quality_manager_source?: string;
   items: Omit<CaseCommissionPreviewRow, "client_key">[];
   missing_messages: string[];
 };
