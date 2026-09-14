@@ -3,6 +3,9 @@ import type { FormInstance } from "antd/es/form/hooks/useForm";
 import type { MessageType } from "antd/es/message/interface";
 import dayjs from "dayjs";
 import { api } from "../../api";
+import { buildInvoiceApplicationPayload } from "../../financeInvoiceHelpers.mjs";
+import { validateInvoiceAmounts, validateInvoiceContracts } from "../contractInvoiceApplication";
+import type { InvoiceApplicationSubject } from "../contractInvoiceApplication";
 import type { ContractMutationGate } from "../../contractMutationGate.mjs";
 import { extractContractErrorMessage, normalizeContractActionResponse } from "../../contractWorkflowPolicy.mjs";
 import { formatRequiredDate } from "../../formSafety";
@@ -42,7 +45,8 @@ export interface ContractFinanceDependencies {
     readonly setInvoiceSaving: React.Dispatch<React.SetStateAction<boolean>>;
     readonly invoiceForm: FormInstance<any>;
     readonly setInvoiceTarget: React.Dispatch<React.SetStateAction<Contract | null>>;
-    readonly invoiceSubjects: Array<{ fee_id: number; case_no: string; invoiceable_amount: number }>;
+    readonly invoiceSubjects: InvoiceApplicationSubject[];
+    readonly invoiceContracts: Contract[];
     readonly selectedInvoiceObjectKeys: React.Key[];
 }
 export function createContractFinanceActions(context: ContractFinanceDependencies) {
@@ -155,10 +159,10 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
         }
     };
     const createContractInvoice = async () => {
-        const { invoiceTarget, contractMutationGates, contractCapabilities, denyContractAction, setInvoiceSaving, invoiceForm, viewing, openViewing, onNavigate, setInvoiceTarget, invoiceSubjects, selectedInvoiceObjectKeys } = context;
+        const { invoiceTarget, invoiceContracts, contractMutationGates, contractCapabilities, denyContractAction, setInvoiceSaving, invoiceForm, viewing, openViewing, onNavigate, setInvoiceTarget, invoiceSubjects, selectedInvoiceObjectKeys } = context;
         if (!invoiceTarget || !contractMutationGates.current.invoice.tryEnter())
             return;
-        if (!contractCapabilities(invoiceTarget).canInvoice) {
+        if (!invoiceContracts.length || invoiceContracts.some(contract => !contractCapabilities(contract).canInvoice)) {
             contractMutationGates.current.invoice.leave();
             denyContractAction();
             return;
@@ -166,30 +170,30 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
         setInvoiceSaving(true);
         try {
             const values = await invoiceForm.validateFields();
-            const selectedObjects = invoiceSubjects.filter((item) => selectedInvoiceObjectKeys.includes(item.fee_id));
+            validateInvoiceContracts(invoiceContracts);
+            const allocations = validateInvoiceAmounts(values, invoiceSubjects, selectedInvoiceObjectKeys);
+            const selectedObjects = invoiceSubjects.filter((item) => selectedInvoiceObjectKeys.map(Number).includes(item.fee_id));
             const caseFeeIds = selectedObjects.map((item) => item.fee_id);
             if (!caseFeeIds.length) {
                 message.warning("请至少选择一笔合同名下的案件费用");
                 return;
             }
             const caseNos = [...new Set(selectedObjects.map((item) => item.case_no).filter(Boolean))];
-            if (caseNos.length > 1) {
-                message.warning("同一张发票只能选择同一案件的费用");
-                return;
-            }
-            const availableAmount = selectedObjects.reduce((sum, item) => sum + Number(item.invoiceable_amount || 0), 0);
-            if (Number(values.amount || 0) > availableAmount + 0.0001) {
-                message.warning(`开票金额不能超过所选费用合计 ${availableAmount.toFixed(2)} 元`);
-                return;
-            }
-            const response = await api.post("/finance/invoices", {
-                ...values,
-                case_fee_ids: caseFeeIds,
-                customer: invoiceTarget.customer,
-                case_no: caseNos[0] || invoiceTarget.data.case_no || "",
-                contract_record_id: invoiceTarget.id,
-                remark: `来源合同 ${invoiceTarget.serial_no}${values.remark ? `；${values.remark}` : ""}`,
+            const sourceContractIds = [...new Set(selectedObjects.map(item => item.contract_record_id))];
+            const selectedContracts = invoiceContracts.filter(item => sourceContractIds.includes(item.id));
+            if (!selectedContracts.length || selectedContracts.length !== sourceContractIds.length) throw new Error("费用关联合同不存在或无权访问");
+            const result = buildInvoiceApplicationPayload({
+                values: { ...values, case_fee_ids: caseFeeIds, case_fee_allocations: allocations,
+                    customer: invoiceTarget.customer, case_no: caseNos.length === 1 ? caseNos[0] : "",
+                    contract_record_id: selectedContracts.length === 1 ? selectedContracts[0].id : null,
+                    remark: `来源合同 ${selectedContracts.map(item => item.serial_no).join("、")}${values.remark ? `；${values.remark}` : ""}` },
+                contracts: selectedContracts,
+                cases: selectedObjects.map(item => ({ id: item.case_record_id, serial_no: item.case_no, customer: invoiceTarget.customer })),
+                caseFees: selectedObjects.map(item => ({ id: item.fee_id, customer: invoiceTarget.customer, data: { case_no: item.case_no, contract_id: item.contract_record_id, contract_no: item.contract_no } })),
+                requireSource: true,
             });
+            if (!result.ok) throw new Error(result.error);
+            const response = await api.post("/finance/invoices", result.payload);
             const feedback = normalizeContractActionResponse(response, "合同开票申请创建失败");
             if (!feedback.ok)
                 throw new Error(feedback.message);

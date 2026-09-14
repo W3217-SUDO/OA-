@@ -3,6 +3,9 @@ import dayjs from "dayjs";
 import type { Key } from "react";
 import { useEffect,useRef,useState } from "react";
 import { api } from "../api";
+import { buildContractInvoiceRoute, readContractInvoiceRoute, validateInvoiceContracts } from "./contractInvoiceApplication";
+import type { InvoiceApplicationSubject } from "./contractInvoiceApplication";
+import { loadContractInvoiceData } from "./contractInvoiceData";
 import { buildCaseContractContext,rememberCaseContractContext } from "../caseContractPrefill";
 import { confirmOperation } from "../components/common/confirmOperation";
 import "../contract-center.css";
@@ -209,7 +212,8 @@ export default function ContractCenterPage({
   const [paymentTypeCreating, setPaymentTypeCreating] = useState(false);
   const [selectedPaymentObjectKeys, setSelectedPaymentObjectKeys] = useState<Key[]>([]);
   const [paymentAmounts, setPaymentAmounts] = useState<Record<string, number>>({});
-  const [invoiceSubjects, setInvoiceSubjects] = useState<Array<{fee_id:number;fee_no:string;case_record_id?:number;case_no:string;case_title?:string;fee_type:string;amount:number;invoiceable_amount:number;expense_scope:string}>>([]);
+  const [invoiceSubjects, setInvoiceSubjects] = useState<InvoiceApplicationSubject[]>([]);
+  const [invoiceContracts, setInvoiceContracts] = useState<Contract[]>([]);
   const [selectedInvoiceObjectKeys, setSelectedInvoiceObjectKeys] = useState<Key[]>([]);
   const [objectEditing, setObjectEditing] = useState<{id?:number}|null>(null);
   const [objectCases, setObjectCases] = useState<Array<{id:number;serial_no:string;title:string;customer:string}>>([]);
@@ -845,6 +849,7 @@ export default function ContractCenterPage({
     get invoiceForm() { return invoiceForm; },
     get setInvoiceTarget() { return setInvoiceTarget; },
     get invoiceSubjects() { return invoiceSubjects; },
+    get invoiceContracts() { return invoiceContracts; },
     get selectedInvoiceObjectKeys() { return selectedInvoiceObjectKeys; },
   });
   const openContractPaymentTypeCreator = () => {
@@ -870,6 +875,20 @@ export default function ContractCenterPage({
     sessionStorage.setItem("sunhold:contract-finance-return", initialView);
     onNavigate?.(`contract-${kind}-apply-${contract.id}-${encodeURIComponent(contract.serial_no)}`);
   };
+  const startContractInvoice = async (keys: Key[]) => {
+    if (!keys.length) { message.warning("请选择合同"); return; }
+    try {
+      const contracts: Contract[] = [];
+      for (const key of keys) {
+        const { data } = await api.get(`/records/${Number(key)}`);
+        if (data.module !== "contract" || !contractCapabilities(data).canInvoice) throw new Error("所选合同已归档、已终止或无权开票");
+        contracts.push(data);
+      }
+      validateInvoiceContracts(contracts);
+      sessionStorage.setItem("sunhold:contract-finance-return", initialView);
+      onNavigate?.(buildContractInvoiceRoute(contracts));
+    } catch (error) { message.error(extractContractErrorMessage(error, "合同开票入口加载失败")); }
+  };
   const returnFromContractFinance = () => {
     const saved = sessionStorage.getItem("sunhold:contract-finance-return") || "contract-mine";
     onNavigate?.(saved.startsWith("contract-") && !saved.includes("-apply-") ? saved : "contract-mine");
@@ -891,7 +910,8 @@ export default function ContractCenterPage({
         if (cancelled) return;
         const contract = record.data as Contract;
         if (record.data.module !== "contract") throw new Error("关联记录不是合同");
-        if (contract.serial_no !== decodeURIComponent(financeRouteMatch[3])) throw new Error("合同编号与页面不一致，请从合同列表重新进入");
+        const invoiceSources = financeRouteMatch[1] === "invoice" ? readContractInvoiceRoute(contract.id, financeRouteMatch[3]) : null;
+        if (contract.serial_no !== (invoiceSources?.[0].serial_no ?? decodeURIComponent(financeRouteMatch[3]))) throw new Error("合同编号与页面不一致，请从合同列表重新进入");
         const capabilities = contractWorkflowActionPolicy(me.data, contract);
         const allowed = financeRouteMatch[1] === "payment" ? capabilities.canPayment : capabilities.canInvoice;
         if (!allowed) throw new Error("合同已归档、已终止或当前账号没有合同菜单权限");
@@ -908,10 +928,19 @@ export default function ContractCenterPage({
           setPaymentTarget(contract);
         } else {
           invoiceForm.resetFields();
-          invoiceForm.setFieldsValue({ invoice_title: contract.customer, invoice_type: "增值税普通发票", invoice_content: "法律服务费", delivery_method: "电子发票" });
-          const { data } = await api.get(`/contracts/${contract.id}/invoice-candidates`);
+          setInvoiceContracts([]);
+          setInvoiceSubjects([]);
+          const contracts = [contract];
+          for (const source of invoiceSources!.slice(1)) {
+            const { data } = await api.get(`/records/${source.id}`);
+            if (data.module !== "contract" || data.serial_no !== source.serial_no || !contractWorkflowActionPolicy(me.data, data).canInvoice) throw new Error("部分关联合同不存在、无权访问或已归档/终止");
+            contracts.push(data);
+          }
+          const data = await loadContractInvoiceData(contracts);
           if (cancelled) return;
-          setInvoiceSubjects(data.items || []);
+          invoiceForm.setFieldsValue({ ...data.defaults, invoice_type: "增值税普通发票", invoice_content: "法律服务费", delivery_method: "电子发票", applicant: me.data.display_name || me.data.username, application_date: dayjs().format("YYYY-MM-DD"), amount: 0, case_fee_allocations: [], service_items: [{ service_name: "法律服务费", quantity: 1, unit_price: 0, amount: 0, tax_rate: 0, tax_amount: 0 }] });
+          setInvoiceContracts(contracts);
+          setInvoiceSubjects(data.subjects);
           setSelectedInvoiceObjectKeys([]);
           setInvoiceTarget(contract);
         }
@@ -1129,7 +1158,7 @@ export default function ContractCenterPage({
           onClearQuery={clearQuery}
           onPageChange={updateListPagination}
           onSelectionChange={(keys) => {
-            setSelectedRowKeys(keys.length ? [keys[keys.length - 1]] : []);
+            setSelectedRowKeys(keys);
             setChanging(null);
           }}
           onView={(contract) => void openViewing(contract)}
@@ -1147,7 +1176,7 @@ export default function ContractCenterPage({
           onArchive={archiveContract}
           onChangeContract={openChange}
           onPayment={(contract) => startContractFinance("payment", contract)}
-          onInvoice={(contract) => startContractFinance("invoice", contract)}
+          onInvoice={(keys) => void startContractInvoice(keys)}
           onInvestigation={(contract) => void openInvestigation(contract)}
           onApprove={(contract) => void openReview(contract)}
           onReviewChange={reviewChange}
@@ -1753,13 +1782,13 @@ export default function ContractCenterPage({
       <ContractInvoiceModal
         open={isContractFinanceView && financeRouteMatch?.[1] === "invoice" && Boolean(invoiceTarget)}
         invoiceTarget={invoiceTarget}
+        invoiceContracts={invoiceContracts}
         invoiceForm={invoiceForm}
         invoiceSaving={invoiceSaving}
         invoiceSubjects={invoiceSubjects}
         selectedInvoiceObjectKeys={selectedInvoiceObjectKeys}
         onInvoiceSelectionChange={(keys) => {
           setSelectedInvoiceObjectKeys(keys);
-          invoiceForm.setFieldValue("amount", invoiceSubjects.filter((item) => keys.includes(item.fee_id)).reduce((sum, item) => sum + Number(item.invoiceable_amount || 0), 0));
         }}
         onCancel={() => {
           if (invoiceSaving) return;

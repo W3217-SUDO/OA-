@@ -956,9 +956,8 @@ async def contract_archive_subjects(contract_id: int, identity: dict = Depends(c
 @router.get(f"{settings.api_prefix}/contracts/{{contract_id}}/invoice-candidates")
 async def contract_invoice_candidates(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Return individual, currently invoiceable case-fee rows for a contract."""
-    from app.core.constants import INVOICE_RELEASED_STATUSES
     from app.core.contracts import _contract_allows_finance_application
-    from app.core.finance import _fee_matches_contract, _invoice_linked_fee_ids, _round_fee_amount
+    from app.core.finance import _fee_matches_contract, _invoice_fee_details
     from app.core.permissions import _ensure_record_module, _record_scope_conditions, _require_record_module_menu
 
     await _require_record_module_menu("contract", identity, db, action="查看")
@@ -978,21 +977,25 @@ async def contract_invoice_candidates(contract_id: int, identity: dict = Depends
         fee for fee in (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.id))).all()
         if _fee_matches_contract(fee, contract)
     ]
-    active_invoices = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "invoice", BusinessRecord.status.not_in(INVOICE_RELEASED_STATUSES),
-        *(await _record_scope_conditions(identity, db)),
-    ))).all())
-    reserved_ids = {fee_id for invoice in active_invoices for fee_id in _invoice_linked_fee_ids(invoice.data or {})}
+    rows = await _invoice_fee_details(identity, db, ids={fee.id for fee in fees}) if fees else []
     items = []
-    for fee in fees:
-        data = fee.data or {}
-        amount = _round_fee_amount(float(data.get("amount") or 0))
-        if fee.id in reserved_ids or amount <= 0:
+    for row in rows:
+        data = row.get("data") or {}
+        remaining = data.get("remaining_invoice_amount")
+        if remaining is not None and float(remaining) <= 0:
             continue
         items.append({
-            "fee_id": fee.id, "fee_no": fee.serial_no, "case_record_id": data.get("case_id"), "case_title": str(data.get("case_title") or ""),
-            "case_no": str(data.get("case_no") or ""), "fee_type": str(data.get("fee_type_path") or data.get("fee_type_name") or data.get("fee_type") or fee.title),
-            "amount": amount, "invoiceable_amount": amount, "expense_scope": str(data.get("expense_scope") or ""),
+            "fee_id": row["id"], "fee_no": row["serial_no"], "case_record_id": data.get("case_id"),
+            "case_title": data.get("case_title", ""), "case_no": data.get("case_no", ""),
+            "fee_type": data.get("fee_type", ""), "contract_no": data.get("contract_no", ""),
+            "external_contract_no": data.get("external_contract_no", ""), "case_stage": data.get("case_stage", ""),
+            "amount": data.get("amount"), "invoiceable_amount": remaining,
+            "received_amount": data.get("cashed_amount"), "invoiced_amount": data.get("invoiced_amount"),
+            "court_name": data.get("court_name", ""), "court_lawyer": data.get("hearing_lawyer", ""),
+            "investigator": data.get("investigator", ""), "case_assistant": data.get("assistant", ""),
+            "payer_name": data.get("payer") or data.get("received_payer_name", ""),
+            "payment_mode": data.get("payment_mode", ""), "received_date": data.get("received_date", ""),
+            "expense_scope": data.get("expense_scope", ""),
         })
     return {"contract": {"id": contract.id, "serial_no": contract.serial_no, "contract_body": (contract.data or {}).get("contract_body")}, "items": items, "total": len(items)}
 
@@ -1180,58 +1183,23 @@ async def list_contract_payment_applications(contract_id: int, identity: dict = 
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-applications", status_code=status.HTTP_201_CREATED)
 async def create_contract_payment_application(contract_id: int, body: ContractPaymentApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.contracts import _contract_allows_finance_application
-    from app.core.finance import (
-        _active_payment_type, _contract_payment_candidate_rows, _finance_payment_type_dict, _round_fee_amount,
-    )
+    from app.core.contract_payment_lifecycle import lock_contract, normalized_payment, replace_payment_details, payment_event
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity, _require_contract_action, _require_record_owner_or_manager,
     )
-    contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_contract_action(identity, db, "contract.payment.create", "发起付款申请")
+    contract = await lock_contract(contract_id, identity, db)
     await _require_record_owner_or_manager(contract, identity, db)
-    if not _contract_allows_finance_application(contract):
-        raise HTTPException(status_code=409, detail="归档或已终止合同不能发起合同付款")
-    payment_type = await _active_payment_type(body.payment_type_id, db)
-    payment_type_data = _finance_payment_type_dict(payment_type)
-    if any(line.case_fee_id and line.contract_object_id for line in body.lines):
-        raise HTTPException(status_code=422, detail="每条付款明细只能选择案件费用或合同标的之一")
-
-    def line_key(line: ContractPaymentLineInput) -> tuple[str, int]:
-        return ("case_fee", line.case_fee_id) if line.case_fee_id else ("contract_object", line.contract_object_id)
-
-    line_inputs = list({line_key(line): line for line in body.lines}.values())
-    if len(line_inputs) != len(body.lines):
-        raise HTTPException(status_code=422, detail="同一案件费用只能提交一次")
-    candidate_rows = await _contract_payment_candidate_rows(contract, identity, db)
-    candidates = {
-        ("case_fee", item["case_fee_id"]) if item.get("case_fee_id") else ("contract_object", item["contract_object_id"]): item
-        for item in candidate_rows
-    }
-    invalid = [str(line.case_fee_id or line.contract_object_id) for line in line_inputs if line_key(line) not in candidates]
-    if invalid:
-        raise HTTPException(status_code=404, detail="部分合同标的不存在或无权访问：" + "、".join(invalid))
-    normalized_lines: list[tuple[ContractPaymentLineInput, dict]] = []
-    for line in line_inputs:
-        candidate = candidates[line_key(line)]
-        amount = _round_fee_amount(line.amount)
-        if amount <= 0 or amount > float(candidate["remaining_amount"]) + 0.0001:
-            raise HTTPException(status_code=422, detail=f"案件 {candidate['case_no']} 的本次支付金额不能超过待付余额")
-        normalized_lines.append((line, candidate))
+    validated = await normalized_payment(body, contract, identity, db)
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
-    total = _round_fee_amount(sum(_round_fee_amount(line.amount) for line, _ in normalized_lines))
+    total = validated["amount"]
     serial = f"CP{datetime.now():%Y%m%d%H%M%S%f}"
-    snapshot = [{"contract_object_id": item.get("contract_object_id"), "case_fee_id": item.get("case_fee_id"), "case_id": item["case_record_id"], "case_no": item["case_no"], "fee_type": item["fee_type"], "amount": _round_fee_amount(line.amount)} for line, item in normalized_lines]
     accounting_center = "平台财务中心" if str((contract.data or {}).get("contract_body") or "").strip() == "平台" else "财务中心"
-    payment = BusinessRecord(module="contract_payment", serial_no=serial, title=f"{contract.serial_no}合同付款申请", customer=contract.customer, status="待审批", owner=contract.owner, department=user.department, description=body.remark.strip(), data={"contract_id": contract.id, "contract_no": contract.serial_no, "contract_body": (contract.data or {}).get("contract_body"), "accounting_center": accounting_center, "finance_scope": "platform" if accounting_center == "平台财务中心" else "firm", "payment_type_id": payment_type.id, "payment_type_code": payment_type.code, "payment_type": payment_type.name, "payment_nature": payment_type_data["nature"], "payee": payment_type_data["payee"], "account_bank": payment_type_data["account_bank"], "account": payment_type_data["account"], "application_date": body.application_date.isoformat(), "amount": total, "lines": snapshot, "applicant": identity["username"]})
+    payment = BusinessRecord(module="contract_payment", serial_no=serial, title=f"{contract.serial_no}合同付款申请", customer=contract.customer, status="待审批", owner=contract.owner, department=user.department, description=body.remark.strip(), data={"contract_id": contract.id, "contract_no": contract.serial_no, "contract_body": (contract.data or {}).get("contract_body"), "accounting_center": accounting_center, "finance_scope": "platform" if accounting_center == "平台财务中心" else "firm", "applicant": identity["username"], "audit_round": 1})
     db.add(payment); await db.flush()
-    payment.data = {**payment.data, "payer_name": body.payer_name.strip() or contract.customer,
-                    "lines": [{**item, "remark": line.remark.strip()} for item, (line, _) in zip(snapshot, normalized_lines)]}
-    for line, candidate in normalized_lines:
-        if candidate.get("source") == "contract_object":
-            db.add(ContractPaymentLine(payment_record_id=payment.id, contract_object_id=candidate["contract_object_id"], case_record_id=candidate["case_record_id"], fee_type=candidate["fee_type"], requested_amount=_round_fee_amount(line.amount)))
-    db.add(WorkflowEvent(record_id=payment.id, action="提交合同付款申请", to_status="待审批", operator=identity["username"], comment=f"{payment_type_data['payee']}｜{total:.2f} 元"))
+    await replace_payment_details(payment, validated, db)
+    db.add(payment_event(payment, "提交合同付款申请", "", identity, body.remark.strip()))
     db.add(WorkflowEvent(record_id=contract.id, action="发起合同付款申请", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"{serial}｜{total:.2f} 元"))
     await db.commit(); await db.refresh(payment)
     return await _record_dict_for_identity(payment, identity, db)
@@ -1239,20 +1207,24 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
 
 @router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/review")
 async def review_contract_payment_application(payment_id: int, body: ContractPaymentReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.contract_payment_lifecycle import locked_payment, ensure_unsettled, payment_event
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity, _require_contract_action,
     )
     await _require_contract_action(identity, db, "contract.payment.approve", "审批付款申请")
-    payment = await _ensure_record_module(payment_id, "contract_payment", identity, db)
+    payment, _ = await locked_payment(payment_id, identity, db)
+    await ensure_unsettled(payment, db)
     if payment.status != "待审批": raise HTTPException(status_code=409, detail="仅待审批合同付款可以审核")
     target = "待付款" if body.approved else "已驳回"
     payment.status = target
-    db.add(WorkflowEvent(record_id=payment.id, action="合同付款审批通过" if body.approved else "合同付款审批驳回", from_status="待审批", to_status=target, operator=identity["username"], comment=body.comment.strip()))
+    payment.data = {**(payment.data or {}), "payment_status": target}
+    db.add(payment_event(payment, "合同付款审批通过" if body.approved else "合同付款审批驳回", "待审批", identity, body.comment.strip()))
     await db.commit(); await db.refresh(payment); return await _record_dict_for_identity(payment, identity, db)
 
 
 @router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/pay")
 async def pay_contract_payment_application(payment_id: int, body: ContractPaymentPayInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.contract_payment_lifecycle import locked_payment, ensure_unsettled, payment_event
     from app.core.finance import (
         _round_fee_amount,
     )
@@ -1260,22 +1232,24 @@ async def pay_contract_payment_application(payment_id: int, body: ContractPaymen
         _ensure_record_module, _record_dict_for_identity, _require_contract_action,
     )
     await _require_contract_action(identity, db, "contract.payment.pay", "办理付款")
-    payment = await _ensure_record_module(payment_id, "contract_payment", identity, db)
+    payment, _ = await locked_payment(payment_id, identity, db)
     if payment.status != "待付款": raise HTTPException(status_code=409, detail="仅待付款合同付款申请可以标记付款")
+    await ensure_unsettled(payment, db)
     data = dict(payment.data or {}); total = _round_fee_amount(float(data.get("amount") or 0))
     db.add(FinanceTransaction(finance_record_id=payment.id, transaction_type="合同付款", amount=total, transaction_date=body.paid_date, voucher_no=body.voucher_no.strip(), counterparty=str(data.get("payee") or ""), operator=identity["username"], remark=body.comment.strip()))
-    payment.status = "已付款"; payment.data = {**data, "paid_date": body.paid_date.isoformat(), "voucher_no": body.voucher_no.strip(), "paid_by": identity["username"]}
-    db.add(WorkflowEvent(record_id=payment.id, action="合同付款完成", from_status="待付款", to_status="已付款", operator=identity["username"], comment=body.comment.strip()))
+    payment.status = "已付款"; payment.data = {**data, "payment_status": "已付款", "paid_date": body.paid_date.isoformat(), "voucher_no": body.voucher_no.strip(), "paid_by": identity["username"]}
+    db.add(payment_event(payment, "合同付款完成", "待付款", identity, body.comment.strip()))
     await db.commit(); await db.refresh(payment); return await _record_dict_for_identity(payment, identity, db)
 
 
 @router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/writeoff")
 async def writeoff_contract_payment_application(payment_id: int, body: ContractPaymentWriteoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.contract_payment_lifecycle import locked_payment, payment_event
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity, _require_contract_action,
     )
     await _require_contract_action(identity, db, "contract.payment.writeoff", "核销付款")
-    payment = await _ensure_record_module(payment_id, "contract_payment", identity, db)
+    payment, _ = await locked_payment(payment_id, identity, db)
     data = dict(payment.data or {})
     if data.get("writeoff_status") == "已核销" or payment.status == "已核销":
         raise HTTPException(status_code=409, detail="合同付款已经核销")
@@ -1292,13 +1266,14 @@ async def writeoff_contract_payment_application(payment_id: int, body: ContractP
     payment.data = {
         **data,
         "writeoff_status": "已核销",
+        "payment_status": "已核销",
         "writeoff_date": body.writeoff_date.isoformat(),
         "writeoff_voucher_no": body.voucher_no.strip(),
         "writeoff_comment": body.comment.strip(),
         "written_off_by": identity["username"],
         "written_off_at": datetime.now().isoformat(timespec="seconds"),
     }
-    db.add(WorkflowEvent(record_id=payment.id, action="合同付款核销", from_status="已付款", to_status="已核销", operator=identity["username"], comment=f"核销凭证：{body.voucher_no.strip()}；{body.comment.strip()}"))
+    db.add(payment_event(payment, "合同付款核销", "已付款", identity, f"核销凭证：{body.voucher_no.strip()}；{body.comment.strip()}"))
     await db.commit(); await db.refresh(payment)
     return await _record_dict_for_identity(payment, identity, db)
 
@@ -1481,3 +1456,80 @@ async def batch_delete_contract_attachments(contract_id: int, body: ContractAtta
         except OSError:
             logger.exception("无法清理已删除的合同附件临时文件: %s", staged_path)
     return {"IsSuccess": True, "Message": "删除成功！", "fileIds": ids, "deleted": len(prepared)}
+
+
+# Append-only: main.py preserves the historical first 39 route positions.
+from app.models_shared import FinancePaymentCancelInput, FinancePaymentRollbackInput
+
+
+@router.get(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/edit-context")
+async def contract_payment_edit_context(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.contract_payment_lifecycle import locked_payment, ensure_unsettled, ensure_editable, payment_candidates
+    from app.core.finance import _active_payment_type_rows
+    from app.core.permissions import _record_dict_for_identity, _require_contract_action, _require_record_owner_or_manager
+    await _require_contract_action(identity, db, "contract.payment.create", "编辑合同付款")
+    payment, contract = await locked_payment(payment_id, identity, db, lock=False)
+    await _require_record_owner_or_manager(payment, identity, db)
+    await ensure_unsettled(payment, db)
+    ensure_editable(payment)
+    return {"payment": await _record_dict_for_identity(payment, identity, db),
+            "contract": await _record_dict_for_identity(contract, identity, db),
+            "payment_types": [{**item, "value": item["id"], "label": "｜".join([item["payee"], item["account_bank"], item["account"]])}
+                              for item in await _active_payment_type_rows(db, include_incomplete_accounts=True)],
+            "items": await payment_candidates(contract, identity, db, payment)}
+
+
+@router.put(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}")
+async def update_contract_payment_application(payment_id: int, body: ContractPaymentApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.contract_payment_lifecycle import locked_payment, ensure_unsettled, ensure_editable, normalized_payment, replace_payment_details, payment_event
+    from app.core.permissions import _record_dict_for_identity, _require_contract_action, _require_record_owner_or_manager
+    await _require_contract_action(identity, db, "contract.payment.create", "编辑合同付款")
+    payment, contract = await locked_payment(payment_id, identity, db)
+    await _require_record_owner_or_manager(payment, identity, db)
+    await ensure_unsettled(payment, db)
+    ensure_editable(payment)
+    normalized = await normalized_payment(body, contract, identity, db, payment)
+    before = dict(payment.data or {})
+    if all(before.get(key) == value for key, value in normalized.items()) and payment.description == normalized["remark"]:
+        return await _record_dict_for_identity(payment, identity, db)
+    await replace_payment_details(payment, normalized, db)
+    db.add(payment_event(payment, "编辑合同付款申请", payment.status, identity, body.remark.strip(), before))
+    await db.commit()
+    await db.refresh(payment)
+    return await _record_dict_for_identity(payment, identity, db)
+
+
+@router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/submit")
+async def submit_contract_payment_application(payment_id: int, body: FinancePaymentRollbackInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.contract_payment_lifecycle import change_payment_state
+    return await change_payment_state(payment_id, "submit", body.comment, identity, db)
+
+
+@router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/cancel")
+async def cancel_contract_payment_application(payment_id: int, body: FinancePaymentCancelInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.contract_payment_lifecycle import change_payment_state
+    return await change_payment_state(payment_id, "cancel", body.reason, identity, db)
+
+
+@router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/rollback")
+async def rollback_contract_payment_application(payment_id: int, body: FinancePaymentRollbackInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.contract_payment_lifecycle import change_payment_state
+    return await change_payment_state(payment_id, "rollback", body.comment, identity, db)
+
+
+@router.get(f"{settings.api_prefix}/finance/payment-applications/query")
+async def query_payment_applications(
+    keyword: str = "", record_status: str = "", statuses: str = "",
+    scope: str = Query("all", pattern="^(all|mine|department|company|audit|firm|platform)$"),
+    finance_scope: str = Query("", pattern="^(|firm|platform)$"), applicant: str = "",
+    stage: str = "", case_stage: str = "", fee_type: str = "", payee: str = "",
+    contract_no: str = "", case_no: str = "", customer: str = "", title: str = "", handler: str = "",
+    application_date_start: str = "", application_date_end: str = "",
+    payment_date_start: str = "", payment_date_end: str = "",
+    deadline_start: str = "", deadline_end: str = "", audit_date_start: str = "", audit_date_end: str = "",
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=500),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    from app.core.contract_payment_lifecycle import query_payments
+    filters = {key: value for key, value in locals().items() if key not in {"identity", "db", "query_payments"}}
+    return await query_payments(filters, identity, db)

@@ -1,5 +1,7 @@
 import { CheckOutlined,CloseOutlined,PlusOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
+import { InvoiceApplicationForm } from "./InvoiceApplicationForm";
+import type { InvoiceApplicationSubject } from "./contractInvoiceApplication";
 import {
 Alert,
 Button,
@@ -727,13 +729,14 @@ export function PaymentTypeCreateModal({
   );
 }
 
-// ==================== 合同开票 Modal ====================
+// ==================== 合同开票整页 ====================
 interface ContractInvoiceModalProps {
   open: boolean;
   invoiceTarget: Contract | null;
+  invoiceContracts: Contract[];
   invoiceForm: FormInstance;
   invoiceSaving: boolean;
-  invoiceSubjects: Array<{ fee_id: number; fee_no: string; case_record_id?: number; case_no: string; case_title?: string; fee_type: string; amount: number; invoiceable_amount: number; expense_scope: string }>;
+  invoiceSubjects: InvoiceApplicationSubject[];
   selectedInvoiceObjectKeys: Key[];
   onInvoiceSelectionChange: (keys: Key[]) => void;
   onCancel: () => void;
@@ -741,125 +744,21 @@ interface ContractInvoiceModalProps {
 }
 
 export function ContractInvoiceModal({
-  open,
-  invoiceTarget,
-  invoiceForm,
-  invoiceSaving,
-  invoiceSubjects,
-  selectedInvoiceObjectKeys,
-  onInvoiceSelectionChange,
-  onCancel,
-  onOk,
+  open, invoiceTarget, invoiceContracts, invoiceForm, invoiceSaving, invoiceSubjects,
+  selectedInvoiceObjectKeys, onInvoiceSelectionChange, onCancel, onOk,
 }: ContractInvoiceModalProps) {
   if (!open || !invoiceTarget) return null;
-  return (
-    <section className="contract-finance-page" aria-label="申请开票">
-      <header><h2>申请开票</h2><Button disabled={invoiceSaving} onClick={onCancel}>返回合同</Button></header>
-      <Steps size="small" current={0} items={["开票信息填写", "提交申请", "财务审批", "财务开票"].map((title) => ({ title }))} />
-      <dl className="contract-finance-summary">
-        <div><dt>合同编号</dt><dd>{invoiceTarget.serial_no}</dd></div>
-        <div><dt>合同名称</dt><dd>{invoiceTarget.title}</dd></div>
-        <div><dt>客户名称</dt><dd>{invoiceTarget.customer}</dd></div>
-      </dl>
-      <Form form={invoiceForm} layout="vertical">
-        <div className="form-grid">
-          <Form.Item label="开票金额" name="amount" rules={[{ required: true }]}>
-            <InputNumber min={0.01} precision={2} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item label="发票抬头" name="invoice_title" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label="纳税人识别号" name="taxpayer_id" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label="注册地址" name="invoice_address" dependencies={["invoice_type"]} rules={[({ getFieldValue }) => ({ required: String(getFieldValue("invoice_type") || "").includes("专用"), message: "专用发票必须填写注册地址" })]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label="注册电话" name="invoice_phone" dependencies={["invoice_type"]} rules={[({ getFieldValue }) => ({ required: String(getFieldValue("invoice_type") || "").includes("专用"), message: "专用发票必须填写注册电话" })]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label="开户银行" name="bank_name" dependencies={["invoice_type"]} rules={[({ getFieldValue }) => ({ required: String(getFieldValue("invoice_type") || "").includes("专用"), message: "专用发票必须填写开户银行" })]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label="银行账号" name="bank_account" dependencies={["invoice_type"]} rules={[({ getFieldValue }) => ({ required: String(getFieldValue("invoice_type") || "").includes("专用"), message: "专用发票必须填写银行账号" })]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label="发票类型" name="invoice_type" rules={[{ required: true }]}>
-            <Select
-              options={["增值税普通发票", "增值税专用发票", "电子普通发票", "电子专用发票"].map((value) => ({
-                value,
-                label: value,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item label="开票内容" name="invoice_content" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label="交付方式" name="delivery_method" rules={[{ required: true, message: "请选择交付方式" }]}>
-            <Select
-              options={["电子发票", "邮寄纸质发票", "现场领取"].map((value) => ({ value, label: value }))}
-            />
-          </Form.Item>
-          <Form.Item label="接收邮箱" name="email" dependencies={["delivery_method"]} rules={[({ getFieldValue }) => ({ required: getFieldValue("delivery_method") === "电子发票", message: "电子发票必须填写接收邮箱" })]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label="联系电话" name="recipient_phone">
-            <Input />
-          </Form.Item>
-        </div>
-        <Form.Item label="邮寄地址" name="delivery_address" dependencies={["delivery_method"]} rules={[({ getFieldValue }) => ({ required: getFieldValue("delivery_method") !== "电子发票", message: "纸质发票或现场领取必须填写交付地址" })]}>
-          <Input />
-        </Form.Item>
-        <Form.Item label="备注" name="remark">
-          <Input.TextArea rows={2} />
-        </Form.Item>
-        <Form.List name="service_items" initialValue={[{}]}>
-          {(fields, { add, remove }) => (
-            <>
-              <Divider titlePlacement="start" plain>发票服务项</Divider>
-              {fields.map((field) => (
-                <Space key={field.key} align="baseline" style={{ display: "flex", marginBottom: 8 }}>
-                  <Form.Item {...field} name={[field.name, "service_name"]} rules={[{ required: true, message: "请输入服务名称" }]}>
-                    <Input placeholder="服务名称" />
-                  </Form.Item>
-                  <Form.Item {...field} name={[field.name, "quantity"]}>
-                    <InputNumber min={1} precision={2} placeholder="数量" />
-                  </Form.Item>
-                  <Form.Item {...field} name={[field.name, "unit_price"]}>
-                    <InputNumber min={0} precision={2} placeholder="单价" />
-                  </Form.Item>
-                  <Form.Item {...field} name={[field.name, "tax_rate"]}>
-                    <InputNumber min={0} max={100} precision={2} addonAfter="%" placeholder="税率" />
-                  </Form.Item>
-                  {fields.length > 1 && <Button type="link" danger onClick={() => remove(field.name)}>删除</Button>}
-                </Space>
-              ))}
-              <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>新增服务项</Button>
-            </>
-          )}
-        </Form.List>
-      </Form>
-      <Divider titlePlacement="start" plain>开票费用明细</Divider>
-      <Table
-        rowKey="fee_id"
-        size="small"
-        pagination={false}
-        scroll={{ x: 900 }}
-        dataSource={invoiceSubjects}
-        locale={{ emptyText: "当前合同没有可开票的案件费用" }}
-        rowSelection={{ selectedRowKeys: selectedInvoiceObjectKeys, onChange: onInvoiceSelectionChange }}
-        columns={[
-          { title: "案件名称", dataIndex: "case_title", width: 180, ellipsis: true },
-          { title: "案号", dataIndex: "case_no", width: 150 },
-          { title: "费用编号", dataIndex: "fee_no", width: 150 },
-          { title: "费用类型", dataIndex: "fee_type", width: 130 },
-          { title: "费用归属", dataIndex: "expense_scope", width: 100 },
-          { title: "可开票金额", dataIndex: "invoiceable_amount", width: 120, render: (value) => Number(value || 0).toFixed(2) },
-        ]}
-      />
-      <Button type="primary" loading={invoiceSaving} onClick={onOk} style={{ marginTop: 16 }}>提交申请</Button>
-    </section>
-  );
+  return <section className="contract-finance-page" aria-label="申请开票">
+    <header><h2>申请开票</h2><Button disabled={invoiceSaving} onClick={onCancel}>返回合同</Button></header>
+    <Steps size="small" current={0} items={["开票信息填写", "提交申请", "财务审批", "财务开票"].map(title => ({ title }))} />
+    <dl className="contract-finance-summary">
+      <div><dt>合同编号</dt><dd>{invoiceContracts.map(row => row.serial_no).join("、")}</dd></div>
+      <div><dt>合同名称</dt><dd>{invoiceContracts.map(row => row.title).join("、")}</dd></div>
+      <div><dt>客户名称</dt><dd>{invoiceTarget.customer}</dd></div>
+    </dl>
+    <InvoiceApplicationForm form={invoiceForm} subjects={invoiceSubjects} selectedFeeIds={selectedInvoiceObjectKeys} onSelectionChange={onInvoiceSelectionChange} disabled={invoiceSaving} />
+    <Button type="primary" loading={invoiceSaving} onClick={onOk} style={{ marginTop: 16 }}>提交申请</Button>
+  </section>;
 }
 
 // ==================== 选择城市（调查区域）Modal ====================

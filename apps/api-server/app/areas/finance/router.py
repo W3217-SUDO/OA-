@@ -1288,6 +1288,21 @@ async def update_invoice_application(invoice_id: int, body: InvoiceApplicationIn
     )
     try:
         item = await _editable_invoice_application(invoice_id, identity, db)
+        from pydantic import ValidationError
+        values = body.model_dump()
+        existing = item.data or {}
+        if "service_items" not in body.model_fields_set:
+            values["service_items"] = existing.get("service_items") or []
+        elif existing.get("service_items") and not body.service_items:
+            raise HTTPException(status_code=422, detail="已有服务项不能全部清空")
+        if ("case_fee_allocations" not in body.model_fields_set
+                and set(body.case_fee_ids) == set(existing.get("case_fee_ids") or [])
+                and body.amount == existing.get("amount")):
+            values["case_fee_allocations"] = existing.get("case_fee_allocations") or []
+        try:
+            body = InvoiceApplicationInput.model_validate(values)
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         case_record, contract_record, case_fees, allocations = await _validate_invoice_source_links(
             body,
             identity,
@@ -5362,3 +5377,124 @@ async def delete_receivable(plan_id: int, identity: dict = Depends(current_ident
     await db.delete(plan)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}")
+async def get_invoice_application(invoice_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance import _invoice_detail_record
+    from app.core.permissions import _ensure_record_module
+
+    item = await _ensure_record_module(invoice_id, "invoice", identity, db)
+    return await _invoice_detail_record(item, identity, db)
+
+
+@router.get(f"{settings.api_prefix}/finance/invoice-context")
+async def invoice_application_context(
+    customer: str = "", customer_no: str = "", customer_id: int | None = None,
+    contract_ids: str = "", invoice_id: int | None = None, keyword: str = "",
+    page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=100),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    from app.core.contracts import _contract_allows_finance_application
+    from app.core.finance import (
+        _editable_invoice_application, _invoice_customer_defaults, _invoice_fee_details,
+        _invoice_linked_fee_ids,
+    )
+    from app.core.permissions import (
+        _ensure_record_module, _record_dict_for_identity, _record_scope_conditions,
+        _require_record_module_menu,
+    )
+
+    await _require_record_module_menu("invoice", identity, db, action="查看")
+    selected_ids = set()
+    if invoice_id is not None:
+        invoice = await _editable_invoice_application(invoice_id, identity, db)
+        if customer and customer.strip() != invoice.customer.strip():
+            raise HTTPException(status_code=409, detail="编辑客户与原发票不一致")
+        customer = invoice.customer
+        selected_ids = _invoice_linked_fee_ids(invoice.data or {})
+    requested_contracts = []
+    try:
+        requested_ids = {int(value.strip()) for value in contract_ids.split(",") if value.strip()}
+        if any(value <= 0 for value in requested_ids) or len(requested_ids) > 100:
+            raise ValueError()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="合同ID必须为正整数，最多100个") from None
+    for record_id in sorted(requested_ids):
+        contract = await _ensure_record_module(record_id, "contract", identity, db)
+        if not _contract_allows_finance_application(contract):
+            raise HTTPException(status_code=409, detail="归档或已终止合同不能新建开票申请")
+        requested_contracts.append(contract)
+    if requested_contracts:
+        names = {item.customer.strip() for item in requested_contracts}
+        if len(names) != 1 or (customer and customer.strip() not in names):
+            raise HTTPException(status_code=409, detail="所选合同必须属于同一发票客户")
+        customer = next(iter(names))
+    customer_record = None
+    if customer_id is not None:
+        customer_record = await _ensure_record_module(customer_id, "customer", identity, db)
+        if customer_no and customer_no != customer_record.serial_no:
+            raise HTTPException(status_code=409, detail="客户编号与客户记录不一致")
+    elif customer_no or customer:
+        conditions = [BusinessRecord.module == "customer", *(await _record_scope_conditions(identity, db))]
+        conditions.append(BusinessRecord.serial_no == customer_no if customer_no else or_(
+            BusinessRecord.title == customer.strip(), BusinessRecord.customer == customer.strip(),
+        ))
+        matches = list((await db.scalars(select(BusinessRecord).where(*conditions).limit(2))).all())
+        if len(matches) > 1:
+            raise HTTPException(status_code=409, detail="客户名称不唯一，请指定客户记录ID或编号")
+        customer_record = matches[0] if matches else None
+        if customer_no and customer_record is None:
+            raise HTTPException(status_code=404, detail="客户不存在或无权访问")
+    if customer_record:
+        if customer and customer.strip() not in {customer_record.title.strip(), customer_record.customer.strip()}:
+            raise HTTPException(status_code=409, detail="客户资料与所选来源客户不一致")
+        customer = customer or customer_record.title or customer_record.customer
+    customer_result = await _record_dict_for_identity(customer_record, identity, db) if customer_record else None
+    if not customer.strip():
+        raise HTTPException(status_code=422, detail="请先指定客户、合同或编辑发票")
+    conditions = [BusinessRecord.module == "finance", BusinessRecord.customer == customer.strip(),
+                  *(await _record_scope_conditions(identity, db))]
+    if requested_ids:
+        conditions.append(or_(
+            BusinessRecord.data["contract_id"].as_integer().in_(requested_ids),
+            BusinessRecord.data["contract_record_id"].as_integer().in_(requested_ids),
+            BusinessRecord.data["contract_no"].as_string().in_([item.serial_no for item in requested_contracts]),
+        ))
+    needle = keyword.strip().casefold()
+    start = (page - 1) * page_size
+    selected = await _invoice_fee_details(identity, db, ids=selected_ids, customer=customer, exclude_invoice_id=invoice_id) if selected_ids else []
+    items, total, cursor = [], 0, 0
+    # Eligibility depends on active allocations. Scan scoped IDs in bounded SQL
+    # pages, hydrate one page at a time, and retain only the requested output page.
+    while True:
+        batch_ids = list((await db.scalars(select(BusinessRecord.id).where(
+            *conditions, BusinessRecord.id > cursor,
+        ).order_by(BusinessRecord.id).limit(100))).all())
+        if not batch_ids:
+            break
+        cursor = batch_ids[-1]
+        batch = await _invoice_fee_details(identity, db, ids=set(batch_ids), customer=customer, exclude_invoice_id=invoice_id)
+        for row in sorted(batch, key=lambda value: value["id"]):
+            data = row["data"]
+            if requested_ids and data.get("contract_id") not in requested_ids:
+                continue
+            if row["id"] not in selected_ids and (
+                not data.get("contract_allows_invoice") or row["status"] in {"已删除", "已作废", "不缴费"}
+                or data.get("remaining_invoice_amount") is None or data["remaining_invoice_amount"] <= 0
+            ):
+                continue
+            if needle and not any(needle in str(value or "").casefold() for value in (
+                row["serial_no"], row["title"], data.get("fee_type"), data.get("case_no"),
+                data.get("contract_no"), data.get("external_contract_no"),
+            )):
+                continue
+            if start <= total < start + page_size:
+                items.append(row)
+            total += 1
+    return {
+        "items": items, "total": total, "page": page, "page_size": page_size,
+        "selected_items": selected, "customer_record": customer_result,
+        "customer_defaults": _invoice_customer_defaults(customer_result, customer),
+        "customer_missing_or_forbidden": bool(customer and customer_result is None),
+    }

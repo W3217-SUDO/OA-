@@ -18,8 +18,8 @@ export function createInvoiceColumns(context: {
     };
     readonly canManage: boolean;
     readonly issueForm: FormInstance<any>;
-    readonly setIssueTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
-    readonly setVoidTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
+    readonly openInvoiceProcess: (row: Fee) => Promise<void>;
+    readonly openInvoiceCancel: (row: Fee) => Promise<void>;
 }) {
     return [
         { title: "申请编号", dataIndex: "serial_no", width: 180 },
@@ -94,13 +94,10 @@ export function createInvoiceColumns(context: {
                 驳回
               </Button>
             </>)}
-          {context.canManage && r.status === "待开票" && (<Button type="link" onClick={() => {
-                        context.issueForm.setFieldsValue({ invoice_date: dayjs() });
-                        context.setIssueTarget(r);
-                    }}>
+          {context.canManage && r.status === "待开票" && (<Button type="link" onClick={() => void context.openInvoiceProcess(r)}>
               登记开票
             </Button>)}
-          {context.canManage && r.status === "已开票" && (<Button type="link" danger onClick={() => context.setVoidTarget(r)}>
+          {context.canManage && r.status === "已开票" && (<Button type="link" danger onClick={() => void context.openInvoiceCancel(r)}>
               作废
             </Button>)}
         </Space>),

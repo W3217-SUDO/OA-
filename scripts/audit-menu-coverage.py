@@ -600,7 +600,46 @@ def main() -> None:
     contract_detail_source = CONTRACT + CONTRACT_DETAIL + CONTRACT_MODALS
     assert all(token in contract_detail_source for token in ('合同标的', '/contracts/${contract.id}/objects', '/contracts/${contract.id}/object-cases', 'openRelatedCase', '合同标的日志', '确认删除该合同标的？')), "contract detail must show, maintain, trace and navigate contract objects through its dedicated API"
     assert all(token in MODELS for token in ('class OfficialOutgoingDocument(Base):', 'official_no:', 'source_record_id:', 'need_audit:')) and all(token in (MAIN + AWS_ROUTER + SYSTEM_CORE) for token in ('/official-outgoing', 'OfficialOutgoingCreateInput', 'OfficialOutgoingUpdateInput', 'OfficialOutgoingSubmitInput', '/submit', '/stamp-file', '/official-outgoing/download', 'module == "official_outgoing"')) and 'documents-outgoing' in APP and all(token in DOCUMENT_AWS for token in ('openOfficialOutgoingEditor', 'updateOfficialOutgoing', 'uploadOfficialOutgoingFile', 'submitOfficialOutgoing', 'downloadOfficialOutgoing')), "formal outgoing documents must retain an independent entity, protected draft/edit/submit/review/stamp/download lifecycle and real file handling instead of sharing official incoming documents"
-    assert all(token in MODELS for token in ('class ContractPaymentLine(Base):', 'payment_record_id:', 'contract_object_id:')) and all(token in (MAIN + CONTRACT_ROUTER + CONTRACTS_CORE) for token in ('/contracts/{{contract_id}}/payment-candidates', '/contracts/{{contract_id}}/payment-applications', '/contract-payment-applications/{{payment_id}}/review', '/contract-payment-applications/{{payment_id}}/pay', '合同付款申请')) and all(token in (CONTRACT + CONTRACT_MODALS + CONTRACT_FINANCE) for token in ('/payment-candidates', '/payment-applications', '按案件费用明细逐项申请', '当前合同没有可付款的案件费用', '本次支付金额')), "contract payments must use dedicated subject-line candidates, protected request/review/pay APIs and a real line-item UI"
+    assert all(token in MODELS for token in ('class ContractPaymentLine(Base):', 'payment_record_id:', 'contract_object_id:')) and all(token in (MAIN + CONTRACT_ROUTER + CONTRACTS_CORE) for token in ('/contracts/{{contract_id}}/payment-candidates', '/contracts/{{contract_id}}/payment-applications', '/contract-payment-applications/{{payment_id}}/review', '/contract-payment-applications/{{payment_id}}/pay', '合同付款申请')), "contract payments must retain dedicated lines and protected candidate/request/review/pay APIs"
+    # Check the current page-to-handler wiring, not retired explanatory copy.
+    payment_page = CONTRACT_MODALS.split('export function ContractPaymentModal(', 1)[1].split('interface PaymentTypeCreateModalProps', 1)[0]
+    payment_submit = CONTRACT_FINANCE.split('const createContractPayment = async () => {', 1)[1].split('const createContractInvoice =', 1)[0]
+    payment_mount = CONTRACT_CENTER.split('<ContractPaymentModal', 1)[1].split('/>', 1)[0]
+    payment_loader = CONTRACT_CENTER.split('if (financeRouteMatch[1] === "payment") {', 1)[1].split('} else {', 1)[0]
+    for token in (
+        'api.get(`/contracts/${contract.id}/payment-candidates`)',
+        'setPaymentCandidates(data.items || [])', 'setPaymentTypes(data.payment_types || [])',
+    ):
+        assert token in payment_loader, f"contract payment route lost real candidate loading: {token}"
+    for token in (
+        '<section className="contract-finance-page"', 'form={paymentForm}',
+        'name="payment_type_id"', 'selectedContractPaymentType ? onOk() : setUnitPickerOpen(true)',
+        'dataSource={paymentCandidates}', 'rowKey={contractPaymentCandidateKey}',
+        'selectedRowKeys: selectedPaymentObjectKeys', 'onPaymentObjectSelectionChange(keys)',
+        'value={paymentAmounts[contractPaymentCandidateKey(row)]}', 'max={row.remaining_amount}',
+        'onPaymentAmountChange(contractPaymentCandidateKey(row), Number(value || 0))',
+        '当前合同没有可付款的案件费用',
+    ):
+        assert token in payment_page, f"contract payment page lost selectable fee lines or submit control: {token}"
+    for token in (
+        'paymentCandidates={paymentCandidates}', 'paymentAmounts={paymentAmounts}',
+        'selectedPaymentObjectKeys={selectedPaymentObjectKeys}', 'onOk={createContractPayment}',
+        'onPaymentObjectSelectionChange={handlePaymentObjectSelectionChange}',
+        'setPaymentAmounts((previous) => ({ ...previous, [candidateKey]: value }))',
+    ):
+        assert token in payment_mount, f"contract payment page is disconnected from live state/actions: {token}"
+    for token in (
+        'paymentForm.validateFields()', 'selectedPaymentObjectKeys.map((key)',
+        'findContractPaymentCandidate(paymentCandidates, key)', 'case_fee_id: row?.case_fee_id',
+        'amount: Number(paymentAmounts[String(key)] || 0)', 'if (!lines.length)',
+        'line.amount <= 0', 'line.amount > Number(findContractPaymentCandidate',
+        'api.post(`/contracts/${paymentTarget.id}/payment-applications`, {',
+        'normalizeContractActionResponse(response', 'if (!feedback.ok)',
+        'extractContractErrorMessage(error', 'context.onNavigate?.("finance-payment-mine")',
+    ):
+        assert token in payment_submit, f"contract payment submit lost validation, persistence or feedback: {token}"
+    assert re.search(r'api\.post\(`/contracts/\$\{paymentTarget\.id\}/payment-applications`,\s*\{[\s\S]*?\blines,\s*\}\)', payment_submit), "contract payment request must include the selected fee amounts in its real API payload"
+    print("CONTRACT_PAYMENT_STRUCTURE_OK: current full-page candidates, fee amounts and guarded submit are wired; runtime acceptance still required")
     print("CONTRACT_OBJECTS_OK: contract object lines have dedicated data, same-customer candidates, lifecycle protection, logs and linked-case navigation")
     assert all(token in (MAIN + CONTRACT_ROUTER + CONTRACTS_CORE) for token in ('contracts/{{contract_id}}/draft', 'async def revoke_contract_draft', 'if contract.status != "草稿"', 'ReceivablePlan.contract_record_id == contract.id', 'IncomingPayment.contract_record_id == contract.id', 'delete(ContractEvent).where(ContractEvent.contract_record_id == contract.id)')), "contract drafts must use a dedicated withdrawal endpoint that blocks post-workflow records and cleans draft-only artifacts"
     assert 'const revokeDraft = (contract: Contract)' in CONTRACT and 'api.delete(`/contracts/${contract.id}/draft`)' in CONTRACT and '撤销草稿' in CONTRACT, "contract UI must expose the dedicated draft withdrawal action in both wizard and detail contexts"

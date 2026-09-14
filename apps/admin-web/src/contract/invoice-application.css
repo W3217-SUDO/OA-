@@ -1,0 +1,10 @@
+.invoice-application-form { min-width: 0; }
+.invoice-application-form .invoice-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+.invoice-application-form .invoice-query-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 16px; }
+.invoice-application-form .ant-form-item { margin-bottom: 12px; min-width: 0; }
+.invoice-application-form .ant-form-item-control { min-width: 0; }
+.invoice-application-form .ant-table-cell { overflow-wrap: anywhere; }
+.invoice-allocation-totals { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
+.invoice-application-form .ant-divider { font-size: 15px; }
+@media (max-width: 1000px) { .invoice-application-form .invoice-query-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .invoice-application-form .invoice-fields, .invoice-application-form .invoice-query-fields { grid-template-columns: minmax(0, 1fr); } }

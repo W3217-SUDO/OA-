@@ -2,6 +2,7 @@ import { message, Modal } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import dayjs from "dayjs";
 import { api } from "../../api";
+import { isContractPayment, paymentActionPath, unifiedPaymentQueryParams } from "../paymentLifecycle.mjs";
 import type { FinanceActionGate } from "../../financeActionGate.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { contractPaymentQueryRequestParams, createPaymentPrintPreview, normalizePaymentPackageResponse, paymentPackageEmptySelectionMessage, paymentPackageRequestParams, paymentPackageWordExportPath, paymentPackageWriteoffPayload, paymentQueryRequestParams, paymentQueryServerPagePlan } from "../constants";
@@ -235,34 +236,9 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
         });
     };
     const loadPaymentQueryPage = async (query: Record<string, any>, page = 1, pageSize = context.paymentQueryPageSize) => {
-        const { paymentQueryPageSize } = context;
-        const requests = paymentQueryServerPagePlan(page, pageSize);
-        const responses = await Promise.all(requests.flatMap((request) => [
-            api.get("/records", {
-                params: paymentQueryRequestParams(query, request.page, request.pageSize),
-            }),
-            api.get("/records", {
-                params: contractPaymentQueryRequestParams(query, request.page, request.pageSize),
-            }),
-        ]));
-        const seen = new Set<string>();
-        const mergedItems = responses
-            .flatMap((response) => response.data?.items || [])
-            .filter((item: Fee) => {
-            const key = String(item.module || item.data?._source_module || "finance") + ":" + String(item.id);
-            if (seen.has(key))
-                return false;
-            seen.add(key);
-            return true;
+        return api.get("/finance/payment-applications/query", {
+            params: unifiedPaymentQueryParams(paymentQueryRequestParams(query, page, pageSize)),
         });
-        return {
-            data: {
-                items: mergedItems.slice(0, pageSize),
-                total: responses.reduce((sum, response) => sum + Number(response.data?.total || 0), 0),
-                page,
-                page_size: pageSize,
-            },
-        };
     };
     const loadPaymentPackages = async (query: Record<string, any>, page = 1, pageSize = context.paymentPackageMeta.pageSize) => {
         const { paymentPackageMeta, initialView, setPaymentPackages, setPaymentPackageMeta } = context;
@@ -304,7 +280,7 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
     const feeAction = async (row: Fee, type: "submit" | "approve") => {
         const { load } = context;
         try {
-            if (type === "submit" && row.data.fee_type === "官方费用") {
+            if (!isContractPayment(row) && type === "submit" && row.data.fee_type === "官方费用") {
                 const { data } = await api.get(`/finance/fees/${row.id}/readiness`);
                 if (!data.ready) {
                     Modal.warning({
@@ -316,7 +292,8 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
                     return;
                 }
             }
-            await api.post(`/finance/fees/${row.id}/${type}`, {
+            await api.post(paymentActionPath(row, isContractPayment(row) && type === "approve" ? "review" : type), {
+                ...(isContractPayment(row) && type === "approve" ? { approved: true } : {}),
                 comment: type === "submit" ? "提交财务审批" : "审批通过",
             });
             message.success(type === "submit" ? "已提交审批" : "费用已审批");
@@ -371,12 +348,16 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
             return;
         }
         try {
-            await api.post(`/finance/fees/${paymentCancelTarget.id}/cancel`, {
+            await api.post(paymentActionPath(paymentCancelTarget, "cancel"), {
                 reason,
             });
             message.success("撤销成功！");
             setPaymentCancelTarget(null);
             setPaymentCancelReason("");
+            if (isContractPayment(paymentCancelTarget)) {
+                await context.load();
+                return;
+            }
             await refreshCurrentFinanceFeeList({
                 page: financeFeeListMeta.page,
                 pageSize: financeFeeListMeta.pageSize,
@@ -393,12 +374,16 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
         if (!paymentRollbackTarget)
             return;
         try {
-            await api.post(`/finance/fees/${paymentRollbackTarget.id}/rollback`, {
+            await api.post(paymentActionPath(paymentRollbackTarget, "rollback"), {
                 comment: paymentRollbackComment.trim(),
             });
             message.success("回滚成功！");
             setPaymentRollbackTarget(null);
             setPaymentRollbackComment("");
+            if (isContractPayment(paymentRollbackTarget)) {
+                await context.load();
+                return;
+            }
             await refreshCurrentFinanceFeeList({
                 page: financeFeeListMeta.page,
                 pageSize: financeFeeListMeta.pageSize,
@@ -417,7 +402,7 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
         const values = await writeoffForm.validateFields();
         const target = writeoffTarget;
         try {
-            const contractPayment = contractPayments.find((item) => item.id === target.id);
+            const contractPayment = isContractPayment(target) ? target : contractPayments.find((item) => item.id === target.id);
             if (contractPayment) {
                 await api.post(`/contract-payment-applications/${contractPayment.id}/writeoff`, {
                     writeoff_date: formatRequiredDate(values.writeoff_date || dayjs(), "核销日期"),
@@ -427,12 +412,7 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
                 message.success("合同付款已核销");
                 setWriteoffTarget(null);
                 writeoffForm.resetFields();
-                await refreshCurrentFinanceFeeList({
-                    page: financeFeeListMeta.page,
-                    pageSize: financeFeeListMeta.pageSize,
-                    status: paymentStatus(target),
-                    query: originalQuery,
-                });
+                await context.load();
                 if (feeDetail?.id === target.id) {
                     await openPaymentDetail(target);
                 }

@@ -274,6 +274,23 @@ export const paymentQueryRequestParams = (
   page_size: pageSize,
   keyword: String(query.paymentNo || "").trim(),
   record_status: String(query.status || "").trim(),
+  applicant: String(query.applicant || "").trim(),
+  contract_no: String(query.contractNo || "").trim(),
+  case_no: String(query.caseNo || "").trim(),
+  customer: String(query.customer || "").trim(),
+  payee: String(query.payee || "").trim(),
+  fee_type: String(query.feeType || "").trim(),
+  case_stage: String(query.caseStage || "").trim(),
+  title: String(query.title || "").trim(),
+  handler: String(query.handler || "").trim(),
+  application_date_start: query.applicationRange?.[0]?.format?.("YYYY-MM-DD") || "",
+  application_date_end: query.applicationRange?.[1]?.format?.("YYYY-MM-DD") || "",
+  payment_date_start: query.paymentRange?.[0]?.format?.("YYYY-MM-DD") || "",
+  payment_date_end: query.paymentRange?.[1]?.format?.("YYYY-MM-DD") || "",
+  deadline_start: query.deadlineRange?.[0]?.format?.("YYYY-MM-DD") || "",
+  deadline_end: query.deadlineRange?.[1]?.format?.("YYYY-MM-DD") || "",
+  audit_date_start: query.auditRange?.[0]?.format?.("YYYY-MM-DD") || "",
+  audit_date_end: query.auditRange?.[1]?.format?.("YYYY-MM-DD") || "",
 });
 
 export const contractPaymentQueryRequestParams = (
@@ -313,7 +330,7 @@ export const paymentQueryQuickPageResult = (value: string, totalPages: number) =
 
 export const paymentQueryPageSizeOptions = (initialView: string) =>
   initialView === "finance-payment-query"
-    ? [10, 15, 20, 50, 100, 200]
+    ? [10, 15, 20, 30, 50, 100, 200, 500]
     : undefined;
 
 export const paymentQueryDefaultPageSize = (initialView: string) =>

@@ -1,3 +1,4 @@
+import { InvoiceApplicationPage } from "./InvoiceApplicationPage";
 import {
 DeleteOutlined,
 DownloadOutlined,
@@ -96,6 +97,7 @@ export interface FinanceCenterViewProps {
   // Page / detail pages
   incomingPaymentDetailPage: React.ReactNode;
   invoiceDetailPage: React.ReactNode;
+  contractPaymentEditPage: React.ReactNode;
   paymentPrintPreviewPage: React.ReactNode;
   paymentPackagePrintPage: React.ReactNode;
   internalPaymentDetail: React.ReactNode;
@@ -361,10 +363,10 @@ export interface FinanceCenterViewProps {
   invoiceSourceFeeId: number | null;
   setInvoiceSourceFeeId: (id: number | null) => void;
   invoiceForm: any;
-  createInvoice: () => Promise<void>;
+  createInvoice: (submit?: boolean) => Promise<void>;
   invoiceFeeOptions: Fee[];
   applyInvoiceFeeSelection: (nextIds: number[]) => void;
-  loadInvoiceReferenceData: () => Promise<{ contractRows: any; customerRows: any; candidateRows: any }>;
+  loadInvoiceReferenceData: (options?: Record<string, any>) => Promise<any>;
 
   // Invoice mutation
   invoiceNumberTarget: any;
@@ -566,6 +568,7 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
     activeRefundStatus,
     incomingPaymentDetailPage,
     invoiceDetailPage,
+    contractPaymentEditPage,
     paymentPrintPreviewPage,
     paymentPackagePrintPage,
     internalPaymentDetail,
@@ -944,7 +947,14 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
 
   return (
     <>
-      {incomingPaymentDetailPage ||
+      {contractPaymentEditPage || (invoiceOpen ? <InvoiceApplicationPage form={invoiceForm} target={invoiceEditTarget} fees={invoiceFeeOptions}
+        selectedIds={invoiceSelectedFeeIds} onSelect={applyInvoiceFeeSelection} onSave={createInvoice}
+        loadReference={loadInvoiceReferenceData}
+        openCase={openCaseDetail} openContract={openContractDetail}
+        onClose={() => {
+          setInvoiceOpen(false); setInvoiceEditTarget(null); setInvoiceSelectedFeeIds([]);
+          setInvoiceFeeAmounts({}); setInvoiceSourceFeeId(null); invoiceForm.resetFields();
+        }} /> : null) || incomingPaymentDetailPage ||
         invoiceDetailPage ||
         paymentPrintPreviewPage ||
         paymentPackagePrintPage ||
@@ -3967,125 +3977,6 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
           />
         </Form>
       </Modal>
-      <Drawer
-        className="finance-invoice-request-drawer"
-        width="min(1180px, calc(100vw - 32px))"
-        open={invoiceOpen}
-        title={invoiceEditTarget ? "编辑发票申请" : "新增发票申请"}
-        destroyOnHidden
-        onClose={() => {
-          setInvoiceOpen(false);
-          setInvoiceEditTarget(null);
-          setInvoiceSelectedFeeIds([]);
-          setInvoiceFeeAmounts({});
-          setInvoiceSourceFeeId(null);
-          invoiceForm.resetFields();
-        }}
-        footer={
-          <Space>
-            <Button onClick={() => setInvoiceOpen(false)}>取消</Button>
-            <Button type="primary" onClick={() => void createInvoice()}>
-              {invoiceEditTarget ? "保存修改" : "保存草稿"}
-            </Button>
-          </Space>
-        }
-      >
-        <Form form={invoiceForm} layout="vertical" className="finance-invoice-request-form">
-          <Form.Item name="case_record_id" hidden><Input /></Form.Item>
-          <Form.Item name="contract_record_id" hidden><Input /></Form.Item>
-          <Form.Item name="case_fee_ids" hidden><Input /></Form.Item>
-          <section className="finance-invoice-request-section">
-            <h3>申请信息</h3>
-            <div className="finance-invoice-request-grid">
-              <Form.Item label="来源案件" name="case_no">
-                <Input readOnly placeholder="从发票明细自动带入" />
-              </Form.Item>
-              <Form.Item label="合同编号" name="contract_no">
-                <Input readOnly placeholder="从发票明细自动带入" />
-              </Form.Item>
-              <Form.Item label="外部合同号" name="external_contract_no">
-                <Input readOnly placeholder="从发票明细自动带入" />
-              </Form.Item>
-              <Form.Item label="客户名称" name="customer" rules={[{ required: true }]}>
-                <Input readOnly placeholder="从发票明细自动带入" />
-              </Form.Item>
-              <Form.Item label="申请开票金额" name="amount" rules={[{ required: true }]}>
-                <InputNumber min={0.01} precision={2} style={{ width: "100%" }} />
-              </Form.Item>
-            </div>
-          </section>
-          <section className="finance-invoice-request-section">
-            <h3>发票内容</h3>
-            <div className="finance-invoice-request-grid">
-              <Form.Item label="发票抬头" name="invoice_title" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-              <Form.Item label="纳税人识别号" name="taxpayer_id" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-              <Form.Item label="公司电话" name="invoice_phone"><Input /></Form.Item>
-              <Form.Item label="银行账号" name="bank_account"><Input /></Form.Item>
-              <Form.Item label="开户银行" name="bank_name"><Input /></Form.Item>
-              <Form.Item className="span-2" label="开票地址" name="invoice_address"><Input /></Form.Item>
-            </div>
-          </section>
-          <section className="finance-invoice-request-section">
-            <h3>服务项</h3>
-            <div className="finance-invoice-request-grid">
-              <Form.Item label="发票类型" name="invoice_type" rules={[{ required: true }]}>
-                <Select options={["增值税普通发票", "增值税专用发票", "电子普通发票", "电子专用发票"].map((value) => ({ value, label: value }))} />
-              </Form.Item>
-              <Form.Item label="开票内容" name="invoice_content" rules={[{ required: true }]}><Input /></Form.Item>
-              <Form.Item label="高开发票金额" name="extra_amount"><InputNumber min={0} precision={2} style={{ width: "100%" }} /></Form.Item>
-              <Form.Item label="交付方式" name="delivery_method"><Select options={["电子发票", "邮寄纸质发票", "现场领取"].map((value) => ({ value, label: value }))} /></Form.Item>
-              <Form.Item label="接收邮箱" name="email"><Input /></Form.Item>
-              <Form.Item label="收件人" name="recipient"><Input /></Form.Item>
-              <Form.Item label="联系电话" name="recipient_phone"><Input /></Form.Item>
-              <Form.Item className="span-2" label="邮寄地址" name="delivery_address"><Input /></Form.Item>
-              <Form.Item className="span-2" label="备注" name="remark"><Input.TextArea rows={2} /></Form.Item>
-            </div>
-          </section>
-          <section className="finance-invoice-request-section finance-invoice-request-details">
-            <div className="finance-invoice-request-section-heading">
-              <h3>发票明细</h3>
-              <span>{invoiceSourceFeeId ? "来源费用已自动绑定" : "选择费用后自动带入案件、合同和客户"}</span>
-            </div>
-            <div className="finance-invoice-request-table-wrap">
-              <table className="finance-invoice-request-table">
-                <thead>
-                  <tr>
-                    <th>选择</th><th>合同编号</th><th>外部合同号</th><th>案件名称</th><th>案件阶段</th><th>案号</th><th>费用类型</th><th>费用金额</th><th>已到账金额</th><th>已开票金额</th><th>本次开票</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoiceFeeOptions.map((fee) => {
-                    const feeData = fee.data || {};
-                    const availableAmount = invoiceFeeAvailableAmount(fee);
-                    const selected = invoiceSelectedFeeIds.includes(fee.id);
-                    const currentAmount = invoiceFeeAmounts[fee.id] ?? availableAmount;
-                    return <tr key={fee.id} className={selected ? "is-selected" : undefined}>
-                      <td><Checkbox checked={selected} disabled={Boolean(invoiceSourceFeeId)} onChange={(event) => {
-                        const nextIds = event.target.checked
-                          ? [...invoiceSelectedFeeIds, fee.id]
-                          : invoiceSelectedFeeIds.filter((id) => id !== fee.id);
-                        applyInvoiceFeeSelection(nextIds);
-                      }} /></td>
-                      <td>{feeData.contract_no || "—"}</td><td>{feeData.external_contract_no || "—"}</td><td>{feeData.case_name || feeData.case_title || fee.title || "—"}</td><td>{feeData.case_stage || feeData.stage || "—"}</td><td>{feeData.case_no || "—"}</td><td>{feeData.fee_type || fee.title || "—"}</td><td>{Number(feeData.amount || 0).toFixed(2)}</td><td>{Number(feeData.received_amount ?? feeData.cashed_amount ?? feeData.paid_amount ?? 0).toFixed(2)}</td><td>{invoiceFeeIssuedAmount(fee).toFixed(2)}</td>
-                      <td><InputNumber min={0} max={availableAmount} precision={2} disabled={!selected || Boolean(invoiceSourceFeeId)} value={currentAmount} onChange={(value) => {
-                        const nextAmount = Math.min(availableAmount, Math.max(0, Number(value || 0)));
-                        const nextAmounts = { ...invoiceFeeAmounts, [fee.id]: nextAmount };
-                        setInvoiceFeeAmounts(nextAmounts);
-                        invoiceForm.setFieldValue("amount", Number(invoiceSelectedFeeIds.reduce((total, id) => total + Number(nextAmounts[id] ?? invoiceFeeAvailableAmount(invoiceFeeOptions.find((item) => item.id === id) || fee)), 0).toFixed(2)));
-                      }} /></td>
-                    </tr>;
-                  })}
-                  {!invoiceFeeOptions.length && <tr><td colSpan={11}>暂无可申请开票的费用</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </Form>
-      </Drawer>
       <Modal
         width={760}
         open={refundOpen}

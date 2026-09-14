@@ -883,10 +883,13 @@ async def _validate_invoice_source_links(
         for fee in case_fees:
             if not _fee_matches_contract(fee, contract_record):
                 raise HTTPException(status_code=409, detail="所选案件费用必须属于当前合同")
+    for linked in (case_record, contract_record):
+        if linked and linked.customer.strip() != body.customer.strip():
+            raise HTTPException(status_code=409, detail="关联案件或合同必须属于发票客户")
     active_invoices = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "invoice",
         BusinessRecord.status.not_in(INVOICE_RELEASED_STATUSES),
-        *(await _record_scope_conditions(identity, db)),
+        _invoice_json_fee_condition(BusinessRecord.data, set(case_fee_ids)),
     ))).all())
     active_amount_by_fee: dict[int, float] = {}
     for invoice in active_invoices:
@@ -912,16 +915,167 @@ async def _validate_invoice_source_links(
                 ])
     allocations: list[dict] = []
     remaining = _round_fee_amount(float(body.amount))
+    explicit = {row["fee_id"]: row["amount"] for row in body.case_fee_allocations}
     for fee in case_fees:
         fee_amount = max(_round_fee_amount(float((fee.data or {}).get("amount") or 0)), 0)
         available = max(_round_fee_total([fee_amount, -active_amount_by_fee.get(fee.id, 0)]), 0)
-        allocated = min(remaining, available)
-        allocations.append({"fee_id": fee.id, "amount": allocated, "available_before": available})
+        if available <= 0 and (explicit.get(fee.id, 0) > 0 if explicit else remaining > 0):
+            raise HTTPException(status_code=409, detail=f"费用{fee.serial_no}已无可开票余额")
+        allocated = explicit[fee.id] if explicit else min(remaining, available)
+        allocations.append({"fee_id": fee.id, "amount": allocated, "available_before": available,
+                            "over_amount": max(_round_fee_total([allocated, -available]), 0)})
         remaining = max(_round_fee_total([remaining, -allocated]), 0)
-    if remaining > 0.001 and allocations:
+    if not explicit and remaining > 0.001 and allocations:
         allocations[-1]["amount"] = _round_fee_total([allocations[-1]["amount"], remaining])
         allocations[-1]["over_amount"] = remaining
     return case_record, contract_record, case_fees, allocations
+
+
+def _invoice_json_fee_condition(column, fee_ids: set[int]):
+    """SQL prefilter only; the existing ID resolver remains authoritative."""
+    from sqlalchemy import String, cast
+    compact = func.replace(func.replace(cast(column, String), " ", ""), '"', "")
+    return or_(*[compact.contains(token) for fee_id in fee_ids for token in (
+        f"fee_id:{fee_id}", f"fee_record_id:{fee_id}", f"finance_record_id:{fee_id}",
+        f"[{fee_id},", f",{fee_id},", f",{fee_id}]", f"[{fee_id}]",
+    )]) if fee_ids else false()
+
+
+def _invoice_json_case_condition(column, case_nos: set[str]):
+    import json
+    from sqlalchemy import String, cast
+    text = cast(column, String)
+    return or_(*[text.contains(value) for case_no in case_nos for value in (
+        case_no, json.dumps(case_no, ensure_ascii=True)[1:-1],
+    )]) if case_nos else false()
+
+
+async def _invoice_fee_details(identity: dict, db: AsyncSession, *, ids: set[int] | None = None,
+                               customer: str = "", exclude_invoice_id: int | None = None) -> list[dict]:
+    from app.core.contracts import _contract_allows_finance_application
+    from app.core.permissions import _record_scope_conditions
+    from app.core.query_batches import _scalars_in_batches
+
+    if ids is None:
+        raise HTTPException(status_code=422, detail="费用明细查询必须限定费用ID")
+    if len(ids) > 100:
+        result = []
+        ordered_ids = sorted(ids)
+        for start in range(0, len(ordered_ids), 100):
+            result.extend(await _invoice_fee_details(identity, db, ids=set(ordered_ids[start:start + 100]),
+                customer=customer, exclude_invoice_id=exclude_invoice_id))
+        return result
+    rows = await _invoice_case_fee_rows(identity, db, scope="company", ids=ids, customer=customer,
+                                       exclude_invoice_id=exclude_invoice_id)
+    scope = await _record_scope_conditions(identity, db)
+    sources = {item.id: item for item in await _scalars_in_batches(db, {row["id"] for row in rows},
+        lambda batch: select(BusinessRecord).where(BusinessRecord.module == "finance", BusinessRecord.id.in_(batch), *scope))}
+    contract_ids = {_receivable_relation_id(item.data or {}, "contract_id", "contract_record_id") for item in sources.values()} - {0}
+    contract_nos = {str((item.data or {}).get("contract_no") or "") for item in sources.values()} - {""}
+    contracts = {}
+    for column, keys in ((BusinessRecord.id, contract_ids), (BusinessRecord.serial_no, contract_nos)):
+        for contract in await _scalars_in_batches(db, keys, lambda batch: select(BusinessRecord).where(
+            BusinessRecord.module == "contract", column.in_(batch), *scope,
+        )):
+            contracts[contract.id] = contract
+    by_no = {item.serial_no: item for item in contracts.values()}
+    for row in rows:
+        data = row["data"]
+        source_data = (sources[row["id"]].data or {})
+        if source_data.get("amount") is None:
+            data["amount"] = None
+            data["remaining_invoice_amount"] = None
+        if not data.get("cashed_date"):
+            data["cashed_amount"] = (source_data.get("cashed_amount", source_data.get("received_amount"))
+                                      if data.get("amount") is not None else None)
+        contract_id = _receivable_relation_id(source_data, "contract_id", "contract_record_id")
+        contract = contracts.get(contract_id) if contract_id else by_no.get(str(source_data.get("contract_no") or ""))
+        if contract and not _fee_matches_contract(sources[row["id"]], contract):
+            contract = None
+        contract_data = (contract.data or {}) if contract else {}
+        data.update({
+            "fee_id": row["id"], "fee_no": row["serial_no"],
+            "contract_id": contract.id if contract else None,
+            "contract_record_id": contract.id if contract else None,
+            "contract_no": contract.serial_no if contract else str(source_data.get("contract_no") or ""),
+            "external_contract_no": str(contract_data.get("external_contract_no") or contract_data.get("ref_contract_no") or ""),
+            "contract_missing_or_forbidden": contract is None,
+            "contract_allows_invoice": bool(contract and _contract_allows_finance_application(contract)),
+            "invoiced_amount": data.get("invoice_amount"),
+            "payer": data.get("received_payer_name") or source_data.get("payer") or source_data.get("payer_name") or "",
+            "payment_mode": source_data.get("payment_mode") or source_data.get("payment_method") or "",
+            "received_date": data.get("cashed_date") or source_data.get("received_date") or "",
+            "case_record_id": data.get("case_id"),
+        })
+    return rows
+
+
+async def _invoice_detail_record(item: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
+    from app.core.permissions import _record_dict_for_identity
+    from app.core.system import _allowed_field_keys
+
+    result = await _record_dict_for_identity(item, identity, db)
+    show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
+    raw = item.data or {}
+    ids = _invoice_linked_fee_ids(raw)
+    fees = {row["id"]: row for row in await _invoice_fee_details(identity, db, ids=ids)} if ids else {}
+    allocation_map = {int(row["fee_id"]): row for row in raw.get("case_fee_allocations") or []
+                      if isinstance(row, dict) and str(row.get("fee_id") or "").isdigit()}
+    objects = []
+    for fee_id in sorted(ids):
+        fee = fees.get(fee_id)
+        data = (fee or {}).get("data") or {}
+        allocation = allocation_map.get(fee_id, {})
+        amount = allocation.get("amount")
+        if amount is None and len(ids) == 1:
+            amount = raw.get("amount")
+        objects.append({
+            "fee_id": fee_id, "fee_no": data.get("fee_no", ""), "fee_type": data.get("fee_type", ""),
+            "fee_amount": data.get("amount") if show_amount else None,
+            "amount": amount if show_amount else None,
+            "allocation_amount": amount if show_amount else None,
+            "invoice_amount": amount if show_amount else None,
+            "over_amount": allocation.get("over_amount") if show_amount else None,
+            "available_before": allocation.get("available_before") if show_amount else None,
+            "contract_id": data.get("contract_id"), "contract_no": data.get("contract_no", ""),
+            "contract_record_id": data.get("contract_id"),
+            "external_contract_no": data.get("external_contract_no", ""),
+            "contract_missing_or_forbidden": data.get("contract_missing_or_forbidden", True),
+            "case_id": data.get("case_id"), "case_no": data.get("case_no", ""),
+            "case_record_id": data.get("case_id"), "case_title": data.get("case_title", ""),
+            "customer": (fee or {}).get("customer", ""),
+            "case_stage": data.get("case_stage", ""),
+            "cashed_amount": data.get("cashed_amount") if show_amount else None,
+            "received_amount": data.get("cashed_amount") if show_amount else None,
+            "invoiced_amount": data.get("invoiced_amount") if show_amount else None,
+            "issued_amount": data.get("invoiced_amount") if show_amount else None,
+            "remaining_invoice_amount": data.get("remaining_invoice_amount") if show_amount else None,
+            "missing_or_forbidden": fee is None,
+            "allocation_missing": amount is None,
+        })
+    result["data"]["invoice_objects"] = objects
+    result["data"]["service_items"] = [dict(row) for row in raw.get("service_items") or [] if isinstance(row, dict)]
+    if not show_amount:
+        for row in result["data"]["service_items"]:
+            for key in ("unit_price", "amount", "tax_amount"):
+                row[key] = None
+        result["data"]["case_fee_allocations"] = [{"fee_id": row["fee_id"]} for row in objects]
+        for key in ("invoice_over_amount", "extra_amount"):
+            result["data"].pop(key, None)
+    return result
+
+
+def _invoice_customer_defaults(record: dict | None, customer: str = "") -> dict:
+    data = (record or {}).get("data") or {}
+    name = (record or {}).get("title") or (record or {}).get("customer") or customer
+    return {
+        "customer": name, "customer_no": (record or {}).get("serial_no", ""),
+        "invoice_title": data.get("invoice_title") or name,
+        "taxpayer_id": data.get("taxpayer_id") or data.get("credit_code") or data.get("unified_social_credit_code") or data.get("license_no") or "",
+        "invoice_phone": data.get("invoice_phone") or data.get("contact_phone") or data.get("phone") or data.get("office_phone") or "",
+        "bank_account": data.get("bank_account") or "", "bank_name": data.get("bank_name") or data.get("account_bank_name") or "",
+        "invoice_address": data.get("invoice_address") or data.get("contact_address") or data.get("address") or data.get("registered_address") or data.get("registration_address") or "",
+    }
 
 
 def _invoice_original_type(value: object) -> str:
@@ -1085,6 +1239,7 @@ async def _invoice_case_fee_rows(
     include_all_fee_types: bool = False,
     scope_authorized_fee_ids: set[int] | None = None,
     force_amount_projection: bool = False,
+    exclude_invoice_id: int | None = None,
 ) -> list[dict]:
     from app.core.cases import (
         _case_party_values,
@@ -1102,6 +1257,8 @@ async def _invoice_case_fee_rows(
 
     scope_conditions = await _record_scope_conditions(identity, db)
     fee_conditions = list(scope_conditions)
+    if ids is not None:
+        fee_conditions.append(BusinessRecord.id.in_(ids))
     if scope == "mine":
         fee_conditions.append(BusinessRecord.owner == identity["username"])
     if scope_authorized_fee_ids is not None:
@@ -1153,13 +1310,38 @@ async def _invoice_case_fee_rows(
         if linked_no:
             fees_by_case.setdefault(linked_no, []).append(item)
 
-    invoices = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "invoice", *scope_conditions
-    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    unambiguous_case_nos = set(fees_by_case)
+    if ids is not None and case_nos:
+        # A single selected row does not prove a case has only one fee.
+        case_no_column = BusinessRecord.data["case_no"].as_string()
+        counts = (await db.execute(select(case_no_column, func.count(BusinessRecord.id)).where(
+            BusinessRecord.module == "finance", case_no_column.in_(case_nos),
+        ).group_by(case_no_column))).all()
+        unambiguous_case_nos = {case_number for case_number, count in counts if count == 1}
+
+    # Availability belongs to authorized fees, not to the invoice applicant's
+    # visibility. Keep invoice details scoped separately from the aggregate.
+    authorized_fee_ids = {fee.id for fee in fees}
+    related_invoice_conditions = [or_(
+        _invoice_json_fee_condition(BusinessRecord.data, authorized_fee_ids),
+        BusinessRecord.data["case_no"].as_string().in_(case_nos),
+    )] if ids is not None else []
+    invoice_query = select(BusinessRecord).where(
+        BusinessRecord.module == "invoice", *related_invoice_conditions,
+        *(scope_conditions if ids is None else []),
+    )
+    visible_invoice_ids = set((await db.scalars(invoice_query.with_only_columns(BusinessRecord.id).where(
+        *scope_conditions,
+    ))).all()) if ids is not None and scope_conditions else None
+    invoices = list((await db.scalars(invoice_query.order_by(
+        BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
+    ))).all())
     invoice_by_fee: dict[int, list[tuple[BusinessRecord, float]]] = {}
     fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
     fees_by_id = {item.id: item for item in fees}
     for invoice in invoices:
+        if invoice.id == exclude_invoice_id:
+            continue
         data = invoice.data or {}
         explicit_ids = []
         raw_case_fee_ids = list(data.get("case_fee_ids") or [])
@@ -1179,7 +1361,8 @@ async def _invoice_case_fee_rows(
             except (TypeError, ValueError):
                 pass
         if not explicit_ids and not has_explicit_link:
-            candidates = fees_by_case.get(str(data.get("case_no") or ""), [])
+            legacy_case_no = str(data.get("case_no") or "")
+            candidates = fees_by_case.get(legacy_case_no, []) if legacy_case_no in unambiguous_case_nos else []
             if len(candidates) == 1:
                 explicit_ids = [candidates[0].id]
         if not explicit_ids:
@@ -1217,7 +1400,13 @@ async def _invoice_case_fee_rows(
         if transaction.transaction_type == "付款" and transaction.finance_record_id:
             payments_by_fee.setdefault(transaction.finance_record_id, []).append(transaction)
 
-    incoming = list((await db.scalars(select(IncomingPayment).order_by(
+    incoming_conditions = []
+    if ids is not None:
+        incoming_conditions.append(or_(
+            _invoice_json_fee_condition(IncomingPayment.allocations, fee_ids | set(legacy_fee_ids)),
+            _invoice_json_case_condition(IncomingPayment.allocations, case_nos),
+        ))
+    incoming = list((await db.scalars(select(IncomingPayment).where(*incoming_conditions).order_by(
         IncomingPayment.received_date.desc(), IncomingPayment.id.desc()
     ))).all())
     receipts_by_fee: dict[int, list[tuple[IncomingPayment, float]]] = {}
@@ -1247,7 +1436,8 @@ async def _invoice_case_fee_rows(
                 except (AttributeError, TypeError, ValueError):
                     pass
             if fee_id not in fee_ids:
-                candidates = fees_by_case.get(str(allocation.get("case_no") or ""), []) if isinstance(allocation, dict) else []
+                legacy_case_no = str(allocation.get("case_no") or "")
+                candidates = fees_by_case.get(legacy_case_no, []) if legacy_case_no in unambiguous_case_nos else []
                 if len(candidates) == 1:
                     fee_id = candidates[0].id
             linked_fee = fees_by_id.get(fee_id)
@@ -1256,8 +1446,15 @@ async def _invoice_case_fee_rows(
                 receipts_by_fee.setdefault(fee_id, []).append((payment, float(allocation.get("amount") or 0)))
 
     refund_scope_conditions = [] if scope_authorized_fee_ids is not None else scope_conditions
+    related_refund_conditions = []
+    if ids is not None:
+        related_refund_conditions.append(or_(
+            _invoice_json_fee_condition(BusinessRecord.data, ids),
+            BusinessRecord.data["case_no"].as_string().in_(case_nos),
+            BusinessRecord.data["original_payment_no"].as_string().in_({str((fee.data or {}).get("document_no") or "") for fee in fees} - {""}),
+        ))
     refunds = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "refund", *refund_scope_conditions
+        BusinessRecord.module == "refund", *refund_scope_conditions, *related_refund_conditions,
     ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     refunds_by_fee: dict[int, list[BusinessRecord]] = {}
     official_by_case: dict[str, list[BusinessRecord]] = {}
@@ -1310,7 +1507,8 @@ async def _invoice_case_fee_rows(
             if pair[0].status not in INVOICE_RELEASED_STATUSES
         ]
         invoiced_amount = round(sum(amount for _, amount in linked_invoices), 2)
-        latest_invoice = linked_invoices[0][0] if linked_invoices else None
+        latest_invoice = next((invoice for invoice, _ in linked_invoices
+                               if visible_invoice_ids is None or invoice.id in visible_invoice_ids), None)
         latest_invoice_data = (latest_invoice.data or {}) if latest_invoice else {}
         invoice_date = _case_fee_date(latest_invoice_data.get("invoice_date"))
         payments = payments_by_fee.get(item.id, [])
@@ -1399,6 +1597,9 @@ async def _invoice_case_fee_rows(
         opponent = "、".join(_case_party_values(case_data, CASE_DEFENDANT_FIELDS))
         result_data.update({
             "case_id": linked_case.id if linked_case else data.get("case_id"),
+            "case_title": linked_case.title if linked_case else data.get("case_title", ""),
+            "case_type": data.get("case_type") or case_data.get("case_type") or "",
+            "investigator": data.get("investigator") or case_data.get("investigator") or "",
             "case_no": linked_case.serial_no if linked_case else data.get("case_no", ""),
             "plaintiff": data.get("plaintiff") or plaintiff or (linked_case.customer if linked_case else item.customer),
             "opponent": data.get("opponent") or opponent,

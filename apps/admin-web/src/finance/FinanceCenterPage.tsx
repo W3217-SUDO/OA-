@@ -76,6 +76,10 @@ settlementLegacyErrorMessage,
 voucherCategory
 } from "./constants";
 import { FinanceCenterView } from "./FinanceCenterView";
+import { InvoiceDetailTables } from "./InvoiceDetailTables";
+import { ContractPaymentEditPage } from "./ContractPaymentEditPage";
+import { fetchInvoiceRecord, invoiceEditValues, invoiceObjectFees } from "./invoiceDetails.mjs";
+import { canEditContractPayment, isContractPayment } from "./paymentLifecycle.mjs";
 import { useFinanceRuntimeContext } from "./hooks/useFinanceRuntimeContext";
 import { createFinanceAccountingActions } from "./services/accountingActions";
 import { createFinanceDocumentsActions } from "./services/documentsActions";
@@ -466,6 +470,8 @@ export default function FinanceCenterPage({
   const [refundBatchStatus, setRefundBatchStatus] = useState("待审批");
   const [refundMutationLoading, setRefundMutationLoading] = useState(false);
   const [invoiceProcess, setInvoiceProcess] = useState<FinanceFlow | null>(null);
+  const [contractPaymentEditId, setContractPaymentEditId] = useState<number | null>(null);
+  useEffect(() => { setContractPaymentEditId(null); }, [initialView]);
   const [invoiceCancel, setInvoiceCancel] = useState<FinanceFlow | null>(null);
   const [invoiceCancelReason, setInvoiceCancelReason] = useState("");
   const [invoiceNumberTarget, setInvoiceNumberTarget] = useState<FinanceFlow | null>(null);
@@ -599,6 +605,7 @@ export default function FinanceCenterPage({
     get setFeeQueryExportLoading() { return setFeeQueryExportLoading; },
   });
   const { openInvoiceDetail, loadInvoiceMine, loadInvoiceCompany, loadInvoiceUnissued, loadInvoicePending, loadInvoiceReferenceData, createInvoice, issueInvoice, rejectInvoiceIssue, voidInvoice, submitInvoiceNumberChange, submitInvoiceDateChange, submitInvoiceCancel, exportInvoiceList, exportInvoiceUnissued } = createFinanceInvoicesActions({
+    get invoiceFeeOptions() { return invoiceFeeOptions; },
     get invoiceDetailRequestGuard() { return invoiceDetailRequestGuard; },
     get setInvoiceDetail() { return setInvoiceDetail; },
     get invoiceMineMeta() { return invoiceMineMeta; },
@@ -716,17 +723,14 @@ export default function FinanceCenterPage({
       try {
         const { data } = await api.get(`/records/${target.id}`);
         if (data.module === "finance" && target.action === "create_invoice") {
-          const [contractResponse, customerResponse, feeResponse] = await Promise.all([
-            api.get("/records", { params: { module: "contract", page_size: 100 } }),
-            api.get("/records", { params: { module: "customer", page_size: 100 } }),
-            api.get("/finance/case-fees/invoice-status", { params: { scope: "company", invoice_status: "未开票", page: 1, page_size: 100, fee_types: "" } }),
-          ]);
-          const contractRows = Array.isArray(contractResponse.data?.items) ? contractResponse.data.items : [];
-          const customerRows = Array.isArray(customerResponse.data?.items) ? customerResponse.data.items : [];
-          const candidateRows = Array.isArray(feeResponse.data?.items) ? feeResponse.data.items : [];
-          const sourceFee = candidateRows.find((fee: Fee) => Number(fee.id) === Number(data.id));
-          setContracts(contractRows);
-          setCustomers(customerRows);
+          const { data: reference } = await api.get("/finance/invoice-context", {
+            params: { customer: data.customer, customer_id: data.data?.customer_id || data.data?.customer_record_id || undefined,
+              keyword: data.serial_no, page: 1, page_size: 100 },
+          });
+          const customerRows = reference.customer_record ? [reference.customer_record] : [];
+          const candidateRows: Fee[] = reference.items || [];
+          const sourceFee = candidateRows.find((fee) => Number(fee.id) === Number(data.id));
+          setCustomers((previous) => Array.from(new Map([...previous, ...customerRows].map((row: any) => [row.id, row])).values()));
           setInvoiceCandidateFees(candidateRows);
           setTab("invoices");
           if (!sourceFee) {
@@ -735,8 +739,11 @@ export default function FinanceCenterPage({
           }
           invoiceForm.resetFields();
           invoiceForm.setFieldsValue({
-            ...buildInvoiceSourceFields([sourceFee], contractRows, customerRows),
+            ...buildInvoiceSourceFields([sourceFee], [], customerRows),
+            ...reference.customer_defaults,
+            customer_record_id: reference.customer_record?.id,
             case_fee_ids: [sourceFee.id],
+            case_fee_allocations: [{ fee_id: sourceFee.id, amount: invoiceFeeAvailableAmount(sourceFee) }],
             extra_amount: 0,
             invoice_type: "增值税普通发票",
             invoice_content: "法律服务费",
@@ -768,7 +775,7 @@ export default function FinanceCenterPage({
         if (["finance", "finance_package", "finance_settlement", "finance_archive_settlement"].includes(data.module)) {
           setFeeDetail(data);
         } else if (data.module === "invoice") {
-          setInvoiceDetail(data);
+          setInvoiceDetail(await fetchInvoiceRecord(api, data.id));
         } else if (data.module === "refund") {
           setRefundDetail(data);
         } else {
@@ -852,7 +859,7 @@ export default function FinanceCenterPage({
   const invoiceFeeOptions = useMemo(() => {
     if (!invoiceEditTarget) return invoiceCandidateFees;
     return Array.from(
-      new Map([...invoiceCandidateFees, ...fees].map((fee) => [fee.id, fee])).values(),
+      new Map([...fees, ...invoiceObjectFees(invoiceEditTarget), ...invoiceCandidateFees].map((fee) => [fee.id, fee])).values(),
     );
   }, [invoiceEditTarget, invoiceCandidateFees, fees]);
   const isInternalApprovalRoute = internalApprovalRoutes.includes(initialView);
@@ -1463,6 +1470,8 @@ export default function FinanceCenterPage({
         customer: undefined,
         customer_no: undefined,
         amount: undefined,
+        case_fee_ids: [],
+        case_fee_allocations: [],
       });
       return;
     }
@@ -1475,46 +1484,37 @@ export default function FinanceCenterPage({
       message.warning("一次申请开票只能选择同一客户下的费用。");
       return;
     }
+    const previous = invoiceForm.getFieldValue("case_fee_allocations") || [];
+    const allocations = selectedFees.map((fee) => ({ fee_id: fee.id, amount: previous.find((row: any) => Number(row.fee_id) === fee.id)?.amount ?? invoiceFeeAvailableAmount(fee) }));
     setInvoiceSelectedFeeIds(nextIds);
-    setInvoiceFeeAmounts(
-      Object.fromEntries(
-        selectedFees.map((fee) => [fee.id, invoiceFeeAvailableAmount(fee)]),
-      ),
-    );
+    setInvoiceFeeAmounts(Object.fromEntries(allocations.map((row) => [row.fee_id, row.amount])));
     invoiceForm.setFieldsValue({
       ...buildInvoiceSourceFields(selectedFees, contracts, customers),
       case_fee_ids: nextIds,
+      case_fee_allocations: allocations,
+      amount: Number(allocations.reduce((sum, row) => sum + Number(row.amount || 0), 0).toFixed(2)),
     });
   };
 
-  const openInvoiceEdit = (row: FinanceFlow) => {
-    setInvoiceEditTarget(row);
-    setInvoiceSourceFeeId(null);
-    const selectedFeeIds = Array.isArray(row.data?.case_fee_ids)
-        ? row.data.case_fee_ids.map(Number)
-        : row.data?.case_fee_id
-          ? [Number(row.data.case_fee_id)]
-          : [];
-    setInvoiceSelectedFeeIds(selectedFeeIds);
-    setInvoiceFeeAmounts(
-      Object.fromEntries(
-        invoiceFeeOptions
-          .filter((fee) => selectedFeeIds.includes(fee.id))
-          .map((fee) => [fee.id, invoiceFeeAvailableAmount(fee)]),
-      ),
-    );
-    invoiceForm.setFieldsValue({
-      ...row.data,
-      customer: row.customer || row.data?.customer,
-      amount: Number(row.data?.amount || 0),
-      extra_amount: Number(row.data?.extra_amount || 0),
-      case_fee_ids: Array.isArray(row.data?.case_fee_ids)
-        ? row.data.case_fee_ids
-        : row.data?.case_fee_id
-          ? [Number(row.data.case_fee_id)]
-          : [],
-    });
-    setInvoiceOpen(true);
+  const openInvoiceEdit = async (source: FinanceFlow) => {
+    const token = invoiceDetailRequestGuard.begin();
+    try {
+      const row = await fetchInvoiceRecord(api, source.id);
+      if (!invoiceDetailRequestGuard.isLatest(token)) return;
+      if (!["草稿", "已驳回"].includes(row.status)) { message.warning("当前发票状态不能编辑"); return; }
+      const values = invoiceEditValues(row);
+      const reference = await loadInvoiceReferenceData({ invoice_id: row.id, customer: row.customer, isCurrent: () => invoiceDetailRequestGuard.isLatest(token) });
+      if (!invoiceDetailRequestGuard.isLatest(token)) return;
+      setInvoiceEditTarget(row);
+      setInvoiceSourceFeeId(null);
+      setInvoiceSelectedFeeIds(values.case_fee_ids);
+      setInvoiceFeeAmounts(Object.fromEntries(values.case_fee_allocations.map((item: any) => [item.fee_id, item.amount])));
+      invoiceForm.resetFields();
+      invoiceForm.setFieldsValue({ ...reference.customerDefaults, ...values });
+      setInvoiceOpen(true);
+    } catch (error: any) {
+      if (invoiceDetailRequestGuard.isLatest(token)) message.error(error?.response?.data?.detail || error.message || "发票编辑信息加载失败");
+    }
   };
 
   const reviewFlow = (
@@ -1608,9 +1608,10 @@ export default function FinanceCenterPage({
   const canApprove = ["admin", "manager", "auditor"].includes(role);
   const canManage = ["admin", "manager"].includes(role);
   const canWithdrawFinanceFee = (row: Fee) =>
-    row.module === "finance" &&
-    ["草稿", "待审批", "已审批", "待付款"].includes(row.status) &&
-    (canManage || row.owner === currentUser.username);
+    (row.module === "finance" || isContractPayment(row)) &&
+    (["草稿", "待审批", "已审批", "待付款"].includes(row.status) || canEditContractPayment(row)) &&
+    row.data?.writeoff_status !== "已核销" && Number(row.data?.paid_amount || 0) === 0 &&
+    (canManage || row.owner === currentUser.username || (isContractPayment(row) && row.data?.applicant === currentUser.username));
   const originalIncomingOperation = (_: unknown, r: IncomingPayment) => (
     <Space size={0}>
       <Button type="link" onClick={() => setIncomingDetailTarget(r)}>
@@ -1675,8 +1676,8 @@ export default function FinanceCenterPage({
     get reviewFlow() { return reviewFlow; },
     get canManage() { return canManage; },
     get issueForm() { return issueForm; },
-    get setIssueTarget() { return setIssueTarget; },
-    get setVoidTarget() { return setVoidTarget; },
+    get openInvoiceProcess() { return openInvoiceProcess; },
+    get openInvoiceCancel() { return openInvoiceCancel; },
   });
   const refundColumns = createRefundColumns({
     get openCaseDetail() { return openCaseDetail; },
@@ -1889,6 +1890,7 @@ export default function FinanceCenterPage({
     fee.data?.fee_type === "内部费用" &&
     (fee.data?.is_refund === true || Number(fee.data?.amount || 0) < 0);
   const originalFinanceRows = useMemo(() => {
+    if (initialView === "finance-payment-query") return fees;
     let result = [
       ...fees,
       ...(originalKind === "payment" ? contractPayments : []),
@@ -1922,7 +1924,7 @@ export default function FinanceCenterPage({
     }
     if (initialView === "finance-payment-waiting") {
       result = result.filter((item) =>
-        item.data?._source_module === "contract_payment"
+        isContractPayment(item)
           ? item.status === "待付款"
           : ["已审批", "部分付款"].includes(item.status),
       );
@@ -1957,7 +1959,7 @@ export default function FinanceCenterPage({
       return (
         (!originalQuery.status ||
           (initialView === "finance-payment-writeoff" &&
-            item.data?._source_module === "contract_payment" &&
+            isContractPayment(item) &&
             item.status === "已付款") ||
           paymentStatus(item) === originalQuery.status) &&
         textMatch(item.data.applicant || item.owner, "applicant") &&
@@ -2199,6 +2201,12 @@ export default function FinanceCenterPage({
           查看
         </Button>
         {initialView === "finance-payment-mine" &&
+          canEditContractPayment(row) &&
+          (canManage || row.owner === currentUser.username || row.data?.applicant === currentUser.username) && <>
+            <Button type="link" onClick={() => setContractPaymentEditId(row.id)}>编辑</Button>
+            <Button type="link" onClick={() => void feeAction(row, "submit")}>重新提交</Button>
+          </>}
+        {initialView === "finance-payment-mine" &&
           row.module === "finance" &&
           row.status === "草稿" &&
           (canManage || row.owner === currentUser.username) && (
@@ -2251,7 +2259,7 @@ export default function FinanceCenterPage({
             核销
           </Button>
         )}
-      {["草稿", "已退回"].includes(row.status) && (
+      {(["草稿", "已退回"].includes(row.status) || canEditContractPayment(row)) && (
         <Button type="link" onClick={() => feeAction(row, "submit")}>
           提交
         </Button>
@@ -2268,7 +2276,7 @@ export default function FinanceCenterPage({
           审批
         </Button>
       )}
-      {((row.data?._source_module === "contract_payment" && row.status === "待付款") ||
+      {((isContractPayment(row) && row.status === "待付款") ||
         ["已审批", "部分付款"].includes(row.status)) && (
         <Button
           type="link"
@@ -2285,8 +2293,7 @@ export default function FinanceCenterPage({
           付款
         </Button>
       )}
-      {["草稿", "待审批", "已审批", "待付款"].includes(row.status) &&
-        (canManage || row.owner === currentUser.username) && (
+      {canWithdrawFinanceFee(row) && (
           <Button type="link" danger onClick={() => openPaymentCancel(row)}>
             撤销请款
           </Button>
@@ -3027,10 +3034,7 @@ export default function FinanceCenterPage({
       {row.status === "待开票" && (
         <Button
           type="link"
-          onClick={() => {
-            issueForm.setFieldsValue({ invoice_date: dayjs() });
-            setIssueTarget(row);
-          }}
+          onClick={() => void openInvoiceProcess(row)}
         >
           开票
         </Button>
@@ -3087,7 +3091,12 @@ export default function FinanceCenterPage({
       )}
     </Space>
   );
-  const openInvoiceProcess = (row: FinanceFlow) => {
+  const openInvoiceProcess = async (source: FinanceFlow) => {
+    const token = invoiceDetailRequestGuard.begin();
+    try {
+    const row = await fetchInvoiceRecord(api, source.id);
+    if (!invoiceDetailRequestGuard.isLatest(token)) return;
+    if (row.status !== "待开票") { message.warning("当前发票状态不能办理开票，请刷新列表"); return; }
     issueForm.setFieldsValue({
       invoice_holder:
         financePersonDisplayName(
@@ -3100,6 +3109,21 @@ export default function FinanceCenterPage({
       comment: "",
     });
     setInvoiceProcess(row);
+    } catch (error: any) {
+      if (invoiceDetailRequestGuard.isLatest(token)) message.error(error?.response?.data?.detail || error.message || "发票处理信息加载失败");
+    }
+  };
+  const openInvoiceCancel = async (source: FinanceFlow) => {
+    const token = invoiceDetailRequestGuard.begin();
+    try {
+      const row = await fetchInvoiceRecord(api, source.id);
+      if (!invoiceDetailRequestGuard.isLatest(token)) return;
+      if (["已撤回", "已作废"].includes(row.status)) { message.warning("当前发票状态不能作废"); return; }
+      setInvoiceCancelReason("");
+      setInvoiceCancel(row);
+    } catch (error: any) {
+      if (invoiceDetailRequestGuard.isLatest(token)) message.error(error?.response?.data?.detail || error.message || "发票作废信息加载失败");
+    }
   };
   const invoicePendingOperation = (_: unknown, row: FinanceFlow) => (
     <Space size={0}>
@@ -3144,10 +3168,7 @@ export default function FinanceCenterPage({
       {!['已撤回', '已作废'].includes(row.status) && <>
         <Button
           type="link"
-          onClick={() => {
-            setInvoiceCancelReason("");
-            setInvoiceCancel(row);
-          }}
+          onClick={() => void openInvoiceCancel(row)}
         >
           作废
         </Button>
@@ -4667,104 +4688,7 @@ export default function FinanceCenterPage({
           <Descriptions.Item label="开票意见" span={4}>{invoiceDetailData.invoiced_opinion || invoiceDetailData.review_comment || ""}</Descriptions.Item>
         </>}
       </Descriptions>
-      <div className="finance-invoice-detail-section-title">服务项</div>
-      <table className="finance-invoice-detail-table">
-        <thead>
-          <tr>
-            {["序号", "服务名称", "数量", "单价", "金额", "税率", "税额"].map(
-              (header) => <th key={header}>{header}</th>,
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>1</td>
-            <td>{invoiceDetailData.invoice_content || "法律服务费"}</td>
-            <td>1</td>
-            <td>{Number(invoiceDetailData.amount || 0).toFixed(2)}</td>
-            <td>{Number(invoiceDetailData.amount || 0).toFixed(2)}</td>
-            <td>{invoiceDetailData.tax_rate || 0}</td>
-            <td>{Number(invoiceDetailData.tax_amount || 0).toFixed(2)}</td>
-          </tr>
-          <tr className="finance-invoice-detail-total">
-            <th>合计:</th>
-            <td colSpan={3} />
-            <td>{Number(invoiceDetailData.amount || 0).toFixed(2)}</td>
-            <td colSpan={2} />
-          </tr>
-        </tbody>
-      </table>
-      <div className="finance-invoice-detail-section-title">合同信息</div>
-      <table className="finance-invoice-detail-table">
-        <thead>
-          <tr>
-            {(invoiceProcess
-              ? ["序号", "案件类型", "案件名称", "案号", "合同号", "外部合同号", "费用类型", "金额", "已到账金额", "开票金额"]
-              : invoiceCancel
-                ? ["序号", "案件类型", "案件名称", "案号", "费用类型", "金额", "到账金额", "开票金额", ""]
-              : ["序号", "合同编号", "外部合同号", "案件类型", "案件名称", "案号", "费用类型", "金额", "到账金额", "开票金额"]).map(
-              (header) => <th key={header}>{header}</th>,
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>1</td>
-            {(invoiceProcess
-              ? [
-                  invoiceDetailCase?.data?.case_type || "",
-                  invoiceDetailCase?.title || "",
-                  invoiceDetailData.case_no || "",
-                  invoiceDetailData.contract_no || "",
-                  invoiceDetailData.external_contract_no || "",
-                ]
-              : invoiceCancel
-                ? [
-                    invoiceDetailCase?.data?.case_type || "",
-                    invoiceDetailCase?.title || "",
-                    invoiceDetailData.case_no || "",
-                  ]
-              : [
-                  invoiceDetailData.contract_no || "",
-                  invoiceDetailData.external_contract_no || "",
-                  invoiceDetailCase?.data?.case_type || "",
-                  invoiceDetailCase?.title || "",
-                  invoiceDetailData.case_no || "",
-                ]).map((value, index) =>
-                  !invoiceProcess && !invoiceCancel && index === 0 && value ? (
-                    <td key={index}>
-                      <Button
-                        type="link"
-                        onClick={() => openContractDetail(invoiceDetailData.contract_no)}
-                      >
-                        {value}
-                      </Button>
-                    </td>
-                  ) : index === (invoiceProcess ? 2 : invoiceCancel ? 2 : 4) && value ? (
-                    <td key={index}><Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button></td>
-                  ) : <td key={index}>{value}</td>,
-                )}
-            <td>{invoiceDetailData.fee_type || "律师代理费"}</td>
-            <td>{Number(invoiceDetailData.amount || 0).toFixed(2)}</td>
-            <td>
-              <Button
-                type="link"
-                onClick={() => openInvoiceReceivedDetail(invoiceDisplay)}
-                disabled={!invoiceReceivedReceiptId(invoiceDisplay)}
-                title={
-                  invoiceReceivedReceiptId(invoiceDisplay)
-                    ? undefined
-                    : "当前发票未关联到账记录"
-                }
-              >
-                {Number(invoiceDetailData.received_amount || 0).toFixed(2)}
-              </Button>
-            </td>
-            <td>{Number(invoiceDetailData.amount || 0).toFixed(2)}</td>
-            {invoiceCancel && <td />}
-          </tr>
-        </tbody>
-      </table>
+      <InvoiceDetailTables record={invoiceDisplay} openCase={openCaseDetail} openContract={openContractDetail} />
       <div className="finance-invoice-detail-actions">
         <Button onClick={() => invoiceProcess ? setInvoiceProcess(null) : invoiceCancel ? setInvoiceCancel(null) : setInvoiceDetail(null)}>
           {invoiceProcess ? "返回待处理开票" : invoiceCancel || isInvoiceCompanyRoute ? "返回公司开票" : "返回我的开票"}
@@ -5089,6 +5013,7 @@ export default function FinanceCenterPage({
     // Page / detail pages
     incomingPaymentDetailPage,
     invoiceDetailPage,
+    contractPaymentEditPage: contractPaymentEditId ? <ContractPaymentEditPage paymentId={contractPaymentEditId} onClose={() => setContractPaymentEditId(null)} onSaved={load} /> : null,
     paymentPrintPreviewPage,
     paymentPackagePrintPage,
     internalPaymentDetail,

@@ -1837,6 +1837,72 @@ class InvoiceApplicationInput(BaseModel):
     # Itemized service lines from the legacy invoice page. Kept as JSON so
     # different fee catalogs can carry their own description/unit/tax fields.
     service_items: list[dict] = Field(default_factory=list, max_length=100)
+    case_fee_allocations: list[dict] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_invoice_lines(self):
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        supplied_fields = set(self.model_fields_set)
+
+        def number(value, label, *, positive=False, money=False):
+            try:
+                result = Decimal(str(value))
+                if not result.is_finite() or result < 0 or (positive and result <= 0):
+                    raise ValueError(f"{label}必须为有限{'正' if positive else '非负'}数")
+                if money:
+                    result = result.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    if positive and result <= 0:
+                        raise ValueError(f"{label}不能小于0.01")
+                return result
+            except (InvalidOperation, TypeError):
+                raise ValueError(f"{label}不是有效数值") from None
+
+        total = number(self.amount, "开票金额", positive=True, money=True)
+        self.amount = float(total)
+        self.extra_amount = float(number(self.extra_amount, "附加金额", money=True))
+        normalized = []
+        for index, raw in enumerate(self.service_items, 1):
+            row = dict(raw)
+            name = str(row.get("service_name") or "").strip()
+            if not name:
+                raise ValueError(f"第{index}项服务名称不能为空")
+            quantity = number(row.get("quantity", 1), "服务数量", positive=True)
+            price = number(row.get("unit_price", 0), "服务单价")
+            expected = number(quantity * price, "服务金额", money=True)
+            amount = number(row.get("amount", expected), "服务金额", money=True)
+            if amount != expected:
+                raise ValueError(f"第{index}项金额必须等于数量乘单价")
+            rate = number(row.get("tax_rate", 0), "税率")
+            if rate > 100:
+                raise ValueError("税率必须在0至100之间")
+            tax = number(row.get("tax_amount", 0), "税额", money=True)
+            # Legacy tax fields are entered independently; do not invent a tax formula.
+            row.update(service_name=name, quantity=float(quantity), unit_price=float(price),
+                       amount=float(amount), tax_rate=float(rate), tax_amount=float(tax))
+            normalized.append(row)
+        if normalized and sum((Decimal(str(row["amount"])) for row in normalized), Decimal(0)) != total:
+            raise ValueError("服务项金额合计必须等于开票金额")
+        self.service_items = normalized
+        allocations = []
+        seen = set()
+        for raw in self.case_fee_allocations:
+            fee_id = number(raw.get("fee_id"), "费用ID", positive=True)
+            if fee_id != fee_id.to_integral_value() or int(fee_id) in seen:
+                raise ValueError("费用分配ID必须是唯一正整数")
+            seen.add(int(fee_id))
+            allocations.append({"fee_id": int(fee_id), "amount": float(number(raw.get("amount"), "本次开票金额", money=True))})
+        if allocations:
+            if seen != set(self.case_fee_ids):
+                raise ValueError("费用分配必须与所选费用逐项一致")
+            if sum((Decimal(str(row["amount"])) for row in allocations), Decimal(0)) != total:
+                raise ValueError("费用分配金额合计必须等于开票金额")
+        self.case_fee_allocations = allocations
+        if "专用" in self.invoice_type and not all(value.strip() for value in (
+            self.invoice_address, self.invoice_phone, self.bank_name, self.bank_account,
+        )):
+            raise ValueError("增值税专用发票必须填写注册地址、注册电话、开户银行和银行账号")
+        self.__pydantic_fields_set__.intersection_update(supplied_fields)
+        return self
 
 
 class InvoiceIssueInput(BaseModel):

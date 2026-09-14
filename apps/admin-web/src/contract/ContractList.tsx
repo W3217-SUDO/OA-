@@ -64,7 +64,7 @@ interface ContractListProps {
   onArchive: (contract: Contract) => void;
   onChangeContract: (contract: Contract) => void;
   onPayment: (contract: Contract) => void;
-  onInvoice: (contract: Contract) => void;
+  onInvoice: (contractIds: Key[]) => void;
   onInvestigation: (contract: Contract) => void;
   onApprove: (contract: Contract) => void;
   onReviewChange: (contract: Contract, approved: boolean) => void;
@@ -406,6 +406,7 @@ export function ContractList({
   ];
 
   const needSelected = (callback: () => void) => {
+    if (selectedRowKeys.length !== 1) { message.warning("此操作请选择一份合同"); return; }
     if (!selected) return;
     callback();
   };
@@ -500,7 +501,7 @@ export function ContractList({
         rowSelection={{
           selectedRowKeys,
           onChange: (keys) => {
-            onSelectionChange(keys.length ? [keys[keys.length - 1]] : []);
+            onSelectionChange(keys);
           },
         }}
         tableLayout="fixed"
@@ -604,7 +605,7 @@ export function ContractList({
             </Button>
             <Button
               disabled={!selectedContractCapabilities.canInvoice}
-              onClick={() => needSelected(() => onInvoice(selected!))}
+              onClick={() => onInvoice(selectedRowKeys)}
             >
               合同开票
             </Button>

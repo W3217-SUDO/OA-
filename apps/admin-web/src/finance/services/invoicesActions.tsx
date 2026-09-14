@@ -28,6 +28,7 @@ type OriginalRouteConfig = {
 };
 /** finance invoices operations; dependencies are read when each operation runs. */
 export interface FinanceInvoicesDependencies {
+    readonly invoiceFeeOptions: Fee[];
     readonly invoiceDetailRequestGuard: {
         begin: () => number;
         isLatest: (token: number) => boolean;
@@ -209,7 +210,7 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
         const { invoiceDetailRequestGuard, setInvoiceDetail } = context;
         const token = invoiceDetailRequestGuard.begin();
         try {
-            const { data } = await api.get(`/records/${row.id}`);
+            const { data } = await api.get(`/finance/invoices/${row.id}`);
             if (!invoiceDetailRequestGuard.isLatest(token))
                 return;
             if (!data || data.module !== "invoice") {
@@ -284,37 +285,44 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
             pageSize: response.data.page_size || pageSize,
         });
     };
-    const loadInvoiceReferenceData = async () => {
-        const { setContracts, setCustomers, setInvoiceCandidateFees } = context;
-        try {
-            const [contractResponse, customerResponse, feeResponse] = await Promise.all([
-                api.get("/records", { params: { module: "contract", page_size: 100 } }),
-                api.get("/records", { params: { module: "customer", page_size: 100 } }),
-                api.get("/finance/case-fees/invoice-status", {
-                    params: { scope: "company", invoice_status: "未开票", page: 1, page_size: 100, fee_types: "" },
-                }),
-            ]);
-            const contractRows = Array.isArray(contractResponse.data?.items) ? contractResponse.data.items : [];
-            const customerRows = Array.isArray(customerResponse.data?.items) ? customerResponse.data.items : [];
-            const candidateRows = Array.isArray(feeResponse.data?.items) ? feeResponse.data.items : [];
-            setContracts(contractRows);
-            setCustomers(customerRows);
-            setInvoiceCandidateFees(candidateRows);
-            return { contractRows, customerRows, candidateRows };
+    const loadInvoiceReferenceData = async (options: Record<string, any> = {}) => {
+        const { setContracts, setCustomers, setInvoiceCandidateFees, invoiceForm, invoiceEditTarget } = context;
+        const { isCurrent, applyDefaults, ...requestOptions } = options;
+        const current = () => typeof isCurrent !== "function" || isCurrent();
+        const invoiceId = options.invoice_id ?? invoiceEditTarget?.id;
+        const customer = options.customer ?? invoiceForm.getFieldValue("customer");
+        if (!invoiceId && !customer && !options.customer_id) {
+            return { contractRows: [], customerRows: [], candidateRows: [], selectedRows: [], total: 0, page: 1, pageSize: 50 };
         }
-        catch (error: any) {
-            message.error(error?.response?.data?.detail || "合同关联数据加载失败");
-            throw error;
+        const { data } = await api.get("/finance/invoice-context", { params: {
+            ...requestOptions, invoice_id: invoiceId, customer, page: options.page || 1, page_size: Math.min(100, options.page_size || 50),
+        } });
+        const candidateRows: Fee[] = data.items || [];
+        const selectedRows: Fee[] = data.selected_items || [];
+        const allRows = [...candidateRows, ...selectedRows];
+        const contractRows = Array.from(new Map(allRows.filter((row) => row.data?.contract_id).map((row) => [row.data.contract_id, {
+            id: row.data.contract_id, module: "contract", serial_no: row.data.contract_no, title: row.data.contract_name || "",
+            customer: row.customer, status: "", owner: "", data: { external_contract_no: row.data.external_contract_no },
+        }])).values());
+        const customerRows = data.customer_record ? [data.customer_record] : [];
+        const selectedIds: number[] = invoiceForm.getFieldValue("case_fee_ids") || [];
+        if (current()) {
+            setContracts((previous) => current() ? Array.from(new Map([...previous, ...contractRows].map((row) => [row.id, row])).values()) : previous);
+            setCustomers((previous) => current() ? Array.from(new Map([...previous, ...customerRows].map((row: any) => [row.id, row])).values()) : previous);
+            setInvoiceCandidateFees((previous) => current() ? Array.from(new Map([...previous.filter((row) => selectedIds.includes(row.id)), ...allRows].map((row) => [row.id, row])).values()) : previous);
         }
+        return { contractRows, customerRows, candidateRows, selectedRows, customerDefaults: data.customer_defaults,
+            customerRecord: data.customer_record, customerMissing: data.customer_missing_or_forbidden,
+            total: Number(data.total || 0), page: Number(data.page || 1), pageSize: Number(data.page_size || 50) };
     };
-    const createInvoice = async () => {
+    const createInvoice = async (submit = false) => {
         const { invoiceForm, cases, contracts, invoiceCandidateFees, fees, invoiceEditTarget, setInvoiceOpen, setInvoiceEditTarget, load } = context;
         const v = await invoiceForm.validateFields();
         const linked = buildInvoiceApplicationPayload({
             values: v,
             cases,
             contracts,
-            caseFees: invoiceCandidateFees.length ? invoiceCandidateFees : fees,
+            caseFees: context.invoiceFeeOptions,
             requireSource: !invoiceEditTarget,
         });
         if (linked.ok === false) {
@@ -322,21 +330,32 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
             return;
         }
         try {
+            let saved: Fee;
             if (invoiceEditTarget) {
                 const response = await api.patch(`/finance/invoices/${invoiceEditTarget.id}`, linked.payload);
                 const legacyFailure = legacyInvoiceUpdateFailureMessage(response);
                 if (legacyFailure)
                     throw { legacyInvoiceUpdateFailure: legacyFailure };
-                message.success("发票申请草稿已更新");
+                saved = { ...invoiceEditTarget, ...response.data, data: { ...invoiceEditTarget.data, ...linked.payload, ...response.data?.data } };
             }
             else {
-                await api.post("/finance/invoices", linked.payload);
-                message.success("发票申请草稿已创建");
+                const response = await api.post("/finance/invoices", linked.payload);
+                saved = response.data;
             }
+            // Keep the saved identity when submission fails, so retry never creates a second draft.
+            setInvoiceEditTarget(saved);
+            if (submit) {
+                try {
+                    await api.post(`/finance/invoices/${saved.id}/submit`, { comment: "保存并提交发票申请" });
+                } catch (error: any) {
+                    message.error(error?.response?.data?.detail || "原单已保存，提交失败，可在当前页面重试");
+                    return;
+                }
+            }
+            message.success(submit ? "发票申请已保存并提交" : invoiceEditTarget ? "发票申请已更新" : "发票申请草稿已创建");
             setInvoiceOpen(false);
             setInvoiceEditTarget(null);
             invoiceForm.resetFields();
-            await loadInvoiceReferenceData();
             await load();
         }
         catch (error: any) {
