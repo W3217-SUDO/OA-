@@ -1,6 +1,20 @@
 .finance-rule {
   margin-bottom: 15px;
 }
+.finance-receipt-cell {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.finance-receipt-cell .ant-btn-link {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
 .finance-stats {
   display: grid;
   grid-template-columns: repeat(6, 1fr);

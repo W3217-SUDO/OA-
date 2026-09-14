@@ -121,5 +121,25 @@ export function createConfiguredColumns(context: {
             header === "付款包号码" ? (<Button type="link" onClick={() => void context.openPaymentPackageDetail(row)}>
           {context.cellValue(row, header)}
         </Button>) : (context.cellValue(row, header)),
-    }));
+    })).map((column) => {
+        if (context.activeRouteConfig.source !== "incoming") return column;
+        const header = context.activeRouteConfig.headers[Number(column.key.split("-").pop())];
+        if (header === "操作") return { ...column, width: 170 };
+        const widths: Record<string, number> = {
+            客户名称: 200, 客户管理人: 120, 回款单位: 220,
+            合同编号: 180, 银行单号: 180, 备注: 240,
+        };
+        const render = column.render;
+        return {
+            ...column,
+            width: widths[header] || column.width,
+            render: (value: unknown, row: any) => {
+                const fullValue = context.cellValue(row, header);
+                const text = fullValue == null ? "" : String(fullValue);
+                return <span className="finance-receipt-cell" title={text}>
+                    {header === "客户管理人" ? text.split(/[、,，;；]/)[0] : render(value, row)}
+                </span>;
+            },
+        };
+    });
 }

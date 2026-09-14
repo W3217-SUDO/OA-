@@ -1104,7 +1104,7 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
               <Table
                 rowKey="id"
                 size="small"
-                tableLayout={isInvoiceUnissuedRoute ? "fixed" : undefined}
+                tableLayout={isInvoiceUnissuedRoute || activeRouteConfig?.source === "incoming" ? "fixed" : undefined}
                 loading={loading}
                 columns={originalColumns}
                 dataSource={configuredRows}
@@ -1786,7 +1786,9 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
                     : ""
                 }
                 scroll={{
-                  x: activeRouteConfig
+                  x: activeRouteConfig?.source === "incoming"
+                    ? originalColumns.reduce((total, column) => total + Number(column.width || 120), 48)
+                    : activeRouteConfig
                     ? isGeneralSettlementRoute
                       ? 1904
                     : isArchiveSettlementActiveRoute
