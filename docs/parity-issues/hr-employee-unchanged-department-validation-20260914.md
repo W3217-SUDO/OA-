@@ -5,7 +5,7 @@
 - 页面位置：人事中心 -> 员工管理 -> 修改 -> 员工完整资料修改 -> 提成设定 / 保存全部修改
 - 用户现象：只修改人员提成数据，未修改部门，保存时提示“所选部门不存在或已停用”。
 - 截图证据：`codex-clipboard-d4bed71e-2d5b-4e6e-89dc-1b8211d424ec.png`
-- 当前状态：代码整改完成，待发布
+- 当前状态：功能代码已提交并推送 GitHub `dev`，版本 `1.1.121` 已预留，部署待完成
 
 ## 需求确认
 
@@ -34,6 +34,8 @@
 - 前端生产构建：`npm run build` 通过（Vite 5836 modules transformed；仅有既有大分包警告）。
 - 后端编译检查：`python -m py_compile apps/api-server/app/areas/hr/router.py` 通过。
 - 菜单覆盖审计：运行至财务发票既有断言后失败，缺少 `BusinessRecord.module == "invoice", *scope_conditions`；失败位于未改动的财务模块，与本次人事接口补丁无关，未借本次修复扩大整改范围。
-- Git 提交与 GitHub：待完成
+- 功能提交：`01bdc6ab`（`fix(hr): preserve unchanged employee department`）
+- GitHub：功能提交已推送至 `dev`
+- 发布版本：`1.1.121` 已在服务器 `queue.tsv` 预留
 - 8089 部署：待完成
 - 页面业务验收：按用户约定由用户执行
