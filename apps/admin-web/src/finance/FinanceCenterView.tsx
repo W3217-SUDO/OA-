@@ -37,7 +37,6 @@ refundPageSizeOptions,
 refundStatusOptions,
 } from "../financeRefundHelpers.mjs";
 import { FeeReviewDrawer } from "./FeeReviewDrawer";
-import { FeeCommissionEditor } from "./FeeCommissionEditor";
 import { FinanceStatsCards } from "./FinanceStatsCards";
 import { IncomingAllocationModal } from "./IncomingAllocationModal";
 import { LegacyHistoryPanel } from "./LegacyHistoryPanel";
@@ -3970,11 +3969,6 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
           <Form.Item label="说明" name="description">
             <Input.TextArea rows={2} />
           </Form.Item>
-          <FeeCommissionEditor
-            form={feeForm}
-            isAgencyFee={selectedFeeType === "代理费"}
-            people={financePeople.map((person) => ({ value: person.username, label: person.label }))}
-          />
         </Form>
       </Modal>
       <Modal

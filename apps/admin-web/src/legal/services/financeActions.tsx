@@ -369,8 +369,6 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                     expense_scope: expenseScope, fee_type_id: initialTypeId,
                     expense_subtype: initialType?.name,
                     fee_type: initialType?.base_fee_type,
-                    commission_mode: initialType?.base_fee_type === "代理费" ? "automatic" : undefined,
-                    commission_details: [],
                     handler: profile.username || row.owner, court: row.data.court || "", payee: expenseScope === "内部" ? undefined : row.data.court || "",
                     deadline: undefined, description: "",
                 }] });
@@ -427,7 +425,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         }
     };
     const createCaseFee = async () => {
-        const { feeCase, editingFeeRow, viewingCounselCase, feeForm, isInternalCaseFee, setEditingFeeRow, load, openCounselDetail, setCreatedCaseFees, setCaseFeePaymentDrafts, setCaseFeeCreateStep } = context;
+        const { feeCase, editingFeeRow, viewingCounselCase, feeForm, isInternalCaseFee, setEditingFeeRow, load, openCounselDetail, setCreatedCaseFees, setCaseFeePaymentDrafts, setCaseFeeCreateStep, closeCaseFeeCreator } = context;
         const caseSource = feeCase || (editingFeeRow ? viewingCounselCase : null);
         if (!caseSource)
             return;
@@ -439,14 +437,12 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             const commonPayload = { customer: feeCase?.customer || editingFeeRow?.customer || "", case_no: feeCase?.serial_no || editingFeeRow?.data.case_no || "", case_record_id: feeCase?.id || editingFeeRow?.data.case_id };
             if (editingFeeRow) {
                 const { commission_mode, commission_details, ...feePayload } = feeValues;
+                void commission_mode;
+                void commission_details;
                 const payload = {
                     ...feePayload,
                     ...commonPayload,
                     deadline: feeValues.deadline ? formatRequiredDate(feeValues.deadline, "截止日期") : undefined,
-                    ...(feeValues.fee_type === "代理费" ? {
-                        commission_mode: commission_mode === "manual" ? "manual" : "automatic",
-                        commission_details: Array.isArray(commission_details) ? commission_details : [],
-                    } : {}),
                 };
                 const endpoint = isInternalCaseFee(editingFeeRow) ? `/finance/internal-fees/${editingFeeRow.id}` : `/finance/fees/${editingFeeRow.id}`;
                 const { data } = await api.put(endpoint, payload);
@@ -461,28 +457,35 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 const created: CaseRow[] = [];
                 for (const item of feeValues.items || []) {
                     const { commission_mode, commission_details, ...feePayload } = item;
+                    void commission_mode;
+                    void commission_details;
                     const payload = {
                         ...feePayload,
                         ...commonPayload,
                         deadline: item.deadline ? formatRequiredDate(item.deadline, "截止日期") : undefined,
-                        ...(item.fee_type === "代理费" ? {
-                            commission_mode: commission_mode === "manual" ? "manual" : "automatic",
-                            commission_details: Array.isArray(commission_details) ? commission_details : [],
-                        } : {}),
                     };
                     const endpoint = item.expense_scope === "内部" ? "/finance/internal-fees" : "/finance/fees";
                     const { data } = await api.post(endpoint, payload);
                     created.push(data);
                 }
                 message.success(`已创建 ${created.length} 条费用草稿`);
-                setCreatedCaseFees(created);
-                setCaseFeePaymentDrafts(created.map((row) => ({
+                const payable = created.filter((row) => row.data.fee_type !== "代理费");
+                if (!payable.length) {
+                    message.info("代理费已保存；新增提成请先勾选该代理费，再选择“新增案件费用 > 新建提成(选择代理费)”");
+                    closeCaseFeeCreator();
+                    await load();
+                    if (viewingCounselCase)
+                        await openCounselDetail(viewingCounselCase);
+                    return;
+                }
+                setCreatedCaseFees(payable);
+                setCaseFeePaymentDrafts(payable.map((row) => ({
                     payment_remark: "",
                     payment_payee: row.data.expense_scope === "内部" ? String(row.data.payee || row.owner || "") : undefined,
                     payment_account: row.data.expense_scope === "内部" ? String(row.data.payee || row.owner || "") : undefined,
                 })));
-                if (created[0] && created[0].data.expense_scope !== "内部")
-                    await loadCasePaymentTypes(created[0].id);
+                if (payable[0] && payable[0].data.expense_scope !== "内部")
+                    await loadCasePaymentTypes(payable[0].id);
                 setCaseFeeCreateStep(1);
                 await load();
                 if (viewingCounselCase)

@@ -126,6 +126,28 @@ class AgencyFeeEmployeeCommissionRow24Test(unittest.TestCase):
             await engine.dispose()
         asyncio.run(scenario())
 
+    def test_plain_agency_fee_does_not_create_commission_until_dedicated_action(self):
+        async def scenario():
+            engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            session_factory = async_sessionmaker(engine, expire_on_commit=False)
+            async with session_factory() as session:
+                case, _employee, _username = await self._commission_fixture(session)
+                body = FinanceFeeInput(
+                    title="CODEX-812-ROW24-普通代理费",
+                    amount=1000,
+                    fee_type="代理费",
+                    handler="admin",
+                    case_record_id=case.id,
+                )
+                payload = await _finance_fee_commission_payload(body, 1000, session, case_record=case)
+                self.assertEqual(payload["commission_mode"], "manual")
+                self.assertEqual(payload["commission_details"], [])
+                self.assertEqual(payload["commission_missing_messages"], [])
+            await engine.dispose()
+        asyncio.run(scenario())
+
     def test_legacy_manual_update_omitting_mode_and_details_preserves_rows(self):
         async def scenario():
             engine = create_async_engine("sqlite+aiosqlite:///:memory:")

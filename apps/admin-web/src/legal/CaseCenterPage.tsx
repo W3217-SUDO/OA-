@@ -42,7 +42,6 @@ import type { Key } from "react";
 import { useEffect,useMemo,useRef,useState,type ClipboardEvent } from "react";
 import { DEFAULT_AGENT_SKILL } from "../agentSkillRouting";
 import { api } from "../api";
-import { FeeCommissionEditor } from "../finance/FeeCommissionEditor";
 import { rememberBusinessRecordDetailTarget } from "../businessRecordDetailNavigation";
 import "../case-center.css";
 import { caseAssistantDisplayValues } from "../caseAssistantDisplay";
@@ -876,9 +875,11 @@ export default function CaseCenterPage({
   });
   const batchExpenseScope = Form.useWatch("expense_scope", batchFeeForm);
   const feeExpenseScope = Form.useWatch("expense_scope", feeForm);
-  const feeBaseType = Form.useWatch("fee_type", feeForm);
   const selectedPaymentTypeId = Form.useWatch("payment_type_id", paymentRequestForm);
   const feeItems = Form.useWatch("items", feeForm) || [];
+  const agencyOnlyFeeDraft = !editingFeeRow
+    && feeItems.length > 0
+    && feeItems.every((item: any) => item?.fee_type === "代理费");
   const feeEmployeeOptions = caseAssistantOptions;
   const casePaymentTypeSelectOptions = buildCasePaymentTypeSelectOptions(casePaymentTypes);
   const selectedCasePaymentType = casePaymentTypes.find((item) => item.id === selectedPaymentTypeId);
@@ -2286,9 +2287,7 @@ export default function CaseCenterPage({
     const expenseSubtype = normalizeFeeSubtypeForScope(expenseScope, row.data.expense_subtype || "官费");
     const feeTypeId = Number(row.data.fee_type_id) || initialFeeTypeId(feeTypeCatalog, expenseScope, "", expenseSubtype);
     const feeType = feeTypeSelection(feeTypeCatalog, feeTypeId);
-    const commissionDetails = isInternalCaseFee(row) ? [] : Array.isArray(row.data.commission_details) ? row.data.commission_details : [];
-    const commissionMode = row.data.commission_mode === "automatic" ? "automatic" : "manual";
-    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: expenseScope, fee_type_id: feeTypeId, expense_subtype: feeType?.name || expenseSubtype, fee_type: feeType?.base_fee_type || row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", base_amount: row.data.base_amount ?? 0, reference_commission: row.data.reference_commission ?? 0, document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "", commission_mode: feeType?.base_fee_type === "代理费" ? commissionMode : undefined, commission_details: commissionDetails });
+    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: expenseScope, fee_type_id: feeTypeId, expense_subtype: feeType?.name || expenseSubtype, fee_type: feeType?.base_fee_type || row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", base_amount: row.data.base_amount ?? 0, reference_commission: row.data.reference_commission ?? 0, document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "" });
     setEditingFeeRow(row);
   };
 
@@ -3568,7 +3567,6 @@ export default function CaseCenterPage({
               <Form.Item label="金额" name="amount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item name="expense_subtype" hidden><Input /></Form.Item><Form.Item name="fee_type" hidden><Input /></Form.Item><Form.Item label="经办人员" name="handler" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="收款单位" name="payee"><Input /></Form.Item><Form.Item label="缴费法院/机构" name="court"><Input /></Form.Item><Form.Item label="缴费通知文号" name="document_no"><Input /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item>
             </div>
               <Form.Item label="说明" name="description"><Input.TextArea rows={2} /></Form.Item>
-              <FeeCommissionEditor form={feeForm} isAgencyFee={feeBaseType === "代理费"} people={feeEmployeeOptions} caseId={viewingCounselCase?.id} className="case-fee-commission-details" />
           </>}
         </Form>
       </Modal>
@@ -3579,11 +3577,11 @@ export default function CaseCenterPage({
         className="case-fee-create-drawer"
         onClose={closeCaseFeeCreator}
         footer={<Space className="case-fee-drawer-footer">
-          <Button type="primary" loading={caseFeeSubmitting} onClick={() => caseFeeCreateStep === 0 ? void createCaseFee() : void submitCreatedCaseFeePayments()}>{caseFeeCreateStep === 0 ? "下一步" : "申请付款"}</Button>
+          <Button type="primary" loading={caseFeeSubmitting} onClick={() => caseFeeCreateStep === 0 ? void createCaseFee() : void submitCreatedCaseFeePayments()}>{caseFeeCreateStep === 0 ? (agencyOnlyFeeDraft ? "保存" : "下一步") : "申请付款"}</Button>
           <Button onClick={closeCaseFeeCreator}>取消</Button>
         </Space>}
       >
-        <Steps size="small" current={caseFeeCreateStep} items={[{ title: "新增费用" }, { title: "申请付款" }]} />
+        <Steps size="small" current={caseFeeCreateStep} items={agencyOnlyFeeDraft ? [{ title: "新增费用" }] : [{ title: "新增费用" }, { title: "申请付款" }]} />
         {caseFeeCreateStep === 0 ? <>
           <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={activeFeeContractScope === "内部" ? <ol><li>申请付款按照每个案号生成一个申请单。</li><li>点击表格头部可将第一行数据同步到各行。</li><li>基数用于计算提成参考值，实际金额可按业务调整。</li></ol> : <ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>点击表格头部（费用类型、金额、备注、截止日期）可将第一行数据同步到各行。</li><li>截止日期默认为申请之日第5天，如有特殊情况，可在申请时修改。</li></ol>} />
           <Form form={feeForm} component={false}>
@@ -3597,9 +3595,8 @@ export default function CaseCenterPage({
                 <Form.Item name={[field.name, "reference_commission"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入实际金额" }]}><InputNumber precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
-                <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined, commission_mode: undefined, commission_details: [] })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
+                <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
                 <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_subtype"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
-                {feeItems[field.name]?.fee_type === "代理费" && <div style={{ gridColumn: "1 / -1" }}><FeeCommissionEditor form={feeForm} isAgencyFee people={feeEmployeeOptions} watchPrefix={["items", field.name]} fieldPrefix={[field.name]} caseId={feeCase?.id} className="case-fee-commission-details" /></div>}
               </div>)}
             </div> : <div className="case-fee-entry-table">
               <div className="case-fee-entry-head"><span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></div>
@@ -3610,9 +3607,8 @@ export default function CaseCenterPage({
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0.01} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
                 <Form.Item name={[field.name, "deadline"]}><DatePicker /></Form.Item>
-                <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined, commission_mode: undefined, commission_details: [] })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
+                <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
                 <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_subtype"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
-                {feeItems[field.name]?.fee_type === "代理费" && <div style={{ gridColumn: "1 / -1" }}><FeeCommissionEditor form={feeForm} isAgencyFee people={feeEmployeeOptions} watchPrefix={["items", field.name]} fieldPrefix={[field.name]} caseId={feeCase?.id} className="case-fee-commission-details" /></div>}
               </div>)}
             </div>}</Form.List>
           </Form>

@@ -253,18 +253,9 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
     const createFee = async () => {
         const { feeForm, feeEditTarget, closeFeeModal, load } = context;
         const v = await feeForm.validateFields();
-        const payload = String(v.fee_type || "") === "代理费"
-            ? {
-                ...v,
-                commission_mode: v.commission_mode === "manual" ? "manual" : "automatic",
-                commission_details: Array.isArray(v.commission_details) ? v.commission_details : [],
-            }
-            : (() => {
-                const { commission_mode, commission_details, ...feePayload } = v;
-                void commission_mode;
-                void commission_details;
-                return feePayload;
-            })();
+        const { commission_mode, commission_details, ...payload } = v;
+        void commission_mode;
+        void commission_details;
         try {
             feeEditTarget
                 ? await api.put(`/finance/fees/${feeEditTarget.id}`, payload)

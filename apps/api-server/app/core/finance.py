@@ -294,7 +294,9 @@ async def _finance_fee_commission_payload(
         existing_mode = str(existing_data.get("commission_mode") or "").strip()
         mode = existing_mode if existing_mode in {"automatic", "manual"} else "manual"
     else:
-        mode = "manual" if body.commission_details else "automatic"
+        # Creating an agency fee and creating employee commission are separate
+        # legacy workflows. Automatic calculation must be requested explicitly.
+        mode = "manual"
     if mode == "manual":
         if existing_data is not None and "commission_details" not in body.model_fields_set:
             existing_details = existing_data.get("commission_details")
