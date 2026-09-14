@@ -1303,6 +1303,7 @@ async def _invoice_case_fee_rows(
     cases = list(cases_by_key.values())
     cases_by_id = {item.id: item for item in cases}
     cases_by_no = {item.serial_no: item for item in cases}
+    commission_lifecycle_statuses = await _case_commission_lifecycle_statuses(fees, db)
 
     fees_by_case: dict[str, list[BusinessRecord]] = {}
     for item in fees:
@@ -1543,7 +1544,9 @@ async def _invoice_case_fee_rows(
         certificate_no = str(data.get("certificate_no") or data.get("notary_no") or case_data.get("certificate_no") or case_data.get("notary_no") or "")
         court_name = str(data.get("court_name") or data.get("court") or case_data.get("court_name") or case_data.get("first_instance_court") or "")
         paid_org = str(data.get("paid_organization") or data.get("payee") or court_name)
-        display_payment_status = _finance_fee_payment_status(item)
+        display_payment_status = _finance_fee_payment_status(
+            item, commission_lifecycle_statuses.get(item.id),
+        )
         if not contains(data.get("case_no") or (linked_case.serial_no if linked_case else ""), case_no):
             continue
         if not contains(court_no, court_case_no) or not contains(certificate_no, notary_no):
@@ -1579,6 +1582,8 @@ async def _invoice_case_fee_rows(
         if cashed_to and (not cashed_date or cashed_date > cashed_to):
             continue
         result = _record_dict(item, allowed_fields)
+        if item.id in commission_lifecycle_statuses:
+            result["status"] = commission_lifecycle_statuses[item.id]
         result_data = dict(result.get("data") or {})
         plaintiff = "、".join(_case_party_values(case_data, CASE_PLAINTIFF_FIELDS))
         opponent = "、".join(_case_party_values(case_data, CASE_DEFENDANT_FIELDS))
@@ -1977,13 +1982,160 @@ def _internal_fee_payment_status(item: BusinessRecord, paid_amount: float) -> st
     return "未付"
 
 
-def _internal_fee_row(item: BusinessRecord, case_record: BusinessRecord | None, paid_amount: float, allowed_fields: set[str]) -> dict:
+_CASE_COMMISSION_PENDING_STATUSES = {"待结算", "待归档", "待审批"}
+_CASE_COMMISSION_ARCHIVED_CASE_STATUSES = {"已归档", "亏损归档"}
+
+
+def _is_case_agency_fee_commission(item: BusinessRecord) -> bool:
+    data = item.data or {}
+    try:
+        source_fee_id = int(data.get("source_fee_id") or 0)
+    except (TypeError, ValueError):
+        source_fee_id = 0
+    return bool(
+        item.module == "finance"
+        and item.status in _CASE_COMMISSION_PENDING_STATUSES
+        and data.get("fee_type") == "内部费用"
+        and str(data.get("commission_type") or "").strip()
+        and source_fee_id
+        and (data.get("case_id") or str(data.get("case_no") or "").strip())
+    )
+
+
+async def _case_commission_lifecycle_statuses(
+    items: list[BusinessRecord], db: AsyncSession,
+) -> dict[int, str]:
+    """Derive pending automatic commission state from settlement and archive facts."""
+    candidates = [item for item in items if _is_case_agency_fee_commission(item)]
+    if not candidates:
+        return {}
+
+    source_fee_ids = {
+        int((item.data or {}).get("source_fee_id") or 0)
+        for item in candidates
+    }
+    paid_source_fee_ids: set[int] = set()
+    source_ids = sorted(source_fee_ids)
+    for start in range(0, len(source_ids), 50):
+        batch = set(source_ids[start:start + 50])
+        settlements = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "finance_settlement",
+            BusinessRecord.status == "已付款",
+            _invoice_json_fee_condition(BusinessRecord.data, batch),
+        ))).all())
+        for settlement in settlements:
+            for detail in list((settlement.data or {}).get("allocation_details") or []):
+                try:
+                    fee_id = int(detail.get("fee_id") or 0)
+                except (AttributeError, TypeError, ValueError):
+                    continue
+                if fee_id in batch:
+                    paid_source_fee_ids.add(fee_id)
+
+    case_ids = {
+        int((item.data or {}).get("case_id") or 0)
+        for item in candidates if (item.data or {}).get("case_id")
+    }
+    case_nos = {
+        str((item.data or {}).get("case_no") or "").strip()
+        for item in candidates if str((item.data or {}).get("case_no") or "").strip()
+    }
+    case_conditions = []
+    if case_ids:
+        case_conditions.append(BusinessRecord.id.in_(case_ids))
+    if case_nos:
+        case_conditions.append(BusinessRecord.serial_no.in_(case_nos))
+    cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case",
+        or_(*case_conditions),
+    ))).all()) if case_conditions else []
+    cases_by_id = {item.id: item for item in cases}
+    cases_by_no = {item.serial_no: item for item in cases}
+
+    result: dict[int, str] = {}
+    for item in candidates:
+        data = item.data or {}
+        source_fee_id = int(data.get("source_fee_id") or 0)
+        linked_case = cases_by_id.get(int(data.get("case_id") or 0)) or cases_by_no.get(str(data.get("case_no") or ""))
+        if source_fee_id not in paid_source_fee_ids:
+            result[item.id] = "待结算"
+        elif linked_case and linked_case.status in _CASE_COMMISSION_ARCHIVED_CASE_STATUSES:
+            result[item.id] = "待审批"
+        else:
+            result[item.id] = "待归档"
+    return result
+
+
+async def _sync_case_commission_lifecycle(
+    items: list[BusinessRecord], db: AsyncSession, *, operator: str, comment: str = "",
+) -> dict[int, str]:
+    """Persist pending lifecycle transitions while preserving reviewed/payment states."""
+    statuses = await _case_commission_lifecycle_statuses(items, db)
+    action_by_status = {
+        "待结算": "结算状态回退，提成退回待结算",
+        "待归档": "一般结算完成，提成进入待归档",
+        "待审批": "案件归档完成，提成进入待审批",
+    }
+    changed_at = datetime.now().isoformat(timespec="seconds")
+    for item in items:
+        target_status = statuses.get(item.id)
+        if not target_status or item.status == target_status:
+            continue
+        previous_status = item.status
+        data = dict(item.data or {})
+        data["payment_status"] = target_status
+        data["commission_lifecycle_status"] = target_status
+        data["commission_lifecycle_changed_at"] = changed_at
+        data["commission_lifecycle_changed_by"] = operator
+        if target_status == "待审批":
+            data.setdefault("payment_applied_at", changed_at)
+            data.setdefault("payment_applied_by", operator)
+        else:
+            data.pop("payment_applied_at", None)
+            data.pop("payment_applied_by", None)
+        item.status = target_status
+        item.data = data
+        db.add(WorkflowEvent(
+            record_id=item.id,
+            action=action_by_status[target_status],
+            from_status=previous_status,
+            to_status=target_status,
+            operator=operator,
+            comment=comment.strip() or action_by_status[target_status],
+        ))
+    return statuses
+
+
+async def _sync_case_commissions_for_links(
+    db: AsyncSession, *, operator: str, source_fee_ids: set[int] | None = None,
+    case_ids: set[int] | None = None, comment: str = "",
+) -> list[BusinessRecord]:
+    """Load and synchronize pending automatic commissions touched by a workflow event."""
+    conditions = []
+    if source_fee_ids:
+        conditions.append(BusinessRecord.data["source_fee_id"].as_integer().in_(source_fee_ids))
+    if case_ids:
+        conditions.append(BusinessRecord.data["case_id"].as_integer().in_(case_ids))
+    if not conditions:
+        return []
+    items = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance",
+        BusinessRecord.status.in_(_CASE_COMMISSION_PENDING_STATUSES),
+        or_(*conditions),
+    ).with_for_update())).all())
+    await _sync_case_commission_lifecycle(items, db, operator=operator, comment=comment)
+    return items
+
+
+def _internal_fee_row(item: BusinessRecord, case_record: BusinessRecord | None, paid_amount: float, allowed_fields: set[str], lifecycle_status: str | None = None) -> dict:
     from app.core.system import (
         _record_dict,
     )
     data = item.data or {}
     case_data = (case_record.data or {}) if case_record else {}
     result = _record_dict(item, allowed_fields)
+    if lifecycle_status:
+        result["status"] = lifecycle_status
     visible_data = dict(result.get("data") or {})
     enriched = {
         **visible_data,
@@ -2054,6 +2206,7 @@ async def _internal_fee_rows(
     selected_stages = {value.strip() for value in case_stages.split(",") if value.strip()}
     selected_types = {value.strip() for value in fee_types.split(",") if value.strip()}
     personal_names = {str(identity.get("username", "")).strip(), str(identity.get("display_name", "")).strip()} - {""}
+    lifecycle_statuses = await _case_commission_lifecycle_statuses(fees, db)
 
     def contains(value: object, needle: str) -> bool:
         return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
@@ -2062,7 +2215,10 @@ async def _internal_fee_rows(
     for item in fees:
         data = item.data or {}
         linked_case = cases_by_id.get(int(data.get("case_id") or 0)) or cases_by_no.get(str(data.get("case_no") or ""))
-        row = _internal_fee_row(item, linked_case, paid_by_fee.get(item.id, 0.0), allowed_fields)
+        row = _internal_fee_row(
+            item, linked_case, paid_by_fee.get(item.id, 0.0), allowed_fields,
+            lifecycle_statuses.get(item.id),
+        )
         row_data = row["data"]
         paid_dates = list(paid_dates_by_fee.get(item.id, []))
         stored_paid_date = str(data.get("paid_date") or data.get("payment_date") or "").strip()
@@ -2931,6 +3087,20 @@ async def _finance_payment_type_for_fee(fee_id: int, identity: dict, db: AsyncSe
 async def _review_finance_fee_records(items: list[BusinessRecord], approved: bool, comment: str, identity: dict, db: AsyncSession) -> None:
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有费用审批权限")
+    lifecycle_statuses = await _case_commission_lifecycle_statuses(items, db)
+    blocked = [
+        f"{item.serial_no}（{lifecycle_statuses[item.id]}）"
+        for item in items
+        if lifecycle_statuses.get(item.id) in {"待结算", "待归档"}
+    ]
+    if blocked:
+        raise HTTPException(
+            status_code=409,
+            detail="自动提成须完成一般结算并通过案件归档审核后才能审批：" + "、".join(blocked),
+        )
+    await _sync_case_commission_lifecycle(
+        items, db, operator=identity["username"], comment="审批前同步自动提成生命周期",
+    )
     invalid = [item.serial_no for item in items if item.status != "待审批"]
     if invalid:
         raise HTTPException(status_code=409, detail="仅待审批费用可以审核：" + "、".join(invalid))
@@ -2953,12 +3123,14 @@ async def _review_finance_fee_records(items: list[BusinessRecord], approved: boo
         db.add(WorkflowEvent(record_id=item.id, action=action, from_status="待审批", to_status=target_status, operator=identity["username"], comment=normalized_comment))
 
 
-def _finance_fee_payment_status(item: BusinessRecord) -> str:
+def _finance_fee_payment_status(item: BusinessRecord, lifecycle_status: str | None = None) -> str:
     """Project one authoritative fee lifecycle into the legacy payment tabs."""
     data = item.data or {}
     if str(data.get("writeoff_status") or "").strip() == "待核销":
         return "待核销"
-    lifecycle_status = {
+    lifecycle_status = lifecycle_status or {
+        "待结算": "待结算",
+        "待归档": "待归档",
         "待审批": "待审批",
         "已审批": "待付款",
         "部分付款": "待付款",

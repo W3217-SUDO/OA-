@@ -3906,6 +3906,9 @@ async def review_general_settlement_applications(body: FinanceSettlementReviewIn
 
 @router.post(f"{settings.api_prefix}/finance/general-settlements/applications/payment")
 async def pay_or_rollback_general_settlement_applications(body: FinanceSettlementPaymentInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance import (
+        _sync_case_commissions_for_links,
+    )
     from app.core.permissions import (
         _settlement_application_scope,
     )
@@ -3973,6 +3976,18 @@ async def pay_or_rollback_general_settlement_applications(body: FinanceSettlemen
             operator=identity["username"],
             comment=comment,
         ))
+    source_fee_ids = {
+        int(detail.get("fee_id") or 0)
+        for record in records
+        for detail in list((record.data or {}).get("allocation_details") or [])
+        if isinstance(detail, dict) and str(detail.get("fee_id") or "").isdigit()
+    } - {0}
+    await _sync_case_commissions_for_links(
+        db,
+        operator=identity["username"],
+        source_fee_ids=source_fee_ids,
+        comment="一般结算已付款" if body.action == "paid" else "一般结算付款回退",
+    )
     await db.commit()
     return {
         "processed": len(records),
@@ -4070,66 +4085,27 @@ async def delete_general_settlement_application(application_id: int, identity: d
 
 @router.get(f"{settings.api_prefix}/finance/settlements/pending")
 async def list_pending_finance_settlements(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """Return paid internal fees enriched with their case and bank-receipt context."""
-    from app.core.permissions import (
-        _record_dict_for_identity, _record_scope_conditions,
+    """Return only automatic commissions whose real lifecycle is pending settlement."""
+    from app.core.finance import (
+        _internal_fee_rows,
     )
-    from app.core.system import (
-        _allowed_field_keys,
+    rows = await _internal_fee_rows(
+        identity, db, scope="company", case_no="", handling_lawyer="",
+        assistant="", source_person="", customer="", customer_manager="",
+        investigator="", payment_status="", paid_from=None, paid_to=None,
+        payee="", case_stages="", fee_types="",
     )
-    fees = (await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "finance",
-        BusinessRecord.status == "已付款",
-        *(await _record_scope_conditions(identity, db)),
-    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all()
-    fees = [item for item in fees if (item.data or {}).get("fee_type") == "内部费用" and not (item.data or {}).get("commission_paid")]
-    case_ids = {int((item.data or {}).get("case_id") or 0) for item in fees if (item.data or {}).get("case_id")}
-    case_nos = {str((item.data or {}).get("case_no") or "") for item in fees if (item.data or {}).get("case_no")}
-    cases = (await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "case",
-        or_(BusinessRecord.id.in_(case_ids), BusinessRecord.serial_no.in_(case_nos)),
-        *(await _record_scope_conditions(identity, db)),
-    ))).all() if case_ids or case_nos else []
-    cases_by_id = {item.id: item for item in cases}
-    cases_by_no = {item.serial_no: item for item in cases}
-    payments = (await db.scalars(select(IncomingPayment).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all()
-    if identity.get("role") not in {"admin", "auditor"}:
-        visible_customers = {item.customer for item in cases}
-        payments = [item for item in payments if item.operator == identity["username"] or item.claimant == identity["username"] or item.claimed_customer in visible_customers]
-    can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
-    rows = []
-    for fee in fees:
-        fee_data = fee.data or {}
-        case = cases_by_id.get(int(fee_data.get("case_id") or 0)) or cases_by_no.get(str(fee_data.get("case_no") or ""))
-        case_data = (case.data or {}) if case else {}
-        receipt_matches: list[tuple[IncomingPayment, dict]] = []
-        for payment in payments:
-            for allocation in payment.allocations or []:
-                if (case and int(allocation.get("case_id") or 0) == case.id) or (fee_data.get("case_no") and allocation.get("case_no") == fee_data.get("case_no")):
-                    receipt_matches.append((payment, allocation))
-        receipt_amount = sum(float(allocation.get("amount") or 0) for _, allocation in receipt_matches)
-        latest_payment = receipt_matches[0][0] if receipt_matches else None
-        record = await _record_dict_for_identity(fee, identity, db)
-        record["data"] = {
-            **record.get("data", {}),
-            "case_id": case.id if case else fee_data.get("case_id"),
-            "case_no": case.serial_no if case else fee_data.get("case_no", ""),
-            "plaintiff": case_data.get("plaintiff", ""),
-            "defendant": case_data.get("defendant") or case_data.get("opponent", ""),
-            "court_case_no": case_data.get("court_case_no", ""),
-            "certificate_no": case_data.get("certificate_no", ""),
-            "case_stage": case_data.get("case_stage") or case.status if case else "",
-            "case_source": case_data.get("case_source") or case_data.get("source_person", ""),
-            "hearing_lawyer": case_data.get("hearing_lawyer", ""),
-            "assistant": case_data.get("assistant") or case_data.get("lawyer_assistant", ""),
-            "investigator": case_data.get("investigator", ""),
-            "quality_manager": case_data.get("quality_manager") or case_data.get("quality_control", ""),
-            "receipt_amount": receipt_amount if can_view_amount else None,
-            "receipt_date": str(latest_payment.received_date) if latest_payment else "",
-            "payee": latest_payment.payer_name if latest_payment else fee_data.get("payee", ""),
-            "settlement_status": fee.status,
+    rows = [
+        row for row in rows
+        if row.get("status") == "待结算"
+        and (row.get("data") or {}).get("source_fee_id")
+        and str((row.get("data") or {}).get("commission_type") or "").strip()
+    ]
+    for row in rows:
+        row["data"] = {
+            **(row.get("data") or {}),
+            "settlement_status": "待结算",
         }
-        rows.append(record)
     return {"items": rows, "total": len(rows)}
 
 

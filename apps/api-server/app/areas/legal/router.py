@@ -853,7 +853,7 @@ async def create_case_commissions(
         _case_commission_preview,
     )
     from app.core.finance import (
-        _new_internal_payment_package_no, _round_fee_amount,
+        _new_internal_payment_package_no, _round_fee_amount, _sync_case_commission_lifecycle,
     )
     from app.core.permissions import (
         _record_dict_for_identity,
@@ -889,7 +889,7 @@ async def create_case_commissions(
         record = BusinessRecord(
             module="finance", serial_no=serial,
             title=f"{case_record.serial_no} {template['commission_type']}",
-            customer=case_record.customer, status="待审批",
+            customer=case_record.customer, status="待结算",
             owner=template["employee_username"] or identity["username"],
             department=actor.department, description=remark,
             data={
@@ -908,18 +908,22 @@ async def create_case_commissions(
                 "source_fee_amount": preview["source_fee"]["amount"],
                 "payment_application_no": application_no,
                 "payment_requested_amount": amount,
-                "payment_status": "待审批",
-                "payment_applied_at": applied_at,
-                "payment_applied_by": identity["username"],
+                "payment_status": "待结算",
+                "commission_lifecycle": "case_agency_fee",
+                "commission_created_at": applied_at,
+                "commission_created_by": identity["username"],
             },
         )
         db.add(record); await db.flush()
         db.add(WorkflowEvent(
-            record_id=record.id, action="提交提成付款申请", to_status="待审批",
+            record_id=record.id, action="创建案件提成", to_status="待结算",
             operator=identity["username"],
             comment=f"{application_no}｜{template['employee_display_name']}｜{template['commission_type']}｜{amount:.2f} 元｜来源 {source_fee.serial_no}",
         ))
         created.append(record)
+    await _sync_case_commission_lifecycle(
+        created, db, operator=identity["username"], comment="根据来源代理费结算及案件归档事实初始化提成状态",
+    )
     await db.commit()
     for record in created:
         await db.refresh(record)
@@ -4627,6 +4631,9 @@ async def _apply_case_archive_review(case_id: int, body: ArchiveReviewInput, ide
     from app.core.legacy_sync import (
         _sync_legacy_case,
     )
+    from app.core.finance import (
+        _sync_case_commissions_for_links,
+    )
     from app.core.permissions import (
         _ensure_record_module, _require_case_action,
     )
@@ -4725,6 +4732,12 @@ async def _apply_case_archive_review(case_id: int, body: ArchiveReviewInput, ide
             case_record.data = {**data, "archive_reviewer": identity["username"], "archive_reviewed_at": reviewed_at.isoformat(timespec="seconds"), "archive_reject_reason": body.comment.strip()}
             action = "归档审核驳回"
     db.add(WorkflowEvent(record_id=case_record.id, action=action, from_status=previous, to_status=case_record.status, operator=identity["username"], comment=body.comment))
+    await _sync_case_commissions_for_links(
+        db,
+        operator=identity["username"],
+        case_ids={case_record.id},
+        comment=action,
+    )
     await _sync_legacy_case(case_record, identity, db)
     return case_record
 
@@ -4755,6 +4768,9 @@ async def request_case_unarchive(case_id: int, body: CaseUnarchiveRequestInput, 
 
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/unarchive/review")
 async def review_case_unarchive(case_id: int, body: CaseUnarchiveReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance import (
+        _sync_case_commissions_for_links,
+    )
     from app.core.permissions import (
         _ensure_record_module,
     )
@@ -4786,6 +4802,13 @@ async def review_case_unarchive(case_id: int, body: CaseUnarchiveReviewInput, id
         case_record.data = {**data, "unarchive_request": reviewed}
         action = "解档审批驳回"
     db.add(WorkflowEvent(record_id=case_record.id, action=action, from_status=previous, to_status=case_record.status, operator=identity["username"], comment=body.comment))
+    if body.approved:
+        await _sync_case_commissions_for_links(
+            db,
+            operator=identity["username"],
+            case_ids={case_record.id},
+            comment=action,
+        )
     await db.commit(); await db.refresh(case_record)
     return _record_dict(case_record)
 

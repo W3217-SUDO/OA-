@@ -556,7 +556,9 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                 api.get("/finance/reconciliations"),
                 api.get("/finance/summary"),
                 api.get("/auth/me"),
-                api.get("/finance/settlements/pending"),
+                initialView === "finance-internal-settle"
+                    ? api.get("/finance/settlements/pending")
+                    : Promise.resolve({ data: { items: [], total: 0 } }),
                 api.get("/finance/fees/refund-review-candidates"),
                 api.get("/finance/payment-packages", {
                     params: paymentPackageRequestParams(initialView, initialView === "finance-internal-writeoff"

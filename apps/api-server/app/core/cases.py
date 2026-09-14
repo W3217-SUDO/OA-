@@ -85,6 +85,9 @@ def _dashboard_case_hearing(case_record: BusinessRecord, today: date, cutoff: da
 
 async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) -> dict[str, bool]:
     """Calculate archive readiness from persisted business facts, never client checkboxes."""
+    from app.core.finance import (
+        _is_case_agency_fee_commission,
+    )
     from app.core.documents import (
         _sync_case_document_readiness,
     )
@@ -96,7 +99,10 @@ async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) ->
     related_rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module.in_({"finance", "invoice", "refund"})))).all()
 
     related = [item for item in related_rows if _record_links_to_case(item, case_record)]
-    fees = [item for item in related if item.module == "finance"]
+    fees = [
+        item for item in related
+        if item.module == "finance" and not _is_case_agency_fee_commission(item)
+    ]
     invoices = [item for item in related if item.module == "invoice"]
     refunds = [item for item in related if item.module == "refund"]
     fee_terminal = {"已付款", "已核销", "已对账", "已作废", "已撤销", "不缴费"}

@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 import httpx
 from sqlalchemy import func, select
@@ -13,6 +14,7 @@ from app.security import current_identity
 
 
 API = settings.api_prefix
+REPO_ROOT = Path(__file__).resolve().parents[2]
 IDENTITY = {
     "username": "row12-admin",
     "role": "admin",
@@ -22,6 +24,23 @@ IDENTITY = {
 
 
 class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
+    def test_pending_settlement_page_uses_commission_source_and_columns(self):
+        route_config = (REPO_ROOT / "apps/admin-web/src/finance/config/routeConfigs.tsx").read_text(encoding="utf-8")
+        queries = (REPO_ROOT / "apps/admin-web/src/finance/services/queriesActions.tsx").read_text(encoding="utf-8")
+        page = (REPO_ROOT / "apps/admin-web/src/finance/FinanceCenterPage.tsx").read_text(encoding="utf-8")
+        view = (REPO_ROOT / "apps/admin-web/src/finance/FinanceCenterView.tsx").read_text(encoding="utf-8")
+
+        settle_config = route_config.split('"finance-internal-settle": {', 1)[1].split("},", 1)[0]
+        for header in ("提成编号", "状态", "提成金额", "案件编号", "提成人", "来源代理费编号"):
+            self.assertIn(f'"{header}"', settle_config)
+        for unrelated_header in ("回款单位", "到账金额", "到账时间"):
+            self.assertNotIn(f'"{unrelated_header}"', settle_config)
+        self.assertIn('initialView === "finance-internal-settle"', queries)
+        self.assertIn('api.get("/finance/settlements/pending")', queries)
+        self.assertIn("提成编号: row.serial_no", page)
+        self.assertIn("来源代理费编号: data.source_fee_no", page)
+        self.assertNotIn("markCommissionPaid", view)
+
     async def asyncSetUp(self):
         self.engine = create_async_engine(
             "sqlite+aiosqlite://",
@@ -133,6 +152,23 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides.clear()
         app.dependency_overrides.update(self.previous)
         await self.engine.dispose()
+
+    async def _create_one_commission(self) -> dict:
+        preview = (await self.client.get(
+            f"{API}/cases/{self.case_id}/commission-preview",
+            params={"source_fee_id": self.fee_id},
+        )).json()
+        selected = preview["items"][0]
+        response = await self.client.post(f"{API}/cases/{self.case_id}/commissions", json={
+            "source_fee_id": self.fee_id,
+            "items": [{
+                "preview_key": selected["preview_key"],
+                "actual_amount": selected["actual_amount"],
+                "remark": "生命周期测试",
+            }],
+        })
+        self.assertEqual(response.status_code, 201, response.text)
+        return response.json()["items"][0]
 
     async def test_preview_uses_selected_fee_case_people_and_commission_settings(self):
         response = await self.client.get(
@@ -246,13 +282,14 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((rows_by_type[selected[0]["commission_type"]].data or {}).get("base_amount"), 8000)
             self.assertEqual((rows_by_type[selected[0]["commission_type"]].data or {}).get("reference_commission"), 400)
             self.assertEqual((rows_by_type[selected[1]["commission_type"]].data or {}).get("base_amount"), 8400)
-            self.assertTrue(all(row.status == "待审批" for row in rows))
-            self.assertTrue(all((row.data or {}).get("payment_status") == "待审批" for row in rows))
+            self.assertTrue(all(row.status == "待结算" for row in rows))
+            self.assertTrue(all((row.data or {}).get("payment_status") == "待结算" for row in rows))
             self.assertTrue(all((row.data or {}).get("payment_application_no") == result["application_no"] for row in rows))
             self.assertTrue(all((row.data or {}).get("payment_requested_amount") == (row.data or {}).get("amount") for row in rows))
+            self.assertTrue(all(not (row.data or {}).get("payment_applied_at") for row in rows))
             events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id.in_([row.id for row in rows])))).all())
             self.assertEqual(len(events), 2)
-            self.assertTrue(all(event.action == "提交提成付款申请" and event.to_status == "待审批" for event in events))
+            self.assertTrue(all(event.action == "创建案件提成" and event.to_status == "待结算" for event in events))
             before = await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == "finance"))
         failed = await self.client.post(f"{API}/cases/{self.case_id}/commissions", json={
             "source_fee_id": self.fee_id,
@@ -265,6 +302,164 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             after = await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == "finance"))
         self.assertEqual(after, before)
+
+    async def test_commission_lifecycle_requires_paid_settlement_and_archive(self):
+        created = await self._create_one_commission()
+        commission_id = created["id"]
+
+        async with self.sessions() as db:
+            commission = await db.get(BusinessRecord, commission_id)
+            commission.status = "待审批"
+            commission.data = {**(commission.data or {}), "payment_status": "待审批"}
+            await db.commit()
+
+        projected = await self.client.get(f"{API}/finance/fees/query", params={"page_size": 200})
+        self.assertEqual(projected.status_code, 200, projected.text)
+        projected_row = next(item for item in projected.json()["items"] if item["id"] == commission_id)
+        self.assertEqual(projected_row["status"], "待结算")
+        self.assertEqual(projected_row["data"]["payment_status"], "待结算")
+
+        pending = await self.client.get(f"{API}/finance/settlements/pending")
+        self.assertEqual(pending.status_code, 200, pending.text)
+        pending_rows = [item for item in pending.json()["items"] if item["id"] == commission_id]
+        self.assertEqual(len(pending_rows), 1)
+        self.assertEqual(pending_rows[0]["status"], "待结算")
+        self.assertEqual(pending_rows[0]["data"]["settlement_status"], "待结算")
+
+        blocked = await self.client.post(
+            f"{API}/finance/fees/{commission_id}/review",
+            json={"approved": True, "comment": "错误提前审批"},
+        )
+        self.assertEqual(blocked.status_code, 409, blocked.text)
+        self.assertIn("待结算", blocked.text)
+
+        async with self.sessions() as db:
+            settlement = BusinessRecord(
+                module="finance_settlement", serial_no="CODEX-831-R12-SETTLEMENT",
+                title="第12行一般结算", customer="第12行客户", status="待付款",
+                owner=IDENTITY["username"], department=IDENTITY["department"],
+                data={"allocation_details": [{"fee_id": self.fee_id, "case_id": self.case_id}]},
+            )
+            db.add(settlement)
+            await db.commit()
+            settlement_id = settlement.id
+
+        paid = await self.client.post(
+            f"{API}/finance/general-settlements/applications/payment",
+            json={"application_ids": [settlement_id], "action": "paid", "comment": "一般结算完成"},
+        )
+        self.assertEqual(paid.status_code, 200, paid.text)
+        async with self.sessions() as db:
+            commission = await db.get(BusinessRecord, commission_id)
+            self.assertEqual(commission.status, "待归档")
+            self.assertEqual((commission.data or {}).get("payment_status"), "待归档")
+
+        pending = await self.client.get(f"{API}/finance/settlements/pending")
+        self.assertEqual(pending.status_code, 200, pending.text)
+        self.assertNotIn(commission_id, [item["id"] for item in pending.json()["items"]])
+
+        blocked = await self.client.post(
+            f"{API}/finance/fees/{commission_id}/review",
+            json={"approved": True, "comment": "归档前审批"},
+        )
+        self.assertEqual(blocked.status_code, 409, blocked.text)
+        self.assertIn("待归档", blocked.text)
+
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.status = "亏损审核"
+            case.data = {**(case.data or {}), "archive_type": "deficit", "archive_submitter": ""}
+            await db.commit()
+        archived = await self.client.post(
+            f"{API}/cases/{self.case_id}/archive/review",
+            json={"approved": True, "comment": "同意归档"},
+        )
+        self.assertEqual(archived.status_code, 200, archived.text)
+        async with self.sessions() as db:
+            commission = await db.get(BusinessRecord, commission_id)
+            self.assertEqual(commission.status, "待审批")
+            self.assertEqual((commission.data or {}).get("payment_status"), "待审批")
+
+            case = await db.get(BusinessRecord, self.case_id)
+            case.status = "已归档"
+            case.data = {
+                **(case.data or {}),
+                "status_before_archive": "执行",
+                "unarchive_request": {"status": "待审批", "requested_by": "other-user"},
+            }
+            await db.commit()
+        unarchived = await self.client.post(
+            f"{API}/cases/{self.case_id}/unarchive/review",
+            json={"approved": True, "comment": "同意解档"},
+        )
+        self.assertEqual(unarchived.status_code, 200, unarchived.text)
+        async with self.sessions() as db:
+            commission = await db.get(BusinessRecord, commission_id)
+            self.assertEqual(commission.status, "待归档")
+
+            case = await db.get(BusinessRecord, self.case_id)
+            case.status = "亏损审核"
+            case.data = {**(case.data or {}), "archive_type": "deficit", "archive_submitter": ""}
+            await db.commit()
+        archived_again = await self.client.post(
+            f"{API}/cases/{self.case_id}/archive/review",
+            json={"approved": True, "comment": "再次归档"},
+        )
+        self.assertEqual(archived_again.status_code, 200, archived_again.text)
+        reviewed = await self.client.post(
+            f"{API}/finance/fees/{commission_id}/review",
+            json={"approved": True, "comment": "归档后审批"},
+        )
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        self.assertEqual(reviewed.json()["status"], "已审批")
+
+        async with self.sessions() as db:
+            settlement = await db.get(BusinessRecord, settlement_id)
+            settlement.status = "已付款"
+            case = await db.get(BusinessRecord, self.case_id)
+            case.status = "已归档"
+            case.data = {
+                **(case.data or {}),
+                "status_before_archive": "执行",
+                "unarchive_request": {"status": "待审批", "requested_by": "other-user"},
+            }
+            await db.commit()
+        preserved = await self.client.post(
+            f"{API}/cases/{self.case_id}/unarchive/review",
+            json={"approved": True, "comment": "审批后解档"},
+        )
+        self.assertEqual(preserved.status_code, 200, preserved.text)
+        async with self.sessions() as db:
+            commission = await db.get(BusinessRecord, commission_id)
+            self.assertEqual(commission.status, "已审批")
+
+    async def test_paid_settlement_rollback_returns_unreviewed_commission_to_pending_settlement(self):
+        created = await self._create_one_commission()
+        commission_id = created["id"]
+        async with self.sessions() as db:
+            settlement = BusinessRecord(
+                module="finance_settlement", serial_no="CODEX-831-R12-ROLLBACK",
+                title="第12行一般结算回退", customer="第12行客户", status="已付款",
+                owner=IDENTITY["username"], department=IDENTITY["department"],
+                data={"allocation_details": [{"fee_id": self.fee_id, "case_id": self.case_id}]},
+            )
+            db.add(settlement)
+            await db.flush()
+            commission = await db.get(BusinessRecord, commission_id)
+            commission.status = "待归档"
+            commission.data = {**(commission.data or {}), "payment_status": "待归档"}
+            await db.commit()
+            settlement_id = settlement.id
+
+        rolled_back = await self.client.post(
+            f"{API}/finance/general-settlements/applications/payment",
+            json={"application_ids": [settlement_id], "action": "rollback", "comment": "付款回退"},
+        )
+        self.assertEqual(rolled_back.status_code, 200, rolled_back.text)
+        async with self.sessions() as db:
+            commission = await db.get(BusinessRecord, commission_id)
+            self.assertEqual(commission.status, "待结算")
+            self.assertEqual((commission.data or {}).get("payment_status"), "待结算")
 
     async def test_unlinked_participant_reports_each_missing_legacy_commission_setting(self):
         async with self.sessions() as db:

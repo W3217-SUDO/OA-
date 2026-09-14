@@ -179,7 +179,6 @@ export interface FinanceCenterViewProps {
   exportFeeQuery: (selectedOnly: boolean) => Promise<void>;
   exportGeneralSettlement: (kind: "settlement" | "receipt" | "case", ids?: (string | number)[]) => Promise<void>;
   exportPendingArchiveSettlements: () => Promise<void>;
-  markCommissionPaid: () => void;
   runSettlementMoreAction: (key: string) => void;
   openBatchFeeReview: () => void;
   openCaseTaskCreate: (detail: any) => void;
@@ -636,7 +635,6 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
     exportFeeQuery,
     exportGeneralSettlement,
     exportPendingArchiveSettlements,
-    markCommissionPaid,
     runSettlementMoreAction,
     openBatchFeeReview,
     openCaseTaskCreate,
@@ -2485,7 +2483,6 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
                         更多操作 ▾
                       </Button>
                     </Dropdown>
-                    <Button onClick={markCommissionPaid}>标识提成已发</Button>
                   </Space>
                 ) : isRefundCaseFeeRoute ? (
                   <Space size={7} wrap>

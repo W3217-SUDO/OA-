@@ -3174,6 +3174,7 @@ export default function FinanceCenterPage({
       请款单号: row.serial_no,
       请票单号: row.serial_no,
       费用编号: row.serial_no,
+      提成编号: row.serial_no,
       状态:
         initialView === "finance-internal-payment"
           ? paymentStatus(row)
@@ -3223,6 +3224,7 @@ export default function FinanceCenterPage({
       法院名称: data.court_name,
       案件名称:
         (isInternalApprovalRoute ||
+        initialView === "finance-internal-settle" ||
         [
           "finance-internal-refused",
           "finance-internal-void",
@@ -3241,6 +3243,7 @@ export default function FinanceCenterPage({
         linkedCaseData.opponent,
       申请人: financePersonDisplayName(data.applicant || row.owner, data.applicant_display_name || row.owner_display_name),
       申请日期: (data.application_date || row.created_at || "").slice?.(0, 10),
+      生成日期: (data.commission_created_at || row.created_at || "").slice?.(0, 10),
       提交人: financePersonDisplayName(
         data.archive_payment_submitted_by || data.submitted_by || row.owner,
         data.archive_payment_submitter_display_name || data.submitted_by_display_name || row.owner_display_name,
@@ -3272,6 +3275,11 @@ export default function FinanceCenterPage({
       付款单据号: data.invoice_no || data.writeoff_voucher_no,
       申请金额: data.amount,
       金额: data.amount ?? row.amount,
+      提成金额: data.amount ?? row.amount,
+      提成人: financePersonDisplayName(
+        data.payee || row.owner,
+        data.payee_display_name || row.owner_display_name,
+      ),
       归档时间: data.archive_date || data.audited_time,
       申请时间: (
         data.application_date ||
@@ -3314,6 +3322,7 @@ export default function FinanceCenterPage({
       收款人: data.payee || tx?.counterparty,
       收款单位: data.paid_organization || data.payee || tx?.counterparty,
       提成类型: data.commission_type || row.title || data.fee_type,
+      来源代理费编号: data.source_fee_no,
       基数: data.commission_base ?? data.base_amount ?? 0,
       参考提成: data.reference_commission ?? data.base_commission ?? 0,
       实际提成: data.actual_commission ?? data.amount,
@@ -3455,7 +3464,7 @@ export default function FinanceCenterPage({
   );
   const activeRouteConfig = routeConfigs[initialView];
   const settlementColumnWidths = [
-    86, 129, 172, 69, 129, 69, 86, 69, 69, 69, 69, 69, 69, 69,
+    170, 90, 110, 110, 170, 120, 220, 130, 160, 140, 180,
   ];
   const generalSettlementColumnWidths = [
     88, 212, 176, 264, 141, 106, 106, 106, 106, 106, 106, 106, 106, 106,
@@ -4114,38 +4123,6 @@ export default function FinanceCenterPage({
   const selectedSettlementRows = configuredRows.filter((row) =>
     selectedOriginalRows.includes(row.id),
   );
-  const markCommissionPaid = () => {
-    if (!selectedSettlementRows.length) {
-      Modal.info({
-        title: "提示",
-        content: "请选择案件费用。",
-        okText: "确定",
-      });
-      return;
-    }
-    Modal.confirm({
-      title: "标识提成已发",
-      content: `确认将已选 ${selectedSettlementRows.length} 条案件费用标识为提成已发？`,
-      okText: "确定",
-      cancelText: "取消",
-      onOk: async () => {
-        try {
-          const { data } = await api.post(
-            "/finance/settlements/mark-commission-paid",
-            {
-              fee_ids: selectedSettlementRows.map((row) => row.id),
-              comment: "待结算列表批量标识",
-            },
-          );
-          message.success(`已标识 ${data.marked} 条案件费用`);
-          setSelectedOriginalRows([]);
-          await load();
-        } catch (error: any) {
-          message.error(error?.response?.data?.detail || "标识失败");
-        }
-      },
-    });
-  };
   const selectedSettlementCases = (notify = true) => {
     if (!selectedSettlementRows.length) {
       if (notify) message.warning(isInvoiceUnissuedRoute ? "请选择案件." : "请先选择案件费用");
@@ -5080,7 +5057,6 @@ export default function FinanceCenterPage({
     exportFeeQuery,
     exportGeneralSettlement,
     exportPendingArchiveSettlements,
-    markCommissionPaid,
     runSettlementMoreAction,
     openBatchFeeReview,
     openCaseTaskCreate,
