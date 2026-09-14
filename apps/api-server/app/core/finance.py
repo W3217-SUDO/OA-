@@ -2220,6 +2220,11 @@ async def _internal_fee_rows(
             lifecycle_statuses.get(item.id),
         )
         row_data = row["data"]
+        if scope == "applications":
+            if str(row_data.get("applicant") or "").strip() not in personal_names:
+                continue
+            # The application list displays lifecycle status, unlike payee details.
+            row_data["payment_status"] = row["status"]
         paid_dates = list(paid_dates_by_fee.get(item.id, []))
         stored_paid_date = str(data.get("paid_date") or data.get("payment_date") or "").strip()
         if stored_paid_date:

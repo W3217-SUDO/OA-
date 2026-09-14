@@ -1719,7 +1719,7 @@ async def complete_litigation_refund(refund_id: int, body: RefundCompleteInput, 
 
 @router.get(f"{settings.api_prefix}/finance/internal-fees")
 async def list_internal_fees(
-    scope: str = Query("company", pattern="^(mine|company)$"),
+    scope: str = Query("company", pattern="^(mine|company|applications)$"),
     case_no: str = "", handling_lawyer: str = "", assistant: str = "", source_person: str = "",
     customer: str = "", customer_manager: str = "", investigator: str = "", payment_status: str = Query("", pattern="^(|已付|未付)$"),
     paid_from: date | None = None, paid_to: date | None = None, payee: str = "", case_stages: str = "", fee_types: str = "",
@@ -1740,7 +1740,7 @@ async def list_internal_fees(
 
 @router.get(f"{settings.api_prefix}/finance/internal-fees/export")
 async def export_internal_fees(
-    scope: str = Query("company", pattern="^(mine|company)$"), ids: str = "",
+    scope: str = Query("company", pattern="^(mine|company|applications)$"), ids: str = "",
     case_no: str = "", handling_lawyer: str = "", assistant: str = "", source_person: str = "",
     customer: str = "", customer_manager: str = "", investigator: str = "", payment_status: str = Query("", pattern="^(|已付|未付)$"),
     paid_from: date | None = None, paid_to: date | None = None, payee: str = "", case_stages: str = "", fee_types: str = "",

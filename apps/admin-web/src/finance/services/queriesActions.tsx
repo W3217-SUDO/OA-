@@ -9,6 +9,23 @@ import { internalFeeExportRequestParams } from "../../financeInternalFeeHelpers.
 import { normalizeRefundResponse } from "../../financeRefundHelpers.mjs";
 import { invoiceLegacyDefaultPageSize, normalizePaymentPackageResponse, paymentPackageRequestParams } from "../constants";
 import type { ContractPaymentSourceState, Fee, FinancePersonOption, IncomingPayment, LegacyFinanceRecord, LegacyFinanceSummary, Receivable, Reconciliation, Transaction } from "../types";
+
+async function loadMyInternalApplications() {
+    const items: Fee[] = [];
+    let page = 1;
+    let total = 0;
+    do {
+        const response = await api.get("/finance/internal-fees", {
+            params: { scope: "applications", page, page_size: 200 },
+        });
+        const batch: Fee[] = response.data.items;
+        items.push(...batch);
+        total = Number(response.data.total || 0);
+        if (!batch.length) break;
+        page += 1;
+    } while (items.length < total);
+    return { data: { items, total: items.length, page: 1, page_size: items.length || 15 } };
+}
 type OriginalFieldSpec = {
     label: string;
     key?: string;
@@ -526,6 +543,8 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             const [feeRes, contractPaymentRes, invoiceRes, refundRes, caseRes, customerRes, receivableRes, incomingRes, txRes, recRes, sumRes, profileRes, settlementRes, refundReviewRes, paymentPackageRes, internalDetailRes, invoiceMineRes, invoicePendingRes, invoiceCompanyRes, invoiceUnissuedRes, generalSettlementRes, archiveSettlementRes, feeQueryRes, peopleRes,] = await Promise.all([
                 initialView === "finance-payment-query"
                     ? loadPaymentQueryPage({}, 1, paymentQueryPageSize)
+                    : initialView === "finance-internal-mine"
+                        ? loadMyInternalApplications()
                     : api.get("/records", { params: { module: "finance", page_size: 100 } }),
                 initialView === "finance-payment-query"
                     ? Promise.resolve({

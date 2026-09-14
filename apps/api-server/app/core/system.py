@@ -28,6 +28,10 @@ def _record_dict(record: BusinessRecord, allowed_fields: set[str] | None = None)
         _customer_contact_dict, _customer_guid,
     )
     data = dict(record.data or {})
+    if record.module == "finance" and data.get("fee_type") == "内部费用":
+        data["applicant"] = next((str(data.get(key) or "").strip() for key in (
+            "applicant", "payment_applied_by", "commission_created_by", "handler",
+        ) if str(data.get(key) or "").strip()), record.owner or "")
     if record.module == "customer":
         data["contacts"] = [_customer_contact_dict(item) for item in list(data.get("contacts") or [])]
     if allowed_fields is not None:

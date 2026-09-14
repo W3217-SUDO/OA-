@@ -577,6 +577,15 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         customer_menu_scope = and_(BusinessRecord.module == "customer", BusinessRecord.department == user.department)
 
     def include_customer_menu_scope(condition):
+        internal_applicant = func.coalesce(*[
+            func.nullif(func.trim(BusinessRecord.data[key].as_string()), "")
+            for key in ("applicant", "payment_applied_by", "commission_created_by", "handler")
+        ], BusinessRecord.owner)
+        condition = or_(condition, and_(
+            BusinessRecord.module == "finance",
+            BusinessRecord.data["fee_type"].as_string() == "内部费用",
+            internal_applicant.in_([user.username, user.display_name] if user.display_name else [user.username]),
+        ))
         return or_(condition, customer_menu_scope) if customer_menu_scope is not None else condition
 
     if scope == "本部门数据":

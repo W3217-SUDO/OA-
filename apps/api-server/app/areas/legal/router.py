@@ -912,6 +912,8 @@ async def create_case_commissions(
                 "commission_lifecycle": "case_agency_fee",
                 "commission_created_at": applied_at,
                 "commission_created_by": identity["username"],
+                "applicant": identity["username"],
+                "application_date": applied_at[:10],
             },
         )
         db.add(record); await db.flush()
