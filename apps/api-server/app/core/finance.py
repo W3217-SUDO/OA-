@@ -377,7 +377,7 @@ async def _active_contract_payment_fee_reservations(
         return {}
     conditions = [
         BusinessRecord.module == "contract_payment",
-        BusinessRecord.status.in_(["待审批", "待付款", "已付款", "已核销"]),
+        BusinessRecord.status.in_(["待审批", "待付款", "待核销", "已付款", "已核销"]),
     ]
     if contract:
         conditions.append(or_(
@@ -595,7 +595,7 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
     active_records = [
         record for record in (await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "contract_payment",
-            BusinessRecord.status.in_(["待审批", "待付款", "已付款", "已核销"]),
+            BusinessRecord.status.in_(["待审批", "待付款", "待核销", "已付款", "已核销"]),
             or_(
                 BusinessRecord.data["contract_id"].as_integer() == contract.id,
                 BusinessRecord.data["contract_record_id"].as_integer() == contract.id,
@@ -2189,7 +2189,11 @@ async def _internal_fee_rows(
     fees = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", *scope_conditions).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     fees = [item for item in fees if (item.data or {}).get("fee_type") == "内部费用" and item.status != "已删除"]
     if ids is not None:
-        fees = [item for item in fees if item.id in ids]
+        def application_key(item):
+            data = item.data or {}
+            return (data.get("payment_application_no"), data.get("case_no"), data.get("source_fee_id"), data.get("applicant") or data.get("commission_created_by") or data.get("handler") or item.owner)
+        keys = {application_key(item) for item in fees if item.id in ids and (item.data or {}).get("payment_application_no")} if scope == "applications" else set()
+        fees = [item for item in fees if item.id in ids or application_key(item) in keys]
     case_records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *scope_conditions))).all())
     cases_by_id = {item.id: item for item in case_records}
     cases_by_no = {item.serial_no: item for item in case_records}
@@ -2257,6 +2261,9 @@ async def _internal_fee_rows(
         if selected_types and str(row_data.get("internal_fee_type") or "") not in selected_types:
             continue
         rows.append(row)
+    if scope == "applications":
+        from app.core.finance_batch_parity import group_commission_applications
+        return group_commission_applications(rows)
     return rows
 
 

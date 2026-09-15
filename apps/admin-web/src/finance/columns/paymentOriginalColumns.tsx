@@ -1,4 +1,4 @@
-import { Button } from "antd";
+import { Button, Dropdown } from "antd";
 import { money } from "../constants";
 import type { Fee, Transaction } from "../types";
 export function createPaymentOriginalColumns(context: {
@@ -8,16 +8,23 @@ export function createPaymentOriginalColumns(context: {
     readonly openContractDetail: (contractNo: unknown) => Promise<void>;
     readonly latestTransaction: (fee: Fee) => Transaction;
     readonly financePersonDisplayName: (identity: unknown, displayName?: unknown) => string;
+    readonly openPaymentDetail?: (row: Fee) => Promise<void>;
+    readonly openPaymentRollback?: (row: Fee) => void;
+    readonly canRollback?: boolean;
 }) {
+    const wrap = (row: Fee, content: React.ReactNode) => <Dropdown trigger={["contextMenu"]} menu={{items: [
+        {key:"view", label:"查看", onClick: () => void context.openPaymentDetail?.(row)},
+        ...(context.canRollback && ["已审批", "待付款"].includes(row.status) ? [{key:"rollback", label:"回滚", onClick: () => context.openPaymentRollback?.(row)}] : []),
+    ]}}><span style={{display:"inline-block", minWidth:20}}>{content}</span></Dropdown>;
     return [
         {
             title: "操作",
             key: "action",
             fixed: "left" as const,
             width: 150,
-            render: context.originalOperation,
+            render: (_: unknown, row: Fee) => wrap(row, context.originalOperation(_, row)),
         },
-        { title: "请款单号", dataIndex: "serial_no", width: 165 },
+        { title: "请款单号", dataIndex: "serial_no", width: 165, render: (value: string, row: Fee) => wrap(row, <Button type="link" onClick={() => void context.openPaymentDetail?.(row)}>{value}</Button>) },
         {
             title: "状态",
             width: 95,

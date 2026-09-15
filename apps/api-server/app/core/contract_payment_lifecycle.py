@@ -10,7 +10,7 @@ from app.models_shared import ContractPaymentApplicationInput, ContractPaymentLi
 
 
 EDITABLE_STATUSES = {"草稿", "待提交", "创建待提交", "已驳回", "已退回"}
-ACTIVE_STATUSES = {"待审批", "待付款", "已付款", "已核销"}
+ACTIVE_STATUSES = {"待审批", "待付款", "待核销", "已付款", "已核销"}
 
 
 async def lock_contract(contract_id, identity, db):

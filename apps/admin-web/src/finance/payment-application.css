@@ -1,0 +1,12 @@
+.payment-application-page { padding: 16px; background: white; }
+.payment-print-document { max-width: 1200px; margin: 16px auto; }
+.payment-print-document h2 { text-align: center; }
+.payment-print-total { padding: 16px 8px; border: 1px solid #ddd; }
+.payment-print-total span { float: right; }
+.payment-print-signatures { display: flex; justify-content: space-between; margin: 40px 10px; }
+@media print {
+  body:has(.payment-application-page) * { visibility: hidden; }
+  .payment-print-document, .payment-print-document * { visibility: visible; }
+  .payment-print-document { position: absolute; left: 0; top: 0; width: 100%; max-width: none; margin: 0; }
+  .payment-screen-actions { display: none; }
+}

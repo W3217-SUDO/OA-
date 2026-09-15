@@ -2168,8 +2168,8 @@ export default function FinanceCenterPage({
   const originalOperation = (_: unknown, row: Fee) => (
     initialView === "finance-payment-print" ? (
       <Space size={0}>
-        {row.status === "已付款" && (
-          <Button type="link" onClick={() => void printPayment(row)}>
+        {["待核销", "已付款"].includes(paymentStatus(row)) && (
+          <Button type="link" onClick={() => void openPaymentDetail({...row, data: {...row.data, _open_print: true}})}>
             打印
           </Button>
         )}
@@ -2222,19 +2222,21 @@ export default function FinanceCenterPage({
         <Button type="link" onClick={() => void openPaymentDetail(row)}>
           查看
         </Button>
-        {latestTransaction(row) && (
-          <Button type="link" onClick={() => void printPayment(row)}>
+        {["admin", "manager", "auditor"].includes(role) && (
+          <Button type="link" onClick={() => void openPaymentDetail({...row, data: {...row.data, _open_print: true}})}>
             打印
           </Button>
         )}
+        {["admin", "manager", "auditor"].includes(role) && <Button type="link" onClick={() => openPaymentRollback(row)}>回滚</Button>}
       </Space>
     ) : <Space size={0}>
       {initialView === "finance-payment-writeoff" &&
-        row.status === "已付款" &&
+        ["已付款", "待核销"].includes(row.status) &&
         row.data.writeoff_status !== "已核销" && (
           <Button
             type="link"
             onClick={() => {
+              if (row.status === "待核销") { void openPaymentDetail(row); return; }
               writeoffForm.resetFields();
               setWriteoffTarget(row);
             }}
@@ -2519,6 +2521,7 @@ export default function FinanceCenterPage({
       </Button>
     ) : null;
   const paymentOriginalColumns = createPaymentOriginalColumns({
+    openPaymentDetail, openPaymentRollback, canRollback: ["admin", "manager", "auditor"].includes(role),
     get originalOperation() { return originalOperation; },
     get paymentStatus() { return paymentStatus; },
     get openCaseDetail() { return openCaseDetail; },

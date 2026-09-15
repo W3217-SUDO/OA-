@@ -2013,6 +2013,7 @@ class IncomingPaymentSettlementItem(BaseModel):
 
 
 class IncomingPaymentAllocationItem(BaseModel):
+    is_refund: bool = False
     receivable_plan_id: int | None = None
     fee_record_id: int | None = None
     amount: float = Field(gt=0)

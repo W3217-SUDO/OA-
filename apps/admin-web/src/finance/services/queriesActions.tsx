@@ -923,7 +923,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             try {
                 const response = await api.get("/finance/internal-fees/export", {
                     params: internalFeeExportRequestParams({
-                        scope: initialView === "finance-internal-mine" ? "mine" : "company",
+                        scope: initialView === "finance-internal-mine" ? "applications" : "company",
                         query: originalQuery,
                         ids: selectedOnly ? selectedOriginalRows.map(Number) : [],
                         initialView,

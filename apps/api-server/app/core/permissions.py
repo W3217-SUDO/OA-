@@ -1077,7 +1077,7 @@ async def _ensure_contract_object_not_reserved(item: ContractObject, db: AsyncSe
         .where(
             ContractPaymentLine.contract_object_id == item.id,
             BusinessRecord.module == "contract_payment",
-            BusinessRecord.status.in_(["待审批", "待付款", "已付款", "已核销"]),
+            BusinessRecord.status.in_(["待审批", "待付款", "待核销", "已付款", "已核销"]),
         )
         .limit(1)
     )

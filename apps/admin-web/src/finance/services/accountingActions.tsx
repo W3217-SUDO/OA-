@@ -127,6 +127,7 @@ export function createFinanceAccountingActions(context: FinanceAccountingDepende
         const allocations = selected.map((row) => ({
             receivable_plan_id: row.receivable_plan_id,
             fee_record_id: row.fee_record_id || undefined,
+            is_refund: Boolean((row as any).is_refund),
             amount: Number(allocationAmounts[row.key] || 0),
             case_no: row.case_no || "",
             settlement_items: [{

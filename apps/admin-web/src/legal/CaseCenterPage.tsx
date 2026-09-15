@@ -1,3 +1,4 @@
+import { CommissionPerson } from "./CommissionPerson";
 import {
 CloseOutlined,
 CommentOutlined,
@@ -3733,7 +3734,7 @@ export default function CaseCenterPage({
               options={(caseCommissionPreview?.items || []).map((item) => ({ value: item.preview_key, label: item.commission_type }))}
               onChange={(value) => selectCaseCommissionTemplate(row.client_key, value)}
             /> },
-            { title: "支付对象", dataIndex: "employee_display_name", width: 92, render: (value) => <Tag color="cyan" closable={false}>{value}</Tag> },
+            { title: "支付对象", dataIndex: "employee_display_name", width: 92, render: (_, row) => <CommissionPerson row={row} /> },
             { title: <Button type="link" className="case-commission-sync-head" onClick={() => syncFirstCommissionField("base_amount")}>基数</Button>, width: 62, render: (_, row) => <InputNumber
               min={0.01}
               precision={2}

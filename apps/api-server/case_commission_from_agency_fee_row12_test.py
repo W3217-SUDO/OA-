@@ -182,6 +182,8 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows["开庭提成"]["employee_display_name"], "开庭律师甲")
         self.assertEqual(rows["开庭提成"]["base_amount"], 8400)
         self.assertEqual(rows["开庭提成"]["reference_commission"], 420)
+        self.assertEqual(len(rows["开庭提成"]["scheme_details"]), 5)
+        self.assertTrue(all({"role", "rate", "fixed"} <= set(item) for item in rows["开庭提成"]["scheme_details"]))
         self.assertEqual(rows["案源固定提成"]["reference_commission"], 300)
         self.assertEqual(rows["调查提成"]["reference_commission"], 840)
         self.assertTrue(any("律师助理乙" in message and "文书" in message for message in data["missing_messages"]))

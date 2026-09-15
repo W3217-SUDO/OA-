@@ -31,6 +31,7 @@ from app.models_shared import (
 from fastapi import APIRouter
 
 router = APIRouter()
+from app.areas.finance.payment_workflow import router as payment_workflow_router
 
 
 @router.put(f"{settings.api_prefix}/finance/fees/{{fee_id}}")
@@ -2530,6 +2531,9 @@ async def incoming_payment_allocation_candidates(payment_id: int, identity: dict
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
     for fee_record in fees:
         fee_data = fee_record.data or {}
+        from app.core.finance_batch_parity import is_internal_fee
+        if is_internal_fee(fee_data):
+            continue
         fee_contract_id = int(fee_data.get("contract_id") or fee_data.get("contract_record_id") or 0)
         fee_contract_no = str(fee_data.get("contract_no") or "").strip()
         fee_case_id = int(fee_data.get("case_id") or fee_data.get("case_record_id") or 0)
@@ -2552,6 +2556,13 @@ async def incoming_payment_allocation_candidates(payment_id: int, identity: dict
                 contract = next((item for item in contracts if item.serial_no == case_contract_no), None)
         if contract is None or not _record_belongs_to_customer(fee_record, claimed_customer_record, item.claimed_customer):
             continue
+        refund_remaining = _round_fee_amount(max(0, float(fee_data.get("refund_amount") or fee_data.get("refund_requested_amount") or 0) - float(fee_data.get("refunded_amount") or 0)))
+        if "法院" in item.payer_name and refund_remaining > 0 and str(fee_data.get("fee_type")) in {"官方费用", "官费"}:
+            rows.append({"key": f"refund:{fee_record.id}", "is_refund": True, "fee_record_id": fee_record.id,
+                         "receivable_plan_id": None, "contract_id": contract.id, "contract_no": contract.serial_no,
+                         "case_no": fee_case_no, "case_title": fee_record.title, "case_stage": fee_data.get("case_stage", ""),
+                         "fee_type": "法院退费", "total_amount": float(fee_data.get("refund_amount") or fee_data.get("refund_requested_amount") or 0),
+                         "received_amount": float(fee_data.get("refunded_amount") or 0), "remaining_amount": refund_remaining})
         if fee_data.get("receivable_plan_id") and int(fee_data["receivable_plan_id"]) in plan_ids:
             continue
         total_amount = _round_fee_amount(float(fee_data.get("amount") or 0))
@@ -2626,6 +2637,8 @@ async def _revert_incoming_allocation(allocation: dict, db: AsyncSession, *, pay
     fee = await db.get(BusinessRecord, int(allocation.get("fee_record_id") or 0))
     if fee and fee.module == "finance":
         fee_data = dict(fee.data or {})
+        if allocation.get("is_refund") is True:
+            fee_data["refunded_amount"] = max(_round_fee_amount(float(fee_data.get("refunded_amount") or 0) - amount), 0)
         current_received = float(fee_data.get("received_amount") or fee_data.get("cashed_amount") or 0)
         remaining_received = max(_round_fee_amount(current_received - amount), 0)
         fee_data["received_amount"] = remaining_received
@@ -2696,6 +2709,9 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
     ))
     total = _round_fee_amount(sum(entry.amount for entry in body.allocations)); remaining_payment = _round_fee_amount(item.amount - item.allocated_amount)
     if total > remaining_payment + 0.001: raise HTTPException(status_code=409, detail=f"分配金额超过到账未分配余额 {remaining_payment:.2f} 元")
+    if any(entry.is_refund for entry in body.allocations):
+        from app.core.finance_batch_parity import allocate_court_refund
+        return await allocate_court_refund(item, body, claimed_customer_record, identity, db)
     prepared: list[tuple[IncomingPaymentAllocationItem, ReceivablePlan, BusinessRecord, BusinessRecord | None, BusinessRecord | None, list[dict]]] = []
     plan_totals: dict[int, float] = {}
     fee_totals: dict[int, float] = {}
@@ -2706,6 +2722,9 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
                 raise HTTPException(status_code=422, detail="结算费用明细金额之和必须等于本次分配金额")
         plan = await db.get(ReceivablePlan, entry.receivable_plan_id) if entry.receivable_plan_id else None
         fee_record = await _ensure_record_module(entry.fee_record_id, "finance", identity, db) if entry.fee_record_id else None
+        from app.core.finance_batch_parity import is_internal_fee
+        if fee_record and is_internal_fee(fee_record.data or {}):
+            raise HTTPException(status_code=422, detail="内部费用不能分配回款")
         if not plan and not fee_record:
             raise HTTPException(status_code=422, detail="分配项目必须关联应收计划或案件费用")
         if plan:
@@ -5476,3 +5495,6 @@ async def invoice_application_context(
         "customer_defaults": _invoice_customer_defaults(customer_result, customer),
         "customer_missing_or_forbidden": bool(customer and customer_result is None),
     }
+
+
+router.include_router(payment_workflow_router)

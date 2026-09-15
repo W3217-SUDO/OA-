@@ -625,6 +625,8 @@ async def _case_commission_preview_for_amount(
                 missing.append(f"{display_name}（{role['label']}）：无覆盖案件日期 {case_date} 的有效提成方案")
                 continue
             scheme = dict(scheme_record.data or {}) if scheme_record else {}
+            scheme_details = [{"role": rule["label"], "rate": float(scheme.get(rule["rate_field"]) or 0),
+                               "fixed": float(scheme.get(rule["fixed_field"]) or 0)} for rule in CASE_COMMISSION_ROLES]
             rate = float(scheme.get(role["rate_field"]) or 0)
             fixed = float(scheme.get(role["fixed_field"]) or 0)
             if rate <= 0 and fixed <= 0:
@@ -641,6 +643,7 @@ async def _case_commission_preview_for_amount(
                     "reference_commission": amount, "actual_amount": amount, "remark": "",
                     "calculation_source": "case_commission_scheme", "calculation_kind": "rate",
                     "scheme_id": scheme_record.id if scheme_record else None,
+                    "scheme_details": scheme_details,
                     "scheme_start_date": str(scheme.get("start_date") or ""),
                     "scheme_end_date": str(scheme.get("end_date") or ""),
                 })
@@ -655,6 +658,7 @@ async def _case_commission_preview_for_amount(
                     "reference_commission": amount, "actual_amount": amount, "remark": "",
                     "calculation_source": "case_commission_scheme", "calculation_kind": "fixed",
                     "scheme_id": scheme_record.id if scheme_record else None,
+                    "scheme_details": scheme_details,
                     "scheme_start_date": str(scheme.get("start_date") or ""),
                     "scheme_end_date": str(scheme.get("end_date") or ""),
                 })

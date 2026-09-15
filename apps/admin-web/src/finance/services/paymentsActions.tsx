@@ -174,12 +174,16 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
     const openPaymentDetail = async (row: Fee) => {
         const { setFeeDetail } = context;
         try {
+            if (row.data?.application_items) {
+                setFeeDetail(row);
+                return;
+            }
             const { data } = await api.get(`/records/${row.id}`);
             if (!data || !["finance", "contract_payment"].includes(data.module)) {
                 throw new Error("请款单详情记录无效");
             }
             const packageNo = String(data.data?.payment_package_no || data.data?.package_no || "").trim();
-            let detail = data;
+            let detail = {...data, data: {...data.data, _open_print: row.data?._open_print}};
             if (packageNo) {
                 try {
                     const packageResponse = await api.get("/records", {
@@ -212,7 +216,8 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
                     };
                 }
             }
-            setFeeDetail(detail);
+            if (detail.data?.payment_package_context?.data?.fee_type === "普通付款包") detail = detail.data.payment_package_context;
+            setFeeDetail({...detail, data: {...detail.data, _open_print: row.data?._open_print}});
         }
         catch (error: any) {
             message.error(error?.response?.data?.detail ||

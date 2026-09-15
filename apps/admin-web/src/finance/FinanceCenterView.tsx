@@ -1,4 +1,5 @@
 import { InvoiceApplicationPage } from "./InvoiceApplicationPage";
+import { PaymentApplicationPage } from "./PaymentApplicationPage";
 import {
 DeleteOutlined,
 DownloadOutlined,
@@ -942,8 +943,19 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
     contracts,
   } = props;
 
+  if (paymentPackageWriteoffTarget) {
+    return <PaymentApplicationPage key={paymentPackageWriteoffTarget.id} record={paymentPackageWriteoffTarget} canPay={["admin", "manager", "auditor"].includes(role)} onClose={() => setPaymentPackageWriteoffTarget(null)} onChange={load} />;
+  }
+  if (feeDetail && !isInternalHistoryList && (feeDetail.data?.application_items || initialView.startsWith("finance-payment-") && (feeDetail.module === "contract_payment" || feeDetail.data?.expense_scope !== "内部" && feeDetail.data?.fee_type !== "内部费用"))) {
+    return <PaymentApplicationPage key={feeDetail.id} record={feeDetail} canPay={["admin", "manager", "auditor"].includes(role)} onClose={() => setFeeDetail(null)} onChange={load} />;
+  }
   return (
     <>
+      {initialView === "finance-payment-waiting" && <Button style={{margin:8}} onClick={() => {
+        const rows = configuredRows.filter((item: any) => selectedOriginalRows.includes(item.id));
+        if (!rows.length) return message.warning("请选择待付款申请");
+        setFeeDetail({...rows[0], data:{...rows[0].data, _open_print:true, _batch_ids:rows.map((item: any) => item.id), amount:rows.reduce((sum: number,item: any)=>sum+Number(item.data.amount || 0),0), items:rows.map((item: any)=>({...item.data,id:item.id,request_no:item.serial_no}))}});
+      }}>合并打印</Button>}
       {contractPaymentEditPage || (invoiceOpen ? <InvoiceApplicationPage form={invoiceForm} target={invoiceEditTarget} fees={invoiceFeeOptions}
         selectedIds={invoiceSelectedFeeIds} onSelect={applyInvoiceFeeSelection} onSave={createInvoice}
         loadReference={loadInvoiceReferenceData}
