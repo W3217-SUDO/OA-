@@ -1,5 +1,6 @@
 import { InvoiceApplicationPage } from "./InvoiceApplicationPage";
 import { PaymentApplicationPage } from "./PaymentApplicationPage";
+import { api } from "../api";
 import {
 DeleteOutlined,
 DownloadOutlined,
@@ -944,17 +945,22 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
   } = props;
 
   if (paymentPackageWriteoffTarget) {
-    return <PaymentApplicationPage key={paymentPackageWriteoffTarget.id} record={paymentPackageWriteoffTarget} canPay={["admin", "manager", "auditor"].includes(role)} onClose={() => setPaymentPackageWriteoffTarget(null)} onChange={load} />;
+    return <PaymentApplicationPage key={paymentPackageWriteoffTarget.id} record={paymentPackageWriteoffTarget} canPay={["admin", "manager", "auditor"].includes(role)} onClose={() => setPaymentPackageWriteoffTarget(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
   }
   if (feeDetail && !isInternalHistoryList && (feeDetail.data?.application_items || initialView.startsWith("finance-payment-") && (feeDetail.module === "contract_payment" || feeDetail.data?.expense_scope !== "内部" && feeDetail.data?.fee_type !== "内部费用"))) {
-    return <PaymentApplicationPage key={feeDetail.id} record={feeDetail} canPay={["admin", "manager", "auditor"].includes(role)} onClose={() => setFeeDetail(null)} onChange={load} />;
+    return <PaymentApplicationPage key={feeDetail.id} record={feeDetail} canPay={["admin", "manager", "auditor"].includes(role)} onClose={() => setFeeDetail(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
   }
   return (
     <>
-      {initialView === "finance-payment-waiting" && <Button style={{margin:8}} onClick={() => {
+      {initialView === "finance-payment-waiting" && <Button style={{margin:8}} onClick={async () => {
         const rows = configuredRows.filter((item: any) => selectedOriginalRows.includes(item.id));
         if (!rows.length) return message.warning("请选择待付款申请");
-        setFeeDetail({...rows[0], data:{...rows[0].data, _open_print:true, _batch_ids:rows.map((item: any) => item.id), amount:rows.reduce((sum: number,item: any)=>sum+Number(item.data.amount || 0),0), items:rows.map((item: any)=>({...item.data,id:item.id,request_no:item.serial_no}))}});
+        try {
+          const documents = await Promise.all(rows.map((item:any)=>api.get(`/finance/payment-workflow/${item.id}/document`)));
+          const first = documents[0].data;
+          setFeeDetail({...first, data:{...first.data, _open_print:true, _batch_ids:rows.map((item:any)=>item.id), amount:rows.reduce((sum:number,item:any)=>sum+Number(item.data.amount || 0),0), document_groups:documents.flatMap(result=>result.data.data.document_groups)}});
+        } catch(error:any) {message.error(error?.response?.data?.detail || "付款申请单加载失败");}
+
       }}>合并打印</Button>}
       {contractPaymentEditPage || (invoiceOpen ? <InvoiceApplicationPage form={invoiceForm} target={invoiceEditTarget} fees={invoiceFeeOptions}
         selectedIds={invoiceSelectedFeeIds} onSelect={applyInvoiceFeeSelection} onSave={createInvoice}

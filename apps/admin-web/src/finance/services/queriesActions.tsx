@@ -545,6 +545,8 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     ? loadPaymentQueryPage({}, 1, paymentQueryPageSize)
                     : initialView === "finance-internal-mine"
                         ? loadMyInternalApplications()
+                    : ["finance-payment-waiting", "finance-payment-print", "finance-payment-writeoff"].includes(initialView)
+                        ? api.get("/finance/payment-workflow/list", {params:{stage:initialView.replace("finance-payment-", "")}})
                     : api.get("/records", { params: { module: "finance", page_size: 100 } }),
                 initialView === "finance-payment-query"
                     ? Promise.resolve({

@@ -2734,9 +2734,7 @@ def main() -> None:
     print("FINANCE_INTERNAL_MINE_OK: original filters, 11 headers, view action and 15-row paging")
     settlement_contract = [
         'api.get("/finance/settlements/pending")',
-        '"/finance/settlements/mark-commission-paid"',
         'finance-original-internal-settle',
-        'markCommissionPaid',
         'settlementColumnWidths',
         '"official-fee"',
         '"agency-fee"',
@@ -2751,7 +2749,10 @@ def main() -> None:
     ]
     missing_settlement = [token for token in settlement_contract if token not in FINANCE]
     assert not missing_settlement, f"internal settlement list lost original-page contract: {missing_settlement}"
-    print("FINANCE_INTERNAL_SETTLE_OK: 9 filters, 14 headers, enriched pending API, real mark-paid action and 15-row paging")
+    # v1.1.126 removed the shortcut: settlement and archive facts gate commission approval.
+    assert 'markCommissionPaid' not in FINANCE, "pending commissions must not bypass settlement/archive gates"
+    assert 'item.status != "已付款"' in FINANCE_ROUTER, "legacy mark-paid endpoint must require paid fees"
+    print("FINANCE_INTERNAL_SETTLE_OK: pending list retained; obsolete mark-paid shortcut absent and legacy endpoint gated")
     archive_contract = [
         '"finance-internal-archive": "内部提成-待归档"',
         'finance-original-internal-approval',
@@ -3171,7 +3172,7 @@ def main() -> None:
         'routeField6: "未开票"',
         'routeField12: ["律师代理费"]',
         'invoiceUnissuedColumnWidths',
-        'tableLayout={isInvoiceUnissuedRoute ? "fixed" : undefined}',
+        'tableLayout={isInvoiceUnissuedRoute || activeRouteConfig?.source === "incoming" ? "fixed" : undefined}',
         '更多操作',
     ]
     missing_invoice_unissued = [token for token in invoice_unissued_contract if token not in FINANCE]
@@ -3195,7 +3196,9 @@ def main() -> None:
         'if scope == "mine":',
         'fee_conditions.append(BusinessRecord.owner == identity["username"])',
         'BusinessRecord.module == "finance"',
-        'BusinessRecord.module == "invoice", *scope_conditions',
+        'BusinessRecord.module == "invoice", *related_invoice_conditions',
+        '*(scope_conditions if ids is None else [])',
+        'visible_invoice_ids = set(',
         'has_issued_invoice = any(invoice.status == "已开票" for invoice, _ in linked_invoices)',
         '"invoice_record_id": latest_invoice.id if latest_invoice else None',
         'filename = f"{\'公司未开票\' if scope == \'company\' else \'未开票\'}-{date.today()}.xls"',

@@ -159,6 +159,49 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code,409,response.text)
         self.assertEqual(list(Path(self.temp.name).rglob('*')),[])
 
+    async def test_workflow_list_and_document_follow_single_package(self):
+        submitted=await self.client.post(f'{API}/finance/payment-workflow/{self.fee_id}/submit')
+        self.assertEqual(submitted.status_code,200,submitted.text)
+        package_id=submitted.json()['id']
+        self.assertNotEqual(package_id,self.fee_id)
+        pending=await self.client.get(f'{API}/finance/payment-workflow/list',params={'stage':'writeoff'})
+        self.assertEqual([r['id'] for r in pending.json()['items']],[package_id])
+        waiting=await self.client.get(f'{API}/finance/payment-workflow/list',params={'stage':'waiting'})
+        self.assertNotIn(self.fee_id,[r['id'] for r in waiting.json()['items']])
+        doc=await self.client.get(f'{API}/finance/payment-workflow/{package_id}/document')
+        self.assertEqual(doc.status_code,200,doc.text)
+        group=doc.json()['data']['document_groups'][0]
+        self.assertEqual(group['contract_name'],'CODEX-0915-contract')
+        self.assertEqual(group['items'][0]['case_name'],'CODEX-0915-case')
+        self.assertEqual(group['items'][0]['current_payment'],100)
+
+    async def test_case_allocation_scope_rejects_non_case_and_other_domain(self):
+        async with self.sessions() as db:
+            fee=await db.get(BusinessRecord,self.fee_id)
+            a=self.record('finance','no-case',{**fee.data,'case_id':None,'case_no':''})
+            b=self.record('finance','archive-domain',{**fee.data,'expense_scope':'归档'})
+            db.add_all([a,b]);await db.commit();ids=[a.id,b.id]
+        path=f'{API}/finance/incoming-payments/{self.receipt_id}'
+        res=await self.client.get(path+'/allocation-candidates',params={'case_fees_only':True})
+        self.assertEqual(res.status_code,200,res.text)
+        self.assertFalse(set(ids)&{x.get('fee_record_id') for x in res.json()['items']})
+        for record_id in ids:
+            res=await self.client.post(path+'/allocate',json={'case_fees_only':True,'allocations':[{'fee_record_id':record_id,'amount':1}]})
+            self.assertEqual(res.status_code,422,res.text)
+
+    async def test_filtered_application_still_has_all_person_lines(self):
+        async with self.sessions() as db:
+            for index,(kind,amount) in enumerate([('开庭提成',20),('调查提成',5)]):
+                db.add(self.record('finance',f'filter-{index}',{'fee_type':'内部费用','expense_scope':'内部','amount':amount,
+                    'commission_type':kind,'payment_application_no':'CODEX-FILTER','case_no':'CODEX-0915-case',
+                    'source_fee_id':self.fee_id,'applicant':IDENTITY['username']},'待结算'))
+            await db.commit()
+        res=await self.client.get(f'{API}/finance/internal-fees',params={'scope':'applications','fee_types':'开庭提成'})
+        self.assertEqual(res.status_code,200,res.text)
+        group=next(x for x in res.json()['items'] if x['serial_no']=='CODEX-FILTER')
+        self.assertEqual(group['data']['amount'],25)
+        self.assertEqual(len(group['data']['application_items']),2)
+
     async def test_contract_payment_preserves_case_fee_voucher_link(self):
         async with self.sessions() as db:
             fee=await db.get(BusinessRecord,self.fee_id)

@@ -2140,6 +2140,8 @@ def _internal_fee_row(item: BusinessRecord, case_record: BusinessRecord | None, 
     enriched = {
         **visible_data,
         "case_no": data.get("case_no") or (case_record.serial_no if case_record else ""),
+        "case_name": case_record.title if case_record else data.get("case_name", ""),
+        "customer_manager": case_data.get("customer_manager") or data.get("customer_manager", ""),
         "case_stage": data.get("case_stage") or case_data.get("case_stage") or (case_record.status if case_record else ""),
         "plaintiff": data.get("plaintiff") or case_data.get("plaintiff") or case_data.get("appellant_names") or (case_record.customer if case_record else ""),
         "defendant": data.get("defendant") or case_data.get("defendant") or case_data.get("appellee_names") or case_data.get("opponent") or "",
@@ -2156,6 +2158,8 @@ def _internal_fee_row(item: BusinessRecord, case_record: BusinessRecord | None, 
     if "finance.amount" in allowed_fields:
         enriched["paid_amount"] = round(paid_amount, 2)
     result["data"] = enriched
+    if case_record:
+        result["title"] = case_record.title
     return result
 
 
@@ -2216,6 +2220,9 @@ async def _internal_fee_rows(
         return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
 
     rows: list[dict] = []
+    complete_applications: list[dict] = []
+    contracts = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == 'contract', *scope_conditions))).all() if scope == 'applications' else []
+    customers = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == 'customer', *scope_conditions))).all() if scope == 'applications' else []
     for item in fees:
         data = item.data or {}
         linked_case = cases_by_id.get(int(data.get("case_id") or 0)) or cases_by_no.get(str(data.get("case_no") or ""))
@@ -2227,6 +2234,20 @@ async def _internal_fee_rows(
         if scope == "applications":
             if str(row_data.get("applicant") or "").strip() not in personal_names:
                 continue
+            contract = next((c for c in contracts if c.id == int(data.get('contract_id') or 0) or c.serial_no == data.get('contract_no')), None)
+            customer_record = next((c for c in customers if c.title == item.customer), None)
+            row_data['contract_name'] = contract.title if contract else data.get('contract_name', '')
+            row_data['customer_no'] = customer_record.serial_no if customer_record else data.get('customer_no', '')
+            row_data['customer_manager'] = (customer_record.data or {}).get('customer_manager', row_data.get('customer_manager', '')) if customer_record else row_data.get('customer_manager', '')
+            if 'finance.amount' in allowed_fields:
+                paid_by_role = {}
+                for f in fees:
+                    fd = f.data or {}
+                    if fd.get('case_no') == row_data.get('case_no'):
+                        role = fd.get('commission_type') or fd.get('fee_type_name') or ''
+                        paid_by_role[role] = round(paid_by_role.get(role, 0) + paid_by_fee.get(f.id, 0), 2)
+                row_data['paid_by_role'] = paid_by_role
+            complete_applications.append(row)
             # The application list displays lifecycle status, unlike payee details.
             row_data["payment_status"] = row["status"]
         paid_dates = list(paid_dates_by_fee.get(item.id, []))
@@ -2263,7 +2284,11 @@ async def _internal_fee_rows(
         rows.append(row)
     if scope == "applications":
         from app.core.finance_batch_parity import group_commission_applications
-        return group_commission_applications(rows)
+        def group_key(row):
+            d = row.get("data") or {}
+            return (d.get("payment_application_no"), d.get("case_no"), d.get("source_fee_id"), d.get("applicant")) if d.get("payment_application_no") else (row["id"],)
+        matched = {group_key(row) for row in rows}
+        return group_commission_applications([row for row in complete_applications if group_key(row) in matched])
     return rows
 
 

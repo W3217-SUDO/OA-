@@ -1288,7 +1288,7 @@ export default function FinanceCenterPage({
         : initialView === "finance-payment-waiting"
           ? { status: "待付款" }
           : initialView === "finance-payment-print"
-            ? { status: "已付款" }
+            ? { status: "" }
       : initialView === "finance-payment-writeoff"
               ? { status: "待核销" }
               : initialView === "finance-internal-archive"
@@ -1876,7 +1876,7 @@ export default function FinanceCenterPage({
     if (initialView === "finance-payment-query") return fees;
     let result = [
       ...fees,
-      ...(originalKind === "payment" ? contractPayments : []),
+      ...(originalKind === "payment" && !["finance-payment-waiting", "finance-payment-print", "finance-payment-writeoff"].includes(initialView) ? contractPayments : []),
     ];
     if (contractPaymentSource.active) {
       if (!contractPaymentSource.ok) return [];
@@ -1909,17 +1909,21 @@ export default function FinanceCenterPage({
       result = result.filter((item) =>
         isContractPayment(item)
           ? item.status === "待付款"
-          : ["已审批", "部分付款"].includes(item.status),
+          : ["已审批", "待付款", "部分付款"].includes(item.status),
       );
     }
     if (initialView === "finance-payment-print") {
-      result = result.filter((item) => item.status === "已付款");
+      result = result.filter((item) => ["待核销", "已付款"].includes(item.status));
     }
     if (initialView === "finance-payment-writeoff") {
       result = result.filter(
         (item) =>
-          item.status === "已付款" && item.data.writeoff_status !== "已核销",
+          item.status === "待核销" && item.data.writeoff_status !== "已核销",
       );
+    }
+    result = Array.from(new Map(result.map(item => [item.id, item])).values());
+    if (["finance-payment-print", "finance-payment-writeoff"].includes(initialView)) {
+      result = Array.from(new Map(result.map(item => [item.data.payment_package_no || item.id, item])).values());
     }
     const textMatch = (value: unknown, key: string) => {
       const query = String(originalQuery[key] || "")
@@ -2236,7 +2240,7 @@ export default function FinanceCenterPage({
           <Button
             type="link"
             onClick={() => {
-              if (row.status === "待核销") { void openPaymentDetail(row); return; }
+              if (row.status === "待核销") { void openPaymentDetail({...row, data:{...row.data, _open_writeoff:true}}); return; }
               writeoffForm.resetFields();
               setWriteoffTarget(row);
             }}

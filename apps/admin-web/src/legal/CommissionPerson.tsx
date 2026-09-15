@@ -5,7 +5,7 @@ export function CommissionPerson({ row }: { row: any }) {
   const [open, setOpen] = useState(false);
   return <>
     <Button type="link" size="small" onClick={() => setOpen(true)}>{row.employee_display_name}</Button>
-    <Modal title="提成查看" open={open} footer={null} onCancel={() => setOpen(false)} width={600}>
+    <Modal title="提成查看" open={open} footer={<Button onClick={() => setOpen(false)}>取消</Button>} onCancel={() => setOpen(false)} width={600}>
       <Descriptions size="small" column={1} items={[
         { key: "name", label: "人员", children: row.employee_display_name },
         { key: "date", label: "有效日期", children: `${row.scheme_start_date || "—"} 至 ${row.scheme_end_date || "长期"}` },

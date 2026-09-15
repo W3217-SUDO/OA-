@@ -9,6 +9,39 @@ from app.core.finance_batch_parity import is_internal_fee
 
 router = APIRouter()
 
+@router.get(f'{settings.api_prefix}/finance/payment-workflow/list')
+async def list_workflow_payments(stage: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _record_scope_conditions
+    stages = {'waiting': {'已审批', '待付款', '部分付款'}, 'writeoff': {'待核销'}, 'print': {'待核销', '已付款'}}
+    if stage not in stages:
+        raise HTTPException(422, '付款阶段无效')
+    rows = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module.in_(['finance', 'contract_payment']), BusinessRecord.status.in_(stages[stage]),
+        *(await _record_scope_conditions(identity, db))).order_by(BusinessRecord.id.desc()))).all()
+    rows = [row for row in rows if not is_internal_fee(row.data or {})]
+    if stage != 'waiting':
+        packages = {}
+        ungrouped = []
+        for row in rows:
+            package_id = (row.data or {}).get('payment_package_id')
+            if not package_id:
+                ungrouped.append(row)
+                continue
+            package = await _ensure_record_visible(int(package_id), identity, db)
+            if package.module == 'finance_package' and (package.data or {}).get('fee_type') == '普通付款包':
+                packages[package.id] = package
+        rows = [*packages.values(), *ungrouped]
+    return {'items': [await _record_dict_for_identity(row, identity, db) for row in rows], 'total': len(rows)}
+
+
+@router.get(f'{settings.api_prefix}/finance/payment-workflow/{{record_id}}/document')
+async def get_payment_document(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from .payment_document import payment_document
+    row = await _ensure_record_visible(record_id, identity, db)
+    if row.module not in {'finance', 'contract_payment', 'finance_package'} or is_internal_fee(row.data or {}):
+        raise HTTPException(422, '请选择普通付款申请')
+    return await payment_document(row, identity, db)
+
 class PaymentBatchInput(BaseModel):
     record_ids: list[int] = Field(min_length=1, max_length=100)
 
@@ -49,6 +82,8 @@ async def payment_record(record_id, identity, db, allow_package=False):
         raise HTTPException(422, '请选择普通费用或合同付款申请')
     if identity.get('role') not in {'admin', 'manager', 'auditor'}:
         raise HTTPException(403, '当前角色没有付款办理权限')
+    if row.module == 'finance_package' and (row.data or {}).get('fee_type') != '普通付款包':
+        raise HTTPException(422, '请选择普通付款包')
     if row.module == 'contract_payment':
         from app.core.contract_payment_lifecycle import locked_payment
         row, _ = await locked_payment(record_id, identity, db)
@@ -59,24 +94,8 @@ async def payment_record(record_id, identity, db, allow_package=False):
 
 @router.post(f'{settings.api_prefix}/finance/payment-workflow/{{record_id}}/submit')
 async def submit_payment(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    row = await payment_record(record_id, identity, db)
-    data = dict(row.data or {})
-    if row.module == 'contract_payment':
-        from app.core.contract_payment_lifecycle import ensure_unsettled
-        await _require_contract_action(identity, db, 'contract.payment.pay', '办理付款')
-        await ensure_unsettled(row, db)
-    if row.status not in {'已审批', '待付款'} or data.get('writeoff_status') in {'待核销', '已核销'}:
-        raise HTTPException(409, '仅待付款申请可以提交')
-    previous = row.status
-    row.status = '待核销'
-    row.data = {**data, 'payment_status': '待核销', 'writeoff_status': '待核销',
-                'payment_package_no': f'P{datetime.now():%y%m%d}-{uuid4().hex[:8]}',
-                'payment_submitted_at': datetime.now().isoformat(), 'payment_submitted_by': identity['username']}
-    db.add(WorkflowEvent(record_id=row.id, action='提交付款单', from_status=previous, to_status=row.status,
-                         operator=identity['username'], comment='付款申请单提交至待核销'))
-    await db.commit()
-    await db.refresh(row)
-    return await _record_dict_for_identity(row, identity, db)
+    # Single and merged submissions share one authoritative package lifecycle.
+    return await submit_payment_batch(PaymentBatchInput(record_ids=[record_id]), identity, db)
 
 
 @router.post(f'{settings.api_prefix}/finance/payment-workflow/{{record_id}}/writeoff')
@@ -84,6 +103,8 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
     payment_method: str = Form(...), invoice_no: str = Form(...), remark: str = Form(''),
     files: list[UploadFile] = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     row = await payment_record(record_id, identity, db, allow_package=True)
+    if row.module != 'finance_package' and (row.data or {}).get('payment_package_id'):
+        row = await payment_record(int(row.data['payment_package_id']), identity, db, allow_package=True)
     data = dict(row.data or {})
     if row.module == 'contract_payment':
         await _require_contract_action(identity, db, 'contract.payment.writeoff', '核销付款')
@@ -117,7 +138,7 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
     for payment in linked_fees if row.module == 'finance_package' else []:
         if payment.module == 'contract_payment':
             for line in (payment.data or {}).get('lines', []):
-                fee_id = int(line.get('case_fee_id') or 0)
+                fee_id = int(line.get('case_fee_id') or line.get('fee_record_id') or 0)
                 if fee_id:
                     fee = await _ensure_record_visible(fee_id, identity, db)
                     if fee.module != 'finance':
@@ -153,6 +174,7 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
                 uploader=identity['username'], remark=f'付款单 {row.serial_no}'))
         row.status = '已付款'
         row.data = {**data, 'payment_status': '已付款', 'writeoff_status': '已核销', 'paid_amount': amount,
+                    'payment_remark': remark,
                     'payment_date': str(paid_date), 'paid_date': str(paid_date), 'payment_method': payment_method,
                     'invoice_no': invoice_no.strip(), 'writeoff_voucher_no': invoice_no.strip(),
                     'invoice_record_id': invoice.id, 'written_off_at': datetime.now().isoformat(),

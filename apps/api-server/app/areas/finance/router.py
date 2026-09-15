@@ -2422,7 +2422,7 @@ async def claim_incoming_payment(payment_id: int, body: IncomingPaymentClaimInpu
 
 
 @router.get(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}/allocation-candidates")
-async def incoming_payment_allocation_candidates(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only: bool = False, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.crm import (
         _case_is_for_allocation_customer,
     )
@@ -2488,6 +2488,8 @@ async def incoming_payment_allocation_candidates(payment_id: int, identity: dict
 
     rows = []
     for plan in plans:
+        if case_fees_only:
+            continue
         contract = contracts_by_id[plan.contract_record_id]
         remaining = _round_fee_amount(plan.amount - plan.received_amount)
         linked_cases = cases_by_contract.get(contract.id)
@@ -2534,11 +2536,15 @@ async def incoming_payment_allocation_candidates(payment_id: int, identity: dict
         from app.core.finance_batch_parity import is_internal_fee
         if is_internal_fee(fee_data):
             continue
+        if case_fees_only and fee_data.get("expense_scope") not in {"律所", "平台"}:
+            continue
         fee_contract_id = int(fee_data.get("contract_id") or fee_data.get("contract_record_id") or 0)
         fee_contract_no = str(fee_data.get("contract_no") or "").strip()
         fee_case_id = int(fee_data.get("case_id") or fee_data.get("case_record_id") or 0)
         fee_case_no = str(fee_data.get("case_no") or "").strip()
         fee_cases = [case for case in cases if case.id == fee_case_id or (fee_case_no and case.serial_no == fee_case_no)]
+        if case_fees_only and not (fee_case_id or fee_case_no):
+            continue
         if fee_case_id or fee_case_no:
             fee_cases = [case for case in fee_cases if _case_is_for_allocation_customer(case, claimed_customer_record, item.claimed_customer)]
             if not fee_cases:
@@ -2563,7 +2569,7 @@ async def incoming_payment_allocation_candidates(payment_id: int, identity: dict
                          "case_no": fee_case_no, "case_title": fee_record.title, "case_stage": fee_data.get("case_stage", ""),
                          "fee_type": "法院退费", "total_amount": float(fee_data.get("refund_amount") or fee_data.get("refund_requested_amount") or 0),
                          "received_amount": float(fee_data.get("refunded_amount") or 0), "remaining_amount": refund_remaining})
-        if fee_data.get("receivable_plan_id") and int(fee_data["receivable_plan_id"]) in plan_ids:
+        if not case_fees_only and fee_data.get("receivable_plan_id") and int(fee_data["receivable_plan_id"]) in plan_ids:
             continue
         total_amount = _round_fee_amount(float(fee_data.get("amount") or 0))
         received_amount = _round_fee_amount(float(fee_data.get("received_amount") or fee_data.get("cashed_amount") or 0))
@@ -2723,6 +2729,15 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
         plan = await db.get(ReceivablePlan, entry.receivable_plan_id) if entry.receivable_plan_id else None
         fee_record = await _ensure_record_module(entry.fee_record_id, "finance", identity, db) if entry.fee_record_id else None
         from app.core.finance_batch_parity import is_internal_fee
+        if body.case_fees_only:
+            if not fee_record or (fee_record.data or {}).get("expense_scope") not in {"律所", "平台"}:
+                raise HTTPException(422, "只能分配案件中的律所或平台费用")
+            fd = fee_record.data or {}
+            linked = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case",
+                BusinessRecord.id == int(fd.get("case_id") or fd.get("case_record_id") or 0) if fd.get("case_id") or fd.get("case_record_id") else BusinessRecord.serial_no == str(fd.get("case_no") or ""),
+                *(await _record_scope_conditions(identity, db))))
+            if not linked or not _case_is_for_allocation_customer(linked, claimed_customer_record, item.claimed_customer):
+                raise HTTPException(422, "费用未关联当前客户的有效案件")
         if fee_record and is_internal_fee(fee_record.data or {}):
             raise HTTPException(status_code=422, detail="内部费用不能分配回款")
         if not plan and not fee_record:

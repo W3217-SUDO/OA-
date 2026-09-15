@@ -100,7 +100,7 @@ export function createFinanceAccountingActions(context: FinanceAccountingDepende
         setAllocationComment("");
         setAllocationValidationError("");
         try {
-            const response = await api.get(`/finance/incoming-payments/${payment.id}/allocation-candidates`);
+            const response = await api.get(`/finance/incoming-payments/${payment.id}/allocation-candidates`, {params:{case_fees_only:true}});
             const rows = Array.isArray(response.data?.items) ? response.data.items : [];
             setAllocationCandidates(rows);
             setAllocationAmounts(Object.fromEntries(rows.map((row: AllocationCandidate) => [row.key, row.remaining_amount])));
@@ -153,6 +153,7 @@ export function createFinanceAccountingActions(context: FinanceAccountingDepende
             setAllocationValidationError("");
             await api.post(`/finance/incoming-payments/${allocateTarget.id}/allocate`, {
                 allocations,
+                case_fees_only: true,
                 comment: allocationComment,
             });
             message.success("回款已分配并同步更新合同应收");

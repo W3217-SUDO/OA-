@@ -2023,6 +2023,7 @@ class IncomingPaymentAllocationItem(BaseModel):
 
 
 class IncomingPaymentAllocateInput(BaseModel):
+    case_fees_only: bool = False
     allocations: list[IncomingPaymentAllocationItem] = Field(min_length=1, max_length=50)
     comment: str = ""
 

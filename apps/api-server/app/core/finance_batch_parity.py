@@ -48,6 +48,8 @@ async def allocate_court_refund(payment, body, customer, identity, db):
             raise HTTPException(422, "法院退费必须关联案件官费")
         fee = await _ensure_record_module(entry.fee_record_id, 'finance', identity, db)
         data = fee.data or {}
+        if body.case_fees_only and data.get('expense_scope') not in {'律所', '平台'}:
+            raise HTTPException(422, "法院退费必须关联律所或平台案件官费")
         if is_internal_fee(data) or data.get('fee_type') not in {'官方费用', '官费'}:
             raise HTTPException(422, "法院退费必须关联案件官费")
         if not _record_belongs_to_customer(fee, customer, payment.claimed_customer):
