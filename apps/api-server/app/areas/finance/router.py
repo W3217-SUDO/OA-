@@ -2118,7 +2118,7 @@ async def finance_summary(identity: dict = Depends(current_identity), db: AsyncS
 
 
 @router.get(f"{settings.api_prefix}/finance/incoming-payments")
-async def list_incoming_payments(payment_status: str = "", keyword: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_incoming_payments(payment_status: str = "", keyword: str = "", bank_source: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contracts import (
         _contract_person_values,
     )
@@ -2134,7 +2134,22 @@ async def list_incoming_payments(payment_status: str = "", keyword: str = "", id
     from app.core.system import (
         _allowed_field_keys,
     )
-    items = (await db.scalars(select(IncomingPayment).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all()
+    statement = select(IncomingPayment)
+    if bank_source:
+        aliases = {
+            "icbc": ("工行", "工商银行"),
+            "citic": ("中信",),
+            "boc": ("中行", "中国银行"),
+            "cmb": ("招商", "招行"),
+        }
+        bank_code = bank_source.strip().lower()
+        if bank_code not in aliases:
+            raise HTTPException(422, "银行筛选条件无效")
+        statement = statement.where(or_(
+            func.lower(func.trim(IncomingPayment.bank_source)) == bank_code,
+            *(IncomingPayment.bank_source.contains(name) for name in aliases[bank_code]),
+        ))
+    items = (await db.scalars(statement.order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all()
     if identity.get("role") not in {"admin", "auditor"}:
         visible_customer_titles = set((await db.scalars(select(BusinessRecord.title).where(BusinessRecord.module == "customer", *(await _record_scope_conditions(identity, db))))).all())
         items = [item for item in items if item.operator == identity["username"] or item.claimant == identity["username"] or item.claimed_customer in visible_customer_titles]

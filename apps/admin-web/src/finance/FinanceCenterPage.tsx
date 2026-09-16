@@ -1,3 +1,4 @@
+import { receiptBankCode, matchesReceiptBank } from "./bankReceiptScope";
 import {
 ArrowUpOutlined,
 BookOutlined,
@@ -1725,7 +1726,9 @@ export default function FinanceCenterPage({
   }, [fees, tab, initialView]);
   const shownIncoming = useMemo(
     () =>
-      initialView.endsWith("-claim")
+      receiptBankCode(initialView)
+        ? incoming.filter((row) => matchesReceiptBank(row.bank_source, receiptBankCode(initialView)!))
+        : initialView.endsWith("-claim")
         ? incoming.filter((x) => x.status === "待认领")
         : initialView.endsWith("-pending")
           ? incoming.filter((x) => ["待分配", "部分分配"].includes(x.status))

@@ -1,3 +1,4 @@
+import { receiptBankCode } from "../bankReceiptScope";
 import { message } from "antd";
 import type { AxiosResponse } from "axios";
 import dayjs from "dayjs";
@@ -572,7 +573,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                 api.get("/records", { params: { module: "case", page_size: 100 } }),
                 api.get("/records", { params: { module: "customer", page_size: 100 } }),
                 api.get("/receivables"),
-                api.get("/finance/incoming-payments"),
+                api.get("/finance/incoming-payments", { params: { bank_source: receiptBankCode(initialView) } }),
                 api.get("/finance/transactions"),
                 api.get("/finance/reconciliations"),
                 api.get("/finance/summary"),
