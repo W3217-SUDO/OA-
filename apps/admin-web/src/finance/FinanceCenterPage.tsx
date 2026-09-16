@@ -1358,6 +1358,7 @@ export default function FinanceCenterPage({
     get setReconcileOpen() { return setReconcileOpen; },
   });
   const { importBankStatement, searchClaimCustomers, submitFlow, openRowCaseLogs } = createFinanceWorkflowActions({
+    get bankSource() { return initialView.split("-").at(-1) || ""; },
     get load() { return load; },
     get bankUploadRef() { return bankUploadRef; },
     get claimCustomerSearchRequest() { return claimCustomerSearchRequest; },

@@ -1,4 +1,4 @@
-import { message } from "antd";
+import { message, Modal } from "antd";
 import { api } from "../../api";
 import type { Fee, FinanceFlow } from "../types";
 type OriginalFieldSpec = {
@@ -23,6 +23,7 @@ type OriginalRouteConfig = {
 };
 /** finance workflow operations; dependencies are read when each operation runs. */
 export interface FinanceWorkflowDependencies {
+    readonly bankSource: string;
     readonly load: () => Promise<void>;
     readonly bankUploadRef: React.RefObject<HTMLInputElement | null>;
     readonly claimCustomerSearchRequest: React.RefObject<number>;
@@ -50,13 +51,16 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
             return;
         const body = new FormData();
         body.append("file", file);
+        body.append("bank_source", context.bankSource);
         try {
             const { data } = await api.post("/finance/incoming-payments/import", body, { headers: { "Content-Type": "multipart/form-data" } });
             if (data.errors?.length) {
-                message.warning(`成功导入 ${data.created} 条，${data.errors.length} 条未导入`);
+                Modal.warning({title:`导入 ${data.created} 条，${data.errors.length} 条未导入`,
+                    content:<div style={{maxHeight:360,overflow:"auto"}}>{data.errors.map((item:any,index:number)=><div key={index}>{item.sheet || ""} 第{item.row}行：{item.error}</div>)}</div>});
             }
             else {
-                message.success(`成功导入 ${data.created} 条银行到账`);
+                if (data.created > 0) message.success(`成功导入 ${data.created} 条银行到账${data.skipped ? `，跳过 ${data.skipped} 条支出` : ""}`);
+                else message.warning("文件中没有可导入的收入流水");
             }
             await load();
         }

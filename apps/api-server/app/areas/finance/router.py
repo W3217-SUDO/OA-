@@ -2242,39 +2242,52 @@ async def create_incoming_payment(body: IncomingPaymentInput, identity: dict = D
 
 
 @router.post(f"{settings.api_prefix}/finance/incoming-payments/import")
-async def import_incoming_payments(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def import_incoming_payments(file: UploadFile = File(...), bank_source: str = Form(""), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
         _round_fee_amount,
     )
-    from app.core.system import (
-        _csv_value,
-    )
-    if identity.get("role") not in {"admin", "manager"}:
-        raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以导入银行到账")
-    if not (file.filename or "").lower().endswith(".csv"):
-        raise HTTPException(status_code=422, detail="仅支持 UTF-8 CSV 文件")
-    raw = await file.read()
+    from app.core.bank_statement_import import read_statement, cell_text, parse_received_date, parse_amount
+    from app.core.permissions import _permission_payload_for_identity
+    bank_source = bank_source.strip().lower()
+    bank_names = {"icbc": "工行", "citic": "中信", "boc": "中行"}
+    if bank_source and bank_source not in bank_names:
+        raise HTTPException(422, "请选择工行、中信或中行回款入口上传")
+    permission = await _permission_payload_for_identity(identity, db)
+    menus = set(permission.get("menu_keys", []))
+    if identity.get("role") not in {"admin", "manager"} and not (bank_source and (
+        f"finance-receipts-{bank_source}" in menus or f"platform-finance-overview-{bank_source}" in menus
+    )):
+        raise HTTPException(status_code=403, detail="当前账号没有该银行回款上传权限")
+    raw = await file.read(5 * 1024 * 1024 + 1)
     if len(raw) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="CSV 文件不能超过 5MB")
+        raise HTTPException(status_code=413, detail="银行流水文件不能超过5MB")
     try:
-        content = raw.decode("utf-8-sig")
-    except UnicodeDecodeError as exc:
-        raise HTTPException(status_code=422, detail="CSV 文件必须使用 UTF-8 编码") from exc
+        statement_rows = read_statement(raw, file.filename or "")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(422, "文件无法解析，请确认是真实Excel或CSV文件，且未加密、未损坏") from exc
     existing = set((await db.scalars(select(IncomingPayment.bank_reference))).all())
     created = 0
+    skipped = 0
     errors: list[dict] = []
-    for row_no, row in enumerate(csv.DictReader(io.StringIO(content)), 2):
+    for sheet_name, row_no, row in statement_rows:
         try:
-            payer = _csv_value(row, "对方户名", "付款人", "付款方", "payer_name")
-            bank_reference = _csv_value(row, "银行流水号", "交易流水号", "业务编号", "bank_reference")
-            received_text = _csv_value(row, "到账日期", "交易日期", "记账日期", "received_date")
-            amount_text = _csv_value(row, "到账金额", "交易金额", "贷方发生额", "amount")
+            if cell_text(row.get("direction")).upper() in {"借", "借方", "付", "付款", "支出", "转出", "D", "DEBIT"}:
+                skipped += 1
+                continue
+            payer = cell_text(row.get("payer_name"))
+            bank_reference = cell_text(row.get("bank_reference"))
+            received_text = row.get("received_date")
+            amount_text = row.get("amount")
             if not payer or not bank_reference or not received_text or not amount_text:
                 raise ValueError("缺少对方户名、银行流水号、到账日期或到账金额")
+            if len(payer) > 255 or len(bank_reference) > 128:
+                raise ValueError("对方户名或银行流水号过长，请检查表头与数据列")
             if bank_reference in existing:
                 raise ValueError("银行流水号已经登记")
-            received_date = date.fromisoformat(received_text.replace("/", "-").strip())
-            amount = _round_fee_amount(float(amount_text.replace(",", "").strip()))
+            received_date = parse_received_date(received_text)
+            amount = parse_amount(amount_text)
             if amount <= 0:
                 raise ValueError("到账金额必须大于 0")
             db.add(IncomingPayment(
@@ -2284,16 +2297,17 @@ async def import_incoming_payments(file: UploadFile = File(...), identity: dict 
                 payer_name=payer,
                 bank_reference=bank_reference,
                 status="待认领",
+                bank_source=bank_names.get(bank_source, ""),
                 operator=identity["username"],
-                remark=_csv_value(row, "摘要", "备注", "remark"),
+                remark=cell_text(row.get("remark")),
             ))
             existing.add(bank_reference)
             created += 1
         except (ValueError, TypeError) as exc:
-            errors.append({"row": row_no, "error": str(exc) or "字段格式错误"})
+            errors.append({"sheet": sheet_name, "row": row_no, "error": str(exc) or "字段格式错误"})
     if created:
         await db.commit()
-    return {"created": created, "errors": errors}
+    return {"created": created, "errors": errors, "skipped": skipped}
 
 
 @router.get(f"{settings.api_prefix}/finance/incoming-payments/export")
