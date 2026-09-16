@@ -2258,11 +2258,12 @@ async def import_incoming_payments(file: UploadFile = File(...), bank_source: st
         f"finance-receipts-{bank_source}" in menus or f"platform-finance-overview-{bank_source}" in menus
     )):
         raise HTTPException(status_code=403, detail="当前账号没有该银行回款上传权限")
-    raw = await file.read(5 * 1024 * 1024 + 1)
-    if len(raw) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="银行流水文件不能超过5MB")
+    raw = await file.read(100 * 1024 * 1024 + 1)
+    if len(raw) > 100 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="银行流水文件不能超过100MB，请拆分后上传")
     try:
-        statement_rows = read_statement(raw, file.filename or "")
+        from starlette.concurrency import run_in_threadpool
+        statement_rows = await run_in_threadpool(read_statement, raw, file.filename or "", bank_source)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:

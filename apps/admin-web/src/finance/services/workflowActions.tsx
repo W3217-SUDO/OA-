@@ -49,6 +49,12 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
         const { load, bankUploadRef } = context;
         if (!file)
             return;
+        if (file.size > 100 * 1024 * 1024) {
+            message.error("银行流水文件不能超过100MB，请拆分后上传");
+            if (bankUploadRef.current) bankUploadRef.current.value = "";
+            return;
+        }
+        const closeProgress = message.loading("正在上传并解析银行流水，大文件可能需要几分钟，请勿重复上传", 0);
         const body = new FormData();
         body.append("file", file);
         body.append("bank_source", context.bankSource);
@@ -65,9 +71,14 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
             await load();
         }
         catch (error: any) {
-            message.error(error?.response?.data?.detail || "银行流水导入失败");
+            message.error(error?.response?.status === 413
+                ? "文件超过服务器上传上限，银行流水单文件最多100MB"
+                : error?.response?.data?.detail || ([502, 504].includes(error?.response?.status)
+                    ? "导入连接超时，请先刷新列表确认结果，避免重复提交"
+                    : "银行流水导入失败，请检查网络；重试前请先刷新列表确认结果"));
         }
         finally {
+            closeProgress();
             if (bankUploadRef.current)
                 bankUploadRef.current.value = "";
         }

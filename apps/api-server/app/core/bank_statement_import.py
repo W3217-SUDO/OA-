@@ -50,8 +50,8 @@ def statement_sheets(raw, filename):
     elif suffix == '.xlsx':
         from openpyxl import load_workbook
         with ZipFile(io.BytesIO(raw)) as archive:
-            if sum(entry.file_size for entry in archive.infolist()) > 100 * 1024 * 1024:
-                raise ValueError('Excel解压后超过100MB，请拆分文件')
+            if sum(entry.file_size for entry in archive.infolist()) > 512 * 1024 * 1024:
+                raise ValueError('Excel解压后超过512MB，请拆分文件')
         book = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
         try:
             for sheet in book.worksheets:
@@ -77,7 +77,46 @@ def statement_sheets(raw, filename):
         raise ValueError('仅支持.xlsx、.xls或.csv银行流水文件')
 
 
-def read_statement(raw, filename):
+def read_legacy_statement(raw, filename, bank_source):
+    # Authoritative legacy AR/{ICBC,CITIC,BOC}/PaymentService.Process layouts.
+    layouts = {
+        'icbc': (6, {'payer_name': 5, 'amount': 6, 'received_date': 10, 'bank_reference': 13, 'direction': 8, 'remark': 12}),
+        'citic': (15, {'payer_name': 3, 'amount': 6, 'received_date': 0, 'bank_reference': 11, 'remark': 12}),
+        'boc': (9, {'payer_name': 5, 'amount': 13, 'received_date': 10, 'bank_reference': 17, 'remark': 25}),
+    }
+    if bank_source not in layouts or Path(filename).suffix.lower() not in {'.xlsx', '.xls'}:
+        return None
+    first_row, mapping = layouts[bank_source]
+    result = []
+    sheets = statement_sheets(raw, filename)
+    try:
+        sheet_name, rows = next(sheets)
+        for row_number, cells in enumerate(rows, 1):
+            if row_number > 50000:
+                raise ValueError('单个工作表超过50000行，请拆分导入')
+            if row_number < first_row or len(cells) < 2 or not cell_text(cells[1]):
+                continue
+            if any(cell_text(cell) in {'合计', '总计', '小计'} for cell in cells[:2]):
+                continue
+            row = {field: cells[index] if index < len(cells) else '' for field, index in mapping.items()}
+            try:
+                if not cell_text(row['payer_name']) or not cell_text(row['bank_reference']):
+                    raise ValueError('付款方或流水号为空')
+                parse_received_date(row['received_date'])
+                amount = Decimal(cell_text(row['amount']).replace(',', '').replace('，', '').replace('￥', '').replace('¥', ''))
+                if not amount.is_finite():
+                    raise ValueError('金额不是有效数字')
+            except (ValueError, InvalidOperation) as exc:
+                raise ValueError(f'{sheet_name}第{row_number}行与当前银行旧版模板不匹配：请确认选择了对应银行入口，日期、金额、付款方及流水号列位置正确') from exc
+            result.append((sheet_name, row_number, row))
+    finally:
+        sheets.close()
+    if not result:
+        raise ValueError('旧版银行模板没有可导入的流水明细，请确认所选银行及文件')
+    return result
+
+
+def read_statement(raw, filename, bank_source=''):
     result = []
     matched_sheets = 0
     for sheet_name, rows in statement_sheets(raw, filename):
@@ -108,6 +147,9 @@ def read_statement(raw, filename):
                 continue
             result.append((sheet_name, row_number, row))
     if not matched_sheets:
+        legacy = read_legacy_statement(raw, filename, bank_source)
+        if legacy is not None:
+            return legacy
         raise ValueError('未识别银行流水表头，需要对方户名、银行流水号、到账日期及到账金额列；请上传银行明细导出文件')
     if not result:
         raise ValueError('文件没有可导入的流水明细')
