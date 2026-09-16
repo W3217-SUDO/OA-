@@ -3554,7 +3554,7 @@ export default function FinanceCenterPage({
           : isInvoiceUnissuedRoute
             ? [...invoiceUnissuedRows]
             : activeRouteConfig?.source === "incoming"
-              ? [...incoming]
+              ? incoming.filter((row) => !receiptBankCode(initialView) || matchesReceiptBank(row.bank_source, receiptBankCode(initialView)!))
               : activeRouteConfig?.source === "generalSettlements"
                 ? [...generalSettlementRows]
               : activeRouteConfig?.source === "archiveSettlements"
