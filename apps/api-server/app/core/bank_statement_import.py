@@ -1,4 +1,4 @@
-"""Parse bank Excel/CSV exports by their header names, preserving source row numbers."""
+"""Parse each bank's native export layout, preserving source row numbers."""
 import csv
 import io
 import re
@@ -16,6 +16,14 @@ ALIASES = {
     'remark': ('摘要', '备注', '用途', '附言', 'remark'),
 }
 REQUIRED = ('payer_name', 'bank_reference', 'received_date', 'amount')
+
+# Legacy AR/{bank}/PaymentService.Process: 1-based first row, 0-based columns.
+# Explicit bank selection is authoritative; header synonyms must not override it.
+BANK_TEMPLATES = {
+    'icbc': {'name': '工行', 'first_row': 6, 'columns': {'payer_name': 5, 'amount': 6, 'received_date': 10, 'bank_reference': 13, 'direction': 8, 'remark': 12}},
+    'citic': {'name': '中信', 'first_row': 15, 'columns': {'payer_name': 3, 'amount': 6, 'received_date': 0, 'bank_reference': 11, 'remark': 12}},
+    'boc': {'name': '中行', 'first_row': 9, 'columns': {'payer_name': 5, 'amount': 13, 'received_date': 10, 'bank_reference': 17, 'remark': 25}},
+}
 
 
 def cell_text(value):
@@ -78,15 +86,10 @@ def statement_sheets(raw, filename):
 
 
 def read_legacy_statement(raw, filename, bank_source):
-    # Authoritative legacy AR/{ICBC,CITIC,BOC}/PaymentService.Process layouts.
-    layouts = {
-        'icbc': (6, {'payer_name': 5, 'amount': 6, 'received_date': 10, 'bank_reference': 13, 'direction': 8, 'remark': 12}),
-        'citic': (15, {'payer_name': 3, 'amount': 6, 'received_date': 0, 'bank_reference': 11, 'remark': 12}),
-        'boc': (9, {'payer_name': 5, 'amount': 13, 'received_date': 10, 'bank_reference': 17, 'remark': 25}),
-    }
-    if bank_source not in layouts or Path(filename).suffix.lower() not in {'.xlsx', '.xls'}:
+    if bank_source not in BANK_TEMPLATES or Path(filename).suffix.lower() not in {'.xlsx', '.xls'}:
         return None
-    first_row, mapping = layouts[bank_source]
+    template = BANK_TEMPLATES[bank_source]
+    first_row, mapping = template['first_row'], template['columns']
     result = []
     sheets = statement_sheets(raw, filename)
     try:
@@ -99,24 +102,19 @@ def read_legacy_statement(raw, filename, bank_source):
             if any(cell_text(cell) in {'合计', '总计', '小计'} for cell in cells[:2]):
                 continue
             row = {field: cells[index] if index < len(cells) else '' for field, index in mapping.items()}
-            try:
-                if not cell_text(row['payer_name']) or not cell_text(row['bank_reference']):
-                    raise ValueError('付款方或流水号为空')
-                parse_received_date(row['received_date'])
-                amount = Decimal(cell_text(row['amount']).replace(',', '').replace('，', '').replace('￥', '').replace('¥', ''))
-                if not amount.is_finite():
-                    raise ValueError('金额不是有效数字')
-            except (ValueError, InvalidOperation) as exc:
-                raise ValueError(f'{sheet_name}第{row_number}行与当前银行旧版模板不匹配：请确认选择了对应银行入口，日期、金额、付款方及流水号列位置正确') from exc
-            result.append((sheet_name, row_number, row))
+            # Field validation belongs to the per-row API result, not the entire file.
+            result.append((f"{template['name']} / {sheet_name}", row_number, row))
     finally:
         sheets.close()
     if not result:
-        raise ValueError('旧版银行模板没有可导入的流水明细，请确认所选银行及文件')
+        raise ValueError(f"{template['name']}导出模板从第{first_row}行读取，未找到流水明细；请在对应银行入口上传完整导出表")
     return result
 
 
 def read_statement(raw, filename, bank_source=''):
+    native = read_legacy_statement(raw, filename, bank_source)
+    if native is not None:
+        return native
     result = []
     matched_sheets = 0
     for sheet_name, rows in statement_sheets(raw, filename):
@@ -147,9 +145,6 @@ def read_statement(raw, filename, bank_source=''):
                 continue
             result.append((sheet_name, row_number, row))
     if not matched_sheets:
-        legacy = read_legacy_statement(raw, filename, bank_source)
-        if legacy is not None:
-            return legacy
         raise ValueError('未识别银行流水表头，需要对方户名、银行流水号、到账日期及到账金额列；请上传银行明细导出文件')
     if not result:
         raise ValueError('文件没有可导入的流水明细')
