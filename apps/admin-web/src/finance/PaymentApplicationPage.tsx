@@ -5,16 +5,18 @@ import { api } from "../api";
 import "./payment-application.css";
 import { PaymentDocument } from "./PaymentDocument";
 
-export function PaymentApplicationPage({ record, canPay, onClose, onChange, onCase, onContract }: { record: any; canPay: boolean; onClose: () => void; onChange: () => Promise<void>; onCase?: (no: string) => void; onContract?: (no: string) => void }) {
+export function PaymentApplicationPage({ record, onClose, onChange, onCase, onContract }: { record: any; onClose: () => void; onChange: () => Promise<void>; onCase?: (no: string) => void; onContract?: (no: string) => void }) {
   const [row, setRow] = useState(record);
   const [printing, setPrinting] = useState(Boolean(record.data?._open_print));
-  const [writing, setWriting] = useState(Boolean(record.data?._open_writeoff));
+  const [writing, setWriting] = useState(Boolean(record.data?._open_writeoff && record.data?.can_writeoff_payment));
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState<any[]>([]);
   const [form] = Form.useForm();
   const data = row.data || {};
   const internal = Boolean(data.application_items);
-  const status = data.payment_status || row.status;
+  const status = row.status || data.payment_status;
+  const canSubmitPayment = data.can_submit_payment === true;
+  const canWriteoffPayment = data.can_writeoff_payment === true;
   const waiting = !internal && ["已审批", "待付款"].includes(status);
   const pending = !internal && status === "待核销";
   useEffect(() => {
@@ -53,9 +55,9 @@ export function PaymentApplicationPage({ record, canPay, onClose, onChange, onCa
     <div className="payment-screen-actions"><Space>
       <Button onClick={onClose}>返回列表</Button>
       {!internal && <Button onClick={() => setPrinting(!printing)}>{printing ? "查看请款单" : "付款单打印"}</Button>}
-      {printing && waiting && canPay && <><Button loading={busy} onClick={() => void submit(false)}>提交</Button><Button loading={busy} onClick={() => void submit(true)}>提交并打印</Button></>}
+      {waiting && canSubmitPayment && <><Button type="primary" loading={busy} onClick={() => void submit(false)}>提交</Button>{printing && <Button loading={busy} onClick={() => void submit(true)}>提交并打印</Button>}</>}
       {printing && !waiting && <Button onClick={() => window.print()}>打印</Button>}
-      {pending && canPay && <Button type="primary" onClick={() => { form.setFieldsValue({ amount: data.amount, paid_date: dayjs(), payment_method: "自动扣款" }); setWriting(true); }}>核销</Button>}
+      {pending && canWriteoffPayment && <Button type="primary" onClick={() => { form.setFieldsValue({ amount: data.amount, paid_date: dayjs(), payment_method: "自动扣款" }); setWriting(true); }}>核销</Button>}
     </Space></div>
     <PaymentDocument row={row} printing={printing} onCase={onCase} onContract={onContract} />
     <Modal open={writing} title="付款核销" onCancel={() => setWriting(false)} onOk={() => void writeoff()} confirmLoading={busy} okText="确定" cancelText="取消">

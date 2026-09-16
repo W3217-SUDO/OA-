@@ -9,6 +9,14 @@ from app.core.finance_batch_parity import is_internal_fee
 
 router = APIRouter()
 
+async def payment_action_allowed(identity, db, action):
+    from app.core.permissions import _permission_payload_for_identity
+    permission = await _permission_payload_for_identity(identity, db)
+    if identity.get('role') == 'admin':
+        return True
+    menu = 'finance-payment-waiting' if action == 'submit' else 'finance-payment-writeoff'
+    return menu in set(permission.get('menu_keys', []))
+
 @router.get(f'{settings.api_prefix}/finance/payment-workflow/list')
 async def list_workflow_payments(stage: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import _record_scope_conditions
@@ -40,7 +48,10 @@ async def get_payment_document(record_id: int, identity: dict = Depends(current_
     row = await _ensure_record_visible(record_id, identity, db)
     if row.module not in {'finance', 'contract_payment', 'finance_package'} or is_internal_fee(row.data or {}):
         raise HTTPException(422, '请选择普通付款申请')
-    return await payment_document(row, identity, db)
+    result = await payment_document(row, identity, db)
+    result['data']['can_submit_payment'] = await payment_action_allowed(identity, db, 'submit')
+    result['data']['can_writeoff_payment'] = await payment_action_allowed(identity, db, 'writeoff')
+    return result
 
 class PaymentBatchInput(BaseModel):
     record_ids: list[int] = Field(min_length=1, max_length=100)
@@ -80,7 +91,7 @@ async def payment_record(record_id, identity, db, allow_package=False):
     row = await _ensure_record_visible(record_id, identity, db)
     if not (allow_package and row.module == 'finance_package') and (row.module not in {'finance', 'contract_payment'} or is_internal_fee(row.data or {})):
         raise HTTPException(422, '请选择普通费用或合同付款申请')
-    if identity.get('role') not in {'admin', 'manager', 'auditor'}:
+    if not await payment_action_allowed(identity, db, 'writeoff' if allow_package else 'submit'):
         raise HTTPException(403, '当前角色没有付款办理权限')
     if row.module == 'finance_package' and (row.data or {}).get('fee_type') != '普通付款包':
         raise HTTPException(422, '请选择普通付款包')
