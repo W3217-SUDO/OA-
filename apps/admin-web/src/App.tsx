@@ -414,6 +414,7 @@ const menuItems: NavItem[] = [
           { key: "finance-receipts-icbc", label: "回款(工行)" },
           { key: "finance-receipts-citic", label: "回款(中信)" },
           { key: "finance-receipts-boc", label: "回款(中行)" },
+          { key: "finance-receipts-cmb", label: "回款(招商)" },
           { key: "finance-receipts-new", label: "新增回款" },
           { key: "finance-receipts-manage", label: "回款管理" },
           { key: "finance-receipts-claim", label: "回款领取" },
