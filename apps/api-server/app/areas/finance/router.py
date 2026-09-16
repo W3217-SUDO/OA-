@@ -2290,6 +2290,7 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
     except Exception as exc:
         raise HTTPException(422, "文件无法识别，请确认格式真实、文件未加密且未损坏") from exc
     existing = set((await db.scalars(select(IncomingPayment.bank_reference))).all())
+    existing_receipts = set((await db.scalars(select(IncomingPayment.receipt_no))).all()) if bank_source == 'icbc' else set()
     created = 0
     skipped = 0
     errors: list[dict] = []
@@ -2303,24 +2304,31 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
                 raise ValueError('无法确认收付方向，请核对原文件后使用明确的收入流水明细')
             payer = cell_text(row.get("payer_name"))
             bank_reference = cell_text(row.get("bank_reference"))
+            import_identity = cell_text(row.get('_import_identity')) if bank_source == 'icbc' else ''
+            if import_identity:
+                import re
+                if not re.fullmatch(r'HKICBC[0-9a-f]{48}', import_identity):
+                    raise ValueError('工行导入标识无效，请重新上传')
             received_text = row.get("received_date")
             amount_text = row.get("amount")
-            if not payer or not bank_reference or not received_text or not amount_text:
+            if not payer or not (bank_reference or import_identity) or not received_text or not amount_text:
                 raise ValueError("缺少对方户名、银行流水号、到账日期或到账金额")
             if len(payer) > 255 or len(bank_reference) > 128:
                 raise ValueError("对方户名或银行流水号过长，请检查表头与数据列")
-            if bank_reference in existing:
+            if bank_reference and bank_reference in existing:
                 raise ValueError("银行流水号已经登记")
+            if import_identity and import_identity in existing_receipts:
+                raise ValueError('这笔工行流水已经导入，请勿重复上传')
             received_date = parse_received_date(received_text)
             amount = parse_amount(amount_text)
             if amount <= 0:
                 raise ValueError("到账金额必须大于 0")
             item_values = dict(
-                receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}{row_no}",
+                receipt_no=import_identity or f"HK{datetime.now():%Y%m%d%H%M%S%f}{row_no}",
                 received_date=received_date,
                 amount=amount,
                 payer_name=payer,
-                bank_reference=bank_reference,
+                bank_reference=bank_reference or None,
                 status="待认领",
                 bank_source=bank_names.get(bank_source, ""),
                 operator=identity["username"],
@@ -2332,6 +2340,8 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
             else:
                 db.add(IncomingPayment(**item_values))
             existing.add(bank_reference)
+            if import_identity:
+                existing_receipts.add(import_identity)
             created += 1
         except (ValueError, TypeError) as exc:
             errors.append({"sheet": sheet_name, "row": row_no, "error": str(exc) or "字段格式错误"})

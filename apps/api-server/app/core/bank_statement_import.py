@@ -1,6 +1,8 @@
 """Parse each bank's native export layout, preserving source row numbers."""
 import csv
+import hashlib
 import io
+import json
 import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -24,6 +26,86 @@ BANK_TEMPLATES = {
     'citic': {'name': '中信', 'first_row': 15, 'columns': {'payer_name': 3, 'amount': 6, 'received_date': 0, 'bank_reference': 11, 'remark': 12}},
     'boc': {'name': '中行', 'first_row': 9, 'columns': {'payer_name': 5, 'amount': 13, 'received_date': 10, 'bank_reference': 17, 'remark': 25}},
 }
+
+# Header fingerprints from the three user-provided September 2026 bank exports.
+EXPORT_PROFILES = {
+    'icbc': {'headers': {0: '凭证号', 1: '本方账号', 3: '交易时间', 4: '借贷标志', 5: '转出金额', 6: '转入金额', 10: '对方单位'},
+             'columns': {'payer_name': 10, 'received_date': 3, 'remark': 12}, 'credit': 6, 'debit': 5},
+    'citic': {'headers': {0: '交易日期', 3: '对方账户名称', 5: '借方发生额', 6: '贷方发生额', 11: '柜员交易号'},
+              'columns': {'payer_name': 3, 'received_date': 0, 'bank_reference': 11, 'remark': 12}, 'credit': 6, 'debit': 5},
+    'boc': {'headers': {0: '交易类型', 5: '付款人名称', 10: '交易日期', 13: '交易金额', 17: '交易流水号'},
+            'columns': {'payer_name': 5, 'received_date': 10, 'bank_reference': 17, 'remark': 25}, 'signed_amount': 13},
+}
+
+
+def _bank_header(value):
+    return header_key(cell_text(value).split('[', 1)[0])
+
+
+def _decimal_cell(value):
+    text = cell_text(value).replace(',', '').replace('，', '').replace('￥', '').replace('¥', '')
+    number = Decimal(text or '0')
+    if not number.is_finite():
+        raise ValueError('金额不是有效数字')
+    return number
+
+
+def read_export_template(raw, filename, bank_source):
+    if bank_source not in EXPORT_PROFILES:
+        return None
+    sheets = statement_sheets(raw, filename)
+    result = []
+    matched = False
+    try:
+        sheet_name, rows = next(sheets)
+        for row_number, cells in enumerate(rows, 1):
+            if row_number > 50000:
+                raise ValueError('单个工作表超过50000行，请拆分导入')
+            if not matched:
+                for candidate, definition in EXPORT_PROFILES.items():
+                    if all(index < len(cells) and _bank_header(cells[index]) == header_key(label)
+                           for index, label in definition['headers'].items()):
+                        if candidate != bank_source:
+                            raise ValueError(f"文件是{BANK_TEMPLATES[candidate]['name']}导出模板，请在对应银行入口上传")
+                        profile = definition
+                        matched = True
+                        break
+                if not matched and row_number >= 100:
+                    break
+                continue
+            if not any(cell_text(cell) for cell in cells):
+                continue
+            if all(index < len(cells) and _bank_header(cells[index]) == header_key(label)
+                   for index, label in profile['headers'].items()):
+                continue
+            if any(cell_text(cell) in {'合计', '总计', '小计'} for cell in cells[:2]):
+                continue
+            value = lambda index: cells[index] if index < len(cells) else ''
+            row = {field: value(index) for field, index in profile['columns'].items()}
+            try:
+                if 'signed_amount' in profile:
+                    net = _decimal_cell(value(profile['signed_amount']))
+                else:
+                    net = _decimal_cell(value(profile['credit'])) - _decimal_cell(value(profile['debit']))
+                row['amount'] = format(abs(net), 'f')
+                row['direction'] = '支出' if net < 0 else '收入'
+            except (InvalidOperation, ValueError):
+                row['amount'] = ''  # Report this row explicitly instead of aborting the whole file.
+            if bank_source == 'icbc':
+                # HISTORYDETAIL has a repeated voucher number, not a bank transaction ID.
+                # Keep bank_reference empty; use a separate deterministic receipt identity.
+                canonical = json.dumps([cell_text(value(index)) for index in range(13)], ensure_ascii=False, separators=(',', ':'))
+                row['_import_identity'] = 'HKICBC' + hashlib.sha256(canonical.encode()).hexdigest()[:48]
+                row['bank_reference'] = ''
+                notes = list(dict.fromkeys(cell_text(value(index)) for index in (8, 9, 12) if cell_text(value(index))))
+                notes.append('原文件未提供银行流水号；按交易内容去重')
+                row['remark'] = '；'.join(notes)
+            result.append((f"{BANK_TEMPLATES[bank_source]['name']} / {sheet_name}", row_number, row))
+    finally:
+        sheets.close()
+    if matched and not result:
+        raise ValueError('已匹配银行导出模板，但没有流水明细')
+    return result if matched else None
 
 
 def cell_text(value):
@@ -112,6 +194,9 @@ def read_legacy_statement(raw, filename, bank_source):
 
 
 def read_statement(raw, filename, bank_source=''):
+    export = read_export_template(raw, filename, bank_source)
+    if export is not None:
+        return export
     native = read_legacy_statement(raw, filename, bank_source)
     if native is not None:
         return native
