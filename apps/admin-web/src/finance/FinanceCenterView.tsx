@@ -1032,7 +1032,6 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
               ref={bankUploadRef}
               hidden
               type="file"
-              accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
               onChange={(event) =>
                 void importBankStatement(event.target.files?.[0])
               }

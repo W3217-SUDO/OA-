@@ -49,6 +49,11 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
         const { load, bankUploadRef } = context;
         if (!file)
             return;
+        if (!/\.(xlsx|xls|csv)$/i.test(file.name)) {
+            message.warning("银行流水导入支持Excel（.xlsx、.xls）或CSV文件，请选择银行导出的明细文件");
+            if (bankUploadRef.current) bankUploadRef.current.value = "";
+            return;
+        }
         if (file.size > 100 * 1024 * 1024) {
             message.error("银行流水文件不能超过100MB，请拆分后上传");
             if (bankUploadRef.current) bankUploadRef.current.value = "";
