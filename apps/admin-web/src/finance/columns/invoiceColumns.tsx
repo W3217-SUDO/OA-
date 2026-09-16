@@ -1,3 +1,4 @@
+import { moneyColumnStyle } from "../moneyColumns";
 import { PaperClipOutlined } from "@ant-design/icons";
 import { Button, Space, Tag } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
@@ -22,52 +23,52 @@ export function createInvoiceColumns(context: {
     readonly openInvoiceCancel: (row: Fee) => Promise<void>;
 }) {
     return [
-        { title: "申请编号", dataIndex: "serial_no", width: 180 },
-        { title: "客户", dataIndex: "customer", width: 190, render: (value: string, r: FinanceFlow) => value ? <Button type="link" onClick={() => context.openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
+        { title: "申请编号", ...moneyColumnStyle("申请编号"), dataIndex: "serial_no", width: 180 },
+        { title: "客户", ...moneyColumnStyle("客户"), dataIndex: "customer", width: 190, render: (value: string, r: FinanceFlow) => value ? <Button type="link" onClick={() => context.openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
         {
-            title: "案号",
+            title: "案号", ...moneyColumnStyle("案号"),
             key: "case_no",
             width: 150,
             render: (_: unknown, r: FinanceFlow) => r.data.case_no ? <Button type="link" onClick={() => context.openCaseDetail(r.data.case_no)}>{r.data.case_no}</Button> : "—",
         },
         {
-            title: "发票抬头",
+            title: "发票抬头", ...moneyColumnStyle("发票抬头"),
             key: "title",
             width: 210,
             render: (_: unknown, r: FinanceFlow) => r.data.invoice_title || "—",
         },
         {
-            title: "发票类型",
+            title: "发票类型", ...moneyColumnStyle("发票类型"),
             key: "type",
             width: 130,
             render: (_: unknown, r: FinanceFlow) => r.data.invoice_type,
         },
         {
-            title: "金额",
+            title: "金额", ...moneyColumnStyle("金额"),
             key: "amount",
             width: 125,
             render: (_: unknown, r: FinanceFlow) => r.data.amount == null ? "无权限" : money(r.data.amount),
         },
         {
-            title: "交付",
+            title: "交付", ...moneyColumnStyle("交付"),
             key: "delivery",
             width: 100,
             render: (_: unknown, r: FinanceFlow) => r.data.delivery_method,
         },
         {
-            title: "状态",
+            title: "状态", ...moneyColumnStyle("状态"),
             dataIndex: "status",
             width: 95,
             render: (v: string) => (<Tag color={statusColors[v] || "default"}>{v}</Tag>),
         },
         {
-            title: "发票号码",
+            title: "发票号码", ...moneyColumnStyle("发票号码"),
             key: "invoice_no",
             width: 150,
             render: (_: unknown, r: FinanceFlow) => r.data.invoice_no || "—",
         },
         {
-            title: "扫描件",
+            title: "扫描件", ...moneyColumnStyle("扫描件"),
             key: "files",
             width: 95,
             render: (_: unknown, r: FinanceFlow) => (<Button type="link" icon={<PaperClipOutlined />} onClick={() => context.openRecordFiles(r, "发票扫描件")}>
@@ -75,7 +76,7 @@ export function createInvoiceColumns(context: {
         </Button>),
         },
         {
-            title: "操作",
+            title: "操作", ...moneyColumnStyle("操作"),
             key: "action",
             fixed: "right" as const,
             width: 205,

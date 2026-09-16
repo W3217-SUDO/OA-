@@ -61,7 +61,7 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
         "fee_type": body.fee_type,
         "expense_subtype": body.expense_subtype or "",
     }
-    if case_record:
+    if case_record or body.fee_type_id:
         fee_parameter, fee_option = await _resolve_case_fee_type_master(
             body.fee_type_id, body.expense_scope, db,
             legacy_name=body.expense_subtype or "", legacy_base=body.fee_type,
@@ -3211,7 +3211,7 @@ async def create_finance_fee(body: FinanceFeeInput, identity: dict = Depends(cur
         "fee_type": body.fee_type,
         "expense_subtype": body.expense_subtype or "",
     }
-    if case_record:
+    if case_record or body.fee_type_id:
         fee_parameter, fee_option = await _resolve_case_fee_type_master(
             body.fee_type_id, body.expense_scope, db,
             legacy_name=body.expense_subtype or "", legacy_base=body.fee_type,
@@ -3842,6 +3842,9 @@ async def list_general_settlement_applications(
             return False
         return (not start_date or current >= start_date) and (not end_date or current <= end_date)
 
+    from app.core.finance import _settlement_customer_manager_resolver
+    resolve_manager = await _settlement_customer_manager_resolver(db)
+    current_managers = {record.id: resolve_manager(record.data or {}, record.customer) for record in records}
     filtered: list[BusinessRecord] = []
     for record in records:
         data = record.data or {}
@@ -3855,7 +3858,7 @@ async def list_general_settlement_applications(
             data = {**data, "handling_lawyers": [data["handling_lawyer"]]}
         if not contains(record.customer, customer) or not contains(data.get("case_nos"), case_no):
             continue
-        if not contains(data.get("customer_manager"), customer_manager):
+        if not contains(current_managers[record.id], customer_manager):
             continue
         if not date_in_range(data.get("received_date"), received_from, received_to):
             continue
@@ -3878,6 +3881,8 @@ async def list_general_settlement_applications(
         filtered.append(record)
 
     items = [await _record_dict_for_identity(record, identity, db) for record in filtered]
+    for item in items:
+        item["data"] = {**item.get("data", {}), "customer_manager": current_managers[item["id"]]}
     amount_keys = ["receipt_amount", "allocated_amount", "remaining_amount", "assigned_official_fee", "assigned_agency_fee", "assigned_other_fee", "agency_settlement_amount", "archive_fee", "actual_settlement_amount"]
     totals = {key: _round_fee_amount(sum(float((item.get("data") or {}).get(key) or 0) for item in items)) for key in amount_keys}
     start = (page - 1) * page_size
@@ -4040,7 +4045,7 @@ async def pay_or_rollback_general_settlement_applications(body: FinanceSettlemen
         raise HTTPException(status_code=409, detail="已付款结算申请只能回退：" + "、".join(paid_again))
     comment = body.comment.strip()
     if body.action == "rollback" and not comment:
-        raise HTTPException(status_code=422, detail="请输入审核备注.")
+        raise HTTPException(status_code=422, detail="请输入回退备注。")
     if body.action == "rollback":
         archive_decisions = list((await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "finance_archive_settlement",

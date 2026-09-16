@@ -568,6 +568,7 @@ async def _case_commission_preview_for_amount(
     active_users_by_username: dict[str, User] | None = None,
     scheme_cache: dict[tuple[int, date], HrSubrecord | None] | None = None,
     quality_manager_tokens: list[str] | None = None,
+    require_complete_people: bool = True,
 ) -> dict:
     from app.core.formatters import (
         _dashboard_case_date,
@@ -585,6 +586,28 @@ async def _case_commission_preview_for_amount(
         active_users_by_username = {user.username.lower(): user for user in active_users}
     scheme_cache = scheme_cache if scheme_cache is not None else {}
     case_data = case_record.data or {}
+    # Presence alone is insufficient: placeholders, ambiguous staff records and
+    # disabled accounts cannot be recipients. Recheck on every preview/save.
+    required_roles = (
+        ("开庭律师", CASE_COMMISSION_ROLES[0]["fields"]),
+        ("经办律师", ("handling_lawyer_usernames", "handling_lawyer_username", "handling_lawyers", "handling_lawyer")),
+        ("律师助理", CASE_COMMISSION_ROLES[1]["fields"]),
+    )
+    invalid_roles = []
+    for label, fields in required_roles:
+        tokens = _case_commission_person_tokens(case_data, fields)
+        valid = bool(tokens)
+        for token in tokens:
+            employee = employee_index.get(token.lower())
+            employee_data = (employee.data or {}) if employee else {}
+            username = str(employee_data.get("username", employee.owner if employee else "") or "").strip().lower()
+            linked_employee = employee_index.get(username)
+            if not employee or not linked_employee or linked_employee.id != employee.id or username not in active_users_by_username:
+                valid = False
+        if not valid:
+            invalid_roles.append(label)
+    if invalid_roles and require_complete_people:
+        raise HTTPException(status_code=422, detail=f"请先补充完整案件人员并关联有效在职账号：{'、'.join(invalid_roles)}，再新建提成")
     resolved_case_date = _dashboard_case_date(case_record)
     case_date = resolved_case_date.date() if resolved_case_date != datetime.min else date.today()
     rows: list[dict] = []
@@ -900,6 +923,7 @@ async def _recalculate_case_draft_commissions(case_record: BusinessRecord, db: A
             employee_index=employee_index,
             active_users_by_username=active_users_by_username,
             scheme_cache=scheme_cache,
+            require_complete_people=False,
         )
         remarks = {str(item.get("calculation_key") or ""): str(item.get("remark") or "") for item in automatic}
         generated = [

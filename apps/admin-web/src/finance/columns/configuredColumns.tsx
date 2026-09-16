@@ -1,4 +1,5 @@
 import type { OriginalRouteConfig } from "../types";
+import { moneyColumnStyle } from "../moneyColumns";
 import { Button, message } from "antd";
 import type { Fee, IncomingPayment } from "../types";
 export function createConfiguredColumns(context: {
@@ -47,6 +48,7 @@ export function createConfiguredColumns(context: {
         {header.split("/").map((part) => (<span key={part}>{part}</span>))}
       </span>) : (header),
         key: `${header}-${index}`,
+        ...moneyColumnStyle(header),
         width: context.initialView === "finance-internal-settle"
             ? context.settlementColumnWidths[index]
             : context.isGeneralSettlementRoute

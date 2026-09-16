@@ -194,6 +194,7 @@ class FeeTypeHierarchyRow16Test(unittest.IsolatedAsyncioTestCase):
             f"{API}/cases/batch-fees",
             json={
                 "case_ids": [self.case_id], "amount": 88.8,
+                "case_contracts": [{"case_id": self.case_id, "contract_record_id": self.contract_id}],
                 "fee_type_id": self.leaf_id, "expense_scope": "\u5f8b\u6240",
                 "expense_subtype": "\u4e00\u5ba1\u8bc9\u8bbc\u8d39",
                 "handler": IDENTITY["username"], "description": "row16",

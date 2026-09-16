@@ -378,7 +378,7 @@ export const paymentQueryPageTotal = (
     .toFixed(2);
 
 export const paymentQueryFeeTypeControl = (initialView: string): "feeType" | undefined =>
-  initialView === "finance-payment-query" ? undefined : "feeType";
+  "feeType";
 
 export const settlementContextPageSize = 100;
 
@@ -395,17 +395,9 @@ export const effectivePaymentQuery = (
   query: Record<string, any>,
   knownFeeTypes: string[],
 ) => {
-  const feeType = String(query.feeType || "").trim();
-  if (
-    initialView !== "finance-payment-query" ||
-    !feeType ||
-    knownFeeTypes.includes(feeType)
-  ) {
-    return query;
-  }
-  const next = { ...query };
-  delete next.feeType;
-  return next;
+  void initialView;
+  void knownFeeTypes;
+  return query;
 };
 
 export const invoiceText = (value: unknown) => String(value ?? "").trim();

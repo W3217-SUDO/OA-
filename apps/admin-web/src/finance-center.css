@@ -1939,3 +1939,14 @@
 .finance-refund-payment-row .ant-form-item {
   margin-bottom: 0;
 }
+
+/* Money cells and their totals use the same edge and inset at every width. */
+.finance-original-panel .ant-table-cell.finance-money-column,
+.finance-original-panel tr[class*="grand-total"] > td,
+.finance-original-panel tr[class*="page-total"] > td,
+.finance-original-panel .ant-table-summary > tr > td {
+  text-align: right !important;
+  padding-left: 5px !important;
+  padding-right: 5px !important;
+  font-variant-numeric: tabular-nums;
+}

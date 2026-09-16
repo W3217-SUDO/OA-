@@ -1,3 +1,4 @@
+import { FeeTypePicker } from "./FeeTypePicker";
 import { InvoiceApplicationPage } from "./InvoiceApplicationPage";
 import { PaymentApplicationPage } from "./PaymentApplicationPage";
 import { api } from "../api";
@@ -3922,15 +3923,20 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
           <Form.Item label="费用名称" name="title" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
+          <Form.Item name="fee_type" hidden><Input /></Form.Item>
+          <Form.Item name="expense_subtype" hidden><Input /></Form.Item>
+          <Form.Item name="expense_scope" hidden><Input /></Form.Item>
           <div className="form-grid">
             <Form.Item
               label="费用类型"
-              name="fee_type"
-              rules={[{ required: true }]}
+              name="fee_type_id"
+              rules={[{ required: true, message: "请选择费用子类型" }]}
             >
-              <Select
-                options={feeTypes.map((v) => ({ value: v, label: v }))}
-                onChange={(value) => setFeeTypeOverride(value || "")}
+              <FeeTypePicker editing scope={feeForm.getFieldValue("expense_scope")}
+                onSelectOption={(item) => {
+                  feeForm.setFieldsValue({ fee_type: item.base_fee_type, expense_subtype: item.name });
+                  setFeeTypeOverride(item.base_fee_type);
+                }}
               />
             </Form.Item>
             <Form.Item

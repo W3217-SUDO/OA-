@@ -1,3 +1,4 @@
+import { moneyColumnStyle } from "../moneyColumns";
 import { PaperClipOutlined } from "@ant-design/icons";
 import { Button, Space, Tag } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
@@ -23,64 +24,64 @@ export function createRefundColumns(context: {
     readonly setRefundCompleteTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
 }) {
     return [
-        { title: "申请编号", dataIndex: "serial_no", width: 180 },
+        { title: "申请编号", ...moneyColumnStyle("申请编号"), dataIndex: "serial_no", width: 180 },
         {
-            title: "案号",
+            title: "案号", ...moneyColumnStyle("案号"),
             key: "case_no",
             width: 150,
             render: (_: unknown, r: FinanceFlow) => r.data.case_no ? <Button type="link" onClick={() => context.openCaseDetail(r.data.case_no)}>{r.data.case_no}</Button> : "—",
         },
-        { title: "客户", dataIndex: "customer", width: 180, render: (value: string, r: FinanceFlow) => value ? <Button type="link" onClick={() => context.openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
+        { title: "客户", ...moneyColumnStyle("客户"), dataIndex: "customer", width: 180, render: (value: string, r: FinanceFlow) => value ? <Button type="link" onClick={() => context.openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
         {
-            title: "法院",
+            title: "法院", ...moneyColumnStyle("法院"),
             key: "court",
             width: 190,
             render: (_: unknown, r: FinanceFlow) => r.data.court,
         },
         {
-            title: "原缴费票号",
+            title: "原缴费票号", ...moneyColumnStyle("原缴费票号"),
             key: "payment_no",
             width: 150,
             render: (_: unknown, r: FinanceFlow) => r.data.original_payment_no,
         },
         {
-            title: "退款金额",
+            title: "退款金额", ...moneyColumnStyle("退款金额"),
             key: "amount",
             width: 125,
             render: (_: unknown, r: FinanceFlow) => r.data.amount == null ? "无权限" : money(r.data.amount),
         },
         {
-            title: "退款账户",
+            title: "退款账户", ...moneyColumnStyle("退款账户"),
             key: "account",
             width: 180,
             render: (_: unknown, r: FinanceFlow) => r.data.refund_account_name || "—",
         },
         {
-            title: "预计到账",
+            title: "预计到账", ...moneyColumnStyle("预计到账"),
             key: "expected",
             width: 110,
             render: (_: unknown, r: FinanceFlow) => r.data.expected_date || "—",
         },
         {
-            title: "实际到账",
+            title: "实际到账", ...moneyColumnStyle("实际到账"),
             key: "actual",
             width: 110,
             render: (_: unknown, r: FinanceFlow) => r.data.actual_date || "—",
         },
         {
-            title: "退款凭证号",
+            title: "退款凭证号", ...moneyColumnStyle("退款凭证号"),
             key: "voucher",
             width: 135,
             render: (_: unknown, r: FinanceFlow) => r.data.refund_voucher_no || r.data.voucher_no || "—",
         },
         {
-            title: "状态",
+            title: "状态", ...moneyColumnStyle("状态"),
             dataIndex: "status",
             width: 105,
             render: (v: string) => (<Tag color={statusColors[v] || "default"}>{v}</Tag>),
         },
         {
-            title: "到账凭证",
+            title: "到账凭证", ...moneyColumnStyle("到账凭证"),
             key: "files",
             width: 105,
             render: (_: unknown, r: FinanceFlow) => (<Button type="link" icon={<PaperClipOutlined />} onClick={() => context.openRecordFiles(r, "退费凭证")}>
@@ -88,7 +89,7 @@ export function createRefundColumns(context: {
         </Button>),
         },
         {
-            title: "操作",
+            title: "操作", ...moneyColumnStyle("操作"),
             key: "action",
             fixed: "right" as const,
             width: 205,

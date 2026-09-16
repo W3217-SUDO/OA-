@@ -321,7 +321,13 @@ async def query_payments(filters, identity, db):
         value = str(filters.get(key) or "").strip()
         if value:
             conditions.append(column.ilike(f"%{value}%"))
-    for key, value in {"case_no": filters.get("case_no"), "fee_type": filters.get("fee_type"),
+    selected_fee_types = [value.strip() for value in str(filters.get("fee_type") or "").split(",") if value.strip()]
+    if selected_fee_types:
+        conditions.append(or_(
+            *(data[key].as_string().in_(selected_fee_types) for key in ("fee_type", "fee_type_name", "expense_subtype", "commission_type")),
+            *(and_(record.module == "contract_payment", line_matches("fee_type", value)) for value in selected_fee_types),
+        ))
+    for key, value in {"case_no": filters.get("case_no"),
                        "case_stage": filters.get("case_stage") or filters.get("stage")}.items():
         if value and str(value).strip():
             value = str(value).strip()

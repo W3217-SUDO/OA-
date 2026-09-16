@@ -1,3 +1,4 @@
+import { FeeTypePicker } from "./FeeTypePicker";
 import { receiptBankCode, matchesReceiptBank } from "./bankReceiptScope";
 import {
 ArrowUpOutlined,
@@ -940,7 +941,7 @@ export default function FinanceCenterPage({
         status: isGeneralSettlementPaidRoute
           ? "已付款"
           : isGeneralSettlementRejectedRoute
-            ? "已拒绝,已退回,已驳回"
+            ? "已拒绝,已驳回"
           : isGeneralSettlementPaymentRoute
             ? "待付款"
             : "待审批",
@@ -1408,6 +1409,7 @@ export default function FinanceCenterPage({
       customer: row.customer,
       amount: data.amount,
       fee_type: data.fee_type,
+      fee_type_id: data.fee_type_id,
       expense_scope: data.expense_scope,
       expense_subtype: data.expense_subtype,
       handler: data.handler || row.owner,
@@ -1960,7 +1962,7 @@ export default function FinanceCenterPage({
         textMatch(item.data.case_no, "caseNo") &&
         textMatch(item.data.payee || tx?.counterparty, "payee") &&
         textMatch(item.serial_no, "paymentNo") &&
-        textMatch(item.data.fee_type, "feeType") &&
+        (!originalQuery.feeType || String(originalQuery.feeType).split(",").some(type => [item.data.fee_type, item.data.fee_type_name, item.data.expense_subtype, item.data.commission_type].includes(type))) &&
         textMatch(item.customer, "customer") &&
         textMatch(item.title, "title") &&
         textMatch(item.data.handler || item.owner, "handler") &&
@@ -2010,19 +2012,10 @@ export default function FinanceCenterPage({
           onChange={(value) => setOriginalField(key, value)}
         />
       ) : control === "feeType" ? (
-        <Select
-          allowClear
-          value={originalQueryDraft[key]}
+        <FeeTypePicker multiple
+          value={originalQueryDraft[key] ? String(originalQueryDraft[key]).split(",") : []}
           disabled={disabled || contractPaymentSource.active}
-          placeholder="请选择"
-          options={[
-            "官方费用",
-            "内部费用",
-            "结算费用",
-            "预损费用",
-            "归档费用",
-          ].map((value) => ({ value, label: value }))}
-          onChange={(value) => setOriginalField(key, value)}
+          onChange={(value) => setOriginalField(key, value.join(","))}
         />
       ) : control === "date" ? (
         <Space.Compact>
@@ -2897,7 +2890,9 @@ export default function FinanceCenterPage({
     return (
       <label className="finance-original-field" key={`${key}-${index}`}>
         <span>{spec.label}</span>
-        {spec.control === "multi" ? (
+        {spec.label === "费用类型" ? (
+          <FeeTypePicker multiple value={Array.isArray(value) ? value : value ? [value] : []} onChange={(next) => setOriginalField(key, next)} />
+        ) : spec.control === "multi" ? (
           <Popover
             open={multiPickerOpen === key}
             trigger="click"
@@ -3624,7 +3619,7 @@ export default function FinanceCenterPage({
       "finance-settlement-audit": ["待审批"],
       "finance-settlement-payment": ["待付款"],
       "finance-settlement-paid": ["已付款"],
-      "finance-settlement-refused": ["已拒绝", "已退回", "已驳回"],
+      "finance-settlement-refused": ["已拒绝", "已驳回"],
       "finance-archive-fee-pending": ["草稿", "待归档"],
       "finance-archive-fee-payment": ["已审批", "待支付", "部分付款"],
       "finance-archive-fee-paid": ["已付款", "已支付"],
@@ -3648,6 +3643,10 @@ export default function FinanceCenterPage({
         )
           return true;
         const raw = rawCellValue(row, spec.label);
+        if (spec.label === "费用类型") {
+          const selected = Array.isArray(value) ? value : String(value).split(",");
+          return !selected.length || selected.some(type => [raw, row.data?.fee_type, row.data?.fee_type_name, row.data?.expense_subtype, row.data?.commission_type].includes(type));
+        }
         if (spec.control === "date") {
           if (!Array.isArray(value) || (!value[0] && !value[1])) return true;
           if (!raw) return false;

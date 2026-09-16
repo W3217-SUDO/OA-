@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FeeTypePicker } from "./finance/FeeTypePicker";
+import { moneyColumnStyle } from "./finance/moneyColumns";
 import {
   AutoComplete,
   Button,
@@ -264,7 +266,7 @@ const feeQueryFields: QueryField[] = [
   { key: "feeType", label: "费用类型", kind: "select", options: paymentTypes },
 ];
 
-const column = (title: string, width = 120) => ({ title, dataIndex: title, width });
+const column = (title: string, width = 120) => ({ title, dataIndex: title, width, ...moneyColumnStyle(title) });
 const operationColumn = column("操作", 90);
 const receiptColumns: TableColumnsType<EmptyRow> = [
   column("客户名称", 190),
@@ -420,6 +422,7 @@ function QueryControl({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
+  if (field.key === "feeType") return <FeeTypePicker multiple value={value} onChange={onChange} />;
   if (field.kind === "range") {
     return (
       <DatePicker.RangePicker
@@ -842,6 +845,10 @@ export default function PlatformFinancePage({
   const filteredRows = tableRows.filter((row) => fields.every((field) => {
     const value = submittedQuery[field.key];
     if (value == null || value === "" || (Array.isArray(value) && !value.some(Boolean))) return true;
+    if (field.key === "feeType") {
+      const data = row._source?.data || {};
+      return (Array.isArray(value) ? value : [value]).some(type => [data.fee_type, data.fee_type_name, data.expense_subtype, data.commission_type].includes(type));
+    }
     if (field.kind === "money-range") {
       const raw = Number(row.金额?.replace?.(/[^0-9.-]/g, "") || 0);
       const [min, max] = value as [number | null, number | null];

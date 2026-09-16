@@ -1,3 +1,4 @@
+import { moneyColumnStyle } from "../moneyColumns";
 import { AuditOutlined, CheckCircleOutlined, DollarOutlined } from "@ant-design/icons";
 import { Button, Space, Tag } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
@@ -13,42 +14,42 @@ export function createFeeColumns(context: {
     readonly setTransactionOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
     return [
-        { title: "费用编号", dataIndex: "serial_no", width: 175 },
-        { title: "费用名称", dataIndex: "title", width: 240 },
+        { title: "费用编号", ...moneyColumnStyle("费用编号"), dataIndex: "serial_no", width: 175 },
+        { title: "费用名称", ...moneyColumnStyle("费用名称"), dataIndex: "title", width: 240 },
         {
-            title: "费用类型",
+            title: "费用类型", ...moneyColumnStyle("费用类型"),
             key: "type",
             width: 100,
             render: (_: unknown, r: Fee) => (<Tag color="blue">{r.data.fee_type || "官方费用"}</Tag>),
         },
         {
-            title: "金额",
+            title: "金额", ...moneyColumnStyle("金额"),
             key: "amount",
             width: 120,
             render: (_: unknown, r: Fee) => (<b>{r.data.amount == null ? "无权限" : money(r.data.amount)}</b>),
         },
-        { title: "客户", dataIndex: "customer", width: 180, render: (value: string, r: Fee) => value ? <Button type="link" onClick={() => context.openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
+        { title: "客户", ...moneyColumnStyle("客户"), dataIndex: "customer", width: 180, render: (value: string, r: Fee) => value ? <Button type="link" onClick={() => context.openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
         {
-            title: "案号",
+            title: "案号", ...moneyColumnStyle("案号"),
             key: "case",
             width: 145,
             render: (_: unknown, r: Fee) => r.data.case_no ? <Button type="link" onClick={() => context.openCaseDetail(r.data.case_no)}>{r.data.case_no}</Button> : "—",
         },
         {
-            title: "法院/机构",
+            title: "法院/机构", ...moneyColumnStyle("法院/机构"),
             key: "court",
             width: 180,
             render: (_: unknown, r: Fee) => r.data.court || "—",
         },
-        { title: "经办人", dataIndex: "owner", width: 90 },
+        { title: "经办人", ...moneyColumnStyle("经办人"), dataIndex: "owner", width: 90 },
         {
-            title: "状态",
+            title: "状态", ...moneyColumnStyle("状态"),
             dataIndex: "status",
             width: 90,
             render: (v: string) => (<Tag color={statusColors[v] || "default"}>{v}</Tag>),
         },
         {
-            title: "操作",
+            title: "操作", ...moneyColumnStyle("操作"),
             key: "action",
             fixed: "right" as const,
             width: 145,

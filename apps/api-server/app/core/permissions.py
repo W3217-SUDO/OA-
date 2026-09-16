@@ -1115,8 +1115,8 @@ async def _ensure_legacy_case_task_history_visible(
     raise HTTPException(status_code=404, detail="历史任务尚未建立可验证的案件映射")
 
 
-def _validate_finance_fee_scope_subtype(expense_scope: str | None, expense_subtype: str | None, fee_type: str) -> None:
-    if expense_subtype and EXPENSE_SUBTYPE_FEE_TYPE.get(expense_subtype) != fee_type:
+def _validate_finance_fee_scope_subtype(expense_scope: str | None, expense_subtype: str | None, fee_type: str, *, catalog_validated: bool = False) -> None:
+    if not catalog_validated and expense_subtype and EXPENSE_SUBTYPE_FEE_TYPE.get(expense_subtype) != fee_type:
         raise HTTPException(status_code=422, detail="费用子类型与费用类型不一致")
     if expense_scope == "平台" and fee_type == "代理费" and expense_subtype != "平台代理费":
         raise HTTPException(status_code=422, detail="平台费用的代理费类型只能是平台代理费")

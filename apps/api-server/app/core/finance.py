@@ -768,7 +768,7 @@ async def _resolve_case_fee_type_master(
     scope = str(expense_scope or "").strip()
     if scope and scope not in option["expense_scopes"]:
         raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
-    _validate_finance_fee_scope_subtype(scope, item.name, option["base_fee_type"])
+    _validate_finance_fee_scope_subtype(scope, item.name, option["base_fee_type"], catalog_validated=True)
     return item, option
 
 
@@ -2356,6 +2356,32 @@ def _settlement_amounts_for_fee(
     return settlement_amount, archive_fee
 
 
+async def _settlement_customer_manager_resolver(db: AsyncSession):
+    """Resolve current managers by stable customer links, then unique legacy name."""
+    from app.core.contracts import _contract_person_values
+    from app.core.formatters import _person_reference_display
+    customers = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer"))).all())
+    users = {user.username.lower(): user for user in (await db.scalars(select(User))).all()}
+    by_id = {item.id: item for item in customers}
+    by_no = {item.serial_no: item for item in customers}
+    by_name: dict[str, list[BusinessRecord]] = {}
+    for item in customers:
+        by_name.setdefault(item.title.strip(), []).append(item)
+
+    def resolve(data: dict, customer_name: str) -> str:
+        raw_id = data.get("customer_record_id") or data.get("customer_id")
+        customer = by_id.get(int(raw_id)) if str(raw_id or "").isdigit() else None
+        customer = customer or by_no.get(str(data.get("customer_no") or ""))
+        candidates = by_name.get(str(customer_name or "").strip(), [])
+        if customer is None and not raw_id and not data.get("customer_no") and len(candidates) == 1:
+            customer = candidates[0]
+        if customer is None:
+            return ""
+        values = _contract_person_values((customer.data or {}).get("customer_managers") or [customer.owner])
+        return "、".join(dict.fromkeys(_person_reference_display(value, users)[0] for value in values))
+    return resolve
+
+
 async def _general_settlement_rows(
     identity: dict,
     db: AsyncSession,
@@ -2401,6 +2427,8 @@ async def _general_settlement_rows(
     cases_by_id = {item.id: item for item in cases}
     cases_by_no = {item.serial_no: item for item in cases}
 
+    resolve_manager = await _settlement_customer_manager_resolver(db)
+
     visible_case_ids = set(cases_by_id)
     visible_case_nos = set(cases_by_no)
     fee_records = list((await db.scalars(select(BusinessRecord).where(
@@ -2431,10 +2459,16 @@ async def _general_settlement_rows(
         if record.status not in inactive_statuses
     }
     rejection_by_receipt: dict[int, str] = {}
-    for record in settlement_records:
+    for record in sorted(settlement_records, key=lambda record: (
+        str(((record.data or {}).get("rollback_at") if record.status == "已退回" else (record.data or {}).get("reviewed_at")) or record.updated_at or record.created_at), record.id
+    ), reverse=True):
         receipt_id = int((record.data or {}).get("receipt_id") or 0)
         if receipt_id and record.status in inactive_statuses and receipt_id not in rejection_by_receipt:
-            rejection_by_receipt[receipt_id] = str((record.data or {}).get("review_comment") or record.description or "")
+            data = record.data or {}
+            rejection_by_receipt[receipt_id] = str(
+                (data.get("rollback_comment") or data.get("rejection_comment") or "")
+                if record.status == "已退回" else (data.get("review_comment") or record.description or "")
+            )
 
     consumed_by_fee: dict[int, float] = {}
     rows: list[dict] = []
@@ -2565,7 +2599,10 @@ async def _general_settlement_rows(
         row_case_nos = "、".join(dict.fromkeys(str(item.get("case_no") or "") for item in details if item.get("case_no")))
         row_hearing = "、".join(dict.fromkeys(str(data.get("hearing_lawyer") or "") for data in case_data_rows if data.get("hearing_lawyer")))
         row_assistant = "、".join(dict.fromkeys(str(data.get("assistant") or data.get("lawyer_assistant") or "") for data in case_data_rows if data.get("assistant") or data.get("lawyer_assistant")))
-        row_manager = "、".join(dict.fromkeys(str(data.get("customer_manager") or "") for data in case_data_rows if data.get("customer_manager")))
+        row_manager = "、".join(dict.fromkeys(
+            name for item in detail_cases
+            for name in resolve_manager(item.data or {}, item.customer).split("、") if name
+        )) or resolve_manager({}, str(row_customer or ""))
         row_source = "、".join(dict.fromkeys(str(data.get("source_person") or data.get("case_source") or "") for data in case_data_rows if data.get("source_person") or data.get("case_source")))
         row_method = "、".join(dict.fromkeys(str(item.get("payment_method") or "") for item in payment_allocations if item.get("payment_method")))
         if not contains(row_customer, customer) or not contains(row_case_nos, case_no):

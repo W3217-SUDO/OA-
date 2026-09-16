@@ -298,7 +298,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
             return;
         if (generalSettlementPaymentAction === "rollback" &&
             !generalSettlementPaymentComment.trim()) {
-            message.warning("请输入审核备注.");
+            message.warning("请输入回退备注。");
             return;
         }
         if (!financeActionGates.generalSettlement.tryEnter()) {

@@ -176,7 +176,7 @@ export function SettlementReviewModals({
         <label className="finance-settlement-review-field">
           <span>
             {generalPaymentAction === "rollback"
-              ? "审核备注:"
+              ? "回退备注:"
               : "备注:"}
           </span>
           <Input
