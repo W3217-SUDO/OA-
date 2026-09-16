@@ -22,13 +22,16 @@ REQUIRED = ('payer_name', 'bank_reference', 'received_date', 'amount')
 # Legacy AR/{bank}/PaymentService.Process: 1-based first row, 0-based columns.
 # Explicit bank selection is authoritative; header synonyms must not override it.
 BANK_TEMPLATES = {
+    'cmb': {'name': '招商', 'first_row': 14, 'columns': {'payer_name': 19, 'amount': 8, 'received_date': 3, 'bank_reference': 11, 'remark': 10}},
     'icbc': {'name': '工行', 'first_row': 6, 'columns': {'payer_name': 5, 'amount': 6, 'received_date': 10, 'bank_reference': 13, 'direction': 8, 'remark': 12}},
     'citic': {'name': '中信', 'first_row': 15, 'columns': {'payer_name': 3, 'amount': 6, 'received_date': 0, 'bank_reference': 11, 'remark': 12}},
     'boc': {'name': '中行', 'first_row': 9, 'columns': {'payer_name': 5, 'amount': 13, 'received_date': 10, 'bank_reference': 17, 'remark': 25}},
 }
 
-# Header fingerprints from the three user-provided September 2026 bank exports.
+# Header fingerprints from the user-provided September 2026 bank exports.
 EXPORT_PROFILES = {
+    'cmb': {'headers': {0: '账号', 3: '交易日', 7: '借方金额', 8: '贷方金额', 11: '流水号', 19: '收(付)方名称'},
+            'columns': {'payer_name': 19, 'received_date': 3, 'bank_reference': 11, 'remark': 10}, 'credit': 8, 'debit': 7},
     'icbc': {'headers': {0: '凭证号', 1: '本方账号', 3: '交易时间', 4: '借贷标志', 5: '转出金额', 6: '转入金额', 10: '对方单位'},
              'columns': {'payer_name': 10, 'received_date': 3, 'remark': 12}, 'credit': 6, 'debit': 5},
     'citic': {'headers': {0: '交易日期', 3: '对方账户名称', 5: '借方发生额', 6: '贷方发生额', 11: '柜员交易号'},
@@ -197,6 +200,8 @@ def read_statement(raw, filename, bank_source=''):
     export = read_export_template(raw, filename, bank_source)
     if export is not None:
         return export
+    if bank_source == 'cmb':
+        raise ValueError('未匹配招商银行导出模板，需要账号、交易日、借方金额、贷方金额、流水号及收(付)方名称列；请上传完整交易查询导出表')
     native = read_legacy_statement(raw, filename, bank_source)
     if native is not None:
         return native

@@ -2251,9 +2251,9 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
     import json
     from app.core.permissions import _permission_payload_for_identity
     bank_source = bank_source.strip().lower()
-    bank_names = {"icbc": "工行", "citic": "中信", "boc": "中行"}
+    bank_names = {"icbc": "工行", "citic": "中信", "boc": "中行", "cmb": "招商"}
     if bank_source and bank_source not in bank_names:
-        raise HTTPException(422, "请选择工行、中信或中行回款入口上传")
+        raise HTTPException(422, "请选择工行、中信、中行或招商回款入口上传")
     permission = await _permission_payload_for_identity(identity, db)
     menus = set(permission.get("menu_keys", []))
     if identity.get("role") not in {"admin", "manager"} and not (bank_source and (
