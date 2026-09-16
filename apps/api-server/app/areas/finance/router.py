@@ -2242,11 +2242,13 @@ async def create_incoming_payment(body: IncomingPaymentInput, identity: dict = D
 
 
 @router.post(f"{settings.api_prefix}/finance/incoming-payments/import")
-async def import_incoming_payments(file: UploadFile = File(...), bank_source: str = Form(""), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def import_incoming_payments(file: UploadFile | None = File(None), bank_source: str = Form(""), confirmed_rows: str = Form(""), confirmation_token: str = Form(""), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
         _round_fee_amount,
     )
     from app.core.bank_statement_import import read_statement, cell_text, parse_received_date, parse_amount
+    from app.core.bank_document_recognition import requires_recognition, recognize_document, sign_preview, verify_preview
+    import json
     from app.core.permissions import _permission_payload_for_identity
     bank_source = bank_source.strip().lower()
     bank_names = {"icbc": "工行", "citic": "中信", "boc": "中行"}
@@ -2258,25 +2260,47 @@ async def import_incoming_payments(file: UploadFile = File(...), bank_source: st
         f"finance-receipts-{bank_source}" in menus or f"platform-finance-overview-{bank_source}" in menus
     )):
         raise HTTPException(status_code=403, detail="当前账号没有该银行回款上传权限")
-    raw = await file.read(100 * 1024 * 1024 + 1)
-    if len(raw) > 100 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="银行流水文件不能超过100MB，请拆分后上传")
+    preview = False
+    recognized = False
     try:
-        from starlette.concurrency import run_in_threadpool
-        statement_rows = await run_in_threadpool(read_statement, raw, file.filename or "", bank_source)
+        if confirmation_token:
+            if len(confirmed_rows) > 2 * 1024 * 1024:
+                raise ValueError('确认内容过大，请重新识别')
+            statement_rows = json.loads(confirmed_rows)
+            if not isinstance(statement_rows, list) or len(statement_rows) > 1000 or not verify_preview(confirmation_token, statement_rows, identity['username'], bank_source):
+                raise ValueError('识别结果已过期或被更改，请重新上传识别')
+            recognized = True
+        else:
+            if file is None:
+                raise ValueError('请选择需要识别的银行流水文件')
+            raw = await file.read(100 * 1024 * 1024 + 1)
+            if len(raw) > 100 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="银行流水文件不能超过100MB，请拆分后上传")
+            if requires_recognition(file.filename or ''):
+                statement_rows = await recognize_document(raw, file.filename or '', bank_source)
+                statement_rows = [[sheet, number, {key: cell_text(value) for key, value in row.items()}] for sheet, number, row in statement_rows]
+                preview = recognized = True
+            else:
+                from starlette.concurrency import run_in_threadpool
+                statement_rows = await run_in_threadpool(read_statement, raw, file.filename or "", bank_source)
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(422, "文件无法解析，请确认是真实Excel或CSV文件，且未加密、未损坏") from exc
+        raise HTTPException(422, "文件无法识别，请确认格式真实、文件未加密且未损坏") from exc
     existing = set((await db.scalars(select(IncomingPayment.bank_reference))).all())
     created = 0
     skipped = 0
     errors: list[dict] = []
+    preview_items: list[dict] = []
     for sheet_name, row_no, row in statement_rows:
         try:
             if cell_text(row.get("direction")).upper() in {"借", "借方", "付", "付款", "支出", "转出", "D", "DEBIT"}:
                 skipped += 1
                 continue
+            if recognized and row.get('direction') == '未知':
+                raise ValueError('无法确认收付方向，请核对原文件后使用明确的收入流水明细')
             payer = cell_text(row.get("payer_name"))
             bank_reference = cell_text(row.get("bank_reference"))
             received_text = row.get("received_date")
@@ -2291,7 +2315,7 @@ async def import_incoming_payments(file: UploadFile = File(...), bank_source: st
             amount = parse_amount(amount_text)
             if amount <= 0:
                 raise ValueError("到账金额必须大于 0")
-            db.add(IncomingPayment(
+            item_values = dict(
                 receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}{row_no}",
                 received_date=received_date,
                 amount=amount,
@@ -2301,11 +2325,20 @@ async def import_incoming_payments(file: UploadFile = File(...), bank_source: st
                 bank_source=bank_names.get(bank_source, ""),
                 operator=identity["username"],
                 remark=cell_text(row.get("remark")),
-            ))
+            )
+            if preview:
+                preview_items.append({'source': sheet_name, 'row': row_no, 'payer_name': payer, 'bank_reference': bank_reference,
+                    'received_date': str(received_date), 'amount': amount, 'remark': item_values['remark']})
+            else:
+                db.add(IncomingPayment(**item_values))
             existing.add(bank_reference)
             created += 1
         except (ValueError, TypeError) as exc:
             errors.append({"sheet": sheet_name, "row": row_no, "error": str(exc) or "字段格式错误"})
+    if preview:
+        return {'requires_confirmation': True, 'items': preview_items, 'rows': statement_rows,
+            'confirmation_token': sign_preview(statement_rows, identity['username'], bank_source),
+            'created': 0, 'valid_count': created, 'errors': errors, 'skipped': skipped}
     if created:
         await db.commit()
     return {"created": created, "errors": errors, "skipped": skipped}

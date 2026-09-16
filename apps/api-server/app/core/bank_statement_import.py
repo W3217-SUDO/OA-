@@ -33,7 +33,7 @@ def header_key(value):
 
 def statement_sheets(raw, filename):
     suffix = Path(filename).suffix.lower()
-    if suffix == '.csv':
+    if suffix in {'.csv', '.tsv'}:
         for encoding in ('utf-8-sig', 'gb18030'):
             try:
                 content = raw.decode(encoding)
