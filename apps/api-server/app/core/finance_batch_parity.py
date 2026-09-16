@@ -2,6 +2,18 @@
 from collections import OrderedDict
 
 
+def official_refund_progress(data: dict, requested: float, refunded: float, received=None) -> float:
+    """Read-model progress: a fee's receipts cover its refund, without double counting."""
+    if str(data.get('fee_type') or '') not in {'官方费用', '官费'} or is_internal_fee(data):
+        return refunded
+    if received is None:
+        received = data.get('received_amount')
+        if received is None:
+            received = data.get('cashed_amount')
+    return round(min(max(float(requested or 0), 0),
+                     max(float(refunded or 0), float(received or 0), 0)), 2)
+
+
 def is_internal_fee(data: dict) -> bool:
     return (str(data.get('expense_scope') or '') == '内部'
             or str(data.get('fee_type') or '') in {'内部费用', '内部提成', 'INTERNAL'}
@@ -59,7 +71,8 @@ async def allocate_court_refund(payment, body, customer, identity, db):
         if entry.case_no and entry.case_no != data.get('case_no'):
             raise HTTPException(409, "退费案件关联不一致")
         totals[fee.id] = _round_fee_amount(totals.get(fee.id, 0) + entry.amount)
-        remaining = _round_fee_amount(float(data.get('refund_amount') or data.get('refund_requested_amount') or 0) - float(data.get('refunded_amount') or 0))
+        requested = float(data.get('refund_amount') or data.get('refund_requested_amount') or 0)
+        remaining = _round_fee_amount(requested - official_refund_progress(data, requested, float(data.get('refunded_amount') or 0)))
         if totals[fee.id] > remaining + .001:
             raise HTTPException(409, "分配金额超过剩余未退金额")
         fees[fee.id] = fee

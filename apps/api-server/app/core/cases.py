@@ -728,6 +728,8 @@ async def _case_commission_preview(
         else:
             requested = float(fee_data.get("refund_requested_amount") or fee_data.get("refund_amount") or 0)
             refunded = float(fee_data.get("refunded_amount") or 0)
+        from app.core.finance_batch_parity import official_refund_progress
+        refunded = official_refund_progress(fee_data, requested, refunded)
         refund_amount += max(requested - refunded, 0)
 
     invoice_over_amount = 0.0

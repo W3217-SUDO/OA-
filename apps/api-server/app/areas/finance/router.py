@@ -2562,13 +2562,16 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
                 contract = next((item for item in contracts if item.serial_no == case_contract_no), None)
         if contract is None or not _record_belongs_to_customer(fee_record, claimed_customer_record, item.claimed_customer):
             continue
-        refund_remaining = _round_fee_amount(max(0, float(fee_data.get("refund_amount") or fee_data.get("refund_requested_amount") or 0) - float(fee_data.get("refunded_amount") or 0)))
+        from app.core.finance_batch_parity import official_refund_progress
+        refund_requested = float(fee_data.get("refund_amount") or fee_data.get("refund_requested_amount") or 0)
+        refund_received = official_refund_progress(fee_data, refund_requested, float(fee_data.get("refunded_amount") or 0))
+        refund_remaining = _round_fee_amount(max(0, refund_requested - refund_received))
         if "法院" in item.payer_name and refund_remaining > 0 and str(fee_data.get("fee_type")) in {"官方费用", "官费"}:
             rows.append({"key": f"refund:{fee_record.id}", "is_refund": True, "fee_record_id": fee_record.id,
                          "receivable_plan_id": None, "contract_id": contract.id, "contract_no": contract.serial_no,
                          "case_no": fee_case_no, "case_title": fee_record.title, "case_stage": fee_data.get("case_stage", ""),
                          "fee_type": "法院退费", "total_amount": float(fee_data.get("refund_amount") or fee_data.get("refund_requested_amount") or 0),
-                         "received_amount": float(fee_data.get("refunded_amount") or 0), "remaining_amount": refund_remaining})
+                         "received_amount": refund_received, "remaining_amount": refund_remaining})
         if not case_fees_only and fee_data.get("receivable_plan_id") and int(fee_data["receivable_plan_id"]) in plan_ids:
             continue
         total_amount = _round_fee_amount(float(fee_data.get("amount") or 0))

@@ -1562,6 +1562,12 @@ async def list_case_relations(
                 result_data["refund_amount"] = total_refund
                 result_data["refund_requested_amount"] = total_refund
                 result_data["refunded_amount"] = refunded_amount
+            from app.core.finance_batch_parity import official_refund_progress
+            result_data["refunded_amount"] = official_refund_progress(
+                result_data,
+                float(result_data.get("refund_amount") or result_data.get("refund_requested_amount") or 0),
+                max(float(result_data.get("refunded_amount") or 0), float((item.data or {}).get("refunded_amount") or 0)),
+            )
         result["data"] = result_data
         return result
 

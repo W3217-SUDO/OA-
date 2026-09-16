@@ -1526,6 +1526,14 @@ async def _invoice_case_fee_rows(
         linked_refunds = refunds_by_fee.get(item.id, [])
         refund_requested_amount = round(sum(float((refund.data or {}).get("amount") or 0) for refund in linked_refunds if refund.status not in {"已驳回", "已作废"}), 2)
         refunded_amount = round(sum(float((refund.data or {}).get("amount") or 0) for refund in linked_refunds if refund.status == "已退款"), 2)
+        from app.core.finance_batch_parity import official_refund_progress
+        if not linked_refunds:
+            refund_requested_amount = float(data.get("refund_requested_amount") or data.get("refund_amount") or 0)
+        refunded_amount = official_refund_progress(
+            data, refund_requested_amount,
+            max(refunded_amount, float(data.get("refunded_amount") or 0)),
+            cashed_amount if receipts else data.get("received_amount", data.get("cashed_amount", 0)),
+        )
         fee_amount = float(data.get("amount") or 0)
         display_type = _case_fee_display_type(item)
         base_type = str(data.get("fee_type") or "")
@@ -1782,6 +1790,8 @@ async def _refund_case_fee_rows(
         data = dict(row.get("data") or {})
         requested = max(float(data.get("refund_requested_amount") or 0), float(raw_data.get("refund_requested_amount") or raw_data.get("refund_amount") or 0))
         refunded = max(float(data.get("refunded_amount") or 0), float(raw_data.get("refunded_amount") or 0))
+        from app.core.finance_batch_parity import official_refund_progress
+        refunded = official_refund_progress(raw_data, requested, refunded)
         status_code, status_label = _refund_case_fee_status(raw_data)
         started_at = _refund_case_fee_started_at(raw_data, status_code) or str(item.created_at or "")
         try:
