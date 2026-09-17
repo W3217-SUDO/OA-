@@ -563,22 +563,31 @@ async def autocomplete_system_causes(keyword: str = "", limit: int = Query(20, g
 
 
 @router.get(f"{settings.api_prefix}/system/parameters/options")
-async def list_system_parameter_options(category: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_system_parameter_options(category: str, include_inactive: bool = False, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Expose active, form-safe parameter choices to authenticated users."""
     from app.core.cases import (
         _case_file_type_tree,
     )
     from app.core.finance import (
-        _fee_type_catalog,
+        _fee_type_catalog, _fee_type_catalog_aliases,
     )
     if category not in {"notary_office", "fee_type", "case_file_type"}:
         raise HTTPException(status_code=422, detail="当前参数分类不提供业务选项")
+    if category == "fee_type":
+        items = (await db.scalars(select(SystemParameter).where(
+            SystemParameter.category == category,
+        ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+        alias_ids = _fee_type_catalog_aliases(list(items))
+        items_by_id = {item.id: item for item in items}
+        aliases = {
+            str(alias_id): {"id": target_id, "code": items_by_id[alias_id].code}
+            for alias_id, target_id in alias_ids.items() if alias_id in items_by_id
+        }
+        return {"items": _fee_type_catalog(list(items), include_inactive=include_inactive), "aliases": aliases}
     items = (await db.scalars(select(SystemParameter).where(
         SystemParameter.category == category,
         SystemParameter.is_active.is_(True),
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
-    if category == "fee_type":
-        return {"items": _fee_type_catalog(list(items))}
     if category == "case_file_type":
         return {"items": _case_file_type_tree(list(items))}
     return {"items": [{"id": item.id, "code": item.code, "name": item.name} for item in items]}

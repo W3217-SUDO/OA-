@@ -3,17 +3,30 @@ import { api } from "../../api";
 import type { CaseRow } from "../types";
 
 type Query = Record<string, any>;
+
+const archiveQueueByRoute: Record<string, string> = {
+  "case-archive-pending": "pending",
+  "case-archive-done": "done",
+  "case-archive-refused": "refused",
+  "case-archive-loss-internal": "loss_internal",
+  "case-archive-loss-audit": "loss_audit",
+  "case-archive-loss-done": "loss_done",
+  "case-archive-loss-refused": "loss_refused",
+};
+const pendingArchiveQueues = new Set(["pending", "loss_internal", "loss_audit"]);
+
 export function useArchiveCases(route: string) {
   const active = route.startsWith("case-archive-");
-  const view = route.includes("done") ? "done" : route.includes("refused") ? "refused" : "pending";
+  const view = archiveQueueByRoute[route] || "pending";
+  const defaultPageSize = pendingArchiveQueues.has(view) ? 15 : 10;
   const [rows, setRows] = useState<CaseRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(view === "pending" ? 15 : 10);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
   const [loading, setLoading] = useState(active);
   const [error, setError] = useState("");
   const sequence = useRef(0);
-  const current = useRef({ query: {} as Query, page: 1, pageSize: view === "pending" ? 15 : 10 });
+  const current = useRef({ query: {} as Query, page: 1, pageSize: defaultPageSize });
   const exportFile = async (format: "excel" | "csv", selectedIds?: number[]) => {
     const { review_range, submit_range, ...fields } = current.current.query;
     const date = (value: any) => value?.format?.("YYYY-MM-DD") || undefined;
@@ -53,8 +66,8 @@ export function useArchiveCases(route: string) {
   }, [active, view]);
   useEffect(() => {
     setRows([]); setTotal(0);
-    void search({}, 1, view === "pending" ? 15 : 10);
+    void search({}, 1, defaultPageSize);
     return () => { sequence.current += 1; };
-  }, [route, search, view]);
+  }, [route, search, defaultPageSize]);
   return { rows, total, page, pageSize, loading, error, search, exportFile, reload: () => search() };
 }

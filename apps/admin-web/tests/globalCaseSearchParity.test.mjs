@@ -7,13 +7,13 @@ import {
   GLOBAL_CASE_SEARCH_ROUTE,
   buildGlobalCaseSearchContext,
   readStoredGlobalCaseSearchContext,
-} from "./globalCaseSearchParity.mjs";
+} from "../src/globalCaseSearchParity.mjs";
 
-test("global case search opens my cases with a partial keyword", () => {
+test("global case search opens the dedicated all-type search with a partial keyword", () => {
   assert.equal(GLOBAL_CASE_SEARCH_CONTEXT_KEY, "sunhold:case-list-return");
-  assert.equal(GLOBAL_CASE_SEARCH_ROUTE, "case-mine");
+  assert.equal(GLOBAL_CASE_SEARCH_ROUTE, "case-global-search");
   assert.deepEqual(buildGlobalCaseSearchContext("  2600431  "), {
-    route: "case-mine",
+    route: "case-global-search",
     page: 1,
     pageSize: 15,
     query: { keyword: "2600431" },
@@ -32,8 +32,14 @@ test("stored search context can be read repeatedly before the list accepts it", 
 });
 
 test("global search no longer ships the legacy right-side result drawer", async () => {
-  const source = await readFile(new URL("./GlobalSearch.tsx", import.meta.url), "utf8");
+  const source = await readFile(new URL("../src/GlobalSearch.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /<Drawer\b/);
   assert.doesNotMatch(source, /全局检索/);
   assert.match(source, /<Input\.Search[\s\S]*onSearch=\{search\}/);
+});
+
+test("dedicated global search route has a label and requires an existing case menu grant", async () => {
+  const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(source, /"case-global-search": "全局案件搜索"/);
+  assert.match(source, /active === "case-global-search"/);
 });

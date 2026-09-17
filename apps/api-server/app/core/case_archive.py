@@ -11,7 +11,10 @@ from app.models_shared import ArchiveReviewInput
 
 
 class ArchiveSearchInput(BaseModel):
-    view: Literal["pending", "done", "refused"] = "pending"
+    view: Literal[
+        "pending", "done", "refused",
+        "loss_internal", "loss_audit", "loss_done", "loss_refused",
+    ] = "pending"
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=15, ge=1, le=100)
     serial_no: str = Field(default="", max_length=200)
@@ -59,6 +62,22 @@ def _date_range(expression, start, end):
     return and_(*values)
 
 
+_PENDING_ARCHIVE_VIEWS = {"pending", "loss_internal", "loss_audit"}
+_ARCHIVE_QUEUE_STATUSES = {
+    "pending": ("待归档审核", "归档审核"),
+    "done": ("已归档",),
+    "refused": ("归档拒绝",),
+    "loss_internal": ("亏损内审",),
+    "loss_audit": ("亏损审核",),
+    "loss_done": ("亏损归档",),
+    "loss_refused": ("亏损归档拒绝", "亏损拒绝"),
+}
+
+
+def _is_archive_administrator(identity) -> bool:
+    return identity.get("role") == "admin"
+
+
 async def search_archive_cases(body, identity, db, *, export=False):
     from app.core.cases import _case_action_granted
     from app.core.contracts import _contract_customer_record_dicts
@@ -73,21 +92,28 @@ async def search_archive_cases(body, identity, db, *, export=False):
     submitter = func.trim(_text("archive_submitter"))
     reviewer = func.trim(_text("archive_reviewer"))
     internal_reviewer = func.trim(_text("archive_internal_reviewer"))
-    if body.view == "pending":
+    if body.view in _PENDING_ARCHIVE_VIEWS:
         if not await _case_action_granted(identity, db, "case.archive.review"):
             return [] if export else {"items": [], "total": 0, "page": body.page, "page_size": body.page_size}
-        conditions.extend([
-            BusinessRecord.status.in_(["待归档审核", "亏损内审", "亏损审核"]),
-            or_(reviewer == identity["username"], internal_reviewer == identity["username"],
-                and_(reviewer == "", internal_reviewer == "", BusinessRecord.owner == identity["username"])),
-            submitter != identity["username"],
-        ])
+        conditions.append(BusinessRecord.status.in_(_ARCHIVE_QUEUE_STATUSES[body.view]))
+        if not _is_archive_administrator(identity):
+            conditions.append(or_(
+                reviewer == identity["username"],
+                internal_reviewer == identity["username"],
+                and_(reviewer == "", internal_reviewer == "", BusinessRecord.owner == identity["username"]),
+            ))
+            conditions.append(submitter != identity["username"])
     elif body.view == "done":
-        conditions.append(BusinessRecord.status.in_(["已归档", "亏损归档"]))
+        conditions.append(BusinessRecord.status.in_(_ARCHIVE_QUEUE_STATUSES[body.view]))
+    elif body.view in {"loss_done", "loss_refused"}:
+        conditions.append(BusinessRecord.status.in_(_ARCHIVE_QUEUE_STATUSES[body.view]))
+    elif body.view == "refused":
+        conditions.append(or_(
+            BusinessRecord.status.in_(_ARCHIVE_QUEUE_STATUSES[body.view]),
+            func.trim(_text("archive_reject_reason")) != "",
+        ))
     else:
-        conditions.extend([submitter == identity["username"], or_(
-            BusinessRecord.status == "亏损归档拒绝", func.trim(_text("archive_reject_reason")) != "",
-        )])
+        raise ValueError(f"Unsupported archive queue: {body.view}")
 
     fields = {
         "serial_no": [BusinessRecord.serial_no],
@@ -112,7 +138,7 @@ async def search_archive_cases(body, identity, db, *, export=False):
     if body.submit_from or body.submit_to:
         conditions.append(_date_range(_text("archive_submitted_at"), body.submit_from, body.submit_to))
     if body.review_from or body.review_to:
-        if body.view == "pending":
+        if body.view in _PENDING_ARCHIVE_VIEWS:
             hearing_checks = [_date_range(_text(key), body.review_from, body.review_to) for key in (
                 "hearing_date", "next_hearing_date", "first_court_hearing_date", "second_court_hearing_date", "retrial_court_hearing_date", "execution_court_hearing_date",
             )]
@@ -125,7 +151,7 @@ async def search_archive_cases(body, identity, db, *, export=False):
             reviewed = func.coalesce(func.nullif(_text("archive_reviewed_at"), ""), _text("archived_at"))
             conditions.append(_date_range(reviewed, body.review_from, body.review_to))
     total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0
-    sort_date = _text("archive_submitted_at") if body.view == "pending" else func.coalesce(func.nullif(_text("archive_reviewed_at"), ""), _text("archived_at"))
+    sort_date = _text("archive_submitted_at") if body.view in _PENDING_ARCHIVE_VIEWS else func.coalesce(func.nullif(_text("archive_reviewed_at"), ""), _text("archived_at"))
     if export and body.selected_ids is not None:
         conditions.append(BusinessRecord.id.in_(body.selected_ids))
     query = select(BusinessRecord).where(*conditions).order_by(sort_date.desc(), BusinessRecord.id.desc())

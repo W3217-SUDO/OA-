@@ -286,15 +286,18 @@ export const statusColors: Record<string, string> = {
   待上诉: "red",
   二审: "geekblue",
   执行: "volcano",
+  归档审核: "gold",
   待归档审核: "gold",
   亏损内审: "orange",
   亏损审核: "gold",
   亏损归档: "green",
+  归档拒绝: "red",
   亏损归档拒绝: "red",
+  亏损拒绝: "red",
   已归档: "green",
 };
 
-export const ARCHIVE_REVIEW_STATUSES = ["待归档审核", "亏损内审", "亏损审核"];
+export const ARCHIVE_REVIEW_STATUSES = ["归档审核", "待归档审核", "亏损内审", "亏损审核"];
 export const ARCHIVE_FINAL_STATUSES = ["已归档", "亏损归档"];
 export const ARCHIVE_LOCKED_STATUSES = [...ARCHIVE_REVIEW_STATUSES, ...ARCHIVE_FINAL_STATUSES];
 

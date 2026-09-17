@@ -4650,7 +4650,7 @@ async def _apply_case_archive_review(case_id: int, body: ArchiveReviewInput, ide
     )
     await _require_case_action(identity, db, "case.archive.review")
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    if case_record.status not in {"待归档审核", "亏损内审", "亏损审核"}: raise HTTPException(status_code=409, detail="只有待归档审核案件可以审核")
+    if case_record.status not in {"归档审核", "待归档审核", "亏损内审", "亏损审核"}: raise HTTPException(status_code=409, detail="只有待归档审核案件可以审核")
     if len(body.comment.strip()) < 2:
         raise HTTPException(status_code=422, detail="审核备注至少填写两个字")
     data = dict(case_record.data or {})
@@ -4735,7 +4735,7 @@ async def _apply_case_archive_review(case_id: int, body: ArchiveReviewInput, ide
             }
             action = "亏损归档审核驳回"
         else:
-            if restored_status in {"待归档审核", "已归档"}: restored_status = "执行"
+            if restored_status in {"归档审核", "待归档审核", "已归档"}: restored_status = "执行"
             case_record.status = restored_status
             case_record.data = {**data, "archive_reviewer": identity["username"], "archive_reviewed_at": reviewed_at.isoformat(timespec="seconds"), "archive_reject_reason": body.comment.strip()}
             action = "归档审核驳回"
@@ -6635,3 +6635,12 @@ async def export_case_archive(body: ArchiveExportInput, identity: dict = Depends
 @router.post(f"{settings.api_prefix}/cases/batch-delete")
 async def delete_cases_batch(body: CaseBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     return await _delete_company_cases(body.case_ids, identity, db)
+
+
+@router.get(f"{settings.api_prefix}/cases/export/receipts")
+async def export_selected_case_receipts(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.case_receipt_export import RECEIPT_HEADERS, case_receipt_export_rows
+    from app.core.system import _excel_response
+
+    rows = await case_receipt_export_rows(ids, identity, db)
+    return _excel_response(f"案件到账清单-{date.today()}.xls", RECEIPT_HEADERS, rows)

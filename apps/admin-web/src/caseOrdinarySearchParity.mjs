@@ -1,4 +1,4 @@
-const ALLOWED_SCOPES = new Set(["mine", "department", "company"]);
+const ALLOWED_SCOPES = new Set(["mine", "department", "company", "global"]);
 const ALLOWED_SORTS = new Set(["updated_desc", "case_no_asc", "case_no_desc"]);
 const LOGIC_ALIASES = new Map([
   ["and", "and"],

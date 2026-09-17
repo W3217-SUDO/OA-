@@ -1,4 +1,4 @@
-export const GLOBAL_CASE_SEARCH_ROUTE = "case-mine";
+export const GLOBAL_CASE_SEARCH_ROUTE = "case-global-search";
 export const GLOBAL_CASE_SEARCH_CONTEXT_KEY = "sunhold:case-list-return";
 
 export const buildGlobalCaseSearchContext = (value) => {

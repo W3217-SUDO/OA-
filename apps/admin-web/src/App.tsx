@@ -891,6 +891,7 @@ function replaceWithRootRoute() {
   window.history.replaceState(null, "", window.location.pathname);
 }
 const routePageLabels: Record<string, string> = {
+  "case-global-search": "全局案件搜索",
   "case-company-supplement-evidence": "补充证据",
   "case-company-supplement-opinion": "补充意见",
   "case-company-urgent": "紧急案件",
@@ -1769,6 +1770,13 @@ export default function App() {
   const pageAllowed =
     actualRole === "admin" ||
     route === "dashboard" ||
+    (active === "case-global-search" &&
+      Array.from(grantedMenuKeys).some((key) =>
+        key.startsWith("case-mine") ||
+        key.startsWith("case-dept") ||
+        key.startsWith("case-company") ||
+        key.startsWith("case-archive")
+      )) ||
     (active.startsWith("case-detail-") &&
       Array.from(grantedMenuKeys).some((key) =>
         key.startsWith("case-mine") ||

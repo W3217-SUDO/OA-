@@ -33,6 +33,24 @@ test('catalog preserves duplicate labels by stable keys, nests all descendants, 
   assert.equal(buildFeeTypeTree(rows,true,'内部')[0].children[0].disabled,true);
 });
 
+test('fee type filters expand parents, recognize initialization aliases, and retain name-only history',()=>{
+  const {matchesFeeTypeSelection}=load('../src/finance/FeeTypePicker.tsx');
+  const catalog={
+    items:[
+      {id:10,code:'OFFICIAL',name:'官费',base_fee_type:'官方费用',parent_code:'',selectable:false,expense_scopes:[],is_active:true},
+      {id:11,code:'OFFICIAL-LITIGATION',name:'诉讼费',parent_code:'OFFICIAL',selectable:false,expense_scopes:[],is_active:true},
+      {id:12,code:'OFFICIAL-LITIGATION-FIRST',name:'一审诉讼费',parent_code:'OFFICIAL-LITIGATION',selectable:true,expense_scopes:[],is_active:true},
+    ],
+    aliases:{'512':{id:12,code:'1101010'}},
+  };
+  assert.equal(matchesFeeTypeSelection(['OFFICIAL'],catalog,{fee_type_code:'OFFICIAL-LITIGATION-FIRST'}),true);
+  assert.equal(matchesFeeTypeSelection(['OFFICIAL'],catalog,{fee_type:'官方费用'}),true);
+  assert.equal(matchesFeeTypeSelection(['OFFICIAL'],{items:[],aliases:{}},{fee_type:'官方费用'}),false);
+  assert.equal(matchesFeeTypeSelection(['OFFICIAL-LITIGATION-FIRST'],catalog,{fee_type_id:512,fee_type_code:'1101010'}),true);
+  assert.equal(matchesFeeTypeSelection(['OFFICIAL-LITIGATION-FIRST'],catalog,{fee_type:'一审诉讼费'}),true);
+  assert.equal(matchesFeeTypeSelection(['OFFICIAL-LITIGATION-FIRST'],catalog,{fee_type_id:999,fee_type:'一审诉讼费'}),false);
+});
+
 test('financial configured columns align money while preserving non-money text and selection indices',()=>{
   const {createConfiguredColumns}=load('../src/finance/columns/configuredColumns.tsx');
   for(const route of ['finance-settlement-pending','finance-settlement-audit','finance-settlement-payment','finance-settlement-paid','finance-settlement-refused','finance-archive-fee-pending','finance-internal-payment','finance-receipts-query']) {

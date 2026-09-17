@@ -1,4 +1,4 @@
-import { FeeTypePicker } from "./FeeTypePicker";
+import { FeeTypePicker, matchesFeeTypeSelection, type FeeTypeCatalog } from "./FeeTypePicker";
 import { receiptBankCode, matchesReceiptBank } from "./bankReceiptScope";
 import {
 ArrowUpOutlined,
@@ -396,6 +396,10 @@ export default function FinanceCenterPage({
   const [originalQuery, setOriginalQuery] = useState<Record<string, any>>(
     dashboardFeeQuerySeed,
   );
+  const [feeTypeCatalog, setFeeTypeCatalog] = useState<FeeTypeCatalog>({
+    items: [],
+    aliases: {},
+  });
   const [paymentAuditPageSize, setPaymentAuditPageSize] = useState(15);
   const [paymentQueryQuickPage, setPaymentQueryQuickPage] = useState("1");
   const [paymentQueryPageSize, setPaymentQueryPageSize] = useState(
@@ -1962,7 +1966,7 @@ export default function FinanceCenterPage({
         textMatch(item.data.case_no, "caseNo") &&
         textMatch(item.data.payee || tx?.counterparty, "payee") &&
         textMatch(item.serial_no, "paymentNo") &&
-        (!originalQuery.feeType || String(originalQuery.feeType).split(",").some(type => [item.data.fee_type, item.data.fee_type_name, item.data.expense_subtype, item.data.commission_type].includes(type))) &&
+        (!originalQuery.feeType || matchesFeeTypeSelection(String(originalQuery.feeType).split(","), feeTypeCatalog, item.data || {})) &&
         textMatch(item.customer, "customer") &&
         textMatch(item.title, "title") &&
         textMatch(item.data.handler || item.owner, "handler") &&
@@ -2016,6 +2020,7 @@ export default function FinanceCenterPage({
           value={originalQueryDraft[key] ? String(originalQueryDraft[key]).split(",") : []}
           disabled={disabled || contractPaymentSource.active}
           onChange={(value) => setOriginalField(key, value.join(","))}
+          onCatalogLoaded={setFeeTypeCatalog}
         />
       ) : control === "date" ? (
         <Space.Compact>
@@ -2891,7 +2896,7 @@ export default function FinanceCenterPage({
       <label className="finance-original-field" key={`${key}-${index}`}>
         <span>{spec.label}</span>
         {spec.label === "费用类型" ? (
-          <FeeTypePicker multiple value={Array.isArray(value) ? value : value ? [value] : []} onChange={(next) => setOriginalField(key, next)} />
+          <FeeTypePicker multiple value={Array.isArray(value) ? value : value ? [value] : []} onChange={(next) => setOriginalField(key, next)} onCatalogLoaded={setFeeTypeCatalog} />
         ) : spec.control === "multi" ? (
           <Popover
             open={multiPickerOpen === key}

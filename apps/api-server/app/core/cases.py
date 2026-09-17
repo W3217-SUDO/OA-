@@ -1037,9 +1037,9 @@ async def _query_counsel_cases(
         _record_belongs_to_customer,
     )
     from app.core.permissions import (
-        _case_mine_scope_condition, _record_scope_conditions,
+        _can_search_all_cases_from_global_search, _case_mine_scope_condition, _record_scope_conditions,
     )
-    if body.scope not in {"mine", "department", "company"}:
+    if body.scope not in {"mine", "department", "company", "global"}:
         raise HTTPException(status_code=422, detail="法律顾问案件查询范围无效")
     if body.case_queue and body.case_queue not in DASHBOARD_CASE_QUEUES:
         raise HTTPException(status_code=422, detail="案件工作队列无效")
@@ -1064,12 +1064,16 @@ async def _query_counsel_cases(
             raise HTTPException(status_code=422, detail=f"{label}范围无效")
     relation_customer = await _customer_or_404(body.customer_id, identity, db) if body.customer_id else None
     record_conditions = [BusinessRecord.module == "case"]
+    global_company_scope = body.scope == "global" and await _can_search_all_cases_from_global_search(identity, db)
     if relation_customer is None:
-        record_conditions.extend(await _record_scope_conditions(identity, db))
+        if not global_company_scope:
+            record_conditions.extend(await _record_scope_conditions(identity, db))
         if body.scope == "mine":
             record_conditions.append(await _case_mine_scope_condition(identity, db))
+        elif body.scope == "global" and not global_company_scope:
+            record_conditions.append(await _case_mine_scope_condition(identity, db))
     keyword = body.keyword.strip()
-    if keyword:
+    if keyword and body.scope != "global":
         keyword_pattern = f"%{keyword}%"
         record_conditions.append(or_(
             BusinessRecord.serial_no.ilike(keyword_pattern),
@@ -1085,7 +1089,8 @@ async def _query_counsel_cases(
         records = [record for record in records if str((record.data or {}).get("case_type") or "") == "法律顾问"]
     elif requested_types:
         records = [record for record in records if str((record.data or {}).get("case_type") or "") in requested_types]
-    elif not body.case_queue:
+    # 顶栏全局检索不按普通列表规则排除法律顾问案件。
+    elif not body.case_queue and body.scope != "global":
         records = [record for record in records if str((record.data or {}).get("case_type") or "") != "法律顾问"]
     if body.case_queue:
         records = [record for record in records if _matches_dashboard_case_queue(record, body.case_queue)]
@@ -1226,6 +1231,8 @@ async def _query_counsel_cases(
             value(data, "notary_no", "notary_nos", "certificate_no"),
             value(data, "clue_no", "clue_nos", "investigation_clue", "investigation_clue_nos", "source_clue_no"),
         )
+        if body.scope == "global":
+            keyword_fields = (*keyword_fields, data)
         if body.keyword and not contains(" ".join(searchable_text(item) for item in keyword_fields), body.keyword): continue
         if not contains(value(data, "plaintiff", "plaintiffs") or record.customer, body.plaintiff): continue
         if not contains(value(data, "prosecutor", "procuratorate", "first_procuratorate_name"), body.prosecutor): continue

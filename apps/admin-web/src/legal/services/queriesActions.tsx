@@ -91,7 +91,7 @@ export interface CaseQueriesDependencies {
     readonly originalPageSize: number;
     readonly ordinaryRequestGuard: LatestRequestGuard;
     readonly ordinaryCaseQueue: string;
-    readonly ordinaryScope: "mine" | "department" | "company";
+    readonly ordinaryScope: "mine" | "department" | "company" | "global";
     readonly ordinaryCaseTypes: string[];
     readonly setOrdinaryCases: React.Dispatch<React.SetStateAction<CaseRow[]>>;
     readonly setOrdinaryTotal: React.Dispatch<React.SetStateAction<number>>;

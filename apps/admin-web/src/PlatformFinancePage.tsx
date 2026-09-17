@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FeeTypePicker } from "./finance/FeeTypePicker";
+import { FeeTypePicker, matchesFeeTypeSelection, type FeeTypeCatalog } from "./finance/FeeTypePicker";
 import { moneyColumnStyle } from "./finance/moneyColumns";
 import {
   AutoComplete,
@@ -417,12 +417,14 @@ function QueryControl({
   field,
   value,
   onChange,
+  onFeeTypeCatalogLoaded,
 }: {
   field: QueryField;
   value: unknown;
   onChange: (value: unknown) => void;
+  onFeeTypeCatalogLoaded: (catalog: FeeTypeCatalog) => void;
 }) {
-  if (field.key === "feeType") return <FeeTypePicker multiple value={value} onChange={onChange} />;
+  if (field.key === "feeType") return <FeeTypePicker multiple value={value} onChange={onChange} onCatalogLoaded={onFeeTypeCatalogLoaded} />;
   if (field.kind === "range") {
     return (
       <DatePicker.RangePicker
@@ -694,6 +696,10 @@ export default function PlatformFinancePage({
   );
   const [query, setQuery] = useState<Record<string, unknown>>(initialQuery);
   const [submittedQuery, setSubmittedQuery] = useState<Record<string, unknown>>(initialQuery);
+  const [feeTypeCatalog, setFeeTypeCatalog] = useState<FeeTypeCatalog>({
+    items: [],
+    aliases: {},
+  });
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
   const [sourceRows, setSourceRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -847,7 +853,7 @@ export default function PlatformFinancePage({
     if (value == null || value === "" || (Array.isArray(value) && !value.some(Boolean))) return true;
     if (field.key === "feeType") {
       const data = row._source?.data || {};
-      return (Array.isArray(value) ? value : [value]).some(type => [data.fee_type, data.fee_type_name, data.expense_subtype, data.commission_type].includes(type));
+      return matchesFeeTypeSelection(value, feeTypeCatalog, data);
     }
     if (field.kind === "money-range") {
       const raw = Number(row.金额?.replace?.(/[^0-9.-]/g, "") || 0);
@@ -908,6 +914,7 @@ export default function PlatformFinancePage({
                 onChange={(value) =>
                   setQuery((current) => ({ ...current, [field.key]: value }))
                 }
+                onFeeTypeCatalogLoaded={setFeeTypeCatalog}
               />
             </label>
           ))}

@@ -1023,7 +1023,7 @@ export default function CaseCenterPage({
   const counselScope = initialView.startsWith("case-mine") ? "mine" : initialView.startsWith("case-dept") ? "department" : "company";
   const counselSearchPayload = (values:Record<string,any>, page:number, pageSize:number, extra:Record<string,any>={}) =>
     buildCaseCounselSearchPayload(values, counselScope, page, pageSize, extra);
-  const ordinaryScope = initialView.startsWith("case-mine") ? "mine" : initialView.startsWith("case-dept") ? "department" : "company";
+  const ordinaryScope = initialView === "case-global-search" ? "global" : initialView.startsWith("case-mine") ? "mine" : initialView.startsWith("case-dept") ? "department" : "company";
   const ordinaryCaseQueue = ordinaryCaseQueueForView(initialView);
   const ordinaryCaseTypes = ordinaryCaseTypesForView(initialView);
 
@@ -1106,7 +1106,7 @@ export default function CaseCenterPage({
           ? loadPendingExecutionCases(1, pendingExecutionPageSize)
         : initialView.includes("counsel")
           ? loadCounselCases(initialListQuery, 1, 10)
-          : initialView.startsWith("case-mine") || initialView.startsWith("case-dept") || initialView.startsWith("case-company")
+          : initialView === "case-global-search" || initialView.startsWith("case-mine") || initialView.startsWith("case-dept") || initialView.startsWith("case-company")
             ? loadOrdinaryCases(initialListQuery, 1, originalPageSize)
             : Promise.resolve();
       await Promise.all([phaseLoad, load(), listLoad]);
@@ -1172,6 +1172,8 @@ export default function CaseCenterPage({
     const rows = Array.isArray(target) ? target : [target];
     if (!rows.length) return message.warning("请先选择案件");
     if (rows.some(row => !ARCHIVE_REVIEW_STATUSES.includes(row.status))) return message.warning("只有待归档审核案件可执行审核");
+    const selfSubmitted = rows.find(row => String(row.data.archive_submitter || "").trim() === profile.username);
+    if (selfSubmitted) return message.warning(`${selfSubmitted.serial_no}：归档申请人不能审核本人提交的归档申请`);
     reviewForm.resetFields();
     reviewForm.setFieldsValue({ items: Object.fromEntries(rows.map(row => [String(row.id), {
       archive_no: row.data.archive_no || "", comment: row.data.archive_review_comment || "",
@@ -2414,9 +2416,9 @@ export default function CaseCenterPage({
         : scopedCases.filter((r) => r.status !== "已归档");
   const originalListMode =
     tab === "cases" &&
-    ["case-mine", "case-dept", "case-company"].some((prefix) =>
+    (initialView === "case-global-search" || ["case-mine", "case-dept", "case-company"].some((prefix) =>
       initialView.startsWith(prefix),
-    );
+    ));
   const counselListMode = originalListMode && initialView.includes("counsel");
   const originalCases = ordinaryCases;
   const selectedBatchCases = useMemo(
@@ -2541,6 +2543,9 @@ export default function CaseCenterPage({
       message.error(typeof detail === "string" ? detail : "归档清单导出失败");
     } finally { setArchiveExporting(false); }
   };
+  const exportCaseReceipts = () => void downloadCaseExport(
+    "/cases/export/receipts", "案件到账清单.xls", selectedCaseKeys, "请选择需要导出到账清单的案件",
+  );
   const exportCaseQrWord = () => void downloadCaseExport(
     "/cases/export/qr-word", "案件二维码清单.docx", selectedCaseKeys, "请选择需要生成二维码清单的案件",
   );
@@ -3081,12 +3086,14 @@ export default function CaseCenterPage({
                   ]),
                   { key: "selected-manifest", label: "导出选中归档清单（Excel）", disabled: !selectedCaseKeys.length },
                   { key: "selected-qr-word", label: "导出选中二维码（Word）", disabled: !selectedCaseKeys.length },
+                  { key: "selected-receipts", label: "导出到账清单（Excel）", disabled: !selectedCaseKeys.length },
                 ],
                 onClick: ({ key }) => {
                   if (key === "selected-excel") counselListMode ? void exportCounselCases(true) : exportSelectedCasesExcel(true);
                   if (key === "current-excel") counselListMode ? void exportCounselCases(false) : exportSelectedCasesExcel(false);
                   if (key === "selected-manifest") exportArchiveManifest(true);
                   if (key === "selected-qr-word") exportCaseQrWord();
+                  if (key === "selected-receipts") exportCaseReceipts();
                 },
               }}
             ><Button aria-label="导出案件">导出</Button></Dropdown>

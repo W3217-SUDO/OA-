@@ -1,6 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.constants import (
-    CASE_DEFENDANT_FIELDS, CASE_PLAINTIFF_FIELDS, EXPENSE_SCOPE_FEE_TYPES, EXPENSE_SUBTYPE_FEE_TYPE, FEE_TYPE_BASE_SCOPES,
+    CASE_DEFENDANT_FIELDS, CASE_PLAINTIFF_FIELDS, DEFAULT_SYSTEM_PARAMETERS, EXPENSE_SCOPE_FEE_TYPES, EXPENSE_SUBTYPE_FEE_TYPE, FEE_TYPE_BASE_SCOPES,
     FEE_TYPE_ROOT_BASES, FINANCE_FEE_TYPES, INVOICE_RELEASED_STATUSES, JAR_FEE_MODULE, REFUND_CASE_FEE_STATUSES,
     REFUND_CASE_FEE_STATUS_BY_LABEL, REFUND_GROUP_ALIASES, REFUND_LIST_STATUSES, _OFFICIAL_RECEIVABLE_FEE_WORDS,
 )
@@ -163,26 +163,112 @@ def _fee_type_base_from_root(root: SystemParameter) -> str:
     return "其他费用"
 
 
-def _fee_type_catalog(items: list[SystemParameter]) -> list[dict]:
+def _fee_type_root_replacements(items: list[SystemParameter]) -> dict[str, str]:
+    """仅将明确重复的初始化根合并到对应的旧目录根。"""
+    legacy_roots = [item for item in items
+        if (item.extra or {}).get("legacy_group_id") and not str((item.extra or {}).get("parent_code") or "").strip()
+    ]
+    codes = {item.code for item in items}
+    replacements = {}
+    for code, base in FEE_TYPE_ROOT_BASES.items():
+        if code not in codes:
+            continue
+        candidates = [item for item in legacy_roots if _fee_type_base_from_root(item) == base]
+        # 其他费用与第三方费用共用业务基类，但必须保留各自的旧目录归属。
+        named = [item for item in candidates if item.name == base]
+        if len(named) == 1:
+            replacements[code] = named[0].code
+        elif len(candidates) == 1:
+            replacements[code] = candidates[0].code
+    return replacements
+
+
+def _fee_type_effective_root_code(item: SystemParameter, by_code: dict[str, SystemParameter], replacements: dict[str, str]) -> str:
+    seen: set[str] = set()
+    cursor: SystemParameter | None = item
+    while cursor is not None and cursor.code not in seen:
+        seen.add(cursor.code)
+        parent_code = str((cursor.extra or {}).get("parent_code") or "").strip()
+        if not parent_code:
+            return replacements.get(cursor.code, cursor.code)
+        cursor = by_code.get(parent_code)
+    return item.code
+
+
+def _fee_type_directory_items(items: list[SystemParameter]) -> tuple[list[SystemParameter], dict[str, str]]:
+    """保留自定义目录，只过滤初始化目录中已有旧目录映射的重复节点。"""
+    by_code = {item.code: item for item in items}
+    replacements = _fee_type_root_replacements(items)
+    if not replacements:
+        return items, replacements
+
+    legacy_leaf_keys = {
+        (_fee_type_effective_root_code(item, by_code, replacements), item.name)
+        for item in items
+        if (item.extra or {}).get("legacy_source") and str((item.extra or {}).get("parent_code") or "").strip()
+    }
+    initialized_leaf_codes = {
+        code for category, code, _name, extra in DEFAULT_SYSTEM_PARAMETERS
+        if category == "fee_type" and str((extra or {}).get("parent_code") or "").strip() in replacements
+    }
+    parent_codes = {str((item.extra or {}).get("parent_code") or "").strip() for item in items}
+    result: list[SystemParameter] = []
+    for item in items:
+        parent_code = str((item.extra or {}).get("parent_code") or "").strip()
+        is_duplicate_root = item.code in replacements
+        is_initialized_duplicate_leaf = (
+            item.code in initialized_leaf_codes
+            and not (item.extra or {}).get("legacy_source")
+            and item.code not in parent_codes
+            and parent_code
+            and (_fee_type_effective_root_code(item, by_code, replacements), item.name) in legacy_leaf_keys
+        )
+        if not is_duplicate_root and not is_initialized_duplicate_leaf:
+            result.append(item)
+    return result, replacements
+
+
+def _fee_type_catalog_aliases(items: list[SystemParameter]) -> dict[int, int]:
+    """把被合并的初始化叶子映射到同一旧目录叶子，供历史编辑回显使用。"""
+    included, replacements = _fee_type_directory_items(items)
+    if not replacements:
+        return {}
+    by_code = {item.code: item for item in items}
+
+    canonical = {
+        (_fee_type_effective_root_code(item, by_code, replacements), item.name): item.id
+        for item in included if (item.extra or {}).get("legacy_source")
+    }
+    return {
+        item.id: canonical[(_fee_type_effective_root_code(item, by_code, replacements), item.name)]
+        for item in items
+        if item not in included and (_fee_type_effective_root_code(item, by_code, replacements), item.name) in canonical
+    }
+
+
+def _fee_type_catalog(items: list[SystemParameter], *, include_inactive: bool = False) -> list[dict]:
     from app.core.system import (
         _system_parameter_dict,
     )
-    by_code = {item.code: item for item in items}
+    directory_items, replacements = _fee_type_directory_items(items)
+    by_code = {item.code: item for item in directory_items}
     child_codes: dict[str, list[str]] = {}
-    for item in items:
-        parent_code = str((item.extra or {}).get("parent_code") or "").strip()
+    for item in directory_items:
+        parent_code = replacements.get(str((item.extra or {}).get("parent_code") or "").strip(), str((item.extra or {}).get("parent_code") or "").strip())
         if parent_code:
             child_codes.setdefault(parent_code, []).append(item.code)
 
     result: list[dict] = []
-    for item in items:
+    for item in directory_items:
+        if not include_inactive and not item.is_active and not child_codes.get(item.code):
+            continue
         lineage: list[SystemParameter] = []
         seen: set[str] = set()
         cursor: SystemParameter | None = item
         while cursor is not None and cursor.code not in seen:
             lineage.append(cursor)
             seen.add(cursor.code)
-            parent_code = str((cursor.extra or {}).get("parent_code") or "").strip()
+            parent_code = replacements.get(str((cursor.extra or {}).get("parent_code") or "").strip(), str((cursor.extra or {}).get("parent_code") or "").strip())
             cursor = by_code.get(parent_code) if parent_code else None
         lineage.reverse()
         root = lineage[0] if lineage else item
@@ -190,7 +276,7 @@ def _fee_type_catalog(items: list[SystemParameter]) -> list[dict]:
         scopes = list(FEE_TYPE_BASE_SCOPES.get(base_fee_type, ["律所", "平台"]))
         row = _system_parameter_dict(item)
         row.update({
-            "parent_code": str((item.extra or {}).get("parent_code") or "").strip(),
+            "parent_code": replacements.get(str((item.extra or {}).get("parent_code") or "").strip(), str((item.extra or {}).get("parent_code") or "").strip()),
             "path": " / ".join(node.name for node in lineage),
             "depth": max(len(lineage) - 1, 0),
             "root_code": root.code,
@@ -201,6 +287,44 @@ def _fee_type_catalog(items: list[SystemParameter]) -> list[dict]:
         })
         result.append(row)
     return result
+
+
+async def _fee_type_filter_values(values: set[str], db: AsyncSession) -> tuple[set[str], set[str], set[int], set[str], set[str]]:
+    """将筛选代码展开为目录叶子，兼容已有费用记录的名称快照。"""
+    if not values:
+        return set(), set(), set(), set(), set()
+    items = list((await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "fee_type",
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
+    catalog = _fee_type_catalog(items, include_inactive=True)
+    by_code = {row["code"]: row for row in catalog}
+    selected_codes = {value for value in values if value in by_code}
+    if not selected_codes:
+        return set(), set(), set(), set(), set()
+    selected_items = [row for row in catalog if row["code"] in selected_codes]
+    children_by_parent: dict[str, set[str]] = {}
+    for row in catalog:
+        children_by_parent.setdefault(row["parent_code"], set()).add(row["code"])
+    expanded_codes = set(selected_codes)
+    pending_codes = list(selected_codes)
+    while pending_codes:
+        parent_code = pending_codes.pop()
+        for child_code in children_by_parent.get(parent_code, set()):
+            if child_code not in expanded_codes:
+                expanded_codes.add(child_code)
+                pending_codes.append(child_code)
+    matched = [row for row in catalog if row["code"] in expanded_codes]
+    matched_ids = {int(row["id"]) for row in matched}
+    aliases = _fee_type_catalog_aliases(items)
+    items_by_id = {item.id: item for item in items}
+    alias_items = [items_by_id[alias_id] for alias_id, target_id in aliases.items() if target_id in matched_ids and alias_id in items_by_id]
+    return (
+        selected_codes,
+        {row["code"] for row in matched} | {item.code for item in alias_items},
+        matched_ids | {item.id for item in alias_items},
+        {row["name"] for row in matched},
+        {row["base_fee_type"] for row in selected_items if row["has_children"] and not row["parent_code"]},
+    )
 
 
 async def _editable_finance_fee(fee_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
@@ -758,6 +882,8 @@ async def _resolve_case_fee_type_master(
         }
     if not fee_type_id:
         raise HTTPException(status_code=422, detail="案件费用必须选择系统参数中的费用类型")
+    aliases = _fee_type_catalog_aliases(items)
+    fee_type_id = aliases.get(fee_type_id, fee_type_id)
     catalog = _fee_type_catalog(items)
     option = next((row for row in catalog if row["id"] == fee_type_id), None)
     item = next((row for row in items if row.id == fee_type_id), None)
@@ -1496,6 +1622,7 @@ async def _invoice_case_fee_rows(
     selected_stages = {value.strip() for value in case_stages.split(",") if value.strip()}
     selected_types = {value.strip() for value in fee_types.split(",") if value.strip()}
     normalized_types = {"代理费" if value == "律师代理费" else "官方费用" if value == "官费" else value for value in selected_types}
+    selected_catalog_codes, selected_catalog_descendant_codes, selected_catalog_ids, selected_catalog_names, selected_catalog_base_types = await _fee_type_filter_values(selected_types, db)
 
     def contains(value: object, needle: str) -> bool:
         return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
@@ -1581,7 +1708,21 @@ async def _invoice_case_fee_rows(
             continue
         if paid_to and (not paid_date or paid_date > paid_to):
             continue
-        if normalized_types and base_type not in normalized_types and display_type not in selected_types:
+        if selected_catalog_codes:
+            fee_type_id = str(data.get("fee_type_id") or "")
+            fee_type_code = str(data.get("fee_type_code") or data.get("legacy_fee_type_code") or "")
+            fee_type_name = str(data.get("fee_type_name") or data.get("expense_subtype") or "")
+            has_stable_identifier = bool(fee_type_code or fee_type_id.isdigit())
+            if (
+                fee_type_code not in selected_catalog_descendant_codes
+                and (not fee_type_id.isdigit() or int(fee_type_id) not in selected_catalog_ids)
+                and (has_stable_identifier or (
+                    fee_type_name not in selected_catalog_names if fee_type_name
+                    else base_type not in selected_catalog_base_types and display_type not in selected_catalog_names
+                ))
+            ):
+                continue
+        elif normalized_types and base_type not in normalized_types and display_type not in selected_types:
             continue
         if not contains(received_payer, payer_name):
             continue

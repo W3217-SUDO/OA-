@@ -1421,7 +1421,17 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             URL.revokeObjectURL(url);
         }
         catch (error: any) {
-            message.error(error?.response?.data?.detail || "案件文件导出失败");
+            let detail = error?.response?.data?.detail;
+            if (error?.response?.data instanceof Blob) {
+                const responseText = await error.response.data.text();
+                try {
+                    detail = JSON.parse(responseText).detail;
+                } catch {
+                    message.error(`案件文件导出失败（HTTP ${error.response.status}）：服务返回内容无法解析`);
+                    return;
+                }
+            }
+            message.error(typeof detail === "string" ? detail : "案件文件导出失败");
         }
     };
     const openSelectedScheduleHearing = async () => {
