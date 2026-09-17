@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { TreeSelect, message } from "antd";
 import { api } from "../api";
 import { FeeTypeCheckboxPicker } from "./FeeTypeCheckboxPicker";
+import { buildFeeTypeTree } from "./feeTypeTree";
+export { buildFeeTypeTree } from "./feeTypeTree";
 
 export type FeeTypeOption = {
   id: number; code: string; name: string; parent_code: string;
@@ -40,22 +42,6 @@ export function matchesFeeTypeSelection(value: unknown, catalog: FeeTypeCatalog,
   if (stableCodes.length || stableId) return stableCodes.some(code => expandedCodes.has(code)) || matchedIds.has(stableId);
   const detailedNames = [data.fee_type_name, data.expense_subtype, data.commission_type].filter(Boolean);
   return (detailedNames.length ? detailedNames : [data.fee_type]).some(name => matchedNames.has(String(name || "")));
-}
-
-export function buildFeeTypeTree(items: FeeTypeOption[], editing = false, scope?: string) {
-  const byCode = new Map(items.map(item => [item.code, item]));
-  const build = (parent: string, seen = new Set<string>()): any[] => items
-    .filter(item => (byCode.has(item.parent_code) ? item.parent_code : "") === parent && !seen.has(item.code))
-    .map(item => {
-      const children = build(item.code, new Set([...seen, item.code]));
-      return {
-        key: item.code, value: editing ? item.id : item.code, title: item.name,
-        selectable: editing && item.selectable && (!scope || item.expense_scopes.includes(scope)),
-        disabled: !children.length && (editing ? !item.selectable || Boolean(scope && !item.expense_scopes.includes(scope)) : item.code.startsWith("-") || item.name.startsWith("请选择")),
-        children: children.length ? children : undefined,
-      };
-    });
-  return build("");
 }
 
 // 所有业务选择器读取同一目录；筛选保留类型代码，编辑保存末级类型 ID。

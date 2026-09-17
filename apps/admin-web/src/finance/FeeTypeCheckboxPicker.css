@@ -1,0 +1,24 @@
+.finance-fee-type-picker {
+  width: 310px;
+  max-width: calc(100vw - 48px);
+}
+.finance-fee-type-picker-heading {
+  background: #639ee0;
+  color: #fff;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.finance-fee-type-picker-tree {
+  max-height: min(600px, calc(100dvh - 180px));
+  overflow: auto;
+  padding: 10px 0 4px;
+}
+.finance-fee-type-picker-tree .ant-tree { font-size: 12px; }
+.finance-fee-type-picker-tree .ant-tree-treenode { padding-bottom: 0; }
+.finance-fee-type-picker-tree .ant-tree-iconEle { color: #d6a62d; }
+.finance-fee-type-picker-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  padding-top: 8px;
+}
