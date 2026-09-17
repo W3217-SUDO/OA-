@@ -6645,3 +6645,9 @@ async def export_selected_case_receipts(ids: str = "", identity: dict = Depends(
 
     rows = await case_receipt_export_rows(ids, identity, db)
     return _excel_response(f"案件到账清单-{date.today()}.xls", RECEIPT_HEADERS, rows)
+
+
+@router.get(f"{settings.api_prefix}/cases/{{case_id}}/documents")
+async def list_case_documents(case_id: int, page: int = Query(1, ge=1), page_size: int = Query(200, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.case_documents import case_document_page
+    return await case_document_page(case_id, identity, db, page, page_size)

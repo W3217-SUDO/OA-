@@ -1,3 +1,4 @@
+import { loadCaseDocuments } from "./caseDocuments";
 import { message } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import dayjs from "dayjs";
@@ -90,7 +91,7 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
     };
     const refreshCounselDetailAttachments = async (caseId: number) => {
         const { setCounselDetailAttachments } = context;
-        const { data } = await api.get("/attachments", { params: { record_id: caseId, page_size: 200 } });
+        const { data } = await loadCaseDocuments(caseId);
         const items = Array.isArray(data?.items) ? data.items : [];
         setCounselDetailAttachments(items);
         try {

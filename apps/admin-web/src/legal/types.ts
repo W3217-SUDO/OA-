@@ -264,7 +264,7 @@ export type CaseTaskAttachment = {
 
 export type CaseTaskPageState = { items: TaskRow[]; total: number; page: number; pageSize: number; pages: number };
 
-export type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean;is_locked?:boolean};
+export type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;document_category?:string;is_related_document?:boolean;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean;is_locked?:boolean};
 
 export type CaseAssistedFee = {
   id: number;

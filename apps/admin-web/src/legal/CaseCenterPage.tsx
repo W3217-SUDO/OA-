@@ -1,3 +1,4 @@
+import { CaseClueDetails } from "./CaseDetail/CaseClueDetails";
 import { CommissionPerson } from "./CommissionPerson";
 import {
 CloseOutlined,
@@ -932,7 +933,7 @@ export default function CaseCenterPage({
     if (viewingCounselCase?.id === row.id) return counselDetailCapabilities;
     return caseActionCapabilities[row.id] || noCaseDetailWriteCapability;
   };
-  const { loadCaseCapabilities, loadCaseRelations, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, openRelatedClue, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportSpecialRecords } = createCaseQueriesActions({
+  const { loadCaseCapabilities, loadCaseRelations, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportSpecialRecords } = createCaseQueriesActions({
     get setCaseActionCapabilities() { return setCaseActionCapabilities; },
     get setCaseRelations() { return setCaseRelations; },
     get setLoading() { return setLoading; },
@@ -1013,7 +1014,6 @@ export default function CaseCenterPage({
     get setCaseTaskHistory() { return setCaseTaskHistory; },
     get setCaseTaskDetailMaterials() { return setCaseTaskDetailMaterials; },
     get setCaseTaskDetailFeedbacks() { return setCaseTaskDetailFeedbacks; },
-    get setCaseClueLoading() { return setCaseClueLoading; },
     get cases() { return cases; },
     get setCounselCaseEvents() { return setCounselCaseEvents; },
     get setCounselCaseEventCapabilities() { return setCounselCaseEventCapabilities; },
@@ -1710,27 +1710,7 @@ export default function CaseCenterPage({
         <Button type="text" size="small" icon={<CloseOutlined />} aria-label="关闭线索信息" onClick={closeCaseClueWorkspace}>关闭</Button>
       </div>
       <div className="case-clue-context-body">
-        <Descriptions
-          bordered
-          size="small"
-          column={2}
-          items={[
-            { key: "serial", label: "线索编号", children: viewingCaseClue.clue.serial_no || "—" },
-            { key: "method", label: "侵权方式", children: viewingCaseClue.clue.data.infringement_method || viewingCaseClue.clue.data.infringement_type || "—" },
-            { key: "investigated", label: "调查时间", children: String(viewingCaseClue.clue.data.investigated_at || viewingCaseClue.clue.data.investigation_time || viewingCaseClue.clue.data.investigation_date || "").replace("T", " ").slice(0, 19) || "—" },
-            { key: "shop", label: "店铺名称", children: viewingCaseClue.clue.data.shop_name || viewingCaseClue.clue.data.store_name || viewingCaseClue.clue.title || "—" },
-            { key: "shop-id", label: "店铺Id", children: viewingCaseClue.clue.data.shop_id || viewingCaseClue.clue.data.store_id || "—" },
-            { key: "shop-link", label: "店铺链接", children: viewingCaseClue.clue.data.shop_link || viewingCaseClue.clue.data.store_link ? <a href={viewingCaseClue.clue.data.shop_link || viewingCaseClue.clue.data.store_link} target="_blank" rel="noreferrer">{viewingCaseClue.clue.data.shop_link || viewingCaseClue.clue.data.store_link}</a> : "—", span: 2 },
-            { key: "region", label: "调查区域", children: viewingCaseClue.clue.data.investigation_region || viewingCaseClue.clue.data.region || "—" },
-            { key: "address", label: "侵权地址", children: viewingCaseClue.clue.data.infringement_address || viewingCaseClue.clue.data.shop_address || viewingCaseClue.clue.data.address || "—" },
-            { key: "investigator", label: "调查员", children: viewingCaseClue.clue.data.investigator_display_name || viewingCaseClue.clue.owner_display_name || viewingCaseClue.clue.owner || "—" },
-            { key: "assistant", label: "调查辅助", children: viewingCaseClue.clue.data.investigation_assistant_display_name || viewingCaseClue.clue.data.investigation_assistant || "—" },
-            { key: "remark", label: "调查员备注", children: viewingCaseClue.clue.data.investigator_comment || viewingCaseClue.clue.description || "—", span: 2 },
-            { key: "status", label: "审批状态", children: viewingCaseClue.clue.status || "—" },
-            { key: "manager-comment", label: "管理人审核备注", children: viewingCaseClue.clue.data.manager_review_comment || viewingCaseClue.clue.data.review_comment || "—" },
-            { key: "customer-comment", label: "客户审核备注", children: viewingCaseClue.clue.data.customer_review_comment || "—", span: 2 },
-          ]}
-        />
+        <CaseClueDetails clue={viewingCaseClue.clue} />
         <section className="case-clue-context-section">
           <h3>线索文件</h3>
           <Table<AttachmentRow>
@@ -2745,8 +2725,8 @@ export default function CaseCenterPage({
       : activeCounselDocCategory==="合同文档"
         ? counselDetailContractAttachments
         : counselDetailAttachments.filter(row=>activeCounselDocCategory==="案件文档全部"
-          ? !nonCaseDocumentCategories.includes(String(row.category||""))
-          : activeCounselDocCategories.some(category=>String(row.category||"")===category))
+          ? !nonCaseDocumentCategories.includes(String(row.document_category||row.category||""))
+          : activeCounselDocCategories.some(category=>String(row.document_category||row.category||"")===category))
     : counselDetailAttachments;
   const isRelatedDocumentFolder=activeCounselDocCategory==="客户文档"||activeCounselDocCategory==="合同文档";
   const isAiSpaceFolder=activeCounselDocCategory==="AI空间";
@@ -3989,7 +3969,7 @@ export default function CaseCenterPage({
             legacyCaseParticipantDisplayNames={legacyCaseParticipantDisplayNames}
             openRelatedCustomer={openRelatedCustomer}
             openRelatedContract={openRelatedContract}
-            openRelatedClue={openRelatedClue}
+            openRelatedClue={openCaseClueWorkspace}
             openRelatedOriginalCase={openRelatedOriginalCase}
             isCaseDetailView={isCaseDetailView}
             returnToCaseList={returnToCaseList}
@@ -4150,7 +4130,7 @@ export default function CaseCenterPage({
                 viewingCase={viewingCounselCase}
                 onSearch={loadCounselDetailCluesPage}
                 onRefresh={loadCounselDetailCluesPage}
-                onOpenClue={openRelatedClue}
+                onOpenClue={openCaseClueWorkspace}
                 onOpenClueWorkspace={openCaseClueWorkspace}
                 onCreateTask={openCaseTaskCreator}
               />},

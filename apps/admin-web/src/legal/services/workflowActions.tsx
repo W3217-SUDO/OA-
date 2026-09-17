@@ -1,3 +1,4 @@
+import { loadCaseDocuments } from "./caseDocuments";
 import type { UploadFile } from "antd";
 import { message, Modal } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
@@ -662,7 +663,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 api.get(`/cases/${row.id}/tasks`, {
                     params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "customer" },
                 }),
-                api.get("/attachments", { params: { record_id: row.id, page_size: 200 } }),
+                loadCaseDocuments(row.id),
                 api.get(`/cases/${row.id}/logs`),
                 api.get(`/cases/${row.id}/action-capabilities`),
                 api.get(`/cases/${row.id}/relations`, { params: { clue_page: 1, clue_page_size: 10 } }),
