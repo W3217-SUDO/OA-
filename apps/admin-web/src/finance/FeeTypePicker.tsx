@@ -57,10 +57,8 @@ export function FeeTypePicker({ value, onChange, onSelectOption, onCatalogLoaded
   useEffect(() => {
     let active = true;
     setLoading(true);
-    api.get("/system/parameters/options", { params: { category: "fee_type", include_inactive: true } })
-      .then(({ data }) => { if (active) { const catalog = editing
-        ? { items: data.items, aliases: data.aliases }
-        : { items: data.filter_items, aliases: data.filter_aliases };
+    api.get("/system/parameters/options", { params: { category: "fee_type" } })
+      .then(({ data }) => { if (active) { const catalog = { items: data.items, aliases: data.aliases };
         setItems(catalog.items); setAliases(catalog.aliases); onCatalogLoaded?.(catalog); } })
       .catch(() => { if (active) message.error("费用类型加载失败，请重新打开页面重试"); })
       .finally(() => { if (active) setLoading(false); });

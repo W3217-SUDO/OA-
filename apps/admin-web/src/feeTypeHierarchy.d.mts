@@ -7,6 +7,9 @@ export type FeeTypeCatalogItem = {
   path?: string;
   depth?: number;
   root_code?: string;
+  fee_group?: string;
+  platform_agency?: boolean;
+  alias_ids?: number[];
   base_fee_type: string;
   expense_scopes: string[];
   has_children: boolean;

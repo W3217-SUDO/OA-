@@ -1,23 +1,15 @@
 const text = (value) => String(value ?? "").trim();
 
-const PRESET_NAMES = {
-  official: new Set(["一审诉讼费", "二审诉讼费", "再审诉讼费", "公证费", "调解金额", "判决金额", "保全费", "执行费"]),
-  "third-party": new Set(["检索费", "公告费", "担保费", "鉴定费", "公证服务费"]),
-  agency: new Set(["律师代理费", "律师咨询费", "律师培训费", "律师见证费", "平台代理费"]),
-};
-
 export const feeTypeSelection = (catalog, feeTypeId) =>
-  (Array.isArray(catalog) ? catalog : []).find((item) => Number(item.id) === Number(feeTypeId));
+  (Array.isArray(catalog) ? catalog : []).find((item) => Number(item.id) === Number(feeTypeId) || item.alias_ids?.includes(Number(feeTypeId)));
 
 const presetMatches = (item, preset, scope) => {
   if (!preset) return true;
-  if (preset === "other") return item.base_fee_type === "其他费用" && !PRESET_NAMES["third-party"].has(item.name);
-  if (preset === "official") return item.base_fee_type === "官方费用";
   if (preset === "agency") {
-    if (text(scope) === "平台") return item.name === "平台代理费";
-    return item.base_fee_type === "代理费" && item.name !== "平台代理费";
+    if (text(scope) === "平台") return item.fee_group === preset && item.platform_agency;
+    return item.fee_group === preset && !item.platform_agency;
   }
-  return PRESET_NAMES[preset]?.has(item.name) ?? true;
+  return item.fee_group === preset;
 };
 
 export const selectableFeeTypes = (catalog, scope, preset = "") => {
@@ -26,10 +18,7 @@ export const selectableFeeTypes = (catalog, scope, preset = "") => {
     (!text(scope) || (item.expense_scopes || []).includes(text(scope))) &&
     presetMatches(item, preset, scope),
   );
-  if (text(scope) !== "平台" || preset !== "agency") return matching;
-  return matching.filter((item, index) =>
-    matching.findIndex((candidate) => text(candidate.name) === text(item.name)) === index,
-  );
+  return matching;
 };
 
 export const feeTypeTreeData = (catalog, scope, preset = "") => {

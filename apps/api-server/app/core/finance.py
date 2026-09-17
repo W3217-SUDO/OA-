@@ -202,6 +202,7 @@ def _is_legacy_fee_type_leaf(item: SystemParameter) -> bool:
 
 def _fee_type_directory_items(items: list[SystemParameter]) -> tuple[list[SystemParameter], dict[str, str]]:
     """保留自定义目录，只过滤初始化目录中已有旧目录映射的重复节点。"""
+    items = [item for item in items if not (item.extra or {}).get("alias_of")]
     by_code = {item.code: item for item in items}
     replacements = _fee_type_root_replacements(items)
     if not replacements:
@@ -236,19 +237,22 @@ def _fee_type_directory_items(items: list[SystemParameter]) -> tuple[list[System
 def _fee_type_catalog_aliases(items: list[SystemParameter]) -> dict[int, int]:
     """把被合并的初始化叶子映射到同一旧目录叶子，供历史编辑回显使用。"""
     included, replacements = _fee_type_directory_items(items)
+    targets = {item.code: item.id for item in items}
+    configured = {item.id: targets[item.extra["alias_of"]] for item in items
+                  if (item.extra or {}).get("alias_of") in targets}
     if not replacements:
-        return {}
+        return configured
     by_code = {item.code: item for item in items}
 
     canonical = {
         (_fee_type_effective_root_code(item, by_code, replacements), item.name): item.id
         for item in included if _is_legacy_fee_type_leaf(item)
     }
-    return {
+    return {**configured, **{
         item.id: canonical[(_fee_type_effective_root_code(item, by_code, replacements), item.name)]
         for item in items
         if item not in included and (_fee_type_effective_root_code(item, by_code, replacements), item.name) in canonical
-    }
+    }}
 
 
 def _fee_type_catalog(items: list[SystemParameter], *, include_inactive: bool = False) -> list[dict]:
@@ -268,7 +272,7 @@ def _fee_type_catalog(items: list[SystemParameter], *, include_inactive: bool = 
         # 旧下拉占位不是费用，不能作为可勾选目录节点展示。
         if item.name.startswith("请选择") or str((item.extra or {}).get("legacy_id", item.code)).startswith("-"):
             continue
-        if not include_inactive and not item.is_active and not child_codes.get(item.code):
+        if not include_inactive and not item.is_active:
             continue
         lineage: list[SystemParameter] = []
         seen: set[str] = set()
@@ -279,6 +283,8 @@ def _fee_type_catalog(items: list[SystemParameter], *, include_inactive: bool = 
             parent_code = replacements.get(str((cursor.extra or {}).get("parent_code") or "").strip(), str((cursor.extra or {}).get("parent_code") or "").strip())
             cursor = by_code.get(parent_code) if parent_code else None
         lineage.reverse()
+        if not include_inactive and any(not node.is_active for node in lineage):
+            continue
         root = lineage[0] if lineage else item
         base_fee_type = _fee_type_base_from_root(root)
         scopes = list(FEE_TYPE_BASE_SCOPES.get(base_fee_type, ["律所", "平台"]))
@@ -288,10 +294,13 @@ def _fee_type_catalog(items: list[SystemParameter], *, include_inactive: bool = 
             "path": " / ".join(node.name for node in lineage),
             "depth": max(len(lineage) - 1, 0),
             "root_code": root.code,
+            "fee_group": str((root.extra or {}).get("fee_group") or ""),
+            "platform_agency": bool((item.extra or {}).get("platform_agency")),
             "base_fee_type": base_fee_type,
             "expense_scopes": scopes,
+            "historical_names": list((item.extra or {}).get("historical_names", [])),
             "has_children": bool(child_codes.get(item.code)),
-            "selectable": item.is_active and not str((item.extra or {}).get("legacy_id", item.code)).startswith("-") and not any(by_code[code].is_active for code in child_codes.get(item.code, []) if code in by_code) and bool(scopes),
+            "selectable": all(node.is_active for node in lineage) and not str((item.extra or {}).get("legacy_id", item.code)).startswith("-") and not any(by_code[code].is_active for code in child_codes.get(item.code, []) if code in by_code) and bool(scopes),
         })
         result.append(row)
     return result
@@ -304,8 +313,7 @@ async def _fee_type_filter_values(values: set[str], db: AsyncSession) -> tuple[s
     items = list((await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "fee_type",
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
-    from app.core.legacy_fee_directory import legacy_fee_filter_catalog
-    catalog, filter_aliases = legacy_fee_filter_catalog(_fee_type_catalog(items, include_inactive=True))
+    catalog = _fee_type_catalog(items)
     by_code = {row["code"]: row for row in catalog}
     selected_codes = {value for value in values if value in by_code}
     if not selected_codes:
@@ -324,7 +332,7 @@ async def _fee_type_filter_values(values: set[str], db: AsyncSession) -> tuple[s
                 pending_codes.append(child_code)
     matched = [row for row in catalog if row["code"] in expanded_codes]
     matched_ids = {int(row["id"]) for row in matched}
-    aliases = {**_fee_type_catalog_aliases(items), **filter_aliases}
+    aliases = _fee_type_catalog_aliases(items)
     items_by_id = {item.id: item for item in items}
     alias_items = [items_by_id[alias_id] for alias_id, target_id in aliases.items() if target_id in matched_ids and alias_id in items_by_id]
     return (
@@ -871,7 +879,6 @@ async def _resolve_case_fee_type_master(
     )
     items = list((await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "fee_type",
-        SystemParameter.is_active.is_(True),
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
     if not items:
         expected_base = EXPENSE_SUBTYPE_FEE_TYPE.get(legacy_name)

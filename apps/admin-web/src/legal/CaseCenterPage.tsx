@@ -100,6 +100,7 @@ import { consumeCustomerRelationTarget } from "../customerRelationNavigation";
 import {
 feeTypeSelection,
 feeTypeTreeData,
+selectableFeeTypes,
 initialFeeTypeId,
 type FeeTypeCatalogItem,
 } from "../feeTypeHierarchy.mjs";
@@ -912,6 +913,10 @@ export default function CaseCenterPage({
   );
   const feeTypeTreeOptions = useMemo(
     () => feeTypeTreeData(feeTypeCatalog, activeFeeContractScope, feeSubtypePreset),
+    [activeFeeContractScope, feeSubtypePreset, feeTypeCatalog],
+  );
+  const feeTypeSelectOptions = useMemo(
+    () => selectableFeeTypes(feeTypeCatalog, activeFeeContractScope, feeSubtypePreset).map(item => ({ value: item.id, label: item.name })),
     [activeFeeContractScope, feeSubtypePreset, feeTypeCatalog],
   );
   const batchFeeTypeTreeOptions = useMemo(
@@ -2290,7 +2295,7 @@ export default function CaseCenterPage({
     const expenseSubtype = normalizeFeeSubtypeForScope(expenseScope, row.data.expense_subtype || "官费");
     const feeTypeId = Number(row.data.fee_type_id) || initialFeeTypeId(feeTypeCatalog, expenseScope, "", expenseSubtype);
     const feeType = feeTypeSelection(feeTypeCatalog, feeTypeId);
-    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: expenseScope, fee_type_id: feeTypeId, expense_subtype: feeType?.name || expenseSubtype, fee_type: feeType?.base_fee_type || row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", base_amount: row.data.base_amount ?? 0, reference_commission: row.data.reference_commission ?? 0, document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "" });
+    feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: expenseScope, fee_type_id: feeType?.id || feeTypeId, expense_subtype: feeType?.name || expenseSubtype, fee_type: feeType?.base_fee_type || row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", base_amount: row.data.base_amount ?? 0, reference_commission: row.data.reference_commission ?? 0, document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "" });
     setEditingFeeRow(row);
   };
 
@@ -3635,7 +3640,7 @@ export default function CaseCenterPage({
               <div className="case-fee-entry-head"><span>案号</span><span>费用类型</span><span>支付对象</span><span>基数</span><span>参考提成</span><span>实际金额</span><span>备注</span><span>操作</span></div>
               {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
                 <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
-                <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择末级费用类型" }]}><TreeSelect showSearch treeNodeFilterProp="title" treeDefaultExpandAll popupMatchSelectWidth={180} treeData={feeTypeTreeOptions} onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldValue(["items",field.name,"expense_subtype"],option?.name); feeForm.setFieldValue(["items",field.name,"fee_type"],option?.base_fee_type); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${option?.name || ""}`); }} /></Form.Item>
+                <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择末级费用类型" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" popupMatchSelectWidth={180} options={feeTypeSelectOptions} onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldValue(["items",field.name,"expense_subtype"],option?.name); feeForm.setFieldValue(["items",field.name,"fee_type"],option?.base_fee_type); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${option?.name || ""}`); }} /></Form.Item>
                 <Form.Item name={[field.name, "payee"]} rules={[{ required: true, message: "请选择收款人" }]}><Select showSearch optionFilterProp="label" placeholder="收款人" options={feeEmployeeOptions} /></Form.Item>
                 <Form.Item name={[field.name, "base_amount"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "reference_commission"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
@@ -3649,7 +3654,7 @@ export default function CaseCenterPage({
               {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
                 <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
                 <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" options={feeContractOptions} /></Form.Item>
-                <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择末级费用类型" }]}><TreeSelect showSearch treeNodeFilterProp="title" treeDefaultExpandAll popupMatchSelectWidth={180} treeData={feeTypeTreeOptions} onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldValue(["items",field.name,"expense_subtype"],option?.name); feeForm.setFieldValue(["items",field.name,"fee_type"],option?.base_fee_type); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${option?.name || ""}`); }} /></Form.Item>
+                <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择末级费用类型" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" popupMatchSelectWidth={180} options={feeTypeSelectOptions} onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldValue(["items",field.name,"expense_subtype"],option?.name); feeForm.setFieldValue(["items",field.name,"fee_type"],option?.base_fee_type); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${option?.name || ""}`); }} /></Form.Item>
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0.01} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
                 <Form.Item name={[field.name, "deadline"]}><DatePicker /></Form.Item>

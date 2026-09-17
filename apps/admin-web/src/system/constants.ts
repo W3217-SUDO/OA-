@@ -198,26 +198,13 @@ export const feeTypeDisplayCode = (row: ParameterRow): string =>
   String(row.extra.legacy_id ?? row.code);
 
 export function feeTypeCatalogRows(rows: ParameterRow[]): ParameterRow[] {
-  const hasLegacy = rows.some((row) => row.extra.legacy_id != null);
-  const parents = new Set(rows.map((row) => String(row.extra.parent_code || "")));
-  return rows.filter((row) => {
-    if (row.extra.legacy_id != null) return true;
-    if (parents.has(row.code) || row.code.startsWith("LEGACY-FEE-GROUP-")) return false;
-    // Keep bootstrap values available to existing business records, without
-    // presenting them as rows from the legacy parameter catalogue.
-    return !hasLegacy || row.created_by !== "system";
-  }).sort((a, b) => {
-    if (a.extra.legacy_id != null && b.extra.legacy_id != null) return Number(a.extra.legacy_id) - Number(b.extra.legacy_id);
-    return feeTypeDisplayCode(a).localeCompare(feeTypeDisplayCode(b), "en", { numeric: true });
-  });
+  return rows.filter((row) => !row.extra.alias_of && !row.extra.catalog_retired)
+    .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
 }
 
 export function feeTypeGroupOptions(rows: ParameterRow[]): { value: string; label: string }[] {
-  const legacyGroups = rows.filter((row) => row.code.startsWith("LEGACY-FEE-GROUP-") && row.is_active);
-  return legacyGroups.length
-    ? legacyGroups.map((row) => ({ value: row.code, label: row.name }))
-    : rows.filter((row) => !row.extra.parent_code && row.is_active)
-        .map((row) => ({ value: row.code, label: row.name }));
+  return rows.filter((row) => !row.extra.parent_code && row.is_active && !row.extra.alias_of)
+    .map((row) => ({ value: row.code, label: row.name }));
 }
 
 export const parameterRelationConfigs: Record<
