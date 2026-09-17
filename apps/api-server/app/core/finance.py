@@ -304,7 +304,8 @@ async def _fee_type_filter_values(values: set[str], db: AsyncSession) -> tuple[s
     items = list((await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "fee_type",
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
-    catalog = _fee_type_catalog(items, include_inactive=True)
+    from app.core.legacy_fee_directory import legacy_fee_filter_catalog
+    catalog, filter_aliases = legacy_fee_filter_catalog(_fee_type_catalog(items, include_inactive=True))
     by_code = {row["code"]: row for row in catalog}
     selected_codes = {value for value in values if value in by_code}
     if not selected_codes:
@@ -323,7 +324,7 @@ async def _fee_type_filter_values(values: set[str], db: AsyncSession) -> tuple[s
                 pending_codes.append(child_code)
     matched = [row for row in catalog if row["code"] in expanded_codes]
     matched_ids = {int(row["id"]) for row in matched}
-    aliases = _fee_type_catalog_aliases(items)
+    aliases = {**_fee_type_catalog_aliases(items), **filter_aliases}
     items_by_id = {item.id: item for item in items}
     alias_items = [items_by_id[alias_id] for alias_id, target_id in aliases.items() if target_id in matched_ids and alias_id in items_by_id]
     return (

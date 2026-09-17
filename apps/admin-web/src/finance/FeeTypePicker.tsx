@@ -58,11 +58,14 @@ export function FeeTypePicker({ value, onChange, onSelectOption, onCatalogLoaded
     let active = true;
     setLoading(true);
     api.get("/system/parameters/options", { params: { category: "fee_type", include_inactive: true } })
-      .then(({ data }) => { if (active) { const catalog = { items: data.items || [], aliases: data.aliases || {} }; setItems(catalog.items); setAliases(catalog.aliases); onCatalogLoaded?.(catalog); } })
+      .then(({ data }) => { if (active) { const catalog = editing
+        ? { items: data.items, aliases: data.aliases }
+        : { items: data.filter_items, aliases: data.filter_aliases };
+        setItems(catalog.items); setAliases(catalog.aliases); onCatalogLoaded?.(catalog); } })
       .catch(() => { if (active) message.error("费用类型加载失败，请重新打开页面重试"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [editing]);
   if (multiple && !editing) return <FeeTypeCheckboxPicker items={items} value={value} onChange={onChange} disabled={disabled} loading={loading} />;
   return <TreeSelect allowClear showSearch treeNodeFilterProp="title" style={{ width: "100%" }}
     placeholder="请选择费用类型" loading={loading} disabled={disabled} value={editing ? aliases[String(value)]?.id || value : (Array.isArray(value) ? value : value ? [value] : [])}

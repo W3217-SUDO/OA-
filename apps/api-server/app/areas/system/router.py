@@ -583,7 +583,15 @@ async def list_system_parameter_options(category: str, include_inactive: bool = 
             str(alias_id): {"id": target_id, "code": items_by_id[alias_id].code}
             for alias_id, target_id in alias_ids.items() if alias_id in items_by_id
         }
-        return {"items": _fee_type_catalog(list(items), include_inactive=include_inactive), "aliases": aliases}
+        from app.core.legacy_fee_directory import legacy_fee_filter_catalog
+        catalog = _fee_type_catalog(list(items), include_inactive=True)
+        filter_items, filter_alias_ids = legacy_fee_filter_catalog(catalog)
+        filter_aliases = {**aliases, **{
+            str(alias_id): {"id": target_id, "code": items_by_id[alias_id].code}
+            for alias_id, target_id in filter_alias_ids.items()
+        }}
+        return {"items": _fee_type_catalog(list(items), include_inactive=include_inactive), "aliases": aliases,
+                "filter_items": filter_items, "filter_aliases": filter_aliases}
     items = (await db.scalars(select(SystemParameter).where(
         SystemParameter.category == category,
         SystemParameter.is_active.is_(True),
