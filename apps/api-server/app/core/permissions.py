@@ -961,14 +961,15 @@ async def _user_has_job_permission(user: User, permission_name: str, db: AsyncSe
 
 async def _can_search_all_cases_from_global_search(identity: dict, db: AsyncSession) -> bool:
     """顶栏搜索范围与角色的公司案件功能权限保持一致。"""
-    if "admin" in _identity_role_ids(identity):
-        return True
     user = await db.scalar(select(User).where(
         User.username == str(identity.get("username") or ""),
         User.is_active.is_(True),
     ))
     if not user:
         return False
+    # 页面访问能力会临时提升请求身份，搜索范围只能使用数据库中的真实角色。
+    if "admin" in _system_user_role_ids(user):
+        return True
     permission = await _user_permission_payload(user, db)
     return any(
         key == "case-company" or key.startswith("case-company-")
