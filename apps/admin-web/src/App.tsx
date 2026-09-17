@@ -1272,11 +1272,16 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
   const [data, setData] = useState<DashboardData | null>(null);
   useEffect(() => {
     let active = true;
+    let loading = false;
     const loadDashboard = () => {
+      // 定时刷新与窗口聚焦共用在途标记，避免慢请求尚未结束又重复加载。
+      if (!active || loading) return;
+      loading = true;
       api
         .get("/dashboard")
         .then((r) => active && setData(r.data))
-        .catch(() => active && message.error("看板加载失败"));
+        .catch(() => active && message.error("看板加载失败"))
+        .finally(() => { loading = false; });
     };
     const refreshOnFocus = () => loadDashboard();
     loadDashboard();

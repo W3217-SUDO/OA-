@@ -448,11 +448,19 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
 
 async def _apply_task_auto_completion(db: AsyncSession) -> bool:
     """交接后未重新开始的任务，满 5 天自动完成。"""
+    from app.core.query_batches import _scalars_in_batches
+
     tasks = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all()
+    # 同一负责人通常拥有多条任务，批量读取避免每次刷新逐任务查询账号。
+    owners = await _scalars_in_batches(
+        db, {task.owner for task in tasks},
+        lambda batch: select(User).where(User.username.in_(batch)),
+    )
+    owners_by_username = {user.username: user for user in owners}
     changed = False
     for task in tasks:
         data = task.data or {}
-        owner_user = await db.scalar(select(User).where(User.username == task.owner))
+        owner_user = owners_by_username.get(task.owner)
         if owner_user and not owner_user.is_active and task.status not in {"已完成", "待确认", "已验收", "已拒绝", "已撤回", "已停止", "已取消"}:
             department = await db.scalar(select(Department).where(
                 Department.name == owner_user.department, Department.is_active.is_(True),
