@@ -1,4 +1,4 @@
-import { Modal, Form, AutoComplete, Input, DatePicker, Cascader, Select } from "antd";
+import { Modal, Form, AutoComplete, Input, DatePicker, Cascader, Select, Alert, Spin } from "antd";
 import type { Row } from "./types";
 
 interface CollectionModalProps {
@@ -7,6 +7,8 @@ interface CollectionModalProps {
   batchCollectionTargets: Row[];
   collectionForm: any;
   collectionStorageOptions: any[];
+  collectionStorageLoading: boolean;
+  collectionStorageError: string;
   notaryOfficeOptions: { value: string }[];
   rows: Row[];
   collectionFiles: File[];
@@ -21,6 +23,8 @@ export default function CollectionModal({
   batchCollectionTargets,
   collectionForm,
   collectionStorageOptions,
+  collectionStorageLoading,
+  collectionStorageError,
   notaryOfficeOptions,
   rows,
   collectionFiles,
@@ -49,6 +53,7 @@ export default function CollectionModal({
       cancelText="取消"
       onOk={onOk}
       onCancel={onCancel}
+      okButtonProps={{ disabled: collectionStorageLoading || !!collectionStorageError || !collectionStorageOptions.length }}
     >
       <Form form={collectionForm} layout="vertical">
         <Form.Item
@@ -88,11 +93,15 @@ export default function CollectionModal({
         <div className="form-grid">
           <Form.Item
             label="证物存放处"
+            validateStatus={collectionStorageError ? "error" : undefined}
+            help={collectionStorageError || undefined}
             name="evidence_storage_path"
             rules={[{ required: true, message: "请选择证物存放处" }]}
           >
             <Cascader
               options={collectionStorageOptions}
+              disabled={collectionStorageLoading || !!collectionStorageError}
+              notFoundContent={collectionStorageLoading ? <Spin size="small" /> : "暂无可用库位"}
               placeholder="请选择仓库及库位"
               showSearch
               onChange={(path) =>
@@ -119,6 +128,9 @@ export default function CollectionModal({
             />
           </Form.Item>
         </div>
+        {!collectionStorageLoading && !collectionStorageError && !collectionStorageOptions.length && (
+          <Alert type="warning" showIcon message="没有可用库位，请联系仓库管理员配置仓库及库位" />
+        )}
         {batchCollectionTargets.length === 0 && (
           <Form.Item label="证据文件">
             <input

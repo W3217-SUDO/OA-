@@ -81,7 +81,7 @@ import {
   CLUE_INFRINGEMENT_METHOD_OPTIONS,
   CLUE_SALES_CHANNEL_OPTIONS,
 } from "./constants";
-import { loadInvestigationBootstrap } from "./hooks/useInvestigationBootstrap";
+import { loadInvestigationBootstrap, loadInvestigationStorageOptions } from "./hooks/useInvestigationBootstrap";
 import EvidenceEditorModal from "./EvidenceEditorModal";
 import BatchCaseConversion from "./BatchCaseConversion";
 import ClueCreateDrawer from "./ClueCreateDrawer";
@@ -224,6 +224,8 @@ export default function InvestigationCenterPage({
   >([]);
   const [casePeopleOptions, setCasePeopleOptions] = useState<PersonOption[]>([]);
   const [warehouseCatalog, setWarehouseCatalog] = useState<WarehouseCatalogItem[]>([]);
+  const [collectionStorageLoading, setCollectionStorageLoading] = useState(false);
+  const [collectionStorageError, setCollectionStorageError] = useState("");
   const [investigationActions, setInvestigationActions] = useState<
     Record<string, InvestigationActions>
   >({});
@@ -897,7 +899,19 @@ export default function InvestigationCenterPage({
       );
     }
   };
+  const refreshCollectionStorage = async () => {
+    setCollectionStorageLoading(true);
+    setCollectionStorageError("");
+    try {
+      setWarehouseCatalog(await loadInvestigationStorageOptions());
+    } catch (error: any) {
+      setCollectionStorageError(error?.response?.data?.detail || error?.message || "仓库及库位加载失败");
+    } finally {
+      setCollectionStorageLoading(false);
+    }
+  };
   const openSingleCollection = (row: Row) => {
+    void refreshCollectionStorage();
     collectionForm.resetFields();
     collectionForm.setFieldsValue({
       warehouse_id: Number(row.data.warehouse_id) || undefined,
@@ -916,6 +930,7 @@ export default function InvestigationCenterPage({
     if (targets.length < 2) return message.warning("请至少选择两条待取证线索");
     const invalid = targets.filter((row) => row.status !== "待取证");
     if (invalid.length > 0) return message.warning(`仅待取证线索可批量办理：${invalid.map((row) => row.serial_no).join("、")}`);
+    void refreshCollectionStorage();
     collectionForm.resetFields();
     setCollectionFiles([]);
     setCollectionTarget(null);
@@ -3756,6 +3771,8 @@ export default function InvestigationCenterPage({
         batchCollectionTargets={batchCollectionTargets}
         collectionForm={collectionForm}
         collectionStorageOptions={collectionStorageOptions}
+        collectionStorageLoading={collectionStorageLoading}
+        collectionStorageError={collectionStorageError}
         notaryOfficeOptions={notaryOfficeOptions}
         rows={rows}
         collectionFiles={collectionFiles}

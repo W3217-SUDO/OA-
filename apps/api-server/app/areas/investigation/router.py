@@ -1689,3 +1689,33 @@ async def create_notary_from_clue(clue_id: int, identity: dict = Depends(current
     await db.commit()
     await db.refresh(notary)
     return _record_dict(notary)
+
+
+@router.get(f"{settings.api_prefix}/investigations/evidence-storage-options")
+async def investigation_evidence_storage_options(
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    from app.core.permissions import _require_record_module_menu
+    from app.models import Warehouse, WarehouseStorageLocation
+
+    await _require_record_module_menu("clue", identity, db, action="查看")
+    warehouses = list((await db.scalars(select(Warehouse).where(
+        Warehouse.is_active.is_(True),
+    ).order_by(Warehouse.sort_order, Warehouse.warehouse_no, Warehouse.id))).all())
+    locations = list((await db.scalars(select(WarehouseStorageLocation).join(
+        Warehouse, Warehouse.id == WarehouseStorageLocation.warehouse_id,
+    ).where(
+        Warehouse.is_active.is_(True), WarehouseStorageLocation.is_active.is_(True),
+    ).order_by(
+        WarehouseStorageLocation.sort_order, WarehouseStorageLocation.storage_location_no,
+        WarehouseStorageLocation.id,
+    ))).all())
+    locations_by_warehouse: dict[int, list[dict]] = {}
+    for location in locations:
+        locations_by_warehouse.setdefault(location.warehouse_id, []).append({
+            "id": location.id, "name": location.name, "is_active": location.is_active,
+        })
+    return {"items": [{
+        "id": warehouse.id, "name": warehouse.name, "is_active": warehouse.is_active,
+        "locations": locations_by_warehouse.get(warehouse.id, []),
+    } for warehouse in warehouses]}

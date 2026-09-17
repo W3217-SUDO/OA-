@@ -8,6 +8,9 @@ import type {
   WarehouseCatalogItem,
 } from "../types";
 
+export const loadInvestigationStorageOptions = (): Promise<WarehouseCatalogItem[]> =>
+  api.get("/investigations/evidence-storage-options").then(({ data }) => data.items);
+
 export const loadInvestigationBootstrap = (): Promise<InvestigationBootstrapData> =>
   Promise.all([
     api.get("/auth/me").then(({ data }) => data as Profile),
@@ -24,9 +27,7 @@ export const loadInvestigationBootstrap = (): Promise<InvestigationBootstrapData
     api.get("/people/options")
       .then(({ data }) => data.items || [])
       .catch(() => [] as PersonOption[]),
-    api.get("/warehouse/catalog")
-      .then(({ data }) => data.items || [])
-      .catch(() => [] as WarehouseCatalogItem[]),
+    loadInvestigationStorageOptions(),
   ]).then(([profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions, warehouseCatalog]) => ({
     profile, assignmentSupervisor, notaryOfficeOptions, casePeopleOptions, warehouseCatalog,
   }));
