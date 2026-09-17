@@ -6,7 +6,7 @@ import { buildFeeTypeTree } from "./feeTypeTree";
 export { buildFeeTypeTree } from "./feeTypeTree";
 
 export type FeeTypeOption = {
-  id: number; code: string; name: string; parent_code: string;
+  id: number; code: string; name: string; parent_code: string; historical_names?: string[];
   base_fee_type: string; selectable: boolean; expense_scopes: string[]; is_active: boolean;
 };
 
@@ -29,7 +29,7 @@ export function matchesFeeTypeSelection(value: unknown, catalog: FeeTypeCatalog,
   }
   const matchedItems = [...expandedCodes].map(code => byCode.get(code)).filter(Boolean) as FeeTypeOption[];
   const matchedIds = new Set(matchedItems.map(item => String(item.id)));
-  const matchedNames = new Set(matchedItems.map(item => item.name));
+  const matchedNames = new Set(matchedItems.flatMap(item => [item.name, ...(item.historical_names || [])]));
   for (const code of selectedCodes) {
     const item = byCode.get(code);
     if (item && !item.parent_code && item.base_fee_type) matchedNames.add(item.base_fee_type);

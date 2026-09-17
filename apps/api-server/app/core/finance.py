@@ -331,7 +331,7 @@ async def _fee_type_filter_values(values: set[str], db: AsyncSession) -> tuple[s
         selected_codes,
         {row["code"] for row in matched} | {item.code for item in alias_items},
         matched_ids | {item.id for item in alias_items},
-        {row["name"] for row in matched},
+        {name for row in matched for name in [row["name"], *row.get("historical_names", [])]},
         {row["base_fee_type"] for row in selected_items if row["has_children"] and not row["parent_code"]},
     )
 
