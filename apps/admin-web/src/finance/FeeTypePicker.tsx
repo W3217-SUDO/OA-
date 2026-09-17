@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { TreeSelect, message } from "antd";
 import { api } from "../api";
+import { FeeTypeCheckboxPicker } from "./FeeTypeCheckboxPicker";
 
 export type FeeTypeOption = {
   id: number; code: string; name: string; parent_code: string;
@@ -76,6 +77,7 @@ export function FeeTypePicker({ value, onChange, onSelectOption, onCatalogLoaded
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
+  if (multiple && !editing) return <FeeTypeCheckboxPicker items={items} value={value} onChange={onChange} disabled={disabled} loading={loading} />;
   return <TreeSelect allowClear showSearch treeNodeFilterProp="title" style={{ width: "100%" }}
     placeholder="请选择费用类型" loading={loading} disabled={disabled} value={editing ? aliases[String(value)]?.id || value : (Array.isArray(value) ? value : value ? [value] : [])}
     treeData={buildFeeTypeTree(items, editing, scope)} treeCheckable={multiple} showCheckedStrategy={TreeSelect.SHOW_ALL} maxTagCount="responsive"

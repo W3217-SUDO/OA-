@@ -330,6 +330,8 @@ DEFAULT_SYSTEM_PARAMETERS = [
     ("fee_type", "1102030", "律师培训费", {"parent_code": "AGENCY"}),
     ("fee_type", "1102040", "律师见证费", {"parent_code": "AGENCY"}),
     ("fee_type", "1102050", "平台代理费", {"parent_code": "AGENCY"}),
+    ("fee_type", "AGENCY-REFUND", "律师代理费(退费)", {"parent_code": "AGENCY"}),
+    ("fee_type", "BRAND-MANAGEMENT-FIXED", "品牌固定管理费", {"parent_code": "INTERNAL"}),
     ("fee_type", "1103010", "检索费", {"parent_code": "OTHER"}),
     ("fee_type", "1103020", "公告费", {"parent_code": "OTHER"}),
     ("fee_type", "1103030", "担保费", {"parent_code": "OTHER"}),
