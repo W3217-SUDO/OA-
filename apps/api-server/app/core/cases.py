@@ -1065,12 +1065,14 @@ async def _query_counsel_cases(
     relation_customer = await _customer_or_404(body.customer_id, identity, db) if body.customer_id else None
     record_conditions = [BusinessRecord.module == "case"]
     global_company_scope = body.scope == "global" and await _can_search_all_cases_from_global_search(identity, db)
-    if relation_customer is None:
+    if body.scope == "global":
+        # 客户等附加条件只能缩小结果，不能绕过无公司案件权限时的个人范围。
         if not global_company_scope:
             record_conditions.extend(await _record_scope_conditions(identity, db))
-        if body.scope == "mine":
             record_conditions.append(await _case_mine_scope_condition(identity, db))
-        elif body.scope == "global" and not global_company_scope:
+    elif relation_customer is None:
+        record_conditions.extend(await _record_scope_conditions(identity, db))
+        if body.scope == "mine":
             record_conditions.append(await _case_mine_scope_condition(identity, db))
     keyword = body.keyword.strip()
     if keyword and body.scope != "global":

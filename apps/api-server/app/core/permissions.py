@@ -960,7 +960,7 @@ async def _user_has_job_permission(user: User, permission_name: str, db: AsyncSe
 
 
 async def _can_search_all_cases_from_global_search(identity: dict, db: AsyncSession) -> bool:
-    """按账号绑定的有效岗位限定顶栏公司案件搜索范围。"""
+    """顶栏搜索范围与角色的公司案件功能权限保持一致。"""
     if "admin" in _identity_role_ids(identity):
         return True
     user = await db.scalar(select(User).where(
@@ -969,8 +969,11 @@ async def _can_search_all_cases_from_global_search(identity: dict, db: AsyncSess
     ))
     if not user:
         return False
-    job_role = await _job_role_for_name(_configured_user_job_role_name(user), db)
-    return bool(job_role and job_role.code != "SYSTEM-ADMIN" and "财务审批" in (job_role.permissions or []))
+    permission = await _user_permission_payload(user, db)
+    return any(
+        key == "case-company" or key.startswith("case-company-")
+        for key in permission.get("menu_keys", [])
+    )
 
 
 async def _user_can_write_investigation_clue(user: User, db: AsyncSession) -> bool:
