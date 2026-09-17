@@ -195,6 +195,11 @@ def _fee_type_effective_root_code(item: SystemParameter, by_code: dict[str, Syst
     return item.code
 
 
+def _is_legacy_fee_type_leaf(item: SystemParameter) -> bool:
+    extra = item.extra or {}
+    return bool(extra.get("legacy_source") or (extra.get("legacy_group_id") and int(extra.get("legacy_id") or 0) > 0))
+
+
 def _fee_type_directory_items(items: list[SystemParameter]) -> tuple[list[SystemParameter], dict[str, str]]:
     """保留自定义目录，只过滤初始化目录中已有旧目录映射的重复节点。"""
     by_code = {item.code: item for item in items}
@@ -205,7 +210,7 @@ def _fee_type_directory_items(items: list[SystemParameter]) -> tuple[list[System
     legacy_leaf_keys = {
         (_fee_type_effective_root_code(item, by_code, replacements), item.name)
         for item in items
-        if (item.extra or {}).get("legacy_source") and str((item.extra or {}).get("parent_code") or "").strip()
+        if _is_legacy_fee_type_leaf(item) and str((item.extra or {}).get("parent_code") or "").strip()
     }
     initialized_leaf_codes = {
         code for category, code, _name, extra in DEFAULT_SYSTEM_PARAMETERS
@@ -218,7 +223,7 @@ def _fee_type_directory_items(items: list[SystemParameter]) -> tuple[list[System
         is_duplicate_root = item.code in replacements
         is_initialized_duplicate_leaf = (
             item.code in initialized_leaf_codes
-            and not (item.extra or {}).get("legacy_source")
+            and not _is_legacy_fee_type_leaf(item)
             and item.code not in parent_codes
             and parent_code
             and (_fee_type_effective_root_code(item, by_code, replacements), item.name) in legacy_leaf_keys
@@ -237,7 +242,7 @@ def _fee_type_catalog_aliases(items: list[SystemParameter]) -> dict[int, int]:
 
     canonical = {
         (_fee_type_effective_root_code(item, by_code, replacements), item.name): item.id
-        for item in included if (item.extra or {}).get("legacy_source")
+        for item in included if _is_legacy_fee_type_leaf(item)
     }
     return {
         item.id: canonical[(_fee_type_effective_root_code(item, by_code, replacements), item.name)]
@@ -260,6 +265,9 @@ def _fee_type_catalog(items: list[SystemParameter], *, include_inactive: bool = 
 
     result: list[dict] = []
     for item in directory_items:
+        # 旧下拉占位不是费用，不能作为可勾选目录节点展示。
+        if item.name.startswith("请选择") or str((item.extra or {}).get("legacy_id", item.code)).startswith("-"):
+            continue
         if not include_inactive and not item.is_active and not child_codes.get(item.code):
             continue
         lineage: list[SystemParameter] = []
