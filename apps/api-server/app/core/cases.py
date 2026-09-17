@@ -1225,7 +1225,7 @@ async def _query_counsel_cases(
             record.title,
             record.customer,
             value(data, "plaintiff", "plaintiffs"),
-            value(data, "defendant", "defendants", "opponent"),
+            value(data, "defendant", "opponent", "defendants"),
             value(data, "court", "court_name", "first_court_name"),
             value(data, "court_case_no", "first_court_case_no", "first_instance_no"),
             value(data, "second_court_case_no", "second_instance_no"),
@@ -1233,8 +1233,7 @@ async def _query_counsel_cases(
             value(data, "notary_no", "notary_nos", "certificate_no"),
             value(data, "clue_no", "clue_nos", "investigation_clue", "investigation_clue_nos", "source_clue_no"),
         )
-        if body.scope == "global":
-            keyword_fields = (*keyword_fields, data)
+        # 只匹配当前业务字段，避免复制旧值、历史快照等原始数据造成误命中。
         if body.keyword and not contains(" ".join(searchable_text(item) for item in keyword_fields), body.keyword): continue
         if not contains(value(data, "plaintiff", "plaintiffs") or record.customer, body.plaintiff): continue
         if not contains(value(data, "prosecutor", "procuratorate", "first_procuratorate_name"), body.prosecutor): continue

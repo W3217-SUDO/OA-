@@ -233,22 +233,31 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                 else
                     message.warning("未找到关联案件或当前账号无权查看");
             }
-            // The notary editor must keep its master warehouse locations available even
-            // when an unrelated optional case-center feed is temporarily unavailable.
-            try {
+            const profileRes = await api.get("/auth/me");
+            setProfile(profileRes.data);
+            const menuKeys: string[] = profileRes.data.menu_keys || [];
+            const isAdmin = (profileRes.data.actual_role || profileRes.data.role) === "admin";
+            const hasModule = (root: string) => isAdmin || menuKeys.some(key => key === root || key.startsWith(`${root}-`));
+            // 按真实功能权限加载旁路数据；案件访问权限不代表财务或仓库权限。
+            if (hasModule("warehouse")) {
                 const warehouseResponse = await api.get("/warehouse/catalog");
                 setWarehouseCatalog(warehouseResponse.data.items || []);
-            }
-            catch {
+            } else {
                 setWarehouseCatalog([]);
             }
-            const [contractRes, hearingRes, summaryRes, profileRes, financeRes, refundRes, attachmentRes, referenceRes, customerRes, clueRes, feeTypeRes] = await Promise.all([
+            if (hasModule("finance") || hasModule("platform-finance")) {
+                const [financeRes, refundRes] = await Promise.all([
+                    api.get("/records", { params: { module: "finance", page_size: 100 } }),
+                    api.get("/records", { params: { module: "refund", page_size: 100 } }),
+                ]);
+                setFinanceRows([...financeRes.data.items, ...refundRes.data.items]);
+            } else {
+                setFinanceRows([]);
+            }
+            const [contractRes, hearingRes, summaryRes, attachmentRes, referenceRes, customerRes, clueRes, feeTypeRes] = await Promise.all([
                 api.get("/cases/eligible-contracts"),
                 api.get("/hearings"),
                 api.get("/cases/summary"),
-                api.get("/auth/me"),
-                api.get("/records", { params: { module: "finance", page_size: 100 } }),
-                api.get("/records", { params: { module: "refund", page_size: 100 } }),
                 api.get("/attachments"),
                 api.get("/cases/reference-options"),
                 api.get("/records", { params: { module: "customer", page_size: 100 } }),
@@ -258,8 +267,6 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             setContracts(contractRes.data.items);
             setHearings(hearingRes.data.items);
             setSummary(summaryRes.data);
-            setProfile(profileRes.data);
-            setFinanceRows([...financeRes.data.items, ...refundRes.data.items]);
             setAttachments(attachmentRes.data.items);
             setCaseTypeOptions(referenceRes.data.case_types || []);
             setCauseOptions(referenceRes.data.causes || []);
@@ -285,8 +292,8 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                     createForm.setFieldsValue({ customer: selected.customer, source_person: resolveCasePersonValue(resolveCaseSourcePerson(selected)) });
             }
         }
-        catch {
-            message.error("案件中心数据加载失败");
+        catch (error: any) {
+            message.error(error?.response?.data?.detail || "案件中心数据加载失败");
         }
         finally {
             setLoading(false);
