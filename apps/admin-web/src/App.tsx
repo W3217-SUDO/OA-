@@ -1690,7 +1690,11 @@ export default function App() {
         sessionStorage.removeItem(CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY);
       }
     }
-    if (normalizedRoute === active) window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: normalizedRoute }));
+    if (normalizedRoute === active) {
+      // 全局搜索每次提交都要重新读取关键词并查询，不能依赖切换案件菜单触发。
+      if (normalizedRoute === "case-global-search") setWorkspaceReloadKey((value) => value + 1);
+      window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: normalizedRoute }));
+    }
     setActive(normalizedRoute);
   };
   const openLegacyMenuItem = (item: NavItem) => {
