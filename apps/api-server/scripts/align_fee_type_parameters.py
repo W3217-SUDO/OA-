@@ -117,6 +117,9 @@ async def main():
                 row.extra = extra
                 row.updated_by = "fee-master-v1"
             await db.flush()
+            rows = list((await db.scalars(select(SystemParameter).where(SystemParameter.category == "fee_type")
+                        .order_by(SystemParameter.sort_order, SystemParameter.id)
+                        .execution_options(populate_existing=True))).all())
             active = _fee_type_catalog(rows)
             if len(active) != 51 or sum(bool(row["parent_code"]) for row in active) != 46:
                 raise RuntimeError("费用参数校准数量不符，事务取消")
