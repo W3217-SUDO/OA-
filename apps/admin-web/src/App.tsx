@@ -1,3 +1,4 @@
+import { useDashboardData, type DashboardData, type DashboardSection } from "./dashboardData";
 import {
   Component,
   lazy,
@@ -829,22 +830,6 @@ const supportTools = [
   { label: "裁判文书检索", href: "https://openlaw.cn/index.jsp" },
 ];
 
-type DashboardData = {
-  metrics: {
-    key: string;
-    label: string;
-    value: string;
-    tone: string;
-    route: string;
-    query?: { scope?: "mine" | "company"; unpaid_official?: boolean };
-    detail_context?: { contract_no: string; return_view: string; amount_filter?: string; owner?: string };
-  }[];
-  todos: (string | number)[][];
-  hearings: Record<string, string>[];
-  latest_cases: Record<string, string>[];
-  case_trend: { date: string; value: number }[];
-  civil_distribution: { label: string; value: number; color: string }[];
-};
 type SessionUser = {
   username: string;
   display_name: string;
@@ -1269,30 +1254,10 @@ function CivilDistribution({
 }
 
 function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
-  const [data, setData] = useState<DashboardData | null>(null);
-  useEffect(() => {
-    let active = true;
-    let loading = false;
-    const loadDashboard = () => {
-      // 定时刷新与窗口聚焦共用在途标记，避免慢请求尚未结束又重复加载。
-      if (!active || loading) return;
-      loading = true;
-      api
-        .get("/dashboard")
-        .then((r) => active && setData(r.data))
-        .catch(() => active && message.error("看板加载失败"))
-        .finally(() => { loading = false; });
-    };
-    const refreshOnFocus = () => loadDashboard();
-    loadDashboard();
-    const timer = window.setInterval(loadDashboard, 30_000);
-    window.addEventListener("focus", refreshOnFocus);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", refreshOnFocus);
-    };
-  }, []);
+  const { data, loading, errors, retry } = useDashboardData();
+  const sectionStatus = (section: DashboardSection) => errors[section]
+    ? <div role="alert">{errors[section]} <Button size="small" onClick={() => retry(section)}>重试</Button></div>
+    : loading[section] ? <div role="status">正在加载...</div> : null;
   const todoRoutes: Record<string, { primary: string; secondary: string }> = {
     待处理任务: { primary: "task-my-accepted", secondary: "task-my-created" },
     待审批官方费用: { primary: "finance-payment-audit", secondary: "finance-payment-audit" },
@@ -1401,12 +1366,12 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
     ],
     [],
   );
-  if (!data) return <div className="loading">正在加载...</div>;
   return (
     <div className="reference-dashboard">
       <div className="dashboard-legacy-grid">
         <div className="metrics reference-metrics dashboard-metrics-panel">
-          {data.metrics.map((m, i) => (
+          {sectionStatus("metrics")}
+          {data.metrics?.map((m, i) => (
             <div
               className={`metric target-${i}`}
               key={m.key}
@@ -1426,9 +1391,10 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
           ))}
         </div>
         <Card title="➤ 待办事项" className="dashboard-card compact-todo-card">
+          {sectionStatus("todos")}
           <table className="todo-table">
             <tbody>
-              {data.todos.map((row, i) => (
+              {data.todos?.map((row, i) => (
                 <tr key={i}>
                   {row.map((c, j) => {
                     const label = String(row[j < 3 ? 0 : 3]);
@@ -1456,7 +1422,7 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
             </tbody>
           </table>
           <div className="mobile-todo-list">
-            {data.todos.flatMap((row, rowIndex) =>
+            {data.todos?.flatMap((row, rowIndex) =>
               [
                 { label: row[0], primary: row[1], secondary: row[2] },
                 { label: row[3], primary: row[4], secondary: row[5] },
@@ -1476,17 +1442,19 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
           </div>
         </Card>
         <Card title="▥ 开庭排期" className="dashboard-card target-hearing-card">
+          {sectionStatus("cases")}
           <Table
             rowKey={(r) => `${r.case_no}-${r.time}`}
             size="small"
             pagination={false}
             columns={hearingCols}
             dataSource={data.hearings}
+            loading={loading.cases}
             scroll={{ x: 1050 }}
           />
         </Card>
         <Card title="◩ 案件趋势" className="dashboard-card target-trend-card">
-          <CaseTrendChart items={data.case_trend} />
+          {data.case_trend ? <CaseTrendChart items={data.case_trend} /> : sectionStatus("cases")}
         </Card>
         <Card title="◉ 最新案件" className="dashboard-card latest-cases-card">
           <Table
@@ -1495,11 +1463,12 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
             pagination={false}
             columns={latestCaseCols}
             dataSource={data.latest_cases}
+            loading={loading.cases}
             scroll={{ x: 1100 }}
           />
         </Card>
         <Card title="◔ 民事案件" className="dashboard-card civil-card">
-          <CivilDistribution items={data.civil_distribution} />
+          {data.civil_distribution ? <CivilDistribution items={data.civil_distribution} /> : sectionStatus("cases")}
         </Card>
       </div>
     </div>
