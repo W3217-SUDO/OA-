@@ -1069,22 +1069,30 @@ async def _validate_invoice_source_links(
 
 
 def _invoice_json_fee_condition(column, fee_ids: set[int]):
-    """SQL prefilter only; the existing ID resolver remains authoritative."""
+    """只做关联预筛选，费用归属仍由后续 ID 解析器精确判断。"""
     from sqlalchemy import String, cast
+    if not fee_ids:
+        return false()
     compact = func.replace(func.replace(cast(column, String), " ", ""), '"', "")
-    return or_(*[compact.contains(token) for fee_id in fee_ids for token in (
-        f"fee_id:{fee_id}", f"fee_record_id:{fee_id}", f"finance_record_id:{fee_id}",
-        f"[{fee_id},", f",{fee_id},", f",{fee_id}]", f"[{fee_id}]",
-    )]) if fee_ids else false()
+    identifiers = "|".join(str(int(fee_id)) for fee_id in sorted(fee_ids))
+    # 共用前后缀，避免每个编号展开七条 OR LIKE 并重复处理同一 JSON。
+    pattern = (
+        rf"(fee_id:|fee_record_id:|finance_record_id:)({identifiers})"
+        rf"|\[({identifiers})(,|\])|,({identifiers})(,|\])"
+    )
+    return compact.regexp_match(pattern)
 
 
 def _invoice_json_case_condition(column, case_nos: set[str]):
     import json
+    import re
     from sqlalchemy import String, cast
-    text = cast(column, String)
-    return or_(*[text.contains(value) for case_no in case_nos for value in (
+    if not case_nos:
+        return false()
+    variants = {value for case_no in case_nos for value in (
         case_no, json.dumps(case_no, ensure_ascii=True)[1:-1],
-    )]) if case_nos else false()
+    )}
+    return cast(column, String).regexp_match("|".join(re.escape(value) for value in sorted(variants)))
 
 
 async def _invoice_fee_details(identity: dict, db: AsyncSession, *, ids: set[int] | None = None,
