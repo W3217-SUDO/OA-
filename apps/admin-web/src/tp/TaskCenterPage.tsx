@@ -305,7 +305,7 @@ export default function TaskCenterPage({
             (target.serial_no && row.serial_no === target.serial_no),
           );
           if (!targetRow && target.serial_no) {
-            const taskRes = await api.get("/tasks", { params: { serial_no: target.serial_no, page_size: 20 } });
+            const taskRes = await api.get("/tasks", { params: { serial_no: target.serial_no, scope: target.scope || "default", page_size: 20 } });
             targetRow = (taskRes.data.items as TaskRow[]).find((row) => row.serial_no === target.serial_no);
           }
           if (targetRow) {

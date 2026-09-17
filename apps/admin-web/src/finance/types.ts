@@ -150,6 +150,9 @@ export type Reconciliation = {
 
 export type IncomingPayment = {
   id: number;
+  registered_contract_no?: string;
+  source_kind?: "manual" | "bank_import" | "system" | "unknown";
+  case_no?: string;
   receipt_no: string;
   received_date: string;
   amount: number | null;

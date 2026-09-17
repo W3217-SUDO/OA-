@@ -112,6 +112,7 @@ import { createArchiveColumns } from "./columns/archiveColumns";
 import { useArchiveCases } from "./hooks/useArchiveCases";
 import { createCaseColumns } from "./columns/caseColumns";
 import { createExternalCaseFeeColumns } from "./columns/externalCaseFeeColumns";
+import { rememberTaskDetailTarget } from "../taskDetailNavigation";
 import { createGroupedOriginalCaseColumns } from "./columns/groupedOriginalCaseColumns";
 import { createHearingColumns } from "./columns/hearingColumns";
 import { createOriginalArchiveColumns } from "./columns/originalArchiveColumns";
@@ -2225,7 +2226,7 @@ export default function CaseCenterPage({
     const amount = Number(row.data.amount || 0);
     const refunded = Number(row.data.refund_amount || row.data.refund_requested_amount || 0);
     courtRefundForm.resetFields();
-    courtRefundForm.setFieldsValue({ amount: Math.max(amount - refunded, 0) });
+    courtRefundForm.setFieldsValue({ amount: Math.max(amount - refunded, 0), request_key: `${row.id}-${Date.now()}-${Array.from(crypto.getRandomValues(new Uint32Array(4))).join("-")}` });
     setCourtRefundFee(row);
   };
 
@@ -2603,7 +2604,10 @@ export default function CaseCenterPage({
     get caseAssistantDisplayNames() { return caseAssistantDisplayNames; },
     get legacyCaseParticipantDisplayNames() { return legacyCaseParticipantDisplayNames; },
     get openCaseLogViewer() { return openCaseLogViewer; },
-    get openCaseTasks() { return openCaseTasks; },
+    openLatestTask: (row: CaseRow) => {
+      const scope = profile.role === "admin" ? "company" : "mine";
+      if (rememberTaskDetailTarget({ id: Number(row.data.task_id), serial_no: row.data.task_serial_no, scope })) onNavigate?.(`task-${scope}-accepted`);
+    },
     get casePersonDisplayName() { return casePersonDisplayName; },
   });
   const originalCaseColumns=shouldUseCompanyArbitrationColumns(initialView)?companyArbitrationCaseColumns:groupedOriginalCaseColumns;

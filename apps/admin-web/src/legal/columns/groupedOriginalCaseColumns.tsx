@@ -7,7 +7,7 @@ export function createGroupedOriginalCaseColumns(context: {
     readonly caseAssistantDisplayNames: (data: Record<string, unknown> | null | undefined) => string;
     readonly legacyCaseParticipantDisplayNames: (data: Record<string, any>) => string;
     readonly openCaseLogViewer: (row: CaseRow) => void;
-    readonly openCaseTasks: (row: CaseRow) => Promise<void>;
+    readonly openLatestTask: (row: CaseRow) => void;
     readonly casePersonDisplayName: (source: unknown, displayName?: unknown) => string;
 }) {
     return getLegacyGroupedCaseColumnSchema().map(({ key, title, width }) => ({
@@ -32,7 +32,7 @@ export function createGroupedOriginalCaseColumns(context: {
                 case "phase":
                     return <><p>变更时间:{row.data.phase_changed_at || ""}</p><p>变更时长:{row.data.phase_duration || row.data.phase_changed_days || ""} <Button type="link" size="small" onClick={() => context.openCaseLogViewer(row)}>查看日志</Button></p></>;
                 case "task":
-                    return <><p>名称:<Button type="link" className="case-cell-link case-task-cell-link" onClick={() => context.openCaseTasks(row)}>{row.data.task_name || ""}</Button>　处理人:{context.casePersonDisplayName(row.data.task_handler || row.data.task_owner, row.data.task_handler_display_name || row.data.task_owner_display_name)}</p><p>内容:{row.data.task_content || ""}　到期日期:{row.data.task_due_date || row.data.task_deadline || ""}</p></>;
+                    return <><p>名称:<Button type="link" className="case-cell-link case-task-cell-link" disabled={!row.data.task_id} onClick={() => context.openLatestTask(row)}>{row.data.task_name || ""}</Button>　处理人:{context.casePersonDisplayName(row.data.task_handler || row.data.task_owner, row.data.task_handler_display_name || row.data.task_owner_display_name)}</p><p>内容:{row.data.task_content || ""}　到期日期:{row.data.task_due_date || row.data.task_deadline || ""}</p></>;
                 default:
                     return null;
             }

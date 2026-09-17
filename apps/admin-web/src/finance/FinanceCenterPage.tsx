@@ -795,6 +795,7 @@ export default function FinanceCenterPage({
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [incomingOpen, setIncomingOpen] = useState(false);
+  const [editingIncoming, setEditingIncoming] = useState<IncomingPayment | null>(null);
   const [claimTarget, setClaimTarget] = useState<IncomingPayment | null>(null);
   const [claimCustomers, setClaimCustomers] = useState<
     { id: number; title: string; serial_no: string }[]
@@ -1622,10 +1623,11 @@ export default function FinanceCenterPage({
     (canManage || row.owner === currentUser.username || (isContractPayment(row) && row.data?.applicant === currentUser.username));
   const originalIncomingOperation = (_: unknown, r: IncomingPayment) => (
     <Space size={0}>
-      <Button type="link" onClick={() => setIncomingDetailTarget(r)}>
-        查看
-      </Button>
-      {r.status === "待认领" && (
+      {initialView === "finance-receipts-manage" ? (
+        canManage && r.source_kind === "manual" && r.amount !== null &&
+        <Button type="link" onClick={() => setEditingIncoming(r)}>编辑</Button>
+      ) : <Button type="link" onClick={() => setIncomingDetailTarget(r)}>查看</Button>}
+      {initialView !== "finance-receipts-manage" && r.status === "待认领" && (
         <Button
           type="link"
           onClick={() => {
@@ -4952,6 +4954,9 @@ export default function FinanceCenterPage({
     </section>
   ) : null;
 
+  if (editingIncoming) return <ReceiptCreatePage payment={editingIncoming}
+    onCancel={() => setEditingIncoming(null)}
+    onSaved={() => { setEditingIncoming(null); void load(); }} />;
   if (initialView === "finance-receipts-new") return <ReceiptCreatePage />;
 
   if (initialView === "finance-jar") {

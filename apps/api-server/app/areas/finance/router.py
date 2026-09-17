@@ -495,6 +495,7 @@ async def confirm_finance_fee_inform_arrival(
         raise HTTPException(status_code=409, detail="来源费用已登记到账，不能重复确认")
     previous = notice.status
     receipt = IncomingPayment(
+        source_kind="system",
         receipt_no=f"FNIHK{datetime.now():%Y%m%d%H%M%S%f}", received_date=body.received_date,
         amount=received, payer_name=source_fee.customer or "费用通知到账", bank_reference=f"fee-source:{source_fee.id}",
         status="已分配", claimed_customer=source_fee.customer,
@@ -1612,6 +1613,16 @@ async def update_refund_amount(refund_id: int, body: RefundAmountUpdateInput, id
         original_amount = float((fee.data or {}).get("amount") or 0)
         if body.amount > original_amount:
             raise HTTPException(status_code=422, detail="退款金额不能超过原费用金额")
+    if data.get("refund_fee_id"):
+        from app.core.agency_refund import update_agency_refund_fee_amount
+        other_refunds = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "refund", BusinessRecord.id != item.id,
+            BusinessRecord.data["fee_record_id"].as_integer() == fee_id,
+            BusinessRecord.status.not_in({"已驳回", "已作废"}),
+        ))).all())
+        if _round_fee_amount(body.amount + sum(float((row.data or {}).get("amount") or 0) for row in other_refunds)) > original_amount:
+            raise HTTPException(422, "累计退款金额不能超过原费用金额")
+        await update_agency_refund_fee_amount(item, body.amount, db)
     old_amount = float(data.get("amount") or 0)
     item.data = {**data, "amount": _round_fee_amount(body.amount), "amount_updated_by": identity["username"], "amount_updated_at": datetime.now().isoformat(timespec="seconds")}
     db.add(WorkflowEvent(record_id=item.id, action="修改退款金额", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{old_amount:.2f} → {body.amount:.2f}；{body.comment}"))
@@ -1654,10 +1665,19 @@ async def create_litigation_refund(body: LitigationRefundInput, identity: dict =
     )
     case_record = await _finance_linked_case(body.case_no, identity, db)
     if not case_record: raise HTTPException(status_code=422, detail="诉讼费退款必须关联案件")
+    fee_record = None
+    agency_refund = False
     if body.fee_record_id:
         fee_record = await _ensure_record_visible(body.fee_record_id, identity, db)
-        if fee_record.module != "finance" or str((fee_record.data or {}).get("fee_type") or "") != "官方费用":
-            raise HTTPException(status_code=422, detail="诉讼费退款只能关联官方费用")
+        await db.scalar(select(BusinessRecord.id).where(BusinessRecord.id == fee_record.id).with_for_update())
+        source_data = fee_record.data or {}
+        agency_refund = source_data.get("fee_type") == "代理费" and str(source_data.get("expense_scope") or "律所") == "律所" and not source_data.get("refund_fee")
+        if fee_record.module != "finance" or (source_data.get("fee_type") != "官方费用" and not agency_refund):
+            raise HTTPException(status_code=422, detail="法院退费只能关联官费或律所代理费")
+        if body.request_key:
+            existing = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "refund", BusinessRecord.owner == identity["username"], BusinessRecord.data["fee_record_id"].as_integer() == fee_record.id, BusinessRecord.data["request_key"].as_string() == body.request_key))
+            if existing:
+                return await _record_dict_for_identity(existing, identity, db)
         if str((fee_record.data or {}).get("case_no") or "") != case_record.serial_no:
             raise HTTPException(status_code=409, detail="退款费用与案件不一致")
         original_amount = _round_fee_amount(abs(float((fee_record.data or {}).get("amount") or 0)))
@@ -1672,8 +1692,11 @@ async def create_litigation_refund(body: LitigationRefundInput, identity: dict =
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
     serial = f"TF{datetime.now():%Y%m%d%H%M%S%f}"; data = body.model_dump(mode="json"); data["amount"] = _round_fee_amount(body.amount); data["case_id"] = case_record.id; data["case_record_id"] = case_record.id; data["case_no"] = case_record.serial_no
-    item = BusinessRecord(module="refund", serial_no=serial, title=f"{body.case_no}诉讼费退款", customer=body.customer.strip(), status="草稿", owner=identity["username"], department=user.department, description=body.remark, data=data)
+    item = BusinessRecord(module="refund", serial_no=serial, title=f"{body.case_no}{'代理费法院退费' if agency_refund else '诉讼费退款'}", customer=body.customer.strip(), status="草稿", owner=identity["username"], department=user.department, description=body.remark, data=data)
     db.add(item); await db.flush(); db.add(WorkflowEvent(record_id=item.id, action="创建诉讼费退款申请", to_status=item.status, operator=identity["username"], comment=f"{body.court}：{data['amount']:.2f} 元"))
+    if agency_refund:
+        from app.core.agency_refund import create_agency_refund_fee
+        await create_agency_refund_fee(item, fee_record, identity, db)
     await db.commit(); await db.refresh(item); return await _record_dict_for_identity(item, identity, db)
 
 
@@ -2244,7 +2267,7 @@ async def create_incoming_payment(body: IncomingPaymentInput, identity: dict = D
                 raise HTTPException(status_code=422, detail="关联案件的合同不存在")
             contract_no = contract.serial_no
         customer = customer or case_record.customer
-    item = IncomingPayment(receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}", received_date=body.received_date, amount=_round_fee_amount(body.amount), payer_name=body.payer_name.strip(), bank_reference=bank_reference or None, status="待认领", contract_record_id=contract.id if contract else None, contract_no=contract.serial_no if contract else "", case_no=case_no, bank_source=body.bank_source.strip(), operator=identity["username"], remark=body.remark)
+    item = IncomingPayment(source_kind="manual", receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}", received_date=body.received_date, amount=_round_fee_amount(body.amount), payer_name=body.payer_name.strip(), bank_reference=bank_reference or None, status="待认领", contract_record_id=contract.id if contract else None, contract_no=contract.serial_no if contract else "", case_no=case_no, bank_source=body.bank_source.strip(), operator=identity["username"], remark=body.remark)
     db.add(item); await db.flush()
     if body.claim:
         if not customer: raise HTTPException(status_code=422, detail="自动认领需要填写客户名称")
@@ -2339,6 +2362,7 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
             if amount <= 0:
                 raise ValueError("到账金额必须大于 0")
             item_values = dict(
+                source_kind="bank_import",
                 receipt_no=import_identity or f"HK{datetime.now():%Y%m%d%H%M%S%f}{row_no}",
                 received_date=received_date,
                 amount=amount,
@@ -2960,9 +2984,21 @@ async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateIn
         _allowed_field_keys,
     )
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以编辑银行到账")
-    item = await db.get(IncomingPayment, payment_id)
+    item = await db.scalar(select(IncomingPayment).where(IncomingPayment.id == payment_id).with_for_update())
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
-    if item.allocations or item.allocated_amount > 0: raise HTTPException(status_code=409, detail="已发生分配的到账不能编辑")
+    if identity.get("role") != "admin" and item.operator != identity["username"] and item.claimant != identity["username"]:
+        visible_customer = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "customer", BusinessRecord.title == item.claimed_customer, *(await _record_scope_conditions(identity, db))))
+        if not visible_customer:
+            raise HTTPException(status_code=403, detail="无权编辑该回款")
+    if "finance.amount" not in await _allowed_field_keys(identity, db):
+        raise HTTPException(status_code=403, detail="当前账号没有回款金额权限")
+    if item.source_kind != "manual":
+        raise HTTPException(status_code=403, detail="仅手动新增的回款可以编辑，导入或来源未确认的记录不可编辑")
+    allocated = max(float(item.allocated_amount or 0), sum(float(row.get("amount") or 0) for row in (item.allocations or []) if isinstance(row, dict)))
+    if _round_fee_amount(body.amount) < _round_fee_amount(allocated):
+        raise HTTPException(status_code=422, detail="回款金额不能小于已分配金额")
+    if allocated and (body.contract_no.strip() != (item.contract_no or "") or body.case_no.strip() != (item.case_no or "") or body.customer.strip() != (item.claimed_customer or "")):
+        raise HTTPException(status_code=409, detail="已分配回款不能更换客户、合同或案件")
     bank_reference = body.bank_reference.strip()
     if bank_reference and await db.scalar(select(IncomingPayment.id).where(IncomingPayment.bank_reference == bank_reference, IncomingPayment.id != payment_id)): raise HTTPException(status_code=409, detail="银行流水号已经登记")
     contract_no = body.contract_no.strip(); case_no = body.case_no.strip(); customer = body.customer.strip(); contract = None
@@ -2985,8 +3021,10 @@ async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateIn
             contract_no = contract.serial_no
         customer = customer or case_record.customer
     item.received_date = body.received_date; item.amount = _round_fee_amount(body.amount); item.payer_name = body.payer_name.strip(); item.bank_reference = bank_reference or None; item.contract_record_id = contract.id if contract else None; item.contract_no = contract.serial_no if contract else ""; item.case_no = case_no; item.bank_source = body.bank_source.strip(); item.remark = body.remark
-    if customer and not item.allocations:
+    if not allocated:
         item.claimed_customer = customer
+        item.claimant = (item.claimant or identity["username"]) if customer else ""
+    item.status = ("已分配" if allocated >= item.amount else "部分分配") if allocated else ("待分配" if item.claimed_customer else "待认领")
     await db.commit(); await db.refresh(item); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
 
 

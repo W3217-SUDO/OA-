@@ -712,8 +712,8 @@ async def _case_commission_preview(
         raise HTTPException(status_code=404, detail="所选案件费用不存在")
     if int(source_data.get("case_id") or 0) != case_record.id and str(source_data.get("case_no") or "") != case_record.serial_no:
         raise HTTPException(status_code=409, detail="所选费用不属于当前案件")
-    if not _is_agency_fee_record(source_fee):
-        raise HTTPException(status_code=422, detail="新建提成必须选择一条代理费")
+    if str(source_data.get("expense_scope") or "律所") != "律所" or source_data.get("fee_type") in {"内部费用", "内部提成"}:
+        raise HTTPException(status_code=422, detail="新建提成必须选择一条律所费用")
     from app.core.finance import (
         _invoice_json_fee_condition, _invoice_linked_fee_ids,
     )
@@ -841,7 +841,7 @@ async def _case_commission_preview(
         "quality_manager_source": quality_manager_source,
         "source_fee": {
             "id": source_fee.id, "serial_no": source_fee.serial_no,
-            "amount": base_amount, "source_amount": selected_amount, "fee_type": "代理费",
+            "amount": base_amount, "source_amount": selected_amount, "fee_type": source_data.get("fee_type"),
             "refund_amount": _round_case_commission_amount(refund_amount),
             "invoice_over_amount": invoice_over_amount,
             "cost_over_amount": cost_over_amount,

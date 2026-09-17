@@ -106,10 +106,11 @@ def _incoming_payment_legacy_summary(item: IncomingPayment) -> dict:
                 agency_amount += amount
             else:
                 other_amount += amount
+    manual_method = next((part.removeprefix("回款方式：") for part in (item.remark or "").split("；") if part.startswith("回款方式：")), "") if item.source_kind == "manual" else ""
     return {
         "contract_no": item.contract_no or "、".join(contract_nos),
         "customer_name": item.claimed_customer,
-        "payment_method": "、".join(payment_methods) or item.bank_source,
+        "payment_method": manual_method or "、".join(payment_methods) or item.bank_source,
         "assigned_official_fee": _round_fee_amount(official_amount),
         "assigned_agency_fee": _round_fee_amount(agency_amount),
         "assigned_other_fee": _round_fee_amount(other_amount),
@@ -133,7 +134,7 @@ def _incoming_payment_dict(item: IncomingPayment, *, show_amount: bool = True, u
     if not show_amount:
         for key in ("assigned_official_fee", "assigned_agency_fee", "assigned_other_fee"):
             legacy_summary[key] = None
-    return {"id": item.id, "receipt_no": item.receipt_no, "received_date": item.received_date, "amount": amount if show_amount else None, "payer_name": item.payer_name, "bank_reference": item.bank_reference, "status": item.status, "claimed_customer": item.claimed_customer, "contract_record_id": item.contract_record_id, "contract_no": item.contract_no, "case_no": item.case_no, "bank_source": item.bank_source, "claimant": item.claimant, "claimant_display_name": _person_reference_display(item.claimant, users)[0], "allocated_amount": allocated if show_amount else None, "remaining_amount": max(amount - allocated, 0) if show_amount else None, "allocations": item.allocations or [], "operator": item.operator, "operator_display_name": _person_reference_display(item.operator, users)[0], "remark": item.remark, "created_at": item.created_at, "updated_at": item.updated_at, **legacy_summary}
+    return {"registered_contract_no": item.contract_no, "source_kind": item.source_kind, "id": item.id, "receipt_no": item.receipt_no, "received_date": item.received_date, "amount": amount if show_amount else None, "payer_name": item.payer_name, "bank_reference": item.bank_reference, "status": item.status, "claimed_customer": item.claimed_customer, "contract_record_id": item.contract_record_id, "contract_no": item.contract_no, "case_no": item.case_no, "bank_source": item.bank_source, "claimant": item.claimant, "claimant_display_name": _person_reference_display(item.claimant, users)[0], "allocated_amount": allocated if show_amount else None, "remaining_amount": max(amount - allocated, 0) if show_amount else None, "allocations": item.allocations or [], "operator": item.operator, "operator_display_name": _person_reference_display(item.operator, users)[0], "remark": item.remark, "created_at": item.created_at, "updated_at": item.updated_at, **legacy_summary}
 
 
 def _reconciliation_dict(item: ReconciliationBatch, *, show_amount: bool = True, users_by_username: dict[str, User] | None = None) -> dict:

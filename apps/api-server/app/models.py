@@ -1366,6 +1366,8 @@ class IncomingPayment(Base):
 
     __tablename__ = "incoming_payments"
 
+    source_kind: Mapped[str] = mapped_column(String(24), default="unknown")
+
     id: Mapped[int] = mapped_column(primary_key=True)
     receipt_no: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     received_date: Mapped[date] = mapped_column(Date, index=True)

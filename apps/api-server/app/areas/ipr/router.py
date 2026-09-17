@@ -1742,6 +1742,7 @@ async def create_ipr_case_fee_arrival(case_id: int, fee_id: int, body: IprCaseFe
     fee_data = dict(fee.data or {})
     amount = _round_fee_amount(body.amount)
     item = IncomingPayment(
+        source_kind="system",
         receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}",
         received_date=body.received_date, amount=amount,
         payer_name=body.payer_name.strip(), bank_reference=body.bank_reference.strip(),

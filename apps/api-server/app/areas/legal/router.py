@@ -1553,7 +1553,7 @@ async def list_case_relations(
         if linked_incoming:
             result_data.update(linked_incoming)
             result_data["cashed_date"] = linked_incoming["received_at"]
-        if str((item.data or {}).get("fee_type") or "") == "官方费用":
+        if str((item.data or {}).get("fee_type") or "") in {"官方费用", "代理费"}:
             linked = refunds_by_fee.get(item.id, [])
             if linked:
                 valid_refunds = [refund for refund in linked if refund.status not in {"已驳回", "已作废"}]
@@ -1881,10 +1881,11 @@ async def search_ordinary_cases(body: CounselCaseSearchInput, identity: dict = D
         phase_counts[phase] = phase_counts.get(phase, 0) + 1
     start = (body.page - 1) * body.page_size
     allowed_fields = await _allowed_field_keys(identity, db)
+    from app.core.case_list_tasks import attach_case_list_tasks
+    items = await _contract_customer_record_dicts(records[start:start + body.page_size], allowed_fields, db, identity=identity)
+    await attach_case_list_tasks(items, identity, db)
     return {
-        "items": await _contract_customer_record_dicts(
-            records[start:start + body.page_size], allowed_fields, db, identity=identity
-        ),
+        "items": items,
         "total": total,
         "page": body.page,
         "page_size": body.page_size,

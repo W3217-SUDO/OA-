@@ -1933,6 +1933,7 @@ class FinanceReviewInput(BaseModel):
 
 
 class LitigationRefundInput(BaseModel):
+    request_key: str = Field(default="", max_length=64)
     fee_record_id: int | None = Field(default=None, ge=1)
     customer: str
     case_no: str

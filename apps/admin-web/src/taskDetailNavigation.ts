@@ -1,17 +1,18 @@
 export type TaskDetailNavigationContext = {
   id?: number;
   serial_no?: string;
+  scope?: "mine" | "company";
   at: number;
 };
 
 const STORAGE_KEY = "sunhold:task-detail-context";
 const MAX_AGE_MS = 60 * 60 * 1000;
 
-export const rememberTaskDetailTarget = (target: { id?: number; serial_no?: string }) => {
+export const rememberTaskDetailTarget = (target: { id?: number; serial_no?: string; scope?: "mine" | "company" }) => {
   const serialNo = String(target.serial_no || "").trim();
   const id = Number(target.id || 0) || undefined;
   if (!serialNo && !id) return false;
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ id, serial_no: serialNo || undefined, at: Date.now() }));
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ id, scope: target.scope, serial_no: serialNo || undefined, at: Date.now() }));
   return true;
 };
 

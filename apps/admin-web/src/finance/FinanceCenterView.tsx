@@ -1,3 +1,4 @@
+import { IncomingTotalsBody } from "./IncomingTotalsBody";
 import { FeeTypePicker } from "./FeeTypePicker";
 import { InvoiceApplicationPage } from "./InvoiceApplicationPage";
 import { PaymentApplicationPage } from "./PaymentApplicationPage";
@@ -1293,7 +1294,9 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
                     : undefined
                 }
                 components={
-                  initialView === "finance-payment-query" && configuredRows.length
+                  ["finance-receipts-manage", "finance-receipts-claim", "finance-receipts-pending"].includes(initialView)
+                    ? { body: { wrapper: (props: any) => <IncomingTotalsBody {...props} headers={activeRouteConfig.headers} rows={configuredRows} /> } }
+                  : initialView === "finance-payment-query" && configuredRows.length
                     ? {
                         body: {
                           wrapper: ({ children, ...bodyProps }: any) => (

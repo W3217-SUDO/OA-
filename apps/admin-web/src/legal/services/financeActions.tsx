@@ -471,7 +471,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 message.success(`已创建 ${created.length} 条费用草稿`);
                 const payable = created.filter((row) => row.data.fee_type !== "代理费");
                 if (!payable.length) {
-                    message.info("代理费已保存；新增提成请先勾选该代理费，再选择“新增案件费用 > 新建提成(选择代理费)”");
+                    message.info("代理费已保存；新增提成请先勾选该代理费，再选择“新增案件费用 > 新建提成(选择费用)”");
                     closeCaseFeeCreator();
                     await load();
                     if (viewingCounselCase)
@@ -539,7 +539,10 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             return;
         try {
             const values = await courtRefundForm.validateFields();
+            const requestKey = courtRefundForm.getFieldValue("request_key");
+            courtRefundForm.setFieldValue("request_key", requestKey);
             await api.post("/finance/refunds", {
+                request_key: requestKey,
                 fee_record_id: courtRefundFee.id,
                 case_no: viewingCounselCase.serial_no,
                 customer: viewingCounselCase.customer,
@@ -547,7 +550,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 original_payment_no: courtRefundFee.data.document_no || courtRefundFee.serial_no,
                 amount: Number(values.amount),
                 applicant: profile.display_name || profile.username,
-                reason: "诉讼费退款",
+                reason: courtRefundFee.data.fee_type === "代理费" ? "代理费法院退费" : "诉讼费退款",
             });
             message.success("法院退费申请已创建");
             setCourtRefundFee(null);
@@ -959,16 +962,6 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         const { viewingCounselCase, requireSingleFee, selectedFirmFeeKeys, selectedFirmFee, setCaseCommissionLoading, setCaseCommissionPreview, setCaseCommissionResult, setCaseCommissionRows } = context;
         if (!viewingCounselCase || !requireSingleFee(selectedFirmFeeKeys, selectedFirmFee, "新建提成"))
             return;
-        const feeTypes = [
-            selectedFirmFee!.data.expense_subtype,
-            selectedFirmFee!.data.fee_type,
-            selectedFirmFee!.data.base_fee_type,
-            selectedFirmFee!.title,
-        ].map((value) => String(value || "").trim()).filter(Boolean);
-        if (!feeTypes.some((feeType) => feeType.includes("代理费"))) {
-            message.warning("新建提成必须选择一条代理费");
-            return;
-        }
         setCaseCommissionLoading(true);
         try {
             const { data } = await api.get(`/cases/${viewingCounselCase.id}/commission-preview`, {

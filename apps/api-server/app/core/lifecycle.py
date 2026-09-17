@@ -294,6 +294,10 @@ def _upgrade_schema(connection) -> None:
         if column not in notification_columns: connection.execute(text(f"ALTER TABLE notifications ADD COLUMN {column} {definition}"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_sender ON notifications (sender)"))
     incoming_columns = {item["name"] for item in inspect(connection).get_columns("incoming_payments")}
+    if "source_kind" not in incoming_columns:
+        connection.execute(text("ALTER TABLE incoming_payments ADD COLUMN source_kind VARCHAR(24) NOT NULL DEFAULT 'unknown'"))
+        from app.core.incoming_payment_sources import backfill_incoming_sources
+        backfill_incoming_sources(connection)
     for column, definition in {
         "contract_record_id": "INTEGER",
         "contract_no": "VARCHAR(64) NOT NULL DEFAULT ''",

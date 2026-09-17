@@ -509,7 +509,11 @@ function makeBankReference() {
   return `${dayjs().format("YYMMDD")}-${suffix}`;
 }
 
-export function ReceiptCreatePage() {
+export function ReceiptCreatePage({ payment, onSaved, onCancel }: {
+  payment?: import("./finance/types").IncomingPayment;
+  onSaved?: () => void;
+  onCancel?: () => void;
+} = {}) {
   const [form] = Form.useForm<ReceiptCreateValues>();
   const selectedCustomer = Form.useWatch("customer", form);
   const [receiptNo, setReceiptNo] = useState(makeReceiptNo);
@@ -518,6 +522,17 @@ export function ReceiptCreatePage() {
   const customerSearchRequest = useRef(0);
   const [contracts, setContracts] = useState<{ serial_no: string; customer: string; title: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  useEffect(() => {
+    if (!payment) return;
+    setReceiptNo(payment.receipt_no);
+    form.setFieldsValue({
+      payerName: payment.payer_name, customer: payment.claimed_customer || undefined,
+      receivedDate: dayjs(payment.received_date), amount: payment.amount ?? undefined,
+      method: /(?:^|；)回款方式：([^；]*)/.exec(payment.remark || "")?.[1] || payment.payment_method || undefined, bankReference: payment.bank_reference,
+      contractNo: payment.registered_contract_no || undefined,
+      remark: (payment.remark || "").split("；").filter((part) => !/^(客户|回款方式)：/.test(part)).join("；"),
+    });
+  }, [payment, form]);
 
   const searchCustomers = async (keyword = "") => {
     const requestId = ++customerSearchRequest.current;
@@ -547,7 +562,7 @@ export function ReceiptCreatePage() {
         values.method && `回款方式：${values.method}`,
         values.remark,
       ].filter(Boolean);
-      const { data: payment } = await api.post("/finance/incoming-payments", {
+      const payload = {
         received_date: formatRequiredDate(values.receivedDate, "回款时间"),
         amount: values.amount,
         payer_name: values.payerName,
@@ -555,9 +570,18 @@ export function ReceiptCreatePage() {
         customer: values.customer || "",
         contract_no: values.contractNo || "",
         remark: extra.join("；"),
-      });
+      };
+      if (payment) {
+        await api.put(`/finance/incoming-payments/${payment.id}`, {
+          ...payload, case_no: payment.case_no || "", bank_source: payment.bank_source || "",
+        });
+        message.success("回款修改成功");
+        onSaved?.();
+        return;
+      }
+      const { data: createdPayment } = await api.post("/finance/incoming-payments", payload);
       if (values.customer) {
-        await api.post(`/finance/incoming-payments/${payment.id}/claim`, {
+        await api.post(`/finance/incoming-payments/${createdPayment.id}/claim`, {
           customer: values.customer,
           comment: "平台财务回款登记时匹配客户",
         });
@@ -570,7 +594,7 @@ export function ReceiptCreatePage() {
       }
     } catch (error: any) {
       if (error?.errorFields) return;
-      message.error(error?.response?.data?.detail || "回款登记失败");
+      message.error(error?.response?.data?.detail || (payment ? "回款修改失败" : "回款登记失败"));
     } finally {
       setSubmitting(false);
     }
@@ -578,7 +602,7 @@ export function ReceiptCreatePage() {
 
   return (
     <Card className="platform-finance-original platform-receipt-create" variant="borderless">
-      <div className="platform-finance-title">回款登记</div>
+      <div className="platform-finance-title">{payment ? "编辑回款" : "回款登记"}</div>
       <div className="platform-receipt-hint">
         <b>温馨提示：</b>
         <p>1. 请完善以下信息，方便我们更好地为您服务。</p>
@@ -609,6 +633,7 @@ export function ReceiptCreatePage() {
         </Form.Item>
         <Form.Item label="客户名称" name="customer">
           <Select
+              disabled={Boolean(payment?.allocated_amount)}
               allowClear
               showSearch
               placeholder="请选择客户"
@@ -639,7 +664,7 @@ export function ReceiptCreatePage() {
           <DatePicker />
         </Form.Item>
         <Form.Item label="回款金额" name="amount" rules={[{ required: true, message: "请输入回款金额" }]}>
-          <InputNumber min={0.01} precision={2} controls={false} />
+          <InputNumber min={Math.max(0.01, payment?.allocated_amount || 0)} precision={2} controls={false} />
         </Form.Item>
         <Form.Item label="回款方式" name="method" rules={[{ required: true, message: "请选择回款方式" }]}>
           <Select options={paymentMethods.map((value) => ({ value, label: value }))} />
@@ -655,6 +680,7 @@ export function ReceiptCreatePage() {
         </Form.Item>
         <Form.Item label="合同编号" name="contractNo">
           <Select
+            disabled={Boolean(payment?.allocated_amount)}
             allowClear
             showSearch
             placeholder="请选择已签约合同"
@@ -672,7 +698,8 @@ export function ReceiptCreatePage() {
         <Form.Item wrapperCol={{ offset: 7, span: 17 }}>
           <Space>
             <Button type="primary" loading={submitting} onClick={() => void submit(false)}>提交</Button>
-            <Button type="primary" loading={submitting} onClick={() => void submit(true)}>提交并新增</Button>
+            {!payment && <Button type="primary" loading={submitting} onClick={() => void submit(true)}>提交并新增</Button>}
+            {onCancel && <Button onClick={onCancel}>返回列表</Button>}
           </Space>
         </Form.Item>
       </Form>
