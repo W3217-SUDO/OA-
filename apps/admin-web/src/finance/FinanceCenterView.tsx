@@ -1294,7 +1294,7 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
                     : undefined
                 }
                 components={
-                  ["finance-receipts-manage", "finance-receipts-claim", "finance-receipts-pending"].includes(initialView)
+                  ["finance-receipts-manage", "finance-receipts-claim", "finance-receipts-pending", "finance-receipts-allocated", "finance-receipts-query"].includes(initialView)
                     ? { body: { wrapper: (props: any) => <IncomingTotalsBody {...props} headers={activeRouteConfig.headers} rows={configuredRows} /> } }
                   : initialView === "finance-payment-query" && configuredRows.length
                     ? {

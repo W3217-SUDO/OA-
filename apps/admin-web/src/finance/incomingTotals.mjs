@@ -1,5 +1,7 @@
 const amountFields = {
   回款金额: "amount",
+  金额: "amount",
+  到账金额: "amount",
   已分金额: "allocated_amount",
   未分金额: "remaining_amount",
   已分官费: "assigned_official_fee",

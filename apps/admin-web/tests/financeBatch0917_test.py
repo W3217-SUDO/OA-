@@ -94,7 +94,23 @@ class Batch0917Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status_code,422,result.text)
         async with self.sessions() as db:self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord)),before)
 
+    async def test_official_refund_atomic_duplicate_and_projection(self):
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            fee.data = {**fee.data, 'fee_type': '官方费用', 'expense_subtype': '官费', 'expense_scope': '律所'}
+            await db.commit()
+        await self.test_agency_refund_atomic_duplicate_and_projection()
+        async with self.sessions() as db:
+            original = await db.get(BusinessRecord, self.fee_id)
+            self.assertEqual(original.data['fee_type'], '官方费用')
+            self.assertEqual(original.data['expense_subtype'], '官费')
+
     async def test_all_firm_fee_types_commission_preview_and_save(self):
+        # 真实返工场景：未单独录入开庭律师，页面和计算均采用首位经办律师。
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.data = {key: value for key, value in case.data.items() if key != 'hearing_lawyer_usernames'}
+            await db.commit()
         for kind in ['官方费用','其他费用','代理费']:
             async with self.sessions() as db:
                 fee=await db.get(BusinessRecord,self.fee_id);fee.data={**fee.data,'fee_type':kind,'expense_scope':'律所'};await db.commit()
@@ -107,6 +123,25 @@ class Batch0917Test(unittest.IsolatedAsyncioTestCase):
             fee=await db.get(BusinessRecord,self.fee_id);fee.data={**fee.data,'expense_scope':'平台'};await db.commit()
         result=await self.client.get(f'{API}/cases/{self.case_id}/commission-preview',params={'source_fee_id':self.fee_id})
         self.assertEqual(result.status_code,422,result.text)
+
+    async def test_explicit_invalid_hearing_and_inactive_account_still_block(self):
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            original = dict(case.data)
+            case.data = {**original, 'hearing_lawyer_usernames': ['missing-account']}
+            await db.commit()
+        result = await self.client.get(f'{API}/cases/{self.case_id}/commission-preview', params={'source_fee_id': self.fee_id})
+        self.assertEqual(result.status_code, 422, result.text)
+        self.assertIn('开庭律师', result.text)
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.data = {key: value for key, value in original.items() if key != 'hearing_lawyer_usernames'}
+            user = await db.scalar(select(User).where(User.username == IDENTITY['username']))
+            user.is_active = False
+            await db.commit()
+        result = await self.client.get(f'{API}/cases/{self.case_id}/commission-preview', params={'source_fee_id': self.fee_id})
+        self.assertEqual(result.status_code, 422, result.text)
+        self.assertIn('开庭律师', result.text)
 
     async def test_case_list_real_task_priority_and_permission(self):
         async with self.sessions() as db:

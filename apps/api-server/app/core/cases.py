@@ -589,13 +589,14 @@ async def _case_commission_preview_for_amount(
     # Presence alone is insufficient: placeholders, ambiguous staff records and
     # disabled accounts cannot be recipients. Recheck on every preview/save.
     required_roles = (
-        ("开庭律师", CASE_COMMISSION_ROLES[0]["fields"]),
-        ("经办律师", ("handling_lawyer_usernames", "handling_lawyer_username", "handling_lawyers", "handling_lawyer")),
-        ("律师助理", CASE_COMMISSION_ROLES[1]["fields"]),
+        ("开庭律师", CASE_COMMISSION_ROLES[0]),
+        ("经办律师", {"key": "handling", "fields": ("handling_lawyer_usernames", "handling_lawyer_username", "handling_lawyers", "handling_lawyer")}),
+        ("律师助理", CASE_COMMISSION_ROLES[1]),
     )
     invalid_roles = []
-    for label, fields in required_roles:
-        tokens = _case_commission_person_tokens(case_data, fields)
+    for label, role in required_roles:
+        # 校验与提成计算使用相同的角色解析，保持页面显示的人员关系一致。
+        tokens = _case_commission_role_person_tokens(case_data, role)
         valid = bool(tokens)
         for token in tokens:
             employee = employee_index.get(token.lower())

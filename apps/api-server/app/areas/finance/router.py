@@ -1694,7 +1694,8 @@ async def create_litigation_refund(body: LitigationRefundInput, identity: dict =
     serial = f"TF{datetime.now():%Y%m%d%H%M%S%f}"; data = body.model_dump(mode="json"); data["amount"] = _round_fee_amount(body.amount); data["case_id"] = case_record.id; data["case_record_id"] = case_record.id; data["case_no"] = case_record.serial_no
     item = BusinessRecord(module="refund", serial_no=serial, title=f"{body.case_no}{'代理费法院退费' if agency_refund else '诉讼费退款'}", customer=body.customer.strip(), status="草稿", owner=identity["username"], department=user.department, description=body.remark, data=data)
     db.add(item); await db.flush(); db.add(WorkflowEvent(record_id=item.id, action="创建诉讼费退款申请", to_status=item.status, operator=identity["username"], comment=f"{body.court}：{data['amount']:.2f} 元"))
-    if agency_refund:
+    # 律所官费和代理费法院退费均生成同额代理费退费，保留原费用类型和退费流程。
+    if fee_record and str((fee_record.data or {}).get("expense_scope") or "律所") == "律所":
         from app.core.agency_refund import create_agency_refund_fee
         await create_agency_refund_fee(item, fee_record, identity, db)
     await db.commit(); await db.refresh(item); return await _record_dict_for_identity(item, identity, db)
