@@ -15,3 +15,10 @@
 
 .logo.logo-collapsed{width:50px}.topbar{line-height:normal}.top-actions{height:50px;align-items:center}.sidebar .ant-menu-sub .ant-menu-item,.sidebar .ant-menu-sub .ant-menu-submenu-title{height:36px!important;line-height:36px!important}
 @media (min-width:1101px) and (max-width:1350px){.dashboard-legacy-grid{grid-template-columns:minmax(0,2.6fr) minmax(275px,1fr)}.compact-todo-card .ant-card-body{padding:6px}.todo-table{font-size:10px}.todo-table td{padding:2px 4px}.todo-table td:nth-child(1),.todo-table td:nth-child(4){width:34%}.todo-table .count{width:25px}}
+
+/* 加载提示不占用卡片格位；首次加载也保留八张卡片的布局高度。 */
+.dashboard-metrics-panel,.dashboard-card .ant-card-body{position:relative}
+.dashboard-section-status{position:absolute;top:0;left:0;z-index:2;padding:2px 6px;background:#fff;font-size:12px}
+.reference-metrics{grid-template-rows:repeat(2,84px)}
+@media(max-width:1100px){.reference-metrics{grid-template-rows:repeat(4,84px)}}
+@media(max-width:720px){.reference-metrics{grid-template-rows:repeat(4,96px)}}

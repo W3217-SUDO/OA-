@@ -1258,8 +1258,8 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
   const [personalQueue, setPersonalQueue] = useState<{ key: string; label: string } | null>(null);
   const { data, loading, errors, retry } = useDashboardData();
   const sectionStatus = (section: DashboardSection) => errors[section]
-    ? <div role="alert">{errors[section]} <Button size="small" onClick={() => retry(section)}>重试</Button></div>
-    : loading[section] ? <div role="status">正在加载...</div> : null;
+    ? <div className="dashboard-section-status" role="alert">{errors[section]} <Button size="small" onClick={() => retry(section)}>重试</Button></div>
+    : loading[section] ? <div className="dashboard-section-status" role="status">正在加载...</div> : null;
   const todoRoutes: Record<string, { primary: string; secondary: string }> = {
     待处理任务: { primary: "task-my-accepted", secondary: "task-my-created" },
     待审批官方费用: { primary: "finance-payment-audit", secondary: "finance-payment-audit" },
@@ -1376,8 +1376,9 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
     <div className="reference-dashboard">
       <DashboardPersonalQueue selection={personalQueue} onClose={() => setPersonalQueue(null)} onNavigate={onNavigate} />
       <div className="dashboard-legacy-grid">
-        <div className="metrics reference-metrics dashboard-metrics-panel">
+        <div className="dashboard-metrics-panel">
           {sectionStatus("metrics")}
+          <div className="metrics reference-metrics">
           {data.metrics?.map((m, i) => (
             <div
               className={`metric target-${i}`}
@@ -1396,6 +1397,7 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
               </div>
             </div>
           ))}
+          </div>
         </div>
         <Card title="➤ 待办事项" className="dashboard-card compact-todo-card">
           {sectionStatus("todos")}

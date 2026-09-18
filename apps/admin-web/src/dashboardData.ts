@@ -20,6 +20,7 @@ export type DashboardData = {
 
 export type DashboardSection = "metrics" | "todos" | "cases";
 const sections: DashboardSection[] = ["metrics", "todos", "cases"];
+const refreshIntervalMs = 5 * 60_000;
 
 export function useDashboardData() {
   const [data, setData] = useState<Partial<DashboardData>>({});
@@ -29,15 +30,22 @@ export function useDashboardData() {
   useEffect(() => {
     let active = true;
     const pending = new Map<DashboardSection, AbortController>();
-    const load = (section: DashboardSection) => {
+    const loaded = new Set<DashboardSection>();
+    const lastAttempt = new Map<DashboardSection, number>();
+    const load = (section: DashboardSection, force = true) => {
       if (!active || pending.has(section)) return;
+      if (!force && (document.hidden || Date.now() - (lastAttempt.get(section) ?? 0) < refreshIntervalMs)) return;
+      lastAttempt.set(section, Date.now());
       const controller = new AbortController();
       pending.set(section, controller);
-      setLoading((previous) => ({ ...previous, [section]: true }));
+      setLoading((previous) => ({ ...previous, [section]: !loaded.has(section) }));
       setErrors((previous) => ({ ...previous, [section]: undefined }));
       api.get<Partial<DashboardData>>("/dashboard", { params: { section }, signal: controller.signal })
         .then(({ data: result }) => {
-          if (active) setData((previous) => ({ ...previous, ...result }));
+          if (active) {
+            loaded.add(section);
+            setData((previous) => ({ ...previous, ...result }));
+          }
         })
         .catch((error) => {
           if (!active || controller.signal.aborted) return;
@@ -50,14 +58,14 @@ export function useDashboardData() {
         });
     };
     loader.current = load;
-    const refresh = () => sections.forEach(load);
-    refresh();
-    const timer = window.setInterval(refresh, 30_000);
-    window.addEventListener("focus", refresh);
+    sections.forEach((section) => load(section));
+    const refreshStale = () => sections.forEach((section) => load(section, false));
+    const timer = window.setInterval(refreshStale, refreshIntervalMs);
+    document.addEventListener("visibilitychange", refreshStale);
     return () => {
       active = false;
       window.clearInterval(timer);
-      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refreshStale);
       pending.forEach((controller) => controller.abort());
     };
   }, []);
