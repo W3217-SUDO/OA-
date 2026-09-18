@@ -712,7 +712,9 @@ async def _resolve_clue_source_contract(clue: BusinessRecord, identity: dict, db
             task_id = 0
     conditions = [BusinessRecord.module == "contract", *(await _record_scope_conditions(identity, db))]
     candidates = list((await db.scalars(select(BusinessRecord).where(*conditions))).all())
-    matches = [item for item in candidates if item.id in candidate_ids or item.serial_no in candidate_nos or item.title in candidate_titles]
+    # 来源已有明确编号或 ID 时，重名合同不能参与匹配。
+    matches = [item for item in candidates if item.id in candidate_ids or item.serial_no in candidate_nos
+               or (not candidate_ids and not candidate_nos and item.title in candidate_titles)]
     matches = [item for item in matches if item.customer.strip() == clue.customer.strip()]
     unique = {item.id: item for item in matches}
     if len(unique) == 1: return next(iter(unique.values())), ""

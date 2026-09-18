@@ -35,7 +35,10 @@ class Batch0918Test(unittest.IsolatedAsyncioTestCase):
     async def test_source_contract_certificate_warehouse_and_manual_priority(self):
         clue_id = await self.add_clue(certificate_no="公证一", storage_location="一仓/16", investigation_no="CODEX-0918-investigation")
         async with self.sessions() as db:
-            db.add(BusinessRecord(module="investigation", serial_no="CODEX-0918-investigation", title="调查", customer="Batch customer", owner=IDENTITY["username"], data={"contract_id": 999999, "contract_no": "CODEX-0916-contract"}))
+            db.add(BusinessRecord(module="investigation", serial_no="CODEX-0918-investigation", title="调查", customer="Batch customer", owner=IDENTITY["username"], data={"contract_id": 999999, "contract_no": "CODEX-0916-contract", "contract_name": "同名合同"}))
+            contract = await db.get(BusinessRecord, self.contract_id)
+            contract.title = "同名合同"
+            db.add(BusinessRecord(module="contract", serial_no="CODEX-0918-same-name", title="同名合同", customer="Batch customer", owner=IDENTITY["username"], data={}))
             case = await db.get(BusinessRecord, self.case_id)
             case.data = {**case.data, "investigation_clue_ids": [clue_id]}; await db.commit()
         result = await self.client.get(f"{API}/cases/{self.case_id}/relations")
