@@ -22,3 +22,5 @@
 .reference-metrics{grid-template-rows:repeat(2,84px)}
 @media(max-width:1100px){.reference-metrics{grid-template-rows:repeat(4,84px)}}
 @media(max-width:720px){.reference-metrics{grid-template-rows:repeat(4,96px)}}
+
+.dashboard-person-cell{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

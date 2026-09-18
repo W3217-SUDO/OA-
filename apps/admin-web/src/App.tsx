@@ -1,3 +1,4 @@
+import DashboardPersonCell from "./DashboardPersonCell";
 import { useDashboardData, type DashboardData, type DashboardSection } from "./dashboardData";
 import { DashboardPersonalQueue } from "./DashboardPersonalQueue";
 import {
@@ -1339,15 +1340,17 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
         title: "开庭律师",
         dataIndex: "lawyer",
         width: 105,
-        render: (v: string) => <span>{v}</span>,
+        ellipsis: true,
+        render: (value: string) => <DashboardPersonCell value={value} />,
       },
       {
         title: "经办律师",
         dataIndex: "agent",
         width: 115,
-        render: (v: string) => <span>{v}</span>,
+        ellipsis: true,
+        render: (value: string) => <DashboardPersonCell value={value} />,
       },
-      { title: "律师助理", dataIndex: "assistant", width: 105 },
+      { title: "律师助理", dataIndex: "assistant", width: 105, ellipsis: true, render: (value: string) => <DashboardPersonCell value={value} /> },
     ],
     [],
   );
@@ -1365,10 +1368,10 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
       { title: "原告", dataIndex: "plaintiff", width: 185, ellipsis: true },
       { title: "被告", dataIndex: "defendant", width: 205, ellipsis: true },
       { title: "案源日期", dataIndex: "date", width: 100 },
-      { title: "客户管理人", dataIndex: "manager", width: 90 },
-      { title: "开庭律师", dataIndex: "lawyer", width: 85 },
-      { title: "经办律师", dataIndex: "agent", width: 100, ellipsis: true },
-      { title: "律师助理", dataIndex: "assistant", width: 85 },
+      { title: "客户管理人", dataIndex: "manager", width: 90, ellipsis: true, render: (value: string) => <DashboardPersonCell value={value} /> },
+      { title: "开庭律师", dataIndex: "lawyer", width: 85, ellipsis: true, render: (value: string) => <DashboardPersonCell value={value} /> },
+      { title: "经办律师", dataIndex: "agent", width: 100, ellipsis: true, render: (value: string) => <DashboardPersonCell value={value} /> },
+      { title: "律师助理", dataIndex: "assistant", width: 85, ellipsis: true, render: (value: string) => <DashboardPersonCell value={value} /> },
     ],
     [],
   );
