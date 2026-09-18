@@ -3707,13 +3707,6 @@ export default function CaseCenterPage({
             <li>品管人员：{caseCommissionPreview?.personnel.find((item) => item.role === "品管")?.display_name || "未设置"}（{caseCommissionPreview?.quality_manager_source || "客户基本信息未关联"}）。</li>
           </ol>}
         />
-        {!!caseCommissionPreview?.missing_messages.length && <Alert
-          type="warning"
-          showIcon
-          title="以下案件人员未配置对应提成"
-          description={caseCommissionPreview.missing_messages.join("，")}
-          style={{ marginBottom: 10 }}
-        />}
         <Table<CaseCommissionPreviewRow>
           rowKey="client_key"
           size="small"
