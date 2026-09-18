@@ -1491,6 +1491,7 @@ class ArchiveReviewInput(BaseModel):
 
 
 class TaskInput(BaseModel):
+    clue_ids: list[int] = Field(default_factory=list, max_length=100)
     title: str
     customer: str = ""
     owner: str

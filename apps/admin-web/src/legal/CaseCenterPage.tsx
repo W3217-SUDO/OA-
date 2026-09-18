@@ -1,4 +1,5 @@
 import { CaseClueDetails } from "./CaseDetail/CaseClueDetails";
+import { CaseClueSelect } from "./CaseClueSelect";
 import { CommissionPerson } from "./CommissionPerson";
 import {
 CloseOutlined,
@@ -1255,7 +1256,7 @@ export default function CaseCenterPage({
       customer_manager: row.data.customer_manager || "",
       hearing_lawyer: row.data.hearing_lawyer || "",
       handling_lawyers: resolveCasePersonValues(row.data.handling_lawyers || []),
-      assistants: resolveCasePersonValues(row.data.assistant_usernames || row.data.assistants || (row.data.assistant ? [row.data.assistant] : [])),
+      assistants: resolveCasePersonValues(row.data.assistant_usernames || (row.data.assistant_username ? [row.data.assistant_username] : null) || row.data.assistants || (row.data.assistant ? [row.data.assistant] : [])),
     });
   };
   const applyCaseTaskPageState = (payload: any, fallbackPage: number, fallbackPageSize: number) => {
@@ -2047,6 +2048,9 @@ export default function CaseCenterPage({
 
   const searchCaseLitigantCandidates = (keyword: string) => {
     window.clearTimeout(caseLitigantSearchTimerRef.current);
+    ++caseLitigantSearchRequestRef.current;
+    setCaseLitigantCandidates([]);
+    setCaseLitigantCandidatesLoading(true);
     caseLitigantSearchTimerRef.current = window.setTimeout(() => void loadCaseLitigantCandidates(keyword), 350);
   };
   const openCasePartyCreator = (role: CaseLitigantPartyField) => {
@@ -2127,11 +2131,17 @@ export default function CaseCenterPage({
     setEditingCaseHearingLawyer(row);
   };
 
-  const openCaseTaskCreator = (row: CaseRow) => {
+  const openCaseTaskCreator = (row: CaseRow, clues: CaseRow[] = []) => {
     if (!getCaseCapability(row).can_create_case_task) return message.warning("当前账号没有创建该案件任务的权限");
     taskForm.resetFields();
+    taskForm.setFieldValue("clue_ids", []);
     const startAt = dayjs().second(0);
     taskForm.setFieldsValue({ owner: profile.username || row.owner, start_at: startAt, end_at: startAt.add(7, "day"), priority: "普通", collaborators: [], is_vip: false });
+    if (clues.length) {
+      const certificates = [...new Set(clues.map(item => item.data.certificate_no || item.data.notarization_no || item.data.notary_no).filter(Boolean))];
+      const assistants = resolveCasePersonValues(row.data.assistant_usernames || (row.data.assistant_username ? [row.data.assistant_username] : null) || row.data.assistants || (row.data.assistant ? [row.data.assistant] : []));
+      taskForm.setFieldsValue({ title: "公证书领取", owner: assistants[0], end_at: startAt.add(10, "day"), clue_ids: clues.map(item => item.id), description: `领取公证书（${certificates.join("、")}）` });
+    }
     setCaseTaskMaterialFiles([]);
     setCaseTaskKind("案件任务");
     setCaseTaskCreateCase(row);
@@ -2211,7 +2221,7 @@ export default function CaseCenterPage({
   };
 
   const deleteCaseFee = (row: CaseRow) => {
-    if (row.status !== "草稿") return message.warning("仅草稿费用可以删除");
+    if (!counselDetailCapabilities.can_delete_finance) return message.warning("当前角色没有删除案件费用权限");
     Modal.confirm({ title: `删除费用：${row.serial_no}`, content: "删除后不可恢复，是否继续？", okText: "确认删除", cancelText: "取消", onOk: async () => {
       try { await api.delete(isInternalCaseFee(row) ? `/finance/internal-fees/${row.id}` : `/finance/fees/${row.id}`); message.success("费用草稿已删除"); await load(); if (viewingCounselCase) await openCounselDetail(viewingCounselCase); }
       catch (error: any) { message.error(error?.response?.data?.detail || "费用删除失败"); }
@@ -2269,7 +2279,7 @@ export default function CaseCenterPage({
     });
   };
   const editCaseFee = (row: CaseRow) => {
-    if (row.status !== "草稿") return message.warning("仅草稿费用可以修改");
+    if (!counselDetailCapabilities.can_edit_finance) return message.warning("当前角色没有修改案件费用权限");
     setFeeSubtypePreset("");
     feeForm.setFieldValue("source_file_type", resolveCaseFileTypeSelection("", fileTypeOptionsForCase(viewingCounselCase?.data.case_type)));
     const expenseScope = row.data.expense_scope || "律所";
@@ -3293,7 +3303,7 @@ export default function CaseCenterPage({
       >
         <Form form={companyScheduleCourtInfoForm} layout="vertical">
           <div className="form-grid">
-            <Form.Item label="法院" name="court"><Input placeholder="法院" /></Form.Item>
+            <Form.Item label="法院" name="court" rules={[{ required: true, whitespace: true, message: "请填写法院" }]}><Input placeholder="法院" /></Form.Item>
             <Form.Item label="法庭" name="courtroom"><Input /></Form.Item>
             <Form.Item label="法官" name="judge"><Input /></Form.Item>
             <Form.Item label="书记员" name="clerk"><Input /></Form.Item>
@@ -4399,7 +4409,7 @@ export default function CaseCenterPage({
             {isCivilCaseType(editingNormalCase?.data.case_type) && <Form.Item label="案源人" name="business_owner"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>}
             {editingNormalCase?.data.case_type === "行政案件及国家赔偿" && <Form.Item label="权利类型" name="right_type"><Select allowClear options={rightTypeOptions}/></Form.Item>}
           </div>
-          <Form.Item label="关联调查线索" name="investigation_clue_ids"><Select mode="multiple" showSearch optionFilterProp="label" options={caseClues.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
+          <Form.Item label="关联调查线索" name="investigation_clue_ids"><CaseClueSelect caseId={editingNormalCase?.id} /></Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
@@ -4410,7 +4420,7 @@ export default function CaseCenterPage({
           <Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select disabled={!Number(editingArbitrationCase?.data.customer_record_id || editingArbitrationCase?.data.customer_id)} showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
           <Form.Item label="案由" name="cause_or_charge" rules={[{required:true,message:"请输入案由"}]}><Input/></Form.Item><Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
           <div className="form-grid"><Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item><Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item><Form.Item label="调查员" name="investigator"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item></div>
-          <Form.Item label="关联调查线索" name="investigation_clue_ids"><Select mode="multiple" showSearch optionFilterProp="label" options={caseClues.map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item><Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
+          <Form.Item label="关联调查线索" name="investigation_clue_ids"><CaseClueSelect caseId={editingArbitrationCase?.id} /></Form.Item><Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
       <Modal width={760} open={Boolean(criminalMaintenance)} title={`维护刑事案件资料：${criminalMaintenance?.row.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveCriminalMaintenance} onCancel={()=>setCriminalMaintenance(null)} destroyOnHidden>

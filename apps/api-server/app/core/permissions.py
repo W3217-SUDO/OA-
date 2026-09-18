@@ -1384,6 +1384,8 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         # caller's data-scope check. Match the legacy rule: anyone who can see
         # the case may add its fees; invisible cases remain inaccessible.
         "can_create_finance": True, "team_role": role, "reason": "",
+        "can_edit_finance": active and await _case_action_granted(identity, db, "case.fee.update"),
+        "can_delete_finance": active and await _case_action_granted(identity, db, "case.fee.delete"),
     }
     try:
         await _require_case_attachment_upload_access(case_record, identity, db)

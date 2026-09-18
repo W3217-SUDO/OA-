@@ -520,6 +520,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
     const loadCaseLitigantCandidates = async (keyword = "") => {
         const { caseLitigantSearchRequestRef, setCaseLitigantCandidatesLoading, setCaseLitigantCandidates } = context;
         const requestId = ++caseLitigantSearchRequestRef.current;
+        setCaseLitigantCandidates([]);
         setCaseLitigantCandidatesLoading(true);
         try {
             const { data } = await api.get("/case-litigant-candidates", { params: { keyword: keyword.trim() } });

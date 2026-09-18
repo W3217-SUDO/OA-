@@ -43,6 +43,14 @@ async def case_document_page(case_id, identity, db, page, page_size):
         BusinessRecord.module == "clue", relation, *scope,
     ))).all())
     records = {case.id: case, **{clue.id: clue for clue in clues}}
+    source_contracts = {str(source.get("data", {}).get("contract_no") or "") for source in data.get("merged_sources", [])}
+    source_contracts.discard("")
+    if source_contracts:
+        contracts = (await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "contract", BusinessRecord.serial_no.in_(source_contracts),
+            BusinessRecord.customer == case.customer, *scope,
+        ))).all()
+        records.update({contract.id: contract for contract in contracts})
     if clues:
         evidence_ids, investigation_ids, task_ids = set(), set(), set()
         investigation_nos = set()
@@ -88,6 +96,8 @@ async def case_document_page(case_id, identity, db, page, page_size):
         category = item.category
         if source.module == "investigation":
             category = "鉴别资料"
+        elif source.module == "contract":
+            category = "合同文档"
         elif source.module == "evidence" or (source.module == "clue" and item.category in {"取证文件", "取证文档"}):
             category = "取证文档"
         elif source.module == "clue":

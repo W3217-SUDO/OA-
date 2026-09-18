@@ -345,7 +345,7 @@ async def _fee_type_filter_values(values: set[str], db: AsyncSession) -> tuple[s
     )
 
 
-async def _editable_finance_fee(fee_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+async def _editable_finance_fee(fee_id: int, identity: dict, db: AsyncSession, action: str = "update") -> BusinessRecord:
     # Resolve the mutation target by id first so a visible finance row owned by
     # another user returns the explicit 403 owner guard instead of being hidden
     # as a generic 404 by the list data-scope filter.
@@ -353,17 +353,25 @@ async def _editable_finance_fee(fee_id: int, identity: dict, db: AsyncSession) -
         _ensure_record_visible, _require_record_owner_or_manager,
     )
     item = await db.get(BusinessRecord, fee_id)
-    if not item or item.module != "finance":
+    if not item or item.module != "finance" or item.status == "已删除":
         raise HTTPException(status_code=404, detail="费用记录不存在")
     case_id = int((item.data or {}).get("case_id") or 0)
     if case_id:
         case = await _ensure_record_visible(case_id, identity, db)
+        if case.module != "case":
+            raise HTTPException(409, "费用的案件关联无效，请先修正关联")
+        from app.core.cases import _case_action_granted
+        if not await _case_action_granted(identity, db, f"case.fee.{action}"):
+            raise HTTPException(403, "当前角色没有该页面的费用修改或删除权限")
         if case.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail="归档中的案件费用不可修改或删除")
     else:
         await _require_record_owner_or_manager(item, identity, db)
-    if item.status != "草稿":
+    if not case_id and item.status != "草稿":
         raise HTTPException(status_code=409, detail="仅草稿费用可以修改或删除")
+    if case_id:
+        from app.core.fee_mutation import require_unsettled_fee
+        await require_unsettled_fee(item, identity, db)
     return item
 
 
@@ -1420,13 +1428,13 @@ async def _invoice_case_fee_rows(
         fees = await _scalars_in_batches(
             db, scope_authorized_fee_ids,
             lambda batch: select(BusinessRecord).where(
-                BusinessRecord.module == "finance", BusinessRecord.id.in_(batch),
+                BusinessRecord.module == "finance", BusinessRecord.status != "已删除", BusinessRecord.id.in_(batch),
             ),
         )
         fees.sort(key=lambda item: (item.updated_at, item.id), reverse=True)
     else:
         fees = list((await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "finance", *fee_conditions
+            BusinessRecord.module == "finance", BusinessRecord.status != "已删除", *fee_conditions
         ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     if not include_all_fee_types:
         fees = [

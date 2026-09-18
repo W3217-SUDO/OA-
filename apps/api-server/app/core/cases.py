@@ -1511,13 +1511,14 @@ async def _case_action_granted(identity: dict, db: AsyncSession, action_code: st
     from app.core.permissions import (
         _identity_role_ids, _permission_payload_for_identity,
     )
-    if identity.get("_page_menu_capability"):
+    if identity.get("_page_menu_capability") and action_code not in {"case.fee.update", "case.fee.delete"}:
         return True
-    if action_code.startswith("case.") and action_code != "case.assisted_fee.manage":
+    if action_code.startswith("case.") and action_code not in {"case.assisted_fee.manage", "case.fee.update", "case.fee.delete"}:
         return True
     if "admin" in _identity_role_ids(identity):
         return True
-    permission = await _permission_payload_for_identity(identity, db)
+    permission_identity = {key: value for key, value in identity.items() if key != "_page_menu_capability"} if action_code in {"case.fee.update", "case.fee.delete"} else identity
+    permission = await _permission_payload_for_identity(permission_identity, db)
     action_keys = set(permission.get("action_keys") or [])
     return "*" in action_keys or action_code in action_keys
 

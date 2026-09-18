@@ -375,6 +375,8 @@ export type CaseDetailCapabilities = {
   can_close_case: boolean;
   can_archive: boolean;
   can_create_finance: boolean;
+  can_edit_finance: boolean;
+  can_delete_finance: boolean;
   can_manage_assisted_fees: boolean;
   team_role: "manager" | "handling_lawyer" | "assistant" | "none";
   reason: string;

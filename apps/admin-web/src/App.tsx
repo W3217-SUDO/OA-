@@ -1,4 +1,5 @@
 import { useDashboardData, type DashboardData, type DashboardSection } from "./dashboardData";
+import { DashboardPersonalQueue } from "./DashboardPersonalQueue";
 import {
   Component,
   lazy,
@@ -1254,6 +1255,7 @@ function CivilDistribution({
 }
 
 function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
+  const [personalQueue, setPersonalQueue] = useState<{ key: string; label: string } | null>(null);
   const { data, loading, errors, retry } = useDashboardData();
   const sectionStatus = (section: DashboardSection) => errors[section]
     ? <div role="alert">{errors[section]} <Button size="small" onClick={() => retry(section)}>重试</Button></div>
@@ -1281,6 +1283,10 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
     onNavigate(route);
   };
   const navigateMetric = (metric: DashboardData["metrics"][number]) => {
+    if (metric.route === "dashboard") {
+      setPersonalQueue({ key: metric.key, label: metric.label });
+      return;
+    }
     rememberDashboardFeeQuery(metric.query);
     if (metric.detail_context) {
       try {
@@ -1368,6 +1374,7 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
   );
   return (
     <div className="reference-dashboard">
+      <DashboardPersonalQueue selection={personalQueue} onClose={() => setPersonalQueue(null)} onNavigate={onNavigate} />
       <div className="dashboard-legacy-grid">
         <div className="metrics reference-metrics dashboard-metrics-panel">
           {sectionStatus("metrics")}

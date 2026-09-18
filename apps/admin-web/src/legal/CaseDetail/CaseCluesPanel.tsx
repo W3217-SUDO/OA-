@@ -1,4 +1,5 @@
 import { ReloadOutlined } from "@ant-design/icons";
+import { useEffect, useState } from "react";
 import type { TablePaginationConfig } from "antd";
 import { Button,Input,message,Space,Table } from "antd";
 import type { CaseDetailCapabilities,CaseRow } from "../types";
@@ -19,7 +20,7 @@ interface CaseCluesPanelProps {
   onRefresh: (caseRow: CaseRow, page: number, pageSize: number) => Promise<unknown>;
   onOpenClue: (row: CaseRow) => void;
   onOpenClueWorkspace: (row: CaseRow) => void;
-  onCreateTask: (caseRow: CaseRow) => void;
+  onCreateTask: (caseRow: CaseRow, clues: CaseRow[]) => void;
 }
 
 export const CaseCluesPanel = ({
@@ -40,6 +41,8 @@ export const CaseCluesPanel = ({
   onOpenClueWorkspace,
   onCreateTask,
 }: CaseCluesPanelProps) => {
+  const [selectedClues, setSelectedClues] = useState<CaseRow[]>([]);
+  useEffect(() => { setSelectedClues([]); }, [viewingCase?.id]);
   return (<div className="case-legacy-tab-panel">
     <Space wrap style={{ marginBottom: 10 }}>
       <Input.Search
@@ -67,7 +70,7 @@ export const CaseCluesPanel = ({
       <Button icon={<ReloadOutlined />} loading={loading} onClick={() => viewingCase && void onRefresh(viewingCase, cluePage, cluePageSize)
         .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索加载失败"))}>刷新</Button>
     </Space>
-    <Table rowKey="id" size="small" tableLayout="fixed" loading={loading} pagination={pagination} scroll={{x:1800}} dataSource={clues} locale={{ emptyText: "没有查询到关联线索" }} columns={[
+    <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedClues.map(item => item.id), preserveSelectedRowKeys: true, onChange: (_, rows) => setSelectedClues(rows) }} size="small" tableLayout="fixed" loading={loading} pagination={pagination} scroll={{x:1800}} dataSource={clues} locale={{ emptyText: "没有查询到关联线索" }} columns={[
       {title:"序号",width:65,align:"center",render:(_:unknown,_row:CaseRow,index:number)=>(cluePage-1)*cluePageSize+index+1},
       {title:"线索号",dataIndex:"serial_no",width:155,render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>onOpenClue(row)}>{value||"—"}</Button>},
       {title:"调查时间",width:150,render:(_:unknown,row:CaseRow)=>String(row.data.investigated_at||row.data.collected_at||row.data.investigation_time||row.data.investigation_date||"").replace("T"," ").slice(0,19)||"—"},
@@ -82,6 +85,6 @@ export const CaseCluesPanel = ({
       {title:"证物状态",width:110,render:(_:unknown,row:CaseRow)=>row.data.evidence_status||row.data.warehouse_status||"—"},
       {title:"操作",width:90,fixed:"right",render:(_:unknown,row:CaseRow)=><Button type="link" onClick={()=>void onOpenClueWorkspace(row)}>查看</Button>},
     ]}/>
-    {capabilities.can_create_case_task&&<div className="case-legacy-bottom-actions"><Button onClick={()=>viewingCase && onCreateTask(viewingCase)}>发布任务</Button></div>}
+    {capabilities.can_create_case_task&&<div className="case-legacy-bottom-actions"><Button onClick={()=>{ if (!selectedClues.length) return message.warning("请先选择线索信息"); if (viewingCase) onCreateTask(viewingCase, selectedClues); }}>发布任务</Button></div>}
   </div>);
 };

@@ -51,8 +51,8 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
     if case_record_id:
         case_record = await _ensure_record_visible(case_record_id, identity, db)
         if case_record.module != "case": raise HTTPException(status_code=422, detail="关联记录不是案件")
-        if not (await _case_detail_action_capabilities(case_record, identity, db))["can_create_finance"]:
-            raise HTTPException(status_code=403, detail="当前账号没有新增案件费用权限")
+        if not (await _case_detail_action_capabilities(case_record, identity, db))["can_edit_finance"]:
+            raise HTTPException(status_code=403, detail="当前账号没有修改案件费用权限")
     fee_snapshot = {
         "fee_type_id": None,
         "fee_type_code": "",
@@ -91,7 +91,7 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
     commission = await _finance_fee_commission_payload(body, amount, db, case_record=case_record, existing_data=data)
     data.update({"amount": amount, **fee_snapshot, "expense_scope": body.expense_scope or "", "handler": body.handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else body.case_record_id, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", **commission, "is_refund": fee_snapshot["fee_type"] == "内部费用" and amount < 0})
     item.title = body.title; item.customer = body.customer; item.owner = body.handler; item.description = body.description; item.data = data
-    db.add(WorkflowEvent(record_id=item.id, action="修改费用草稿", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{item.serial_no}：{body.title} {amount:.2f}"))
+    db.add(WorkflowEvent(record_id=item.id, action="修改费用", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{item.serial_no}：{body.title} {amount:.2f}"))
     await db.commit(); await db.refresh(item)
     return await _record_dict_for_identity(item, identity, db)
 
@@ -101,10 +101,9 @@ async def delete_finance_fee(fee_id: int, identity: dict = Depends(current_ident
     from app.core.finance import (
         _editable_finance_fee,
     )
-    item = await _editable_finance_fee(fee_id, identity, db)
-    db.add(WorkflowEvent(record_id=item.id, action="删除费用草稿", from_status=item.status, to_status="已删除", operator=identity["username"], comment=item.serial_no))
-    await db.flush()
-    await db.delete(item)
+    item = await _editable_finance_fee(fee_id, identity, db, action="delete")
+    db.add(WorkflowEvent(record_id=item.id, action="删除费用", from_status=item.status, to_status="已删除", operator=identity["username"], comment=item.serial_no))
+    item.status = "已删除"
     await db.commit()
     return None
 
@@ -140,12 +139,12 @@ async def delete_internal_fee(fee_id: int, identity: dict = Depends(current_iden
         _editable_finance_fee, _internal_fee_mutation_target,
     )
     await _internal_fee_mutation_target(fee_id, identity, db)
-    item = await _editable_finance_fee(fee_id, identity, db)
+    item = await _editable_finance_fee(fee_id, identity, db, action="delete")
     previous = item.status
     # Keep the deletion event queryable. The generic physical-delete route
     # cascades WorkflowEvent rows, which would erase this finance audit trail.
     item.status = "已删除"
-    db.add(WorkflowEvent(record_id=item.id, action="删除内部费用草稿", from_status=previous, to_status="已删除", operator=identity["username"], comment=item.serial_no))
+    db.add(WorkflowEvent(record_id=item.id, action="删除内部费用", from_status=previous, to_status="已删除", operator=identity["username"], comment=item.serial_no))
     await db.commit()
 
 

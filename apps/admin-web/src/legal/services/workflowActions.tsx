@@ -693,6 +693,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             setCounselDetailFinance(relationRes.status === "fulfilled" ? relationRes.value.data.fees || [] : []);
             setCounselDetailClues(relationRes.status === "fulfilled" ? relationRes.value.data.clues || [] : []);
             if (relationRes.status === "fulfilled" && clueRequestId === counselDetailClueRequestRef.current) {
+                setViewingCounselCase(current => current?.id === row.id ? { ...current, data: { ...current.data, ...relationRes.value.data.case_data } } : current);
                 applyCounselDetailCluePageState(relationRes.value.data, 1, 10);
             }
             else if (relationRes.status === "rejected" && clueRequestId === counselDetailClueRequestRef.current) {
@@ -1204,7 +1205,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
     };
     const createCaseTask = async () => {
         const { taskCase, caseTaskCreateCase, getCaseCapability, caseTaskKind, taskForm, caseTaskMaterialFiles, setCaseTaskCreateCase, setCaseTaskMaterialFiles, viewingCounselCase } = context;
-        const targetCase = taskCase || caseTaskCreateCase;
+        const targetCase = caseTaskCreateCase || taskCase;
         if (!targetCase)
             return;
         if (!getCaseCapability(targetCase).can_create_case_task)
@@ -1226,6 +1227,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 priority: v.priority || "普通",
                 source: taskKind,
                 task_type: "手动任务",
+                clue_ids: taskForm.getFieldValue("clue_ids") || [],
                 description: v.description || "",
                 is_vip: Boolean(v.is_vip),
             });

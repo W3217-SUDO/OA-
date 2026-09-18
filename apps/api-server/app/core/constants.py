@@ -500,6 +500,7 @@ DEFAULT_DEPARTMENTS = [
 
 
 SYSTEM_ADMIN_JOB_PERMISSIONS = [
+    "案件费用修改", "案件费用删除",
     "客户查看", "客户新建", "客户修改", "客户分配", "客户回收/恢复", "客户共享", "利益冲突检索", "合同查看", "合同新建", "合同修改", "合同提交审批", "合同审批", "合同归档",
     "案件查看", "案件新建", "案件分配", "案件承办", "案件进展维护", "案件法院信息修改", "开庭排期", "案件办结", "案件归档申请", "案件归档审核", "调查任务发起", "调查任务办理", "线索审核", "公证管理", "证据管理",
     "任务查看", "任务派发", "任务接受", "任务协作", "任务交接", "任务完成确认", "收文登记", "发文登记", "文书模板维护", "业务附件上传/下载", "智能文档生成", "智能文档人工确认",
@@ -776,6 +777,8 @@ JOB_ROLE_LABEL_MENU_GRANTS.update({
 
 
 JOB_ROLE_ACTION_KEY_GRANTS: dict[str, tuple[str, ...]] = {
+    "案件费用修改": ("case.fee.update",),
+    "案件费用删除": ("case.fee.delete",),
     "员工新建": ("hr.employee.create",),
     "员工修改": ("hr.employee.update",),
     "客户新建": ("record.customer.create",),
@@ -849,6 +852,10 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
             {"code": f"{menu_key}.{operation}", "menu_key": menu_key, "label": SYSTEM_ACTION_OPERATION_LABELS[operation]}
             for operation in operations
         )
+    definitions.extend([
+        {"code": "case.fee.update", "menu_key": "case-mine", "label": "修改案件费用"},
+        {"code": "case.fee.delete", "menu_key": "case-mine", "label": "删除案件费用"},
+    ])
     return definitions
 
 

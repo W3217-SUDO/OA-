@@ -592,6 +592,8 @@ async def list_records(
     if module in {"notary", "case"}:
         await _apply_notary_auto_conversion(db)
     conditions = [BusinessRecord.module == module]
+    if module == "finance":
+        conditions.append(BusinessRecord.status != "已删除")
     relation_customer = None
     if module == "contract" and customer_id:
         relation_customer = await _customer_or_404(customer_id, identity, db)
@@ -1345,7 +1347,7 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
         WorkflowEvent.record_id == case_id, WorkflowEvent.action == "新增案件日志",
     ).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
     legacy_logs = list((await db.scalars(select(LegacyCaseLog).where(
-        LegacyCaseLog.CaseNo == case_record.serial_no,
+        LegacyCaseLog.CaseNo.in_([case_record.serial_no, *[item["serial_no"] for item in (case_record.data or {}).get("merged_sources", [])]]),
     ).order_by(LegacyCaseLog.CreateTime.desc(), LegacyCaseLog.LogId.desc()))).all())
     users_by_username = await _user_display_map(
         {item.operator for item in events} | {str(item.CreateUser or "").strip() for item in legacy_logs}, db
@@ -1422,7 +1424,7 @@ async def list_case_relations(
         BusinessRecord.data["converted_case_no"].as_string() == case_record.serial_no,
     )
     fees = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "finance", link_condition,
+        BusinessRecord.module == "finance", BusinessRecord.status != "已删除", link_condition,
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
     # A converted case owns an explicit source-clue relation.  Do not union that
     # relation with stale reverse links left on other clues during migration or
@@ -1571,7 +1573,9 @@ async def list_case_relations(
         result["data"] = result_data
         return result
 
+    from app.core.case_relations import case_source_projection
     return {
+        "case_data": await case_source_projection(case_record, identity, db),
         "case_id": case_record.id,
         "case_no": case_record.serial_no,
         "fees": [related_dict(item) for item in fees],
@@ -2608,18 +2612,8 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
 
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/merge")
 async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """Merge a same-customer source case into the current case with an audit trail.
-
-    Legacy behaviour moved case fees, internal fees and case documents then
-    deleted the entered case.  We retain the source row as ``已合并`` instead
-    of physically deleting it, so historic audit, notification and relation
-    evidence remains reviewable.  Tasks, reminders, hearings and workflow
-    history are deliberately not moved: they record work performed for the
-    original matter.
-    """
-    from app.core.formatters import (
-        _record_links_to_case,
-    )
+    """合并同客户案件关系，保留主案字段及来源审计记录。"""
+    from app.core.case_merge import merge_case_relations, move_case_finance_files
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity, _record_scope_conditions,
     )
@@ -2633,6 +2627,8 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
     ))
     if not source:
         raise HTTPException(status_code=404, detail="未找到待合并案件，或当前账号无权查看")
+    await db.refresh(target, with_for_update=True)
+    await db.refresh(source, with_for_update=True)
     blocked_statuses = {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
     if target.status in blocked_statuses or source.status in blocked_statuses:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能参与合并")
@@ -2643,38 +2639,8 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
     if source_type != target_type:
         raise HTTPException(status_code=422, detail="仅允许合并同一案件类型的案件")
 
-    finance_rows = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance"))).all())
-    moved_fees = 0
-    for fee in finance_rows:
-        if not _record_links_to_case(fee, source):
-            continue
-        fee_data = dict(fee.data or {})
-        fee.data = {
-            **fee_data,
-            "case_id": target.id,
-            "case_record_id": target.id,
-            "case_no": target.serial_no,
-            "merged_from_case_id": source.id,
-            "merged_from_case_no": source.serial_no,
-            "merged_at": datetime.now().isoformat(timespec="seconds"),
-        }
-        db.add(WorkflowEvent(
-            record_id=fee.id, action="案件合并迁移费用", from_status=fee.status, to_status=fee.status,
-            operator=identity["username"], comment=f"{source.serial_no} → {target.serial_no}",
-        ))
-        moved_fees += 1
-
-    assisted_fees = list((await db.scalars(select(CaseAssistedFee).where(
-        CaseAssistedFee.case_record_id == source.id,
-    ))).all())
-    for assisted_fee in assisted_fees:
-        assisted_fee.case_record_id = target.id
-    moved_assisted_fees = len(assisted_fees)
-
-    attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == source.id))).all())
-    for attachment in attachments:
-        attachment.record_id = target.id
-        attachment.remark = f"{attachment.remark}｜案件合并迁移：{source.serial_no}→{target.serial_no}".strip("｜")
+    await merge_case_relations(source, target, db)
+    moved_fees, moved_assisted_fees, moved_attachments = await move_case_finance_files(source, target, identity, db)
 
     source_previous = source.status
     source.status = "已合并"
@@ -2687,20 +2653,19 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
         WorkflowEvent(
             record_id=target.id, action="合并案件", from_status=target.status, to_status=target.status,
             operator=identity["username"],
-            comment=f"合并来源案件 {source.serial_no}；迁移费用 {moved_fees} 条、资助费用 {moved_assisted_fees} 条、案件文件 {len(attachments)} 个。{body.comment.strip()}",
+            comment=f"合并来源案件 {source.serial_no}；迁移费用 {moved_fees} 条、资助费用 {moved_assisted_fees} 条、案件文件 {moved_attachments} 个。{body.comment.strip()}",
         ),
         WorkflowEvent(
             record_id=source.id, action="案件已合并", from_status=source_previous, to_status=source.status,
             operator=identity["username"],
-            comment=f"已合并至 {target.serial_no}；迁移费用 {moved_fees} 条、资助费用 {moved_assisted_fees} 条、案件文件 {len(attachments)} 个。{body.comment.strip()}",
+            comment=f"已合并至 {target.serial_no}；迁移费用 {moved_fees} 条、资助费用 {moved_assisted_fees} 条、案件文件 {moved_attachments} 个。{body.comment.strip()}",
         ),
     ])
     await db.commit(); await db.refresh(target); await db.refresh(source)
     return {
         "target": await _record_dict_for_identity(target, identity, db),
         "source": await _record_dict_for_identity(source, identity, db),
-        "moved_fees": moved_fees, "moved_assisted_fees": moved_assisted_fees, "moved_attachments": len(attachments),
-        "not_moved": ["tasks", "reminders", "hearings", "workflow_history"],
+        "moved_fees": moved_fees, "moved_assisted_fees": moved_assisted_fees, "moved_attachments": moved_attachments,
     }
 
 
@@ -2805,15 +2770,14 @@ async def list_case_litigant_candidates(
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search visible customer/party records for the legacy litigant tag editor."""
+    """案件当事人选择器只返回公司客户的最小身份字段。"""
     from app.core.permissions import (
-        _record_scope_conditions, _require_case_action,
+        _require_case_action,
     )
     await _require_case_action(identity, db, "case.detail.update")
     conditions = [
         BusinessRecord.module == "customer",
         BusinessRecord.status != "已回收",
-        *(await _record_scope_conditions(identity, db)),
     ]
     normalized_keyword = keyword.strip()
     if normalized_keyword:
@@ -3051,6 +3015,8 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     if len(clues_by_id) != len(clue_ids):
         raise HTTPException(status_code=404, detail="关联调查线索不存在或无权访问")
     ordered_clues = [clues_by_id[item_id] for item_id in clue_ids]
+    from app.core.case_relations import validate_case_clues
+    await validate_case_clues(case_record, ordered_clues, customer.title, db)
     right_type = body.right_type.strip()
     if case_type != "行政案件及国家赔偿" and right_type:
         raise HTTPException(status_code=422, detail="仅行政及国家赔偿案件可以修改权利类型")
@@ -3147,6 +3113,8 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
     if len({item.id for item in clues}) != len(clue_ids):
         raise HTTPException(status_code=404, detail="关联调查线索不存在或无权访问")
     by_id = {item.id: item for item in clues}; clue_nos = [by_id[item_id].serial_no for item_id in clue_ids]
+    from app.core.case_relations import validate_case_clues
+    await validate_case_clues(case_record, clues, customer.title, db)
     previous_status = case_record.status
     old_summary = f"{case_record.customer}｜{case_record.title}｜{case_record.status}｜{case_data.get('cause_or_charge', '')}"
     case_record.title, case_record.customer, case_record.status = title, customer.title, phase
@@ -4422,6 +4390,15 @@ async def update_case_court_info(case_id: int, body: CaseCourtInfoInput, identit
         merged["second_instance_court"] = payload["second_court_name"]
     if "second_court_case_no" in payload:
         merged["second_instance_case_no"] = payload["second_court_case_no"]
+    court_levels = {
+        "first_court": "一审法院", "second_court": "二审法院",
+        "execution_court": "执行法院", "retrial_court": "再审法院",
+    }
+    for prefix, label in court_levels.items():
+        alias = "first_instance_" if prefix == "first_court" else "second_instance_" if prefix == "second_court" else None
+        if any(key.startswith(prefix + "_") or (alias and key.startswith(alias)) for key in payload):
+            if not str(merged.get(prefix + "_name") or "").strip():
+                raise HTTPException(status_code=422, detail=f"请填写{label}，不能只提交日期或案号")
     case_record.data = merged
     db.add(WorkflowEvent(
         record_id=case_record.id,
@@ -6651,3 +6628,36 @@ async def export_selected_case_receipts(ids: str = "", identity: dict = Depends(
 async def list_case_documents(case_id: int, page: int = Query(1, ge=1), page_size: int = Query(200, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.case_documents import case_document_page
     return await case_document_page(case_id, identity, db, page, page_size)
+
+
+@router.get(f"{settings.api_prefix}/cases/{{case_id}}/clue-candidates")
+async def list_case_clue_candidates(case_id: int, keyword: str = Query("", max_length=100), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _ensure_record_module, _record_scope_conditions, _require_case_action
+    from app.core.case_relations import case_clue_ids
+    from app.core.system import _record_dict
+    case = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_action(identity, db, "case.detail.update")
+    existing = case_clue_ids(case)
+    cases = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case", BusinessRecord.id != case.id, BusinessRecord.status != "已合并",
+    ))).all()
+    used = set().union(*(case_clue_ids(item) for item in cases))
+    conditions = [BusinessRecord.module == "clue", *(await _record_scope_conditions(identity, db)),
+                  or_(BusinessRecord.id.in_(existing),
+                      (BusinessRecord.status == "已取证") & (BusinessRecord.customer == case.customer))]
+    if keyword.strip():
+        conditions.append(or_(BusinessRecord.title.contains(keyword.strip(), autoescape=True),
+                              BusinessRecord.serial_no.contains(keyword.strip(), autoescape=True)))
+    rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.id.desc()))).all()
+    candidates = [item for item in rows if item.id in existing or (item.id not in used and not any(
+        (item.data or {}).get(key) for key in ("case_id", "case_record_id", "case_no", "converted_case_id", "converted_case_no")))]
+    return {"items": [_record_dict(item) for item in candidates], "total": len(candidates)}
+
+
+@router.get(f"{settings.api_prefix}/dashboard/personal-queues/{{queue_key}}")
+async def list_dashboard_personal_queue(queue_key: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.dashboard_personal_queues import personal_queues
+    queues = await personal_queues(identity, db)
+    if queue_key not in queues:
+        raise HTTPException(404, "提醒队列不存在")
+    return {"items": queues[queue_key], "total": len(queues[queue_key])}

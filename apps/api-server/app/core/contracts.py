@@ -682,6 +682,16 @@ async def _resolve_clue_source_contract(clue: BusinessRecord, identity: dict, db
         task_id = int(source_data.get("source_task_id") or 0)
     except (TypeError, ValueError):
         task_id = 0
+    investigation_no = str(source_data.get("investigation_no") or "").strip()
+    if investigation_no:
+        investigation = await db.scalar(select(BusinessRecord).where(
+            BusinessRecord.module == "investigation", BusinessRecord.serial_no == investigation_no,
+            BusinessRecord.customer == clue.customer,
+        ))
+        if investigation:
+            task_id = investigation.id
+    elif not task_id and str(source_data.get("investigation_record_id") or "").isdigit():
+        task_id = int(source_data["investigation_record_id"])
     while task_id and task_id not in visited and len(visited) < 12:
         visited.add(task_id)
         task = await db.get(BusinessRecord, task_id)
