@@ -353,6 +353,13 @@ async def _case_related_document_record(record: BusinessRecord, module: str, db:
 
 
 async def _case_formal_document_folder_payload(record: BusinessRecord, db: AsyncSession) -> dict:
+    from app.core.case_document_sources import case_document_sources
+    document_sources = case_document_sources(record)
+    custom_folders = list(dict.fromkeys(
+        str(name).strip() for source in document_sources
+        for name in ((source.get("data") or {}).get(CASE_CUSTOM_DOCUMENT_FOLDERS_KEY) or [])
+        if str(name or "").strip()
+    ))
     from app.core.cases import (
         _case_type_parameter_for_value,
     )
@@ -373,7 +380,7 @@ async def _case_formal_document_folder_payload(record: BusinessRecord, db: Async
     case_candidates = [
         *CASE_FORMAL_DOCUMENT_FOLDER_ORDER,
         *(str(item.name or "").strip() for item in file_types),
-        *_case_custom_document_folders(record),
+        *custom_folders,
         "普通附件",
     ]
     case_folders = list(dict.fromkeys(
@@ -386,15 +393,16 @@ async def _case_formal_document_folder_payload(record: BusinessRecord, db: Async
     # Upload choices are a catalog, not evidence that a case has those folders.
     # Query all persisted categories, independently of the attachment page size
     # and active type catalog, so historical document categories remain visible.
+    document_case_ids = [source["id"] for source in document_sources]
     attachment_categories = (await db.scalars(
         select(FileAttachment.category)
-        .where(FileAttachment.record_id == record.id)
+        .where(FileAttachment.record_id.in_(document_case_ids))
         .distinct().order_by(FileAttachment.category)
     )).all()
     visible_case_folders = list(dict.fromkeys(
         name for name in [
             *CASE_FORMAL_DOCUMENT_FOLDER_ORDER,
-            *_case_custom_document_folders(record),
+            *custom_folders,
             *(str(category or "").strip() for category in attachment_categories),
         ]
         if name and name != AI_SPACE_CATEGORY and name not in CASE_DOCUMENT_FOLDER_HEADERS

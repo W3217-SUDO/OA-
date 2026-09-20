@@ -12,6 +12,60 @@ class CaseDocumentsTest(unittest.IsolatedAsyncioTestCase):
     asyncSetUp = FinanceBatchTest.asyncSetUp
     asyncTearDown = FinanceBatchTest.asyncTearDown
 
+    async def test_nested_merge_combines_history_contracts_folders_and_same_names(self):
+        with tempfile.TemporaryDirectory(prefix='CODEX-0918-merged-docs-') as directory:
+            root = Path(directory)
+            async with self.sessions() as db:
+                main = await db.get(BusinessRecord, self.case_id)
+                cases = [main]
+                for index in range(2):
+                    case = BusinessRecord(module='case', serial_no=f'CODEX-0918-history-{index}',
+                        title='历史案件', customer=main.customer, owner=IDENTITY['username'],
+                        status='一审准备开庭', data={'case_type': '民事争议'})
+                    db.add(case)
+                    cases.append(case)
+                await db.flush()
+                files = []
+                for index, case in enumerate(cases):
+                    contract = BusinessRecord(module='contract', serial_no=f'CODEX-0918-history-contract-{index}',
+                        title='历史合同', customer=main.customer, owner=IDENTITY['username'], data={})
+                    db.add(contract)
+                    await db.flush()
+                    case.data = {**case.data, 'contract_id': contract.id,
+                        'custom_case_document_folders': [f'历史目录{index}']}
+                    for record, category in ((case, f'历史目录{index}'), (contract, '合同附件')):
+                        path = root / f'{record.id}.txt'
+                        path.write_bytes(str(record.id).encode())
+                        files.append(FileAttachment(record_id=record.id, category=category,
+                            original_name='同名历史文件.txt', stored_name=path.name, path=str(path),
+                            size=path.stat().st_size, uploader=IDENTITY['username'], content_type='text/plain'))
+                db.add_all(files)
+                await db.commit()
+                ids = [case.id for case in cases]
+                nos = [case.serial_no for case in cases]
+                expected_ids = {file.id for file in files}
+            for target, source in ((ids[1], nos[2]), (ids[0], nos[1])):
+                response = await self.client.post(f'{API}/cases/{target}/merge', json={'source_case_no': source})
+                self.assertEqual(response.status_code, 200, response.text)
+            listed = await self.client.get(f'{API}/cases/{ids[0]}/documents', params={'page_size': 2})
+            items = listed.json()['items']
+            for page in range(2, listed.json()['pages'] + 1):
+                response = await self.client.get(f'{API}/cases/{ids[0]}/documents', params={'page_size': 2, 'page': page})
+                items.extend(response.json()['items'])
+            self.assertEqual({item['id'] for item in items}, expected_ids)
+            self.assertEqual(len(items), 6)
+            self.assertEqual(sum(item['document_category'] == '合同文档' for item in items), 3)
+            folders = await self.client.get(f'{API}/cases/{ids[0]}/document-folders')
+            self.assertTrue(all(f'历史目录{i}' in folders.json()['folders'] for i in range(3)))
+            with patch('app.core.storage.UPLOAD_ROOT', root):
+                for item in items:
+                    response = await self.client.get(f"{API}/attachments/{item['id']}/download")
+                    self.assertEqual(response.status_code, 200, response.text)
+                    self.assertTrue(response.content)
+            async with self.sessions() as db:
+                self.assertEqual(len((await db.scalars(select(FileAttachment))).all()), 6)
+        self.assertFalse(root.exists())
+
     async def seed(self, count=1):
         async with self.sessions() as db:
             clue = BusinessRecord(module="clue", serial_no="CODEX-0917-clue", title="线索", owner=IDENTITY['username'], data={})

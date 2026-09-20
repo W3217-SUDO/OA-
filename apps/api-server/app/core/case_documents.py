@@ -7,6 +7,7 @@ from app.models import BusinessRecord, FileAttachment
 from app.core.permissions import _ensure_record_module, _record_scope_conditions
 from app.core.storage import _attachment_dict
 from app.core.formatters import _person_display_name, _user_display_map
+from app.core.case_document_sources import case_document_sources
 
 
 def _values(data, keys):
@@ -23,15 +24,20 @@ def _ids(data, keys):
 
 async def case_document_page(case_id, identity, db, page, page_size):
     case = await _ensure_record_module(case_id, "case", identity, db)
-    data = case.data or {}
+    sources = case_document_sources(case)
     scope = await _record_scope_conditions(identity, db)
-    clue_ids = _ids(data, ("clue_id", "clue_record_id", "investigation_clue_id", "investigation_clue_ids"))
-    clue_nos = _values(data, ("clue_no", "investigation_clue", "source_clue_no", "investigation_clue_nos"))
-    # 明确的正向关联优先，避免历史反向关系将其他案件的线索混入。
-    if clue_ids:
-        relation = BusinessRecord.id.in_(clue_ids)
-    elif clue_nos:
-        relation = BusinessRecord.serial_no.in_(clue_nos)
+    clue_relations = []
+    for source in sources:
+        source_data = source.get("data") or {}
+        clue_ids = _ids(source_data, ("clue_id", "clue_record_id", "investigation_clue_id", "investigation_clue_ids"))
+        clue_nos = _values(source_data, ("clue_no", "investigation_clue", "source_clue_no", "investigation_clue_nos"))
+        # 每个来源分别优先使用明确ID，避免其他来源的ID遮蔽仅有编号的历史关系。
+        if clue_ids:
+            clue_relations.append(BusinessRecord.id.in_(clue_ids))
+        elif clue_nos:
+            clue_relations.append(BusinessRecord.serial_no.in_(clue_nos))
+    if clue_relations:
+        relation = or_(*clue_relations)
     else:
         relation = or_(
             *[cast(BusinessRecord.data[key].as_string(), String) == str(case.id)
@@ -43,11 +49,18 @@ async def case_document_page(case_id, identity, db, page, page_size):
         BusinessRecord.module == "clue", relation, *scope,
     ))).all())
     records = {case.id: case, **{clue.id: clue for clue in clues}}
-    source_contracts = {str(source.get("data", {}).get("contract_no") or "") for source in data.get("merged_sources", [])}
-    source_contracts.discard("")
-    if source_contracts:
+    source_cases = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case", BusinessRecord.id.in_([source["id"] for source in sources[1:]]),
+        *scope,
+    ))).all()
+    records.update({source.id: source for source in source_cases})
+    contract_ids, contract_nos = set(), set()
+    for source in sources:
+        contract_ids.update(_ids(source.get("data") or {}, ("contract_id", "contract_record_id")))
+        contract_nos.update(_values(source.get("data") or {}, ("contract_no",)))
+    if contract_ids or contract_nos:
         contracts = (await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "contract", BusinessRecord.serial_no.in_(source_contracts),
+            BusinessRecord.module == "contract", or_(BusinessRecord.id.in_(contract_ids), BusinessRecord.serial_no.in_(contract_nos)),
             BusinessRecord.customer == case.customer, *scope,
         ))).all()
         records.update({contract.id: contract for contract in contracts})
