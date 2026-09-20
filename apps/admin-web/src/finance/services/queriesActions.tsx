@@ -334,6 +334,7 @@ export interface FinanceQueriesDependencies {
         refund_status?: undefined;
     };
     readonly dashboardFeeQuerySeed: Record<string, unknown>;
+    readonly dashboardQueue: string;
     readonly setFees: React.Dispatch<React.SetStateAction<Fee[]>>;
     readonly setFinanceFeeListMeta: React.Dispatch<React.SetStateAction<{
         page: number;
@@ -541,6 +542,19 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
         setLoading(true);
         setFinanceDataReady(false);
         try {
+            if (context.dashboardQueue) {
+                const [result, profile, people] = await Promise.all([
+                    api.get(isRefundCaseFeeRoute ? "/finance/case-fees/refunds" : "/finance/fees/query", { params: feeQueryParams({}, 1, 15) }),
+                    api.get("/auth/me"), api.get("/people/options"),
+                ]);
+                setFeeQueryRows(result.data.items);
+                setCases(result.data.cases);
+                setFeeQueryMeta({ total: result.data.total, page: result.data.page, pageSize: result.data.page_size, totals: result.data.totals || {} });
+                setFinancePeople(people.data.items || []);
+                setRole(profile.data.role);
+                setCurrentUser({ username: profile.data.username, displayName: profile.data.display_name });
+                return;
+            }
             const [feeRes, contractPaymentRes, invoiceRes, refundRes, caseRes, customerRes, receivableRes, incomingRes, txRes, recRes, sumRes, profileRes, settlementRes, refundReviewRes, paymentPackageRes, internalDetailRes, invoiceMineRes, invoicePendingRes, invoiceCompanyRes, invoiceUnissuedRes, generalSettlementRes, archiveSettlementRes, feeQueryRes, peopleRes,] = await Promise.all([
                 initialView === "finance-payment-query"
                     ? loadPaymentQueryPage({}, 1, paymentQueryPageSize)

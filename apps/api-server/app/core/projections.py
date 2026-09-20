@@ -276,6 +276,9 @@ async def _receivable_detail_projection(
             "updated_at": fee.updated_at,
         })
 
+    if "_dashboard_case_ids" in identity:
+        rows = [row for row in rows if row.get("case_record_id") in identity["_dashboard_case_ids"]]
+
     aggregates: dict[int, dict[str, float]] = {}
     for row in rows:
         totals = aggregates.setdefault(row["contract_record_id"], {

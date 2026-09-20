@@ -256,9 +256,11 @@ getCompanyScheduleQueryInitialValues,getLegacyCaseDetailMoreOperationLabels,getL
 
 export default function CaseCenterPage({
   initialView,
+  dashboardQueue = "",
   onNavigate,
 }: {
   initialView: string;
+  dashboardQueue?: string;
   onNavigate?: (route: string) => void;
 }) {
   const isCreateView = initialView === "case-new" || initialView.startsWith("case-new-");
@@ -974,6 +976,7 @@ export default function CaseCenterPage({
     get originalPageSize() { return originalPageSize; },
     get ordinaryRequestGuard() { return ordinaryRequestGuard; },
     get ordinaryCaseQueue() { return ordinaryCaseQueue; },
+    get dashboardQueue() { return dashboardQueue; },
     get ordinaryScope() { return ordinaryScope; },
     get ordinaryCaseTypes() { return ordinaryCaseTypes; },
     get setOrdinaryCases() { return setOrdinaryCases; },

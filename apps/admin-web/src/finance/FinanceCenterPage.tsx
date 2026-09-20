@@ -109,10 +109,12 @@ Transaction
 export default function FinanceCenterPage({
   initialView,
   platformMode = false,
+  dashboardQueue = "",
   onNavigate,
 }: {
   initialView: string;
   platformMode?: boolean;
+  dashboardQueue?: string;
   onNavigate?: (route: string) => void;
 }) {
   const { sessionUser, financeActionGates, refundRequestGuard, invoiceDetailRequestGuard, refundDetailRequestGuard, contractPaymentSourceSearch, contractPaymentSource } = useFinanceRuntimeContext(initialView);
@@ -191,6 +193,7 @@ export default function FinanceCenterPage({
     get isRefundCaseFeeRoute() { return isRefundCaseFeeRoute; },
     get feeQueryParams() { return feeQueryParams; },
     get dashboardFeeQuerySeed() { return dashboardFeeQuerySeed; },
+    get dashboardQueue() { return dashboardQueue; },
     get setFees() { return setFees; },
     get setFinanceFeeListMeta() { return setFinanceFeeListMeta; },
     get setPaymentQueryMeta() { return setPaymentQueryMeta; },
@@ -547,6 +550,7 @@ export default function FinanceCenterPage({
   // customer and package before rendering. Fetch the canonical record for
   // payment-list detail actions instead of reusing a possibly truncated row.
   const { openPaymentDetail, loadFeeQuery, loadPaymentQueryPage, loadPaymentPackages, createFee, feeAction, refreshCurrentFinanceFeeList, submitPaymentCancel, submitPaymentRollback, writeoffFee, writeoffPaymentPackage, downloadPaymentPrintWord, printPayment, submitFeeReview, previewInternalPaymentPackage, submitInternalPaymentPackage, openPaymentPackageDetail, submitPaymentPackageEditor, exportFeeQuery } = createFinancePaymentsActions({
+    get setCases() { return setCases; },
     get setFeeDetail() { return setFeeDetail; },
     get feeQueryMeta() { return feeQueryMeta; },
     get isRefundCaseFeeRoute() { return isRefundCaseFeeRoute; },
@@ -1100,6 +1104,7 @@ export default function FinanceCenterPage({
     const listValue = (value: unknown) =>
       Array.isArray(value) ? value.join(",") : String(value || "");
     if (isRefundCaseFeeRoute) return {
+      dashboard_queue: dashboardQueue || undefined,
       case_no: query.routeField0 || "",
       court_case_no: query.routeField1 || "",
       court_name: query.routeField2 || "",
@@ -1118,6 +1123,7 @@ export default function FinanceCenterPage({
       page_size: pageSize,
     };
     return {
+      dashboard_queue: dashboardQueue || undefined,
       scope: query.dashboardScope || "company",
       unpaid_official: query.dashboardUnpaidOfficial || undefined,
       case_no: query.routeField0 || "",
@@ -1864,6 +1870,7 @@ export default function FinanceCenterPage({
     "finance-refund": "退费查询",
   };
   const displayedOriginalTitle =
+    dashboardQueue === "official-fee-unpaid" ? "待缴官费" : dashboardQueue === "refund-pending" ? "待退费" :
     platformMode && initialView === "finance-payment-mine"
       ? "请款单列表"
       : originalTitle[initialView] || "财务中心";

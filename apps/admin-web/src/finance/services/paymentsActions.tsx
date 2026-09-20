@@ -80,6 +80,7 @@ export interface FinancePaymentsDependencies {
         court_name?: undefined;
         refund_status?: undefined;
     };
+    readonly setCases: React.Dispatch<React.SetStateAction<Fee[]>>;
     readonly setFeeQueryRows: React.Dispatch<React.SetStateAction<Fee[]>>;
     readonly setFeeQueryMeta: React.Dispatch<React.SetStateAction<{
         total: number;
@@ -234,6 +235,7 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
             params: feeQueryParams(query, page, pageSize),
         });
         setFeeQueryRows(response.data.items || []);
+        if (response.data.cases) context.setCases(response.data.cases);
         setFeeQueryMeta({
             total: response.data.total || 0,
             page: response.data.page || page,

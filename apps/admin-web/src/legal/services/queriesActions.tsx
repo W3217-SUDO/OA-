@@ -90,6 +90,7 @@ export interface CaseQueriesDependencies {
     readonly originalPageSize: number;
     readonly ordinaryRequestGuard: LatestRequestGuard;
     readonly ordinaryCaseQueue: string;
+    readonly dashboardQueue: string;
     readonly ordinaryScope: "mine" | "department" | "company" | "global";
     readonly ordinaryCaseTypes: string[];
     readonly setOrdinaryCases: React.Dispatch<React.SetStateAction<CaseRow[]>>;
@@ -187,6 +188,20 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         const { setLoading, initialView, setCases, isCreateView, openCounselDetail, isCaseDetailView, detailRouteId, setWarehouseCatalog, setContracts, setHearings, setSummary, setProfile, setFinanceRows, setAttachments, setCaseTypeOptions, setCauseOptions, setCaseFileTypeCatalog, setCaseFileTypeOptions, setCaseUploadCategory, setCounselUploadCategory, setCourtOptions, setCourtOfficerOptions, setCaseLawyerOptions, setCaseAssistantOptions, setRightTypeOptions, setCaseCustomers, setCaseClues, setFeeTypeCatalog, contractPrefill, createForm, resolveCasePersonValue } = context;
         setLoading(true);
         try {
+            if (context.dashboardQueue) {
+                const [profileRes, referenceRes, feeTypeRes] = await Promise.all([
+                    api.get("/auth/me"), api.get("/cases/reference-options"),
+                    api.get("/system/parameters/options", { params: { category: "fee_type" } }),
+                ]);
+                setProfile(profileRes.data);
+                setCaseTypeOptions(referenceRes.data.case_types || []);
+                setCauseOptions(referenceRes.data.causes || []);
+                setCourtOptions(referenceRes.data.courts || []);
+                setCaseLawyerOptions(referenceRes.data.case_lawyers || []);
+                setCaseAssistantOptions(referenceRes.data.case_assistants || []);
+                setFeeTypeCatalog(feeTypeRes.data.items || []);
+                return;
+            }
             // 关联详情不能依赖合同、排期、附件等旁路数据全部成功；否则案号跳转会
             // 只进入案件列表而没有打开目标详情。
             const archiveView = initialView === "case-archive-pending"
@@ -304,7 +319,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         setOrdinaryLoadError("");
         try {
             const searchPayload = buildCaseOrdinarySearchPayload({ ...values, case_queue: ordinaryCaseQueue }, ordinaryScope, ordinaryCaseTypes, page, pageSize);
-            const { data } = await api.post("/cases/search", searchPayload);
+            const { data } = await api.post("/cases/search", { ...searchPayload, dashboard_queue: context.dashboardQueue });
             if (!ordinaryRequestGuard.isLatest(requestId))
                 return;
             const result = parseOrdinarySearchResult(data, page, pageSize);

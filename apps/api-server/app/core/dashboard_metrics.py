@@ -16,5 +16,5 @@ async def dashboard_metrics(identity, db):
     ]
     return {"metrics": [{"key": key, "label": label, "tone": tone,
         "value": f"{sum(item['amount'] for item in queues[key]):.2f}元" if key == "official-fee-unreceived" else f"{len(queues[key])}件",
-        "route": "dashboard", "query": {"personal_queue": key}}
+        "route": f"dashboard-queue-{key}"}
         for key, label, tone in definitions]}

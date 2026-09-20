@@ -1321,6 +1321,7 @@ class CriminalCourtMaintenanceInput(BaseModel):
 class CounselCaseSearchInput(BaseModel):
     scope: str = "company"
     case_queue: str = Field(default="", max_length=64)
+    dashboard_queue: str = Field(default="", max_length=64)
     case_types: list[str] = Field(default_factory=list, max_length=20)
     case_type: str = Field(default="", max_length=128)
     customer_id: int | None = Field(default=None, gt=0)

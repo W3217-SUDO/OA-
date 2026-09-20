@@ -523,6 +523,8 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession):
 
 
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
+    if "_dashboard_record_ids" in identity:
+        return [BusinessRecord.id.in_(identity["_dashboard_record_ids"])]
     if identity.get("role") == "admin" or identity.get("_page_menu_capability"):
         return []
     user = await db.scalar(select(User).where(User.username == identity["username"]))

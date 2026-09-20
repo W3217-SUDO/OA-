@@ -1,6 +1,6 @@
 import DashboardPersonCell from "./DashboardPersonCell";
 import { useDashboardData, type DashboardData, type DashboardSection } from "./dashboardData";
-import { DashboardPersonalQueue } from "./DashboardPersonalQueue";
+import { dashboardWorkspace } from "./dashboardWorkspace";
 import {
   Component,
   lazy,
@@ -896,6 +896,8 @@ const routePageLabels: Record<string, string> = {
 function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): string {
   const normalizedKey = normalizeWorkspaceRoute(key);
   if (normalizedKey === "dashboard") return "控制台";
+  const workspace = dashboardWorkspace(normalizedKey);
+  if (workspace) return workspace.label;
   if (normalizedKey.startsWith("case-new-")) return "新建案件";
   if (normalizedKey.startsWith("case-detail-")) {
     const match = normalizedKey.match(/^case-detail-\d+-(.+)$/);
@@ -1256,7 +1258,6 @@ function CivilDistribution({
 }
 
 function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
-  const [personalQueue, setPersonalQueue] = useState<{ key: string; label: string } | null>(null);
   const { data, loading, errors, retry } = useDashboardData();
   const sectionStatus = (section: DashboardSection) => errors[section]
     ? <div className="dashboard-section-status" role="alert">{errors[section]} <Button size="small" onClick={() => retry(section)}>重试</Button></div>
@@ -1284,10 +1285,6 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
     onNavigate(route);
   };
   const navigateMetric = (metric: DashboardData["metrics"][number]) => {
-    if (metric.route === "dashboard") {
-      setPersonalQueue({ key: metric.key, label: metric.label });
-      return;
-    }
     rememberDashboardFeeQuery(metric.query);
     if (metric.detail_context) {
       try {
@@ -1377,7 +1374,6 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
   );
   return (
     <div className="reference-dashboard">
-      <DashboardPersonalQueue selection={personalQueue} onClose={() => setPersonalQueue(null)} onNavigate={onNavigate} />
       <div className="dashboard-legacy-grid">
         <div className="dashboard-metrics-panel">
           {sectionStatus("metrics")}
@@ -1757,7 +1753,9 @@ export default function App() {
   });
   const accountProfileRoute = grantedMenuKeys.has("user-account") ? "user-account" : "user-center";
   const route = canonicalRoute(active);
+  const dashboardTarget = dashboardWorkspace(active);
   const pageAllowed =
+    !!dashboardTarget ||
     actualRole === "admin" ||
     route === "dashboard" ||
     (active === "case-global-search" &&
@@ -1790,7 +1788,13 @@ export default function App() {
     grantedMenuKeys.has(active) ||
     grantedMenuKeys.has(route);
   const requestedPage =
-    route === "dashboard" ? (
+    dashboardTarget ? (
+      dashboardTarget.kind === "finance"
+        ? <FinanceCenterPage key={active} initialView={dashboardTarget.view} dashboardQueue={dashboardTarget.key} onNavigate={navigate} />
+        : dashboardTarget.kind === "receivable"
+          ? <ContractReceivablesPage key={active} initialView={dashboardTarget.view} dashboardQueue={dashboardTarget.key} onNavigate={navigate} />
+          : <CaseCenterPage key={active} initialView={dashboardTarget.view} dashboardQueue={dashboardTarget.key} onNavigate={navigate} />
+    ) : route === "dashboard" ? (
       <Dashboard onNavigate={navigate} />
     ) : route === "agent-center" ? (
       <AgentCenterPage />

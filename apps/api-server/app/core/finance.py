@@ -1819,6 +1819,9 @@ async def _fee_query_rows(
     fee_types: str = "", ids: set[int] | None = None,
     scope_authorized_fee_ids: set[int] | None = None,
 ) -> list[dict]:
+    if "_dashboard_fee_ids" in identity:
+        scope_authorized_fee_ids = identity["_dashboard_fee_ids"]
+        scope = "company"
     rows = await _invoice_case_fee_rows(
         identity, db, scope=scope, case_no=case_no,
         court_case_no=court_case_no, notary_no=notary_no,
@@ -1881,6 +1884,8 @@ def _refund_case_fee_started_at(data: dict, status_code: str) -> str:
 
 
 async def _refund_case_fee_authorized_ids(identity: dict, db: AsyncSession) -> set[int] | None:
+    if "_dashboard_fee_ids" in identity:
+        return identity["_dashboard_fee_ids"]
     from app.core.permissions import (
         _case_personal_scope_condition, _identity_role_ids, _require_record_module_menu, _user_permission_payload,
     )

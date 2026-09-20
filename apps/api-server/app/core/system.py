@@ -195,6 +195,9 @@ def _record_module_menu_allowed(module: str, identity: dict, permission: dict) -
 
 
 async def _allowed_field_keys(identity: dict, db: AsyncSession) -> set[str]:
+    if "_dashboard_record_ids" in identity:
+        # 控制台业务页展示已限定案件范围的完整字段，不授予写操作权限。
+        return set(FIELD_KEYS)
     from app.core.permissions import (
         _identity_role_ids, _permission_payload_for_identity, _user_permission_overrides,
     )

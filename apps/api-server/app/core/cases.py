@@ -307,6 +307,10 @@ def _matches_dashboard_case_queue(item: BusinessRecord, queue: str) -> bool:
         return case_type in {"民事争议", "民事案件"} and status_name in DASHBOARD_SUPPLEMENT_EVIDENCE_STATUSES
     if queue == "supplement_opinion":
         return case_type in {"民事争议", "民事案件"} and status_name in DASHBOARD_SUPPLEMENT_OPINION_STATUSES
+    if queue == "pending_appeal":
+        return status_name in {"一审等待上诉", "待上诉"}
+    if queue == "pending_execution":
+        return _is_pending_execution_case(item)
     if queue == "urgent":
         return _is_urgent_case(item)
     return False
@@ -1040,6 +1044,10 @@ async def _query_counsel_cases(
     from app.core.permissions import (
         _can_search_all_cases_from_global_search, _case_mine_scope_condition, _record_scope_conditions,
     )
+    if body.dashboard_queue:
+        from app.core.dashboard_scope import CASE_QUEUES, dashboard_request_identity
+        identity = await dashboard_request_identity(body.dashboard_queue, CASE_QUEUES, identity, db)
+        body = body.model_copy(update={"scope": "company", "case_queue": ""})
     if body.scope not in {"mine", "department", "company", "global"}:
         raise HTTPException(status_code=422, detail="法律顾问案件查询范围无效")
     if body.case_queue and body.case_queue not in DASHBOARD_CASE_QUEUES:
@@ -1066,7 +1074,9 @@ async def _query_counsel_cases(
     relation_customer = await _customer_or_404(body.customer_id, identity, db) if body.customer_id else None
     record_conditions = [BusinessRecord.module == "case"]
     global_company_scope = body.scope == "global" and await _can_search_all_cases_from_global_search(identity, db)
-    if body.scope == "global":
+    if body.dashboard_queue:
+        record_conditions.extend(await _record_scope_conditions(identity, db))
+    elif body.scope == "global":
         # 客户等附加条件只能缩小结果，不能绕过无公司案件权限时的个人范围。
         if not global_company_scope:
             record_conditions.extend(await _record_scope_conditions(identity, db))
@@ -1093,9 +1103,12 @@ async def _query_counsel_cases(
     elif requested_types:
         records = [record for record in records if str((record.data or {}).get("case_type") or "") in requested_types]
     # 顶栏全局检索不按普通列表规则排除法律顾问案件。
-    elif not body.case_queue and body.scope != "global":
+    elif not body.case_queue and not body.dashboard_queue and body.scope != "global":
         records = [record for record in records if str((record.data or {}).get("case_type") or "") != "法律顾问"]
-    if body.case_queue:
+    if body.dashboard_queue:
+        from app.core.dashboard_scope import CASE_QUEUES
+        records = [record for record in records if _matches_dashboard_case_queue(record, CASE_QUEUES[body.dashboard_queue])]
+    elif body.case_queue:
         records = [record for record in records if _matches_dashboard_case_queue(record, body.case_queue)]
     # ``mine`` is applied in SQL above with stable owner/team/legacy-participant
     # identities.  This keeps administrator personal lists personal without

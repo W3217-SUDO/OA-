@@ -736,12 +736,15 @@ async def list_receivables(
 
 @router.get(f"{settings.api_prefix}/receivables/detail")
 async def list_receivable_details(
+    dashboard_queue: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.projections import (
         _receivable_detail_projection,
     )
-    items = await _receivable_detail_projection(identity, db)
+    from app.core.dashboard_scope import dashboard_request_identity, dashboard_receivables
+    identity = await dashboard_request_identity(dashboard_queue, {"official-fee-unreceived"}, identity, db)
+    items = await dashboard_receivables(identity, db) if dashboard_queue else await _receivable_detail_projection(identity, db)
     return {
         "items": items,
         "total": len(items),
@@ -928,8 +931,11 @@ async def query_refund_case_fees(
     refund_amount_from: float | None = None, refund_amount_to: float | None = None,
     hearing_lawyer: str = "", assistant: str = "", case_stages: str = "", fee_types: str = "",
     page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
+    dashboard_queue: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
+    from app.core.dashboard_scope import dashboard_request_identity
+    identity = await dashboard_request_identity(dashboard_queue, {"refund-pending"}, identity, db)
     from app.core.finance import (
         _refund_case_fee_rows,
     )
@@ -946,7 +952,9 @@ async def query_refund_case_fees(
         assistant=assistant, case_stages=case_stages, fee_types=fee_types,
     )
     start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": len(rows), "page": page, "page_size": page_size}
+    from app.core.dashboard_scope import dashboard_fee_cases
+    related = await dashboard_fee_cases(rows[start:start + page_size], identity, db) if dashboard_queue else {}
+    return {**related, "items": rows[start:start + page_size], "total": len(rows), "page": page, "page_size": page_size}
 
 
 @router.post(f"{settings.api_prefix}/finance/case-fees/batch-update")
@@ -993,8 +1001,11 @@ async def export_refund_case_fees(
     customer: str = "", paid_organization: str = "", refund_status: str = "",
     refund_amount_from: float | None = None, refund_amount_to: float | None = None,
     hearing_lawyer: str = "", assistant: str = "", case_stages: str = "", fee_types: str = "",
+    dashboard_queue: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
+    from app.core.dashboard_scope import dashboard_request_identity
+    identity = await dashboard_request_identity(dashboard_queue, {"refund-pending"}, identity, db)
     from app.core.finance import (
         _refund_case_fee_rows,
     )
@@ -1114,8 +1125,13 @@ async def query_finance_fees(
     paid_from: date | None = None, paid_to: date | None = None,
     hearing_lawyer: str = "", assistant: str = "", case_stages: str = "", fee_types: str = "",
     page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
+    dashboard_queue: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
+    from app.core.dashboard_scope import dashboard_request_identity
+    identity = await dashboard_request_identity(dashboard_queue, {"official-fee-unpaid"}, identity, db)
+    if dashboard_queue:
+        unpaid_official = True
     from app.core.finance import (
         _fee_query_rows,
     )
@@ -1141,7 +1157,9 @@ async def query_finance_fees(
         for key in ("amount", "refund_requested_amount", "refunded_amount", "cashed_amount", "paid_amount")
     }
     start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": len(rows), "totals": totals, "page": page, "page_size": page_size}
+    from app.core.dashboard_scope import dashboard_fee_cases
+    related = await dashboard_fee_cases(rows[start:start + page_size], identity, db) if dashboard_queue else {}
+    return {**related, "items": rows[start:start + page_size], "total": len(rows), "totals": totals, "page": page, "page_size": page_size}
 
 
 @router.get(f"{settings.api_prefix}/finance/fees/query/export")
@@ -1154,8 +1172,13 @@ async def export_finance_fee_query(
     customer: str = "", paid_organization: str = "", payment_status: str = "",
     paid_from: date | None = None, paid_to: date | None = None,
     hearing_lawyer: str = "", assistant: str = "", case_stages: str = "", fee_types: str = "",
+    dashboard_queue: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
+    from app.core.dashboard_scope import dashboard_request_identity
+    identity = await dashboard_request_identity(dashboard_queue, {"official-fee-unpaid"}, identity, db)
+    if dashboard_queue:
+        unpaid_official = True
     from app.core.finance import (
         _fee_query_rows,
     )

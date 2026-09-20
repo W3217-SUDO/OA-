@@ -118,7 +118,7 @@ const readReceivableDetailContext = (): ReceivableDetailContext | null => {
   return null;
 };
 
-export default function ContractReceivablesPage({ initialView, onNavigate }: { initialView: string; onNavigate?: (route: string) => void }) {
+export default function ContractReceivablesPage({ initialView, dashboardQueue = "", onNavigate }: { initialView: string; dashboardQueue?: string; onNavigate?: (route: string) => void }) {
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [profile, setProfile] = useState<Profile>({ username: "", display_name: "", department: "" });
@@ -136,6 +136,10 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
 
   useEffect(() => {
     if (!detailView) return setDetailContext(null);
+    if (dashboardQueue) {
+      setDetailContext({ contract_no: "", return_view: "contract-receivable-mine", amount_filter: "official-unreceived" });
+      return;
+    }
     const context = readReceivableDetailContext();
     if (context) setDetailContext(context);
   }, [detailView]);
@@ -144,12 +148,12 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     setLoading(true);
     try {
       const [receivableRes, contractRes, profileRes] = await Promise.all([
-        api.get("/receivables/detail"),
-        api.get("/records", { params: { module: "contract", page_size: 100 } }),
+        api.get("/receivables/detail", { params: { dashboard_queue: dashboardQueue || undefined } }),
+        dashboardQueue ? Promise.resolve(null) : api.get("/records", { params: { module: "contract", page_size: 100 } }),
         api.get("/auth/me"),
       ]);
       setReceivables(receivableRes.data.items || []);
-      setContracts(contractRes.data.items || []);
+      setContracts(contractRes?.data.items || []);
       setProfile(profileRes.data);
     } catch {
       message.error("合同应收加载失败");
@@ -332,7 +336,7 @@ export default function ContractReceivablesPage({ initialView, onNavigate }: { i
     URL.revokeObjectURL(url);
   };
 
-  return <Card className="panel contract-original-panel" title={detailView ? "应收账款明细" : "应收账款统计"}>
+  return <Card className="panel contract-original-panel" title={dashboardQueue ? "未到官费" : detailView ? "应收账款明细" : "应收账款统计"}>
     <Form form={form} className="contract-query" onFinish={setQuery}>
       <Form.Item label="合同主体" name="contract_body"><Select allowClear placeholder="请选择" options={["律所", "平台"].map((value) => ({ value, label: value }))} /></Form.Item>
       <Form.Item label="合同编号" name="contract_no"><Input placeholder="合同编号" /></Form.Item>
