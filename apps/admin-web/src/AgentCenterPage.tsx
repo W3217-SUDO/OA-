@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
-import { Button, Empty, Form, Image, Input, List, message, Modal, Select, Space, Spin, Switch, Tag } from "antd";
-import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined, UploadOutlined } from "@ant-design/icons";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type Key } from "react";
+import { Button, Empty, Form, Image, Input, List, message, Modal, Select, Space, Spin, Switch, Tag, Tree } from "antd";
+import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, DeleteOutlined, EditOutlined, FolderOpenOutlined, FolderOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined, UploadOutlined } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
 import { AgentMessageContent } from "./AgentMessageContent";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
+import { AGENT_DOCUMENT_LIMIT, buildAgentDocumentTree } from "./legal/constants";
+import type { CaseAgentDocument } from "./legal/types";
 import "./agent-center.css";
 
 type CaseOption = { id: number; serial_no: string; title: string; customer: string; status: string };
@@ -64,6 +66,9 @@ export default function AgentCenterPage() {
   const [editingSkillId, setEditingSkillId] = useState("");
   const [skillForm] = Form.useForm();
   const [screenshots, setScreenshots] = useState<AgentAttachment[]>([]);
+  const [documents, setDocuments] = useState<CaseAgentDocument[]>([]);
+  const [documentIds, setDocumentIds] = useState<number[]>([]);
+  const [materialPickerOpen, setMaterialPickerOpen] = useState(false);
   const [screenshotUploading, setScreenshotUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -119,13 +124,18 @@ export default function AgentCenterPage() {
       .then((response) => { if (isCurrent()) setWorkflowGuide(response.data || null); })
       .catch(() => { if (isCurrent()) setWorkflowGuide(null); });
     try {
-      const [statusRes, stateRes] = await Promise.all([
+      const [statusRes, stateRes, contextRes] = await Promise.all([
         api.get(`/case-spaces/${record.id}/agent/status`),
         api.get(`/case-spaces/${record.id}/agent/state`),
+        api.get(`/case-spaces/${record.id}/context`),
       ]);
       if (!isCurrent()) return;
       setStatus(statusRes.data);
       setState(stateRes.data);
+      const availableDocuments = (contextRes.data?.documents || []) as CaseAgentDocument[];
+      const availableIds = new Set(availableDocuments.map((item) => item.id));
+      setDocuments(availableDocuments);
+      setDocumentIds((current) => current.filter((id) => availableIds.has(id)).slice(0, AGENT_DOCUMENT_LIMIT));
       const activeSkill = String(stateRes.data?.active_skill || DEFAULT_AGENT_SKILL);
       const activeAvailable = (statusRes.data?.skills || []).some((item: AgentSkill) => item.id === activeSkill && item.available);
       setSkillId(activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
@@ -148,6 +158,9 @@ export default function AgentCenterPage() {
     setStatus(null);
     clearScreenshotPreviews();
     setScreenshots([]);
+    setDocuments([]);
+    setDocumentIds([]);
+    setMaterialPickerOpen(false);
     if (selected) void loadAgent(selected);
     else { setStatus(null); setState(null); setWorkflowGuide(null); }
   }, [selected?.id]);
@@ -169,13 +182,21 @@ export default function AgentCenterPage() {
     followResponseRef.current = true;
     if (sending) activeAgentRequestRef.current?.abort();
     const outgoingScreenshots = [...screenshots];
+    const outgoingDocumentIds = [...documentIds];
+    const outgoingDocuments = documents.filter((item) => outgoingDocumentIds.includes(item.id));
+    const outgoingAttachments = [
+      ...outgoingScreenshots,
+      ...outgoingDocuments.map((item) => ({ id: item.id, name: item.original_name })),
+    ];
     const optimisticId = `pending-${Date.now()}`;
     setState((current) => current ? {
       ...current,
-      messages: [...(current.messages || []), { id: optimisticId, role: "user", content, attachments: outgoingScreenshots }],
+      messages: [...(current.messages || []), { id: optimisticId, role: "user", content, attachments: outgoingAttachments }],
     } : current);
     setInput("");
     setScreenshots([]);
+    setDocumentIds([]);
+    setMaterialPickerOpen(false);
     const controller = new AbortController();
     activeAgentRequestRef.current = controller;
     const caseId = selected.id;
@@ -188,7 +209,7 @@ export default function AgentCenterPage() {
         method: "POST", signal: controller.signal,
         headers: { "Content-Type": "application/json", ...(localStorage.getItem("access_token") ? { Authorization: `Bearer ${localStorage.getItem("access_token")}` } : {}) },
         body: JSON.stringify({ message: encodeAgentSkillMessage(skillId, content), skill_id: skillId,
-          attachment_ids: outgoingScreenshots.map((item) => item.id), stream: true }),
+          attachment_ids: outgoingScreenshots.map((item) => item.id), document_ids: outgoingDocumentIds, stream: true }),
       });
       if (!response.ok || !response.body) {
         if (response.status === 401 && localStorage.getItem("access_token")) {
@@ -241,6 +262,7 @@ export default function AgentCenterPage() {
         setState((current) => current ? { ...current, messages: [...current.messages, { id: `${optimisticId}-error`, role: "assistant", content: detail }] } : current);
         setInput(content);
         setScreenshots(outgoingScreenshots);
+        setDocumentIds(outgoingDocumentIds);
         message.error(detail);
       }
     } finally {
@@ -256,6 +278,12 @@ export default function AgentCenterPage() {
     activeAgentRequestRef.current = null;
     setSending(false);
     message.info("已停止本轮生成，可以继续补充要求");
+  };
+  const updateDocumentSelection = (checkedKeys: Key[] | { checked: Key[]; halfChecked: Key[] }) => {
+    const keys = Array.isArray(checkedKeys) ? checkedKeys : checkedKeys.checked;
+    const selectedIds = keys.map(String).filter((key) => key.startsWith("document:")).map((key) => Number(key.slice("document:".length))).filter((id) => id > 0);
+    if (selectedIds.length > AGENT_DOCUMENT_LIMIT) message.warning(`单轮最多选择 ${AGENT_DOCUMENT_LIMIT} 份材料`);
+    setDocumentIds(selectedIds.slice(0, AGENT_DOCUMENT_LIMIT));
   };
   const uploadScreenshot = async (file?: File) => {
     if (!file || !selected) return;
@@ -510,6 +538,23 @@ export default function AgentCenterPage() {
                 popupMatchSelectWidth={false}
               />
               <Button type="text" icon={<AppstoreAddOutlined />} title="管理我的技能" onClick={() => void openSkillManager()} />
+            </div>
+            {materialPickerOpen && <div className="agent-composer-material-tree" aria-label="从案件文件夹选择本轮材料">
+              <div className="agent-composer-material-header">
+                <strong>从案件文件夹选择</strong>
+                <Space size={2}>
+                  <Button type="link" size="small" disabled={!documents.length} onClick={() => { if (documents.length > AGENT_DOCUMENT_LIMIT) message.info(`已选择前 ${AGENT_DOCUMENT_LIMIT} 份材料`); setDocumentIds(documents.slice(0, AGENT_DOCUMENT_LIMIT).map((item) => item.id)); }}>全选</Button>
+                  <Button type="link" size="small" disabled={!documentIds.length} onClick={() => setDocumentIds([])}>清空</Button>
+                  <Button type="text" size="small" icon={<CloseOutlined />} title="收起材料选择" onClick={() => setMaterialPickerOpen(false)} />
+                </Space>
+              </div>
+              <Tree checkable selectable={false} defaultExpandAll checkedKeys={documentIds.map((id) => `document:${id}`)} treeData={buildAgentDocumentTree(documents)} onCheck={updateDocumentSelection} />
+            </div>}
+            <div className="agent-composer-materials">
+              <Button type="text" size="small" icon={materialPickerOpen ? <FolderOpenOutlined /> : <FolderOutlined />} aria-expanded={materialPickerOpen} onClick={() => setMaterialPickerOpen((current) => !current)}>案件材料</Button>
+              <div>{documents.filter((item) => documentIds.includes(item.id)).map((item) => <Tag key={item.id} closable title={item.original_name} onClose={(event) => { event.preventDefault(); setDocumentIds((current) => current.filter((id) => id !== item.id)); }}>{item.original_name}</Tag>)}
+                {!documentIds.length && <span>选择后随本轮问题发送</span>}
+              </div>
             </div>
             {screenshots.length ? <div className="agent-composer-attachments" aria-label="待发送截图">{screenshots.map((item) => <div key={item.id}><Image src={item.preview_url} alt={item.name} preview /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeScreenshot(item)} /></div>)}</div> : null}
             <input ref={screenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadScreenshot(event.target.files?.[0])} />

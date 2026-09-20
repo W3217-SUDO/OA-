@@ -65,7 +65,7 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             const documents = (contextRes.data?.documents || []) as CaseAgentDocument[];
             const availableIds = documents.map((item) => Number(item.id)).filter((id) => id > 0);
             setAgentDocuments(documents);
-            setAgentDocumentIds((current) => resetMaterials ? availableIds.slice(0, AGENT_DOCUMENT_LIMIT) : current.filter((id) => availableIds.includes(id)).slice(0, AGENT_DOCUMENT_LIMIT));
+            setAgentDocumentIds((current) => resetMaterials ? [] : current.filter((id) => availableIds.includes(id)).slice(0, AGENT_DOCUMENT_LIMIT));
             const activeSkill = String(stateRes.data?.active_skill || DEFAULT_AGENT_SKILL);
             const activeAvailable = (statusRes.data?.skills || []).some((item: AgentSkill) => item.id === activeSkill && item.available);
             setAgentSkillId(activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
