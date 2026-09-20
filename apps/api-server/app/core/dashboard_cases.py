@@ -13,7 +13,7 @@ from app.core.dashboard import dashboard_scope
 
 async def dashboard_cases(identity, db):
     scope, modules = await dashboard_scope(identity, db)
-    conditions = [BusinessRecord.module == "case", BusinessRecord.module.in_(modules), *scope]
+    conditions = [BusinessRecord.module == "case", BusinessRecord.status != "已合并", BusinessRecord.module.in_(modules), *scope]
     current_month = date.today().replace(day=1)
     month_keys = []
     for offset in range(9, -1, -1):
@@ -68,7 +68,9 @@ async def dashboard_cases(identity, db):
     )
     hearing_keys = [f"{prefix}_court_hearing_date" for prefix, _ in _CASE_HEARING_LEVELS]
     hearing_keys.extend(("hearing_date", "next_hearing_date"))
-    cases = list((await db.scalars(select(BusinessRecord).where(*conditions, or_(
+    from app.core.dashboard_scope import company_hearing_conditions
+    hearing_conditions = await company_hearing_conditions(identity, db)
+    cases = list((await db.scalars(select(BusinessRecord).where(*hearing_conditions, or_(
         BusinessRecord.id.in_(scheduled_ids),
         *(func.coalesce(BusinessRecord.data[key].as_string(), "") != "" for key in hearing_keys),
     )))).all())

@@ -593,6 +593,8 @@ async def list_records(
     if module in {"notary", "case"}:
         await _apply_notary_auto_conversion(db)
     conditions = [BusinessRecord.module == module]
+    if module == "case":
+        conditions.append(BusinessRecord.status != "已合并")
     if module == "finance":
         conditions.append(BusinessRecord.status != "已删除")
     relation_customer = None

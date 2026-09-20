@@ -844,7 +844,7 @@ export default function TaskCenterPage({
       message.warning("只有待接收或待处理的任务可以接受");
       return;
     }
-    void simpleAction(selected, selected.handoff_auto_complete_at ? "restart" : "accept");
+    void simpleAction(selected, "accept");
   };
 
   const openTaskHandoff = async (row: TaskRow) => {

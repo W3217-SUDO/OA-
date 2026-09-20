@@ -85,7 +85,7 @@ export default function BatchCaseConversion({
           <Form.Item label="客户诉讼地位" name="client_position" rules={[{ required: true }]} style={{ marginTop: 16 }}>
             <Select options={["原告", "被告", "第三人", "申请人", "被申请人"].map((v) => ({ value: v, label: v }))} />
           </Form.Item>
-          <Form.Item label="案由" name="cause_or_charge" rules={[{ required: true, message: "请填写案由" }]}>
+          <Form.Item label="案由" name="cause_or_charge">
             <Input />
           </Form.Item>
           <Form.Item label="案件阶段" name="case_phase" rules={[{ required: true }]}>
@@ -94,7 +94,7 @@ export default function BatchCaseConversion({
           <Form.Item label="经办律师" name="handling_lawyer" rules={[{ required: true, message: "请选择经办律师" }]}>
             <Select showSearch optionFilterProp="label" options={systemPersonOptions} placeholder="请选择系统人员" />
           </Form.Item>
-          <Form.Item label="律师助理" name="assistant" rules={[{ required: true, message: "请选择律师助理" }]}>
+          <Form.Item label="律师助理" name="assistant">
             <Select allowClear showSearch optionFilterProp="label" options={systemPersonOptions} placeholder="请选择系统人员" />
           </Form.Item>
           <Form.Item label="案件类型" name="case_type">
@@ -108,7 +108,7 @@ export default function BatchCaseConversion({
             <Input />
           </Form.Item>
         </>}
-        {batchStep === 1 && <Descriptions size="small" bordered column={1} items={[{ key: "status", label: "生成后案件阶段", children: batchForm.getFieldValue("case_phase") || "等待公证书" }, { key: "result", label: "关联规则", children: "客户、合同、线索及来源任务信息将自动带入案件" }]} />}
+        {batchStep === 1 && <Descriptions size="small" bordered column={1} items={[{ key: "status", label: "生成后案件阶段", children: batchForm.getFieldValue("case_phase") || "新案待分配" }, { key: "result", label: "关联规则", children: "客户、合同、线索及来源任务信息将自动带入案件" }]} />}
       </Form>
     </Modal>
   );

@@ -824,7 +824,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
                 "handoff_from": previous_owner,
                 "handoff_recipient": recipient,
                 "handed_off_at": str(date.today()),
-                "handoff_auto_complete_at": str(auto_at),
+                "handoff_auto_complete_at": "",
                 "handoff_restarted": False,
             }
         else:
@@ -840,7 +840,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
             }
         event_comment = comment
         if body.action == "handoff":
-            event_comment = f"{previous_owner} 交接给 {recipient}；未重新开始将于 {auto_at} 自动完成。{comment}"
+            event_comment = f"{previous_owner} 交接给 {recipient}。{comment}"
         elif body.action == "complete":
             event_comment = f"发起人应在 {auto_at} 前验收或退回重启。{comment}"
         await _add_task_message_notifications(
@@ -949,9 +949,8 @@ async def resend_task(task_id: int, body: TaskHandoffInput, identity: dict = Dep
     if task.status != "已拒绝": raise HTTPException(status_code=409, detail="只有已拒绝任务可以重新派发")
     previous_owner = task.owner
     recipient = await _active_task_username(body.recipient, db, field_name="新负责人")
-    auto_at = date.today() + timedelta(days=5)
     task.owner = recipient; task.status = "待接收"
-    task.data = {**data, "rejected_reason": "", "resent_at": datetime.now().isoformat(timespec="seconds"), "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": str(auto_at), "handoff_restarted": False}
+    task.data = {**data, "rejected_reason": "", "resent_at": datetime.now().isoformat(timespec="seconds"), "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": "", "handoff_restarted": False}
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="重新派发任务", from_status="已拒绝", to_status="待接收", operator=identity["username"], comment=f"{previous_owner} → {recipient}。{body.comment}"), db, content="任务已重新派发.")
     await db.commit(); await db.refresh(task); return _task_dict(task)
 
@@ -1309,7 +1308,6 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
         # A historical malformed range cannot be made valid by this handoff.
         # Preserve it rather than creating a new start/end inversion.
         handoff_end_at = existing_end_at
-    auto_at = now.date() + timedelta(days=5)
     task.owner = recipient
     task.status = "待接收"
     deadline_updates = {}
@@ -1319,9 +1317,9 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
             "handoff_requested_end_at": body.end_at.isoformat(timespec="seconds") if body.end_at else "",
             "handoff_limit_days": handoff_limit_days,
         }
-    task.data = {**data, **deadline_updates, "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": str(auto_at), "handoff_restarted": False}
+    task.data = {**data, **deadline_updates, "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": "", "handoff_restarted": False}
     deadline_comment = f"；交接结束时间：{handoff_end_at.isoformat(timespec='seconds')}" if deadline_updates else ""
-    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="任务交接", from_status=previous_status, to_status="待接收", operator=identity["username"], comment=f"{previous_owner} 交接给 {recipient}；未重新开始将于 {auto_at} 自动完成{deadline_comment}。{body.comment}"), db, content="任务已交接.")
+    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="任务交接", from_status=previous_status, to_status="待接收", operator=identity["username"], comment=f"{previous_owner} 交接给 {recipient}{deadline_comment}。{body.comment}"), db, content="任务已交接.")
     await db.commit()
     await db.refresh(task)
     return _task_dict(task)

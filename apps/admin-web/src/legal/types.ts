@@ -76,8 +76,10 @@ export type CaseCommissionPreview = {
   };
   personnel: Array<{ role: string; username: string; display_name: string }>;
   quality_manager_source?: string;
+  quality_manager_usernames?: string[];
   items: Omit<CaseCommissionPreviewRow, "client_key">[];
   missing_messages: string[];
+  scheme_messages?: string[];
 };
 
 export type CaseCommissionResult = {

@@ -1,4 +1,5 @@
 import { IncomingTotalsBody } from "./IncomingTotalsBody";
+import { IncomingAllocationRecordsPage } from "./IncomingAllocationRecordsPage";
 import { FeeTypePicker } from "./FeeTypePicker";
 import { InvoiceApplicationPage } from "./InvoiceApplicationPage";
 import { PaymentApplicationPage } from "./PaymentApplicationPage";
@@ -948,6 +949,9 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
 
   if (paymentPackageWriteoffTarget) {
     return <PaymentApplicationPage key={paymentPackageWriteoffTarget.id} record={paymentPackageWriteoffTarget} onClose={() => setPaymentPackageWriteoffTarget(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
+  }
+  if (incomingAllocationTarget) {
+    return <IncomingAllocationRecordsPage key={incomingAllocationTarget.id} paymentId={incomingAllocationTarget.id} onClose={() => setIncomingAllocationTarget(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
   }
   if (feeDetail && !isInternalHistoryList && (feeDetail.data?.application_items || initialView.startsWith("finance-payment-") && (feeDetail.module === "contract_payment" || feeDetail.data?.expense_scope !== "内部" && feeDetail.data?.fee_type !== "内部费用"))) {
     return <PaymentApplicationPage key={feeDetail.id} record={feeDetail} onClose={() => setFeeDetail(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
@@ -3539,37 +3543,6 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
           </Form.Item>
         </Form>
       </Modal>
-      <Modal
-        width={920}
-        open={Boolean(incomingAllocationTarget)}
-        title={`历史分配记录：${incomingAllocationTarget?.receipt_no || ""}`}
-        footer={null}
-        onCancel={() => setIncomingAllocationTarget(null)}
-      >
-        <Table
-          rowKey={(row: any, index) =>
-            String(row.transaction_id || row.receivable_plan_id || index)
-          }
-          size="small"
-          pagination={{ pageSize: 20, showSizeChanger: false }}
-          dataSource={incomingAllocationTarget?.allocations || []}
-          locale={{ emptyText: "暂无分配记录" }}
-          columns={[
-            { title: "合同号", dataIndex: "contract_no", width: 150, render: (v: string) => v ? <Button type="link" onClick={() => openContractDetail(v)}>{v}</Button> : "—" },
-            { title: "案号", dataIndex: "case_no", width: 140, render: (v: string) => v ? <Button type="link" onClick={() => openCaseDetail(v)}>{v}</Button> : "—" },
-            { title: "费用阶段", dataIndex: "phase", width: 120 },
-            {
-              title: "分配金额",
-              dataIndex: "amount",
-              width: 120,
-              render: (value: number) => money(value),
-            },
-            { title: "分配方式", dataIndex: "payment_method", width: 110 },
-            { title: "分配人", dataIndex: "allocated_by", width: 100, render: (value: string, row: any) => financePersonDisplayName(value, row.allocated_by_display_name) },
-            { title: "分配时间", dataIndex: "allocated_at", width: 180 },
-          ]}
-        />
-      </Modal>
       <IncomingAllocationModal
         open={Boolean(allocateTarget)}
         allocateTarget={allocateTarget}
@@ -4245,11 +4218,11 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
           onChange={setRefundCaseFeeStatus}
           options={[
             ["R10", "准备材料"],
-            ["R20", "已提交法院"],
-            ["R30", "法院处理中"],
-            ["R35", "待退款到账"],
-            ["R40", "退款已到账"],
-            ["R50", "退费完成"],
+            ["R20", "客户盖章"],
+            ["R30", "已提交法院"],
+            ["R35", "待法院现场办理"],
+            ["R40", "退费到客户"],
+            ["R50", "回款待分配"],
           ].map(([value, label]) => ({ value, label }))}
           style={{ width: "100%" }}
         />

@@ -681,11 +681,11 @@ export function createRouteConfigs(context: {
                 context.f("退费进度", {
                     options: [
                         "准备材料",
+                        "客户盖章",
                         "已提交法院",
-                        "法院处理中",
-                        "待退款到账",
-                        "退款已到账",
-                        "退费完成",
+                        "待法院现场办理",
+                        "退费到客户",
+                        "回款待分配",
                     ],
                 }),
                 context.f("退费金额", { control: "money" }),

@@ -3464,6 +3464,7 @@ export default function FinanceCenterPage({
       ["回款金额", "归档费金额"].includes(header)
     )
       return Number(value).toFixed(2);
+    if (header === "进度时长") return value == null ? "—" : String(value);
     return typeof value === "number" ? money(value) : value;
   };
   const openFinanceCustomerDetail = (row: any, header: string) => {

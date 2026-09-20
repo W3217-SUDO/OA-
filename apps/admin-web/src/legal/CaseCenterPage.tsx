@@ -3718,9 +3718,14 @@ export default function CaseCenterPage({
             <li>法院退款：{caseCommissionPreview?.source_fee.refund_amount ?? 0} 元。</li>
             <li>高开金额：{caseCommissionPreview?.source_fee.invoice_over_amount ?? 0} 元；高开成本：{caseCommissionPreview?.source_fee.cost_over_amount ?? 0} 元。</li>
             <li>提成基数：{caseCommissionPreview?.source_fee.amount ?? 0} 元。</li>
-            <li>品管人员：{caseCommissionPreview?.personnel.find((item) => item.role === "品管")?.display_name || "未设置"}（{caseCommissionPreview?.quality_manager_source || "客户基本信息未关联"}）。</li>
+            <li>品管人员：{caseCommissionPreview?.personnel.find((item) => item.role === "品管")?.display_name || caseCommissionPreview?.quality_manager_usernames?.join("、") || "未设置"}（{caseCommissionPreview?.quality_manager_source || "客户基本信息未关联"}）。</li>
           </ol>}
         />
+        {!!caseCommissionPreview?.scheme_messages?.length && <Alert
+          type="warning" showIcon title="以下人员未配置提成"
+          description={caseCommissionPreview.scheme_messages.map((text) => <div key={text}>{text}</div>)}
+          style={{ marginBottom: 12 }}
+        />}
         <Table<CaseCommissionPreviewRow>
           rowKey="client_key"
           size="small"

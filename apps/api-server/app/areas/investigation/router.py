@@ -1594,9 +1594,7 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         cause_or_charge = body.cause_or_charge.strip() or clue_data.get("cause_or_charge") or clue_data.get("cause", "")
         missing_case_fields = [
             label for label, value in (
-                ("案由", cause_or_charge),
                 ("经办律师", handling_lawyers),
-                ("律师助理", assistant),
             ) if not value
         ]
         if missing_case_fields:
@@ -1617,7 +1615,7 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
             assistant,
             assistant_username,
         )
-        case_record = BusinessRecord(module="case", serial_no=serial_no, title=case_title or clue.title, customer=case_customer, status=body.case_phase.strip() or "等待公证书", owner=clue.owner, department=case_department, description=f"由已取证线索 {clue.serial_no} 自动转案", data=case_data)
+        case_record = BusinessRecord(module="case", serial_no=serial_no, title=case_title or clue.title, customer=case_customer, status=body.case_phase.strip() or "新案待分配", owner=clue.owner, department=case_department, description=f"由已取证线索 {clue.serial_no} 自动转案", data=case_data)
         db.add(case_record); await db.flush()
         await _persist_case_litigant_customers(
             case_record,

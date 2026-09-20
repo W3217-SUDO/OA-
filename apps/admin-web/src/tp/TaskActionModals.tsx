@@ -60,7 +60,7 @@ export function HandoffModal(props: HandoffModalProps) {
       <Alert
         type="warning"
         showIcon
-        message="转交后 5 天内接收人未开始，系统按交接规则自动完成。"
+        message="转交后由接收人接收并处理，超过截止日期将持续显示逾期天数。"
       />
       <Form form={handoffForm} layout="vertical" style={{ marginTop: 18 }}>
           <div className="form-grid">
@@ -182,7 +182,7 @@ export function TaskBatchModal(props: TaskBatchModalProps) {
         showIcon
         message={
           taskBatchAction === "handoff"
-            ? "所有任务将转交给同一接收人；交接后 5 天内未重新开始会自动完成。"
+            ? "所有任务将转交给同一接收人，由接收人按正常流程处理。"
             : taskBatchAction === "withdraw"
               ? "仅任务发起人或管理员可撤回；任一任务不符合条件时整批不会提交。"
               : taskBatchAction === "confirm"

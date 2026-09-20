@@ -529,7 +529,7 @@ async def _convert_notary_to_case(
 
 def _case_fee_display_type(item: BusinessRecord) -> str:
     data = item.data or {}
-    explicit = str(data.get("fee_type_name") or data.get("case_fee_type_name") or "").strip()
+    explicit = str(data.get("fee_type_name") or data.get("case_fee_type_name") or data.get("expense_subtype") or "").strip()
     if explicit:
         return explicit
     fee_type = str(data.get("fee_type") or "").strip()

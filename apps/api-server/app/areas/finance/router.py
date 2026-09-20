@@ -1,5 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.models_shared import IncomingPaymentAllocationItem
+from app.core.incoming_allocation_records import AllocationCancelInput
 from app.core.constants import (
     EXPENSE_SCOPE_FEE_TYPES, FINANCE_FEE_TYPES, FINANCE_PAYMENT_CANCELABLE_STATUSES, FINANCE_PAYMENT_ROLLBACKABLE_STATUSES, FINANCE_TRANSACTION_TYPES,
     JAR_FEE_MODULE, JAR_FEE_STATUSES, JAR_FEE_TRANSITIONS, REFUND_CASE_FEE_STATUSES, REFUND_CASE_FEE_STATUS_BY_LABEL,
@@ -2543,6 +2544,7 @@ async def claim_incoming_payment(payment_id: int, body: IncomingPaymentClaimInpu
 
 @router.get(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}/allocation-candidates")
 async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only: bool = False, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.formatters import _case_fee_display_type
     from app.core.crm import (
         _case_is_for_allocation_customer,
     )
@@ -2714,7 +2716,7 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
                 "defendant": str(case_data.get("defendant") or case_data.get("appellee_names") or case_data.get("opponent") or ""),
                 "case_stage": str(case_data.get("case_stage") or case_data.get("business_stage") or (case_record.status if case_record else "案件费用")),
                 "submission_date": str(case_data.get("case_register_date") or case_data.get("submission_date") or "")[:10],
-                "fee_type": str(fee_data.get("fee_type") or fee_record.title or "案件费用"),
+                "fee_type": _case_fee_display_type(fee_record),
                 "total_amount": total_amount,
                 "received_amount": received_amount,
                 "remaining_amount": remaining,
@@ -2771,6 +2773,8 @@ async def _revert_incoming_allocation(allocation: dict, db: AsyncSession, *, pay
         current_received = float(fee_data.get("received_amount") or fee_data.get("cashed_amount") or 0)
         remaining_received = max(_round_fee_amount(current_received - amount), 0)
         fee_data["received_amount"] = remaining_received
+        if "cashed_amount" in fee_data:
+            fee_data["cashed_amount"] = remaining_received
         if remaining_received <= 0.001:
             for key in ("received_at", "cashed_date", "incoming_payment_id", "receipt_no"):
                 fee_data.pop(key, None)
@@ -3135,6 +3139,18 @@ async def revoke_incoming_payment_allocations(body: IncomingPaymentRevokeInput, 
     for item in items:
         await db.refresh(item)
     return {"revoked": revoked, "items": [_incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db)) for item in items]}
+
+
+@router.get(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}/allocation-records")
+async def get_allocation_records(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.incoming_allocation_records import allocation_records
+    return await allocation_records(payment_id, identity, db)
+
+
+@router.post(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}/allocation-records/cancel")
+async def cancel_selected_allocations(payment_id: int, body: AllocationCancelInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.incoming_allocation_records import cancel_allocation_records
+    return await cancel_allocation_records(payment_id, body, identity, db)
 
 
 @router.get(f"{settings.api_prefix}/finance/ar-summary")

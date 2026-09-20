@@ -589,7 +589,9 @@ async def _case_commission_preview_for_amount(
         active_users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
         active_users_by_username = {user.username.lower(): user for user in active_users}
     scheme_cache = scheme_cache if scheme_cache is not None else {}
-    case_data = case_record.data or {}
+    case_data = dict(case_record.data or {})
+    if not any(case_data.get(key) for key in ("business_owner_usernames", "business_owner_username", "source_person_usernames", "source_person_username", "business_owner", "source_person")):
+        case_data["source_person"] = case_record.owner
     # Presence alone is insufficient: placeholders, ambiguous staff records and
     # disabled accounts cannot be recipients. Recheck on every preview/save.
     required_roles = (
@@ -617,6 +619,7 @@ async def _case_commission_preview_for_amount(
     case_date = resolved_case_date.date() if resolved_case_date != datetime.min else date.today()
     rows: list[dict] = []
     missing: list[str] = []
+    scheme_messages: list[str] = []
     personnel: list[dict] = []
     seen_role_employees: set[tuple[str, int]] = set()
     for role in CASE_COMMISSION_ROLES:
@@ -650,7 +653,9 @@ async def _case_commission_preview_for_amount(
                 scheme_cache[scheme_key] = await _commission_scheme_record_for_case(employee.id, case_date, db)
             scheme_record = scheme_cache[scheme_key]
             if scheme_record is None:
-                missing.append(f"{display_name}（{role['label']}）：无覆盖案件日期 {case_date} 的有效提成方案")
+                notice = f"{display_name}（{role['label']}）：未配置覆盖案件日期 {case_date} 的提成方案，本次不生成该项提成"
+                missing.append(notice)
+                scheme_messages.append(notice)
                 continue
             scheme = dict(scheme_record.data or {}) if scheme_record else {}
             scheme_details = [{"role": rule["label"], "rate": float(scheme.get(rule["rate_field"]) or 0),
@@ -658,7 +663,9 @@ async def _case_commission_preview_for_amount(
             rate = float(scheme.get(role["rate_field"]) or 0)
             fixed = float(scheme.get(role["fixed_field"]) or 0)
             if rate <= 0 and fixed <= 0:
-                missing.append(f"{display_name}（{role['label']}）：有效方案的角色比例与固定提成均为零")
+                notice = f"{display_name}（{role['label']}）：未配置该角色的提成比例或固定金额，本次不生成该项提成"
+                missing.append(notice)
+                scheme_messages.append(notice)
                 continue
             if rate > 0:
                 amount = _round_case_commission_amount(base_amount * rate)
@@ -696,6 +703,7 @@ async def _case_commission_preview_for_amount(
         "case": {"id": case_record.id, "serial_no": case_record.serial_no, "title": case_record.title},
         "case_date": str(case_date), "personnel": personnel, "items": rows,
         "missing_messages": list(dict.fromkeys(missing)),
+        "scheme_messages": list(dict.fromkeys(scheme_messages)),
     }
 
 
@@ -821,15 +829,8 @@ async def _case_commission_preview(
     quality_manager_source = ""
     if customer_record:
         customer_data = customer_record.data or {}
-        assignment_history = customer_data.get("assignment_history") if isinstance(customer_data.get("assignment_history"), list) else []
-        latest_assignment = assignment_history[-1] if assignment_history and isinstance(assignment_history[-1], dict) else {}
-        latest_manager = str(latest_assignment.get("to_owner") or "").strip()
-        if not latest_manager:
-            history_managers = latest_assignment.get("managers") if isinstance(latest_assignment.get("managers"), list) else []
-            latest_manager = str(history_managers[0] if history_managers else "").strip()
-        if not latest_manager:
-            current_managers = customer_data.get("customer_managers") if isinstance(customer_data.get("customer_managers"), list) else []
-            latest_manager = str(current_managers[0] if current_managers else customer_record.owner or "").strip()
+        current_managers = customer_data.get("customer_managers") if isinstance(customer_data.get("customer_managers"), list) else []
+        latest_manager = str(current_managers[0] if current_managers else customer_record.owner or "").strip()
         if latest_manager:
             quality_manager_tokens = [latest_manager]
             quality_manager_source = f"客户基本信息：{customer_record.serial_no}"
@@ -844,6 +845,7 @@ async def _case_commission_preview(
     return {
         **preview,
         "quality_manager_source": quality_manager_source,
+        "quality_manager_usernames": quality_manager_tokens,
         "source_fee": {
             "id": source_fee.id, "serial_no": source_fee.serial_no,
             "amount": base_amount, "source_amount": selected_amount, "fee_type": source_data.get("fee_type"),
@@ -1072,7 +1074,7 @@ async def _query_counsel_cases(
         if start_date and end_date and start_date > end_date:
             raise HTTPException(status_code=422, detail=f"{label}范围无效")
     relation_customer = await _customer_or_404(body.customer_id, identity, db) if body.customer_id else None
-    record_conditions = [BusinessRecord.module == "case"]
+    record_conditions = [BusinessRecord.module == "case", BusinessRecord.status != "已合并"]
     global_company_scope = body.scope == "global" and await _can_search_all_cases_from_global_search(identity, db)
     if body.dashboard_queue:
         record_conditions.extend(await _record_scope_conditions(identity, db))
@@ -1081,6 +1083,9 @@ async def _query_counsel_cases(
         if not global_company_scope:
             record_conditions.extend(await _record_scope_conditions(identity, db))
             record_conditions.append(await _case_mine_scope_condition(identity, db))
+    elif body.scope == "department" and relation_customer is None:
+        from app.core.case_department_scope import department_case_condition
+        record_conditions.append(await department_case_condition(identity, db))
     elif relation_customer is None:
         record_conditions.extend(await _record_scope_conditions(identity, db))
         if body.scope == "mine":
@@ -1110,13 +1115,7 @@ async def _query_counsel_cases(
         records = [record for record in records if _matches_dashboard_case_queue(record, CASE_QUEUES[body.dashboard_queue])]
     elif body.case_queue:
         records = [record for record in records if _matches_dashboard_case_queue(record, body.case_queue)]
-    # ``mine`` is applied in SQL above with stable owner/team/legacy-participant
-    # identities.  This keeps administrator personal lists personal without
-    # dropping migrated participant cases.  Department is the only additional
-    # in-memory boundary.
-    if body.scope == "department" and relation_customer is None:
-        department = str(identity.get("department") or "").strip()
-        records = [record for record in records if department and record.department == department]
+    # 个人和部门范围已在 SQL 中按人员关系过滤，保留迁移案件的参与人关系。
 
     document_names: dict[int, str] = {}
     record_attachments: dict[int, list[FileAttachment]] = {}

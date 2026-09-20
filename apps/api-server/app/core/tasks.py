@@ -187,6 +187,9 @@ def _task_dict(record: BusinessRecord) -> dict:
     data = record.data or {}
     raw_case_nos = data.get("case_nos") if isinstance(data.get("case_nos"), list) else []
     case_nos = [str(value).strip() for value in raw_case_nos if str(value).strip()]
+    original_case_no = str(data.get("merged_from_case_no") or "").strip()
+    if original_case_no and original_case_no not in case_nos:
+        case_nos.append(original_case_no)
     primary_case_no = str(data.get("case_no") or "").strip()
     if primary_case_no and primary_case_no not in case_nos:
         case_nos.insert(0, primary_case_no)
@@ -204,7 +207,10 @@ def _task_dict(record: BusinessRecord) -> dict:
         # deadline. Keep one response field while preserving both sources.
         raw_deadline = data.get("deadline") or data.get("task_end_time") or data.get("TaskEndTime") or ""
         deadline = date.fromisoformat(str(raw_deadline))
-        days_remaining = (deadline - date.today()).days
+        is_terminal = record.status in {"已拒绝", "已完成", "已验收", "待确认"}
+        terminal_at = data.get("rejected_at") if record.status == "已拒绝" else data.get("completion_submitted_at")
+        end_date = (date.fromisoformat(str(terminal_at)[:10]) if terminal_at else None) if is_terminal else date.today()
+        days_remaining = (deadline - end_date).days if end_date else None
     except ValueError:
         deadline = None
         days_remaining = None
@@ -213,7 +219,7 @@ def _task_dict(record: BusinessRecord) -> dict:
     effective_status = "已完成" if record.status == "待确认" else record.status
     if record.status == "处理中" and str(data.get("source") or "").strip() == "案件任务":
         effective_status = "进行中"
-    if days_remaining is not None and days_remaining < 0 and record.status in {"待接收", "待处理", "处理中"}:
+    if days_remaining is not None and days_remaining < 0 and record.status in {"待接收", "待处理", "处理中", "进行中"}:
         effective_status = "已逾期"
     reminder_due = days_remaining in {1, 3} or (days_remaining is not None and days_remaining < 0 and abs(days_remaining) % 3 == 0)
     reminder_text = ""
@@ -447,7 +453,7 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
 
 
 async def _apply_task_auto_completion(db: AsyncSession) -> bool:
-    """交接后未重新开始的任务，满 5 天自动完成。"""
+    """处理已完成任务的自动验收及既有仓库流转，不自动完成待接收任务。"""
     from app.core.query_batches import _scalars_in_batches
 
     tasks = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all()
@@ -511,19 +517,6 @@ async def _apply_task_auto_completion(db: AsyncSession) -> bool:
                 target = "已出库" if auto_task_type.startswith("take_evidence") else "已销毁"
                 evidence.data = {**(evidence.data or {}), "evidence_status": target, "automatic_task_id": task.id}
                 changed = True
-        auto_at = data.get("handoff_auto_complete_at")
-        if not auto_at or data.get("handoff_restarted") or task.status != "待接收":
-            continue
-        try:
-            should_complete = date.fromisoformat(str(auto_at)) <= date.today()
-        except ValueError:
-            should_complete = False
-        if should_complete:
-            previous = task.status
-            task.status = "已完成"
-            task.data = {**data, "auto_completed": True, "auto_completed_at": str(date.today())}
-            await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="交接任务自动完成", from_status=previous, to_status="已完成", operator="system", comment="交接满 5 天且未重新开始，系统自动完成"), db, content="任务已自动完成.")
-            changed = True
     if changed:
         await db.commit()
     return changed

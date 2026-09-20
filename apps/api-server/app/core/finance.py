@@ -1868,7 +1868,7 @@ def _refund_case_fee_status(data: dict) -> tuple[str, str]:
     else:
         value = str(raw).strip()
         code = value.upper() if value.upper() in REFUND_CASE_FEE_STATUSES else REFUND_CASE_FEE_STATUS_BY_LABEL.get(value, "R10")
-    label = str(data.get("refund_status_label") or REFUND_CASE_FEE_STATUSES.get(code) or raw).strip()
+    label = str(REFUND_CASE_FEE_STATUSES.get(code) or data.get("refund_status_label") or raw).strip()
     return code, label
 
 
@@ -1976,7 +1976,7 @@ async def _refund_case_fee_rows(
         try:
             progress_days = max((date.today() - date.fromisoformat(started_at[:10])).days, 0)
         except (TypeError, ValueError):
-            progress_days = 0
+            progress_days = None
         case_data = data.get("case_data") if isinstance(data.get("case_data"), dict) else {}
         data.update({
             "refund_requested_amount": requested if show_amount else None,

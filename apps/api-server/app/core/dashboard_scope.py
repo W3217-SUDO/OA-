@@ -1,7 +1,7 @@
 """控制台业务入口的数据边界；不授予额外写权限。"""
 from fastapi import HTTPException
-from sqlalchemy import or_, select
-from app.models import BusinessRecord, ContractObject, User
+from sqlalchemy import false, or_, select
+from app.models import BusinessRecord, ContractObject, Department, User
 from app.core.permissions import (
     _case_mine_scope_condition, _configured_user_job_role_name,
     _job_role_for_name, _system_user_role_ids,
@@ -17,6 +17,23 @@ CASE_QUEUES = {
 QUEUE_KEYS = {*CASE_QUEUES, "official-fee-unpaid", "refund-pending", "official-fee-unreceived"}
 
 
+async def company_hearing_conditions(identity, db):
+    user = await db.scalar(select(User).where(User.username == identity['username'], User.is_active.is_(True)))
+    if user is None:
+        raise HTTPException(401, '当前用户不存在或已停用')
+    departments = list((await db.scalars(select(Department))).all())
+    blocked = {item.id for item in departments if ''.join(item.name.split()) in {'合作律师部', '外部合作调查取证部'}}
+    while True:
+        expanded = blocked | {item.id for item in departments if item.parent_department_id in blocked}
+        if expanded == blocked:
+            break
+        blocked = expanded
+    excluded = {item.name for item in departments if item.id in blocked}
+    if not user.department or user.department in excluded or ''.join(user.department.split()) in {'合作律师部', '外部合作调查取证部'}:
+        return [false()]
+    return [BusinessRecord.module == 'case', BusinessRecord.status.notin_(['已合并', '已删除', '已回收'])]
+
+
 async def dashboard_identity(identity, db):
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if user is None or not user.is_active:
@@ -26,7 +43,20 @@ async def dashboard_identity(identity, db):
     all_cases = "admin" in roles or bool(role and role.name == "财务审核管理")
     conditions = [BusinessRecord.module == "case", BusinessRecord.status.notin_(["已合并", "已删除", "已回收"])]
     if not all_cases:
-        conditions.append(await _case_mine_scope_condition(identity, db))
+        owned_contracts = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "contract", BusinessRecord.owner == user.username,
+            BusinessRecord.status.notin_(["已回收", "已删除"]),
+        ))).all())
+        owned_ids = {item.id for item in owned_contracts}
+        owned_nos = {item.serial_no for item in owned_contracts}
+        linked_cases = select(ContractObject.case_record_id).where(ContractObject.contract_record_id.in_(owned_ids))
+        conditions.append(or_(
+            await _case_mine_scope_condition(identity, db),
+            BusinessRecord.id.in_(linked_cases),
+            BusinessRecord.data['contract_id'].as_integer().in_(owned_ids),
+            BusinessRecord.data['contract_record_id'].as_integer().in_(owned_ids),
+            BusinessRecord.data['contract_no'].as_string().in_(owned_nos),
+        ))
     cases = list((await db.scalars(select(BusinessRecord).where(*conditions))).all())
     case_ids = {item.id for item in cases}
     case_nos = {item.serial_no for item in cases}

@@ -465,8 +465,8 @@ class BatchClueCaseInput(BaseModel):
     court: str = ""
     client_position: str = Field(default="原告", max_length=64)
     cause_or_charge: str = Field(default="", max_length=255)
-    case_phase: str = Field(default="等待公证书", max_length=64)
-    handling_lawyer: str = Field(default="", max_length=128)
+    case_phase: str = Field(default="新案待分配", max_length=64)
+    handling_lawyer: str = Field(default="system", max_length=128)
     assistant: str = Field(default="", max_length=128)
 
 

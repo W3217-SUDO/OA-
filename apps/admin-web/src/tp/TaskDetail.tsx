@@ -170,7 +170,7 @@ export default function TaskDetail(props: TaskDetailProps) {
               onClick={() =>
                 onSimpleAction(
                   communication,
-                  communication.handoff_auto_complete_at ? "restart" : "accept",
+                  "accept",
                 )
               }
             >

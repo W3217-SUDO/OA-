@@ -1160,8 +1160,8 @@ export default function InvestigationCenterPage({
         case_type: "民事案件",
         client_position: firstClue?.data.client_position || "原告",
         cause_or_charge: firstClue?.data.cause_or_charge || firstClue?.data.cause || "",
-        case_phase: "等待公证书",
-        handling_lawyer: profile.username || "",
+        case_phase: "新案待分配",
+        handling_lawyer: "system",
         assistant: "",
       });
       setBatchStep(0);
