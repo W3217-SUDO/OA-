@@ -49,6 +49,24 @@ test('文档分页完整加载，第二页失败不得伪装成功', async () =>
   fail = true;await assert.rejects(loadCaseDocuments(9), /第二页失败/);
 });
 
+test('合并后的合同目录包含来源合同并按附件ID去重，不混入案件或AI文档', async () => {
+  const { caseContractDocuments } = await load('../src/legal/services/caseDocuments.ts', {});
+  const primary = [{ id: 1, record_id: 10, category: '合同附件' }];
+  const related = [
+    { ...primary[0], document_category: '合同文档' },
+    { id: 2, record_id: 20, category: '合同附件', document_category: '合同文档' },
+    { id: 3, record_id: 30, document_category: 'AI空间' },
+    { id: 4, record_id: 30, document_category: '案件资料' },
+  ];
+  const files = caseContractDocuments(primary, related);
+  assert.deepEqual(files.map(file => file.id), [1, 2]);
+  assert.equal(files[1].record_id, 20);
+  assert.equal(files[1].category, '合同附件');
+  assert.deepEqual(caseContractDocuments([], []), []);
+  assert.deepEqual(caseContractDocuments(primary, []), primary);
+  assert.equal(primary.length, 1);
+});
+
 
 
 test('线索详情映射原始店铺链接、产品及多主体字段', async () => {

@@ -1,5 +1,6 @@
 import { CaseClueDetails } from "./CaseDetail/CaseClueDetails";
 import { CaseClueSelect } from "./CaseClueSelect";
+import { caseContractDocuments } from "./services/caseDocuments";
 import { CommissionPerson } from "./CommissionPerson";
 import {
 CloseOutlined,
@@ -2736,7 +2737,7 @@ export default function CaseCenterPage({
     ? activeCounselDocCategory==="客户文档"
       ? counselDetailCustomerAttachments
       : activeCounselDocCategory==="合同文档"
-        ? counselDetailContractAttachments
+        ? caseContractDocuments(counselDetailContractAttachments, counselDetailAttachments)
         : counselDetailAttachments.filter(row=>activeCounselDocCategory==="案件文档全部"
           ? !nonCaseDocumentCategories.includes(String(row.document_category||row.category||""))
           : activeCounselDocCategories.some(category=>String(row.document_category||row.category||"")===category))

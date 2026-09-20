@@ -121,6 +121,45 @@ class Batch0918Test(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await db.scalar(select(HearingSchedule))).case_record_id, self.case_id)
             self.assertIsNotNone(await db.scalar(select(WorkflowEvent).where(WorkflowEvent.record_id == self.case_id, WorkflowEvent.action == "来源历史")))
 
+    async def test_merge_three_contract_and_five_case_documents(self):
+        from app.models import FileAttachment
+        async with self.sessions() as db:
+            contract = BusinessRecord(module="contract", serial_no="CODEX-0918-doc-contract",
+                title="来源合同", customer="Batch customer", owner=IDENTITY["username"], data={})
+            db.add(contract)
+            await db.flush()
+            source = BusinessRecord(module="case", serial_no="CODEX-0918-doc-source",
+                title="来源案件", customer="Batch customer", owner=IDENTITY["username"],
+                status="一审准备开庭", data={"case_type": "民事争议", "contract_id": contract.id,
+                    "contract_no": contract.serial_no})
+            db.add(source)
+            await db.flush()
+            files = [FileAttachment(record_id=record.id, category=category,
+                original_name=f"{category}-{i}.txt", stored_name=f"CODEX-0918-doc-{record.id}-{i}",
+                path="isolated-unused", size=1, uploader=IDENTITY["username"])
+                for record, category, count in ((contract, "合同附件", 3), (source, "案件资料", 5))
+                for i in range(count)]
+            db.add_all(files)
+            await db.commit()
+            contract_id = contract.id
+            file_ids = {file.id for file in files}
+        result = await self.client.post(f"{API}/cases/{self.case_id}/merge",
+            json={"source_case_no": "CODEX-0918-doc-source"})
+        self.assertEqual(result.status_code, 200, result.text)
+        response = await self.client.get(f"{API}/cases/{self.case_id}/documents")
+        self.assertEqual(response.status_code, 200, response.text)
+        files = response.json()["items"]
+        self.assertEqual({file["id"] for file in files}, file_ids)
+        self.assertEqual(sum(file["document_category"] == "合同文档" for file in files), 3)
+        self.assertEqual(sum(file["document_category"] == "案件资料" for file in files), 5)
+        for file in files:
+            expected = contract_id if file["document_category"] == "合同文档" else self.case_id
+            self.assertEqual(file["record_id"], expected)
+            metadata = await self.client.get(f"{API}/attachments/{file['id']}")
+            self.assertEqual(metadata.status_code, 200, metadata.text)
+        async with self.sessions() as db:
+            self.assertEqual(len((await db.scalars(select(FileAttachment))).all()), 8)
+
     async def test_non_draft_fee_delete_and_accounting_guards(self):
         async with self.sessions() as db:
             fee = await db.get(BusinessRecord, self.fee_id); fee.status = "已审批"
