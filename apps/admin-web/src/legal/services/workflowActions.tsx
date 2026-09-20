@@ -1314,21 +1314,14 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             const clerkValue = readCourtField("clerk");
             const firstInstance = companyScheduleCourtInfo.level === "first";
             const levelLabel = getCompanyScheduleCourtLevels().find(([key]) => key === companyScheduleCourtInfo.level)?.[1] || "";
-            const data = companyScheduleCourtInfo.row.data || {};
             const levelPrefix = `${companyScheduleCourtInfo.level}_court`;
             const payload: Record<string, unknown> = {
-                first_instance_court: firstInstance ? values.court || "" : data.first_instance_court || "",
-                first_instance_case_no: firstInstance ? values.case_no || "" : data.first_instance_case_no || "",
-                second_instance_court: companyScheduleCourtInfo.level === "second" ? values.court || "" : data.second_instance_court || "",
-                second_instance_case_no: companyScheduleCourtInfo.level === "second" ? values.case_no || "" : data.second_instance_case_no || "",
-                execution_court_name: companyScheduleCourtInfo.level === "execution" ? courtValue : data.execution_court_name || "",
-                execution_court_case_no: companyScheduleCourtInfo.level === "execution" ? caseNoValue : data.execution_court_case_no || "",
-                retrial_court_name: companyScheduleCourtInfo.level === "retrial" ? courtValue : data.retrial_court_name || "",
-                retrial_court_case_no: companyScheduleCourtInfo.level === "retrial" ? caseNoValue : data.retrial_court_case_no || "",
-                courtroom: firstInstance ? courtroomValue : data.courtroom || "",
-                judge: firstInstance ? judgeValue : data.judge || "",
-                clerk: firstInstance ? clerkValue : data.clerk || "",
-                judgment_date: firstInstance ? values.judgment_date?.format("YYYY-MM-DD") || null : data.judgment_date || null,
+                ...(firstInstance ? {
+                    courtroom: courtroomValue,
+                    judge: judgeValue,
+                    clerk: clerkValue,
+                    judgment_date: values.judgment_date?.format("YYYY-MM-DD") || null,
+                } : {}),
                 [`${levelPrefix}_name`]: courtValue,
                 [`${levelPrefix}_case_no`]: caseNoValue,
                 [`${levelPrefix}_courtroom`]: courtroomValue,

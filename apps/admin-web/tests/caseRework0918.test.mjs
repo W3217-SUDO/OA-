@@ -1,0 +1,47 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import React from 'react';
+import { create, act } from 'react-test-renderer';
+import { load, courtPayloads } from './caseRework0918.helpers.mjs';
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+const clue = (id, serial_no) => ({ id, serial_no, title: '线索' });
+
+test('真实法院保存动作仅提交当前审级', courtPayloads);
+
+test('线索输入建议、重新打开刷新、过期请求取消、保留选中名称及错误提示', async () => {
+  const calls = [];
+  const { CaseClueSelect } = await load('../src/legal/CaseClueSelect.tsx', { get: (path, config) => new Promise((resolve, reject) => calls.push({path, config, resolve, reject})) });
+  let root;
+  await act(async () => { root = create(React.createElement(CaseClueSelect, { caseId: 10, value: [1] })); });
+  await act(async () => { await wait(10); });
+  const props = () => root.root.findByType('select-probe').props;
+  await act(async () => { calls[0].resolve({data:{items:[clue(1,'已选'),clue(2,'M甲')]}}); });
+  assert.equal(props().options.length,2);
+  await act(async () => { props().onSearch('M'); });
+  await act(async () => { await wait(280); });
+  const old = calls.at(-1); assert.equal(old.config.params.keyword,'M');
+  await act(async () => { props().onSearch('M乙'); });
+  assert.equal(old.config.signal.aborted,true);
+  await act(async () => { await wait(280); });
+  await act(async () => { calls.at(-1).resolve({data:{items:[clue(3,'M乙')]}}); old.resolve({data:{items:[clue(2,'M甲')]}}); });
+  assert.deepEqual(props().options.map(x=>x.value),[3,1]);
+  assert.match(props().options.find(x=>x.value===1).label,/已选/);
+  await act(async () => { props().onOpenChange(true); });
+  await act(async () => { await wait(10); });
+  assert.equal(calls.at(-1).config.params.keyword,'');
+  await act(async () => { calls.at(-1).resolve({data:{items:[clue(1,'已选')]}}); });
+  assert.match(props().notFoundContent,/暂无符合条件/);
+  assert.match(props().popupRender(null).props.children.props.children,/同客户、已取证且未生成案件/);
+  await act(async () => { props().onOpenChange(true); });
+  await act(async () => { await wait(10); });
+  await act(async () => { calls.at(-1).reject({response:{data:{detail:'无权访问'}}}); });
+  assert.equal(props().notFoundContent,'无权访问');
+  await act(async () => { root.update(React.createElement(CaseClueSelect, {caseId:11,value:[]})); });
+  await act(async () => { await wait(10); });
+  assert.equal(calls.at(-1).path,'/cases/11/clue-candidates');
+  assert.equal(props().options.length,0);
+  const pending=calls.at(-1);
+  await act(async () => { root.unmount(); });
+  assert(pending.config.signal.aborted);
+});
