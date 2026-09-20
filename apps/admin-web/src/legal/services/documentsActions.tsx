@@ -138,7 +138,10 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
     };
     const downloadCaseTaskAttachment = async (item: CaseTaskAttachment) => {
         try {
-            const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
+            const path = item.case_context_id && item.task_context_id
+                ? `/cases/${item.case_context_id}/tasks/${item.task_context_id}/attachments/${item.id}/download`
+                : `/attachments/${item.id}/download`;
+            const response = await api.get(path, { responseType: "blob" });
             const url = URL.createObjectURL(response.data);
             const anchor = document.createElement("a");
             anchor.href = url;

@@ -216,6 +216,7 @@ export type Hearing = {
 };
 
 export type TaskRow = {
+  case_context_id?: number;
   id: number;
   serial_no: string;
   title: string;
@@ -254,6 +255,8 @@ export type CaseTaskHistoryItem = {
 };
 
 export type CaseTaskAttachment = {
+  case_context_id?: number;
+  task_context_id?: number;
   id: number;
   original_name: string;
   category: string;

@@ -1,4 +1,5 @@
 """案件与来源线索的关联、选择资格和详情投影。"""
+import re
 from fastapi import HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,14 +19,18 @@ def case_clue_ids(case: BusinessRecord) -> set[int]:
 async def case_clues(case: BusinessRecord, db: AsyncSession) -> list[BusinessRecord]:
     ids = case_clue_ids(case)
     data = case.data or {}
-    numbers = data.get("investigation_clue_nos") or []
-    if isinstance(numbers, str):
-        numbers = [numbers]
-    numbers = [*numbers, data.get("clue_no"), data.get("source_clue_no")]
+    numbers = []
+    for key in ("investigation_clue_nos", "clue_nos", "clue_no", "investigation_clue", "source_clue_no"):
+        values = data.get(key) or []
+        if not isinstance(values, list):
+            values = re.split(r"[,，;；、|]+", str(values))
+        numbers.extend(str(value).strip() for value in values if str(value).strip())
     condition = BusinessRecord.id.in_(ids) if ids else BusinessRecord.serial_no.in_([n for n in numbers if n])
     if not ids and not any(numbers):
         condition = or_(BusinessRecord.data["case_id"].as_integer() == case.id,
+                        BusinessRecord.data["case_record_id"].as_integer() == case.id,
                         BusinessRecord.data["converted_case_id"].as_integer() == case.id,
+                        BusinessRecord.data["case_no"].as_string() == case.serial_no,
                         BusinessRecord.data["converted_case_no"].as_string() == case.serial_no)
     return list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "clue", condition,

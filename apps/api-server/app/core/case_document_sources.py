@@ -2,7 +2,7 @@
 
 
 def case_document_sources(record):
-    pending = [{"id": record.id, "data": record.data or {}}]
+    pending = [{"id": record.id, "serial_no": record.serial_no, "data": record.data or {}}]
     sources = []
     seen = set()
     while pending:

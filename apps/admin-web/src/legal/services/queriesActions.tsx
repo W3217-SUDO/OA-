@@ -449,7 +449,13 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         const { setCaseTaskDetailLoading, setViewingCaseTask, setCaseTaskHistory, setCaseTaskDetailMaterials, setCaseTaskDetailFeedbacks } = context;
         setCaseTaskDetailLoading(true);
         try {
-            const [recordResult, historyResult, materialResult, feedbackResult] = await Promise.all([
+            const caseDetail = task.case_context_id
+                ? (await api.get(`/cases/${task.case_context_id}/tasks/${task.id}`)).data
+                : null;
+            const [recordResult, historyResult, materialResult, feedbackResult] = caseDetail ? [
+                { data: caseDetail.record }, { data: { items: caseDetail.history } },
+                { data: { items: caseDetail.materials } }, { data: { items: caseDetail.feedbacks } },
+            ] : await Promise.all([
                 api.get(`/records/${task.id}`),
                 api.get(`/tasks/${task.id}/history`),
                 api.get("/attachments", { params: { record_id: task.id, category: "任务资料附件", page_size: 200 } }),

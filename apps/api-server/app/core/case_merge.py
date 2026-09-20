@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import HTTPException
 from sqlalchemy import or_, select
-from app.models import BusinessRecord, CaseAssistedFee, CaseEvent, ContractObject, FileAttachment, HearingSchedule, IncomingPayment, WorkflowEvent
+from app.models import AgentDocument, BusinessRecord, CaseAssistedFee, CaseEvent, ContractObject, ContractPaymentLine, FileAttachment, HearingSchedule, IncomingPayment, WorkflowEvent
 from app.core.case_relations import case_clues
 
 
@@ -55,7 +55,7 @@ async def merge_case_relations(source, target, db):
             receipt.case_no = target.serial_no
         if changed:
             receipt.allocations = allocations
-    for model in (CaseEvent, HearingSchedule, ContractObject):
+    for model in (CaseEvent, HearingSchedule, ContractObject, ContractPaymentLine):
         for item in (await db.scalars(select(model).where(model.case_record_id == source.id))).all():
             item.case_record_id = target.id
     events = (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == source.id))).all()
@@ -70,7 +70,9 @@ async def finance_rows_for_merge(source, db):
     return list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance",
         or_(BusinessRecord.data["case_no"].as_string() == source.serial_no,
+            BusinessRecord.data["converted_case_no"].as_string() == source.serial_no,
             BusinessRecord.data["case_id"].as_integer() == source.id,
+            BusinessRecord.data["converted_case_id"].as_integer() == source.id,
             BusinessRecord.data["case_record_id"].as_integer() == source.id),
     ))).all())
 
@@ -78,12 +80,16 @@ async def finance_rows_for_merge(source, db):
 async def move_case_finance_files(source, target, identity, db):
     fees = await finance_rows_for_merge(source, db)
     for fee in fees:
-        data = fee.data or {}
+        data = dict(fee.data or {})
         for key in ("case_id", "case_record_id"):
             linked = await db.get(BusinessRecord, int(data[key])) if data.get(key) else None
             if linked and linked.module == "case" and linked.id != source.id:
                 raise HTTPException(409, "费用案件ID与案号指向不同有效案件，不能合并")
-        fee.data = {**(fee.data or {}), "case_id": target.id, "case_record_id": target.id,
+        if str(data.get("converted_case_id") or "") == str(source.id):
+            data["converted_case_id"] = target.id
+        if data.get("converted_case_no") == source.serial_no:
+            data["converted_case_no"] = target.serial_no
+        fee.data = {**data, "case_id": target.id, "case_record_id": target.id,
                     "case_no": target.serial_no, "merged_from_case_id": source.id,
                     "merged_from_case_no": source.serial_no, "merged_at": datetime.now().isoformat(timespec="seconds")}
         db.add(WorkflowEvent(record_id=fee.id, action="案件合并迁移费用", from_status=fee.status,
@@ -95,4 +101,7 @@ async def move_case_finance_files(source, target, identity, db):
     for file in files:
         file.record_id = target.id
         file.remark = f"{file.remark}｜案件合并迁移：{source.serial_no}→{target.serial_no}".strip("｜")
+    documents = (await db.scalars(select(AgentDocument).where(AgentDocument.record_id == source.id))).all()
+    for document in documents:
+        document.record_id = target.id
     return len(fees), len(assisted), len(files)

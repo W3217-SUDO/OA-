@@ -42,6 +42,7 @@ from app.models_shared import (
     SealPackageDownloadInput, SealStampInput, TaskActionInput, TransitionInput,
 )
 from fastapi import APIRouter
+from fastapi.responses import FileResponse
 
 router = APIRouter()
 
@@ -1346,8 +1347,9 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
     events = list((await db.scalars(select(WorkflowEvent).where(
         WorkflowEvent.record_id == case_id, WorkflowEvent.action == "新增案件日志",
     ).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
+    from app.core.case_document_sources import case_document_sources
     legacy_logs = list((await db.scalars(select(LegacyCaseLog).where(
-        LegacyCaseLog.CaseNo.in_([case_record.serial_no, *[item["serial_no"] for item in (case_record.data or {}).get("merged_sources", [])]]),
+        LegacyCaseLog.CaseNo.in_([item["serial_no"] for item in case_document_sources(case_record) if item.get("serial_no")]),
     ).order_by(LegacyCaseLog.CreateTime.desc(), LegacyCaseLog.LogId.desc()))).all())
     users_by_username = await _user_display_map(
         {item.operator for item in events} | {str(item.CreateUser or "").strip() for item in legacy_logs}, db
@@ -1419,6 +1421,7 @@ async def list_case_relations(
     }
     link_condition = or_(
         BusinessRecord.data["case_id"].as_integer() == case_record.id,
+        BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
         BusinessRecord.data["converted_case_id"].as_integer() == case_record.id,
         BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
         BusinessRecord.data["converted_case_no"].as_string() == case_record.serial_no,
@@ -3989,21 +3992,10 @@ async def list_case_tasks(
         _record_dict,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    link_condition = or_(
-        BusinessRecord.data["case_id"].as_integer() == case_record.id,
-        BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
-        BusinessRecord.data.cast(String).contains(f'"{case_record.serial_no}"'),
-    )
+    from app.core.case_task_view import case_task_relation
+    link_condition = case_task_relation(case_record)
     base_task_condition = [BusinessRecord.module == "task", link_condition]
     task_condition = list(base_task_condition)
-    if identity.get("role") != "admin":
-        username_token = f'"{identity["username"]}"'
-        task_condition.append(or_(
-            BusinessRecord.owner == identity["username"],
-            BusinessRecord.data["initiator"].as_string() == identity["username"],
-            BusinessRecord.data["collaborators"].as_string().contains(username_token),
-        ))
-    visible_total = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*task_condition)) or 0)
     if scope == "customer":
         task_condition.append(BusinessRecord.data["source"].as_string() == "客户任务")
     elif scope == "case":
@@ -4016,12 +4008,6 @@ async def list_case_tasks(
             BusinessRecord.data["is_vip"].as_boolean().is_(None),
         ))
     total = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*task_condition)) or 0)
-    if identity.get("role") != "admin" and visible_total == 0:
-        all_linked = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
-            BusinessRecord.module == "task", link_condition,
-        )) or 0)
-        if all_linked:
-            raise HTTPException(status_code=403, detail="只有任务参与人可以查看案件任务")
     deadline_expr = func.coalesce(
         BusinessRecord.data["deadline"].as_string(),
         BusinessRecord.data["task_end_time"].as_string(),
@@ -4035,6 +4021,7 @@ async def list_case_tasks(
     pages = (total + page_size - 1) // page_size if total else 0
     items = [await _task_display_dict(item, db) for item in rows]
     for item in items:
+        item["case_context_id"] = case_id
         if item.get("workflow_status") in {"待接收", "待处理"} and item.get("source") == "案件任务":
             item["status"] = "进行中"
     return {
@@ -4042,6 +4029,26 @@ async def list_case_tasks(
         "items": items,
         "total": total, "page": page, "page_size": page_size, "pages": pages,
     }
+
+
+@router.get(f"{settings.api_prefix}/cases/{{case_id}}/tasks/{{task_id}}")
+async def read_case_task(case_id: int, task_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.case_task_view import case_task_detail
+    return await case_task_detail(case_id, task_id, identity, db)
+
+
+@router.get(f"{settings.api_prefix}/cases/{{case_id}}/tasks/{{task_id}}/attachments/{{attachment_id}}/download")
+async def download_case_task_file(case_id: int, task_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.case_task_view import visible_case_task
+    from app.core.storage import _attachment_storage_path
+    await visible_case_task(case_id, task_id, identity, db)
+    item = await db.get(FileAttachment, attachment_id)
+    if not item or item.record_id != task_id or item.category not in {"任务资料附件", "任务反馈附件"}:
+        raise HTTPException(404, "该任务附件不存在")
+    path = _attachment_storage_path(item)
+    if path is None:
+        raise HTTPException(404, "附件文件不存在")
+    return FileResponse(path, media_type=item.content_type, filename=item.original_name)
 
 
 @router.post(f"{settings.api_prefix}/cases/tasks/finished")

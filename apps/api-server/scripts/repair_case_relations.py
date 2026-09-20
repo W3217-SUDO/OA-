@@ -27,6 +27,9 @@ async def plan(spec, db):
             condition = [column == getattr(item, column.key) for column in pk]
             row = (await db.execute(select(table).where(*condition))).mappings().one()
             tables.setdefault(table.name, []).append(dict(row))
+            for key in ("record_id", "case_record_id"):
+                if key in row:
+                    related_ids.update(value for value in (row[key], getattr(item, key)) if value is not None)
             if table.name == "business_records":
                 related_ids.add(item.id)
                 for data in (row["data"] or {}, item.data or {}):
