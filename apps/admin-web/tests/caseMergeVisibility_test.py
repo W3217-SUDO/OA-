@@ -14,38 +14,6 @@ class MergeVisibilityTest(unittest.IsolatedAsyncioTestCase):
     asyncSetUp = fixtures.FinanceBatchTest.asyncSetUp
     asyncTearDown = fixtures.FinanceBatchTest.asyncTearDown
 
-    async def test_existing_merge_gets_new_number_without_duplicate_history(self):
-        from app.core.case_merge import merge_case_relations, move_case_finance_files
-        from app.core.case_document_sources import case_document_sources
-        async with self.sessions() as db:
-            main = await db.get(BusinessRecord, self.case_id)
-            source = BusinessRecord(module="case", serial_no="CODEX-previous-source", title="原案",
-                owner=IDENTITY["username"], customer=main.customer, status="一审准备开庭", data={"case_type": "民事争议"})
-            db.add(source); await db.flush()
-            db.add(WorkflowEvent(record_id=source.id, action="原案唯一历史", operator=IDENTITY["username"]))
-            await db.flush()
-            await merge_case_relations(source, main, db)
-            await move_case_finance_files(source, main, IDENTITY, db)
-            source.status = "已合并"
-            source.data = {**source.data, "merged_into_case_id": main.id, "merged_into_case_no": main.serial_no}
-            await db.commit()
-            source_id = source.id
-        result = await self.client.post(f"{API}/cases/{self.case_id}/merge", json={"source_case_no": "CODEX-previous-source"})
-        self.assertEqual(result.status_code, 200, result.text)
-        new_id = result.json()["target"]["id"]
-        self.assertNotIn(new_id, [self.case_id, source_id])
-        async with self.sessions() as db:
-            merged = await db.get(BusinessRecord, new_id)
-            self.assertEqual({item["id"] for item in case_document_sources(merged)}, {new_id, self.case_id, source_id})
-            events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == new_id, WorkflowEvent.action == "原案唯一历史"))).all())
-            self.assertEqual(len(events), 1)
-            fee = await db.get(BusinessRecord, self.fee_id)
-            self.assertEqual(fee.data["case_id"], new_id)
-            self.assertEqual(fee.data["amount"], 100)
-            self.assertEqual((await db.get(BusinessRecord, source_id)).data["merged_into_case_id"], new_id)
-        repeated = await self.client.post(f"{API}/cases/{self.case_id}/merge", json={"source_case_no": "CODEX-previous-source"})
-        self.assertEqual(repeated.status_code, 409)
-
     async def test_case_reader_sees_source_task_without_write_permission(self):
         with tempfile.TemporaryDirectory(prefix="CODEX-merge-task-") as directory:
             path = Path(directory) / "material.txt"
@@ -104,11 +72,7 @@ class MergeVisibilityTest(unittest.IsolatedAsyncioTestCase):
             source_id, clue_id, document_id = source.id, clue.id, document.id
         result = await self.client.post(f"{API}/cases/{self.case_id}/merge", json={"source_case_no": "CODEX-merge-source"})
         self.assertEqual(result.status_code, 200, result.text)
-        original_id = self.case_id
-        self.case_id = result.json()["target"]["id"]
-        self.assertNotEqual(original_id, self.case_id)
         async with self.sessions() as db:
-            self.assertEqual((await db.get(BusinessRecord, original_id)).status, "已合并")
             case = await db.get(BusinessRecord, self.case_id)
             self.assertIn(clue_id, case.data["investigation_clue_ids"])
             fee = await db.get(BusinessRecord, self.fee_id)
@@ -124,7 +88,7 @@ class MergeVisibilityTest(unittest.IsolatedAsyncioTestCase):
             await db.commit()
         from scripts.repair_case_relations import plan
         from app.core.case_relation_repair import repair_case_relations
-        spec = {"existing_merges": [{"source": "CODEX-merge-source", "target": result.json()["target"]["serial_no"]}]}
+        spec = {"existing_merges": [{"source": "CODEX-merge-source", "target": "CODEX-0916-case"}]}
         async with self.sessions() as db:
             snapshot = await plan(spec, db)
             self.assertEqual([row["id"] for row in snapshot["tables"]["agent_documents"]], [document_id])

@@ -44,11 +44,9 @@ class CaseDocumentsTest(unittest.IsolatedAsyncioTestCase):
                 ids = [case.id for case in cases]
                 nos = [case.serial_no for case in cases]
                 expected_ids = {file.id for file in files}
-            response = await self.client.post(f'{API}/cases/{ids[1]}/merge', json={'source_case_no': nos[2]})
-            self.assertEqual(response.status_code, 200, response.text)
-            response = await self.client.post(f'{API}/cases/{ids[0]}/merge', json={'source_case_no': response.json()['target']['serial_no']})
-            self.assertEqual(response.status_code, 200, response.text)
-            ids[0] = response.json()['target']['id']
+            for target, source in ((ids[1], nos[2]), (ids[0], nos[1])):
+                response = await self.client.post(f'{API}/cases/{target}/merge', json={'source_case_no': source})
+                self.assertEqual(response.status_code, 200, response.text)
             listed = await self.client.get(f'{API}/cases/{ids[0]}/documents', params={'page_size': 2})
             items = listed.json()['items']
             for page in range(2, listed.json()['pages'] + 1):

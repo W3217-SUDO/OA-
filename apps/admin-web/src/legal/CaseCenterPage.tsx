@@ -3890,7 +3890,7 @@ export default function CaseCenterPage({
       </Drawer>
       <Modal
         open={Boolean(mergingCase)}
-        title={`合并生成新案件：${mergingCase?.serial_no || ""}`}
+        title={`合并案件至：${mergingCase?.serial_no || ""}`}
         okText="确认合并"
         cancelText="取消"
         onCancel={() => { setMergingCase(null); mergeCaseForm.resetFields(); }}
@@ -3901,7 +3901,7 @@ export default function CaseCenterPage({
           showIcon
           style={{ marginBottom: 16 }}
           message="仅可合并同一客户、同一案件类型且未归档的案件"
-          description="将两个案件的费用、文档、任务、日志、线索、提醒及排期合并到系统自动生成的新案号下。原案保留为“已合并”，可追溯查看；相同记录不重复计费。合同、法院等单值信息保留当前案件值，另一案件原始信息完整保留。"
+          description="保留当前案号，将另一案件的费用、文档、任务、日志、线索、提醒和开庭排期合入当前案件；合同等单值信息保留当前案值，来源信息完整可查。费用不重复生成，被合并案件停用并保留历史。"
         />
         <Form form={mergeCaseForm} layout="vertical">
           <Form.Item label="待合并案件编号" name="source_case_no" rules={[{ required: true, message: "请输入待合并案件编号" }]}>
