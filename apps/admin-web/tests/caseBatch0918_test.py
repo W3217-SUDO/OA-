@@ -110,10 +110,14 @@ class Batch0918Test(unittest.IsolatedAsyncioTestCase):
             await db.commit(); task_id = task.id
         result = await self.client.post(f"{API}/cases/{self.case_id}/merge", json={"source_case_no": "CODEX-0918-source"})
         self.assertEqual(result.status_code, 200, result.text)
+        original_id = self.case_id
+        self.case_id = result.json()["target"]["id"]
+        self.assertNotEqual(self.case_id, original_id)
+        self.assertNotEqual(result.json()["target"]["serial_no"], "CODEX-0916-case")
         async with self.sessions() as db:
             case = await db.get(BusinessRecord, self.case_id)
             self.assertNotEqual(case.data.get("contract_no"), "来源合同")
-            self.assertEqual(case.data["merged_sources"][0]["data"]["contract_no"], "来源合同")
+            self.assertEqual(next(item for item in case.data["merged_sources"] if item["id"] == source_id)["data"]["contract_no"], "来源合同")
             self.assertIn(clue_id, case.data["investigation_clue_ids"])
             self.assertEqual((await db.get(BusinessRecord, self.fee_id)).data["case_id"], self.case_id)
             self.assertEqual((await db.get(BusinessRecord, task_id)).data["case_ids"], [self.case_id])
@@ -146,6 +150,10 @@ class Batch0918Test(unittest.IsolatedAsyncioTestCase):
         result = await self.client.post(f"{API}/cases/{self.case_id}/merge",
             json={"source_case_no": "CODEX-0918-doc-source"})
         self.assertEqual(result.status_code, 200, result.text)
+        original_id = self.case_id
+        self.case_id = result.json()["target"]["id"]
+        self.assertNotEqual(self.case_id, original_id)
+        self.assertNotEqual(result.json()["target"]["serial_no"], "CODEX-0916-case")
         response = await self.client.get(f"{API}/cases/{self.case_id}/documents")
         self.assertEqual(response.status_code, 200, response.text)
         files = response.json()["items"]

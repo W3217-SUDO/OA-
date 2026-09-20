@@ -733,7 +733,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         try {
             const values = await mergeCaseForm.validateFields();
             const { data } = await api.post(`/cases/${mergingCase.id}/merge`, buildCaseMergePayload(values));
-            message.success(`已合并案件 ${data.source.serial_no}：迁移费用 ${data.moved_fees} 条、案件文件 ${data.moved_attachments} 个`);
+            message.success(`已生成合并案件 ${data.target.serial_no}：费用 ${data.moved_fees} 条、案件文件 ${data.moved_attachments} 个`);
             setMergingCase(null);
             mergeCaseForm.resetFields();
             await openCounselDetail(data.target);

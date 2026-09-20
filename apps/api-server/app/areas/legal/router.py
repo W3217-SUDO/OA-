@@ -2615,8 +2615,9 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
 
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/merge")
 async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """合并同客户案件关系，保留主案字段及来源审计记录。"""
-    from app.core.case_merge import merge_case_relations, move_case_finance_files
+    """两个同客户案件合并生成新案号，原案保留追溯关系。"""
+    from app.core.case_merge_result import create_merged_case
+    from app.core.case_document_sources import case_document_sources
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity, _record_scope_conditions,
     )
@@ -2630,10 +2631,13 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
     ))
     if not source:
         raise HTTPException(status_code=404, detail="未找到待合并案件，或当前账号无权查看")
-    await db.refresh(target, with_for_update=True)
-    await db.refresh(source, with_for_update=True)
+    for record in sorted((target, source), key=lambda item: item.id):
+        await db.refresh(record, with_for_update=True)
     blocked_statuses = {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
-    if target.status in blocked_statuses or source.status in blocked_statuses:
+    existing_source = source.status == "已合并" and (source.data or {}).get("merged_into_case_id") == target.id and any(
+        item["id"] == source.id for item in case_document_sources(target)[1:]
+    )
+    if target.status in blocked_statuses or (source.status in blocked_statuses and not existing_source):
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能参与合并")
     if source.customer != target.customer:
         raise HTTPException(status_code=422, detail="待合并案件的客户与当前案件不一致，不允许操作")
@@ -2642,33 +2646,15 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
     if source_type != target_type:
         raise HTTPException(status_code=422, detail="仅允许合并同一案件类型的案件")
 
-    await merge_case_relations(source, target, db)
-    moved_fees, moved_assisted_fees, moved_attachments = await move_case_finance_files(source, target, identity, db)
-
-    source_previous = source.status
-    source.status = "已合并"
-    source.data = {
-        **(source.data or {}), "merged_into_case_id": target.id,
-        "merged_into_case_no": target.serial_no, "merged_at": datetime.now().isoformat(timespec="seconds"),
-        "merged_by": identity["username"], "merge_comment": body.comment.strip(),
-    }
-    db.add_all([
-        WorkflowEvent(
-            record_id=target.id, action="合并案件", from_status=target.status, to_status=target.status,
-            operator=identity["username"],
-            comment=f"合并来源案件 {source.serial_no}；迁移费用 {moved_fees} 条、资助费用 {moved_assisted_fees} 条、案件文件 {moved_attachments} 个。{body.comment.strip()}",
-        ),
-        WorkflowEvent(
-            record_id=source.id, action="案件已合并", from_status=source_previous, to_status=source.status,
-            operator=identity["username"],
-            comment=f"已合并至 {target.serial_no}；迁移费用 {moved_fees} 条、资助费用 {moved_assisted_fees} 条、案件文件 {moved_attachments} 个。{body.comment.strip()}",
-        ),
-    ])
-    await db.commit(); await db.refresh(target); await db.refresh(source)
+    result, counts = await create_merged_case(target, source, identity, body.comment.strip(), db)
+    await db.commit()
+    await db.refresh(result)
+    await db.refresh(source)
     return {
-        "target": await _record_dict_for_identity(target, identity, db),
+        "target": await _record_dict_for_identity(result, identity, db),
         "source": await _record_dict_for_identity(source, identity, db),
-        "moved_fees": moved_fees, "moved_assisted_fees": moved_assisted_fees, "moved_attachments": moved_attachments,
+        "original_case_nos": [target.serial_no, source.serial_no],
+        "moved_fees": counts[0], "moved_assisted_fees": counts[1], "moved_attachments": counts[2],
     }
 
 
