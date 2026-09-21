@@ -1579,8 +1579,19 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
                 [requested_handling_lawyer], db, field_name="经办律师",
             )
         else:
-            handling_lawyers = list(dict.fromkeys(filter(None, clue_data.get("handling_lawyers") or [])))
-            handling_usernames = list(dict.fromkeys(filter(None, clue_data.get("handling_lawyer_usernames") or [])))
+            try:
+                handling_lawyers, handling_usernames = await _resolve_active_case_people(
+                    clue_data.get("handling_lawyers") or [], db, field_name="经办律师",
+                )
+            except HTTPException as exc:
+                if exc.status_code != 422:
+                    raise
+                errors.append({
+                    "clue_id": clue_id,
+                    "clue_no": clue.serial_no,
+                    "error": f"经办律师无效：{exc.detail}",
+                })
+                continue
         requested_assistant = body.assistant.strip()
         if requested_assistant:
             assistant_values, assistant_usernames = await _resolve_active_case_people(
@@ -1590,7 +1601,21 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
             assistant_username = assistant_usernames[0]
         else:
             assistant = str(clue_data.get("assistant") or "").strip()
-            assistant_username = str(clue_data.get("assistant_username") or "").strip()
+            try:
+                assistant_values, assistant_usernames = await _resolve_active_case_people(
+                    [assistant] if assistant else [], db, field_name="律师助理",
+                )
+            except HTTPException as exc:
+                if exc.status_code != 422:
+                    raise
+                errors.append({
+                    "clue_id": clue_id,
+                    "clue_no": clue.serial_no,
+                    "error": f"律师助理无效：{exc.detail}",
+                })
+                continue
+            assistant = assistant_values[0] if assistant_values else ""
+            assistant_username = assistant_usernames[0] if assistant_usernames else ""
         cause_or_charge = body.cause_or_charge.strip() or clue_data.get("cause_or_charge") or clue_data.get("cause", "")
         missing_case_fields = [
             label for label, value in (

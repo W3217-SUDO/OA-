@@ -2531,7 +2531,7 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
     not be silently recreated under the new case.
     """
     from app.core.cases import (
-        _case_copy_root, _next_case_copy_serial,
+        _case_copy_root, _case_team_payload, _next_case_copy_serial, _resolve_active_case_people,
     )
     from app.core.permissions import (
         _ensure_record_module, _ensure_record_visible,
@@ -2586,6 +2586,40 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
         "copied_by": identity["username"], "case_creation_step": "basic",
         "case_creation_approval_status": "未提交", "business_stage": "立案",
     })
+    try:
+        handling_lawyers, handling_usernames = await _resolve_active_case_people(
+            copied_data.get("handling_lawyers") or [], db, field_name="经办律师",
+        )
+    except HTTPException as exc:
+        if exc.status_code != 422:
+            raise
+        raise HTTPException(
+            status_code=422,
+            detail=f"源案件（{source_serial_no}）的经办律师无效，需要先修正源案件：{exc.detail}",
+        ) from exc
+    source_assistants = copied_data.get("assistants") or []
+    source_assistants = list(source_assistants) if isinstance(source_assistants, list) else [source_assistants]
+    source_assistants.append(copied_data.get("assistant") or "")
+    assistant_values: list[str] = []
+    assistant_usernames: list[str] = []
+    for source_assistant in dict.fromkeys(str(value or "").strip() for value in source_assistants if str(value or "").strip()):
+        try:
+            resolved_values, resolved_usernames = await _resolve_active_case_people(
+                [source_assistant], db, field_name="律师助理",
+            )
+        except HTTPException as exc:
+            if exc.status_code == 422:
+                continue
+            raise
+        assistant_values.extend(resolved_values)
+        assistant_usernames.extend(resolved_usernames)
+    copied_data = _case_team_payload(
+        copied_data,
+        handling_lawyers,
+        handling_usernames,
+        assistant_values,
+        assistant_usernames,
+    )
     copied: BusinessRecord | None = None
     for _ in range(128):
         serial_no = await _next_case_copy_serial(root_serial_no, db)
