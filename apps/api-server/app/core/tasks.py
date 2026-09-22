@@ -1416,9 +1416,15 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
         # transition path, covering imports, batch changes and earlier failures.
         await _ensure_document_preparation_task(case_record, db, system_operator="system")
         await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator="system")
-        if case_record.status == "一审待执行":
+        if case_record.status == "一审待执行" and lawyer and assistant:
             await _ensure_execution_application_reminder_task(
                 case_record, db, previous_status="", operator="system", today=effective_today,
+            )
+        elif case_record.status == "一审待执行":
+            logger.warning(
+                "case automatic task skipped: case_id=%s rule=execution_application_reminder missing=%s",
+                case_record.id,
+                ",".join(role for role, value in (("handling_lawyer", lawyer), ("assistant", assistant)) if not value),
             )
         await _ensure_phase_automatic_tasks(case_record, db, previous_status="", today=effective_today)
         if case_record.status == "一审和解结案" and lawyer and assistant and effective_today >= phase_date + timedelta(days=50):
