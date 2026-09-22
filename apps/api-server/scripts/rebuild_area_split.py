@@ -3,15 +3,6 @@
 Dependencies are ordinary, explicit Python imports. Runtime cross-module
 function references are imported inside the caller to avoid import cycles.
 The archive is a reference input only and is never executed by the application.
-
-DO NOT RE-RUN against the current tree. This is the one-shot tool that produced
-the original areas/ split, and it regenerates main.py with `include_route_slice`
-calls that register each area router through hard-coded numeric offsets. That
-mechanism was removed on 2026-09-22 because adding a single route shifted every
-later offset, and because the offsets preserved a route-shadowing bug that made
-POST /api/v1/seals/applications/batch/withdraw unreachable. Re-running this
-script would reintroduce both. Registration is now a plain include_router per
-area router; see route_dispatch_fingerprint.py for how that is verified.
 """
 from __future__ import annotations
 
