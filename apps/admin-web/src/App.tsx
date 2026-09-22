@@ -129,7 +129,7 @@ class PageLoadBoundary extends Component<
 const CustomerConflictPage = lazyWithVersionRecovery("customer-conflict", () => import("./CustomerConflictPage"));
 const ContractReceivablesPage = lazyWithVersionRecovery("contract-receivables", () => import("./ContractReceivablesPage"));
 const InvestigationCenterPage = lazyWithVersionRecovery("investigation", () => import("./investigation"));
-const CaseCenterPage = lazyWithVersionRecovery("case", () => import("./legal"));
+const CaseCenterPage = lazyWithVersionRecovery("case", () => import("./CaseCenterPage"));
 const IprCenterPage = lazyWithVersionRecovery("ipr", () => import("./ipr"));
 const IprOfficialFilePage = lazyWithVersionRecovery("ipr-office-files", () => import("./IprOfficialFilePage"));
 const IprCustomFileImportPage = lazyWithVersionRecovery("ipr-custom-file-import", () => import("./IprCustomFileImportPage"));
@@ -137,7 +137,7 @@ const TaskCenterPage = lazyWithVersionRecovery("task", () => import("./tp"));
 const VipTaskCenterPage = lazyWithVersionRecovery("vip-task", () => import("./VipTaskCenterPage"));
 const BusinessPage = lazyWithVersionRecovery("business", () => import("./BusinessPage"));
 const DocumentCenterPage = lazyWithVersionRecovery("document", () => import("./aws"));
-const FinanceCenterPage = lazyWithVersionRecovery("finance", () => import("./finance"));
+const FinanceCenterPage = lazyWithVersionRecovery("finance", () => import("./FinanceCenterPage"));
 const SystemCenterPage = lazyWithVersionRecovery("system", () => import("./system"));
 const IprFileTypeSettingsPage = lazyWithVersionRecovery("ipr-file-types", () => import("./IprFileTypeSettingsPage"));
 const LawFirmPage = lazyWithVersionRecovery("law-firms", () => import("./LawFirmPage"));
