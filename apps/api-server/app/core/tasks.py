@@ -1,6 +1,7 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 import calendar
 import math
+from app.core.task_personnel import resolve_automatic_task_user
 
 from app.core.constants import (
     CASE_EVENT_COMPLETED_STATUS, logger,
@@ -49,15 +50,9 @@ def _case_person_references(data: dict, *keys: str) -> list[str]:
 
 async def _active_case_task_user(data: dict, db: AsyncSession, *, username_keys: tuple[str, ...], display_keys: tuple[str, ...], field_name: str) -> User:
     references = _case_person_references(data, *username_keys, *display_keys)
-    for reference in references:
-        user = await db.scalar(select(User).where(User.username == reference, User.is_active.is_(True)))
-        if user:
-            return user
-        matches = list((await db.scalars(select(User).where(
-            User.display_name == reference, User.is_active.is_(True),
-        ))).all())
-        if len(matches) == 1:
-            return matches[0]
+    user = await resolve_automatic_task_user(references, db)
+    if user:
+        return user
     raise HTTPException(status_code=422, detail=f"案件未设置有效{field_name}，无法生成执行申请提醒任务")
 
 
@@ -702,21 +697,8 @@ def _one_calendar_month_after(value: date) -> date:
 
 
 async def _resolve_case_task_username(values: object, db: AsyncSession) -> tuple[str, User | None]:
-    raw_values = values if isinstance(values, list) else [values]
-    for raw_value in raw_values:
-        value = str(raw_value or "").strip()
-        if not value:
-            continue
-        users = list((await db.scalars(select(User).where(
-            User.is_active.is_(True),
-            or_(User.username == value, User.display_name == value),
-        ).order_by(User.id))).all())
-        exact_username = next((user for user in users if user.username == value), None)
-        if exact_username:
-            return exact_username.username, exact_username
-        if len(users) == 1:
-            return users[0].username, users[0]
-    return "", None
+    user = await resolve_automatic_task_user(values, db)
+    return (user.username, user) if user else ("", None)
 
 
 async def _ensure_document_preparation_task(
@@ -743,6 +725,11 @@ async def _ensure_document_preparation_task(
         db,
     )
     if not assistant_username or not initiator_username:
+        logger.warning(
+            "case automatic task skipped: case_id=%s rule=document_preparation_stage missing=%s",
+            case_record.id,
+            ",".join(role for role, value in (("handling_lawyer", initiator_username), ("assistant", assistant_username)) if not value),
+        )
         return None
 
     linked_tasks = list((await db.scalars(select(BusinessRecord).where(
@@ -923,6 +910,7 @@ async def _ensure_timestamp_evidence_handoff_task(
         db,
     )
     if not assistant_username or not assistant_user:
+        logger.warning("case automatic task skipped: case_id=%s rule=timestamp_evidence_handoff missing=assistant", case_record.id)
         return None
 
     linked_tasks = list((await db.scalars(select(BusinessRecord).where(
@@ -941,12 +929,9 @@ async def _ensure_timestamp_evidence_handoff_task(
         case_record.data = {**case_data, "timestamp_evidence_handoff_task_id": existing.id}
         return existing
 
-    owner_matches = list((await db.scalars(select(User).where(
-        User.display_name == "范应根", User.is_active.is_(True),
-    ).order_by(User.id))).all())
-    if len(owner_matches) != 1:
-        raise HTTPException(status_code=422, detail="自动任务负责人范应根不存在、已停用或姓名不唯一")
-    owner_user = owner_matches[0]
+    _, owner_user = await _resolve_case_task_username("范应根", db)
+    if not owner_user:
+        raise HTTPException(status_code=422, detail="自动任务负责人范应根无法解析，或停用账号未配置在职部门负责人")
     started_on = date.today()
     deadline = started_on + timedelta(days=7)
     description = f"{case_record.serial_no},交接时间戳文件."
@@ -1161,12 +1146,12 @@ async def _ensure_phase_automatic_tasks(
             trigger_source_id="phase:104015",
         ))
     if case_record.status == "一审和解结案":
-        fixed = list((await db.scalars(select(User).where(User.display_name == "梁晨宇", User.is_active.is_(True)))).all())
-        if len(fixed) != 1:
-            raise HTTPException(status_code=422, detail="自动任务固定负责人“梁晨宇”未配置或存在重名账号")
+        _, fixed = await _resolve_case_task_username("梁晨宇", db)
+        if not fixed:
+            raise HTTPException(status_code=422, detail="自动任务固定负责人“梁晨宇”无法解析，或停用账号未配置在职部门负责人")
         created.append(await _materialize_legacy_case_task(
             case_record, db, auto_task_type="first_mediation_closed_archive", legacy_task_type_id=101024,
-            title="结算归档一审和解结案", initiator=None, owner=fixed[0], collaborators=[],
+            title="结算归档一审和解结案", initiator=None, owner=fixed, collaborators=[],
             description="结算归档", started_on=effective_today, deadline=effective_today + timedelta(days=50),
             trigger_at=effective_today, trigger_source_id="phase:101024:immediate",
         ))
