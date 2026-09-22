@@ -57,6 +57,60 @@ async def validate_case_clues(case: BusinessRecord, clues: list[BusinessRecord],
             raise HTTPException(409, "所选线索已经关联案件，请重新选择")
 
 
+async def sync_case_clues(case: BusinessRecord, clues: list[BusinessRecord], db: AsyncSession) -> None:
+    """同步案件和线索的双向关联，并只清除仍指向当前案件的旧反向字段。"""
+    selected_ids = {item.id for item in clues}
+    previous_ids = case_clue_ids(case)
+    reverse_conditions = (
+        BusinessRecord.data["case_id"].as_integer() == case.id,
+        BusinessRecord.data["case_record_id"].as_integer() == case.id,
+        BusinessRecord.data["converted_case_id"].as_integer() == case.id,
+        BusinessRecord.data["case_no"].as_string() == case.serial_no,
+        BusinessRecord.data["linked_case_no"].as_string() == case.serial_no,
+        BusinessRecord.data["converted_case_no"].as_string() == case.serial_no,
+    )
+    affected = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "clue",
+        or_(BusinessRecord.id.in_(previous_ids | selected_ids), *reverse_conditions),
+    ).with_for_update())).all())
+    by_id = {item.id: item for item in affected}
+    by_id.update({item.id: item for item in clues})
+
+    def references_case_id(value: object) -> bool:
+        try:
+            return int(value or 0) == case.id
+        except (TypeError, ValueError):
+            return False
+
+    for clue in by_id.values():
+        data = dict(clue.data or {})
+        if clue.id in selected_ids:
+            clue.data = {
+                **data,
+                "case_id": case.id,
+                "case_record_id": case.id,
+                "converted_case_id": case.id,
+                "case_no": case.serial_no,
+                "linked_case_no": case.serial_no,
+                "converted_case_no": case.serial_no,
+            }
+            continue
+        points_to_case = any(
+            references_case_id(data.get(key))
+            for key in ("case_id", "case_record_id", "converted_case_id")
+        ) or any(
+            str(data.get(key) or "").strip() == case.serial_no
+            for key in ("case_no", "linked_case_no", "converted_case_no")
+        )
+        if points_to_case:
+            for key in (
+                "case_id", "case_record_id", "converted_case_id",
+                "case_no", "linked_case_no", "converted_case_no",
+            ):
+                data.pop(key, None)
+            clue.data = data
+
+
 def clue_header_values(clues: list[BusinessRecord]) -> dict:
     certificates: list[str] = []
     locations: list[str] = []

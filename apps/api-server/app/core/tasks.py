@@ -311,6 +311,23 @@ def _notification_dict(item: Notification, users_by_username: dict[str, User] | 
         _person_reference_display,
     )
     users = users_by_username or {}
+    source_key = str(item.source_key or "")
+    if source_key.startswith("contract-approval-"):
+        target_route = "contract-audit"
+    elif source_key.startswith("finance-approval-"):
+        target_route = "finance-audit"
+    elif item.source_type == "case":
+        target_route = "case-mine"
+    elif item.source_type == "task":
+        target_route = "task-my-accepted"
+    elif item.source_type == "contract":
+        target_route = "contract-mine"
+    elif item.source_type in {"finance", "finance_package", "finance_settlement", "finance_archive_settlement"}:
+        target_route = "finance-fee-query"
+    elif item.source_type in {"clue", "notary", "evidence"}:
+        target_route = item.source_type
+    else:
+        target_route = ""
     return {
         "id": item.id, "source_type": item.source_type, "source_id": item.source_id,
         "sender": item.sender, "sender_display_name": _person_reference_display(item.sender, users)[0],
@@ -318,6 +335,7 @@ def _notification_dict(item: Notification, users_by_username: dict[str, User] | 
         "notification_type": item.notification_type, "title": item.title, "content": item.content,
         "level": item.level, "is_read": item.is_read, "read_at": item.read_at,
         "dingtalk_status": item.dingtalk_status, "dingtalk_sent_at": item.dingtalk_sent_at, "created_at": item.created_at,
+        "target_route": target_route,
     }
 
 

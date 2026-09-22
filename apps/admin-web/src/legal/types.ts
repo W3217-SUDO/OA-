@@ -134,7 +134,7 @@ export type CaseAgentAction = {
   id: string;
   type: string;
   summary: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "restored";
   requested_by?: string;
   requested_at?: string;
   decided_by?: string;
@@ -382,6 +382,13 @@ export type CaseDetailCapabilities = {
   can_create_finance: boolean;
   can_edit_finance: boolean;
   can_delete_finance: boolean;
+  can_refund_finance: boolean;
+  can_apply_fee_payment: boolean;
+  can_apply_fee_invoice: boolean;
+  can_manage_fee_notice: boolean;
+  can_confirm_fee_arrival: boolean;
+  can_view_fee_receipt: boolean;
+  can_mark_fee_unpaid: boolean;
   can_manage_assisted_fees: boolean;
   team_role: "manager" | "handling_lawyer" | "assistant" | "none";
   reason: string;

@@ -855,6 +855,7 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
     definitions.extend([
         *({"code": code, "menu_key": "case-mine", "label": label} for code, label in (
             ("case.detail.update", "修改案件基本信息"), ("case.team.assign", "分配案件人员"),
+            ("case.progress.update", "维护案件进展"),
             ("case.phase.update", "修改案件阶段"), ("case.hearing.manage", "维护开庭排期"),
             ("case.task.create", "新建案件任务"), ("case.duplicate", "复制案件"),
             ("case.delete", "删除案件"), ("case.merge", "合并案件"),

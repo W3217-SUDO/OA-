@@ -1346,6 +1346,15 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
         _ensure_record_module,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
+    from app.core.case_document_sources import case_document_sources
+    source_case_nos = [item["serial_no"] for item in case_document_sources(case_record) if item.get("serial_no")]
+    business_logs = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case_log", BusinessRecord.status != "已删除",
+        or_(
+            BusinessRecord.data["case_id"].as_integer() == case_id,
+            BusinessRecord.data["case_no"].as_string().in_(source_case_nos),
+        ),
+    ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
     related_finance_ids = list((await db.scalars(select(BusinessRecord.id).where(
         BusinessRecord.module == "finance",
         or_(BusinessRecord.data["case_id"].as_integer() == case_id, BusinessRecord.data["case_record_id"].as_integer() == case_id),
@@ -1356,26 +1365,35 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
             and_(WorkflowEvent.record_id.in_(related_finance_ids), WorkflowEvent.action.like("添加%退费日志")),
         ),
     ).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
-    from app.core.case_document_sources import case_document_sources
+    business_signatures = {(item.owner, item.description or "") for item in business_logs}
+    events = [item for item in events if (item.operator, item.comment or "") not in business_signatures]
     legacy_logs = list((await db.scalars(select(LegacyCaseLog).where(
-        LegacyCaseLog.CaseNo.in_([item["serial_no"] for item in case_document_sources(case_record) if item.get("serial_no")]),
+        LegacyCaseLog.CaseNo.in_(source_case_nos),
     ).order_by(LegacyCaseLog.CreateTime.desc(), LegacyCaseLog.LogId.desc()))).all())
     users_by_username = await _user_display_map(
-        {item.operator for item in events} | {str(item.CreateUser or "").strip() for item in legacy_logs}, db
+        {item.operator for item in events} | {item.owner for item in business_logs} | {str(item.CreateUser or "").strip() for item in legacy_logs}, db
     )
     items = [{
+        "id": f"business-{item.id}", "content": item.description or "", "operator": item.owner,
+        "operator_display_name": _person_reference_display(item.owner, users_by_username)[0],
+        "created_at": item.created_at, "source": "current",
+        "kind": str((item.data or {}).get("kind") or "case"),
+        "case_fee_id": (item.data or {}).get("case_fee_id"),
+        "source_case_no": (item.data or {}).get("case_no"),
+    } for item in business_logs]
+    items.extend({
         "id": item.id, "content": item.comment, "operator": item.operator,
         "operator_display_name": _person_reference_display(item.operator, users_by_username)[0],
         "created_at": item.created_at, "source": "current",
         "kind": "refund" if item.action.startswith("添加") and item.action.endswith("退费日志") else "case",
-    } for item in events]
+    } for item in events)
     event_ids = {item.id for item in events}
     items.extend({
         "id": -abs(item.LogId), "content": item.Content or "", "operator": item.CreateUser or "",
         "operator_display_name": _person_reference_display(item.CreateUser, users_by_username)[0],
         "created_at": item.CreateTime, "source": "legacy",
     } for item in legacy_logs if item.LogId >= 0 or abs(item.LogId) not in event_ids)
-    items.sort(key=lambda item: (str(item["created_at"] or ""), item["id"]), reverse=True)
+    items.sort(key=lambda item: (str(item["created_at"] or ""), str(item["id"])), reverse=True)
     return {"items": items, "total": len(items)}
 
 
@@ -1611,14 +1629,35 @@ async def create_case_log(case_id: int, body: CaseLogInput, identity: dict = Dep
     content = body.content.strip()
     if not content:
         raise HTTPException(status_code=422, detail="请输入日志内容")
+    if body.kind == "refund":
+        if not body.case_fee_id:
+            raise HTTPException(status_code=422, detail="请选择退费对应的案件费用")
+        case_fee = await db.scalar(select(BusinessRecord).where(
+            BusinessRecord.id == body.case_fee_id,
+            BusinessRecord.module == "finance",
+        ))
+        fee_data = case_fee.data if case_fee else {}
+        linked_case_id = int(fee_data.get("case_id") or fee_data.get("case_record_id") or 0)
+        if not case_fee or linked_case_id != case_record.id:
+            raise HTTPException(status_code=422, detail="所选案件费用不属于当前案件")
+    log_record = BusinessRecord(
+        module="case_log", serial_no=f"CASELOG-{uuid4().hex.upper()}",
+        title="退费日志" if body.kind == "refund" else "案件日志",
+        customer=case_record.customer, status="有效", owner=identity["username"], department=case_record.department,
+        description=content, data={
+            "kind": body.kind, "case_id": case_record.id, "case_no": case_record.serial_no,
+            "case_fee_id": body.case_fee_id,
+        },
+    )
+    db.add(log_record)
     event = WorkflowEvent(
         record_id=case_record.id, action="新增案件日志", from_status=case_record.status,
         to_status=case_record.status, operator=identity["username"], comment=content,
     )
     db.add(event)
     await db.commit()
-    await db.refresh(event)
-    return {"id": event.id, "content": event.comment, "operator": event.operator, "created_at": event.created_at}
+    await db.refresh(log_record)
+    return {"id": f"business-{log_record.id}", "content": log_record.description, "operator": log_record.owner, "created_at": log_record.created_at, "kind": body.kind, "case_fee_id": body.case_fee_id}
 
 
 @router.get(f"{settings.api_prefix}/cases/{{case_id}}/documents/generate")
@@ -1671,7 +1710,7 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
         _case_fee_type_snapshot, _resolve_case_fee_contract, _resolve_case_fee_type_master, _round_fee_amount,
     )
     from app.core.permissions import (
-        _record_dict_for_identity, _record_scope_conditions,
+        _record_dict_for_identity, _record_scope_conditions, _require_case_action,
     )
     if len(set(body.case_ids)) != len(body.case_ids):
         raise HTTPException(status_code=422, detail="批量费用案件不能重复")
@@ -1710,6 +1749,7 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
             raise HTTPException(status_code=422, detail="非内部案件费用必须逐案明确合同：" + "、".join(missing_contract_cases))
     contracts_by_case: dict[int, BusinessRecord | None] = {}
     for case_record in ordered_cases:
+        await _require_case_action(identity, db, "case.fee.create")
         if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail=f"案件 {case_record.serial_no} 已进入归档流程，不能新增费用")
         contract_record = None
@@ -2991,28 +3031,6 @@ async def update_counsel_case_basic(case_id: int, body: CaseCounselBasicInput, i
         "counsel_end": str(body.counsel_end),
     }, handling_lawyers, handling_usernames, assistant, assistant_username)
     case_record.data = updated_case_data
-    previous_clue_ids = {
-        int(value) for value in (case_data.get("investigation_clue_ids") or [])
-        if str(value).isdigit()
-    }
-    changed_clue_ids = previous_clue_ids | set(clue_ids)
-    changed_clues = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "clue", BusinessRecord.id.in_(changed_clue_ids),
-    ))).all()) if changed_clue_ids else []
-    for clue in changed_clues:
-        clue_data = dict(clue.data or {})
-        if clue.id in clue_ids:
-            clue.data = {
-                **clue_data, "case_id": case_record.id, "case_record_id": case_record.id,
-                "case_no": case_record.serial_no, "linked_case_no": case_record.serial_no,
-            }
-        else:
-            linked_case_id = int(clue_data.get("case_record_id") or clue_data.get("case_id") or 0)
-            linked_case_no = str(clue_data.get("case_no") or clue_data.get("linked_case_no") or "").strip()
-            if linked_case_id == case_record.id or linked_case_no == case_record.serial_no:
-                for key in ("case_id", "case_record_id", "case_no", "linked_case_no"):
-                    clue_data.pop(key, None)
-                clue.data = clue_data
     if _case_commission_personnel_changed(case_data, updated_case_data):
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     db.add(WorkflowEvent(
@@ -3095,7 +3113,7 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     if len(clues_by_id) != len(clue_ids):
         raise HTTPException(status_code=404, detail="关联调查线索不存在或无权访问")
     ordered_clues = [clues_by_id[item_id] for item_id in clue_ids]
-    from app.core.case_relations import validate_case_clues
+    from app.core.case_relations import sync_case_clues, validate_case_clues
     await validate_case_clues(case_record, ordered_clues, customer.title, db)
     right_type = body.right_type.strip()
     if case_type != "行政案件及国家赔偿" and right_type:
@@ -3126,6 +3144,7 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         "clue_no": clue_nos[0] if clue_nos else "",
     }, handling_lawyers, handling_usernames, assistant_values, assistant_usernames)
     case_record.data = updated_case_data
+    await sync_case_clues(case_record, ordered_clues, db)
     if _case_commission_personnel_changed(case_data, updated_case_data):
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     if phase != previous_status:
@@ -3193,7 +3212,7 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
     if len({item.id for item in clues}) != len(clue_ids):
         raise HTTPException(status_code=404, detail="关联调查线索不存在或无权访问")
     by_id = {item.id: item for item in clues}; clue_nos = [by_id[item_id].serial_no for item_id in clue_ids]
-    from app.core.case_relations import validate_case_clues
+    from app.core.case_relations import sync_case_clues, validate_case_clues
     await validate_case_clues(case_record, clues, customer.title, db)
     previous_status = case_record.status
     old_summary = f"{case_record.customer}｜{case_record.title}｜{case_record.status}｜{case_data.get('cause_or_charge', '')}"
@@ -3206,6 +3225,7 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
         "clue_record_id": clue_ids[0] if clue_ids else None, "clue_no": clue_nos[0] if clue_nos else "",
     }, lawyers, lawyer_usernames, assistant_values[0] if assistant_values else "", assistant_usernames[0] if assistant_usernames else "")
     case_record.data = updated_case_data
+    await sync_case_clues(case_record, clues, db)
     if _case_commission_personnel_changed(case_data, updated_case_data):
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     if phase != previous_status:
@@ -3764,7 +3784,22 @@ async def case_agent_state(case_id: int, identity: dict = Depends(current_identi
     if not case_agent_runtime.status()["ready"]:
         raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
     try:
-        return await case_agent_runtime.get_state(case_id, identity["username"])
+        state = await case_agent_runtime.get_state(case_id, identity["username"])
+        import hashlib
+        actions = state.get("pending_actions") or []
+        audit_serials = {
+            action.get("id"): "AGENT-" + hashlib.sha256(f"{case_id}:{action.get('id')}".encode("utf-8")).hexdigest()[:40]
+            for action in actions if action.get("id")
+        }
+        if audit_serials:
+            audits = list((await db.scalars(select(BusinessRecord).where(
+                BusinessRecord.module == "agent_action", BusinessRecord.serial_no.in_(list(audit_serials.values())),
+            ))).all())
+            status_by_serial = {item.serial_no: item.status for item in audits}
+            for action in actions:
+                if status_by_serial.get(audit_serials.get(action.get("id"), "")) == "已恢复":
+                    action["status"] = "restored"
+        return state
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="案件智能体状态读取失败") from exc
 
@@ -3915,6 +3950,9 @@ async def decide_case_agent_action(
         _ensure_record_module, _require_case_agent_action_access,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
+    case_customer = case_record.customer
+    case_number = case_record.serial_no
+    case_department = case_record.department
     context = await get_case_space_context(case_id, identity, db)
     capabilities = context.get("capabilities") or {}
     try:
@@ -3925,6 +3963,35 @@ async def decide_case_agent_action(
         if action.get("status") != "pending":
             raise ValueError("action_already_decided")
         _require_case_agent_action_access(str(action.get("type") or ""), capabilities)
+        action_type = str(action.get("type") or "")
+        preview = action.get("preview") if isinstance(action.get("preview"), dict) else {}
+        if body.decision == "approved":
+            if action_type in {"case.update", "case.data.update", "customer.update", "contract.update"}:
+                if action_type == "customer.update":
+                    current_source = context.get("customer") or {}
+                elif action_type == "contract.update":
+                    target_id = int((action.get("payload") or {}).get("target_id") or 0)
+                    current_source = next((item for item in context.get("contracts") or [] if int(item.get("id") or 0) == target_id), {})
+                elif action_type == "case.data.update":
+                    current_source = case_record.data or {}
+                else:
+                    current_source = {"title": case_record.title, "status": case_record.status, "description": case_record.description}
+                changed_fields = [
+                    str(item.get("field") or "") for item in preview.get("changes") or []
+                    if current_source.get(str(item.get("field") or "")) != item.get("before")
+                ]
+                if changed_fields:
+                    raise HTTPException(status_code=409, detail="目标数据已变化，请重新生成并确认操作：" + "、".join(changed_fields))
+            elif action_type in {"case.delete", "customer.delete", "contract.delete"}:
+                if action_type == "customer.delete":
+                    current_status = str((context.get("customer") or {}).get("status") or "")
+                elif action_type == "contract.delete":
+                    target_id = int((action.get("payload") or {}).get("target_id") or 0)
+                    current_status = str(next((item.get("status") for item in context.get("contracts") or [] if int(item.get("id") or 0) == target_id), ""))
+                else:
+                    current_status = case_record.status
+                if current_status != str(preview.get("before_status") or ""):
+                    raise HTTPException(status_code=409, detail="目标状态已变化，请重新生成并确认删除操作")
         execution_result = None
         import hashlib
         audit_serial = "AGENT-" + hashlib.sha256(f"{case_id}:{action_id}".encode("utf-8")).hexdigest()[:40]
@@ -3939,18 +4006,47 @@ async def decide_case_agent_action(
             if not audit:
                 audit = BusinessRecord(
                     module="agent_action", serial_no=audit_serial, title=str(action.get("summary") or "智能体操作"),
-                    customer=case_record.customer, status="执行中", owner=identity["username"], department=case_record.department,
+                    customer=case_customer, status="已执行", owner=identity["username"], department=case_department,
                     description=body.comment.strip(), data={
-                        "case_id": case_id, "case_no": case_record.serial_no, "action_id": action_id,
+                        "case_id": case_id, "case_no": case_number, "action_id": action_id,
                         "action_type": str(action.get("type") or ""), "payload": action.get("payload") or {},
                         "approved_by": identity["username"], "approved_at": datetime.now(timezone.utc).isoformat(),
+                        "executed_at": datetime.now(timezone.utc).isoformat(),
                     },
                 )
                 db.add(audit)
             else:
-                audit.status = "执行中"
-            await db.commit()
-            execution_result = await _execute_case_agent_action(case_record, action, identity, db, context)
+                audit.status = "已执行"
+                audit.data = {
+                    **(audit.data or {}),
+                    "approved_by": identity["username"],
+                    "approved_at": datetime.now(timezone.utc).isoformat(),
+                    "executed_at": datetime.now(timezone.utc).isoformat(),
+                }
+            try:
+                # 各白名单业务函数在提交业务数据时，会把同一会话中待写入的审批记录一并提交，
+                # 从而保证“已批准”和业务变更不会只成功一边。
+                execution_result = await _execute_case_agent_action(case_record, action, identity, db, context)
+            except Exception as exc:
+                await db.rollback()
+                failed_audit = await db.scalar(select(BusinessRecord).where(
+                    BusinessRecord.module == "agent_action", BusinessRecord.serial_no == audit_serial,
+                ).with_for_update())
+                if not failed_audit:
+                    failed_audit = BusinessRecord(
+                        module="agent_action", serial_no=audit_serial,
+                        title=str(action.get("summary") or "智能体操作"), customer=case_customer,
+                        status="执行失败", owner=identity["username"], department=case_department,
+                        description=body.comment.strip(), data={
+                            "case_id": case_id, "case_no": case_number, "action_id": action_id,
+                            "action_type": str(action.get("type") or ""), "payload": action.get("payload") or {},
+                        },
+                    )
+                    db.add(failed_audit)
+                failed_audit.status = "执行失败"
+                failed_audit.data = {**(failed_audit.data or {}), "failed_at": datetime.now(timezone.utc).isoformat(), "error": str(exc)[:500]}
+                await db.commit()
+                raise
             audit = await db.scalar(select(BusinessRecord).where(
                 BusinessRecord.module == "agent_action", BusinessRecord.serial_no == audit_serial,
             ).with_for_update())
@@ -3978,6 +4074,53 @@ async def decide_case_agent_action(
         raise HTTPException(status_code=409, detail="该操作已经完成审批") from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="案件智能体尚未就绪") from exc
+
+
+@router.post(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/actions/{{action_id}}/restore")
+async def restore_case_agent_delete(
+    case_id: int,
+    action_id: str,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """恢复经智能体审批执行的逻辑删除，并保留完整审计链。"""
+    from app.core.permissions import _ensure_record_module, _require_case_agent_action_access
+    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    context = await get_case_space_context(case_id, identity, db)
+    import hashlib
+    audit_serial = "AGENT-" + hashlib.sha256(f"{case_id}:{action_id}".encode("utf-8")).hexdigest()[:40]
+    audit = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.module == "agent_action", BusinessRecord.serial_no == audit_serial,
+    ).with_for_update())
+    if not audit or audit.status != "已执行":
+        raise HTTPException(status_code=409, detail="该智能体删除操作不可恢复或已经恢复")
+    audit_data = dict(audit.data or {})
+    action_type = str(audit_data.get("action_type") or "")
+    if action_type not in {"case.delete", "customer.delete", "contract.delete"}:
+        raise HTTPException(status_code=422, detail="该操作不是逻辑删除")
+    _require_case_agent_action_access(action_type, context.get("capabilities") or {})
+    result = audit_data.get("execution_result") if isinstance(audit_data.get("execution_result"), dict) else {}
+    target_id = int(result.get("record_id") or 0)
+    module = action_type.split(".", 1)[0]
+    target = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.id == target_id, BusinessRecord.module == module,
+    ).with_for_update())
+    if not target or target.status != "已删除":
+        raise HTTPException(status_code=409, detail="目标记录当前不是可恢复的逻辑删除状态")
+    target_data = dict(target.data or {})
+    restored_status = str(target_data.pop("status_before_delete", "") or "草稿")
+    for key in ("deleted_at", "deleted_by", "delete_reason"):
+        target_data.pop(key, None)
+    target.status = restored_status
+    target.data = target_data
+    audit.status = "已恢复"
+    audit.data = {**audit_data, "restored_by": identity["username"], "restored_at": datetime.now(timezone.utc).isoformat()}
+    db.add(WorkflowEvent(
+        record_id=target.id, action="恢复智能体逻辑删除", from_status="已删除", to_status=restored_status,
+        operator=identity["username"], comment=f"恢复智能体操作 {action_id}",
+    ))
+    await db.commit()
+    return {"record_id": target.id, "status": target.status, "restored": True}
 
 
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/assign")
@@ -4622,7 +4765,7 @@ async def archive_readiness(case_id: int, identity: dict = Depends(current_ident
     data = case_record.data or {}
     checks = await _case_archive_checks(case_record, db)
     await db.commit()
-    return {"case_id": case_id, "case_no": case_record.serial_no, "status": case_record.status, "checks": checks, "archive_no": data.get("archive_no", ""), "paper_archive_location": data.get("paper_archive_location", ""), "paper_volume_count": data.get("paper_volume_count", 1), "archive_type": data.get("archive_type", "normal"), "archive_reject_reason": data.get("archive_reject_reason", ""), "ready": all(checks.values())}
+    return {"case_id": case_id, "case_no": case_record.serial_no, "status": case_record.status, "checks": checks, "check_details": (case_record.data or {}).get("archive_check_details") or {}, "archive_no": data.get("archive_no", ""), "paper_archive_location": data.get("paper_archive_location", ""), "paper_volume_count": data.get("paper_volume_count", 1), "archive_type": data.get("archive_type", "normal"), "archive_reject_reason": data.get("archive_reject_reason", ""), "ready": all(checks.values())}
 
 
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/close")
@@ -4640,7 +4783,7 @@ async def close_case_for_archive(case_id: int, body: TaskActionInput, identity: 
     active_tasks = [
         item for item in tasks
         if _record_links_to_case(item, case_record)
-        and item.status not in {"已完成", "已验收", "已停止", "已撤回", "已拒绝"}
+        and item.status not in {"已完成", "已验收", "已停止", "已撤回", "已拒绝", "已取消"}
     ]
     if active_tasks: raise HTTPException(status_code=409, detail=f"仍有 {len(active_tasks)} 项案件任务未办结，不能确认案件办结")
     now = datetime.now(timezone.utc)
@@ -4674,7 +4817,9 @@ async def archive_case(case_id: int, body: ArchiveCheckInput, identity: dict = D
     details = {"archive_no": body.archive_no.strip(), "paper_archive_location": body.paper_archive_location.strip(), "paper_volume_count": body.paper_volume_count, "archive_type": archive_type}
     case_record.data = {**(case_record.data or {}), **checks, **details}
     if body.submit and archive_type == "normal" and not checks["fees_settled"]:
-        raise HTTPException(status_code=409, detail="正常归档申请前请先结清案件费用")
+        details = ((case_record.data or {}).get("archive_check_details") or {}).get("unsettled_fees") or []
+        fee_messages = [f"{item.get('fee_no')} {item.get('fee_type')} 尚差 {float(item.get('outstanding') or 0):.2f} 元" for item in details]
+        raise HTTPException(status_code=409, detail="正常归档申请前请先结清案件费用" + ("：" + "；".join(fee_messages) if fee_messages else ""))
     previous = case_record.status
     action = "保存归档检查"
     if body.submit:

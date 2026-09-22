@@ -39,6 +39,7 @@ interface CaseAgentDrawerProps {
   agentState: CaseAgentState | null;
   agentDecisionLoading: string;
   decideCaseAgentAction: (action: CaseAgentAction, decision: "approved" | "rejected") => Promise<unknown>;
+  restoreCaseAgentAction: (action: CaseAgentAction) => Promise<unknown>;
   counselDetailCapabilities: CaseDetailCapabilities;
   agentHistoryExpanded: boolean;
   setAgentHistoryExpanded: (expanded: boolean) => void;
@@ -76,6 +77,7 @@ export const CaseAgentDrawer = ({
   agentState,
   agentDecisionLoading,
   decideCaseAgentAction,
+  restoreCaseAgentAction,
   counselDetailCapabilities,
   agentHistoryExpanded,
   setAgentHistoryExpanded,
@@ -138,7 +140,10 @@ export const CaseAgentDrawer = ({
             {action.status === "pending" ? <Space>
               <Button size="small" type="primary" disabled={!counselDetailCapabilities.can_write} loading={agentDecisionLoading === action.id} onClick={() => void decideCaseAgentAction(action, "approved")}>批准</Button>
               <Button size="small" danger icon={<CloseOutlined />} disabled={!counselDetailCapabilities.can_write} onClick={() => void decideCaseAgentAction(action, "rejected")}>驳回</Button>
-            </Space> : <Tag color={action.status === "approved" ? "success" : "error"}>{action.status === "approved" ? "已批准" : "已驳回"}</Tag>}
+            </Space> : <Space>
+              <Tag color={action.status === "approved" ? "success" : action.status === "restored" ? "blue" : "error"}>{action.status === "approved" ? "已批准" : action.status === "restored" ? "已恢复" : "已驳回"}</Tag>
+              {action.status === "approved" && action.type.endsWith(".delete") && <Button size="small" loading={agentDecisionLoading === action.id} onClick={() => void restoreCaseAgentAction(action)}>恢复</Button>}
+            </Space>}
           </div>)}
         </section> : null}
         <div className="case-agent-messages" aria-live="polite">

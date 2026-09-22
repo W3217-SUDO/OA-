@@ -7,7 +7,7 @@ from app.core.constants import (
 )
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, CaseEvent, CaseTypeCasePhaseRelation, FileAttachment,
-    HTTPException, HearingSchedule, HrSubrecord, Path, ReceivablePlan,
+    HTTPException, HearingSchedule, HrSubrecord, IncomingPayment, Path, ReceivablePlan,
     String, SystemParameter, User, WorkflowEvent, date,
     datetime, func, or_, re, select,
 )
@@ -85,9 +85,6 @@ def _dashboard_case_hearing(case_record: BusinessRecord, today: date, cutoff: da
 
 async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) -> dict[str, bool]:
     """Calculate archive readiness from persisted business facts, never client checkboxes."""
-    from app.core.finance import (
-        _is_case_agency_fee_commission,
-    )
     from app.core.documents import (
         _sync_case_document_readiness,
     )
@@ -102,7 +99,6 @@ async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) ->
     fees = [
         item for item in related
         if item.module == "finance"
-        and not _is_case_agency_fee_commission(item)
         and str((item.data or {}).get("fee_type") or item.title or "").strip() != "律师代理费（退费）"
     ]
     invoices = [item for item in related if item.module == "invoice"]
@@ -110,15 +106,52 @@ async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) ->
     fee_void_statuses = {"已作废", "已撤销", "不缴费"}
     invoice_terminal = {"已开票", "已作废", "已撤回"}
     refund_terminal = {"已退款", "已作废", "已撤回"}
+    payments = list((await db.scalars(select(IncomingPayment).where(
+        IncomingPayment.status.not_in({"已删除", "已撤销", "已作废"}),
+    ))).all())
+    received_by_fee: dict[int, float] = {item.id: 0.0 for item in fees}
+    for payment in payments:
+        for allocation in payment.allocations or []:
+            if not isinstance(allocation, dict):
+                continue
+            settlement_items = [item for item in allocation.get("settlement_items") or [] if isinstance(item, dict)]
+            candidates = settlement_items or [allocation]
+            for candidate in candidates:
+                try:
+                    fee_id = int(
+                        candidate.get("case_fee_id")
+                        or candidate.get("fee_record_id")
+                        or candidate.get("fee_id")
+                        or candidate.get("finance_record_id")
+                        or 0
+                    )
+                    allocation_amount = float(candidate.get("amount") or candidate.get("settlement_amount") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if fee_id in received_by_fee:
+                    received_by_fee[fee_id] += allocation_amount
+
     def fee_is_settled(item: BusinessRecord) -> bool:
         fee_data = item.data or {}
         amount = abs(float(fee_data.get("amount") or 0))
-        received = abs(float(fee_data.get("received_amount") or fee_data.get("cashed_amount") or 0))
-        unbalanced = abs(float(fee_data.get("unbalanced_amount") or fee_data.get("remaining_amount") or max(amount - received, 0)))
+        received = abs(round(received_by_fee.get(item.id, 0.0), 2))
+        unbalanced = max(amount - received, 0)
         if item.status in fee_void_statuses:
             return True
         return received + 0.001 >= amount and unbalanced <= 0.001
     fees_settled = all(fee_is_settled(item) for item in fees)
+    unsettled_fees = []
+    for item in fees:
+        if fee_is_settled(item):
+            continue
+        amount = abs(float((item.data or {}).get("amount") or 0))
+        received = abs(round(received_by_fee.get(item.id, 0.0), 2))
+        unsettled_fees.append({
+            "fee_id": item.id, "fee_no": item.serial_no,
+            "fee_type": str((item.data or {}).get("fee_type") or item.title or "案件费用"),
+            "amount": round(amount, 2), "received": round(received, 2),
+            "outstanding": round(max(amount - received, 0), 2),
+        })
     contract_id = int(data.get("contract_id") or 0)
     receivables = (await db.scalars(select(ReceivablePlan).where(ReceivablePlan.contract_record_id == contract_id))).all() if contract_id else []
     receivables_complete = all(float(item.amount) - float(item.received_amount or 0) <= 0.001 for item in receivables)
@@ -129,7 +162,13 @@ async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) ->
         "documents_complete": documents_complete,
         "finance_complete": finance_complete,
     }
-    case_record.data = {**(case_record.data or {}), **checks}
+    case_record.data = {**(case_record.data or {}), **checks, "archive_check_details": {
+        "unsettled_fees": unsettled_fees,
+        "unsettled_receivables": [
+            {"id": item.id, "amount": float(item.amount), "received": float(item.received_amount or 0), "outstanding": round(max(float(item.amount) - float(item.received_amount or 0), 0), 2)}
+            for item in receivables if float(item.amount) - float(item.received_amount or 0) > 0.001
+        ],
+    }}
     return checks
 
 
@@ -314,7 +353,7 @@ async def _urgent_case_ids(cases: list[BusinessRecord], db: AsyncSession, *, as_
     """返回存在逾期或未来十五天内未完成任务的案件。"""
     from app.core.formatters import _record_links_to_case
     today = as_of or date.today()
-    terminal_statuses = {"已完成", "已验收", "已停止", "已撤回", "已拒绝", "已删除"}
+    terminal_statuses = {"已完成", "已验收", "已停止", "已撤回", "已拒绝", "已取消", "已删除"}
     tasks = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "task", BusinessRecord.status.not_in(terminal_statuses),
     ))).all())
@@ -1505,26 +1544,37 @@ async def _persist_case_litigants(
     plaintiffs = _clean_case_litigant_values(body.plaintiffs)
     plaintiff_agents = _clean_case_litigant_agents(body.plaintiff_agents)
     defendants = _clean_case_litigant_values(body.defendants)
-    defendant_identities = []
-    for item in body.defendant_identities:
-        name = str(item.name or "").strip()
-        organization_type = str(item.organization_type or "").strip()
-        identity_no = str(item.identity_no or "").strip().upper()
-        if organization_type not in {"公司企业", "事业单位", "机关团体", "个人", "个体工商户", "其他"}:
-            raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的组织类型无效")
-        if organization_type == "个人":
-            if len(identity_no) != 18 or not identity_no[:17].isdigit() or identity_no[-1] not in "0123456789X":
-                raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的身份证号格式无效")
-        elif len(identity_no) != 18 or not identity_no.isalnum():
-            raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的统一社会信用代码格式无效")
-        defendant_identities.append({"name": name, "organization_type": organization_type, "identity_no": identity_no})
-    identity_names = {item["name"] for item in defendant_identities}
-    missing_identity_names = [name for name in defendants if name not in identity_names]
-    if defendants and missing_identity_names:
-        raise HTTPException(status_code=422, detail=f"请补充对方当事人证件信息：{'、'.join(missing_identity_names)}")
     defendant_agents = _clean_case_litigant_agents(body.defendant_agents)
     third_parties = _clean_case_litigant_values(body.third_parties)
     third_party_agents = _clean_case_litigant_agents(body.third_party_agents)
+    customer_name = str(case_record.customer or "").strip()
+
+    def clean_party_identities(raw_items, party_names: list[str]) -> list[dict]:
+        cleaned = []
+        for item in raw_items:
+            name = str(item.name or "").strip()
+            organization_type = str(item.organization_type or "").strip()
+            identity_no = str(item.identity_no or "").strip().upper()
+            if name not in party_names:
+                raise HTTPException(status_code=422, detail=f"当事人 {name} 不在当前案件当事人名单中")
+            if organization_type not in {"公司企业", "事业单位", "机关团体", "个人", "个体工商户", "其他"}:
+                raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的组织类型无效")
+            if organization_type == "个人":
+                if len(identity_no) != 18 or not identity_no[:17].isdigit() or identity_no[-1] not in "0123456789X":
+                    raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的身份证号格式无效")
+            elif len(identity_no) != 18 or not identity_no.isalnum():
+                raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的统一社会信用代码格式无效")
+            cleaned.append({"name": name, "organization_type": organization_type, "identity_no": identity_no})
+        required_names = [name for name in party_names if name != customer_name]
+        identity_names = {item["name"] for item in cleaned}
+        missing = [name for name in required_names if name not in identity_names]
+        if missing:
+            raise HTTPException(status_code=422, detail=f"请补充对方当事人证件信息：{'、'.join(missing)}")
+        return cleaned
+
+    plaintiff_identities = clean_party_identities(body.plaintiff_identities, plaintiffs)
+    defendant_identities = clean_party_identities(body.defendant_identities, defendants)
+    third_party_identities = clean_party_identities(body.third_party_identities, third_parties)
     case_type = str((case_record.data or {}).get("case_type") or "")
     permission_key = CASE_CREATE_PERMISSION_BY_TYPE.get(case_type)
     if enforce_create_permission and permission_key and identity.get("role") != "admin":
@@ -1546,11 +1596,13 @@ async def _persist_case_litigants(
     updated_data = {
         **current_data,
         "plaintiffs": plaintiffs,
+        "plaintiff_identities": plaintiff_identities,
         "plaintiff_agents": plaintiff_agents,
         "defendants": defendants,
         "defendant_identities": defendant_identities,
         "defendant_agents": defendant_agents,
         "third_parties": third_parties,
+        "third_party_identities": third_party_identities,
         "third_party_agents": third_party_agents,
         "plaintiff": "、".join(plaintiffs),
         "opponent": "、".join(defendants),

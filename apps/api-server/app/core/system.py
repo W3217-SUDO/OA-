@@ -1,5 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
-from datetime import timezone
+import logging
+from datetime import timedelta, timezone
 from app.core.constants import (
     CASE_EXECUTION_STATUSES, CASE_PARTY_SEPARATOR, CONTRACT_APPROVED_STATUS, DEFAULT_MENU_LABEL_BY_KEY, FIELD_KEYS,
     FIELD_PERMISSION_DATA_KEYS, HR_SUBRECORD_KINDS, IPR_CASE_KINDS, MENU_PARENT_BY_KEY, PARAMETER_REFERENCE_FIELDS,
@@ -22,6 +23,9 @@ from app.core.dependencies import (
 from app.models_shared import (
     HrEmployeeBatchDeleteInput,
 )
+
+logger = logging.getLogger(__name__)
+_NEXT_AUTO_CACHE_CLEANUP_AT: datetime | None = None
 
 
 def _record_dict(record: BusinessRecord, allowed_fields: set[str] | None = None) -> dict:
@@ -610,6 +614,9 @@ async def _system_cache_list_payload(keyword: str, page: int | None, page_size: 
             "cache_buckets": len(SYSTEM_PARAMETER_CACHE),
             "clearable_caches": len(memory_rows),
             "scope": "当前 API 进程内存；多进程部署需分别清理各进程缓存。",
+            "automatic_cleanup": True,
+            "cleanup_interval_seconds": max(settings.system_cache_ttl_seconds, 60),
+            "next_auto_cleanup_at": _NEXT_AUTO_CACHE_CLEANUP_AT.isoformat() if _NEXT_AUTO_CACHE_CLEANUP_AT else None,
         },
     }
 
@@ -1041,7 +1048,6 @@ async def _business_rule_loop() -> None:
         _apply_case_automatic_task_rules, _apply_hearing_sms_reminders, _apply_task_auto_completion, _apply_task_overdue_performance,
     )
     while True:
-        _clear_all_system_parameter_cache("system:auto")
         async with SessionLocal() as db:
             try:
                 await _apply_notary_auto_conversion(db)
@@ -1051,7 +1057,21 @@ async def _business_rule_loop() -> None:
                 await _apply_case_automatic_task_rules(db)
             except Exception:
                 await db.rollback()
-        await asyncio.sleep(max(settings.system_cache_ttl_seconds, 60))
+                logger.exception("后台业务规则执行失败")
+        await asyncio.sleep(60)
+
+
+async def _automatic_cache_cleanup_loop() -> None:
+    """按配置周期清理本进程缓存，和业务规则调度相互独立。"""
+    global _NEXT_AUTO_CACHE_CLEANUP_AT
+    interval = max(settings.system_cache_ttl_seconds, 60)
+    while True:
+        _NEXT_AUTO_CACHE_CLEANUP_AT = datetime.now(timezone.utc) + timedelta(seconds=interval)
+        await asyncio.sleep(interval)
+        try:
+            _clear_all_system_parameter_cache("system:auto")
+        except Exception:
+            logger.exception("系统缓存自动清理失败")
 
 
 def _vip_node_member(node: VipTaskNode, identity: dict) -> bool:

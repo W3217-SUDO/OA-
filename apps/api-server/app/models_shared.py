@@ -580,6 +580,8 @@ class CaseEventBatchDeleteInput(BaseModel):
 
 class CaseLogInput(BaseModel):
     content: str = Field(min_length=1, max_length=1000)
+    kind: Literal["case", "refund"] = "case"
+    case_fee_id: int | None = Field(default=None, ge=1)
 
 
 class CaseAssistedFeeCreateInput(BaseModel):
@@ -1243,12 +1245,14 @@ class CasePartyIdentityInput(BaseModel):
 
 class CaseLitigantsInput(BaseModel):
     plaintiffs: list[str] = Field(default_factory=list, max_length=50)
+    plaintiff_identities: list[CasePartyIdentityInput] = Field(default_factory=list, max_length=50)
     # Strings remain accepted for historical case JSON and existing callers.
     plaintiff_agents: list[CaseLitigantAgentInput | str] = Field(default_factory=list, max_length=50)
     defendants: list[str] = Field(default_factory=list, max_length=50)
     defendant_identities: list[CasePartyIdentityInput] = Field(default_factory=list, max_length=50)
     defendant_agents: list[CaseLitigantAgentInput | str] = Field(default_factory=list, max_length=50)
     third_parties: list[str] = Field(default_factory=list, max_length=50)
+    third_party_identities: list[CasePartyIdentityInput] = Field(default_factory=list, max_length=50)
     third_party_agents: list[CaseLitigantAgentInput | str] = Field(default_factory=list, max_length=50)
     comment: str = Field(default="", max_length=500)
 

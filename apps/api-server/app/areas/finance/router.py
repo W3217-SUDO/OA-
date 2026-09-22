@@ -35,6 +35,20 @@ router = APIRouter()
 from app.areas.finance.payment_workflow import router as payment_workflow_router
 
 
+async def _require_linked_case_fee_action(item: BusinessRecord, action_key: str, identity: dict, db: AsyncSession) -> None:
+    """对案件费用的每个写动作应用角色动作权限。"""
+    data = item.data or {}
+    case_id = int(data.get("case_id") or data.get("case_record_id") or 0)
+    if not case_id:
+        return
+    case_record = await db.get(BusinessRecord, case_id)
+    if not case_record or case_record.module != "case":
+        raise HTTPException(status_code=409, detail="案件费用关联的案件不存在")
+    from app.core.cases import _case_action_granted
+    if not await _case_action_granted(identity, db, action_key):
+        raise HTTPException(status_code=403, detail="当前账号没有该案件费用操作权限")
+
+
 @router.put(f"{settings.api_prefix}/finance/fees/{{fee_id}}")
 async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
@@ -103,6 +117,7 @@ async def delete_finance_fee(fee_id: int, identity: dict = Depends(current_ident
         _editable_finance_fee,
     )
     item = await _editable_finance_fee(fee_id, identity, db, action="delete")
+    await _require_linked_case_fee_action(item, "case.fee.delete", identity, db)
     db.add(WorkflowEvent(record_id=item.id, action="删除费用", from_status=item.status, to_status="已删除", operator=identity["username"], comment=item.serial_no))
     item.status = "已删除"
     await db.commit()
@@ -424,6 +439,7 @@ async def create_finance_fee_inform(
     if source_fee.module != "finance":
         raise HTTPException(status_code=404, detail="费用记录不存在")
     await _require_record_owner_or_manager(source_fee, identity, db)
+    await _require_linked_case_fee_action(source_fee, "case.fee.notice", identity, db)
     source_data = dict(source_fee.data or {})
     amount = _round_fee_amount(float(source_data.get("amount") or 0))
     if amount <= 0:
@@ -472,6 +488,7 @@ async def confirm_finance_fee_inform_arrival(
         _fee_inform_dict, _fee_inform_record, _round_fee_amount,
     )
     notice, source_fee = await _fee_inform_record(inform_id, identity, db, write=True)
+    await _require_linked_case_fee_action(source_fee, "case.fee.arrival", identity, db)
     # PostgreSQL serializes concurrent confirmation attempts; the unique receipt
     # reference below supplies the same final guard on SQLite.
     notice = await db.scalar(select(BusinessRecord).where(BusinessRecord.id == notice.id).with_for_update())
@@ -531,6 +548,7 @@ async def upload_finance_fee_inform_bill(
         _fee_inform_dict, _fee_inform_record, _round_fee_amount,
     )
     notice, source_fee = await _fee_inform_record(inform_id, identity, db, write=True)
+    await _require_linked_case_fee_action(source_fee, "case.fee.update", identity, db)
     data = dict(notice.data or {})
     if notice.status != "已到账":
         raise HTTPException(status_code=409, detail="仅已到账费用通知可以上传票据")
@@ -573,7 +591,8 @@ async def download_finance_fee_inform_bill(inform_id: int, identity: dict = Depe
     from app.core.storage import (
         _attachment_storage_path,
     )
-    notice, _ = await _fee_inform_record(inform_id, identity, db)
+    notice, source_fee = await _fee_inform_record(inform_id, identity, db)
+    await _require_linked_case_fee_action(source_fee, "case.fee.receipt.view", identity, db)
     attachment_id = int((notice.data or {}).get("receipt_attachment_id") or 0)
     attachment = await db.get(FileAttachment, attachment_id) if attachment_id else None
     if not attachment or attachment.record_id != notice.id:
@@ -590,6 +609,7 @@ async def unlock_finance_fee_inform(inform_id: int, identity: dict = Depends(cur
         _fee_inform_dict, _fee_inform_record,
     )
     notice, source_fee = await _fee_inform_record(inform_id, identity, db, write=True)
+    await _require_linked_case_fee_action(source_fee, "case.fee.notice", identity, db)
     data = dict(notice.data or {})
     if notice.status != "已票据确认" or not data.get("locked"):
         raise HTTPException(status_code=409, detail="仅已确认票据的费用通知可以解锁")
@@ -614,6 +634,7 @@ async def link_finance_fee_inform(inform_id: int, body: FinanceFeeInformLinksInp
         _ensure_record_visible, _require_record_owner_or_manager,
     )
     notice, source_fee = await _fee_inform_record(inform_id, identity, db, write=True)
+    await _require_linked_case_fee_action(source_fee, "case.fee.notice", identity, db)
     requested_ids = [int(item) for item in body.fee_ids]
     if len(set(requested_ids)) != len(requested_ids):
         raise HTTPException(status_code=422, detail="关联费用不能重复选择")
@@ -652,6 +673,7 @@ async def delete_finance_fee_inform(inform_id: int, identity: dict = Depends(cur
         _attachment_storage_path,
     )
     notice, source_fee = await _fee_inform_record(inform_id, identity, db, write=True)
+    await _require_linked_case_fee_action(source_fee, "case.fee.notice", identity, db)
     if notice.status != "已通知":
         raise HTTPException(status_code=409, detail="仅未到账的费用通知可以删除；到账后请保留财务审计记录")
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == notice.id))).all())
@@ -979,6 +1001,7 @@ async def batch_update_case_fee_inform_date(
 
     inform_date = body.inform_date.isoformat()
     for item in items:
+        await _require_linked_case_fee_action(item, "case.fee.notice", identity, db)
         data = dict(item.data or {})
         previous_inform_date = str(data.get("inform_date") or "").strip()
         data["inform_date"] = inform_date
@@ -1065,6 +1088,7 @@ async def update_refund_case_fee_status(
     items = await _editable_refund_case_fees(body.ids, identity, db)
     changed_at = datetime.now().isoformat(timespec="seconds")
     for item in items:
+        await _require_linked_case_fee_action(item, "case.fee.refund", identity, db)
         data = dict(item.data or {})
         previous_code, previous_label = _refund_case_fee_status(data)
         data.update({
@@ -1094,8 +1118,20 @@ async def add_refund_case_fee_logs(
     items = await _editable_refund_case_fees(body.ids, identity, db)
     labels = {"court": "法院", "received": "到账", "other": "其他"}
     for item in items:
+        await _require_linked_case_fee_action(item, "case.fee.refund", identity, db)
         data = item.data or {}
         label = labels[body.kind]
+        case_id = int(data.get("case_id") or data.get("case_record_id") or 0)
+        case_record = await db.get(BusinessRecord, case_id) if case_id else None
+        db.add(BusinessRecord(
+            module="case_log", serial_no=f"CASELOG-{uuid4().hex.upper()}", title=f"{label}退费日志",
+            customer=item.customer, status="有效", owner=identity["username"], department=item.department,
+            description=body.content.strip(), data={
+                "kind": "refund", "refund_type": body.kind, "case_fee_id": item.id,
+                "case_id": case_id or None,
+                "case_no": case_record.serial_no if case_record else str(data.get("case_no") or ""),
+            },
+        ))
         db.add(WorkflowEvent(
             record_id=item.id, action=f"添加{label}退费日志", operator=identity["username"],
             comment=body.content.strip(),
@@ -1111,15 +1147,29 @@ async def list_refund_case_fee_logs(
 ):
     from app.core.permissions import _ensure_record_module
     await _ensure_record_module(fee_id, "finance", identity, db)
-    events = list((await db.scalars(select(WorkflowEvent).where(
+    records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case_log", BusinessRecord.status != "已删除",
+        BusinessRecord.data["case_fee_id"].as_integer() == fee_id,
+        BusinessRecord.data["kind"].as_string() == "refund",
+    ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
+    historical_events = list((await db.scalars(select(WorkflowEvent).where(
         WorkflowEvent.record_id == fee_id,
         WorkflowEvent.action.like("添加%退费日志"),
     ).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
-    return {"items": [{
-        "id": event.id, "content": event.comment, "operator": event.operator,
+    record_signatures = {(record.owner, record.description or "") for record in records}
+    labels = {"court": "法院", "received": "到账", "other": "其他"}
+    result_items = [{
+        "id": record.id, "content": record.description, "operator": record.owner,
+        "kind": "refund", "type": labels.get(str((record.data or {}).get("refund_type") or ""), "退费"),
+        "created_at": record.created_at,
+    } for record in records]
+    result_items.extend({
+        "id": f"legacy-{event.id}", "content": event.comment, "operator": event.operator,
         "kind": "refund", "type": event.action.removeprefix("添加").removesuffix("退费日志"),
         "created_at": event.created_at,
-    } for event in events], "total": len(events)}
+    } for event in historical_events if (event.operator, event.comment or "") not in record_signatures)
+    result_items.sort(key=lambda item: str(item["created_at"] or ""), reverse=True)
+    return {"items": result_items, "total": len(result_items)}
 
 
 @router.get(f"{settings.api_prefix}/finance/fees/query")
@@ -4754,6 +4804,7 @@ async def cancel_finance_payment(
     )
     item = await _ensure_record_module(fee_id, "finance", identity, db)
     await _require_record_owner_or_manager(item, identity, db)
+    await _require_linked_case_fee_action(item, "case.fee.payment", identity, db)
     if item.status not in FINANCE_PAYMENT_CANCELABLE_STATUSES:
         raise HTTPException(status_code=409, detail="当前付款申请状态不能撤回")
     reason = body.reason.strip()
@@ -4794,6 +4845,7 @@ async def rollback_finance_payment(
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有付款回滚权限")
     item = await _ensure_record_module(fee_id, "finance", identity, db)
+    await _require_linked_case_fee_action(item, "case.fee.payment", identity, db)
     if item.status not in FINANCE_PAYMENT_ROLLBACKABLE_STATUSES:
         raise HTTPException(status_code=409, detail="当前付款申请状态不能回滚")
     previous = item.status
@@ -4859,6 +4911,9 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
     item = await _ensure_record_module(fee_id, "finance", identity, db)
     await _require_record_owner_or_manager(item, identity, db)
     is_payment_request = body.amount is not None
+    await _require_linked_case_fee_action(
+        item, "case.fee.payment" if is_payment_request else "case.fee.update", identity, db,
+    )
     allowed_statuses = {"草稿", "已退回", "已审批", "部分付款"} if is_payment_request else {"草稿", "已退回"}
     if item.status not in allowed_statuses:
         raise HTTPException(status_code=409, detail="当前状态不能申请付款" if is_payment_request else "当前状态不能提交审批")
@@ -4947,6 +5002,7 @@ async def mark_finance_fee_no_payment(fee_id: int, body: FinanceActionInput, ide
     )
     item = await _ensure_record_module(fee_id, "finance", identity, db)
     await _require_record_owner_or_manager(item, identity, db)
+    await _require_linked_case_fee_action(item, "case.fee.mark_unpaid", identity, db)
     if item.status not in {"草稿", "已退回"}:
         raise HTTPException(status_code=409, detail="仅草稿或已退回费用可以标记不缴费")
     previous = item.status
@@ -4985,6 +5041,7 @@ async def mark_finance_fee_refund_not_required(fee_id: int, body: FinanceActionI
         if "*" not in permission.get("action_keys", []) and "finance.refund.not_required" not in permission.get("action_keys", []):
             raise HTTPException(status_code=403, detail="当前角色没有标记不再办理退费的权限")
     item = (await _editable_refund_case_fees([fee_id], identity, db))[0]
+    await _require_linked_case_fee_action(item, "case.fee.refund", identity, db)
     data = dict(item.data or {})
     previous_code, previous_label = _refund_case_fee_status(data)
     if previous_code == "R100":

@@ -171,8 +171,8 @@ export function ContractWizardContent({
             <Form.Item label="所属部门" name="department" hidden={!editing}>
               <Input />
             </Form.Item>
-            <Form.Item className="span-2" label="备注" name="description" rules={[{ required: !editing }]}>
-              <Input.TextArea rows={2} placeholder="备注" />
+            <Form.Item className="span-2" label="备注" name="description">
+              <Input.TextArea rows={2} maxLength={2000} placeholder="备注（选填）" />
             </Form.Item>
             <Form.Item className="span-2" label="合同附件">
               <AttachmentFileInput onFileChange={onContractFileChange} />

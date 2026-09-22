@@ -93,12 +93,12 @@ export default function CustomerConflictPage() {
     <Card className="panel conflict-panel" title="客户利益冲突检索">
       <div className="conflict-steps" aria-label="检索步骤">
         <div className={foundItem ? "" : "active"}>
-          1.输入完整企业名称
+          1.输入当事人名称或证件号
         </div>
         <div className={foundItem ? "active" : ""}>2.企业信息</div>
       </div>
       <div className="conflict-tip">
-        温馨提示 ： 1. 需要输入完整的企业名称，才能查看具体信息.
+        可使用完整当事人名称、身份证号或统一社会信用代码检索。
       </div>
 
       {foundItem ? (
@@ -126,7 +126,7 @@ export default function CustomerConflictPage() {
       ) : (
         <div className="conflict-search-box">
           <div className="conflict-search">
-            <label>企业名称：</label>
+            <label>名称/证件号：</label>
             <Input
               value={name}
               onChange={(event) => {

@@ -306,7 +306,10 @@ export const noCaseDetailWriteCapability: CaseDetailCapabilities = {
   can_create_reminder: false, can_delete_reminder: false, can_create_log: false,
   can_update_progress: false, can_change_phase: false, can_manage_hearing: false, can_create_case_task: false, can_delete_case: false, can_duplicate_case: false, can_merge_case: false, can_assign_team: false,
   can_edit_hearing_lawyer: false, can_edit_basic: false, can_edit_court_info: false, can_close_case: false, can_archive: false,
-  can_create_finance: false, can_edit_finance: false, can_delete_finance: false, can_manage_assisted_fees: false, team_role: "none",
+  can_create_finance: false, can_edit_finance: false, can_delete_finance: false,
+  can_refund_finance: false, can_apply_fee_payment: false, can_apply_fee_invoice: false,
+  can_manage_fee_notice: false, can_confirm_fee_arrival: false, can_view_fee_receipt: false,
+  can_mark_fee_unpaid: false, can_manage_assisted_fees: false, team_role: "none",
   reason: "当前账号没有案件详情办理权限",
 };
 

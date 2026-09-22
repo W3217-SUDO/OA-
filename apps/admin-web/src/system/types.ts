@@ -53,6 +53,9 @@ export type CacheSummary = {
   cache_buckets: number;
   clearable_caches: number;
   scope: string;
+  automatic_cleanup: boolean;
+  cleanup_interval_seconds: number;
+  next_auto_cleanup_at: string;
 };
 
 export type MenuRow = {

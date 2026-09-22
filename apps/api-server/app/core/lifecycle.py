@@ -411,7 +411,7 @@ async def lifespan(_: FastAPI):
         _stored_menu_permission_keys,
     )
     from app.core.system import (
-        _business_rule_loop, _seed_business_records,
+        _automatic_cache_cleanup_loop, _business_rule_loop, _seed_business_records,
     )
     from app.core.tasks import (
         _dingtalk_notification_loop,
@@ -777,14 +777,18 @@ async def lifespan(_: FastAPI):
             logger.warning("Unable to return released startup heap pages to the operating system")
     await case_agent_runtime.start()
     rule_task = asyncio.create_task(_business_rule_loop())
+    cache_cleanup_task = asyncio.create_task(_automatic_cache_cleanup_loop())
     dingtalk_task = asyncio.create_task(_dingtalk_notification_loop())
     try:
         yield
     finally:
         rule_task.cancel()
+        cache_cleanup_task.cancel()
         dingtalk_task.cancel()
         with suppress(asyncio.CancelledError):
             await rule_task
+        with suppress(asyncio.CancelledError):
+            await cache_cleanup_task
         with suppress(asyncio.CancelledError):
             await dingtalk_task
         await case_agent_runtime.stop()

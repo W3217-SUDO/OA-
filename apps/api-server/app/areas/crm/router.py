@@ -1,6 +1,8 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from calendar import monthrange
 from datetime import timezone
+import hashlib
+from sqlalchemy import text
 from app.core.constants import (
     CASE_DEFENDANT_FIELDS, CASE_PLAINTIFF_FIELDS, CASE_THIRD_PARTY_FIELDS, CUSTOMER_CREATE_DATA_FIELDS, CUSTOMER_CREATE_STATUSES,
     CUSTOMER_LEVELS, CUSTOMER_MODIFICATION_ACTIONS, CUSTOMER_SYSTEM_DATA_FIELDS, FIELD_PERMISSION_DATA_KEYS, UPLOAD_ROOT,
@@ -50,7 +52,13 @@ async def _validate_customer_identity(data: dict, db: AsyncSession, *, exclude_i
         data["identity_no"] = ""
     data["organization_type"] = organization_type
     data[identity_field] = identity_value
-    existing = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer"))).all())
+    bind = db.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        lock_key = int.from_bytes(hashlib.sha256(f"customer:{identity_field}:{identity_value}".encode("utf-8")).digest()[:8], "big", signed=True)
+        await db.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": lock_key})
+    existing = list((await db.scalars(
+        select(BusinessRecord).where(BusinessRecord.module == "customer").with_for_update()
+    )).all())
     for customer in existing:
         if exclude_id and customer.id == exclude_id:
             continue
@@ -334,7 +342,14 @@ async def import_customers(file: UploadFile = File(...), identity: dict = Depend
                     department = current_user.department
                     if not owner_user or owner_user.department != current_user.department:
                         raise HTTPException(status_code=422, detail="部门负责人只能导入本部门负责人名下的客户")
-            item = BusinessRecord(module="customer", serial_no=serial, title=title, customer=title, status="跟进中", owner=owner, department=department, data={"contact": (row.get("联系人") or row.get("contact") or "").strip(), "phone": (row.get("电话") or row.get("phone") or "").strip(), "level": (row.get("客户等级") or row.get("level") or "普通客户").strip(), "customer_managers": [owner], "imported_at": datetime.now().isoformat(timespec="seconds"), "last_modified_by": identity["username"]})
+            organization_type = (row.get("组织类型") or row.get("organization_type") or "").strip()
+            identity_data = {
+                "organization_type": organization_type,
+                "identity_no": (row.get("身份证号") or row.get("identity_no") or "").strip(),
+                "credit_code": (row.get("统一社会信用代码") or row.get("credit_code") or "").strip(),
+            }
+            await _validate_customer_identity(identity_data, db)
+            item = BusinessRecord(module="customer", serial_no=serial, title=title, customer=title, status="跟进中", owner=owner, department=department, data={"contact": (row.get("联系人") or row.get("contact") or "").strip(), "phone": (row.get("电话") or row.get("phone") or "").strip(), "level": (row.get("客户等级") or row.get("level") or "普通客户").strip(), "customer_managers": [owner], **identity_data, "imported_at": datetime.now().isoformat(timespec="seconds"), "last_modified_by": identity["username"]})
             db.add(item); await db.flush(); db.add(WorkflowEvent(record_id=item.id, action="批量导入", to_status="跟进中", operator=identity["username"], comment=f"CSV 第 {row_no} 行")); created_items.append({"id": item.id, "serial_no": item.serial_no, "title": item.title, "owner": owner, "department": department})
         except HTTPException as exc:
             errors.append({"row": row_no, "error": str(exc.detail), "value": requested_owner})
@@ -453,6 +468,15 @@ async def customer_conflicts(
     if not query:
         raise HTTPException(status_code=422, detail="企业名称不能为空")
     needle = _normalize_conflict_entity(query)
+    identity_needle = query.replace(" ", "").upper()
+
+    def case_identity_match(case_record: BusinessRecord) -> bool:
+        data = case_record.data or {}
+        return any(
+            str(item.get("identity_no") or "").replace(" ", "").upper() == identity_needle
+            for key in ("plaintiff_identities", "defendant_identities", "third_party_identities")
+            for item in (data.get(key) or []) if isinstance(item, dict)
+        )
 
     # Conflict checking deliberately spans the whole firm.  Only the minimum
     # original-page disclosure is returned and no source record id is exposed.
@@ -461,7 +485,7 @@ async def customer_conflicts(
     )).all())
     direct_matching_cases = cases if not needle else [
         case_record for case_record in cases
-        if any(_normalize_conflict_entity(entity) == needle for entity in _case_conflict_entities(case_record))
+        if any(_normalize_conflict_entity(entity) == needle for entity in _case_conflict_entities(case_record)) or case_identity_match(case_record)
     ]
     customers = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer"))).all())
     related_customer_names: set[str] = set()
@@ -469,7 +493,11 @@ async def customer_conflicts(
         customer_data = customer.data or {}
         contacts = customer_data.get("contacts") or []
         contact_names = [str(item.get("name") or "").strip() for item in contacts if isinstance(item, dict)]
-        if _normalize_conflict_entity(customer.title) == needle or any(_normalize_conflict_entity(value) == needle for value in contact_names):
+        customer_identity_match = identity_needle in {
+            str(customer_data.get("identity_no") or "").replace(" ", "").upper(),
+            str(customer_data.get("credit_code") or "").replace(" ", "").upper(),
+        }
+        if _normalize_conflict_entity(customer.title) == needle or any(_normalize_conflict_entity(value) == needle for value in contact_names) or customer_identity_match:
             related_customer_names.add(customer.title)
     matching_cases = list(dict.fromkeys([
         *direct_matching_cases,
@@ -487,6 +515,7 @@ async def customer_conflicts(
     matches = []
     for case_record in sorted(matching_cases, key=lambda item: (_case_filing_date(item) or date.min, item.id), reverse=True):
         case_data = case_record.data or {}
+        identity_match = case_identity_match(case_record)
         direct_match = case_record in direct_matching_cases
         matches.append({
             "case_no": case_record.serial_no,
@@ -495,7 +524,7 @@ async def customer_conflicts(
             "plaintiffs": _case_party_values(case_data, CASE_PLAINTIFF_FIELDS),
             "defendants": _case_party_values(case_data, CASE_DEFENDANT_FIELDS),
             "third_parties": _case_party_values(case_data, CASE_THIRD_PARTY_FIELDS),
-            "match_reason": "案件当事人直接命中" if direct_match else "客户关联人命中",
+            "match_reason": "当事人证件号命中" if identity_match else "案件当事人直接命中" if direct_match else "客户关联人命中",
             "relation_path": [query, case_record.serial_no] if direct_match else [query, case_record.customer, case_record.serial_no],
         })
     return {

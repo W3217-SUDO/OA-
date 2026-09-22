@@ -17,6 +17,7 @@ type Notice = {
   level: string;
   is_read: boolean;
   created_at: string;
+  target_route?: string;
 };
 
 const colors: Record<string, string> = { error: "red", warning: "orange", info: "blue" };
@@ -73,7 +74,7 @@ export default function NotificationCenter({ onNavigate }: { onNavigate: (key: s
     }
     if (["clue", "notary", "evidence"].includes(item.source_type) && item.source_id) rememberInvestigationDetailTarget({ id: item.source_id, module: item.source_type });
     if (["finance", "finance_package", "finance_settlement", "finance_archive_settlement"].includes(item.source_type) && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: item.source_type as "finance" | "finance_package" | "finance_settlement" | "finance_archive_settlement" });
-    const route = iprWarningRoute || routes[item.source_type] || (["clue", "notary", "evidence"].includes(item.source_type) ? item.source_type : "");
+    const route = iprWarningRoute || item.target_route || routes[item.source_type] || (["clue", "notary", "evidence"].includes(item.source_type) ? item.source_type : "");
     if (route) {
       onNavigate(route);
       setOpen(false);

@@ -949,9 +949,23 @@ export default function DocumentCenterPage({
       receiptRows.filter((r) => {
         const q = receiptQuery,
           d = r.data;
-        const names = [profile.username, profile.display_name].filter(Boolean);
-        if (tab === "my-receipts" && !names.includes(d.uploader || r.owner))
-          return false;
+        const names = new Set([profile.username, profile.display_name].filter(Boolean).map(value => String(value).trim().toLowerCase()));
+        const linkedCaseIds = new Set([...(Array.isArray(d.case_ids) ? d.case_ids : []), d.case_id].map(Number).filter(value => value > 0));
+        const participantValues = cases.filter(item => linkedCaseIds.has(item.id)).flatMap(linkedCase => {
+          const caseData = linkedCase.data || {};
+          return [
+            linkedCase.owner,
+            caseData.hearing_lawyer_username, caseData.handling_lawyer_username,
+            caseData.case_manager_username, caseData.assistant_username,
+            caseData.investigator, caseData.business_owner, caseData.source_person,
+            caseData.hearing_lawyer, caseData.case_manager, caseData.assistant,
+            ...(Array.isArray(caseData.handling_lawyers) ? caseData.handling_lawyers : []),
+            ...(Array.isArray(caseData.case_team_usernames) ? caseData.case_team_usernames : []),
+            ...(Array.isArray(caseData.handling_lawyer_usernames) ? caseData.handling_lawyer_usernames : []),
+            ...(Array.isArray(caseData.legacy_participants) ? caseData.legacy_participants.map((item: any) => item?.staff_name) : []),
+          ];
+        }).filter(Boolean).map(value => String(value).trim().toLowerCase());
+        if (tab === "my-receipts" && !participantValues.some(value => names.has(value))) return false;
         const contains = (value: unknown, key: string) =>
           !q[key] ||
           String(value || "")
@@ -984,7 +998,7 @@ export default function DocumentCenterPage({
               rd <= rr[1].format("YYYY-MM-DD")))
         );
       }),
-    [receiptRows, receiptQuery, profile, tab],
+    [receiptRows, receiptQuery, profile, tab, cases],
   );
 
   const showReceipt = (r: ReceiptRow) => openDocument(r);

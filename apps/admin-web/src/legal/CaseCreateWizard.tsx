@@ -156,7 +156,7 @@ export const CaseCreateWizard = ({
                 <Form.Item name="defendants" noStyle rules={[{ required: true, message: "请输入至少一名被告" }]}>
                   <Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" style={{ width: "calc(100% - 90px)" }} />
                 </Form.Item>
-                <Button icon={<EditOutlined />} onClick={openCreateDefendantEditor}>编辑被告</Button>
+                <Button icon={<EditOutlined />} onClick={openCreateDefendantEditor}>填写对方当事人证件</Button>
               </Space.Compact>
             </Form.Item>
             <Form.Item label={litigantLabels.defendantAgent} name="defendant_agents"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>

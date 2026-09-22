@@ -249,5 +249,22 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             setAgentDecisionLoading("");
         }
     };
-    return { loadCaseAgent, sendCaseAgentMessage, decideCaseAgentAction };
+    const restoreCaseAgentAction = async (action: CaseAgentAction) => {
+        const { agentCase, agentDecisionLoading, setAgentDecisionLoading, setAgentState } = context;
+        if (!agentCase || agentDecisionLoading) return;
+        setAgentDecisionLoading(action.id);
+        try {
+            await api.post(`/case-spaces/${agentCase.id}/agent/actions/${action.id}/restore`);
+            setAgentState((current) => current ? {
+                ...current,
+                pending_actions: current.pending_actions.map((item) => item.id === action.id ? { ...item, status: "restored" } : item),
+            } : current);
+            message.success("已恢复逻辑删除的数据");
+        } catch (error: any) {
+            message.error(error?.response?.data?.detail || "恢复操作失败");
+        } finally {
+            setAgentDecisionLoading("");
+        }
+    };
+    return { loadCaseAgent, sendCaseAgentMessage, decideCaseAgentAction, restoreCaseAgentAction };
 }

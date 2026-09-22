@@ -67,8 +67,10 @@ export function SystemMenuManagement({
 }: SystemMenuManagementProps) {
   const [visibleKeys, setVisibleKeys] = useState<string[]>([]);
   const [visibilitySaving, setVisibilitySaving] = useState(false);
-  const systemMenus = menus.filter((row) => row.is_system),
-    legacyMenus = menus.filter((row) => !row.is_system);
+  const { systemMenus, legacyMenus } = useMemo(() => ({
+    systemMenus: menus.filter((row) => row.is_system),
+    legacyMenus: menus.filter((row) => !row.is_system),
+  }), [menus]);
   const normalizedMenuSearch = menuSearch.trim().toLowerCase();
   const filteredSystemMenus = normalizedMenuSearch
     ? systemMenus.filter((row) => [row.key, row.parent_key, row.label, row.description].join(" ").toLowerCase().includes(normalizedMenuSearch))
@@ -76,24 +78,26 @@ export function SystemMenuManagement({
 
   const menuTreeData = useMemo(() => {
     const nodes = new Map<string, any>();
-    menus.forEach((row) =>
+    const protectedKeys = new Set(["dashboard", "system", "system-management"]);
+    systemMenus.forEach((row) =>
       nodes.set(row.key, {
         title: row.label,
         value: row.key,
         key: row.key,
+        disableCheckbox: protectedKeys.has(row.key),
         children: [],
       }),
     );
     const roots: any[] = [];
-    menus.forEach((row) => {
+    systemMenus.forEach((row) => {
       const node = nodes.get(row.key);
       const parent = row.parent_key ? nodes.get(row.parent_key) : undefined;
       if (parent) parent.children.push(node);
       else roots.push(node);
     });
     return roots;
-  }, [menus]);
-  useEffect(() => setVisibleKeys(menus.filter((row) => row.is_visible).map((row) => row.key)), [menus]);
+  }, [systemMenus]);
+  useEffect(() => setVisibleKeys(menus.filter((row) => row.is_system && row.is_visible).map((row) => row.key)), [menus]);
 
   return (
     <>

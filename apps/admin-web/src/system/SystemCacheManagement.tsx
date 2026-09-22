@@ -62,6 +62,13 @@ export function SystemCacheManagement({
         description={cacheSummary?.scope || "缓存统计仅包含本服务可管理的进程内存缓存。"}
         style={{ marginBottom: 12 }}
       />
+      {cacheSummary?.automatic_cleanup && <Alert
+        type="success"
+        showIcon
+        message={`系统每 ${Math.round(cacheSummary.cleanup_interval_seconds / 60)} 分钟自动清理缓存`}
+        description={`下次计划时间：${formatTime(cacheSummary.next_auto_cleanup_at)}；手动清理仅用于管理员立即刷新缓存。`}
+        style={{ marginBottom: 12 }}
+      />}
       <Table
         rowKey="key"
         size="small"

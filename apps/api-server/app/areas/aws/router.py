@@ -213,7 +213,10 @@ async def delete_official_documents(body: OfficialDocumentDeleteInput, identity:
         await _require_record_owner_or_manager(item, identity, db)
         if (item.data or {}).get("business_process_status", "未处理") == "已处理":
             raise HTTPException(status_code=409, detail="已处理的官文收文不能删除，请使用专用撤销或作废流程")
-        attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.record_id == item.id))).all()
+        attachment_id = int((item.data or {}).get("attachment_id") or 0)
+        attachments = list((await db.scalars(select(FileAttachment).where(
+            FileAttachment.id == attachment_id if attachment_id else FileAttachment.record_id == item.id,
+        ))).all())
         attachment_paths.extend(Path(attachment.path) for attachment in attachments)
         for attachment in attachments:
             await db.delete(attachment)
@@ -666,17 +669,13 @@ async def upload_official_document(
         db.add(record)
         await db.flush()
         attachment = FileAttachment(
-            record_id=record.id, category=category or "收文附件", original_name=original_name,
-            stored_name=stored_name, content_type=file.content_type or "application/octet-stream",
-            size=len(content), path=str(target), uploader=identity["username"], remark=remark,
-        )
-        db.add(attachment)
-        case_attachment = FileAttachment(
             record_id=matched_case.id, category="官方收文", original_name=original_name,
             stored_name=stored_name, content_type=file.content_type or "application/octet-stream",
             size=len(content), path=str(target), uploader=identity["username"], remark=remark,
         )
-        db.add(case_attachment)
+        db.add(attachment)
+        await db.flush()
+        record.data = {**official_data, "attachment_id": attachment.id}
         db.add(WorkflowEvent(record_id=record.id, action="上传官文收文", from_status="", to_status="待签收", operator=identity["username"], comment=original_name))
         await db.commit()
         await db.refresh(record)

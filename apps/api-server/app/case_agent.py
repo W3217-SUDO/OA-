@@ -26,6 +26,9 @@ ALLOWED_ACTION_TYPES = {
     "case.reminder.create",
     "customer.update",
     "contract.update",
+    "case.delete",
+    "customer.delete",
+    "contract.delete",
 }
 ACTION_CAPABILITY_BY_TYPE = {
     "case.update": "can_edit_basic",
@@ -34,6 +37,9 @@ ACTION_CAPABILITY_BY_TYPE = {
     "case.reminder.create": "can_create_reminder",
     "customer.update": "can_update_customer",
     "contract.update": "can_update_contract",
+    "case.delete": "can_delete_case",
+    "customer.delete": "can_update_customer",
+    "contract.delete": "can_update_contract",
 }
 ACTION_BLOCK_PATTERN = re.compile(r"<proposed_action>\s*(\{.*?\})\s*</proposed_action>", re.DOTALL)
 
@@ -137,6 +143,19 @@ def _action_preview(proposed_action: dict[str, Any], snapshot: dict[str, Any]) -
                 for key, value in changes.items() if key != "target_id"
             ],
         }
+    if action_type in {"case.delete", "customer.delete", "contract.delete"}:
+        if action_type == "customer.delete":
+            source = snapshot.get("customer") or {}
+        elif action_type == "contract.delete":
+            target_id = int(payload.get("target_id") or 0)
+            source = next((item for item in snapshot.get("contracts") or [] if int(item.get("id") or 0) == target_id), {})
+        else:
+            source = case
+        return {
+            "target": source.get("serial_no") or source.get("title") or case.get("serial_no") or case.get("id") or "当前案件",
+            "before_status": source.get("status"),
+            "logical_delete": True,
+        }
     return {
         "target": case.get("serial_no") or case.get("id") or "当前案件",
         "create": payload,
@@ -236,7 +255,7 @@ def build_case_model_messages(
                 "但不得在缺少起算依据时自行推算法定期限。"
                 "当用户明确要求修改系统数据时，只能在回答末尾追加一个操作块，格式必须为："
                 "<proposed_action>{\"type\":\"case.update\",\"summary\":\"操作摘要\",\"payload\":{\"changes\":{\"字段\":\"新值\"}}}</proposed_action>。"
-                "允许的 type 仅有 case.update、case.data.update、case.task.create、case.reminder.create、customer.update、contract.update。"
+                "允许的 type 仅有 case.update、case.data.update、case.task.create、case.reminder.create、customer.update、contract.update、case.delete、customer.delete、contract.delete。"
                 "客户或合同修改必须在 payload 中提供 target_id 和 changes；target_id 只能是当前案件空间已关联记录。"
                 "案件任务 payload 使用 title、owner、deadline、priority、description；"
                 "案件提醒 payload 使用 content、reminder_date、deadline。"

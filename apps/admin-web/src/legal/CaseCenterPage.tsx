@@ -718,10 +718,19 @@ export default function CaseCenterPage({
   const [settlementAmountForm] = Form.useForm();
   const [caseClueEvidenceForm] = Form.useForm();
   const openCreateDefendantEditor = () => {
-    const defendants = createForm.getFieldValue("defendants") || [];
-    const existing = createForm.getFieldValue("defendant_identities") || [];
+    const customer = String(createForm.getFieldValue("customer") || "").trim();
+    const groups = [
+      ["原告/申请人", createForm.getFieldValue("plaintiffs") || [], createForm.getFieldValue("plaintiff_identities") || []],
+      ["被告/被申请人", createForm.getFieldValue("defendants") || [], createForm.getFieldValue("defendant_identities") || []],
+      ["第三人", createForm.getFieldValue("third_parties") || [], createForm.getFieldValue("third_party_identities") || []],
+    ] as const;
     createDefendantEditorForm.setFieldsValue({
-      defendant_identities: defendants.map((name: string) => existing.find((item: any) => item.name === name) || { name, organization_type: undefined, identity_no: "" }),
+      party_identities: groups.flatMap(([party_role, names, existing]) => names
+        .filter((name: string) => String(name || "").trim() !== customer)
+        .map((name: string) => ({
+          ...(existing.find((item: any) => item.name === name) || { name, organization_type: undefined, identity_no: "" }),
+          party_role,
+        }))),
     });
     setCreateDefendantEditorOpen(true);
   };
@@ -794,6 +803,7 @@ export default function CaseCenterPage({
     get setCounselLogs() { return setCounselLogs; },
     get setCounselDetailCapabilities() { return setCounselDetailCapabilities; },
     get setCounselDetailFinance() { return setCounselDetailFinance; },
+    get counselDetailFinance() { return counselDetailFinance; },
     get applyCounselDetailCluePageState() { return applyCounselDetailCluePageState; },
     get mergingCase() { return mergingCase; },
     get mergeCaseForm() { return mergeCaseForm; },
@@ -1520,7 +1530,7 @@ export default function CaseCenterPage({
     });
   };
 
-  const { loadCaseAgent, sendCaseAgentMessage, decideCaseAgentAction } = createCaseAssistantActions({
+  const { loadCaseAgent, sendCaseAgentMessage, decideCaseAgentAction, restoreCaseAgentAction } = createCaseAssistantActions({
     get setAgentLoading() { return setAgentLoading; },
     get setAgentStatus() { return setAgentStatus; },
     get setAgentState() { return setAgentState; },
@@ -4196,6 +4206,7 @@ export default function CaseCenterPage({
         setAgentSkillId={setAgentSkillId}
         loadCaseAgent={loadCaseAgent}
         decideCaseAgentAction={decideCaseAgentAction}
+        restoreCaseAgentAction={restoreCaseAgentAction}
         setAgentHistoryExpanded={setAgentHistoryExpanded}
         sendCaseAgentMessage={sendCaseAgentMessage}
         setAgentMaterialPickerOpen={setAgentMaterialPickerOpen}
@@ -4336,7 +4347,20 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal open={caseLogOpen} title={`${caseLogKind === "refund" ? "新增退费日志" : "新增案件日志"}：${caseLogTarget?.serial_no || viewingCounselCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={createCounselLog} onCancel={()=>{setCaseLogOpen(false);setCaseLogTarget(null);}}>
-        <Form form={caseLogForm} layout="vertical"><Form.Item label="日志内容" name="content" rules={[{required:true,message:"请输入日志内容"},{max:1000}]}><Input.TextArea rows={5}/></Form.Item></Form>
+        <Form form={caseLogForm} layout="vertical">
+          {caseLogKind === "refund" && <Form.Item label="关联费用" name="case_fee_id" rules={[{required:true,message:"请选择退费对应的案件费用"}]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择退费对应的案件费用"
+              options={counselDetailFinance.map((row)=>({
+                value:row.id,
+                label:`${row.data.expense_subtype || row.data.fee_type || row.title}｜${Number(row.data.amount || 0).toFixed(2)} 元｜${row.serial_no}`,
+              }))}
+            />
+          </Form.Item>}
+          <Form.Item label="日志内容" name="content" rules={[{required:true,message:"请输入日志内容"},{max:1000}]}><Input.TextArea rows={5}/></Form.Item>
+        </Form>
       </Modal>
       <Modal width={680} open={batchUpdateOpen} title={`批量修改案件（已选 ${selectedCaseKeys.length} 个）`} okText="确定" cancelText="取消" onOk={submitCounselBatchUpdate} onCancel={()=>setBatchUpdateOpen(false)}>
         <Alert type="warning" showIcon title="只填写需要统一修改的字段；未填写字段保持原值。已进入归档流程的案件会被整体阻断。" style={{marginBottom:12}}/>
@@ -4489,7 +4513,7 @@ export default function CaseCenterPage({
       <Modal
         width={560}
         open={createDefendantEditorOpen}
-        title="编辑被告"
+        title="填写对方当事人证件"
         okText="确定"
         cancelText="取消"
         onOk={() => void saveCreateDefendants()}
@@ -4498,13 +4522,14 @@ export default function CaseCenterPage({
       >
         <Alert type="info" showIcon title="每名对方当事人都必须填写组织类型和对应证件号。" style={{ marginBottom: 12 }} />
         <Form form={createDefendantEditorForm} layout="vertical">
-          <Form.List name="defendant_identities">
+          <Form.List name="party_identities">
             {(fields) => <Space direction="vertical" style={{ width: "100%" }}>
               {fields.map((field) => <div key={field.key} className="form-grid">
+                <Form.Item {...field} label="角色" name={[field.name,"party_role"]}><Input disabled /></Form.Item>
                 <Form.Item {...field} label="对方当事人" name={[field.name,"name"]} rules={[{required:true,message:"请输入名称"}]}><Input disabled /></Form.Item>
                 <Form.Item {...field} label="组织类型" name={[field.name,"organization_type"]} rules={[{required:true,message:"请选择组织类型"}]}><Select options={["公司企业","事业单位","机关团体","个人","个体工商户","其他"].map(value=>({value,label:value}))} /></Form.Item>
-                <Form.Item noStyle shouldUpdate={(prev,next)=>prev?.defendant_identities?.[field.name]?.organization_type!==next?.defendant_identities?.[field.name]?.organization_type}>
-                  {({getFieldValue})=>{const isPerson=getFieldValue(["defendant_identities",field.name,"organization_type"])==="个人";return <Form.Item {...field} label={isPerson?"身份证号":"统一社会信用代码"} name={[field.name,"identity_no"]} rules={[{required:true,message:"请输入证件号"},{pattern:isPerson?/^\d{17}[\dXx]$/:/^[0-9A-Za-z]{18}$/,message:isPerson?"请输入18位身份证号":"请输入18位统一社会信用代码"}]}><Input maxLength={18}/></Form.Item>}}
+                <Form.Item noStyle shouldUpdate={(prev,next)=>prev?.party_identities?.[field.name]?.organization_type!==next?.party_identities?.[field.name]?.organization_type}>
+                  {({getFieldValue})=>{const isPerson=getFieldValue(["party_identities",field.name,"organization_type"])==="个人";return <Form.Item {...field} label={isPerson?"身份证号":"统一社会信用代码"} name={[field.name,"identity_no"]} rules={[{required:true,message:"请输入证件号"},{pattern:isPerson?/^\d{17}[\dXx]$/:/^[0-9A-Za-z]{18}$/,message:isPerson?"请输入18位身份证号":"请输入18位统一社会信用代码"}]}><Input maxLength={18}/></Form.Item>}}
                 </Form.Item>
               </div>)}
             </Space>}

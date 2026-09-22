@@ -196,7 +196,8 @@ async def _execute_case_agent_action(
         previous_status = target.status
         target.status = "已删除"
         target.data = {
-            **(target.data or {}), "deleted_at": datetime.now(timezone.utc).isoformat(),
+            **(target.data or {}), "status_before_delete": previous_status,
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
             "deleted_by": identity["username"], "delete_reason": str(payload.get("reason") or "智能体审批删除").strip(),
         }
         db.add(WorkflowEvent(

@@ -91,6 +91,7 @@ export interface CaseWorkflowDependencies {
     readonly setCounselLogs: React.Dispatch<React.SetStateAction<CaseLogRow[]>>;
     readonly setCounselDetailCapabilities: React.Dispatch<React.SetStateAction<CaseDetailCapabilities>>;
     readonly setCounselDetailFinance: React.Dispatch<React.SetStateAction<CaseRow[]>>;
+    readonly counselDetailFinance: CaseRow[];
     readonly applyCounselDetailCluePageState: (payload: any, fallbackPage: number, fallbackPageSize: number) => {
         items: any;
         total: number;
@@ -212,8 +213,12 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
     const saveCreateDefendants = async () => {
         const { createDefendantEditorForm, createForm, setCreateDefendantEditorOpen } = context;
         const values = await createDefendantEditorForm.validateFields();
-        const identities = values.defendant_identities || [];
-        createForm.setFieldsValue({ defendants: identities.map((item: any) => item.name), defendant_identities: identities });
+        const identities = values.party_identities || [];
+        createForm.setFieldsValue({
+            plaintiff_identities: identities.filter((item: any) => item.party_role === "原告/申请人").map(({ party_role: _partyRole, ...item }: any) => item),
+            defendant_identities: identities.filter((item: any) => item.party_role === "被告/被申请人").map(({ party_role: _partyRole, ...item }: any) => item),
+            third_party_identities: identities.filter((item: any) => item.party_role === "第三人").map(({ party_role: _partyRole, ...item }: any) => item),
+        });
         setCreateDefendantEditorOpen(false);
     };
     const advanceCreateStep = async () => {
@@ -282,11 +287,13 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         try {
             await api.put(`/cases/${createdCaseId}/litigants`, {
                 plaintiffs: values.plaintiffs || [],
+                plaintiff_identities: values.plaintiff_identities || [],
                 plaintiff_agents: values.plaintiff_agents || [],
                 defendants: values.defendants || [],
                 defendant_identities: values.defendant_identities || [],
                 defendant_agents: values.defendant_agents || [],
                 third_parties: values.third_parties || [],
+                third_party_identities: values.third_party_identities || [],
                 third_party_agents: values.third_party_agents || [],
                 comment: values.litigant_comment || "",
             });
@@ -931,8 +938,11 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             return;
         const values = await caseLogForm.validateFields();
         try {
-            const logContent = caseLogKind === "refund" ? `退费日志：${values.content.trim()}` : values.content.trim();
-            await api.post(`/cases/${targetCase.id}/logs`, { content: logContent });
+            await api.post(`/cases/${targetCase.id}/logs`, {
+                content: values.content.trim(),
+                kind: caseLogKind,
+                case_fee_id: caseLogKind === "refund" ? values.case_fee_id : undefined,
+            });
             message.success(caseLogKind === "refund" ? "退费日志已保存" : "案件日志已保存");
             setCaseLogOpen(false);
             caseLogForm.resetFields();

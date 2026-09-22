@@ -1257,6 +1257,7 @@ async def _require_case_document_write_access(case_record: BusinessRecord, ident
     """Authorize legacy document generation independently of the creation wizard."""
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能生成办理文书")
+    await _require_case_action(identity, db, "case.document.generate")
 
 
 async def _require_case_action(identity: dict, db: AsyncSession, action_code: str) -> None:
@@ -1282,6 +1283,7 @@ async def _require_case_note_write_access(
     """
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能新增或删除案件提醒和日志")
+    await _require_case_action(identity, db, action_code)
 
 
 async def _require_case_event_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> str:
@@ -1304,12 +1306,14 @@ async def _require_case_task_write_access(case_record: BusinessRecord, identity:
     """Allow responsible case members to publish tasks for every active case."""
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能发布案件任务")
+    await _require_case_action(identity, db, "case.task.create")
 
 
 async def _require_case_attachment_upload_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Allow case materials before creation approval without widening other writes."""
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能上传案件文档")
+    await _require_case_action(identity, db, "case.document.upload")
 
 
 async def _require_case_related_attachment_target(
@@ -1340,12 +1344,14 @@ async def _require_case_progress_write_access(case_record: BusinessRecord, ident
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能维护进展或开庭排期")
     if case_record.status == "已合并":
         raise HTTPException(status_code=409, detail="已合并案件不能维护进展或开庭排期")
+    await _require_case_action(identity, db, "case.progress.update")
 
 
 async def _require_case_court_info_write_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """Authorize the independent court-info dialog without workflow side effects."""
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能修改法院信息")
+    await _require_case_action(identity, db, "case.detail.update")
 
 
 async def _require_case_phase_change_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
@@ -1354,6 +1360,7 @@ async def _require_case_phase_change_access(case_record: BusinessRecord, identit
         raise HTTPException(status_code=409, detail="案件已进入归档流程，不能修改案件阶段")
     if case_record.status == "已合并":
         raise HTTPException(status_code=409, detail="已合并案件不能修改案件阶段")
+    await _require_case_action(identity, db, "case.phase.update")
 
 
 async def _case_detail_action_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
@@ -1388,6 +1395,13 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_create_finance": active and await _case_action_granted(identity, db, "case.fee.create"), "team_role": role, "reason": "",
         "can_edit_finance": active and await _case_action_granted(identity, db, "case.fee.update"),
         "can_delete_finance": active and await _case_action_granted(identity, db, "case.fee.delete"),
+        "can_refund_finance": active and await _case_action_granted(identity, db, "case.fee.refund"),
+        "can_apply_fee_payment": active and await _case_action_granted(identity, db, "case.fee.payment"),
+        "can_apply_fee_invoice": active and await _case_action_granted(identity, db, "case.fee.invoice"),
+        "can_manage_fee_notice": active and await _case_action_granted(identity, db, "case.fee.notice"),
+        "can_confirm_fee_arrival": active and await _case_action_granted(identity, db, "case.fee.arrival"),
+        "can_view_fee_receipt": await _case_action_granted(identity, db, "case.fee.receipt.view"),
+        "can_mark_fee_unpaid": active and await _case_action_granted(identity, db, "case.fee.mark_unpaid"),
     }
     try:
         await _require_case_attachment_upload_access(case_record, identity, db)
@@ -1424,15 +1438,15 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         await _require_case_detail_write_access(case_record, identity, db)
     except HTTPException as exc:
         return {**base, "reason": str(exc.detail)}
-    can_progress = active
+    can_progress = active and await _case_action_granted(identity, db, "case.progress.update")
+    can_manage_hearing = active and await _case_action_granted(identity, db, "case.hearing.manage")
     can_manage_assisted_fees = await _case_action_granted(identity, db, "case.assisted_fee.manage")
     return {
         **base,
         "can_write": True,
         "can_manage_assisted_fees": can_manage_assisted_fees,
         "can_delete_attachment": base["can_upload_attachment"],
-        "can_update_progress": can_progress, "can_manage_hearing": can_progress,
-        "can_delete_case": identity.get("role") in {"admin", "manager"} and case_record.status not in {"已归档", "已合并"},
+        "can_update_progress": can_progress, "can_manage_hearing": can_manage_hearing,
     }
 
 

@@ -243,7 +243,9 @@ export function CustomerDetailView({
         <h3>法人信息</h3>
         <div className="customer-view-fields customer-view-fields-four">
           <label><span>法人姓名</span><Input disabled value={customer.data.legal_representative || ""} /></label>
-          <label><span>身份证号</span><Input disabled value={customer.data.legal_agent_id_no || ""} /></label>
+          <label><span>组织类型</span><Input disabled value={customer.data.organization_type || ""} /></label>
+          {customer.data.organization_type === "个人" && <label><span>客户身份证号</span><Input disabled value={customer.data.identity_no || ""} /></label>}
+          <label><span>法人身份证号</span><Input disabled value={customer.data.legal_agent_id_no || ""} /></label>
           <label><span>职务</span><Input disabled value={customer.data.legal_agent_title || ""} /></label>
         </div>
       </section>
