@@ -5925,26 +5925,6 @@ async def submit_seal_application(record_id: int, body: TaskActionInput, identit
     await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db, identity=identity)
 
 
-@router.post(f"{settings.api_prefix}/seals/applications/{{record_id}}/withdraw")
-async def withdraw_seal_application(record_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.documents import (
-        _get_seal_application, _seal_record_dict,
-    )
-    from app.core.legacy_sync import (
-        _sync_legacy_official_audit,
-    )
-    item = await _get_seal_application(record_id, identity, db)
-    if identity.get("role") != "admin" and item.owner != identity["username"]:
-        raise HTTPException(status_code=403, detail="只有申请人或管理员可以撤回用印申请")
-    if item.status not in {"待审批", "待用印"}:
-        raise HTTPException(status_code=409, detail="只有待审批或已审待用印的申请可以撤回")
-    previous = item.status
-    item.status = "已撤回"
-    db.add(WorkflowEvent(record_id=item.id, action="撤回用印申请", from_status=previous, to_status="已撤回", operator=identity["username"], comment=body.comment))
-    await _sync_legacy_official_audit(item, identity, db, 40, body.comment)
-    await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)
-
-
 @router.post(f"{settings.api_prefix}/seals/applications/batch/withdraw")
 async def batch_withdraw_seal_applications(body: SealBatchApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Withdraw selected pending seal applications as one atomic workflow action."""
@@ -5977,6 +5957,26 @@ async def batch_withdraw_seal_applications(body: SealBatchApplicationInput, iden
         await db.rollback()
         raise
     return {"processed": len(ordered), "ids": ids, "status": "已撤回"}
+
+
+@router.post(f"{settings.api_prefix}/seals/applications/{{record_id}}/withdraw")
+async def withdraw_seal_application(record_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.documents import (
+        _get_seal_application, _seal_record_dict,
+    )
+    from app.core.legacy_sync import (
+        _sync_legacy_official_audit,
+    )
+    item = await _get_seal_application(record_id, identity, db)
+    if identity.get("role") != "admin" and item.owner != identity["username"]:
+        raise HTTPException(status_code=403, detail="只有申请人或管理员可以撤回用印申请")
+    if item.status not in {"待审批", "待用印"}:
+        raise HTTPException(status_code=409, detail="只有待审批或已审待用印的申请可以撤回")
+    previous = item.status
+    item.status = "已撤回"
+    db.add(WorkflowEvent(record_id=item.id, action="撤回用印申请", from_status=previous, to_status="已撤回", operator=identity["username"], comment=body.comment))
+    await _sync_legacy_official_audit(item, identity, db, 40, body.comment)
+    await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db)
 
 
 @router.post(f"{settings.api_prefix}/seals/applications/{{record_id}}/approve")
