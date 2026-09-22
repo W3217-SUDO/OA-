@@ -486,7 +486,7 @@ export default function TaskCenterPage({
     try {
       values.end_at = values.end_at ? values.end_at.format("YYYY-MM-DDTHH:mm:ss") : undefined;
       await api.post(`/tasks/${handoff.id}/handoff`, values);
-      message.success("任务已交接，5 日内未重新开始将自动完成");
+      message.success("任务已转交，等待接收人接收并处理");
       setHandoff(null);
       handoffForm.resetFields();
       load();
