@@ -30,7 +30,11 @@ class AttachmentOfficeOnlinePreviewContractTest(unittest.TestCase):
 
     def test_main_composes_every_system_route_after_new_endpoints(self):
         main_source = (ROUTER.parents[2] / "main.py").read_text(encoding="utf-8")
-        self.assertIn("include_route_slice(app, system_router, 77, 91)", main_source)
+        # The system router is composed in full. Registration no longer slices
+        # routers by numeric offsets, so no endpoint can be left out by a stale
+        # offset; route_dispatch_fingerprint.py proves dispatch is unchanged.
+        self.assertIn("app.include_router(system_router)", main_source)
+        self.assertNotIn("include_route_slice", main_source)
 
 
 if __name__ == "__main__":
