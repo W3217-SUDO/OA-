@@ -594,7 +594,7 @@ body {
     width: 300px;
   }
 }
-@media (max-width: 720px) {
+@media (max-width: 991px) {
   html,
   body,
   #root {
@@ -732,6 +732,7 @@ body {
   }
   .content {
     width: 100%;
+    min-width: 0;
     padding: 0 12px 16px;
     background: #f4f6f8;
     scrollbar-gutter: auto;
@@ -762,6 +763,26 @@ body {
     max-width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+  }
+  .page-workbench,
+  .ant-layout-content,
+  .ant-card,
+  .ant-card-body,
+  .ant-tabs,
+  .ant-tabs-content,
+  .ant-tabs-tabpane {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .ant-space,
+  .ant-form-item-control,
+  .ant-form-item-control-input,
+  .ant-form-item-control-input-content {
+    min-width: 0;
+  }
+  .ant-card-extra,
+  .ant-form-item-control-input-content > .ant-space {
+    flex-wrap: wrap;
   }
   .ant-modal {
     width: calc(100vw - 24px) !important;

@@ -103,6 +103,8 @@ export type Customer = {
     agency_fee_due?: number;
     official_fee_unreceived?: number;
     credit_code?: string;
+    organization_type?: string;
+    identity_no?: string;
     legal_representative?: string;
     registered_address?: string;
     invoice_title?: string;

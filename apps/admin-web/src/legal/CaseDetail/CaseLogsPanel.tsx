@@ -1,4 +1,3 @@
-import { PlusOutlined } from "@ant-design/icons";
 import { Button,Space,Table } from "antd";
 import type { CaseDetailCapabilities,CaseLogKind,CaseLogRow } from "../types";
 
@@ -27,9 +26,7 @@ interface CaseSystemLogsPanelProps {
 
 export const CaseSystemLogsPanel = ({
   logs,
-  capabilities,
   casePersonDisplayName,
-  onCreateLog,
 }: CaseSystemLogsPanelProps) => {
-  return (<>{capabilities.can_create_log&&<Space style={{marginBottom:10}}><Button type="primary" icon={<PlusOutlined/>} onClick={()=>onCreateLog("case")}>新增日志</Button><Button onClick={()=>onCreateLog("refund")}>新增退费日志</Button></Space>}<Table rowKey="id" size="small" pagination={false} dataSource={logs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"操作",dataIndex:"action",width:210},{title:"操作人",width:110,render:(_:unknown,row:any)=>casePersonDisplayName(row.operator,row.operator_display_name)},{title:"说明",dataIndex:"comment"}]}/></>);
+  return (<Table rowKey="id" size="small" pagination={false} dataSource={logs} columns={[{title:"时间",dataIndex:"created_at",width:170},{title:"操作",dataIndex:"action",width:210},{title:"操作人",width:110,render:(_:unknown,row:any)=>casePersonDisplayName(row.operator,row.operator_display_name)},{title:"说明",dataIndex:"comment"}]}/>);
 };

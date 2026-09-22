@@ -1346,8 +1346,15 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
         _ensure_record_module,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
+    related_finance_ids = list((await db.scalars(select(BusinessRecord.id).where(
+        BusinessRecord.module == "finance",
+        or_(BusinessRecord.data["case_id"].as_integer() == case_id, BusinessRecord.data["case_record_id"].as_integer() == case_id),
+    ))).all())
     events = list((await db.scalars(select(WorkflowEvent).where(
-        WorkflowEvent.record_id == case_id, WorkflowEvent.action == "新增案件日志",
+        or_(
+            and_(WorkflowEvent.record_id == case_id, WorkflowEvent.action == "新增案件日志"),
+            and_(WorkflowEvent.record_id.in_(related_finance_ids), WorkflowEvent.action.like("添加%退费日志")),
+        ),
     ).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
     from app.core.case_document_sources import case_document_sources
     legacy_logs = list((await db.scalars(select(LegacyCaseLog).where(
@@ -1360,6 +1367,7 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
         "id": item.id, "content": item.comment, "operator": item.operator,
         "operator_display_name": _person_reference_display(item.operator, users_by_username)[0],
         "created_at": item.created_at, "source": "current",
+        "kind": "refund" if item.action.startswith("添加") and item.action.endswith("退费日志") else "case",
     } for item in events]
     event_ids = {item.id for item in events}
     items.extend({
@@ -2183,6 +2191,11 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
         raise HTTPException(status_code=422, detail="客户编号与关联合同绑定客户不一致")
     if body.customer.strip() and _normalized_customer_name(body.customer) != _normalized_customer_name(contract_customer.title):
         raise HTTPException(status_code=422, detail="客户名称与关联合同绑定客户不一致")
+    customer_data = contract_customer.data or {}
+    customer_organization_type = str(customer_data.get("organization_type") or "").strip()
+    customer_identity = str(customer_data.get("identity_no") if customer_organization_type == "个人" else customer_data.get("credit_code") or "").strip()
+    if not customer_organization_type or not customer_identity:
+        raise HTTPException(status_code=409, detail="客户缺少组织类型或唯一证件号，请先补齐客户资料后再新建案件")
     contract.data = {
         **(contract.data or {}),
         "customer_id": contract_customer.id,
@@ -2677,6 +2690,12 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
     target_type = str((target.data or {}).get("case_type") or "").strip()
     if source_type != target_type:
         raise HTTPException(status_code=422, detail="仅允许合并同一案件类型的案件")
+    source_contract_id = int((source.data or {}).get("contract_record_id") or (source.data or {}).get("contract_id") or 0)
+    target_contract_id = int((target.data or {}).get("contract_record_id") or (target.data or {}).get("contract_id") or 0)
+    if not source_contract_id or not target_contract_id:
+        raise HTTPException(status_code=422, detail="两个案件都必须关联同一份合同后才能合并")
+    if source_contract_id != target_contract_id:
+        raise HTTPException(status_code=422, detail="仅允许合并同一合同下的案件")
 
     await merge_case_relations(source, target, db)
     moved_fees, moved_assisted_fees, moved_attachments = await move_case_finance_files(source, target, identity, db)
@@ -2972,6 +2991,28 @@ async def update_counsel_case_basic(case_id: int, body: CaseCounselBasicInput, i
         "counsel_end": str(body.counsel_end),
     }, handling_lawyers, handling_usernames, assistant, assistant_username)
     case_record.data = updated_case_data
+    previous_clue_ids = {
+        int(value) for value in (case_data.get("investigation_clue_ids") or [])
+        if str(value).isdigit()
+    }
+    changed_clue_ids = previous_clue_ids | set(clue_ids)
+    changed_clues = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "clue", BusinessRecord.id.in_(changed_clue_ids),
+    ))).all()) if changed_clue_ids else []
+    for clue in changed_clues:
+        clue_data = dict(clue.data or {})
+        if clue.id in clue_ids:
+            clue.data = {
+                **clue_data, "case_id": case_record.id, "case_record_id": case_record.id,
+                "case_no": case_record.serial_no, "linked_case_no": case_record.serial_no,
+            }
+        else:
+            linked_case_id = int(clue_data.get("case_record_id") or clue_data.get("case_id") or 0)
+            linked_case_no = str(clue_data.get("case_no") or clue_data.get("linked_case_no") or "").strip()
+            if linked_case_id == case_record.id or linked_case_no == case_record.serial_no:
+                for key in ("case_id", "case_record_id", "case_no", "linked_case_no"):
+                    clue_data.pop(key, None)
+                clue.data = clue_data
     if _case_commission_personnel_changed(case_data, updated_case_data):
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     db.add(WorkflowEvent(
@@ -3885,8 +3926,44 @@ async def decide_case_agent_action(
             raise ValueError("action_already_decided")
         _require_case_agent_action_access(str(action.get("type") or ""), capabilities)
         execution_result = None
-        if body.decision == "approved":
+        import hashlib
+        audit_serial = "AGENT-" + hashlib.sha256(f"{case_id}:{action_id}".encode("utf-8")).hexdigest()[:40]
+        audit = await db.scalar(select(BusinessRecord).where(
+            BusinessRecord.module == "agent_action", BusinessRecord.serial_no == audit_serial,
+        ).with_for_update())
+        if audit and audit.status == "已执行":
+            execution_result = (audit.data or {}).get("execution_result")
+        elif audit and audit.status == "执行中":
+            raise HTTPException(status_code=409, detail="该智能体操作正在执行，请勿重复批准")
+        elif body.decision == "approved":
+            if not audit:
+                audit = BusinessRecord(
+                    module="agent_action", serial_no=audit_serial, title=str(action.get("summary") or "智能体操作"),
+                    customer=case_record.customer, status="执行中", owner=identity["username"], department=case_record.department,
+                    description=body.comment.strip(), data={
+                        "case_id": case_id, "case_no": case_record.serial_no, "action_id": action_id,
+                        "action_type": str(action.get("type") or ""), "payload": action.get("payload") or {},
+                        "approved_by": identity["username"], "approved_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                db.add(audit)
+            else:
+                audit.status = "执行中"
+            await db.commit()
             execution_result = await _execute_case_agent_action(case_record, action, identity, db, context)
+            audit = await db.scalar(select(BusinessRecord).where(
+                BusinessRecord.module == "agent_action", BusinessRecord.serial_no == audit_serial,
+            ).with_for_update())
+            audit.status = "已执行"
+            audit.data = {**(audit.data or {}), "execution_result": execution_result, "executed_at": datetime.now(timezone.utc).isoformat()}
+            await db.commit()
+        elif not audit:
+            db.add(BusinessRecord(
+                module="agent_action", serial_no=audit_serial, title=str(action.get("summary") or "智能体操作"),
+                customer=case_record.customer, status="已驳回", owner=identity["username"], department=case_record.department,
+                description=body.comment.strip(), data={"case_id": case_id, "case_no": case_record.serial_no, "action_id": action_id, "action_type": str(action.get("type") or ""), "rejected_by": identity["username"]},
+            ))
+            await db.commit()
         return await case_agent_runtime.decide_action(
             case_id=case_id,
             action_id=action_id,

@@ -853,8 +853,21 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
             for operation in operations
         )
     definitions.extend([
-        {"code": "case.fee.update", "menu_key": "case-mine", "label": "修改案件费用"},
-        {"code": "case.fee.delete", "menu_key": "case-mine", "label": "删除案件费用"},
+        *({"code": code, "menu_key": "case-mine", "label": label} for code, label in (
+            ("case.detail.update", "修改案件基本信息"), ("case.team.assign", "分配案件人员"),
+            ("case.phase.update", "修改案件阶段"), ("case.hearing.manage", "维护开庭排期"),
+            ("case.task.create", "新建案件任务"), ("case.duplicate", "复制案件"),
+            ("case.delete", "删除案件"), ("case.merge", "合并案件"),
+            ("case.reminder.manage", "维护案件提醒"), ("case.log.create", "新增案件日志"),
+            ("case.document.generate", "生成案件文书"), ("case.document.upload", "上传案件文件"),
+            ("case.document.delete", "删除案件文件"), ("case.archive.submit", "提交案件归档"),
+            ("case.archive.review", "审核案件归档"), ("case.fee.create", "新增案件费用"),
+            ("case.fee.update", "修改案件费用"), ("case.fee.delete", "删除案件费用"),
+            ("case.fee.refund", "办理法院退费"), ("case.fee.payment", "申请案件付款"),
+            ("case.fee.invoice", "申请案件开票"), ("case.fee.notice", "维护费用通知"),
+            ("case.fee.arrival", "确认费用到账"), ("case.fee.receipt.view", "查看票据文件"),
+            ("case.fee.mark_unpaid", "标记不缴费"), ("case.assisted_fee.manage", "维护资助费用"),
+        )),
     ])
     return definitions
 
@@ -986,7 +999,7 @@ RECORD_IMPORT_SAMPLES = {
 CUSTOMER_CREATE_DATA_FIELDS = {
     "contact", "contact_accounts", "phone", "credit_code", "legal_representative", "registered_address",
     "invoice_title", "taxpayer_id", "invoice_address", "invoice_phone", "bank_name", "bank_account",
-    "customer_type", "short_name", "fax", "legal_agent_id_no", "legal_agent_title", "customer_source",
+    "customer_type", "organization_type", "identity_no", "short_name", "fax", "legal_agent_id_no", "legal_agent_title", "customer_source",
     "is_shared", "is_assisted", "file_date", "level", "province", "postal_code", "patent_customer_type",
     "fee_reduction", "industry", "output_value", "cooperation_status", "gb_classification", "website",
     "organization_nature", "organization_code", "registration_region", "registration_postal_code",
@@ -1304,6 +1317,9 @@ AGENT_ACTION_CAPABILITY = {
     "case.reminder.create": "can_create_reminder",
     "customer.update": "can_update_customer",
     "contract.update": "can_update_contract",
+    "case.delete": "can_delete_case",
+    "customer.delete": "can_update_customer",
+    "contract.delete": "can_update_contract",
 }
 
 

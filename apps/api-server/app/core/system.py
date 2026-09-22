@@ -1041,6 +1041,7 @@ async def _business_rule_loop() -> None:
         _apply_case_automatic_task_rules, _apply_hearing_sms_reminders, _apply_task_auto_completion, _apply_task_overdue_performance,
     )
     while True:
+        _clear_all_system_parameter_cache("system:auto")
         async with SessionLocal() as db:
             try:
                 await _apply_notary_auto_conversion(db)
@@ -1050,7 +1051,7 @@ async def _business_rule_loop() -> None:
                 await _apply_case_automatic_task_rules(db)
             except Exception:
                 await db.rollback()
-        await asyncio.sleep(3600)
+        await asyncio.sleep(max(settings.system_cache_ttl_seconds, 60))
 
 
 def _vip_node_member(node: VipTaskNode, identity: dict) -> bool:

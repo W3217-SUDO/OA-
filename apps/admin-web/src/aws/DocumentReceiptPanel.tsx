@@ -266,7 +266,7 @@ export function DocumentReceiptPanel({
     },
   ];
 
-  const title = isOfficial ? "官文收文" : tab === "my-receipts" ? "我的收文" : "公司收文";
+  const title = isOfficial ? "官方收文" : tab === "my-receipts" ? "我的收文" : "公司收文";
   const columns = isOfficial ? officialColumns : receivedColumns;
 
   return (

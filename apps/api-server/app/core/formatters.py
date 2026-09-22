@@ -10,7 +10,7 @@ from app.core.dependencies import (
     FileAttachment, HTTPException, Path, Pt, SystemParameter,
     User, Warehouse, WarehouseStorageLocation, WorkflowEvent, date,
     datetime, func, or_, qn, re,
-    select, settings, timezone, unicodedata, uuid4,
+    select, settings, timezone, unicodedata, uuid4, ZoneInfo,
 )
 
 
@@ -377,19 +377,6 @@ def _dashboard_case_date(record: BusinessRecord) -> datetime:
             return value.astimezone(timezone.utc).replace(tzinfo=None)
         return value
 
-    data = record.data or {}
-    legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
-    raw = data.get("case_register_date") or legacy.get("CaseRegisterDate")
-    if isinstance(raw, datetime):
-        return as_utc_naive(raw)
-    if isinstance(raw, date):
-        return datetime.combine(raw, time.min)
-    text = str(raw or "").strip()
-    if text:
-        try:
-            return as_utc_naive(datetime.fromisoformat(text.replace("Z", "+00:00")))
-        except ValueError:
-            pass
     return as_utc_naive(record.created_at) if record.created_at else datetime.min
 
 
@@ -462,13 +449,12 @@ def _normalize_conflict_entity(value: object) -> str:
 
 
 def _case_filing_date(record: BusinessRecord) -> date | None:
-    raw_value = str((record.data or {}).get("filing_date") or "").strip()
-    if not raw_value:
+    if not record.created_at:
         return None
-    try:
-        return date.fromisoformat(raw_value[:10])
-    except ValueError:
-        return None
+    created_at = record.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return created_at.astimezone(ZoneInfo("Asia/Shanghai")).date()
 
 
 def _normalize_external_contract_numbers(data: dict) -> dict:

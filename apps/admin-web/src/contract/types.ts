@@ -105,7 +105,7 @@ export type ContractWorkflowCapabilities = {
   canApprove: boolean;
 };
 
-export type DirectoryUser = { username: string; display_name: string; department: string; is_active: boolean; role?: string; position?: string; staff_role?: string; job_permissions?: string[]; can_approve_contract?: boolean };
+export type DirectoryUser = { username: string; display_name: string; department: string; is_active: boolean; role?: string; position?: string; staff_role?: string; job_permissions?: string[]; can_approve_contract?: boolean; can_approve_seal?: boolean };
 
 export type ApproverSetting = { username: string; display_name: string; display_name_valid?: boolean; department: string; position: string; selected: boolean };
 

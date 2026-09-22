@@ -74,6 +74,7 @@ export function CustomerCreatePage({
   onViewDocument,
   onDownloadDocument,
 }: CustomerCreatePageProps) {
+  const organizationType = Form.useWatch("organization_type", form);
   const userLabel = (value: unknown) => displayChinesePersonName(value, directory);
   const contactPhotoActions = (contact: Contact) => canManage ? (
     <Space size={0}>
@@ -246,6 +247,14 @@ export function CustomerCreatePage({
             <Form.Item label="客户编码" name="serial_no"><Input disabled placeholder="自动生成" /></Form.Item>
             <Form.Item label="客户状态" name="status"><Select allowClear placeholder="请选择" options={["潜在","目标","立项","关怀","签约","谈判","价值"].map(value=>({value,label:value}))} /></Form.Item>
             <Form.Item label="客户类型" name="customer_type"><Select options={customerTypeOptions} /></Form.Item>
+            <Form.Item label="组织类型" name="organization_type" rules={[{ required: true, message: "请选择组织类型" }]}>
+              <Select options={["公司企业","事业单位","机关团体","个人","个体工商户","其他"].map(value=>({value,label:value}))} onChange={()=>form.setFieldsValue({ identity_no: undefined, credit_code: undefined })} />
+            </Form.Item>
+            {organizationType === "个人" ? (
+              <Form.Item label="身份证号" name="identity_no" rules={[{ required: true, message: "请输入身份证号" }, { pattern: /^\d{17}[\dXx]$/, message: "请输入18位身份证号" }]}><Input maxLength={18} /></Form.Item>
+            ) : organizationType ? (
+              <Form.Item label="统一社会信用代码" name="credit_code" rules={[{ required: true, message: "请输入统一社会信用代码" }, { pattern: /^[0-9A-Za-z]{18}$/, message: "请输入18位统一社会信用代码" }]}><Input maxLength={18} /></Form.Item>
+            ) : null}
             <Form.Item label="注册地址" name="registered_address" rules={customerRegistrationAddressRules}><Input /></Form.Item>
             <Form.Item label="邮编" name="postal_code" rules={customerPostalCodeRules}><Input /></Form.Item>
             <Form.Item label="客户简称" name="short_name"><Input /></Form.Item>
@@ -265,7 +274,6 @@ export function CustomerCreatePage({
           <h3>开票信息</h3>
           <div className="customer-create-grid">
             <Form.Item label="开票地址" name="invoice_address"><Input /></Form.Item>
-            <Form.Item label="统一社会信用代码" name="credit_code"><Input placeholder="不允许有空格." /></Form.Item>
             <Form.Item label="开户行" name="bank_name"><Input /></Form.Item>
             <Form.Item label="帐号" name="bank_account"><Input /></Form.Item>
           </div>

@@ -129,7 +129,7 @@ export const CaseAgentDrawer = ({
         {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 LangGraph 服务配置后重试。" />}
         {agentState?.pending_actions?.length ? <section className="case-agent-actions">
           <div className="case-agent-section-title">待审批操作</div>
-          <Alert type="info" showIcon title="批准只记录人工审批决定，当前不会自动改写案件业务数据。" />
+          <Alert type="info" showIcon title="批准后才会执行写入；删除操作仅做可恢复的逻辑删除。" />
           {[...agentState.pending_actions].reverse().map((action) => <div className="case-agent-action" key={action.id}>
             <div>
               <strong>{action.summary}</strong>

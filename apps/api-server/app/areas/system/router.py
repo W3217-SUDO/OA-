@@ -27,7 +27,7 @@ from app.core.dependencies import (
 from app.models_shared import (
     AgentDocumentConfirmInput, AgentDocumentInput, AgentDocumentUpdate, CacheBatchClearInput, CurrentUserUpdate,
     DifyRequest, DingTalkBindInput, DingTalkBindingInput, DingTalkLoginInput, RolePermissionUpdate,
-    SecurityPolicyUpdate, SystemConfigUpdate, SystemMenuInput, SystemMenuUpdate, SystemParameterInput,
+    SecurityPolicyUpdate, SystemConfigUpdate, SystemMenuInput, SystemMenuUpdate, SystemMenuVisibilityBatchInput, SystemParameterInput,
     SystemParameterRelationReplaceInput, SystemParameterUpdate, SystemUserInput, SystemUserPasswordResetInput, SystemUserUpdate,
     TemplateInput, TemplateUpdate, UserAgentSkillInput, UserAgentSkillUpdate, UserMessageInput,
     UserPermissionOverrideUpdate,
@@ -1063,6 +1063,32 @@ async def create_system_menu(body: SystemMenuInput, identity: dict = Depends(cur
     return _system_menu_dict(item)
 
 
+@router.put(f"{settings.api_prefix}/system/menus/visibility")
+async def update_system_menu_visibility(body: SystemMenuVisibilityBatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_admin
+    from app.core.system import _system_audit, _system_menu_dict
+    _require_admin(identity)
+    items = list((await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all())
+    by_key = {item.key: item for item in items}
+    requested = {str(key).strip() for key in body.visible_keys if str(key).strip()}
+    unknown = requested - set(by_key)
+    if unknown:
+        raise HTTPException(status_code=422, detail="包含不存在的菜单：" + "、".join(sorted(unknown)))
+    protected = {"dashboard", "system", "system-management"}
+    requested.update(protected & set(by_key))
+    for key in list(requested):
+        parent_key = by_key[key].parent_key
+        while parent_key and parent_key in by_key:
+            requested.add(parent_key)
+            parent_key = by_key[parent_key].parent_key
+    for item in items:
+        item.is_visible = item.key in requested
+        item.updated_by = identity["username"]
+    await _system_audit(db, identity, "批量配置菜单显示", "系统菜单", {"visible_keys": sorted(requested)})
+    await db.commit()
+    return {"items": [_system_menu_dict(item) for item in items], "visible_keys": sorted(requested)}
+
+
 @router.patch(f"{settings.api_prefix}/system/menus/{{menu_id}}")
 async def update_system_menu(menu_id: int, body: SystemMenuUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
@@ -1318,6 +1344,7 @@ async def user_directory(
     from app.core.contracts import (
         _is_contract_approver,
     )
+    from app.core.documents import _user_has_seal_action
     from app.core.crm import (
         _active_customer_usernames,
     )
@@ -1328,7 +1355,7 @@ async def user_directory(
         _active_employee_usernames, _is_smoke_test_username,
     )
     directory_purpose = purpose.strip().lower()
-    if directory_purpose == "contract_approver":
+    if directory_purpose in {"contract_approver", "seal_approver"}:
         approver_employees = (await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "hr",
         ))).all()
@@ -1363,7 +1390,7 @@ async def user_directory(
     employee_display_names: dict[str, str] = {}
     active_employees = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "hr",
-        *([] if directory_purpose == "contract_approver" else [BusinessRecord.status.not_in({"离职", "停用"})]),
+        *([] if directory_purpose in {"contract_approver", "seal_approver"} else [BusinessRecord.status.not_in({"离职", "停用"})]),
     ))).all()
     for employee in active_employees:
         username = str((employee.data or {}).get("username") or employee.owner or "").strip().lower()
@@ -1390,6 +1417,7 @@ async def user_directory(
             "account_type": account_type,
             "job_permissions": job_permissions,
             "can_approve_contract": await _is_contract_approver(item, db),
+            "can_approve_seal": await _user_has_seal_action(item, "approve", db),
             "eligible_customer_person": item.username.lower() in eligible_usernames if directory_purpose in {"customer_manager", "customer_contact"} else None,
         })
     return {"items": payload}

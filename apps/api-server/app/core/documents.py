@@ -181,6 +181,31 @@ async def _execute_case_agent_action(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=422, detail="智能体操作参数格式错误")
 
+    if action_type in {"case.delete", "customer.delete", "contract.delete"}:
+        module = action_type.split(".", 1)[0]
+        target_id = int(payload.get("target_id") or (case_record.id if module == "case" else 0))
+        if module == "case" and target_id != case_record.id:
+            raise HTTPException(status_code=404, detail="目标案件不属于当前案件空间")
+        if module == "customer":
+            linked_customer = (context or {}).get("customer") or {}
+            if int(linked_customer.get("id") or 0) != target_id:
+                raise HTTPException(status_code=404, detail="目标客户不属于当前案件空间")
+        if module == "contract" and not any(int(item.get("id") or 0) == target_id for item in (context or {}).get("contracts") or []):
+            raise HTTPException(status_code=404, detail="目标合同不属于当前案件空间")
+        target = await _ensure_record_module(target_id, module, identity, db)
+        previous_status = target.status
+        target.status = "已删除"
+        target.data = {
+            **(target.data or {}), "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "deleted_by": identity["username"], "delete_reason": str(payload.get("reason") or "智能体审批删除").strip(),
+        }
+        db.add(WorkflowEvent(
+            record_id=target.id, action="智能体逻辑删除", from_status=previous_status, to_status="已删除",
+            operator=identity["username"], comment=str(target.data["delete_reason"]),
+        ))
+        await db.commit(); await db.refresh(target)
+        return {"record_id": target.id, "operation": action_type, "status": target.status, "recoverable": True}
+
     if action_type == "customer.update":
         target_id = int(payload.get("target_id") or 0)
         linked_customer = (context or {}).get("customer") or {}
@@ -721,7 +746,7 @@ async def _seal_authorization_context(identity: dict, db: AsyncSession) -> dict:
     granted = {name: ("*" in action_keys or code in action_keys) for name, code in SEAL_ACTION_CODES.items()}
     username = str(identity.get("username") or "").strip()
     user = await db.scalar(select(User).where(User.username == username)) if username else None
-    if user and user.is_active and bool((user.profile or {}).get("contract_approval_enabled")):
+    if user and user.is_active and bool((user.profile or {}).get("seal_approval_enabled")):
         action_keys.add(SEAL_ACTION_CODES["approve"])
         granted["approve"] = True
     return {"identity": identity, "action_keys": action_keys, **granted}
@@ -735,11 +760,9 @@ async def _user_has_seal_action(user: User, action: str, db: AsyncSession) -> bo
         return False
     permission = await _user_permission_payload(user, db)
     keys = set(permission.get("action_keys") or [])
-    if "*" in keys or SEAL_ACTION_CODES[action] in keys:
-        return True
-    # Contract approvers also approve the seal request attached to that
-    # contract. Keep candidate discovery and submission validation aligned.
-    return action == "approve" and bool((user.profile or {}).get("contract_approval_enabled"))
+    if action == "approve":
+        return bool((user.profile or {}).get("seal_approval_enabled")) and ("*" in keys or SEAL_ACTION_CODES[action] in keys)
+    return "*" in keys or SEAL_ACTION_CODES[action] in keys
 
 
 async def _get_seal_application_for_action(record_id: int, action: str, identity: dict, db: AsyncSession) -> BusinessRecord:

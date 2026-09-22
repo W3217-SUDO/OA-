@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Button, Card, Input, message } from "antd";
+import { Button, Card, Input, Table, message } from "antd";
 import { api } from "./api";
 import "./customer-conflict.css";
 
@@ -14,10 +14,11 @@ type ConflictSearchResult = {
   third_parties: string[];
   our_customer: string;
   customer_managers: string[];
+  matches?: Array<{case_no:string;case_date:string;our_customer:string;plaintiffs:string[];defendants:string[];third_parties:string[];match_reason:string;relation_path:string[]}>;
 };
 
 const enterpriseFields: Array<{
-  key: Exclude<keyof ConflictSearchResult, "query" | "found">;
+  key: Exclude<keyof ConflictSearchResult, "query" | "found" | "matches">;
   label: string;
 }> = [
   { key: "enterprise_name", label: "企业名称" },
@@ -31,7 +32,7 @@ const enterpriseFields: Array<{
 ];
 
 const displayValue = (
-  key: Exclude<keyof ConflictSearchResult, "query" | "found">,
+  key: Exclude<keyof ConflictSearchResult, "query" | "found" | "matches">,
   value: string | string[],
 ) => {
   const text = Array.isArray(value) ? value.join(",") : value || "";
@@ -101,7 +102,7 @@ export default function CustomerConflictPage() {
       </div>
 
       {foundItem ? (
-        <div className="conflict-enterprise-grid">
+        <><div className="conflict-enterprise-grid">
           {enterpriseFields.map((field) => (
             <div className="conflict-enterprise-field" key={field.key}>
               <label>{field.label}：</label>
@@ -112,6 +113,16 @@ export default function CustomerConflictPage() {
             </div>
           ))}
         </div>
+        <Table size="small" rowKey="case_no" pagination={{pageSize:10}} dataSource={foundItem.matches || []} columns={[
+          {title:"案件编号",dataIndex:"case_no"},
+          {title:"立案日期",dataIndex:"case_date"},
+          {title:"我方客户",dataIndex:"our_customer"},
+          {title:"命中依据",dataIndex:"match_reason"},
+          {title:"关系路径",dataIndex:"relation_path",render:(value:string[])=>value.join(" → ")},
+          {title:"原告",dataIndex:"plaintiffs",render:(value:string[])=>value.join("、")},
+          {title:"被告",dataIndex:"defendants",render:(value:string[])=>value.join("、")},
+        ]} scroll={{x:980}} />
+        </>
       ) : (
         <div className="conflict-search-box">
           <div className="conflict-search">

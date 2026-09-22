@@ -172,14 +172,9 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
     };
     const openRowCaseLogs = async (row: Fee) => {
         const { setSettlementActionLoading, setSettlementContextRows, setSettlementContext } = context;
-        const caseId = row.data?.case_id;
-        if (!caseId) {
-            message.warning("无法获取关联案件");
-            return;
-        }
         setSettlementActionLoading(true);
         try {
-            const { data } = await api.get(`/records/${caseId}/history`);
+            const { data } = await api.get("/finance/case-fees/refunds/logs", { params: { fee_id: row.id } });
             const items = (data.items || []).map((item: any) => ({
                 ...item,
                 source_case_no: row.data?.case_no || row.serial_no || "",

@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     dingtalk_app_secret: str = ""
     dingtalk_app_url: str = ""
     dingtalk_notifications_enabled: bool = True
+    system_cache_ttl_seconds: int = 3600
     # Comma-separated OA display names allowed to bind and use DingTalk SSO.
     # Empty keeps the integration unrestricted for local development.
     dingtalk_allowed_display_names: str = ""

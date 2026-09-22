@@ -230,7 +230,6 @@ statusColors
 import { CaseAgentDrawer } from "./CaseAgentDrawer";
 import { CaseCreateWizard } from "./CaseCreateWizard";
 import {
-CaseCaseLogsPanel,
 CaseCaseTasksPanel,
 CaseCluesPanel,
 CaseCustomerTasksPanel,
@@ -497,6 +496,7 @@ export default function CaseCenterPage({
   const [editingCaseEvent, setEditingCaseEvent] = useState<CaseEventRow | null>(null);
   const [caseEventSubmitting, setCaseEventSubmitting] = useState(false);
   const [counselLogs, setCounselLogs] = useState<CaseLogRow[]>([]);
+  const [viewingCaseLog, setViewingCaseLog] = useState<CaseLogRow | null>(null);
   const [counselDetailCapabilities, setCounselDetailCapabilities] = useState<CaseDetailCapabilities>(noCaseDetailWriteCapability);
   const [caseActionCapabilities, setCaseActionCapabilities] = useState<Record<number, CaseDetailCapabilities>>({});
   const [selectedCounselAttachmentKeys, setSelectedCounselAttachmentKeys] = useState<Key[]>([]);
@@ -718,7 +718,11 @@ export default function CaseCenterPage({
   const [settlementAmountForm] = Form.useForm();
   const [caseClueEvidenceForm] = Form.useForm();
   const openCreateDefendantEditor = () => {
-    createDefendantEditorForm.setFieldsValue({ defendants: createForm.getFieldValue("defendants") || [] });
+    const defendants = createForm.getFieldValue("defendants") || [];
+    const existing = createForm.getFieldValue("defendant_identities") || [];
+    createDefendantEditorForm.setFieldsValue({
+      defendant_identities: defendants.map((name: string) => existing.find((item: any) => item.name === name) || { name, organization_type: undefined, identity_no: "" }),
+    });
     setCreateDefendantEditorOpen(true);
   };
   const { saveCreateDefendants, advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, closeCase, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselReminder, saveCaseEvent, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, ensureCaseCustomerOption, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseParty, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, openPhaseChange, submitCompanyScheduleCourtInfo, saveProgress, savePhaseChange, saveExecutionStatus, downloadCaseExport, openSelectedScheduleHearing } = createCaseWorkflowActions({
@@ -1370,7 +1374,8 @@ export default function CaseCenterPage({
     get setCounselUploadCategory() { return setCounselUploadCategory; },
     get setCaseDocumentFolderEditor() { return setCaseDocumentFolderEditor; },
     get selectedCases() { return selectedCases; },
-    get selectedCase() { return selectedCase; },
+    // 特殊列表必须使用该列表自身的选中项，不能复用普通案件列表的派生状态。
+    get selectedCase() { return initialView === "case-files-receipt" ? selectedSpecialRow : selectedCase; },
     get initialView() { return initialView; },
     get caseUploadCategory() { return caseUploadCategory; },
     get fileTypeOptionsForCase() { return fileTypeOptionsForCase; },
@@ -2975,7 +2980,7 @@ export default function CaseCenterPage({
         {specialMode==="invoice"&&<div className="case-invoice-import"><input ref={caseUploadRef} hidden type="file" accept=".xlsx,.xls,.csv,.pdf,.zip" onChange={event=>uploadCaseInvoiceFile(event.target.files?.[0])}/><Space><Button onClick={()=>caseUploadRef.current?.click()}>上传文件</Button><Button type="primary" onClick={startCaseInvoiceImport}>开始导入</Button></Space></div>}
         {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className="case-special-query" initialValues={shouldUseCompanyScheduleQueryFields(initialView)?getCompanyScheduleQueryInitialValues(dayjs()):undefined} onFinish={values=>setCaseQuery(values)}>
           {(specialFilters[specialMode]||[]).map(([key,label,type,placeholder])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker placeholder={placeholder!==undefined?[placeholder,placeholder]:undefined}/>:type==="select"?<Select allowClear placeholder={placeholder} options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input placeholder={placeholder}/>}</Form.Item>)}
-          <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({})}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>
+          <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({})}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button>{specialMode==="receipt"&&<Button type="primary" onClick={()=>selectedSpecialRow?caseUploadRef.current?.click():message.warning("请先选择案件")}>批量上传</Button>}</Space></Form.Item>
         </ListFilterBar>}
         {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
         {specialMode!=="invoice"&&<input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>}
@@ -2986,7 +2991,6 @@ export default function CaseCenterPage({
           {specialMode==="refund"&&<Button onClick={()=>void exportSpecialRecords("refund","退费查询.csv")}>导出</Button>}
           {specialMode==="refund"&&<Dropdown menu={{items:[{key:"view",label:"案件任务"},{key:"export",label:"导出案件打印表"}],onClick:({key})=>{if(key==="export")void exportCases();else if(selectedSpecialRow)void openSpecialCaseTasks({case_record_id:selectedSpecialRow.data.case_record_id||selectedSpecialRow.data.case_id,case_no:selectedSpecialRow.data.case_no||selectedSpecialRow.serial_no});else message.warning("请先选择退费记录")}}}><Button>更多操作</Button></Dropdown>}
           {specialMode==="refund"&&<Button onClick={operateRefund}>退费操作</Button>}
-          {specialMode==="receipt"&&<Button onClick={()=>selectedCase?caseUploadRef.current?.click():message.warning("请先选择案件")}>批量上传</Button>}
           {specialMode==="unclaimed"&&<Button onClick={markCommissionPaid}>标识提成已发</Button>}
           {specialMode==="schedule"&&<Button onClick={()=>void openSelectedScheduleHearing()}>更多操作</Button>}
           {specialMode==="execution"&&<><Button onClick={()=>openExecutionStatus(specialRows.filter((row:CaseRow)=>selectedCaseKeySet.has(String(row.id))))}>修改执行状态</Button><Button onClick={()=>selectedSpecialRow?openProgress(selectedSpecialRow):message.warning("请先选择案件")}>更多操作</Button></>}
@@ -4100,12 +4104,6 @@ export default function CaseCenterPage({
                 handleInternalFeeAction={handleInternalFeeAction}
                 openInformDateBatchUpdate={openInformDateBatchUpdate}
               />},
-              {key:"case-logs",label:"案件日志",children:<CaseCaseLogsPanel
-                logs={counselLogs}
-                capabilities={counselDetailCapabilities}
-                casePersonDisplayName={casePersonDisplayName}
-                onCreateLog={openCounselLogCreator}
-              />},
               {key:"logs",label:"系统日志",children:<CaseSystemLogsPanel
                 logs={counselDetailHistory}
                 capabilities={counselDetailCapabilities}
@@ -4152,13 +4150,18 @@ export default function CaseCenterPage({
             <aside className="case-detail-side-panel">
               <section>
                 <div className="case-detail-side-title"><span>案件日志</span>{counselDetailCapabilities.can_create_log && <Space size={0}><Button type="link" size="small" icon={<PlusOutlined />} onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button type="link" size="small" onClick={()=>openCounselLogCreator("refund")}>退费日志</Button></Space>}</div>
-                {counselLogs.length?counselLogs.slice(0,5).map((item)=><p key={item.id}>{item.created_at}　{item.content}</p>):<p className="case-detail-empty">暂无日志</p>}
+                {counselLogs.length?counselLogs.map((item)=><Button key={item.id} type="text" block style={{textAlign:"left",height:"auto",whiteSpace:"normal"}} onClick={()=>setViewingCaseLog(item)}>{item.created_at}　{item.content}</Button>):<p className="case-detail-empty">暂无日志</p>}
               </section>
             </aside>
           </div>
           {renderCaseClueWorkspace()}
         </div>}
       </Drawer>
+      <Modal open={Boolean(viewingCaseLog)} title={viewingCaseLog?.kind === "refund" ? "退费日志详情" : "案件日志详情"} footer={null} onCancel={()=>setViewingCaseLog(null)} destroyOnHidden>
+        <p><b>记录时间：</b>{viewingCaseLog?.created_at || "—"}</p>
+        <p><b>记录人：</b>{viewingCaseLog ? casePersonDisplayName(viewingCaseLog.operator, viewingCaseLog.operator_display_name) : "—"}</p>
+        <p style={{whiteSpace:"pre-wrap"}}><b>日志内容：</b>{viewingCaseLog?.content || "—"}</p>
+      </Modal>
       <Drawer
         width="min(1280px, 96vw)"
         open={legacyLsHistoryOpen}
@@ -4493,18 +4496,19 @@ export default function CaseCenterPage({
         onCancel={() => setCreateDefendantEditorOpen(false)}
         destroyOnHidden
       >
-        <Alert type="info" showIcon title="可选择已有客户，或输入名称后回车添加多个被告。" style={{ marginBottom: 12 }} />
+        <Alert type="info" showIcon title="每名对方当事人都必须填写组织类型和对应证件号。" style={{ marginBottom: 12 }} />
         <Form form={createDefendantEditorForm} layout="vertical">
-          <Form.Item label="被告" name="defendants" rules={[{ required: true, message: "请输入至少一名被告" }]}>
-            <Select
-              mode="tags"
-              tokenSeparators={[",", "，"]}
-              showSearch
-              optionFilterProp="label"
-              placeholder="输入名称后回车，可添加多人"
-              options={caseCustomers.filter((item) => !["公海", "已回收"].includes(item.status)).map((item) => ({ value: item.title, label: item.title }))}
-            />
-          </Form.Item>
+          <Form.List name="defendant_identities">
+            {(fields) => <Space direction="vertical" style={{ width: "100%" }}>
+              {fields.map((field) => <div key={field.key} className="form-grid">
+                <Form.Item {...field} label="对方当事人" name={[field.name,"name"]} rules={[{required:true,message:"请输入名称"}]}><Input disabled /></Form.Item>
+                <Form.Item {...field} label="组织类型" name={[field.name,"organization_type"]} rules={[{required:true,message:"请选择组织类型"}]}><Select options={["公司企业","事业单位","机关团体","个人","个体工商户","其他"].map(value=>({value,label:value}))} /></Form.Item>
+                <Form.Item noStyle shouldUpdate={(prev,next)=>prev?.defendant_identities?.[field.name]?.organization_type!==next?.defendant_identities?.[field.name]?.organization_type}>
+                  {({getFieldValue})=>{const isPerson=getFieldValue(["defendant_identities",field.name,"organization_type"])==="个人";return <Form.Item {...field} label={isPerson?"身份证号":"统一社会信用代码"} name={[field.name,"identity_no"]} rules={[{required:true,message:"请输入证件号"},{pattern:isPerson?/^\d{17}[\dXx]$/:/^[0-9A-Za-z]{18}$/,message:isPerson?"请输入18位身份证号":"请输入18位统一社会信用代码"}]}><Input maxLength={18}/></Form.Item>}}
+                </Form.Item>
+              </div>)}
+            </Space>}
+          </Form.List>
         </Form>
       </Modal>
       <Modal width={560} open={Boolean(editingCaseHearingLawyer)} title={`修改开庭律师：${editingCaseHearingLawyer?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseHearingLawyer} onCancel={()=>setEditingCaseHearingLawyer(null)} destroyOnHidden>

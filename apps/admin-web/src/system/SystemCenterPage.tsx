@@ -533,6 +533,17 @@ export default function SystemCenterPage({
       message.error(error?.response?.data?.detail || "保存失败！");
     }
   };
+  const saveMenuVisibility = async (visibleKeys: string[]) => {
+    try {
+      const { data } = await api.put("/system/menus/visibility", { visible_keys: visibleKeys });
+      setMenus(data.items || []);
+      window.dispatchEvent(new Event("sunhold:menus-updated"));
+      message.success("菜单显示配置已保存");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "菜单显示配置保存失败");
+      throw error;
+    }
+  };
   const removeMenu = async (row: MenuRow) => {
     try {
       await api.delete(`/system/menus/${row.id}`);
@@ -788,6 +799,7 @@ export default function SystemCenterPage({
         onMenuOpenChange={setMenuOpen}
         onNewMenu={newMenu}
         onResetMenuSearch={() => { setMenuSearchInput(""); setMenuSearch(""); setMenuPage(1); }}
+        onSaveVisibility={saveMenuVisibility}
       />
     );
   } else if (initialView === "system-management-config") {

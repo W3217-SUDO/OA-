@@ -212,7 +212,8 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
     const saveCreateDefendants = async () => {
         const { createDefendantEditorForm, createForm, setCreateDefendantEditorOpen } = context;
         const values = await createDefendantEditorForm.validateFields();
-        createForm.setFieldValue("defendants", values.defendants);
+        const identities = values.defendant_identities || [];
+        createForm.setFieldsValue({ defendants: identities.map((item: any) => item.name), defendant_identities: identities });
         setCreateDefendantEditorOpen(false);
     };
     const advanceCreateStep = async () => {
@@ -283,6 +284,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 plaintiffs: values.plaintiffs || [],
                 plaintiff_agents: values.plaintiff_agents || [],
                 defendants: values.defendants || [],
+                defendant_identities: values.defendant_identities || [],
                 defendant_agents: values.defendant_agents || [],
                 third_parties: values.third_parties || [],
                 third_party_agents: values.third_party_agents || [],

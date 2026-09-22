@@ -1364,28 +1364,28 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
     case_type = str((case_record.data or {}).get("case_type") or "").strip()
     immutable = case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
     active = not immutable
-    can_create_same_type = active and (case_type in CASE_CREATABLE_TYPES or case_type in CIVIL_CASE_TYPES)
-    can_assign_team = active
-    can_edit_hearing_lawyer = active
-    can_edit_basic = active
-    can_edit_court_info = active
-    can_close_case = active
-    can_archive_case = case_record.status not in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
+    can_create_same_type = active and (case_type in CASE_CREATABLE_TYPES or case_type in CIVIL_CASE_TYPES) and await _case_action_granted(identity, db, "case.duplicate")
+    can_assign_team = active and await _case_action_granted(identity, db, "case.team.assign")
+    can_edit_hearing_lawyer = active and await _case_action_granted(identity, db, "case.hearing.manage")
+    can_edit_basic = active and await _case_action_granted(identity, db, "case.detail.update")
+    can_edit_court_info = can_edit_basic
+    can_close_case = active and await _case_action_granted(identity, db, "case.archive.submit")
+    can_archive_case = active and await _case_action_granted(identity, db, "case.archive.submit")
     base = {
         "can_write": False, "can_manage_assisted_fees": False, "can_generate_document": False, "can_upload_attachment": False,
         "can_delete_attachment": False, "can_create_reminder": False,
         "can_delete_reminder": False, "can_create_log": False,
         "can_update_progress": False, "can_change_phase": False, "can_manage_hearing": False,
         "can_create_case_task": False, "can_duplicate_case": can_create_same_type,
-        "can_delete_case": identity.get("role") in {"admin", "manager"} and case_record.status not in {"已归档", "已合并"},
-        "can_merge_case": active,
+        "can_delete_case": active and await _case_action_granted(identity, db, "case.delete"),
+        "can_merge_case": active and await _case_action_granted(identity, db, "case.merge"),
         "can_assign_team": can_assign_team, "can_edit_hearing_lawyer": can_edit_hearing_lawyer,
         "can_edit_basic": can_edit_basic, "can_edit_court_info": can_edit_court_info,
         "can_close_case": can_close_case, "can_archive": can_archive_case,
         # Capability endpoints are reached only after the case has passed the
         # caller's data-scope check. Match the legacy rule: anyone who can see
         # the case may add its fees; invisible cases remain inaccessible.
-        "can_create_finance": True, "team_role": role, "reason": "",
+        "can_create_finance": active and await _case_action_granted(identity, db, "case.fee.create"), "team_role": role, "reason": "",
         "can_edit_finance": active and await _case_action_granted(identity, db, "case.fee.update"),
         "can_delete_finance": active and await _case_action_granted(identity, db, "case.fee.delete"),
     }

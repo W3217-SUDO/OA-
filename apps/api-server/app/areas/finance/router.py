@@ -1093,7 +1093,6 @@ async def add_refund_case_fee_logs(
     )
     items = await _editable_refund_case_fees(body.ids, identity, db)
     labels = {"court": "法院", "received": "到账", "other": "其他"}
-    case_events: set[int] = set()
     for item in items:
         data = item.data or {}
         label = labels[body.kind]
@@ -1101,18 +1100,26 @@ async def add_refund_case_fee_logs(
             record_id=item.id, action=f"添加{label}退费日志", operator=identity["username"],
             comment=body.content.strip(),
         ))
-        try:
-            case_id = int(data.get("case_id") or 0)
-        except (TypeError, ValueError):
-            case_id = 0
-        if case_id and case_id not in case_events:
-            case_events.add(case_id)
-            db.add(WorkflowEvent(
-                record_id=case_id, action="新增案件日志", operator=identity["username"],
-                comment=f"{label}退费日志：{body.content.strip()}",
-            ))
     await db.commit()
     return {"created": len(items), "kind": body.kind}
+
+
+@router.get(f"{settings.api_prefix}/finance/case-fees/refunds/logs")
+async def list_refund_case_fee_logs(
+    fee_id: int = Query(..., ge=1),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    from app.core.permissions import _ensure_record_module
+    await _ensure_record_module(fee_id, "finance", identity, db)
+    events = list((await db.scalars(select(WorkflowEvent).where(
+        WorkflowEvent.record_id == fee_id,
+        WorkflowEvent.action.like("添加%退费日志"),
+    ).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
+    return {"items": [{
+        "id": event.id, "content": event.comment, "operator": event.operator,
+        "kind": "refund", "type": event.action.removeprefix("添加").removesuffix("退费日志"),
+        "created_at": event.created_at,
+    } for event in events], "total": len(events)}
 
 
 @router.get(f"{settings.api_prefix}/finance/fees/query")

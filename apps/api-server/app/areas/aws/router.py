@@ -619,10 +619,28 @@ async def upload_official_document(
     stored_name = f"{uuid4().hex}{suffix}"
     target = UPLOAD_ROOT / stored_name
     target.write_bytes(content)
-    linked_case_ids = [int(value) for value in case_ids.replace("，", ",").replace(";", ",").split(",") if str(value).strip().isdigit()]
-    linked_cases: dict[int, BusinessRecord] = {}
-    for case_id in dict.fromkeys(linked_case_ids):
-        linked_cases[case_id] = await _ensure_record_module(case_id, "case", identity, db)
+    file_stem = Path(original_name).stem
+    if "_" not in file_stem:
+        target.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail="文件名必须使用“系统案号_法院案号”格式")
+    system_case_no, court_file_part = (part.strip() for part in file_stem.split("_", 1))
+    matched_case = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == system_case_no))
+    if not matched_case:
+        target.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail=f"未找到系统案号 {system_case_no}")
+    matched_case = await _ensure_record_module(matched_case.id, "case", identity, db)
+    case_data = matched_case.data or {}
+    court_numbers = {
+        str(value).strip()
+        for key, value in case_data.items()
+        if (key.endswith("case_no") or key in {"court_no", "filing_no"}) and str(value or "").strip()
+    }
+    matched_court_no = next((number for number in court_numbers if court_file_part == number or court_file_part.startswith(f"{number}_")), "")
+    if not matched_court_no:
+        target.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail="文件名中的法院案号与该案件登记的法院案号不一致")
+    linked_case_ids = [matched_case.id]
+    linked_cases = {matched_case.id: matched_case}
     now = datetime.now()
     official_data = {
         "direction": "收文", "document_date": str(document_date), "received_at": str(document_date),
@@ -634,6 +652,9 @@ async def upload_official_document(
         official_data.update({
             "case_ids": list(dict.fromkeys(linked_case_ids)),
             "case_id": first_case.id, "case_no": first_case.serial_no,
+            "court_no": matched_court_no,
+            "plaintiff": (first_case.data or {}).get("plaintiff") or first_case.customer,
+            "defendant": (first_case.data or {}).get("opponent") or "",
         })
     record = BusinessRecord(
         module="document", serial_no=f"SW{now:%Y%m%d%H%M%S%f}", title=original_name,
@@ -650,6 +671,12 @@ async def upload_official_document(
             size=len(content), path=str(target), uploader=identity["username"], remark=remark,
         )
         db.add(attachment)
+        case_attachment = FileAttachment(
+            record_id=matched_case.id, category="官方收文", original_name=original_name,
+            stored_name=stored_name, content_type=file.content_type or "application/octet-stream",
+            size=len(content), path=str(target), uploader=identity["username"], remark=remark,
+        )
+        db.add(case_attachment)
         db.add(WorkflowEvent(record_id=record.id, action="上传官文收文", from_status="", to_status="待签收", operator=identity["username"], comment=original_name))
         await db.commit()
         await db.refresh(record)

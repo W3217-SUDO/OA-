@@ -910,8 +910,39 @@ export default function DocumentCenterPage({
             },
           }) as ReceiptRow,
       );
-    return live;
-  }, [documents]);
+    const receiptKeywords = ["缴费单", "判决书", "通知书", "传票", "告知书"];
+    const caseById = new Map(cases.map(item => [item.id, item]));
+    const officialNames = new Set(live.map(item => `${item.data.case_id || ""}:${item.title}`));
+    const caseReceipts = attachments.flatMap((attachment) => {
+      const caseRecord = attachment.record_id ? caseById.get(attachment.record_id) : undefined;
+      if (!caseRecord || !receiptKeywords.some(keyword => attachment.original_name.includes(keyword))) return [];
+      if (officialNames.has(`${caseRecord.id}:${attachment.original_name}`)) return [];
+      return [{
+        id: -attachment.id,
+        serial_no: caseRecord.serial_no,
+        title: attachment.original_name,
+        customer: caseRecord.customer,
+        status: "已签收",
+        owner: attachment.uploader,
+        description: attachment.remark,
+        data: {
+          case_id: caseRecord.id,
+          case_no: caseRecord.serial_no,
+          plaintiff: caseRecord.data.plaintiff || caseRecord.customer,
+          defendant: caseRecord.data.opponent || "—",
+          court_no: caseRecord.data.court_case_no || caseRecord.data.first_court_case_no || "—",
+          court_name: caseRecord.data.court || caseRecord.data.first_court_name || "—",
+          document_date: attachment.created_at?.slice(0,10) || "",
+          uploaded_at: attachment.created_at?.slice(0,10) || "",
+          uploader: attachment.uploader,
+          import_status: "已导入",
+          business_process_status: "未处理",
+          attachment_id: attachment.id,
+        },
+      } as ReceiptRow];
+    });
+    return [...live, ...caseReceipts];
+  }, [documents, cases, attachments]);
 
   const searchedReceipts = useMemo(
     () =>
@@ -958,7 +989,7 @@ export default function DocumentCenterPage({
 
   const showReceipt = (r: ReceiptRow) => openDocument(r);
   const receiptAttachment = (r: ReceiptRow) =>
-    attachments.find((a) => a.record_id === r.id);
+    attachments.find((a) => a.id === r.data.attachment_id || a.record_id === r.id);
   const previewReceiptFile = (r: ReceiptRow) => {
     const found = receiptAttachment(r);
     if (!found) return showReceipt(r);

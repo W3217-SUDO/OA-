@@ -101,14 +101,24 @@ async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) ->
     related = [item for item in related_rows if _record_links_to_case(item, case_record)]
     fees = [
         item for item in related
-        if item.module == "finance" and not _is_case_agency_fee_commission(item)
+        if item.module == "finance"
+        and not _is_case_agency_fee_commission(item)
+        and str((item.data or {}).get("fee_type") or item.title or "").strip() != "律师代理费（退费）"
     ]
     invoices = [item for item in related if item.module == "invoice"]
     refunds = [item for item in related if item.module == "refund"]
-    fee_terminal = {"已付款", "已核销", "已对账", "已作废", "已撤销", "不缴费"}
+    fee_void_statuses = {"已作废", "已撤销", "不缴费"}
     invoice_terminal = {"已开票", "已作废", "已撤回"}
     refund_terminal = {"已退款", "已作废", "已撤回"}
-    fees_settled = all(item.status in fee_terminal for item in fees)
+    def fee_is_settled(item: BusinessRecord) -> bool:
+        fee_data = item.data or {}
+        amount = abs(float(fee_data.get("amount") or 0))
+        received = abs(float(fee_data.get("received_amount") or fee_data.get("cashed_amount") or 0))
+        unbalanced = abs(float(fee_data.get("unbalanced_amount") or fee_data.get("remaining_amount") or max(amount - received, 0)))
+        if item.status in fee_void_statuses:
+            return True
+        return received + 0.001 >= amount and unbalanced <= 0.001
+    fees_settled = all(fee_is_settled(item) for item in fees)
     contract_id = int(data.get("contract_id") or 0)
     receivables = (await db.scalars(select(ReceivablePlan).where(ReceivablePlan.contract_record_id == contract_id))).all() if contract_id else []
     receivables_complete = all(float(item.amount) - float(item.received_amount or 0) <= 0.001 for item in receivables)
@@ -290,7 +300,34 @@ def _case_phase_changed_days(item: BusinessRecord, *, as_of: date | None = None)
 
 
 def _is_urgent_case(item: BusinessRecord, *, as_of: date | None = None) -> bool:
-    return _case_phase_changed_days(item, as_of=as_of) > 365
+    deadline = str((item.data or {}).get("urgent_task_deadline") or "").strip()
+    if not deadline:
+        return False
+    try:
+        remaining_days = (date.fromisoformat(deadline[:10]) - (as_of or date.today())).days
+    except ValueError:
+        return False
+    return remaining_days <= 15
+
+
+async def _urgent_case_ids(cases: list[BusinessRecord], db: AsyncSession, *, as_of: date | None = None) -> set[int]:
+    """返回存在逾期或未来十五天内未完成任务的案件。"""
+    from app.core.formatters import _record_links_to_case
+    today = as_of or date.today()
+    terminal_statuses = {"已完成", "已验收", "已停止", "已撤回", "已拒绝", "已删除"}
+    tasks = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "task", BusinessRecord.status.not_in(terminal_statuses),
+    ))).all())
+    urgent_ids: set[int] = set()
+    for task in tasks:
+        raw_deadline = str((task.data or {}).get("deadline") or (task.data or {}).get("task_end_time") or "").strip()
+        try:
+            deadline = date.fromisoformat(raw_deadline[:10])
+        except ValueError:
+            continue
+        if (deadline - today).days <= 15:
+            urgent_ids.update(case.id for case in cases if _record_links_to_case(task, case))
+    return urgent_ids
 
 
 def _matches_dashboard_case_queue(item: BusinessRecord, queue: str) -> bool:
@@ -1112,9 +1149,18 @@ async def _query_counsel_cases(
         records = [record for record in records if str((record.data or {}).get("case_type") or "") != "法律顾问"]
     if body.dashboard_queue:
         from app.core.dashboard_scope import CASE_QUEUES
-        records = [record for record in records if _matches_dashboard_case_queue(record, CASE_QUEUES[body.dashboard_queue])]
+        queue_name = CASE_QUEUES[body.dashboard_queue]
+        if queue_name == "urgent":
+            urgent_ids = await _urgent_case_ids(records, db)
+            records = [record for record in records if record.id in urgent_ids]
+        else:
+            records = [record for record in records if _matches_dashboard_case_queue(record, queue_name)]
     elif body.case_queue:
-        records = [record for record in records if _matches_dashboard_case_queue(record, body.case_queue)]
+        if body.case_queue == "urgent":
+            urgent_ids = await _urgent_case_ids(records, db)
+            records = [record for record in records if record.id in urgent_ids]
+        else:
+            records = [record for record in records if _matches_dashboard_case_queue(record, body.case_queue)]
     # 个人和部门范围已在 SQL 中按人员关系过滤，保留迁移案件的参与人关系。
 
     document_names: dict[int, str] = {}
@@ -1459,6 +1505,23 @@ async def _persist_case_litigants(
     plaintiffs = _clean_case_litigant_values(body.plaintiffs)
     plaintiff_agents = _clean_case_litigant_agents(body.plaintiff_agents)
     defendants = _clean_case_litigant_values(body.defendants)
+    defendant_identities = []
+    for item in body.defendant_identities:
+        name = str(item.name or "").strip()
+        organization_type = str(item.organization_type or "").strip()
+        identity_no = str(item.identity_no or "").strip().upper()
+        if organization_type not in {"公司企业", "事业单位", "机关团体", "个人", "个体工商户", "其他"}:
+            raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的组织类型无效")
+        if organization_type == "个人":
+            if len(identity_no) != 18 or not identity_no[:17].isdigit() or identity_no[-1] not in "0123456789X":
+                raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的身份证号格式无效")
+        elif len(identity_no) != 18 or not identity_no.isalnum():
+            raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的统一社会信用代码格式无效")
+        defendant_identities.append({"name": name, "organization_type": organization_type, "identity_no": identity_no})
+    identity_names = {item["name"] for item in defendant_identities}
+    missing_identity_names = [name for name in defendants if name not in identity_names]
+    if defendants and missing_identity_names:
+        raise HTTPException(status_code=422, detail=f"请补充对方当事人证件信息：{'、'.join(missing_identity_names)}")
     defendant_agents = _clean_case_litigant_agents(body.defendant_agents)
     third_parties = _clean_case_litigant_values(body.third_parties)
     third_party_agents = _clean_case_litigant_agents(body.third_party_agents)
@@ -1485,6 +1548,7 @@ async def _persist_case_litigants(
         "plaintiffs": plaintiffs,
         "plaintiff_agents": plaintiff_agents,
         "defendants": defendants,
+        "defendant_identities": defendant_identities,
         "defendant_agents": defendant_agents,
         "third_parties": third_parties,
         "third_party_agents": third_party_agents,
@@ -1523,13 +1587,9 @@ async def _case_action_granted(identity: dict, db: AsyncSession, action_code: st
     from app.core.permissions import (
         _identity_role_ids, _permission_payload_for_identity,
     )
-    if identity.get("_page_menu_capability") and action_code not in {"case.fee.update", "case.fee.delete"}:
-        return True
-    if action_code.startswith("case.") and action_code not in {"case.assisted_fee.manage", "case.fee.update", "case.fee.delete"}:
-        return True
     if "admin" in _identity_role_ids(identity):
         return True
-    permission_identity = {key: value for key, value in identity.items() if key != "_page_menu_capability"} if action_code in {"case.fee.update", "case.fee.delete"} else identity
+    permission_identity = {key: value for key, value in identity.items() if key != "_page_menu_capability"}
     permission = await _permission_payload_for_identity(permission_identity, db)
     action_keys = set(permission.get("action_keys") or [])
     return "*" in action_keys or action_code in action_keys

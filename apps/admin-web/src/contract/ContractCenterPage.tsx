@@ -1052,6 +1052,7 @@ export default function ContractCenterPage({
   const viewingHasEventEndpoint = Boolean(viewing && buildContractEventsRequest(viewing, { page: contractEventPage, pageSize: contractEventPageSize, keyword: contractEventKeyword }).path);
   const objectPageData = paginateContractObjectRows(contractObjects, objectPage, objectPageSize);
   const approvalOptions = buildChinesePersonOptions(directory, (user: DirectoryUser) => Boolean(user.can_approve_contract));
+  const sealApprovalOptions = buildChinesePersonOptions(directory, (user: DirectoryUser) => Boolean(user.can_approve_seal));
 
   const contractApproverLabel = (
     <Space size={4}>
@@ -1204,6 +1205,7 @@ export default function ContractCenterPage({
             stepItems={stepItems}
             customerOptions={customerOptions}
             approvalOptions={approvalOptions}
+            sealApprovalOptions={sealApprovalOptions}
             sealAssets={sealAssets}
             currentApproval={currentApproval}
             canActOnCurrentApproval={canActOnCurrentApproval}
@@ -1652,6 +1654,7 @@ export default function ContractCenterPage({
           stepItems={stepItems}
           customerOptions={customerOptions}
           approvalOptions={approvalOptions}
+          sealApprovalOptions={sealApprovalOptions}
           sealAssets={sealAssets}
           currentApproval={currentApproval}
           canActOnCurrentApproval={canActOnCurrentApproval}

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Button,
@@ -11,6 +11,7 @@ import {
   Space,
   Switch,
   Table,
+  Tree,
 } from "antd";
 import { EditOutlined, PlusOutlined } from "@ant-design/icons";
 import type { MenuRow } from "./types";
@@ -37,6 +38,7 @@ interface SystemMenuManagementProps {
   onMenuOpenChange: (open: boolean) => void;
   onNewMenu: () => void;
   onResetMenuSearch: () => void;
+  onSaveVisibility: (keys: string[]) => Promise<void>;
 }
 
 export function SystemMenuManagement({
@@ -61,7 +63,10 @@ export function SystemMenuManagement({
   onMenuOpenChange,
   onNewMenu,
   onResetMenuSearch,
+  onSaveVisibility,
 }: SystemMenuManagementProps) {
+  const [visibleKeys, setVisibleKeys] = useState<string[]>([]);
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
   const systemMenus = menus.filter((row) => row.is_system),
     legacyMenus = menus.filter((row) => !row.is_system);
   const normalizedMenuSearch = menuSearch.trim().toLowerCase();
@@ -88,6 +93,7 @@ export function SystemMenuManagement({
     });
     return roots;
   }, [menus]);
+  useEffect(() => setVisibleKeys(menus.filter((row) => row.is_visible).map((row) => row.key)), [menus]);
 
   return (
     <>
@@ -98,6 +104,16 @@ export function SystemMenuManagement({
           message="无路由菜单作为目录/权限节点，不会导航到页面；有路由菜单仅允许已实现路由。"
           style={{ marginBottom: 12 }}
         />
+        <Card size="small" title="快速配置模块显示" style={{ marginBottom: 12 }} extra={<Button type="primary" loading={visibilitySaving} onClick={async()=>{setVisibilitySaving(true);try{await onSaveVisibility(visibleKeys)}finally{setVisibilitySaving(false)}}}>保存显示配置</Button>}>
+          <Tree
+            checkable
+            selectable={false}
+            defaultExpandAll
+            treeData={menuTreeData}
+            checkedKeys={visibleKeys}
+            onCheck={(keys) => setVisibleKeys((Array.isArray(keys) ? keys : keys.checked).map(String))}
+          />
+        </Card>
         <Button
           type="primary"
           icon={<PlusOutlined />}

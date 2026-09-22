@@ -4,7 +4,7 @@ import { displayContractStatus } from "../contractStatusPresentation.mjs";
 import { CONTRACT_ATTACHMENT_ACCEPT } from "../contractWorkflowPolicy.mjs";
 import { CONTRACT_CREATE_STEP_TITLES, CONTRACT_FEE_MODE_OPTIONS, CONTRACT_TYPE_OPTIONS, colors, } from "./constants";
 import type { ContractWizardContentProps } from "./ContractCreateWizard";
-export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, personName, onContractFileChange, onApproveWizard, onOpenContractCustomerCreation, onClearLinkedCustomerContext, onDownloadAttachment }: Pick<ContractWizardContentProps, "wizardStep" | "wizardDraft" | "form" | "submitForm" | "reviewForm" | "sealForm" | "attachments" | "historyItems" | "stepItems" | "customerOptions" | "approvalOptions" | "sealAssets" | "currentApproval" | "canActOnCurrentApproval" | "contractApproverLabel" | "personName" | "onContractFileChange" | "onApproveWizard" | "onOpenContractCustomerCreation" | "onClearLinkedCustomerContext" | "onDownloadAttachment">) {
+export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealApprovalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, personName, onContractFileChange, onApproveWizard, onOpenContractCustomerCreation, onClearLinkedCustomerContext, onDownloadAttachment }: Pick<ContractWizardContentProps, "wizardStep" | "wizardDraft" | "form" | "submitForm" | "reviewForm" | "sealForm" | "attachments" | "historyItems" | "stepItems" | "customerOptions" | "approvalOptions" | "sealApprovalOptions" | "sealAssets" | "currentApproval" | "canActOnCurrentApproval" | "contractApproverLabel" | "personName" | "onContractFileChange" | "onApproveWizard" | "onOpenContractCustomerCreation" | "onClearLinkedCustomerContext" | "onDownloadAttachment">) {
     return <>
     <div className="contract-page-steps">
             {CONTRACT_CREATE_STEP_TITLES.map((title, index) => (<div key={title} className={wizardStep === index ? "active" : wizardStep > index ? "done" : ""}>{index + 1}. {title}</div>))}
@@ -26,7 +26,7 @@ export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submi
               <Form.Item label="外部合同号（可多个）" name="external_contract_numbers">
                 <Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入客户方合同编号后回车"/>
               </Form.Item>
-              <Form.Item label="备注" name="description" rules={[{ required: true }]}><Input.TextArea rows={4} placeholder="备注"/></Form.Item>
+              <Form.Item label="备注" name="description"><Input.TextArea rows={4} placeholder="备注（选填）"/></Form.Item>
               <Form.Item label="合同附件" extra="起草阶段可跳过；提交审批前须上传至少一份合同附件">
                 <input type="file" accept={CONTRACT_ATTACHMENT_ACCEPT} onChange={(event) => onContractFileChange(event.target.files?.[0] || null)}/>
                 <div className="contract-upload-tip">附件支持常用图片、压缩包、Office 文档及 PDF 格式</div>
@@ -81,7 +81,7 @@ export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submi
               {(<Form form={sealForm} layout="vertical" className="contract-seal-form">
                   <div className="form-grid">
                     <Form.Item label="用印审批人" name="approver" rules={[{ required: true, message: "请选择用印审批人" }]}>
-                      <Select showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择用印审批人" notFoundContent="没有可用审批人，请先在人事中心配置合同审批资格"/>
+                      <Select showSearch optionFilterProp="label" options={sealApprovalOptions} placeholder="请选择用印审批人" notFoundContent="没有可用审批人，请先在人事中心配置用印审批资格"/>
                     </Form.Item>
                     <Form.Item label="选择印章" name="seal_asset_id" rules={[{ required: true, message: "请选择印章" }]}><Select placeholder="请选择印章类型" notFoundContent="暂无可用印章，请管理员到用印中心维护" options={sealAssets.map((asset) => ({ value: asset.id, label: `${asset.seal_type}｜${asset.name}（${asset.code}）` }))}/></Form.Item>
                     <Form.Item label="用印份数" name="copies" rules={[{ required: true }]}><InputNumber min={1} max={999} style={{ width: "100%" }}/></Form.Item>

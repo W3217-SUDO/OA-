@@ -389,14 +389,21 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
     current_user = await db.scalar(select(User).where(User.username == username))
     stale = (await db.scalars(select(Notification).where(Notification.recipient == username, Notification.source_type.in_(["task", "finance", "contract", "case", "ipr_warning"])))).all()
     existing_record_ids = set((await db.scalars(select(BusinessRecord.id))).all())
+    records_by_id = {
+        record.id: record
+        for record in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(
+            [notice.source_id for notice in stale if notice.source_id]
+        )))).all()
+    } if stale else {}
     if identity.get("role") != "admin":
-        visible_tasks = [task for task in all_tasks if _is_task_participant(task, identity) or (identity.get("role") == "manager" and current_user and task.department == current_user.department)]
-        tasks = [task for task in tasks if _is_task_participant(task, identity) or (identity.get("role") == "manager" and current_user and task.department == current_user.department)]
+        visible_tasks = [task for task in all_tasks if task.owner == username]
+        tasks = [task for task in tasks if task.owner == username]
         visible_ids = await _visible_record_ids(identity, db)
         visible_task_ids = {task.id for task in visible_tasks}
     else:
         visible_ids = existing_record_ids
-        visible_task_ids = {task.id for task in all_tasks}
+        visible_task_ids = {task.id for task in all_tasks if task.owner == username}
+        tasks = [task for task in tasks if task.owner == username]
     for notice in stale:
         if notice.source_type == "ipr_warning":
             if not can_view_ipr:
@@ -410,6 +417,20 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
             (notice.source_type == "task" and notice.source_key.startswith("task-") and not notice.source_key.startswith(("task-history-", "task-message-")))
             or notice.source_key.startswith(("finance-approval-", "contract-approval-", "hearing-"))
         )
+        source_record = records_by_id.get(notice.source_id)
+        if notice.source_type == "task" and source_record and source_record.owner != username:
+            await db.delete(notice)
+            continue
+        if notice.source_type == "finance" and source_record:
+            source_data = source_record.data or {}
+            responsible = {
+                source_record.owner,
+                str(source_data.get("approver") or "").strip(),
+                str(source_data.get("current_approver") or "").strip(),
+            }
+            if username not in responsible:
+                await db.delete(notice)
+                continue
         # 旧版本的自动提醒键是全局唯一键，同一业务只能被第一个访问提醒页的
         # 用户取得。迁移为收件人维度，确保管理员与每个参与人都有独立提醒。
         if is_auto_reminder and not notice.source_key.endswith(f"-{username}"):
@@ -432,6 +453,11 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
         if info["reminder_due"]:
             candidates.append({"source_key": f"task-{task.id}-{today}-{username}", "source_type": "task", "source_id": task.id, "title": info["reminder_text"], "content": f"{task.serial_no}｜{task.title}｜负责人：{task.owner}", "level": "error" if info["status"] == "已逾期" else "warning"})
     fees = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", BusinessRecord.status == "待审批", *(await _record_scope_conditions(identity, db))))).all()
+    fees = [fee for fee in fees if username in {
+        fee.owner,
+        str((fee.data or {}).get("approver") or "").strip(),
+        str((fee.data or {}).get("current_approver") or "").strip(),
+    }]
     for fee in fees:
         candidates.append({"source_key": f"finance-approval-{fee.id}-{username}", "source_type": "finance", "source_id": fee.id, "title": "费用待审批", "content": f"{fee.serial_no}｜{fee.title}｜{(fee.data or {}).get('amount', 0)} 元", "level": "warning"})
     current_steps = (await db.execute(select(ContractApprovalStep, BusinessRecord).join(BusinessRecord, BusinessRecord.id == ContractApprovalStep.contract_record_id).where(ContractApprovalStep.status == "待审批", BusinessRecord.status == "审批中"))).all()
@@ -440,6 +466,16 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
             candidates.append({"source_key": f"contract-approval-{contract.id}-{step.id}-{username}", "source_type": "contract", "source_id": contract.id, "title": f"合同第 {step.step_order} 级待审批", "content": f"{contract.serial_no}｜{contract.title}｜审批人：{step.approver}", "level": "warning"})
     hearings = (await db.execute(select(HearingSchedule, BusinessRecord).join(BusinessRecord, BusinessRecord.id == HearingSchedule.case_record_id).where(HearingSchedule.hearing_date == today + timedelta(days=1), HearingSchedule.status == "已排期", *(await _record_scope_conditions(identity, db))))).all()
     for hearing, case_record in hearings:
+        case_data = case_record.data or {}
+        responsible = {
+            case_record.owner,
+            str(hearing.hearing_lawyer or "").strip(),
+            str(case_data.get("assistant_username") or case_data.get("assistant") or "").strip(),
+            str(case_data.get("investigator_username") or case_data.get("investigator") or "").strip(),
+            *(str(value).strip() for value in (case_data.get("handling_lawyer_usernames") or []) if str(value).strip()),
+        }
+        if username not in responsible:
+            continue
         candidates.append({"source_key": f"hearing-{hearing.id}-{hearing.hearing_date}-{username}", "source_type": "case", "source_id": case_record.id, "title": "明日开庭提醒", "content": f"{case_record.serial_no}｜{hearing.hearing_time}｜{hearing.court}｜{hearing.hearing_lawyer}", "level": "info"})
     existing_keys = set((await db.scalars(select(Notification.source_key).where(Notification.source_key.in_([x["source_key"] for x in candidates])))).all()) if candidates else set()
     for item in candidates:

@@ -12,7 +12,7 @@ from app.core.dependencies import (
     update, uuid4,
 )
 from app.models_shared import (
-    DepartmentInput, DepartmentUpdate, HrEmployeeBatchDeleteInput, HrEmployeeContractApprovalStatusInput, HrEmployeeCreateInput,
+    DepartmentInput, DepartmentUpdate, HrEmployeeBatchDeleteInput, HrEmployeeContractApprovalStatusInput, HrEmployeeCreateInput, HrEmployeeSealApprovalStatusInput,
     HrEmployeeLoginStatusInput, HrEmployeeUpdateInput, HrPerformanceInput, HrSubrecordInput, HrSubrecordUpdate,
     HrTransitionInput, JobRoleInput, JobRolePermissionUpdate, JobRoleUpdate,
 )
@@ -410,6 +410,37 @@ async def update_hr_employee_contract_approval_status(employee_id: int, body: Hr
         "employee": _record_dict(employee),
         "user": _system_user_dict(user),
         "can_approve_contract": await _is_contract_approver(user, db),
+    }
+
+
+@router.patch(f"{settings.api_prefix}/hr/employees/{{employee_id}}/seal-approval-status")
+async def update_hr_employee_seal_approval_status(employee_id: int, body: HrEmployeeSealApprovalStatusInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.documents import _user_has_seal_action
+    from app.core.permissions import _require_admin
+    from app.core.system import _record_dict, _system_user_dict
+    _require_admin(identity)
+    employee = await db.get(BusinessRecord, employee_id)
+    if not employee or employee.module != "hr":
+        raise HTTPException(status_code=404, detail="员工档案不存在")
+    data = dict(employee.data or {})
+    username = str(data.get("username") or employee.owner).strip().lower()
+    user = await db.scalar(select(User).where(User.username == username))
+    if not user:
+        raise HTTPException(status_code=409, detail="员工账号关联的登录用户不存在")
+    previous_enabled = bool((user.profile or {}).get("seal_approval_enabled"))
+    user.profile = {**(user.profile or {}), "seal_approval_enabled": body.seal_approval_enabled}
+    employee.data = {**data, "seal_approval_enabled": body.seal_approval_enabled}
+    db.add(WorkflowEvent(
+        record_id=employee.id, action="切换用印审批资格",
+        from_status="已配置" if previous_enabled else "未配置",
+        to_status="已配置" if body.seal_approval_enabled else "未配置",
+        operator=identity["username"],
+        comment="用印审批人员：{}；{}".format(user.username, "是" if body.seal_approval_enabled else "否"),
+    ))
+    await db.commit(); await db.refresh(employee); await db.refresh(user)
+    return {
+        "employee": _record_dict(employee), "user": _system_user_dict(user),
+        "can_approve_seal": await _user_has_seal_action(user, "approve", db),
     }
 
 

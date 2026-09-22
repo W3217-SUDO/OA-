@@ -12,7 +12,7 @@ class DifyRequest(BaseModel):
 
 
 class CaseAgentProposedAction(BaseModel):
-    type: str = Field(default="case.update", pattern=r"^(case\.update|case\.data\.update|case\.task\.create|case\.reminder\.create|customer\.update|contract\.update)$")
+    type: str = Field(default="case.update", pattern=r"^(case\.update|case\.data\.update|case\.task\.create|case\.reminder\.create|customer\.update|contract\.update|case\.delete|customer\.delete|contract\.delete)$")
     summary: str = Field(min_length=2, max_length=500)
     payload: dict = Field(default_factory=dict)
 
@@ -1235,11 +1235,18 @@ class CaseLitigantAgentInput(BaseModel):
     authority: str = Field(default="", max_length=500)
 
 
+class CasePartyIdentityInput(BaseModel):
+    name: str = Field(min_length=1, max_length=256)
+    organization_type: str = Field(min_length=1, max_length=32)
+    identity_no: str = Field(min_length=1, max_length=64)
+
+
 class CaseLitigantsInput(BaseModel):
     plaintiffs: list[str] = Field(default_factory=list, max_length=50)
     # Strings remain accepted for historical case JSON and existing callers.
     plaintiff_agents: list[CaseLitigantAgentInput | str] = Field(default_factory=list, max_length=50)
     defendants: list[str] = Field(default_factory=list, max_length=50)
+    defendant_identities: list[CasePartyIdentityInput] = Field(default_factory=list, max_length=50)
     defendant_agents: list[CaseLitigantAgentInput | str] = Field(default_factory=list, max_length=50)
     third_parties: list[str] = Field(default_factory=list, max_length=50)
     third_party_agents: list[CaseLitigantAgentInput | str] = Field(default_factory=list, max_length=50)
@@ -2174,6 +2181,10 @@ class HrEmployeeContractApprovalStatusInput(BaseModel):
     contract_approval_enabled: bool
 
 
+class HrEmployeeSealApprovalStatusInput(BaseModel):
+    seal_approval_enabled: bool
+
+
 class HrEmployeeCreateInput(BaseModel):
     # Only an "employee account" has a system-login counterpart.  Keeping this
     # optional lets HR retain customer/external personnel files without creating
@@ -2316,6 +2327,10 @@ class SystemMenuUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class SystemMenuVisibilityBatchInput(BaseModel):
+    visible_keys: list[str] = Field(default_factory=list, max_length=500)
+
+
 class SystemMenuInput(BaseModel):
     key: str | None = Field(default=None, max_length=128, pattern=r"^[a-z0-9][a-z0-9-]*$")
     parent_key: str = Field(default="", max_length=128)
@@ -2446,6 +2461,8 @@ class CustomerCreateInput(BaseModel):
     description: str = ""
     customer_managers: list[str] = Field(default_factory=list, max_length=20)
     customer_type: str | None = None
+    organization_type: str | None = None
+    identity_no: str | None = None
     level: str | None = None
     is_shared: str | bool | None = None
     is_assisted: str | bool | None = None

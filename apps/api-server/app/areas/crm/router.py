@@ -26,6 +26,38 @@ from fastapi import APIRouter
 
 router = APIRouter()
 
+CUSTOMER_ORGANIZATION_TYPES = {"公司企业", "事业单位", "机关团体", "个人", "个体工商户", "其他"}
+
+
+async def _validate_customer_identity(data: dict, db: AsyncSession, *, exclude_id: int | None = None) -> None:
+    organization_type = str(data.get("organization_type") or "").strip()
+    if organization_type not in CUSTOMER_ORGANIZATION_TYPES:
+        raise HTTPException(status_code=422, detail="请选择有效的组织类型")
+    identity_field = "identity_no" if organization_type == "个人" else "credit_code"
+    identity_label = "身份证号" if organization_type == "个人" else "统一社会信用代码"
+    identity_value = str(data.get(identity_field) or "").strip().upper()
+    if not identity_value:
+        raise HTTPException(status_code=422, detail=f"{identity_label}不能为空")
+    if any(character.isspace() for character in identity_value):
+        raise HTTPException(status_code=422, detail=f"{identity_label}不允许包含空格")
+    if organization_type == "个人":
+        if len(identity_value) != 18 or not identity_value[:17].isdigit() or identity_value[-1] not in "0123456789X":
+            raise HTTPException(status_code=422, detail="身份证号格式无效")
+        data["credit_code"] = ""
+    else:
+        if len(identity_value) != 18 or not identity_value.isalnum():
+            raise HTTPException(status_code=422, detail="统一社会信用代码格式无效")
+        data["identity_no"] = ""
+    data["organization_type"] = organization_type
+    data[identity_field] = identity_value
+    existing = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer"))).all())
+    for customer in existing:
+        if exclude_id and customer.id == exclude_id:
+            continue
+        customer_data = customer.data or {}
+        if str(customer_data.get(identity_field) or "").strip().upper() == identity_value:
+            raise HTTPException(status_code=409, detail=f"{identity_label}已被其他客户使用")
+
 
 @router.get(f"{settings.api_prefix}/law-firms")
 async def list_law_firms(keyword: str = "", include_inactive: bool = False, page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
@@ -352,14 +384,7 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
     data["customer_type"] = customer_type; data["level"] = level
     for key, label in {"is_shared": "是否共享", "is_assisted": "上海市资助信息", "fee_reduction": "是否费减"}.items():
         data[key] = _normalize_customer_yes_no(data.get(key), label)
-    credit_code = str(data.get("credit_code") or "").strip()
-    if credit_code and any(character.isspace() for character in str(data.get("credit_code") or "")):
-        raise HTTPException(status_code=422, detail="统一社会信用代码不允许包含空格")
-    if credit_code:
-        existing_customers = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer"))).all()
-        if any(str((item.data or {}).get("credit_code") or "").strip().casefold() == credit_code.casefold() for item in existing_customers):
-            raise HTTPException(status_code=409, detail="统一社会信用代码已存在")
-    data["credit_code"] = credit_code
+    await _validate_customer_identity(data, db)
     contact_values: list[str] = []
     raw_contact = body.contact if "contact" in body.model_fields_set else data.get("contact")
     if isinstance(raw_contact, list):
@@ -434,10 +459,22 @@ async def customer_conflicts(
     cases = list((await db.scalars(
         select(BusinessRecord).where(BusinessRecord.module == "case")
     )).all())
-    matching_cases = cases if not needle else [
+    direct_matching_cases = cases if not needle else [
         case_record for case_record in cases
         if any(_normalize_conflict_entity(entity) == needle for entity in _case_conflict_entities(case_record))
     ]
+    customers = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer"))).all())
+    related_customer_names: set[str] = set()
+    for customer in customers:
+        customer_data = customer.data or {}
+        contacts = customer_data.get("contacts") or []
+        contact_names = [str(item.get("name") or "").strip() for item in contacts if isinstance(item, dict)]
+        if _normalize_conflict_entity(customer.title) == needle or any(_normalize_conflict_entity(value) == needle for value in contact_names):
+            related_customer_names.add(customer.title)
+    matching_cases = list(dict.fromkeys([
+        *direct_matching_cases,
+        *(case_record for case_record in cases if case_record.customer in related_customer_names),
+    ]))
     if not matching_cases:
         return _empty_customer_conflict_result(query)
     latest_case = max(
@@ -447,6 +484,20 @@ async def customer_conflicts(
     data = latest_case.data or {}
     filing_date = _case_filing_date(latest_case)
     plaintiffs = _case_party_values(data, CASE_PLAINTIFF_FIELDS) or _conflict_entity_tokens(latest_case.customer)
+    matches = []
+    for case_record in sorted(matching_cases, key=lambda item: (_case_filing_date(item) or date.min, item.id), reverse=True):
+        case_data = case_record.data or {}
+        direct_match = case_record in direct_matching_cases
+        matches.append({
+            "case_no": case_record.serial_no,
+            "case_date": (_case_filing_date(case_record) or date.min).isoformat() if _case_filing_date(case_record) else "",
+            "our_customer": case_record.customer,
+            "plaintiffs": _case_party_values(case_data, CASE_PLAINTIFF_FIELDS),
+            "defendants": _case_party_values(case_data, CASE_DEFENDANT_FIELDS),
+            "third_parties": _case_party_values(case_data, CASE_THIRD_PARTY_FIELDS),
+            "match_reason": "案件当事人直接命中" if direct_match else "客户关联人命中",
+            "relation_path": [query, case_record.serial_no] if direct_match else [query, case_record.customer, case_record.serial_no],
+        })
     return {
         "found": True,
         "query": query,
@@ -458,6 +509,7 @@ async def customer_conflicts(
         "third_parties": _case_party_values(data, CASE_THIRD_PARTY_FIELDS),
         "our_customer": latest_case.customer,
         "customer_managers": await _conflict_customer_managers(query, db),
+        "matches": matches,
     }
 
 
@@ -647,7 +699,10 @@ async def patch_customer(customer_id: int, body: CustomerPatchInput, identity: d
         if permission and permission not in allowed_fields:
             continue
         accepted[key] = value
-    customer.data = {**current, **accepted}
+    next_data = {**current, **accepted}
+    if {"organization_type", "identity_no", "credit_code"} & set(accepted):
+        await _validate_customer_identity(next_data, db, exclude_id=customer.id)
+    customer.data = next_data
     if body.description is not None:
         customer.description = body.description.strip()
     db.add(_customer_event(customer, "更新客户资料", identity, f"更新字段：{'、'.join(accepted) or '无可写字段'}"))

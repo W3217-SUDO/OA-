@@ -122,7 +122,10 @@ export function ContractList({
   onExportExcel,
   onExportCsv,
 }: ContractListProps) {
-  const textCell = (value: string) => displayContractStatus(value);
+  const textCell = (value: string) => {
+    const text = displayContractStatus(value);
+    return value === "已拒绝" || value === "已驳回" ? <Tag color="error">{text}</Tag> : text;
+  };
   const customerManagerCell = (value: unknown) => {
     const fullNames = peopleNames(value);
     const names = fullNames.split("、").map((name) => name.trim()).filter(Boolean);

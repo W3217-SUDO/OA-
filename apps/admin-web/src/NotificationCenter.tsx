@@ -20,7 +20,7 @@ type Notice = {
 };
 
 const colors: Record<string, string> = { error: "red", warning: "orange", info: "blue" };
-const routes: Record<string, string> = {task:'task-reminders',finance:'finance-audit',finance_package:'finance-fee-query',finance_settlement:'finance-fee-query',finance_archive_settlement:'finance-fee-query',contract:'contract-audit',case:'case-schedule'};
+const routes: Record<string, string> = {task:'task-my-accepted',finance:'finance-audit',finance_package:'finance-fee-query',finance_settlement:'finance-fee-query',finance_archive_settlement:'finance-fee-query',contract:'contract-audit',case:'case-schedule'};
 
 export default function NotificationCenter({ onNavigate }: { onNavigate: (key: string) => void }) {
   const [open, setOpen] = useState(false);

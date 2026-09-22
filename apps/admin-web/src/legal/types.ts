@@ -336,7 +336,7 @@ export type CaseEventRow = {
 
 export type CaseEventCapabilities = { can_create: boolean; can_edit: boolean; can_delete: boolean };
 
-export type CaseLogRow = {id:number;content:string;operator:string;operator_display_name?:string;created_at:string};
+export type CaseLogRow = {id:number;kind?:CaseLogKind;content:string;operator:string;operator_display_name?:string;created_at:string};
 
 export type CaseLogKind = "case" | "refund";
 

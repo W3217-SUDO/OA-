@@ -47,6 +47,7 @@ export interface ContractWizardContentProps {
   stepItems: Array<{ title: string; description?: React.ReactNode; status: "finish" | "process" | "error" | "wait" }>;
   customerOptions: Array<{ value: number; label: string }>;
   approvalOptions: Array<{ value: string; label: string }>;
+  sealApprovalOptions: Array<{ value: string; label: string }>;
   sealAssets: SealAsset[];
   currentApproval: Step | undefined;
   canActOnCurrentApproval: boolean;
@@ -85,6 +86,7 @@ export function ContractWizardContent({
   stepItems,
   customerOptions,
   approvalOptions,
+  sealApprovalOptions,
   sealAssets,
   currentApproval,
   canActOnCurrentApproval,
@@ -110,7 +112,7 @@ export function ContractWizardContent({
   const showSteps = !editing && wizardStep < CONTRACT_CREATE_STEP_TITLES.length;
   const stepClass = mode === "page" ? "contract-page-steps" : "contract-create-steps";
 
-  if (mode === "page") return <ContractPageWizardContent {...{ wizardStep, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, personName, onContractFileChange, onApproveWizard, onOpenContractCustomerCreation, onClearLinkedCustomerContext, onDownloadAttachment }} />;
+  if (mode === "page") return <ContractPageWizardContent {...{ wizardStep, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealApprovalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, personName, onContractFileChange, onApproveWizard, onOpenContractCustomerCreation, onClearLinkedCustomerContext, onDownloadAttachment }} />;
 
   return (
     <>
@@ -363,7 +365,7 @@ export function ContractWizardContent({
                   <Select
                     showSearch
                     optionFilterProp="label"
-                    options={approvalOptions}
+                    options={sealApprovalOptions}
                     placeholder="请选择用印审批人"
                     notFoundContent="没有可用审批人，请先在人事中心配置合同审批资格"
                   />

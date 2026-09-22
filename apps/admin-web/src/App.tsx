@@ -394,15 +394,9 @@ const menuItems: NavItem[] = [
     icon: <FileTextOutlined />,
     label: "收发文台",
     children: [
-      { key: "documents-official", label: "官文收文" },
-      { key: "documents-outgoing", label: "正式发文" },
+      { key: "documents-official", label: "官方收文" },
       { key: "documents-my", label: "我的收文" },
       { key: "documents-company", label: "公司收文" },
-      { key: "documents-register", label: "收发文登记" },
-      { key: "documents-files", label: "文件附件" },
-      { key: "documents-template", label: "文书模板" },
-      { key: "documents-agent", label: "AI 智能文档" },
-      { key: "documents-archive", label: "归档材料" },
     ],
   },
   {
@@ -564,7 +558,8 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
       item.key !== "task-reminders" &&
       item.key !== "vip-tasks" &&
       item.key !== "finance-jar" &&
-      item.key !== "system-users",
+      item.key !== "system-users" &&
+      (item.parent_key !== "documents" || ["documents-official", "documents-my", "documents-company"].includes(item.key)),
   ).sort(
     (a, b) => a.sort_order - b.sort_order || a.id - b.id,
   );
@@ -2004,7 +1999,7 @@ export default function App() {
                 type="text"
                 aria-label="任务消息"
                 icon={<MessageOutlined />}
-                onClick={() => navigate("task-reminders")}
+                onClick={() => navigate("task-my-accepted")}
               />
             </Badge>
           </Tooltip>
@@ -2072,7 +2067,7 @@ export default function App() {
               type="text"
               aria-label="任务消息"
               icon={<MessageOutlined />}
-              onClick={() => navigate("task-reminders")}
+              onClick={() => navigate("task-my-accepted")}
             />
           </Badge>
         </Space>
@@ -2219,8 +2214,8 @@ export default function App() {
         </button>
         <button
           type="button"
-          className={active === "task-reminders" ? "active" : ""}
-          onClick={() => navigate("task-reminders")}
+          className={active === "task-my-accepted" ? "active" : ""}
+          onClick={() => navigate("task-my-accepted")}
         >
           <MessageOutlined />
           <span>消息</span>

@@ -4,7 +4,7 @@ from app.core.constants import (
     CASE_CREATE_PERMISSION_KEYS, DEFAULT_DEPARTMENTS, DEFAULT_JOB_ROLES, DEFAULT_ROLE_PERMISSIONS, DEFAULT_SYSTEM_CONFIGS,
     DEFAULT_SYSTEM_MENUS, DEFAULT_SYSTEM_PARAMETERS, FIELD_KEYS, LEGACY_ADMIN_MENU_KEYS, LEGACY_FINANCE_MENU_KEYS,
     LEGACY_INVESTIGATION_MENU_KEYS, LEGACY_TASK_MENU_KEYS, MENU_KEYS, ORIGINAL_ADMIN_MENU_KEYS, ORIGINAL_FINANCE_MENU_KEYS,
-    ORIGINAL_INVESTIGATION_MENU_KEYS, REQUIRED_SEAL_ASSETS, ROLE_DATA_SCOPES, SYSTEM_ADMIN_JOB_PERMISSIONS, case_agent_runtime,
+    ORIGINAL_INVESTIGATION_MENU_KEYS, REQUIRED_SEAL_ASSETS, ROLE_DATA_SCOPES, SYSTEM_ACTION_DEFINITIONS, SYSTEM_ADMIN_JOB_PERMISSIONS, case_agent_runtime,
     logger,
 )
 from app.core.dependencies import (
@@ -480,6 +480,15 @@ async def lifespan(_: FastAPI):
                     permission.role,
                     DEFAULT_ROLE_PERMISSIONS["user"],
                 )["data_scope"]
+            stored_keys = list(permission.menu_keys or [])
+            if permission.role != "admin" and any(key == "case" or str(key).startswith("case-") for key in stored_keys):
+                existing_actions = {str(key).removeprefix("@action:") for key in stored_keys if str(key).startswith("@action:")}
+                if not any(code.startswith("case.") for code in existing_actions):
+                    stored_keys.extend(
+                        f"@action:{item['code']}" for item in SYSTEM_ACTION_DEFINITIONS
+                        if item["code"].startswith("case.")
+                    )
+                    permission.menu_keys = list(dict.fromkeys(stored_keys))
         existing_parameters = set((await db.execute(select(SystemParameter.category, SystemParameter.code))).all())
         for index, (category, code, name, extra) in enumerate(DEFAULT_SYSTEM_PARAMETERS, start=1):
             if (category, code) not in existing_parameters:
