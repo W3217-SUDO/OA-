@@ -1648,7 +1648,7 @@ export default function App() {
       api
         .get("/tasks/unread-messages")
         .then(({ data }) =>
-          setTaskUnreadCount(Number(data?.accepted_unread_tasks ?? 0)),
+          setTaskUnreadCount(Number(data?.total ?? 0)),
         )
         .catch(() => undefined);
     loadTaskUnread();
@@ -1761,7 +1761,7 @@ export default function App() {
     !!dashboardTarget ||
     actualRole === "admin" ||
     route === "dashboard" ||
-    ["task-my-accepted", "task-my-created", "task-my-collaborating"].includes(active) ||
+    ["task-my-accepted", "task-my-created", "task-my-collaborating", "task-my-unread"].includes(active) ||
     (active === "case-global-search" &&
       Array.from(grantedMenuKeys).some((key) =>
         key.startsWith("case-mine") ||
@@ -2002,13 +2002,13 @@ export default function App() {
             </Button>
           </Dropdown>
           <NotificationCenter onNavigate={navigate} grantedMenuKeys={grantedMenuKeys} />
-          <Tooltip title="任务消息">
+          <Tooltip title="未读新消息的任务">
             <Badge count={taskUnreadCount} size="small" overflowCount={99}>
               <Button
                 type="text"
-                aria-label="任务消息"
+                aria-label="未读新消息的任务"
                 icon={<MessageOutlined />}
-                onClick={() => navigate("task-my-accepted")}
+                onClick={() => navigate("task-my-unread")}
               />
             </Badge>
           </Tooltip>
@@ -2074,9 +2074,9 @@ export default function App() {
           <Badge count={taskUnreadCount} size="small" overflowCount={99}>
             <Button
               type="text"
-              aria-label="任务消息"
+              aria-label="未读新消息的任务"
               icon={<MessageOutlined />}
-              onClick={() => navigate("task-my-accepted")}
+              onClick={() => navigate("task-my-unread")}
             />
           </Badge>
         </Space>
@@ -2213,20 +2213,20 @@ export default function App() {
         </button>
         <button
           type="button"
-          className={active.startsWith("task-") ? "active" : ""}
+          className={active.startsWith("task-") && active !== "task-my-unread" ? "active" : ""}
           onClick={() => navigate("task-my")}
         >
-          <Badge count={taskUnreadCount} size="small" overflowCount={99}>
-            <UnorderedListOutlined />
-          </Badge>
+          <UnorderedListOutlined />
           <span>待办</span>
         </button>
         <button
           type="button"
-          className={active === "task-my-accepted" ? "active" : ""}
-          onClick={() => navigate("task-my-accepted")}
+          className={active === "task-my-unread" ? "active" : ""}
+          onClick={() => navigate("task-my-unread")}
         >
-          <MessageOutlined />
+          <Badge count={taskUnreadCount} size="small" overflowCount={99}>
+            <MessageOutlined />
+          </Badge>
           <span>消息</span>
         </button>
         <button
