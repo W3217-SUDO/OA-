@@ -299,6 +299,9 @@
   max-width: 100%;
   padding: 4px 6px 5px;
 }
+.task-original-standard.task-unread-panel .task-query {
+  width: 100%;
+}
 .task-original-standard .task-query .ant-form-item {
   min-width: 0;
   margin-bottom: 0;
@@ -340,6 +343,18 @@
   .ant-table-content
   > table {
   min-width: 1306px !important;
+}
+.task-original-standard.task-unread-panel
+  .task-unread-table
+  .ant-table-content
+  > table {
+  width: 100% !important;
+}
+.page-workbench
+  > .task-original-standard.task-unread-panel
+  > .ant-card-body
+  > .task-unread-table {
+  flex: 0 1 auto;
 }
 .task-original-standard
   .task-original-table

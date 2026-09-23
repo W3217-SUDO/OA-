@@ -172,7 +172,8 @@ export default function TaskCenterPage({
   const isAcceptedTaskContext = canManageAcceptedTask;
   const hideTaskFooter =
     taskMeta.total === 0 &&
-    (isCreated ||
+    (isUnread ||
+      isCreated ||
       isAccepted ||
       isCollaborating ||
       isReminder ||
