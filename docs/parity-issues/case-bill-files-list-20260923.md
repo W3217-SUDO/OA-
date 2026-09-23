@@ -39,4 +39,4 @@
 - `codegraph sync` 完成；`python -m py_compile apps/api-server/app/areas/legal/router.py`、`git diff --check` 通过。
 - 本地 `xlsx` 依赖缺失导致第一次构建中断；按已锁定依赖在本地补齐后，`apps/admin-web` 的 `npm run build` 通过。没有修改依赖清单或锁文件。
 - 运行既有 `caseFileFrontendParity.test.mjs` 与 `caseDocumentAction.test.mjs` 共 8 项均失败。它们读取旧的 `src/CaseCenterPage.tsx` 入口做源码正则匹配，而该文件现在只是向 `src/legal/CaseCenterPage.tsx` 转发；失败与本轮票据分页逻辑无关，不能作为功能验收证据。本轮遵循“不新增测试脚本”的项目规则，没有追加新的测试代码。
-- 当前尚未提交/部署。线上用户账号的真实数据范围、测试案号检索、分页选择尚待用户在新版本部署后验收；不能把构建通过当作线上已解决。
+- 修复提交 `cffcda5b` 已同步到服务器 Git 与 GitHub 的 `dev`，发布版本 `1.1.187` 已分配并完成本地生产构建；截至本记录更新时，服务尚未切换到该版本。线上用户账号的真实数据范围、测试案号检索、分页选择仍待发布后由用户验收；不能把构建通过当作线上已解决。
