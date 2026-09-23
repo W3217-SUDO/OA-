@@ -549,6 +549,8 @@ async def list_records(
     customer_id: int | None = Query(default=None, gt=0), customer: str = "", customer_no: str = "", exclude_archived: bool = False,
     title: str = "", serial_no: str = "", record_type: str = Query("", alias="type"),
     case_no: str = "", fee_type: str = "", contract_body: str = "", source_person: str = "",
+    case_type: str = "", case_stage: str = "", contract_no: str = "", fee_group: str = "",
+    receipt_status: str = "", notary_no: str = "", package_no: str = "",
     signed_at_start: str = "", signed_at_end: str = "",
     investigation_view: str = Query("", pattern="^(|published|assigned|unassigned)$"),
     archive_view: str = Query("", pattern="^(|pending|refused)$"),
@@ -614,6 +616,22 @@ async def list_records(
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like)))
     if record_status:
         conditions.append(BusinessRecord.status == record_status)
+    if module == "case":
+        case_text_filters = (
+            (BusinessRecord.serial_no, serial_no),
+            (BusinessRecord.customer, customer),
+            (BusinessRecord.data["case_type"].as_string(), case_type),
+            (BusinessRecord.status, case_stage),
+            (BusinessRecord.data["contract_no"].as_string(), contract_no),
+            (BusinessRecord.data["fee_group"].as_string(), fee_group),
+            (BusinessRecord.data["fee_type"].as_string(), fee_type),
+            (BusinessRecord.data["receipt_status"].as_string(), receipt_status),
+            (BusinessRecord.data["notary_no"].as_string(), notary_no),
+            (BusinessRecord.data["package_no"].as_string(), package_no),
+        )
+        for column, value in case_text_filters:
+            if value.strip():
+                conditions.append(column.ilike(f"%{value.strip()}%"))
     if module == "case" and archive_view:
         archive_submitter = func.trim(func.coalesce(BusinessRecord.data["archive_submitter"].as_string(), ""))
         if archive_view == "pending":

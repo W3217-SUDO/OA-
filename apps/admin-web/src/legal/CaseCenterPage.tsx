@@ -113,6 +113,7 @@ import { LegacyLsHistoryPanel } from "../LegacyLsHistoryPanel";
 import "../task-center.css";
 import { createArchiveColumns } from "./columns/archiveColumns";
 import { useArchiveCases } from "./hooks/useArchiveCases";
+import { useReceiptCases } from "./hooks/useReceiptCases";
 import { createCaseColumns } from "./columns/caseColumns";
 import { createExternalCaseFeeColumns } from "./columns/externalCaseFeeColumns";
 import { rememberTaskDetailTarget } from "../taskDetailNavigation";
@@ -584,6 +585,7 @@ export default function CaseCenterPage({
   );
   const [caseQuery, setCaseQuery] = useState<Record<string, any>>({});
   const archiveList = useArchiveCases(initialView);
+  const receiptList = useReceiptCases(initialView);
   const legacyCaseListDefaults = getLegacyCaseListDefaults(initialView);
   const legacyCaseListOperationLabels = getLegacyCaseListOperationLabels();
   const [caseUploadCategory, setCaseUploadCategory] = useState(DEFAULT_CASE_ATTACHMENT_CATEGORY);
@@ -1141,6 +1143,8 @@ export default function CaseCenterPage({
     if (initialView.startsWith("case-archive-")) {
       setSelectedCaseKeys([]);
       await archiveList.reload();
+    } else if (initialView === "case-files-receipt") {
+      await Promise.all([load(), receiptList.reload()]);
     } else await load();
   };
   useEffect(() => {
@@ -2674,9 +2678,37 @@ export default function CaseCenterPage({
   const relatedFinance=(id:number)=>financeRows.find(row=>row.id===id);
   const invoiceCase=(row:AttachmentRow)=>{const finance=relatedFinance(row.record_id||0);return relatedCase(row.record_id||0)||cases.find(item=>item.serial_no===finance?.data?.case_no)};
   const scheduleRows=hearings.filter(row=>{const c=relatedCase(row.case_record_id);return c?caseMatches(c):true}).map(row=>({...row,case:relatedCase(row.case_record_id)}));
-  const receiptRows=specialCases;
+  const receiptRows=receiptList.rows;
   const invoiceRows=attachments.filter(row=>row.category.includes("发票")||row.category.includes("票据"));
   const specialRows:any[]=specialMode==="schedule"?scheduleRows:specialMode==="execution"?specialCases:specialMode==="unclaimed"?specialCases.filter(row=>!row.data.commission_applied):specialMode==="stage"?phaseRows:specialMode==="refund"?financeRows.filter(row=>String(row.data.fee_type||row.title).includes("退费")&&caseMatches(row)):specialMode==="receipt"?receiptRows:specialMode==="invoice"?invoiceRows:[];
+  const specialPagination = specialMode === "execution" ? {
+    current: pendingExecutionPage,
+    pageSize: pendingExecutionPageSize,
+    total: pendingExecutionTotal,
+    showSizeChanger: true,
+    pageSizeOptions: [10, 20, 50, 100],
+    showTotal: (total: number) => `共有${total}条`,
+    onChange: (page: number, pageSize: number) => void loadPendingExecutionCases(page, pageSize),
+  } : specialMode === "receipt" ? {
+    current: receiptList.page,
+    pageSize: receiptList.pageSize,
+    total: receiptList.total,
+    showSizeChanger: true,
+    pageSizeOptions: [10, 20, 50, 100],
+    showTotal: (total: number) => `共有${total}条`,
+    onChange: (page: number, pageSize: number) => {
+      setSelectedCaseKeys([]);
+      void receiptList.search(undefined, page, pageSize);
+    },
+  } : {
+    ...(shouldUseCompanySchedulePagination(initialView)
+      ? { defaultPageSize: 20, showSizeChanger: true, pageSizeOptions: getCompanySchedulePageSizeOptions(), showQuickJumper: { goButton: <Button size="small">GO</Button> } }
+      : { pageSize: 20 }),
+    ...(shouldUseCompanySchedulePagination(initialView)
+      ? { current: companySchedulePage, pageSize: companySchedulePageSize, onChange: (page: number, pageSize: number) => { setCompanySchedulePage(page); setCompanySchedulePageSize(pageSize); } }
+      : {}),
+    showTotal: (total: number) => `共有${total}条`,
+  };
   const selectedSpecialRow:any=specialRows.find(row=>selectedCaseKeySet.has(String(row.id)));
 
   const markCommissionPaid=()=>{
@@ -2988,13 +3020,14 @@ export default function CaseCenterPage({
       )}
       {specialMode ? <Card className="panel case-original-panel case-special-panel" title={specialTitle[specialMode]} extra={specialMode==="execution"?<Space><Button type="link" onClick={()=>document.querySelector('.case-special-query')?.classList.remove('case-query-hidden')}>高级搜索</Button><Button type="link" onClick={()=>document.querySelector('.case-special-query')?.classList.add('case-query-hidden')}>普通搜索</Button></Space>:null}>
         {specialMode==="invoice"&&<div className="case-invoice-import"><input ref={caseUploadRef} hidden type="file" accept=".xlsx,.xls,.csv,.pdf,.zip" onChange={event=>uploadCaseInvoiceFile(event.target.files?.[0])}/><Space><Button onClick={()=>caseUploadRef.current?.click()}>上传文件</Button><Button type="primary" onClick={startCaseInvoiceImport}>开始导入</Button></Space></div>}
-        {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className="case-special-query" initialValues={shouldUseCompanyScheduleQueryFields(initialView)?getCompanyScheduleQueryInitialValues(dayjs()):undefined} onFinish={values=>setCaseQuery(values)}>
+        {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className="case-special-query" initialValues={shouldUseCompanyScheduleQueryFields(initialView)?getCompanyScheduleQueryInitialValues(dayjs()):undefined} onFinish={values=>{setCaseQuery(values);if(specialMode==="receipt"){setSelectedCaseKeys([]);void receiptList.search(values,1,receiptList.pageSize);}}}>
           {(specialFilters[specialMode]||[]).map(([key,label,type,placeholder])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker placeholder={placeholder!==undefined?[placeholder,placeholder]:undefined}/>:type==="select"?<Select allowClear placeholder={placeholder} options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input placeholder={placeholder}/>}</Form.Item>)}
-          <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({})}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button>{specialMode==="receipt"&&<Button type="primary" onClick={()=>selectedSpecialRow?caseUploadRef.current?.click():message.warning("请先选择案件")}>批量上传</Button>}</Space></Form.Item>
+          <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});if(specialMode==="receipt"){setSelectedCaseKeys([]);void receiptList.search({},1,receiptList.pageSize);}}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button>{specialMode==="receipt"&&<Button type="primary" onClick={()=>selectedSpecialRow?caseUploadRef.current?.click():message.warning("请先选择案件")}>批量上传</Button>}</Space></Form.Item>
         </ListFilterBar>}
         {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
         {specialMode!=="invoice"&&<input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>}
-        <Table className="case-original-table" rowKey="id" size="small" loading={loading} columns={specialColumns[specialMode]} dataSource={specialRows} rowSelection={specialMode==="invoice"||specialMode==="stage"?undefined:{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:specialMode==="stage"?800:1500}} pagination={specialMode==="execution"?{current:pendingExecutionPage,pageSize:pendingExecutionPageSize,total:pendingExecutionTotal,showSizeChanger:true,pageSizeOptions:[10,20,50,100],showTotal:total=>`共有${total}条`,onChange:(page:number,pageSize:number)=>void loadPendingExecutionCases(page,pageSize)}:{...(shouldUseCompanySchedulePagination(initialView)?{defaultPageSize:20,showSizeChanger:true,pageSizeOptions:getCompanySchedulePageSizeOptions(),showQuickJumper:{goButton:<Button size="small">GO</Button>}}:{pageSize:20}),...(shouldUseCompanySchedulePagination(initialView)?{current:companySchedulePage,pageSize:companySchedulePageSize,onChange:(page:number,pageSize:number)=>{setCompanySchedulePage(page);setCompanySchedulePageSize(pageSize);}}:{}),showTotal:total=>`共有${total}条`}} />
+        {specialMode==="receipt"&&receiptList.error&&<Alert type="error" showIcon title={receiptList.error} action={<Button onClick={()=>void receiptList.reload()}>重试</Button>}/>}
+        <Table className="case-original-table" rowKey="id" size="small" loading={specialMode==="receipt"?receiptList.loading:loading} columns={specialColumns[specialMode]} dataSource={specialRows} rowSelection={specialMode==="invoice"||specialMode==="stage"?undefined:{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:specialMode==="stage"?800:1500}} pagination={specialPagination} />
         {shouldShowCompanyScheduleSinglePageJumper(initialView,specialRows.length,companySchedulePageSize)&&<Space style={{display:"flex",justifyContent:"flex-end",marginTop:8}}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={()=>setCompanySchedulePage(1)}>GO</Button></Space>}
         {specialMode!=="invoice"&&specialMode!=="stage"&&shouldShowCompanyScheduleActions(initialView,specialRows.length)&&<div className="case-bottom-actions"><Space>
           {(specialMode==="schedule"||specialMode==="execution"||specialMode==="unclaimed")&&<Button onClick={exportCases}>导出{specialMode==="schedule"?"案件":""}</Button>}
