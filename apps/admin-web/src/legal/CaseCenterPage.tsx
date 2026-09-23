@@ -232,6 +232,7 @@ statusColors
 import { CaseAgentDrawer } from "./CaseAgentDrawer";
 import { CaseCreateWizard } from "./CaseCreateWizard";
 import {
+CaseCaseLogsPanel,
 CaseCaseTasksPanel,
 CaseCluesPanel,
 CaseCustomerTasksPanel,
@@ -4147,6 +4148,13 @@ export default function CaseCenterPage({
                 deleteCaseFee={deleteCaseFee}
                 handleInternalFeeAction={handleInternalFeeAction}
                 openInformDateBatchUpdate={openInformDateBatchUpdate}
+              />},
+              {key:"case-logs",label:"案件日志",children:<CaseCaseLogsPanel
+                logs={counselLogs}
+                capabilities={counselDetailCapabilities}
+                casePersonDisplayName={casePersonDisplayName}
+                onCreateLog={openCounselLogCreator}
+                onViewLog={setViewingCaseLog}
               />},
               {key:"logs",label:"系统日志",children:<CaseSystemLogsPanel
                 logs={counselDetailHistory}
