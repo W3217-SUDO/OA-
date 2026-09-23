@@ -3079,7 +3079,7 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         _customer_or_404,
     )
     from app.core.permissions import (
-        _ensure_record_module, _record_scope_conditions, _require_case_action,
+        _ensure_record_module, _require_case_action,
     )
     from app.core.system import (
         _record_dict,
@@ -3125,7 +3125,7 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     business_owner_values, _ = await _resolve_active_case_people([body.business_owner.strip()] if body.business_owner.strip() else [], db, field_name="案源人")
     clue_ids = list(dict.fromkeys(body.investigation_clue_ids))
     clues = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.id.in_(clue_ids), BusinessRecord.module == "clue", *(await _record_scope_conditions(identity, db)),
+        BusinessRecord.id.in_(clue_ids), BusinessRecord.module == "clue", BusinessRecord.customer == customer.title,
     ))).all()) if clue_ids else []
     clues_by_id = {item.id: item for item in clues}
     if len(clues_by_id) != len(clue_ids):
@@ -3201,7 +3201,7 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
         _customer_or_404,
     )
     from app.core.permissions import (
-        _ensure_record_module, _record_scope_conditions, _require_case_action, _require_case_creation_completed,
+        _ensure_record_module, _require_case_action, _require_case_creation_completed,
     )
     from app.core.system import (
         _record_dict,
@@ -3230,7 +3230,9 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
     assistant_values, assistant_usernames = await _resolve_active_case_people([body.assistant.strip()] if body.assistant.strip() else [], db, field_name="律师助理")
     investigator_values, _ = await _resolve_active_case_people([body.investigator.strip()] if body.investigator.strip() else [], db, field_name="调查员")
     clue_ids = list(dict.fromkeys(body.investigation_clue_ids))
-    clues = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(clue_ids), BusinessRecord.module == "clue", *(await _record_scope_conditions(identity, db))))).all()) if clue_ids else []
+    clues = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(clue_ids), BusinessRecord.module == "clue", BusinessRecord.customer == customer.title,
+    ))).all()) if clue_ids else []
     if len({item.id for item in clues}) != len(clue_ids):
         raise HTTPException(status_code=404, detail="关联调查线索不存在或无权访问")
     by_id = {item.id: item for item in clues}; clue_nos = [by_id[item_id].serial_no for item_id in clue_ids]
@@ -6642,11 +6644,14 @@ async def create_record(body: RecordInput, identity: dict = Depends(current_iden
 
 
 @router.get(f"{settings.api_prefix}/records/{{record_id}}")
-async def get_record(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def get_record(record_id: int, scope: str = Query("", pattern="^(|audit)$"), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_record_visible, _record_dict_for_identity, _require_record_module_menu,
+        _ensure_pending_clue_audit_record, _ensure_record_visible, _record_dict_for_identity, _require_record_module_menu,
     )
-    record = await _ensure_record_visible(record_id, identity, db)
+    if scope == "audit":
+        record = await _ensure_pending_clue_audit_record(record_id, identity, db)
+    else:
+        record = await _ensure_record_visible(record_id, identity, db)
     await _require_record_module_menu(record.module, identity, db, action="查看")
     return await _record_dict_for_identity(record, identity, db)
 
@@ -6921,19 +6926,21 @@ async def list_case_documents(case_id: int, page: int = Query(1, ge=1), page_siz
 
 @router.get(f"{settings.api_prefix}/cases/{{case_id}}/clue-candidates")
 async def list_case_clue_candidates(case_id: int, keyword: str = Query("", max_length=100), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.permissions import _ensure_record_module, _record_scope_conditions, _require_case_action
+    from app.core.permissions import _ensure_record_module, _require_case_action
     from app.core.case_relations import case_clue_ids
     from app.core.system import _record_dict
     case = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_action(identity, db, "case.detail.update")
+    if not case.customer.strip():
+        raise HTTPException(status_code=409, detail="案件未关联客户，不能选择调查线索")
     existing = case_clue_ids(case)
     cases = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "case", BusinessRecord.id != case.id, BusinessRecord.status != "已合并",
     ))).all()
     used = set().union(*(case_clue_ids(item) for item in cases))
-    conditions = [BusinessRecord.module == "clue", *(await _record_scope_conditions(identity, db)),
+    conditions = [BusinessRecord.module == "clue", BusinessRecord.customer == case.customer,
                   or_(BusinessRecord.id.in_(existing),
-                      (BusinessRecord.status == "已取证") & (BusinessRecord.customer == case.customer))]
+                      BusinessRecord.status == "已取证")]
     if keyword.strip():
         conditions.append(or_(BusinessRecord.title.contains(keyword.strip(), autoescape=True),
                               BusinessRecord.serial_no.contains(keyword.strip(), autoescape=True)))

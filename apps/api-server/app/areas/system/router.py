@@ -1331,8 +1331,16 @@ async def list_notifications(
     total = int(await db.scalar(select(func.count()).select_from(Notification).where(*conditions)) or 0)
     items = (await db.scalars(select(Notification).where(*conditions).order_by(Notification.created_at.desc(), Notification.id.desc()).offset((page - 1) * page_size).limit(page_size))).all()
     unread = int(await db.scalar(select(func.count()).select_from(Notification).where(Notification.recipient == identity["username"], Notification.recipient_deleted.is_(False), Notification.is_read.is_(False))) or 0)
-    users_by_username = await _user_display_map({value for item in items for value in (item.sender, item.recipient)}, db)
-    return {"items": [_notification_dict(x, users_by_username) for x in items], "unread": unread, "total": total, "page": page, "page_size": page_size}
+    source_ids = {item.source_id for item in items if item.source_type in {"task", "case"} and item.source_id}
+    source_records = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module.in_(("task", "case")), BusinessRecord.id.in_(source_ids),
+    ))).all() if source_ids else []
+    records_by_id = {record.id: record for record in source_records}
+    users_by_username = await _user_display_map(
+        {value for item in items for value in (item.sender, item.recipient)}
+        | {record.owner for record in source_records if record.module == "task"}, db,
+    )
+    return {"items": [_notification_dict(x, users_by_username, records_by_id) for x in items], "unread": unread, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get(f"{settings.api_prefix}/users/directory")
@@ -1461,8 +1469,9 @@ async def read_notification(notification_id: int, identity: dict = Depends(curre
         warning = await db.scalar(select(IprCaseWarning).where(IprCaseWarning.notification_id == item.id, IprCaseWarning.recipient == identity["username"]))
         if warning and warning.status == "未读": warning.status = "已读"; warning.read_at = item.read_at
     await db.commit(); await db.refresh(item)
-    users_by_username = await _user_display_map({item.sender, item.recipient}, db)
-    return _notification_dict(item, users_by_username)
+    source_record = await db.get(BusinessRecord, item.source_id) if item.source_type in {"task", "case"} and item.source_id else None
+    users_by_username = await _user_display_map({item.sender, item.recipient, source_record.owner if source_record else ""}, db)
+    return _notification_dict(item, users_by_username, {source_record.id: source_record} if source_record else {})
 
 
 @router.post(f"{settings.api_prefix}/notifications/read-all")
@@ -1848,6 +1857,7 @@ async def list_attachments(
 
 @router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}")
 async def get_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.areas.aws.receipt_sources import can_read_receipt_attachment
     from app.core.formatters import (
         _person_display_name, _user_display_map,
     )
@@ -1862,7 +1872,10 @@ async def get_attachment(attachment_id: int, identity: dict = Depends(current_id
         raise HTTPException(status_code=404, detail="附件不存在")
     record = None
     if item.record_id:
-        record = await _ensure_attachment_record_visible(item.record_id, identity, db)
+        if await can_read_receipt_attachment(item, identity, db):
+            record = await db.get(BusinessRecord, item.record_id)
+        else:
+            record = await _ensure_attachment_record_visible(item.record_id, identity, db)
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
     uploader_users = await _user_display_map({item.uploader}, db)
@@ -2095,6 +2108,7 @@ async def upload_attachment(
 
 @router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/download")
 async def download_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.areas.aws.receipt_sources import can_read_receipt_attachment
     from app.core.permissions import (
         _ensure_attachment_record_visible,
     )
@@ -2105,7 +2119,10 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        record = await _ensure_attachment_record_visible(item.record_id, identity, db)
+        if await can_read_receipt_attachment(item, identity, db):
+            record = await db.get(BusinessRecord, item.record_id)
+        else:
+            record = await _ensure_attachment_record_visible(item.record_id, identity, db)
         if record.module == JAR_FEE_MODULE:
             raise HTTPException(status_code=409, detail="JAR交案费文件必须使用交案费专用下载接口")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
@@ -2119,6 +2136,7 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
 @router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/preview")
 async def preview_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Return safe, authenticated metadata/content for the in-app attachment preview."""
+    from app.areas.aws.receipt_sources import can_read_receipt_attachment
     from app.core.permissions import (
             _ensure_attachment_record_visible,
         )
@@ -2129,7 +2147,8 @@ async def preview_attachment(attachment_id: int, identity: dict = Depends(curren
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        await _ensure_attachment_record_visible(item.record_id, identity, db)
+        if not await can_read_receipt_attachment(item, identity, db):
+            await _ensure_attachment_record_visible(item.record_id, identity, db)
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
 

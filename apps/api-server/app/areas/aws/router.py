@@ -16,24 +16,26 @@ from app.models_shared import (
     OfficialOutgoingUpdateInput,
 )
 from fastapi import APIRouter
+from app.areas.aws.receipt_sources import is_official_receipt, list_receipts, router as receipt_sources_router
 
 router = APIRouter()
 
 
 @router.get(f"{settings.api_prefix}/documents/official/export")
 async def export_official_documents(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.permissions import (
-        _scoped_export_records,
-    )
     from app.core.system import (
         _csv_response,
     )
-    records = await _scoped_export_records("document", ids, identity, db)
-    records = [item for item in records if (item.data or {}).get("direction", "收文") == "收文"]
+    try:
+        selected_ids = {int(value.strip()) for value in ids.split(",") if value.strip()}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="收文记录编号无效") from exc
+    official = await list_receipts("official", identity, db)
+    records = [item for item in official["items"] if not selected_ids or item["id"] in selected_ids]
     rows = []
     for item in records:
-        data = item.data or {}
-        rows.append([data.get("case_no") or item.serial_no, data.get("plaintiff") or item.customer, data.get("defendant") or data.get("sender", ""), item.title, data.get("document_date") or data.get("received_at", ""), data.get("uploaded_at") or data.get("registered_at", ""), data.get("uploader") or item.owner, data.get("import_status", "已导入"), data.get("business_process_status", "未处理"), item.status])
+        data = item["data"]
+        rows.append([data.get("case_no") or item["serial_no"], data.get("plaintiff") or item["customer"], data.get("defendant") or data.get("sender", ""), item["title"], data.get("document_date") or data.get("received_at", ""), data.get("uploaded_at") or data.get("registered_at", ""), data.get("uploader") or item["owner"], data.get("import_status", "已导入"), data.get("business_process_status", "未处理"), item["status"]])
     return _csv_response(f"官文收文-{date.today()}.csv", ["案号", "原告", "被告", "文件名称", "文件日期", "上传日期", "上传人", "导入状态", "业务处理状态", "办理状态"], rows)
 
 
@@ -117,7 +119,7 @@ async def process_official_documents(body: OfficialDocumentProcessInput, identit
     changed: list[BusinessRecord] = []
     for record_id in record_ids:
         item = await _ensure_record_visible(record_id, identity, db)
-        if item.module != "document" or (item.data or {}).get("direction", "收文") != "收文":
+        if not await is_official_receipt(item, db):
             raise HTTPException(status_code=422, detail="所选记录不是官文收文")
         await _require_record_owner_or_manager(item, identity, db)
         data = dict(item.data or {})
@@ -168,7 +170,7 @@ async def update_official_receipt_date(body: OfficialDocumentReceiptDateInput, i
     changed: list[BusinessRecord] = []
     for record_id in record_ids:
         item = await _ensure_record_visible(record_id, identity, db)
-        if item.module != "document" or (item.data or {}).get("direction", "收文") != "收文":
+        if not await is_official_receipt(item, db):
             raise HTTPException(status_code=422, detail="所选记录不是官文收文")
         await _require_record_owner_or_manager(item, identity, db)
         data = dict(item.data or {})
@@ -208,7 +210,7 @@ async def delete_official_documents(body: OfficialDocumentDeleteInput, identity:
     deleted = 0
     for record_id in record_ids:
         item = await _ensure_record_visible(record_id, identity, db)
-        if item.module != "document" or (item.data or {}).get("direction", "收文") != "收文":
+        if not await is_official_receipt(item, db):
             raise HTTPException(status_code=422, detail="所选记录不是官文收文")
         await _require_record_owner_or_manager(item, identity, db)
         if (item.data or {}).get("business_process_status", "未处理") == "已处理":
@@ -251,7 +253,7 @@ async def link_official_documents_to_cases(body: OfficialDocumentBatchCaseIdsInp
     changed: list[BusinessRecord] = []
     for record_id in record_ids:
         item = await _ensure_record_visible(record_id, identity, db)
-        if item.module != "document" or (item.data or {}).get("direction", "收文") != "收文":
+        if not await is_official_receipt(item, db):
             raise HTTPException(status_code=422, detail="所选记录不是官文收文")
         await _require_record_owner_or_manager(item, identity, db)
         data = dict(item.data or {})
@@ -613,6 +615,8 @@ async def upload_official_document(
     if suffix not in allowed:
         raise HTTPException(status_code=422, detail="不支持的文件格式")
     content = await file.read()
+    if not content:
+        raise HTTPException(status_code=422, detail="收文文件不能为空")
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="单个文件不能超过 20MB")
     user = await db.scalar(select(User).where(User.username == identity["username"]))
@@ -621,33 +625,31 @@ async def upload_official_document(
     original_name = Path(file.filename or f"official{suffix}").name
     stored_name = f"{uuid4().hex}{suffix}"
     target = UPLOAD_ROOT / stored_name
-    target.write_bytes(content)
     file_stem = Path(original_name).stem
     if "_" not in file_stem:
-        target.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail="文件名必须使用“系统案号_法院案号”格式")
     system_case_no, court_file_part = (part.strip() for part in file_stem.split("_", 1))
     matched_case = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == system_case_no))
     if not matched_case:
-        target.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=f"未找到系统案号 {system_case_no}")
     matched_case = await _ensure_record_module(matched_case.id, "case", identity, db)
     case_data = matched_case.data or {}
-    court_numbers = {
-        str(value).strip()
-        for key, value in case_data.items()
-        if (key.endswith("case_no") or key in {"court_no", "filing_no"}) and str(value or "").strip()
+    court_keys = {
+        "court_case_no", "first_court_case_no", "first_instance_case_no",
+        "second_court_case_no", "retrial_court_case_no", "hearing_case_no",
+        "court_no", "filing_no", "official_no",
     }
+    court_numbers = {str(case_data[key]).strip() for key in court_keys if str(case_data.get(key) or "").strip()}
     matched_court_no = next((number for number in court_numbers if court_file_part == number or court_file_part.startswith(f"{number}_")), "")
     if not matched_court_no:
-        target.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail="文件名中的法院案号与该案件登记的法院案号不一致")
     linked_case_ids = [matched_case.id]
     linked_cases = {matched_case.id: matched_case}
     now = datetime.now()
     official_data = {
         "direction": "收文", "document_date": str(document_date), "received_at": str(document_date),
-        "uploaded_at": str(document_date), "uploader": identity["username"],
+        "uploaded_at": now.date().isoformat(), "uploader": identity["username"],
+        "receipt_source": "official_upload",
         "import_status": "已导入", "business_process_status": "未处理",
     }
     if linked_cases:
@@ -666,6 +668,7 @@ async def upload_official_document(
         data=official_data,
     )
     try:
+        target.write_bytes(content)
         db.add(record)
         await db.flush()
         attachment = FileAttachment(
@@ -685,3 +688,6 @@ async def upload_official_document(
         target.unlink(missing_ok=True)
         raise
     return {"record": _record_dict(record), "attachment": _attachment_dict(attachment, record)}
+
+
+router.include_router(receipt_sources_router)

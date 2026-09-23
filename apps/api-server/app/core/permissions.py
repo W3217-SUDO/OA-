@@ -709,6 +709,22 @@ async def _ensure_record_visible(record_id: int, identity: dict, db: AsyncSessio
     return record
 
 
+async def _ensure_pending_clue_audit_record(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    """按待审批线索入口的岗位权限读取目标记录，不改变普通线索范围。"""
+    user = await db.scalar(select(User).where(
+        User.username == identity["username"], User.is_active.is_(True),
+    ))
+    if not user or not await _user_has_job_permission(user, "线索审批", db):
+        raise HTTPException(status_code=403, detail="当前账号没有线索审批岗位权限")
+    await _require_record_module_menu("clue", identity, db, action="查看")
+    record = await db.get(BusinessRecord, record_id)
+    if not record or record.module != "clue":
+        raise HTTPException(status_code=404, detail="业务记录不存在")
+    if record.status != "待审批":
+        raise HTTPException(status_code=409, detail="只有待审批线索可以进入内部审核")
+    return record
+
+
 async def _ensure_attachment_record_visible(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
     """Resolve attachment parent visibility without losing task-participant access.
 

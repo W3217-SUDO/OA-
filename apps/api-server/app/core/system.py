@@ -1070,6 +1070,7 @@ async def _automatic_cache_cleanup_loop() -> None:
         await asyncio.sleep(interval)
         try:
             _clear_all_system_parameter_cache("system:auto")
+            logger.info("系统缓存自动清理完成")
         except Exception:
             logger.exception("系统缓存自动清理失败")
 

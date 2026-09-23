@@ -4,7 +4,7 @@ import type { CaseRow } from "../types";
 
 type ReceiptQuery = Record<string, string>;
 
-export function useReceiptCases(route: string) {
+export function useReceiptFees(route: string) {
   const active = route === "case-files-receipt";
   const [rows, setRows] = useState<CaseRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -20,7 +20,7 @@ export function useReceiptCases(route: string) {
     nextPage = current.current.page,
     nextSize = current.current.pageSize,
   ) => {
-    if (!active) return;
+    if (!active) return false;
     const request = ++sequence.current;
     current.current = { query, page: nextPage, pageSize: nextSize };
     setPage(nextPage);
@@ -28,25 +28,24 @@ export function useReceiptCases(route: string) {
     setLoading(true);
     setError("");
     try {
-      const { status, ...fields } = query;
-      const { data } = await api.get("/records", {
+      const { data } = await api.get("/finance/receipt-files/fees", {
         params: {
-          module: "case",
           page: nextPage,
           page_size: nextSize,
-          ...Object.fromEntries(Object.entries(fields).filter(([, value]) => String(value || "").trim())),
-          ...(status?.trim() ? { case_stage: status.trim() } : {}),
+          ...Object.fromEntries(Object.entries(query).filter(([, value]) => String(value || "").trim())),
         },
       });
-      if (request !== sequence.current) return;
+      if (request !== sequence.current) return false;
       setRows(data.items);
       setTotal(data.total);
+      return true;
     } catch (failure: any) {
-      if (request !== sequence.current) return;
+      if (request !== sequence.current) return false;
       setRows([]);
       setTotal(0);
       const detail = failure?.response?.data?.detail;
-      setError(typeof detail === "string" ? detail : "案件票据文件列表加载失败，请重试");
+      setError(typeof detail === "string" ? detail : "案件费用票据列表加载失败，请重试");
+      return false;
     } finally {
       if (request === sequence.current) setLoading(false);
     }

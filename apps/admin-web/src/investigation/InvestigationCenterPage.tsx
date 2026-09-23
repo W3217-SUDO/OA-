@@ -508,6 +508,13 @@ export default function InvestigationCenterPage({
     };
     void bootstrap();
   }, [initialTab]);
+  useEffect(() => {
+    const handleRouteReselect = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === initialTab) void load(initial);
+    };
+    window.addEventListener("sunhold:route-reselect", handleRouteReselect);
+    return () => window.removeEventListener("sunhold:route-reselect", handleRouteReselect);
+  });
   const visibleRows = useMemo(() => {
     let result = rows;
     const statuses = clueStatusesByRoute[initialTab] || [];
@@ -1482,7 +1489,10 @@ export default function InvestigationCenterPage({
     const requestId = ++detailRequestRef.current;
     if (inAuditPanel) setInvestigationDetail(row);
     try {
-      const { data } = await api.get(`/records/${row.id}`);
+      const { data } = await api.get(`/records/${row.id}`, {
+        params: inAuditPanel && initialTab === "clue-audit-pending" && row.status === "待审批"
+          ? { scope: "audit" } : undefined,
+      });
       if (requestId !== detailRequestRef.current) return;
       setInvestigationDetail(data);
       if (inAuditPanel) setClueReviewing((current) => current?.id === row.id ? data : null);
@@ -1520,7 +1530,10 @@ export default function InvestigationCenterPage({
     }
     let cancelled = false;
     setClueWorkspaceLoading(true);
-    api.get(`/investigations/clues/${investigationDetail.id}/workspace`)
+    api.get(`/investigations/clues/${investigationDetail.id}/workspace`, {
+      params: initialTab === "clue-audit-pending" && investigationDetail.status === "待审批"
+        ? { scope: "audit" } : undefined,
+    })
       .then(({ data }) => {
         if (!cancelled) {
           setClueWorkspace(data);

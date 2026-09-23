@@ -77,7 +77,6 @@ export interface CaseDocumentsDependencies {
     readonly setCaseDocumentFolderEditor: React.Dispatch<React.SetStateAction<CaseDocumentFolderEditor | null>>;
     readonly selectedCases: CaseRow[];
     readonly selectedCase: CaseRow | undefined;
-    readonly initialView: string;
     readonly caseUploadCategory: string;
     readonly fileTypeOptionsForCase: (caseType: unknown) => CaseFileTypeOption[];
     readonly caseUploadRef: React.RefObject<HTMLInputElement | null>;
@@ -622,21 +621,21 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
         }
     };
     const uploadCaseFile = async (file?: File) => {
-        const { selectedCase, initialView, caseUploadCategory, fileTypeOptionsForCase, caseUploadRef } = context;
+        const { selectedCase, caseUploadCategory, fileTypeOptionsForCase, caseUploadRef } = context;
         const uploadValidationError = getCaseAttachmentUploadValidationError(file);
         if (uploadValidationError)
             return message.warning(uploadValidationError);
         if (!file || !selectedCase)
             return message.warning("请先选择案件再上传文件");
-        const category = initialView === "case-files-receipt" ? "案件票据文件" : caseUploadCategory;
-        if (initialView !== "case-files-receipt" && !hasCaseFileTypeOption(category, fileTypeOptionsForCase(selectedCase.data.case_type))) {
+        const category = caseUploadCategory;
+        if (!hasCaseFileTypeOption(category, fileTypeOptionsForCase(selectedCase.data.case_type))) {
             return message.warning("当前案件类型未配置该材料类型，请先在系统参数中维护关联");
         }
         const data = new FormData();
         data.append("file", file);
         data.append("record_id", String(selectedCase.id));
         data.append("category", category);
-        data.append("remark", initialView === "case-files-receipt" ? "案件票据批量上传" : `案件列表上传：${category}`);
+        data.append("remark", `案件列表上传：${category}`);
         try {
             await api.post("/attachments", data);
             message.success("案件文件已上传");

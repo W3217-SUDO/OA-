@@ -95,7 +95,26 @@ async def dashboard_request_identity(queue, expected, identity, db):
         return identity
     if queue not in expected:
         raise HTTPException(422, "控制台业务入口无效")
-    return await dashboard_identity(identity, db)
+    scoped_identity = await dashboard_identity(identity, db)
+    if queue == "urgent-cases":
+        cases = await dashboard_urgent_cases(identity, db, scoped_identity["_dashboard_case_ids"])
+        case_ids = {case.id for case in cases}
+        scoped_identity["_dashboard_case_ids"] = case_ids
+        scoped_identity["_dashboard_record_ids"] = case_ids
+    return scoped_identity
+
+
+async def dashboard_urgent_cases(identity, db, personal_case_ids):
+    """紧急案件沿用公司案件菜单权限，否则只取本人可见案件。"""
+    from app.core.permissions import _can_search_all_cases_from_global_search
+
+    conditions = [
+        BusinessRecord.module == "case",
+        BusinessRecord.status.notin_(["已合并", "已删除", "已回收"]),
+    ]
+    if not await _can_search_all_cases_from_global_search(identity, db):
+        conditions.append(BusinessRecord.id.in_(personal_case_ids))
+    return list((await db.scalars(select(BusinessRecord).where(*conditions))).all())
 
 
 async def dashboard_receivables(identity, db):

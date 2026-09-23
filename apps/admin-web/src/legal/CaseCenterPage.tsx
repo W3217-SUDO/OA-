@@ -113,7 +113,8 @@ import { LegacyLsHistoryPanel } from "../LegacyLsHistoryPanel";
 import "../task-center.css";
 import { createArchiveColumns } from "./columns/archiveColumns";
 import { useArchiveCases } from "./hooks/useArchiveCases";
-import { useReceiptCases } from "./hooks/useReceiptCases";
+import { useReceiptFees } from "./hooks/useReceiptFees";
+import { ReceiptBatchUploadModal } from "./ReceiptBatchUploadModal";
 import { createCaseColumns } from "./columns/caseColumns";
 import { createExternalCaseFeeColumns } from "./columns/externalCaseFeeColumns";
 import { rememberTaskDetailTarget } from "../taskDetailNavigation";
@@ -579,14 +580,14 @@ export default function CaseCenterPage({
   const [caseTaskTotal, setCaseTaskTotal] = useState(0);
   const [caseTaskPages, setCaseTaskPages] = useState(0);
   const [selectedCaseKeys, setSelectedCaseKeys] = useState<Key[]>([]);
-  const receiptUploadCaseRef = useRef<CaseRow | null>(null);
+  const [receiptUploadRows, setReceiptUploadRows] = useState<CaseRow[] | null>(null);
   const selectedCaseKeySet = useMemo(
     () => new Set(selectedCaseKeys.map((key) => String(key))),
     [selectedCaseKeys],
   );
   const [caseQuery, setCaseQuery] = useState<Record<string, any>>({});
   const archiveList = useArchiveCases(initialView);
-  const receiptList = useReceiptCases(initialView);
+  const receiptList = useReceiptFees(initialView);
   const legacyCaseListDefaults = getLegacyCaseListDefaults(initialView);
   const legacyCaseListOperationLabels = getLegacyCaseListOperationLabels();
   const [caseUploadCategory, setCaseUploadCategory] = useState(DEFAULT_CASE_ATTACHMENT_CATEGORY);
@@ -1389,9 +1390,7 @@ export default function CaseCenterPage({
     get setCounselUploadCategory() { return setCounselUploadCategory; },
     get setCaseDocumentFolderEditor() { return setCaseDocumentFolderEditor; },
     get selectedCases() { return selectedCases; },
-    // 特殊列表必须使用该列表自身的选中项，不能复用普通案件列表的派生状态。
-    get selectedCase() { return initialView === "case-files-receipt" ? receiptUploadCaseRef.current || selectedSpecialRow : selectedCase; },
-    get initialView() { return initialView; },
+    get selectedCase() { return selectedCase; },
     get caseUploadCategory() { return caseUploadCategory; },
     get fileTypeOptionsForCase() { return fileTypeOptionsForCase; },
     get caseUploadRef() { return caseUploadRef; },
@@ -2979,6 +2978,7 @@ export default function CaseCenterPage({
   const companyScheduleCourtLevelLabel = getCompanyScheduleCourtLevels().find(([key]) => key === companyScheduleCourtInfo?.level)?.[1] || "";
   return (
     <div className={`case-center-page ${isCaseDetailView ? "case-detail-route" : ""}`}>
+      {receiptUploadRows && <ReceiptBatchUploadModal rows={receiptUploadRows} onCancel={() => setReceiptUploadRows(null)} onUploaded={async () => { try { return await receiptList.reload(); } finally { setReceiptUploadRows(null); setSelectedCaseKeys([]); } }} />}
       {isCaseDetailView && !viewingCounselCase && <div className="case-detail-route-loading">正在加载案件详情...</div>}
       {isCreateView && (
         <CaseCreateWizard
@@ -3023,10 +3023,10 @@ export default function CaseCenterPage({
         {specialMode==="invoice"&&<div className="case-invoice-import"><input ref={caseUploadRef} hidden type="file" accept=".xlsx,.xls,.csv,.pdf,.zip" onChange={event=>uploadCaseInvoiceFile(event.target.files?.[0])}/><Space><Button onClick={()=>caseUploadRef.current?.click()}>上传文件</Button><Button type="primary" onClick={startCaseInvoiceImport}>开始导入</Button></Space></div>}
         {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className="case-special-query" initialValues={shouldUseCompanyScheduleQueryFields(initialView)?getCompanyScheduleQueryInitialValues(dayjs()):undefined} onFinish={values=>{setCaseQuery(values);if(specialMode==="receipt"){setSelectedCaseKeys([]);void receiptList.search(values,1,receiptList.pageSize);}}}>
           {(specialFilters[specialMode]||[]).map(([key,label,type,placeholder])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker placeholder={placeholder!==undefined?[placeholder,placeholder]:undefined}/>:type==="select"?<Select allowClear placeholder={placeholder} options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input placeholder={placeholder}/>}</Form.Item>)}
-          <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button>{specialMode==="receipt"&&<Button type="primary" onClick={()=>{if(!selectedSpecialRow)return message.warning("请先选择案件");receiptUploadCaseRef.current=selectedSpecialRow;caseUploadRef.current?.click();}}>批量上传</Button>}<Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});if(specialMode==="receipt"){setSelectedCaseKeys([]);void receiptList.search({},1,receiptList.pageSize);}}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>
+          <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button>{specialMode==="receipt"&&<Button type="primary" onClick={()=>{const rows=receiptRows.filter(row=>selectedCaseKeySet.has(String(row.id)));if(!rows.length)return message.warning("请选择费用记录");if(new Set(rows.map(row=>row.customer)).size>1)return message.warning("批量上传的费用必须属于同一客户");setReceiptUploadRows(rows);}}>批量上传</Button>}<Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});if(specialMode==="receipt"){setSelectedCaseKeys([]);void receiptList.search({},1,receiptList.pageSize);}}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>
         </ListFilterBar>}
         {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
-        {specialMode!=="invoice"&&<input ref={caseUploadRef} hidden type="file" onChange={event=>{const file=event.target.files?.[0];event.target.value="";void uploadCaseFile(file).finally(()=>{receiptUploadCaseRef.current=null;});}}/>}
+        {specialMode!=="invoice"&&specialMode!=="receipt"&&<input ref={caseUploadRef} hidden type="file" onChange={event=>{const file=event.target.files?.[0];event.target.value="";void uploadCaseFile(file);}}/>}
         {specialMode==="receipt"&&receiptList.error&&<Alert type="error" showIcon title={receiptList.error} action={<Button onClick={()=>void receiptList.reload()}>重试</Button>}/>}
         <Table className="case-original-table" rowKey="id" size="small" loading={specialMode==="receipt"?receiptList.loading:loading} columns={specialColumns[specialMode]} dataSource={specialRows} rowSelection={specialMode==="invoice"||specialMode==="stage"?undefined:{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:specialMode==="stage"?800:1500}} pagination={specialPagination} />
         {shouldShowCompanyScheduleSinglePageJumper(initialView,specialRows.length,companySchedulePageSize)&&<Space style={{display:"flex",justifyContent:"flex-end",marginTop:8}}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={()=>setCompanySchedulePage(1)}>GO</Button></Space>}

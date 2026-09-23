@@ -348,6 +348,14 @@ export default function TaskCenterPage({
   }, [initialView]);
 
   useEffect(() => {
+    const handleRouteReselect = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === initialView) void load();
+    };
+    window.addEventListener("sunhold:route-reselect", handleRouteReselect);
+    return () => window.removeEventListener("sunhold:route-reselect", handleRouteReselect);
+  });
+
+  useEffect(() => {
     let active = true;
     void api.get<{ items?: PeopleOption[] }>("/people/options")
       .then(({ data }) => {

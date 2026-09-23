@@ -32,6 +32,7 @@ from app.models_shared import (
 from fastapi import APIRouter
 
 router = APIRouter()
+from app.areas.finance.receipt_files import router as receipt_files_router
 from app.areas.finance.payment_workflow import router as payment_workflow_router
 
 
@@ -5733,3 +5734,4 @@ async def invoice_application_context(
 
 
 router.include_router(payment_workflow_router)
+router.include_router(receipt_files_router)

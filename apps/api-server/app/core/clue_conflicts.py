@@ -23,16 +23,34 @@ def _party_names(data: dict, plural: str, singular: str) -> set[str]:
     return names - {""}
 
 
+def _legacy_data(data: dict) -> dict:
+    legacy = data.get("legacy_record")
+    return legacy if isinstance(legacy, dict) else {}
+
+
+def _clue_parties(data: dict, plural: str, singular: str, legacy_key: str) -> set[str]:
+    names = _party_names(data, plural, singular)
+    if names:
+        return names
+    legacy_names = re.split(r"[,，;；、|]+", str(_legacy_data(data).get(legacy_key) or ""))
+    return {_name(value) for value in legacy_names} - {""}
+
+
+def _contains_any(source: set[str], targets: set[str]) -> bool:
+    return any(name in target for name in source for target in targets)
+
+
 async def clue_conflicts(clue: BusinessRecord, db: AsyncSession) -> dict[str, list[str]]:
     """沿用旧系统的同权利人、店铺及调查主体匹配边界。"""
     data = clue.data or {}
     holder = _name(data.get("rights_holder") or clue.customer)
     if not holder:
         return {"clues": [], "cases": []}
-    shop_name = _name(data.get("shop_name") or clue.title)
-    shop_id = _name(data.get("shop_id"))
-    indictees = _party_names(data, "indictees", "indictee")
-    producers = _party_names(data, "producers", "producer")
+    legacy = _legacy_data(data)
+    shop_name = _name(data.get("shop_name") or data.get("store_name") or legacy.get("StoreName") or clue.title)
+    shop_id = _name(data.get("shop_id") or data.get("store_id") or legacy.get("StoreId"))
+    indictees = _clue_parties(data, "indictees", "indictee", "Indictee")
+    producers = _clue_parties(data, "producers", "producer", "Producer")
     records = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module.in_(["clue", "case"]),
         BusinessRecord.status.not_in(["已删除", "已回收", "已合并"]),
@@ -44,20 +62,31 @@ async def clue_conflicts(clue: BusinessRecord, db: AsyncSession) -> dict[str, li
             continue
         other = item.data or {}
         if item.module == "clue":
-            same_shop = bool(shop_name and shop_name == _name(other.get("shop_name") or item.title))
-            same_shop_id = bool(shop_id and shop_id == _name(other.get("shop_id")))
-            same_indictee = bool(indictees & _party_names(other, "indictees", "indictee"))
-            same_producer = bool(producers & _party_names(other, "producers", "producer"))
+            other_legacy = _legacy_data(other)
+            other_shop_name = _name(other.get("shop_name") or other.get("store_name") or other_legacy.get("StoreName") or item.title)
+            other_shop_id = _name(other.get("shop_id") or other.get("store_id") or other_legacy.get("StoreId"))
+            same_shop = bool(shop_name and shop_name in other_shop_name)
+            same_shop_id = bool(shop_id and shop_id in other_shop_id)
+            same_indictee = _contains_any(indictees, _clue_parties(other, "indictees", "indictee", "Indictee"))
+            same_producer = _contains_any(producers, _clue_parties(other, "producers", "producer", "Producer"))
             if same_shop or same_shop_id or same_indictee or same_producer:
                 clue_nos.append(item.serial_no)
         else:
+            legacy_appellees = _name(_legacy_data(other).get("AppelleeNames"))
             raw_defendants = other.get("defendants")
-            defendants = {_name(value) for value in raw_defendants if isinstance(value, str)} if isinstance(raw_defendants, list) else set()
-            if not defendants:
-                legacy = other.get("legacy_record") if isinstance(other.get("legacy_record"), dict) else {}
+            if legacy_appellees:
+                defendants = {legacy_appellees}
+            elif isinstance(raw_defendants, list):
+                defendants = {
+                    _name(value.get("name") if isinstance(value, dict) else value)
+                    for value in raw_defendants
+                }
+            else:
+                defendants = set()
+            if not defendants - {""}:
                 defendants = {_name(value) for value in re.split(
-                    r"[,，;；、|]+", str(other.get("opponent") or other.get("defendant") or legacy.get("AppelleeNames") or ""),
+                    r"[,，;；、|]+", str(other.get("opponent") or other.get("defendant") or ""),
                 )}
-            if (indictees | producers) & (defendants - {""}):
+            if _contains_any(indictees | producers, defendants - {""}):
                 case_nos.append(item.serial_no)
     return {"clues": sorted(set(clue_nos)), "cases": sorted(set(case_nos))}

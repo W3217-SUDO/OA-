@@ -720,12 +720,16 @@ async def turn_on_investigation_clue_audit(clue_id: int, body: ClueTurnOnAuditIn
 @router.get(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/conflicts")
 async def investigation_clue_conflicts(clue_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.clue_conflicts import clue_conflicts
-    from app.core.permissions import _ensure_record_module, _user_has_job_permission
+    from app.core.permissions import _ensure_pending_clue_audit_record, _ensure_record_module, _user_has_job_permission
 
     reviewer = await db.scalar(select(User).where(User.username == identity["username"]))
     if not reviewer or not await _user_has_job_permission(reviewer, "线索审批", db):
         raise HTTPException(status_code=403, detail="当前账号没有线索审批岗位权限")
-    clue = await _ensure_record_module(clue_id, "clue", identity, db)
+    pending_clue = await db.get(BusinessRecord, clue_id)
+    if pending_clue and pending_clue.status == "待审批":
+        clue = await _ensure_pending_clue_audit_record(clue_id, identity, db)
+    else:
+        clue = await _ensure_record_module(clue_id, "clue", identity, db)
     if clue.status not in {"待审批", "待客户审核"}:
         raise HTTPException(status_code=409, detail="只有待审批线索可以查看疑似冲突")
     assigned_reviewer = str((clue.data or {}).get("reviewer") or "").strip()
@@ -738,16 +742,12 @@ async def investigation_clue_conflicts(clue_id: int, identity: dict = Depends(cu
 async def review_investigation_clue(clue_id: int, body: ClueReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.clue_conflicts import clue_conflicts
     from app.core.permissions import (
-        _ensure_record_module, _record_scope_conditions, _user_has_job_permission,
+        _ensure_pending_clue_audit_record, _record_scope_conditions,
     )
     from app.core.system import (
         _record_dict,
     )
-    reviewer = await db.scalar(select(User).where(User.username == identity["username"]))
-    if not reviewer or not await _user_has_job_permission(reviewer, "线索审批", db):
-        raise HTTPException(status_code=403, detail="当前账号没有线索审批岗位权限")
-    clue = await _ensure_record_module(clue_id, "clue", identity, db)
-    if clue.status != "待审批": raise HTTPException(status_code=409, detail="只有待审批线索可以审核")
+    clue = await _ensure_pending_clue_audit_record(clue_id, identity, db)
     assigned_reviewer = str((clue.data or {}).get("reviewer") or "").strip()
     if assigned_reviewer and assigned_reviewer != identity["username"] and identity.get("role") != "admin":
         raise HTTPException(status_code=403, detail="该线索已分配给其他审核人")
@@ -944,9 +944,9 @@ async def update_evidence_record(evidence_id: int, body: EvidenceUpdateInput, id
 
 
 @router.get(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/workspace")
-async def get_investigation_clue_workspace(clue_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def get_investigation_clue_workspace(clue_id: int, scope: str = Query("", pattern="^(|audit)$"), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_record_module, _record_scope_conditions,
+        _ensure_pending_clue_audit_record, _ensure_record_module, _record_scope_conditions,
     )
     from app.core.storage import (
         _attachment_dict,
@@ -957,7 +957,10 @@ async def get_investigation_clue_workspace(clue_id: int, identity: dict = Depend
     from app.core.system import (
         _optional_record_id, _record_dict,
     )
-    clue = await _ensure_record_module(clue_id, "clue", identity, db)
+    if scope == "audit":
+        clue = await _ensure_pending_clue_audit_record(clue_id, identity, db)
+    else:
+        clue = await _ensure_record_module(clue_id, "clue", identity, db)
     visible_evidence = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "evidence", *(await _record_scope_conditions(identity, db)),
     ).order_by(BusinessRecord.created_at.asc(), BusinessRecord.id.asc()))).all())

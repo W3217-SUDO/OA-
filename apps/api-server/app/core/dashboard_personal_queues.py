@@ -3,7 +3,7 @@ from sqlalchemy import select
 from app.models import BusinessRecord
 from app.core.cases import _matches_dashboard_case_queue, _urgent_case_ids
 from app.core.finance import _fee_query_rows, _refund_case_fee_rows
-from app.core.dashboard_scope import CASE_QUEUES, QUEUE_KEYS, dashboard_identity, dashboard_receivables
+from app.core.dashboard_scope import CASE_QUEUES, QUEUE_KEYS, dashboard_identity, dashboard_receivables, dashboard_urgent_cases
 
 
 async def personal_queues(identity, db):
@@ -20,10 +20,14 @@ async def personal_queues(identity, db):
             "title": case.title, "status": case.status, "amount": 0})
         row["amount"] = round(row["amount"] + amount, 2)
 
-    urgent_case_ids = await _urgent_case_ids(cases, db)
+    urgent_cases = await dashboard_urgent_cases(identity, db, identity["_dashboard_case_ids"])
+    urgent_case_ids = await _urgent_case_ids(urgent_cases, db)
+    for case in urgent_cases:
+        if case.id in urgent_case_ids:
+            add("urgent-cases", case)
     for case in cases:
         for key, queue in CASE_QUEUES.items():
-            if (queue == "urgent" and case.id in urgent_case_ids) or (queue != "urgent" and _matches_dashboard_case_queue(case, queue)):
+            if queue != "urgent" and _matches_dashboard_case_queue(case, queue):
                 add(key, case)
     for key, rows in (
         ("official-fee-unpaid", await _fee_query_rows(identity, db, unpaid_official=True)),

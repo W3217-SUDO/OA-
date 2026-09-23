@@ -476,8 +476,9 @@ async def list_unread_task_messages(
         _person_reference_display, _task_display_dicts, _user_display_map,
     )
     from app.core.tasks import (
-        _is_task_participant,
+        _is_task_notification_recipient,
     )
+    from app.core.investigation import _is_investigation_task
     if created_from and created_to and created_from > created_to:
         raise HTTPException(status_code=422, detail="发起开始日期不能晚于结束日期")
     if deadline_from and deadline_to and deadline_from > deadline_to:
@@ -501,13 +502,18 @@ async def list_unread_task_messages(
         if notice.source_id is not None:
             grouped.setdefault(int(notice.source_id), []).append(notice)
     if not grouped:
-        return {"items": [], "total": 0, "page": page, "page_size": page_size, "unread_messages": 0}
+        return {"items": [], "total": 0, "page": page, "page_size": page_size, "unread_messages": 0, "accepted_unread_tasks": 0}
 
     tasks = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "task", BusinessRecord.id.in_(list(grouped)),
     ))).all())
-    if identity.get("role") != "admin":
-        tasks = [task for task in tasks if _is_task_participant(task, identity)]
+    tasks = [task for task in tasks if _is_task_notification_recipient(task, identity["username"])]
+    accepted_unread_tasks = sum(
+        1 for task in tasks
+        if task.owner == identity["username"]
+        and not _is_investigation_task(task)
+        and task.status not in {"已完成", "待确认", "已验收", "已拒绝", "已撤回", "已停止", "已取消", "已删除"}
+    )
 
     def contains(value: object, needle: str) -> bool:
         return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
@@ -569,6 +575,7 @@ async def list_unread_task_messages(
     return {
         "items": items[start:start + page_size], "total": total, "page": page, "page_size": page_size,
         "unread_messages": visible_notice_count,
+        "accepted_unread_tasks": accepted_unread_tasks,
     }
 
 

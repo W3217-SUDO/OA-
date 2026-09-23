@@ -107,6 +107,8 @@ export default function DocumentCenterPage({
   const [sealAssets, setSealAssets] = useState<SealAsset[]>([]);
   const [cases, setCases] = useState<RecordRow[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [receiptRecords, setReceiptRecords] = useState<ReceiptRow[]>([]);
+  const [receiptFiles, setReceiptFiles] = useState<Attachment[]>([]);
   const [legacyHistoricalAttachments, setLegacyHistoricalAttachments] = useState<
     LegacyHistoricalAttachment[]
   >([]);
@@ -301,6 +303,24 @@ export default function DocumentCenterPage({
   const load = async (outgoingQueryOverride = outgoingQuery) => {
     setLoading(true);
     try {
+      if (["official", "my-receipts", "company-receipts"].includes(first)) {
+        setReceiptRecords([]);
+        setReceiptFiles([]);
+        const scope = first === "official" ? "official" : first === "my-receipts" ? "mine" : "company";
+        const { data } = await api.get("/documents/receipts", { params: { scope } });
+        setReceiptRecords(data.items);
+        setReceiptFiles(data.attachments);
+        if (first === "official") {
+          try {
+            const caseResponse = await api.get("/records", { params: { module: "case", page_size: 100 } });
+            setCases(caseResponse.data.items);
+          } catch (error: any) {
+            setCases([]);
+            message.warning(error?.response?.data?.detail || "关联案件选项加载失败");
+          }
+        }
+        return;
+      }
       const [
         docRes,
         outgoingRes,
@@ -883,89 +903,13 @@ export default function DocumentCenterPage({
     ) : null;
 
   // ===== Receipt (官文/我的/公司收文) =====
-  const receiptRows = useMemo<ReceiptRow[]>(() => {
-    const live = documents
-      .filter((d) => (d.data.direction || "收文") === "收文")
-      .map(
-        (d) =>
-          ({
-            ...d,
-            data: {
-              ...d.data,
-              case_no: d.data.case_no || d.serial_no,
-              plaintiff: d.data.plaintiff || d.customer,
-              defendant: d.data.defendant || d.data.sender || "—",
-              court_no: d.data.court_no || "—",
-              court_name: d.data.court_name || d.data.sender || "—",
-              document_date: d.data.document_date || d.data.received_at || "",
-              uploaded_at: d.data.uploaded_at || d.data.registered_at || "",
-              uploader: d.data.uploader || d.owner,
-              import_status: d.data.import_status || "已导入",
-              business_process_status: d.data.business_process_status || "未处理",
-              hearing_lawyer: d.data.hearing_lawyer || d.owner,
-              assistant: d.data.assistant || "—",
-              brand_manager: d.data.brand_manager || "—",
-              case_manager: d.data.case_manager || "—",
-              handling_lawyer: d.data.handling_lawyer || d.owner,
-            },
-          }) as ReceiptRow,
-      );
-    const receiptKeywords = ["缴费单", "判决书", "通知书", "传票", "告知书"];
-    const caseById = new Map(cases.map(item => [item.id, item]));
-    const officialNames = new Set(live.map(item => `${item.data.case_id || ""}:${item.title}`));
-    const caseReceipts = attachments.flatMap((attachment) => {
-      const caseRecord = attachment.record_id ? caseById.get(attachment.record_id) : undefined;
-      if (!caseRecord || !receiptKeywords.some(keyword => attachment.original_name.includes(keyword))) return [];
-      if (officialNames.has(`${caseRecord.id}:${attachment.original_name}`)) return [];
-      return [{
-        id: -attachment.id,
-        serial_no: caseRecord.serial_no,
-        title: attachment.original_name,
-        customer: caseRecord.customer,
-        status: "已签收",
-        owner: attachment.uploader,
-        description: attachment.remark,
-        data: {
-          case_id: caseRecord.id,
-          case_no: caseRecord.serial_no,
-          plaintiff: caseRecord.data.plaintiff || caseRecord.customer,
-          defendant: caseRecord.data.opponent || "—",
-          court_no: caseRecord.data.court_case_no || caseRecord.data.first_court_case_no || "—",
-          court_name: caseRecord.data.court || caseRecord.data.first_court_name || "—",
-          document_date: attachment.created_at?.slice(0,10) || "",
-          uploaded_at: attachment.created_at?.slice(0,10) || "",
-          uploader: attachment.uploader,
-          import_status: "已导入",
-          business_process_status: "未处理",
-          attachment_id: attachment.id,
-        },
-      } as ReceiptRow];
-    });
-    return [...live, ...caseReceipts];
-  }, [documents, cases, attachments]);
+  const receiptRows = receiptRecords;
 
   const searchedReceipts = useMemo(
     () =>
       receiptRows.filter((r) => {
         const q = receiptQuery,
           d = r.data;
-        const names = new Set([profile.username, profile.display_name].filter(Boolean).map(value => String(value).trim().toLowerCase()));
-        const linkedCaseIds = new Set([...(Array.isArray(d.case_ids) ? d.case_ids : []), d.case_id].map(Number).filter(value => value > 0));
-        const participantValues = cases.filter(item => linkedCaseIds.has(item.id)).flatMap(linkedCase => {
-          const caseData = linkedCase.data || {};
-          return [
-            linkedCase.owner,
-            caseData.hearing_lawyer_username, caseData.handling_lawyer_username,
-            caseData.case_manager_username, caseData.assistant_username,
-            caseData.investigator, caseData.business_owner, caseData.source_person,
-            caseData.hearing_lawyer, caseData.case_manager, caseData.assistant,
-            ...(Array.isArray(caseData.handling_lawyers) ? caseData.handling_lawyers : []),
-            ...(Array.isArray(caseData.case_team_usernames) ? caseData.case_team_usernames : []),
-            ...(Array.isArray(caseData.handling_lawyer_usernames) ? caseData.handling_lawyer_usernames : []),
-            ...(Array.isArray(caseData.legacy_participants) ? caseData.legacy_participants.map((item: any) => item?.staff_name) : []),
-          ];
-        }).filter(Boolean).map(value => String(value).trim().toLowerCase());
-        if (tab === "my-receipts" && !participantValues.some(value => names.has(value))) return false;
         const contains = (value: unknown, key: string) =>
           !q[key] ||
           String(value || "")
@@ -998,17 +942,17 @@ export default function DocumentCenterPage({
               rd <= rr[1].format("YYYY-MM-DD")))
         );
       }),
-    [receiptRows, receiptQuery, profile, tab, cases],
+    [receiptRows, receiptQuery],
   );
 
-  const showReceipt = (r: ReceiptRow) => openDocument(r);
   const receiptAttachment = (r: ReceiptRow) =>
-    attachments.find((a) => a.id === r.data.attachment_id || a.record_id === r.id);
+    receiptFiles.find((a) => a.id === r.data.attachment_id);
   const previewReceiptFile = (r: ReceiptRow) => {
     const found = receiptAttachment(r);
-    if (!found) return showReceipt(r);
+    if (!found) return message.error("收文附件不存在");
     void previewAttachment(found);
   };
+  const showReceipt = (r: ReceiptRow) => tab === "official" ? openDocument(r) : previewReceiptFile(r);
 
   const isReceiptView = ["official", "my-receipts", "company-receipts"].includes(tab);
   const receiptSearch = () => setReceiptQuery(receiptForm.getFieldsValue());

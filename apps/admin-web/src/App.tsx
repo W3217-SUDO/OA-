@@ -874,6 +874,9 @@ function replaceWithRootRoute() {
   window.history.replaceState(null, "", window.location.pathname);
 }
 const routePageLabels: Record<string, string> = {
+  "task-my-accepted": "我接受的任务",
+  "task-my-created": "我发起的任务",
+  "task-my-collaborating": "我协作的任务",
   "case-global-search": "案件搜索",
   "case-company-supplement-evidence": "补充证据",
   "case-company-supplement-opinion": "补充意见",
@@ -1645,12 +1648,16 @@ export default function App() {
       api
         .get("/tasks/unread-messages")
         .then(({ data }) =>
-          setTaskUnreadCount(Number(data?.unread_messages ?? data?.total ?? 0)),
+          setTaskUnreadCount(Number(data?.accepted_unread_tasks ?? 0)),
         )
         .catch(() => undefined);
     loadTaskUnread();
     const timer = window.setInterval(loadTaskUnread, 30000);
-    return () => window.clearInterval(timer);
+    window.addEventListener("sunhold:notifications-updated", loadTaskUnread);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("sunhold:notifications-updated", loadTaskUnread);
+    };
   }, [loggedIn]);
   const effectiveMenuItems = useMemo(
     () => configuredMenuItems(menuConfig),
@@ -1754,6 +1761,7 @@ export default function App() {
     !!dashboardTarget ||
     actualRole === "admin" ||
     route === "dashboard" ||
+    ["task-my-accepted", "task-my-created", "task-my-collaborating"].includes(active) ||
     (active === "case-global-search" &&
       Array.from(grantedMenuKeys).some((key) =>
         key.startsWith("case-mine") ||
@@ -1993,7 +2001,7 @@ export default function App() {
               系统导航 <DownOutlined />
             </Button>
           </Dropdown>
-          <NotificationCenter onNavigate={navigate} />
+          <NotificationCenter onNavigate={navigate} grantedMenuKeys={grantedMenuKeys} />
           <Tooltip title="任务消息">
             <Badge count={taskUnreadCount} size="small" overflowCount={99}>
               <Button
@@ -2062,7 +2070,7 @@ export default function App() {
           </Dropdown>
         </Space>
         <Space className="mobile-top-actions">
-          <NotificationCenter onNavigate={navigate} />
+          <NotificationCenter onNavigate={navigate} grantedMenuKeys={grantedMenuKeys} />
           <Badge count={taskUnreadCount} size="small" overflowCount={99}>
             <Button
               type="text"

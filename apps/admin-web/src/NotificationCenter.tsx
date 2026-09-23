@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Badge, Button, Drawer, Empty, List, Modal, Space, Tag, Tooltip } from "antd";
+import { Badge, Button, Drawer, Empty, List, message, Modal, Space, Tag, Tooltip } from "antd";
 import { BellOutlined, CheckOutlined } from "@ant-design/icons";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
@@ -7,11 +7,13 @@ import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
+import { resolveNotificationNavigation } from "./notificationNavigation";
 
 type Notice = {
   id: number;
   source_type: string;
   source_id: number | null;
+  source_serial_no?: string;
   title: string;
   content: string;
   level: string;
@@ -21,9 +23,7 @@ type Notice = {
 };
 
 const colors: Record<string, string> = { error: "red", warning: "orange", info: "blue" };
-const routes: Record<string, string> = {task:'task-my-accepted',finance:'finance-audit',finance_package:'finance-fee-query',finance_settlement:'finance-fee-query',finance_archive_settlement:'finance-fee-query',contract:'contract-audit',case:'case-schedule'};
-
-export default function NotificationCenter({ onNavigate }: { onNavigate: (key: string) => void }) {
+export default function NotificationCenter({ onNavigate, grantedMenuKeys }: { onNavigate: (key: string) => void; grantedMenuKeys: Set<string> }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notice[]>([]);
   const [unread, setUnread] = useState(0);
@@ -53,28 +53,61 @@ export default function NotificationCenter({ onNavigate }: { onNavigate: (key: s
   }, []);
 
   const read = async (item: Notice) => {
-    if (!item.is_read) await api.post(`/notifications/${item.id}/read`);
-    const nextNotice = { ...item, is_read: true };
-    setItems((rows) => rows.map((row) => row.id === item.id ? { ...row, is_read: true } : row));
-    setUnread((value) => Math.max(0, value - (item.is_read ? 0 : 1)));
-    if (item.source_type === "contract" && item.source_id) rememberContractDetailTarget({ id: item.source_id });
-    if (item.source_type === "case" && item.source_id) rememberCaseDetailTarget({ id: item.source_id });
-    if (item.source_type === "task" && item.source_id) rememberTaskDetailTarget({ id: item.source_id });
     let iprWarningRoute = "";
     if (item.source_type === "ipr_warning" && item.source_id) {
       try {
         const { data } = await api.get<{ data?: { case_kind?: string } }>(`/ipr/cases/${item.source_id}`);
-        window.sessionStorage.setItem("sunhold:ipr-warning-target", String(item.source_id));
-        window.dispatchEvent(new Event("sunhold:ipr-warning-target"));
         iprWarningRoute = data.data?.case_kind === "商标" ? "ipr-trademark" : "ipr-patent";
-      } catch (error: any) {
-        setSelectedNotice(nextNotice);
+      } catch {
+        message.warning("当前账号无法查看关联业务，消息仍保持未读");
+        setSelectedNotice(item);
         return;
       }
     }
+    const { route, allowed, caseDetailRoute } = resolveNotificationNavigation(item, grantedMenuKeys, iprWarningRoute);
+    if (!allowed) {
+      message.warning("当前角色没有关联业务页面权限，消息仍保持未读");
+      setSelectedNotice(item);
+      return;
+    }
+    if (caseDetailRoute && item.source_id) {
+      try {
+        await api.get(`/records/${item.source_id}`);
+      } catch {
+        message.warning("当前账号无法查看关联案件，消息仍保持未读");
+        setSelectedNotice(item);
+        return;
+      }
+    }
+    if (item.source_type === "task" && item.source_id) {
+      try {
+        await api.get(`/tasks/${item.source_id}/history`);
+      } catch {
+        message.warning("当前账号无法查看关联任务，消息仍保持未读");
+        setSelectedNotice(item);
+        return;
+      }
+    }
+    if (!item.is_read) await api.post(`/notifications/${item.id}/read`);
+    const nextNotice = { ...item, is_read: true };
+    setItems((rows) => rows.map((row) => row.id === item.id ? nextNotice : row));
+    setUnread((value) => Math.max(0, value - (item.is_read ? 0 : 1)));
+    window.dispatchEvent(new Event("sunhold:notifications-updated"));
+    if (item.source_type === "contract" && item.source_id) rememberContractDetailTarget({ id: item.source_id });
+    if (item.source_type === "case" && item.source_id) rememberCaseDetailTarget({ id: item.source_id });
+    if (item.source_type === "task" && item.source_id) {
+      if (item.target_route?.startsWith("investigation-task-")) {
+        rememberInvestigationDetailTarget({ id: item.source_id, serial_no: item.source_serial_no, module: "task" });
+      } else {
+        rememberTaskDetailTarget({ id: item.source_id, serial_no: item.source_serial_no });
+      }
+    }
+    if (iprWarningRoute && item.source_id) {
+      window.sessionStorage.setItem("sunhold:ipr-warning-target", String(item.source_id));
+      window.dispatchEvent(new Event("sunhold:ipr-warning-target"));
+    }
     if (["clue", "notary", "evidence"].includes(item.source_type) && item.source_id) rememberInvestigationDetailTarget({ id: item.source_id, module: item.source_type });
     if (["finance", "finance_package", "finance_settlement", "finance_archive_settlement"].includes(item.source_type) && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: item.source_type as "finance" | "finance_package" | "finance_settlement" | "finance_archive_settlement" });
-    const route = iprWarningRoute || item.target_route || routes[item.source_type] || (["clue", "notary", "evidence"].includes(item.source_type) ? item.source_type : "");
     if (route) {
       onNavigate(route);
       setOpen(false);
@@ -87,6 +120,7 @@ export default function NotificationCenter({ onNavigate }: { onNavigate: (key: s
     await api.post("/notifications/read-all");
     setItems((rows) => rows.map((item) => ({ ...item, is_read: true })));
     setUnread(0);
+    window.dispatchEvent(new Event("sunhold:notifications-updated"));
   };
 
   return (

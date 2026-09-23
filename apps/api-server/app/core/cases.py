@@ -83,6 +83,24 @@ def _dashboard_case_hearing(case_record: BusinessRecord, today: date, cutoff: da
     return None
 
 
+def _case_fee_requires_archive_settlement(item: BusinessRecord) -> bool:
+    if item.module != "finance":
+        return False
+    fee_data = item.data or {}
+    fee_type = str(fee_data.get("fee_type") or "").strip()
+    if str(fee_data.get("expense_scope") or "律所").strip() != "律所" or "内部" in fee_type:
+        return False
+    fee_names = (
+        fee_data.get("expense_subtype"), fee_data.get("fee_type_name"),
+        fee_type, item.title,
+    )
+    is_agency_refund = bool(fee_data.get("refund_fee")) or any(
+        str(name or "").strip().replace("(", "（").replace(")", "）") == "律师代理费（退费）"
+        for name in fee_names
+    )
+    return not is_agency_refund
+
+
 async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) -> dict[str, bool]:
     """Calculate archive readiness from persisted business facts, never client checkboxes."""
     from app.core.documents import (
@@ -96,11 +114,7 @@ async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) ->
     related_rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module.in_({"finance", "invoice", "refund"})))).all()
 
     related = [item for item in related_rows if _record_links_to_case(item, case_record)]
-    fees = [
-        item for item in related
-        if item.module == "finance"
-        and str((item.data or {}).get("fee_type") or item.title or "").strip() != "律师代理费（退费）"
-    ]
+    fees = [item for item in related if _case_fee_requires_archive_settlement(item)]
     invoices = [item for item in related if item.module == "invoice"]
     refunds = [item for item in related if item.module == "refund"]
     fee_void_statuses = {"已作废", "已撤销", "不缴费"}
@@ -348,7 +362,10 @@ async def _urgent_case_ids(cases: list[BusinessRecord], db: AsyncSession, *, as_
     ))).all())
     urgent_ids: set[int] = set()
     for task in tasks:
-        raw_deadline = str((task.data or {}).get("deadline") or (task.data or {}).get("task_end_time") or (task.data or {}).get("TaskEndTime") or "").strip()
+        task_data = task.data or {}
+        if task_data.get("source") != "案件任务":
+            continue
+        raw_deadline = str(task_data.get("deadline") or task_data.get("task_end_time") or task_data.get("TaskEndTime") or "").strip()
         try:
             deadline = date.fromisoformat(raw_deadline[:10])
         except ValueError:
