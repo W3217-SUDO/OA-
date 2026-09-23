@@ -1,6 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.constants import (
-    FIELD_KEYS, HR_SUBRECORD_KINDS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_DATA_SCOPES, SYSTEM_ADMIN_JOB_PERMISSIONS,
+    CASE_ACTIONS_EXPLICIT_MARKER, FIELD_KEYS, HR_SUBRECORD_KINDS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_DATA_SCOPES, SYSTEM_ACTION_DEFINITIONS, SYSTEM_ADMIN_JOB_PERMISSIONS,
     SYSTEM_MENU_ROUTE_KEYS, WORKFLOW_TRANSITIONS,
 )
 from app.core.dependencies import (
@@ -669,7 +669,7 @@ async def list_job_roles(
 @router.get(f"{settings.api_prefix}/hr/job-roles/{{role_id}}/permissions")
 async def get_job_role_permissions(role_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _organization_permission_tree, _require_admin,
+        _job_role_tree_checked_permissions, _organization_permission_tree, _require_admin,
     )
     _require_admin(identity)
     role = await db.get(JobRole, role_id)
@@ -683,14 +683,16 @@ async def get_job_role_permissions(role_id: int, identity: dict = Depends(curren
         - menu_keys
     )
     permissions = list(dict.fromkeys(value.strip() for value in (role.permissions or []) if value.strip()))
+    checked_permissions = _job_role_tree_checked_permissions(role)
     return {
         "role_id": role.id, "role_code": role.code, "permissions": permissions,
+        "checked_permissions": checked_permissions,
         "field_keys": list(dict.fromkeys(role.field_keys or [])),
         "field_keys_configured": role.field_keys_configured,
         "data_scope": role.data_scope,
         "available_data_scopes": sorted(ROLE_DATA_SCOPES),
         "available_field_keys": FIELD_KEYS,
-        "tree": _organization_permission_tree(menus, actions, set(permissions)),
+        "tree": _organization_permission_tree(menus, actions, set(checked_permissions)),
     }
 
 
@@ -703,7 +705,7 @@ async def update_job_role_permissions(
         _user_display_map,
     )
     from app.core.permissions import (
-        _job_role_dict, _normalize_job_role_data_scope, _normalize_job_role_field_keys, _require_admin,
+        _explicit_case_role_permissions, _job_role_dict, _normalize_job_role_data_scope, _normalize_job_role_field_keys, _require_admin,
     )
     from app.core.system import (
         _record_organization_audit,
@@ -713,6 +715,8 @@ async def update_job_role_permissions(
     if not role:
         raise HTTPException(status_code=404, detail="岗位角色不存在")
     permissions = list(dict.fromkeys(value.strip() for value in body.permissions if value.strip()))
+    if body.case_actions_explicit and role.code != "SYSTEM-ADMIN":
+        permissions = _explicit_case_role_permissions(permissions)
     field_keys = _normalize_job_role_field_keys(body.field_keys) if body.field_keys is not None else list(dict.fromkeys(role.field_keys or []))
     field_keys_configured = body.field_keys_configured if body.field_keys_configured is not None else role.field_keys_configured
     data_scope = _normalize_job_role_data_scope(body.data_scope) if "data_scope" in body.model_fields_set else role.data_scope
@@ -727,6 +731,7 @@ async def update_job_role_permissions(
             | set(SYSTEM_ADMIN_JOB_PERMISSIONS)
         ) - configured_menu_keys
         allowed = configured_menu_keys | allowed_actions | {f"action:{key}" for values in JOB_ROLE_ACTION_KEY_GRANTS.values() for key in values}
+        allowed |= {f"action:{definition['code']}" for definition in SYSTEM_ACTION_DEFINITIONS} | {CASE_ACTIONS_EXPLICIT_MARKER}
         invalid = sorted(set(permissions) - allowed)
         if invalid:
             raise HTTPException(status_code=422, detail=f"无效菜单或业务动作权限：{', '.join(invalid)}")

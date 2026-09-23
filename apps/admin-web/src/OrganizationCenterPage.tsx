@@ -223,6 +223,16 @@ const rolePermissionTreeMenuCodes = (
   });
   return menuCodes;
 };
+const rolePermissionMenuBranch = (nodes: TreeDataNode[], target: string): string[] => {
+  for (const node of nodes) {
+    if (String(node.key) === target) {
+      return Array.from(rolePermissionTreeMenuCodes([node])).map((code) => `menu:${code}`);
+    }
+    const branch = rolePermissionMenuBranch((node.children || []) as TreeDataNode[], target);
+    if (branch.length) return branch;
+  }
+  return [];
+};
 const normalizeRolePermissionCheckedKeys = (keys: readonly unknown[]) =>
   keys.filter(
     (key): key is string =>
@@ -423,7 +433,7 @@ export default function OrganizationCenterPage({
       const { data } = await api.get(`/hr/job-roles/${row.id}/permissions`);
       const nextRolePermissionTreeData = data.tree || permissionTreeData;
       setRolePermissionTreeData(nextRolePermissionTreeData);
-      setSelectedRolePermissions(rolePermissionsToTreeCheckedKeys(data.permissions || row.permissions || [], nextRolePermissionTreeData));
+      setSelectedRolePermissions(rolePermissionsToTreeCheckedKeys(data.checked_permissions || data.permissions || row.permissions || [], nextRolePermissionTreeData));
       setSelectedRoleFieldKeys(data.field_keys || []);
       setRoleFieldKeysConfigured(Boolean(data.field_keys_configured));
       setRoleDataScope(data.data_scope || undefined);
@@ -448,6 +458,7 @@ export default function OrganizationCenterPage({
     try {
       await api.patch(`/hr/job-roles/${permissionRole.id}/permissions`, {
         permissions: rolePermissionTreeKeysToPayload(selectedRolePermissions),
+        case_actions_explicit: true,
         field_keys: selectedRoleFieldKeys,
         field_keys_configured: roleFieldKeysConfigured,
         data_scope: roleDataScope || "",
@@ -739,11 +750,22 @@ export default function OrganizationCenterPage({
             <div className="legacy-role-permission-tree">
               <Tree
                 checkable
+                checkStrictly
                 defaultExpandAll
                     treeData={rolePermissionTreeData}
                     checkedKeys={selectedRolePermissions}
-                disabled={permissionRole?.code === "SYSTEM-ADMIN"}
-                    onCheck={(checked) => setSelectedRolePermissions(normalizeRolePermissionCheckedKeys(Array.isArray(checked) ? checked : checked.checked))}
+                disabled={rolePermissionLoading || permissionRole?.code === "SYSTEM-ADMIN"}
+                onCheck={(_checked, info) => {
+                  const key = String(info.node.key);
+                  const affected = key.startsWith("menu:")
+                    ? rolePermissionMenuBranch(rolePermissionTreeData, key)
+                    : [key];
+                  setSelectedRolePermissions((current) => {
+                    const next = new Set(current);
+                    affected.forEach((item) => info.checked ? next.add(item) : next.delete(item));
+                    return normalizeRolePermissionCheckedKeys(Array.from(next));
+                  });
+                }}
               />
             </div>
           </Form.Item>

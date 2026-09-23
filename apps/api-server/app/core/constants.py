@@ -816,6 +816,9 @@ JOB_ROLE_ACTION_KEY_GRANTS: dict[str, tuple[str, ...]] = {
 }
 
 
+CASE_ACTIONS_EXPLICIT_MARKER = "config:case-actions-explicit"
+
+
 SYSTEM_ACTION_OPERATION_LABELS = {
     "query": "查询", "create": "新增", "update": "编辑", "delete": "删除",
     "clear": "清理", "reset": "重置", "permissions": "维护权限",

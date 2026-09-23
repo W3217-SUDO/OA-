@@ -243,6 +243,7 @@ class JobRoleUpdate(BaseModel):
 
 class JobRolePermissionUpdate(BaseModel):
     permissions: list[str] = Field(default_factory=list)
+    case_actions_explicit: bool = False
     field_keys: list[str] | None = Field(default=None, max_length=50)
     field_keys_configured: bool | None = None
     data_scope: str | None = Field(default=None, max_length=64)

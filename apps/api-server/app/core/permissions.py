@@ -1,6 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.constants import (
-    AGENT_ACTION_CAPABILITY, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
+    AGENT_ACTION_CAPABILITY, CASE_ACTIONS_EXPLICIT_MARKER, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
     DEFAULT_ROLE_PERMISSIONS, EXPENSE_SUBTYPE_FEE_TYPE, FIELD_KEYS, JAR_FEE_TRANSITIONS, JOB_ACTION_MENU_GRANTS,
     JOB_ROLE_ACTION_KEY_GRANTS, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_USER_ROLE_CODES,
@@ -52,6 +52,7 @@ def _stored_menu_permission_keys(menu_keys: list[str]) -> list[str]:
 def _effective_job_role_action_keys(role: JobRole) -> list[str]:
     """Resolve a role's action nodes without treating menus as write grants."""
     result: list[str] = []
+    explicit_case_actions = CASE_ACTIONS_EXPLICIT_MARKER in (role.permissions or [])
     for raw_value in role.permissions or []:
         value = str(raw_value or "").strip()
         candidates = (
@@ -60,9 +61,48 @@ def _effective_job_role_action_keys(role: JobRole) -> list[str]:
             else JOB_ROLE_ACTION_KEY_GRANTS.get(value, ())
         )
         for candidate in candidates:
+            if explicit_case_actions and not value.startswith("action:") and candidate in _CASE_ACTION_CODES:
+                continue
             if candidate and candidate not in result:
                 result.append(candidate)
     return result
+
+
+_CASE_ACTION_CODES = {
+    definition["code"] for definition in SYSTEM_ACTION_DEFINITIONS
+    if definition["code"].startswith("case.")
+}
+_CASE_LEGACY_PERMISSION_LABELS = {
+    label for label, menu_keys in JOB_ROLE_LABEL_MENU_GRANTS.items()
+    if any(menu_key.startswith("case") for menu_key in menu_keys)
+} | {
+    label for label, action_keys in JOB_ROLE_ACTION_KEY_GRANTS.items()
+    if any(action_key.startswith("case.") for action_key in action_keys)
+}
+
+
+def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:
+    selected = []
+    for value in role.permissions or []:
+        if value in _CASE_LEGACY_PERMISSION_LABELS:
+            selected.extend(JOB_ROLE_LABEL_MENU_GRANTS.get(value, ()))
+        elif value != CASE_ACTIONS_EXPLICIT_MARKER:
+            selected.append(value)
+    selected.extend(
+        f"action:{code}" for code in _effective_job_role_action_keys(role)
+        if code in _CASE_ACTION_CODES
+    )
+    return list(dict.fromkeys(selected))
+
+
+def _explicit_case_role_permissions(permissions: list[str]) -> list[str]:
+    normalized = []
+    for value in permissions:
+        if value in _CASE_LEGACY_PERMISSION_LABELS:
+            normalized.extend(JOB_ROLE_LABEL_MENU_GRANTS.get(value, ()))
+        elif value != CASE_ACTIONS_EXPLICIT_MARKER:
+            normalized.append(value)
+    return list(dict.fromkeys([*normalized, CASE_ACTIONS_EXPLICIT_MARKER]))
 
 
 def _job_role_menu_permission_keys(permissions: list[str]) -> list[str]:
@@ -1725,15 +1765,44 @@ async def _require_hr_employee_target_access(
 
 def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], selected: set[str]) -> list[dict]:
     by_parent: dict[str, list[SystemMenu]] = {}
+    menu_keys = {menu.key for menu in menus}
     for menu in menus:
         by_parent.setdefault(menu.parent_key or "", []).append(menu)
+
+    by_menu_actions: dict[str, list[dict]] = {}
+    catalog_keys = set()
+    for definition in SYSTEM_ACTION_DEFINITIONS:
+        key = f"action:{definition['code']}"
+        catalog_keys.add(key)
+        if definition["menu_key"] in menu_keys:
+            by_menu_actions.setdefault(definition["menu_key"], []).append({
+                "key": key, "node_type": "A", "node_original_id": definition["code"],
+                "node_id": definition["code"], "node_code": definition["code"],
+                "text": definition["label"], "title": definition["label"],
+                "state": {"checked": key in selected}, "children": [],
+            })
+
+    unmatched_actions = []
+    for action in actions:
+        if action in _CASE_LEGACY_PERMISSION_LABELS or action in catalog_keys or action == CASE_ACTIONS_EXPLICIT_MARKER:
+            continue
+        node = {
+            "key": action, "node_type": "A", "node_original_id": action,
+            "node_id": action, "node_code": action, "text": action, "title": action,
+            "state": {"checked": action in selected}, "children": [],
+        }
+        owner = next((key for key in JOB_ROLE_LABEL_MENU_GRANTS.get(action, ()) if key in menu_keys), None)
+        if owner:
+            by_menu_actions.setdefault(owner, []).append(node)
+        else:
+            unmatched_actions.append(node)
 
     def build(parent_key: str, trail: set[str]) -> list[dict]:
         nodes: list[dict] = []
         for menu in by_parent.get(parent_key, []):
             if menu.key in trail:
                 continue
-            children = build(menu.key, {*trail, menu.key})
+            children = [*build(menu.key, {*trail, menu.key}), *by_menu_actions.get(menu.key, [])]
             label = str(menu.label or "").strip()
             if not label or label in {"---", "—", "-"}:
                 label = DEFAULT_MENU_LABEL_BY_KEY.get(menu.key, "未命名菜单")
@@ -1745,18 +1814,12 @@ def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], s
         return nodes
 
     tree = build("", set())
-    tree.append({
-        "key": "actions", "node_type": "M", "node_original_id": 0,
-        "node_id": 0, "node_code": "actions", "text": "业务动作", "title": "业务动作",
-        "state": {"checked": False}, "children": [
-            {
-                "key": action, "node_type": "A", "node_original_id": action,
-                "node_id": action, "node_code": action, "text": action, "title": action,
-                "state": {"checked": action in selected}, "children": [],
-            }
-            for action in actions
-        ],
-    })
+    if unmatched_actions:
+        tree.append({
+            "key": "actions", "node_type": "M", "node_original_id": 0,
+            "node_id": 0, "node_code": "actions", "text": "其他业务动作", "title": "其他业务动作",
+            "checkable": False, "state": {"checked": False}, "children": unmatched_actions,
+        })
     return tree
 
 
