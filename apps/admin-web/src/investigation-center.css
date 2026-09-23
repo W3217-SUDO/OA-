@@ -16,6 +16,26 @@
 .clue-audit-content > .page-head {
   display: none;
 }
+.clue-audit-content .investigation-original {
+  border-top: 1px solid #d9e3e8;
+}
+.clue-audit-content .investigation-original > .ant-card-head,
+.clue-audit-content .investigation-audit-side-header {
+  box-sizing: border-box;
+  flex: 0 0 40px;
+  height: 40px;
+  min-height: 40px;
+  border-top: 0;
+  border-bottom: 2px solid #16ae75;
+}
+.clue-audit-content .investigation-original > .ant-card-head {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+}
+.clue-audit-content .investigation-original > .ant-card-head .ant-card-head-title {
+  padding: 0;
+}
 .page-workbench:has(> .investigation-audit-side) {
   display: flex;
   overflow: hidden;
