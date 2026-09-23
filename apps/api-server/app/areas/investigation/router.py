@@ -717,8 +717,26 @@ async def turn_on_investigation_clue_audit(clue_id: int, body: ClueTurnOnAuditIn
     return _record_dict(clue)
 
 
+@router.get(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/conflicts")
+async def investigation_clue_conflicts(clue_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.clue_conflicts import clue_conflicts
+    from app.core.permissions import _ensure_record_module, _user_has_job_permission
+
+    reviewer = await db.scalar(select(User).where(User.username == identity["username"]))
+    if not reviewer or not await _user_has_job_permission(reviewer, "线索审批", db):
+        raise HTTPException(status_code=403, detail="当前账号没有线索审批岗位权限")
+    clue = await _ensure_record_module(clue_id, "clue", identity, db)
+    if clue.status not in {"待审批", "待客户审核"}:
+        raise HTTPException(status_code=409, detail="只有待审批线索可以查看疑似冲突")
+    assigned_reviewer = str((clue.data or {}).get("reviewer") or "").strip()
+    if assigned_reviewer and assigned_reviewer != identity["username"] and identity.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="该线索已分配给其他审核人")
+    return await clue_conflicts(clue, db)
+
+
 @router.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/review")
 async def review_investigation_clue(clue_id: int, body: ClueReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.clue_conflicts import clue_conflicts
     from app.core.permissions import (
         _ensure_record_module, _record_scope_conditions, _user_has_job_permission,
     )
@@ -733,6 +751,7 @@ async def review_investigation_clue(clue_id: int, body: ClueReviewInput, identit
     assigned_reviewer = str((clue.data or {}).get("reviewer") or "").strip()
     if assigned_reviewer and assigned_reviewer != identity["username"] and identity.get("role") != "admin":
         raise HTTPException(status_code=403, detail="该线索已分配给其他审核人")
+    conflicts = await clue_conflicts(clue, db)
     next_status = "待客户审核" if body.approved and bool((clue.data or {}).get("customer_review")) else "待取证" if body.approved else "已驳回"
     merge_into_case_no = body.merge_into_case_no.strip()
     merge_case = None
@@ -742,8 +761,8 @@ async def review_investigation_clue(clue_id: int, body: ClueReviewInput, identit
             raise HTTPException(status_code=422, detail="并入案号未找到或无权访问")
     clue.status = next_status
     clue.data = {**(clue.data or {}), "reviewer": identity["username"], "reviewed_at": datetime.now().isoformat(timespec="seconds"), "review_comment": body.comment, "rejection_reason": "" if body.approved else body.comment,
-                 "suspected_conflict_clue_nos": list(dict.fromkeys(body.suspected_conflict_clue_nos)),
-                 "suspected_conflict_case_nos": list(dict.fromkeys(body.suspected_conflict_case_nos)),
+                 "suspected_conflict_clue_nos": conflicts["clues"],
+                 "suspected_conflict_case_nos": conflicts["cases"],
                  "supplement_evidence": body.supplement_evidence.strip(),
                  "merge_into_case_no": merge_into_case_no, "merge_into_case_id": merge_case.id if merge_case else None}
     db.add(WorkflowEvent(record_id=clue.id, action="线索内部审批通过，待客户审核" if next_status == "待客户审核" else "线索审批通过" if body.approved else "线索审批驳回", from_status="待审批", to_status=clue.status, operator=identity["username"], comment=body.comment))

@@ -1352,6 +1352,19 @@ export default function InvestigationCenterPage({
       message.error(error?.response?.data?.detail || "关联案件加载失败");
     }
   };
+  const openConflictClue = async (serialNo: string) => {
+    try {
+      const { data } = await api.get("/records", {
+        params: { module: "clue", keyword: serialNo, page_size: 100 },
+      });
+      const row = (data.items as Row[]).find((item) => item.serial_no === serialNo);
+      if (!row) return message.warning("未找到疑似冲突线索或当前账号无权查看");
+      setClueReviewing(null);
+      await openInvestigationDetail(row);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "疑似冲突线索加载失败");
+    }
+  };
   const openLinkedCustomer = async (customerName: string) => {
     const title = String(customerName || "").trim();
     if (!title) {
@@ -3764,6 +3777,8 @@ export default function InvestigationCenterPage({
         projectedPersonDisplayName={projectedPersonDisplayName}
         onOk={reviewClue}
         onCancel={() => setClueReviewing(null)}
+        onOpenClue={(serialNo) => { void openConflictClue(serialNo); }}
+        onOpenCase={(serialNo) => { setClueReviewing(null); void openLinkedCase(serialNo); }}
       />
       <CollectionModal
         open={Boolean(collectionTarget) || batchCollectionTargets.length > 0}

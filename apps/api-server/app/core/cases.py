@@ -338,28 +338,17 @@ def _case_phase_changed_days(item: BusinessRecord, *, as_of: date | None = None)
     return max(((as_of or date.today()) - _case_phase_changed_date(item)).days, 0)
 
 
-def _is_urgent_case(item: BusinessRecord, *, as_of: date | None = None) -> bool:
-    deadline = str((item.data or {}).get("urgent_task_deadline") or "").strip()
-    if not deadline:
-        return False
-    try:
-        remaining_days = (date.fromisoformat(deadline[:10]) - (as_of or date.today())).days
-    except ValueError:
-        return False
-    return remaining_days <= 15
-
-
 async def _urgent_case_ids(cases: list[BusinessRecord], db: AsyncSession, *, as_of: date | None = None) -> set[int]:
     """返回存在逾期或未来十五天内未完成任务的案件。"""
     from app.core.formatters import _record_links_to_case
     today = as_of or date.today()
-    terminal_statuses = {"已完成", "已验收", "已停止", "已撤回", "已拒绝", "已取消", "已删除"}
+    terminal_statuses = {"已完成", "已验收", "待确认", "已停止", "已撤回", "已拒绝", "已取消", "已删除"}
     tasks = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "task", BusinessRecord.status.not_in(terminal_statuses),
     ))).all())
     urgent_ids: set[int] = set()
     for task in tasks:
-        raw_deadline = str((task.data or {}).get("deadline") or (task.data or {}).get("task_end_time") or "").strip()
+        raw_deadline = str((task.data or {}).get("deadline") or (task.data or {}).get("task_end_time") or (task.data or {}).get("TaskEndTime") or "").strip()
         try:
             deadline = date.fromisoformat(raw_deadline[:10])
         except ValueError:
@@ -387,8 +376,6 @@ def _matches_dashboard_case_queue(item: BusinessRecord, queue: str) -> bool:
         return status_name in {"一审等待上诉", "待上诉"}
     if queue == "pending_execution":
         return _is_pending_execution_case(item)
-    if queue == "urgent":
-        return _is_urgent_case(item)
     return False
 
 

@@ -6,3 +6,10 @@
 .investigation-actions-bottom{display:flex;padding:12px 0 0;margin-top:2px}
 /* 8.12-row2-scroll-layout */
 .page-workbench:has(.investigation-original){overflow:hidden}.page-workbench>.investigation-original{display:flex;height:100%;min-height:0;flex-direction:column}.page-workbench>.investigation-original>.ant-card-body{display:flex;min-height:0;flex:1;flex-direction:column;overflow:hidden}.investigation-original .ant-table-wrapper{min-height:0}
+.clue-review-conflicts {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid #d9e8e0;
+  background: #f7fcf9;
+  line-height: 32px;
+}

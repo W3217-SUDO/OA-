@@ -181,7 +181,7 @@ from app.core.cases import (
     _case_party_match_values, _case_party_values, _case_phase_changed_days, _case_phase_is_allowed, _case_phase_option,
     _case_team_payload, _case_team_role, _case_type_parameter_for_value, _clean_case_litigant_values, _commission_scheme_for_case,
     _criminal_detail_maintenance_case, _dashboard_case_hearing, _dashboard_latest_case_row, _delete_case_events_for_case_cleanup, _hearing_dict,
-    _is_civil_case_type, _is_pending_execution_case, _is_urgent_case, _large_screen_case_is_closed, _large_screen_case_is_excluded,
+    _is_civil_case_type, _is_pending_execution_case, _large_screen_case_is_closed, _large_screen_case_is_excluded,
     _matches_dashboard_case_queue, _next_case_copy_serial, _next_case_serial, _ordinary_case_export_rows, _persist_case_litigants,
     _phase_is_builtin_for_case_type, _prioritize_new_case_assistants, _query_counsel_cases, _resolve_active_case_people, _resolve_case_phase,
     _selected_ordinary_case_export_records, _validate_case_execution_status,
@@ -483,12 +483,14 @@ from app.areas.ipr.router import router as ipr_router
 from app.areas.legal.router import router as legal_router
 from app.areas.rpt.router import router as rpt_router
 from app.areas.system.router import router as system_router
+from app.areas.system.feedback import router as feedback_router
 from app.areas.tp.router import router as tp_router
 from app.areas.wms.router import router as wms_router
 from app.routing import include_route_slice, verify_route_coverage
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+app.include_router(feedback_router)
 app.exception_handler(RequestValidationError)(request_validation_error_handler)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost", "http://127.0.0.1"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 include_route_slice(app, system_router, 0, 1)

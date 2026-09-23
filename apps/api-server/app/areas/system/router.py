@@ -1954,6 +1954,7 @@ async def upload_attachment(
             await _require_case_attachment_upload_access(record, identity, db)
             if category not in {
                 "普通附件",
+                "案件票据文件",
                 AI_SPACE_CATEGORY,
                 *CASE_FORMAL_DOCUMENT_FOLDERS,
                 *_case_custom_document_folders(record),

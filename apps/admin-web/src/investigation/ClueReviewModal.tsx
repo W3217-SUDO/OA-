@@ -1,6 +1,8 @@
-import { Modal, Form, Input, Radio } from "antd";
+import { useEffect, useState } from "react";
+import { Modal, Form, Input, Radio, Alert, Button, Spin, Space } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
 import type { Row } from "./types";
+import { api } from "../api";
 
 interface ClueReviewModalProps {
   open: boolean;
@@ -9,6 +11,8 @@ interface ClueReviewModalProps {
   projectedPersonDisplayName: (displayName: unknown, username: unknown) => string;
   onOk: () => void;
   onCancel: () => void;
+  onOpenClue: (serialNo: string) => void;
+  onOpenCase: (serialNo: string) => void;
 }
 
 export default function ClueReviewModal({
@@ -18,16 +22,46 @@ export default function ClueReviewModal({
   projectedPersonDisplayName,
   onOk,
   onCancel,
+  onOpenClue,
+  onOpenCase,
 }: ClueReviewModalProps) {
+  const [conflicts, setConflicts] = useState<{ clues: string[]; cases: string[] } | null>(null);
+  const [conflictError, setConflictError] = useState("");
+  useEffect(() => {
+    if (!open || !clueReviewing || clueReviewing.status !== "待审批") {
+      setConflicts(null);
+      setConflictError("");
+      return;
+    }
+    let active = true;
+    setConflicts(null);
+    setConflictError("");
+    api.get(`/investigations/clues/${clueReviewing.id}/conflicts`)
+      .then(({ data }) => { if (active) setConflicts(data); })
+      .catch((error) => { if (active) setConflictError(error?.response?.data?.detail || "疑似冲突加载失败"); });
+    return () => { active = false; };
+  }, [open, clueReviewing?.id, clueReviewing?.status]);
+
+  const conflictLinks = (values: string[], onOpen: (serialNo: string) => void) =>
+    values.length ? <Space size={4} wrap>{values.map((serialNo) => <Button key={serialNo} type="link" onClick={() => onOpen(serialNo)}>{serialNo}</Button>)}</Space> : "无";
   return (
     <Modal
       open={open}
       title={`${clueReviewing?.status === "待客户审核" ? "客户审核确认" : "线索内部审批"}：${clueReviewing?.serial_no || ""}`}
       okText="提交审核"
       cancelText="取消"
+      okButtonProps={{ disabled: clueReviewing?.status === "待审批" && (!conflicts || Boolean(conflictError)) }}
       onOk={onOk}
       onCancel={onCancel}
     >
+      {clueReviewing?.status === "待审批" && (
+        <div className="clue-review-conflicts">
+          {conflictError ? <Alert type="error" showIcon title={conflictError} /> : !conflicts ? <Spin size="small" /> : <>
+            <div>疑似冲突线索：{conflictLinks(conflicts.clues, onOpenClue)}</div>
+            <div>疑似冲突案件：{conflictLinks(conflicts.cases, onOpenCase)}</div>
+          </>}
+        </div>
+      )}
       <Form form={clueReviewForm} layout="vertical">
         {clueReviewing?.status === "待客户审核" && (
           <div className="form-grid audit-reference">

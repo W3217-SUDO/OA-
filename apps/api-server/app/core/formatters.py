@@ -313,10 +313,16 @@ async def _task_display_dict(record: BusinessRecord, db: AsyncSession) -> dict:
 def _record_links_to_case(record: BusinessRecord, case_record: BusinessRecord) -> bool:
     """Prefer the persisted case id; use the case number only for legacy rows."""
     record_data = record.data or {}
-    linked_case_id = int(record_data.get("case_id") or record_data.get("case_record_id") or 0)
-    if linked_case_id:
-        return linked_case_id == case_record.id
-    return str(record_data.get("case_no") or "") == case_record.serial_no
+    id_values = [record_data.get("case_id"), record_data.get("case_record_id")]
+    if isinstance(record_data.get("case_ids"), list):
+        id_values.extend(record_data["case_ids"])
+    linked_ids = {int(value) for value in id_values if str(value or "").isdigit()}
+    if linked_ids:
+        return case_record.id in linked_ids
+    number_values = [record_data.get("case_no")]
+    if isinstance(record_data.get("case_nos"), list):
+        number_values.extend(record_data["case_nos"])
+    return case_record.serial_no in {str(value or "").strip() for value in number_values}
 
 
 def _dingtalk_allowed_display_names() -> set[str]:

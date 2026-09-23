@@ -3131,8 +3131,9 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     if len(clues_by_id) != len(clue_ids):
         raise HTTPException(status_code=404, detail="关联调查线索不存在或无权访问")
     ordered_clues = [clues_by_id[item_id] for item_id in clue_ids]
-    from app.core.case_relations import sync_case_clues, validate_case_clues
+    from app.core.case_relations import case_clue_ids, sync_case_clues, validate_case_clues
     await validate_case_clues(case_record, ordered_clues, customer.title, db)
+    previous_clue_ids = case_clue_ids(case_record)
     right_type = body.right_type.strip()
     if case_type != "行政案件及国家赔偿" and right_type:
         raise HTTPException(status_code=422, detail="仅行政及国家赔偿案件可以修改权利类型")
@@ -3159,10 +3160,13 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         "investigation_clue_id": clue_ids[0] if clue_ids else None,
         "investigation_clue": "、".join(clue_nos),
         "clue_record_id": clue_ids[0] if clue_ids else None,
+        "clue_id": clue_ids[0] if clue_ids else None,
         "clue_no": clue_nos[0] if clue_nos else "",
+        "source_clue_no": clue_nos[0] if clue_nos else "",
+        "clue_nos": clue_nos,
     }, handling_lawyers, handling_usernames, assistant_values, assistant_usernames)
     case_record.data = updated_case_data
-    await sync_case_clues(case_record, ordered_clues, db)
+    await sync_case_clues(case_record, ordered_clues, db, previous_clue_ids)
     if _case_commission_personnel_changed(case_data, updated_case_data):
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     if phase != previous_status:
@@ -3230,8 +3234,9 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
     if len({item.id for item in clues}) != len(clue_ids):
         raise HTTPException(status_code=404, detail="关联调查线索不存在或无权访问")
     by_id = {item.id: item for item in clues}; clue_nos = [by_id[item_id].serial_no for item_id in clue_ids]
-    from app.core.case_relations import sync_case_clues, validate_case_clues
+    from app.core.case_relations import case_clue_ids, sync_case_clues, validate_case_clues
     await validate_case_clues(case_record, clues, customer.title, db)
+    previous_clue_ids = case_clue_ids(case_record)
     previous_status = case_record.status
     old_summary = f"{case_record.customer}｜{case_record.title}｜{case_record.status}｜{case_data.get('cause_or_charge', '')}"
     case_record.title, case_record.customer, case_record.status = title, customer.title, phase
@@ -3241,9 +3246,10 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
         "investigation_clue_ids": clue_ids, "investigation_clue_nos": clue_nos,
         "investigation_clue_id": clue_ids[0] if clue_ids else None, "investigation_clue": "、".join(clue_nos),
         "clue_record_id": clue_ids[0] if clue_ids else None, "clue_no": clue_nos[0] if clue_nos else "",
+        "clue_id": clue_ids[0] if clue_ids else None, "source_clue_no": clue_nos[0] if clue_nos else "", "clue_nos": clue_nos,
     }, lawyers, lawyer_usernames, assistant_values[0] if assistant_values else "", assistant_usernames[0] if assistant_usernames else "")
     case_record.data = updated_case_data
-    await sync_case_clues(case_record, clues, db)
+    await sync_case_clues(case_record, clues, db, previous_clue_ids)
     if _case_commission_personnel_changed(case_data, updated_case_data):
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     if phase != previous_status:

@@ -57,10 +57,9 @@ async def validate_case_clues(case: BusinessRecord, clues: list[BusinessRecord],
             raise HTTPException(409, "所选线索已经关联案件，请重新选择")
 
 
-async def sync_case_clues(case: BusinessRecord, clues: list[BusinessRecord], db: AsyncSession) -> None:
+async def sync_case_clues(case: BusinessRecord, clues: list[BusinessRecord], db: AsyncSession, previous_ids: set[int]) -> None:
     """同步案件和线索的双向关联，并只清除仍指向当前案件的旧反向字段。"""
     selected_ids = {item.id for item in clues}
-    previous_ids = case_clue_ids(case)
     reverse_conditions = (
         BusinessRecord.data["case_id"].as_integer() == case.id,
         BusinessRecord.data["case_record_id"].as_integer() == case.id,
@@ -94,6 +93,8 @@ async def sync_case_clues(case: BusinessRecord, clues: list[BusinessRecord], db:
                 "linked_case_no": case.serial_no,
                 "converted_case_no": case.serial_no,
             }
+            if clue.status == "已取证":
+                clue.status = "已转案件"
             continue
         points_to_case = any(
             references_case_id(data.get(key))
@@ -102,6 +103,9 @@ async def sync_case_clues(case: BusinessRecord, clues: list[BusinessRecord], db:
             str(data.get(key) or "").strip() == case.serial_no
             for key in ("case_no", "linked_case_no", "converted_case_no")
         )
+        has_other_reverse_link = any(data.get(key) for key in (
+            "case_id", "case_record_id", "converted_case_id", "case_no", "linked_case_no", "converted_case_no",
+        ))
         if points_to_case:
             for key in (
                 "case_id", "case_record_id", "converted_case_id",
@@ -109,6 +113,8 @@ async def sync_case_clues(case: BusinessRecord, clues: list[BusinessRecord], db:
             ):
                 data.pop(key, None)
             clue.data = data
+        if clue.status == "已转案件" and (points_to_case or (clue.id in previous_ids and not has_other_reverse_link)):
+            clue.status = "已取证"
 
 
 def clue_header_values(clues: list[BusinessRecord]) -> dict:

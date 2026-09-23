@@ -56,6 +56,7 @@ import "dingtalk-jsapi/entry/union";
 import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/requestAuthCode";
 import { getENV as getDingTalkEnvironment } from "dingtalk-jsapi/lib/env";
 import NotificationCenter from "./NotificationCenter";
+import BugFeedback from "./BugFeedback";
 import GlobalSearch from "./GlobalSearch";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
@@ -2229,6 +2230,7 @@ export default function App() {
           <span>我的</span>
         </button>
       </nav>
+      <BugFeedback />
     </Layout>
   );
 }
