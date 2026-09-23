@@ -2161,7 +2161,7 @@ export default function App() {
           />
         )}
         <Content
-          className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") || active.startsWith("contract-investigation-") ? "case-detail-content" : ""}`}
+          className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") || active.startsWith("contract-investigation-") ? "case-detail-content" : ""} ${active.startsWith("clue-audit-") ? "clue-audit-content" : ""}`}
           onClick={() => {
             if (isNarrowViewport && mobileSidebarOpen) setMobileSidebarOpen(false);
           }}

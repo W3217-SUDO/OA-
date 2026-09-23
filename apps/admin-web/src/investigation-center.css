@@ -13,6 +13,9 @@
   background: #f7fcf9;
   line-height: 32px;
 }
+.clue-audit-content > .page-head {
+  display: none;
+}
 .page-workbench:has(> .investigation-audit-side) {
   display: flex;
   overflow: hidden;
