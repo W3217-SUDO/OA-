@@ -1385,8 +1385,11 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
     ).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
     business_signatures = {(item.owner, item.description or "") for item in business_logs}
     events = [item for item in events if (item.operator, item.comment or "") not in business_signatures]
+    # 旧系统人工日志类型为 1；负 ID 是当前工作流事件的兼容投影，不重复作为人工日志读取。
     legacy_logs = list((await db.scalars(select(LegacyCaseLog).where(
         LegacyCaseLog.CaseNo.in_(source_case_nos),
+        LegacyCaseLog.LogId > 0,
+        LegacyCaseLog.LogType == 1,
     ).order_by(LegacyCaseLog.CreateTime.desc(), LegacyCaseLog.LogId.desc()))).all())
     users_by_username = await _user_display_map(
         {item.operator for item in events} | {item.owner for item in business_logs} | {str(item.CreateUser or "").strip() for item in legacy_logs}, db
@@ -1405,12 +1408,11 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
         "created_at": item.created_at, "source": "current",
         "kind": "refund" if item.action.startswith("添加") and item.action.endswith("退费日志") else "case",
     } for item in events)
-    event_ids = {item.id for item in events}
     items.extend({
         "id": -abs(item.LogId), "content": item.Content or "", "operator": item.CreateUser or "",
         "operator_display_name": _person_reference_display(item.CreateUser, users_by_username)[0],
-        "created_at": item.CreateTime, "source": "legacy",
-    } for item in legacy_logs if item.LogId >= 0 or abs(item.LogId) not in event_ids)
+        "created_at": item.CreateTime, "source": "legacy", "kind": "case",
+    } for item in legacy_logs)
     items.sort(key=lambda item: (str(item["created_at"] or ""), str(item["id"])), reverse=True)
     return {"items": items, "total": len(items)}
 

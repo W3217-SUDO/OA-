@@ -781,7 +781,11 @@ async def _sync_legacy_case_relations(record: BusinessRecord, identity: dict, db
         participant.ChangeUser = identity["username"][:20]
         participant.ChangeTime = now
 
-    events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record.id).order_by(WorkflowEvent.id))).all())
+    # 仅投影用户主动新增的案件日志，系统操作记录继续保留在工作流历史中。
+    events = list((await db.scalars(select(WorkflowEvent).where(
+        WorkflowEvent.record_id == record.id,
+        WorkflowEvent.action == "新增案件日志",
+    ).order_by(WorkflowEvent.id))).all())
     for event in events:
         log_id = -event.id
         log = await db.get(LegacyCaseLog, log_id)
@@ -791,7 +795,7 @@ async def _sync_legacy_case_relations(record: BusinessRecord, identity: dict, db
         log.CaseId = case_id
         log.CaseNo = case_no
         log.Content = _legacy_case_text(f"{event.action}：{event.comment}".rstrip("："), 8000)
-        log.LogType = 10
+        log.LogType = 1
         log.IsActived = "Y"
         log.ChangeUser = identity["username"][:20]
         log.ChangeTime = now
