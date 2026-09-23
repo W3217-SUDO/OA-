@@ -13,6 +13,7 @@ interface ClueReviewModalProps {
   onCancel: () => void;
   onOpenClue: (serialNo: string) => void;
   onOpenCase: (serialNo: string) => void;
+  embedded?: boolean;
 }
 
 export default function ClueReviewModal({
@@ -24,6 +25,7 @@ export default function ClueReviewModal({
   onCancel,
   onOpenClue,
   onOpenCase,
+  embedded = false,
 }: ClueReviewModalProps) {
   const [conflicts, setConflicts] = useState<{ clues: string[]; cases: string[] } | null>(null);
   const [conflictError, setConflictError] = useState("");
@@ -44,16 +46,8 @@ export default function ClueReviewModal({
 
   const conflictLinks = (values: string[], onOpen: (serialNo: string) => void) =>
     values.length ? <Space size={4} wrap>{values.map((serialNo) => <Button key={serialNo} type="link" onClick={() => onOpen(serialNo)}>{serialNo}</Button>)}</Space> : "无";
-  return (
-    <Modal
-      open={open}
-      title={`${clueReviewing?.status === "待客户审核" ? "客户审核确认" : "线索内部审批"}：${clueReviewing?.serial_no || ""}`}
-      okText="提交审核"
-      cancelText="取消"
-      okButtonProps={{ disabled: clueReviewing?.status === "待审批" && (!conflicts || Boolean(conflictError)) }}
-      onOk={onOk}
-      onCancel={onCancel}
-    >
+  const content = (
+    <>
       {clueReviewing?.status === "待审批" && (
         <div className="clue-review-conflicts">
           {conflictError ? <Alert type="error" showIcon title={conflictError} /> : !conflicts ? <Spin size="small" /> : <>
@@ -87,6 +81,7 @@ export default function ClueReviewModal({
           label="审核结果"
           name="approved"
           rules={[{ required: true }]}
+          hidden={embedded}
         >
           <Radio.Group>
             <Radio value={true}>
@@ -110,6 +105,27 @@ export default function ClueReviewModal({
           <Input.TextArea rows={4} />
         </Form.Item>
       </Form>
-    </Modal>
+    </>
   );
+  if (embedded) {
+    return <section className="clue-audit-review">
+      <h3>{clueReviewing?.status === "待客户审核" ? "客户审核确认" : "线索审批"}</h3>
+      {content}
+      <Space className="clue-audit-review-actions">
+        <Button type="primary" disabled={clueReviewing?.status === "待审批" && (!conflicts || Boolean(conflictError))}
+          onClick={() => { clueReviewForm.setFieldValue("approved", true); onOk(); }}>同意</Button>
+        <Button danger disabled={clueReviewing?.status === "待审批" && (!conflicts || Boolean(conflictError))}
+          onClick={() => { clueReviewForm.setFieldValue("approved", false); onOk(); }}>拒绝</Button>
+      </Space>
+    </section>;
+  }
+  return <Modal
+    open={open}
+    title={`${clueReviewing?.status === "待客户审核" ? "客户审核确认" : "线索内部审批"}：${clueReviewing?.serial_no || ""}`}
+    okText="提交审核"
+    cancelText="取消"
+    okButtonProps={{ disabled: clueReviewing?.status === "待审批" && (!conflicts || Boolean(conflictError)) }}
+    onOk={onOk}
+    onCancel={onCancel}
+  >{content}</Modal>;
 }

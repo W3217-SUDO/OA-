@@ -102,6 +102,7 @@ import GenericCreateModal from "./GenericCreateModal";
 import BatchSubmitModal from "./BatchSubmitModal";
 import TurnOnAuditModal from "./TurnOnAuditModal";
 import InvestigationDetailModal from "./InvestigationDetailModal";
+import ClueAuditSidePanel from "./ClueAuditSidePanel";
 import EditRecordModal from "./EditRecordModal";
 import AssignInvestigatorModal from "./AssignInvestigatorModal";
 import FeeApplicationModal from "./FeeApplicationModal";
@@ -286,6 +287,7 @@ export default function InvestigationCenterPage({
   const [investigationDetail, setInvestigationDetail] = useState<Row | null>(
     null,
   );
+  const detailRequestRef = useRef(0);
   const [clueWorkspace, setClueWorkspace] = useState<ClueWorkspace | null>(null);
   const [clueWorkspaceLoading, setClueWorkspaceLoading] = useState(false);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<number | null>(null);
@@ -852,6 +854,7 @@ export default function InvestigationCenterPage({
       );
       setClueReviewing(null);
       clueReviewForm.resetFields();
+      if (initialTab.startsWith("clue-audit-")) setInvestigationDetail(null);
       load("clue");
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "线索审核失败");
@@ -1360,7 +1363,7 @@ export default function InvestigationCenterPage({
       const row = (data.items as Row[]).find((item) => item.serial_no === serialNo);
       if (!row) return message.warning("未找到疑似冲突线索或当前账号无权查看");
       setClueReviewing(null);
-      await openInvestigationDetail(row);
+      await openInvestigationDetail(row, initialTab.startsWith("clue-audit-"));
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "疑似冲突线索加载失败");
     }
@@ -1475,13 +1478,39 @@ export default function InvestigationCenterPage({
       message.error(error?.response?.data?.detail || "关联调查记录加载失败");
     }
   };
-  const openInvestigationDetail = async (row: Row) => {
+  const openInvestigationDetail = async (row: Row, inAuditPanel = false) => {
+    const requestId = ++detailRequestRef.current;
+    if (inAuditPanel) setInvestigationDetail(row);
     try {
       const { data } = await api.get(`/records/${row.id}`);
+      if (requestId !== detailRequestRef.current) return;
       setInvestigationDetail(data);
+      if (inAuditPanel) setClueReviewing((current) => current?.id === row.id ? data : null);
     } catch (error: any) {
+      if (requestId !== detailRequestRef.current) return;
+      if (inAuditPanel) {
+        setInvestigationDetail(null);
+        setClueReviewing(null);
+      }
       message.error(error?.response?.data?.detail || "调查详情加载失败");
     }
+  };
+  const openAuditPanel = (row: Row) => {
+    clueReviewForm.resetFields();
+    clueReviewForm.setFieldsValue({ approved: true });
+    const actions = investigationActions[String(row.id)];
+    const canReview = (row.status === "待审批" && actions?.review_clue) ||
+      (row.status === "待客户审核" && actions?.review_customer_clue);
+    setClueReviewing(canReview ? row : null);
+    void openInvestigationDetail(row, true);
+  };
+  const openClueReview = (row: Row) => {
+    if (initialTab.startsWith("clue-audit-")) {
+      openAuditPanel(row);
+      return;
+    }
+    setClueReviewing(row);
+    clueReviewForm.setFieldsValue({ approved: true });
   };
   useEffect(() => {
     if (!investigationDetail || investigationDetail.module !== "clue") {
@@ -2166,7 +2195,7 @@ export default function InvestigationCenterPage({
           dataIndex: "serial_no",
           width: 160,
           render: (value: string, r: Row) => (
-            <Button type="link" onClick={() => void openInvestigationDetail(r)}>
+            <Button type="link" onClick={() => initialTab.startsWith("clue-audit-") ? openAuditPanel(r) : void openInvestigationDetail(r)}>
               {value}
             </Button>
           ),
@@ -2420,10 +2449,7 @@ export default function InvestigationCenterPage({
                 r.status === "待审批" && (
                   <Button
                     type="link"
-                    onClick={() => {
-                      setClueReviewing(r);
-                      clueReviewForm.setFieldsValue({ approved: true });
-                    }}
+                    onClick={() => openClueReview(r)}
                   >
                     审批
                   </Button>
@@ -2432,10 +2458,7 @@ export default function InvestigationCenterPage({
                 r.status === "待客户审核" && (
                   <Button
                     type="link"
-                    onClick={() => {
-                      setClueReviewing(r);
-                      clueReviewForm.setFieldsValue({ approved: true });
-                    }}
+                    onClick={() => openClueReview(r)}
                   >
                     客户审核
                   </Button>
@@ -2828,8 +2851,7 @@ export default function InvestigationCenterPage({
           message.error("当前账号没有此线索的审核权限");
           return;
         }
-        setClueReviewing(row);
-        clueReviewForm.setFieldsValue({ approved: true });
+        openClueReview(row);
       }),
     取证: () =>
       requireSingleRow("取证", openSingleCollection),
@@ -3496,6 +3518,21 @@ export default function InvestigationCenterPage({
     taskTarget?.data.authorization_scope || "未配置",
   ).trim();
   const taskRegionOptions = investigationTaskRegionOptions(taskScopeGroups);
+  const detailContentProps = {
+    investigationDetail,
+    clueWorkspace,
+    clueWorkspaceLoading,
+    selectedEvidenceId,
+    projectedPersonDisplayName,
+    onOpenLinkedCustomer: openLinkedCustomer,
+    onOpenLinkedInvestigation: openLinkedInvestigation,
+    onOpenLinkedCase: openLinkedCase,
+    onOpenLinkedNotary: openLinkedNotary,
+    onSelectEvidence: (id: number | null) => setSelectedEvidenceId(id),
+    onEditEvidence: openEvidenceEditor,
+    onDownloadFile: downloadMaterial,
+    onDeleteEvidence: deleteSelectedEvidence,
+  };
   return (
     <>
       <SubtaskActionModal
@@ -3746,6 +3783,15 @@ export default function InvestigationCenterPage({
           </>
         )}
       </Card>
+      {isAuditClue && investigationDetail && <ClueAuditSidePanel
+        {...detailContentProps}
+        clueReviewing={clueReviewing}
+        clueReviewForm={clueReviewForm}
+        onClose={() => { detailRequestRef.current++; setInvestigationDetail(null); setClueReviewing(null); clueReviewForm.resetFields(); }}
+        onReview={() => void reviewClue()}
+        onOpenClue={(serialNo) => { void openConflictClue(serialNo); }}
+        onOpenCase={(serialNo) => { setClueReviewing(null); void openLinkedCase(serialNo); }}
+      />}
       <GenericCreateModal
         open={createOpen}
         createForm={createForm}
@@ -3770,7 +3816,7 @@ export default function InvestigationCenterPage({
         onOk={saveTurnOnAudit}
         onCancel={() => setTurnOnAuditTarget(null)}
       />
-      <ClueReviewModal
+      {!isAuditClue && <ClueReviewModal
         open={Boolean(clueReviewing)}
         clueReviewing={clueReviewing}
         clueReviewForm={clueReviewForm}
@@ -3779,7 +3825,7 @@ export default function InvestigationCenterPage({
         onCancel={() => setClueReviewing(null)}
         onOpenClue={(serialNo) => { void openConflictClue(serialNo); }}
         onOpenCase={(serialNo) => { setClueReviewing(null); void openLinkedCase(serialNo); }}
-      />
+      />}
       <CollectionModal
         open={Boolean(collectionTarget) || batchCollectionTargets.length > 0}
         collectionTarget={collectionTarget}
@@ -3916,23 +3962,11 @@ export default function InvestigationCenterPage({
         }}
         onCreateTask={(action) => void createTask(action)}
       />
-      <InvestigationDetailModal
+      {!isAuditClue && <InvestigationDetailModal
         open={Boolean(investigationDetail)}
-        investigationDetail={investigationDetail}
-        clueWorkspace={clueWorkspace}
-        clueWorkspaceLoading={clueWorkspaceLoading}
-        selectedEvidenceId={selectedEvidenceId}
-        projectedPersonDisplayName={projectedPersonDisplayName}
+        {...detailContentProps}
         onClose={() => setInvestigationDetail(null)}
-        onOpenLinkedCustomer={openLinkedCustomer}
-        onOpenLinkedInvestigation={openLinkedInvestigation}
-        onOpenLinkedCase={openLinkedCase}
-        onOpenLinkedNotary={openLinkedNotary}
-        onSelectEvidence={(id) => setSelectedEvidenceId(id)}
-        onEditEvidence={openEvidenceEditor}
-        onDownloadFile={downloadMaterial}
-        onDeleteEvidence={deleteSelectedEvidence}
-      />
+      />}
       <EvidenceEditorModal
         open={Boolean(editingEvidence)}
         editingEvidence={editingEvidence}

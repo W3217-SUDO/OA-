@@ -1,16 +1,14 @@
 import { Modal, Button } from "antd";
-import type { Row, ClueWorkspace, ClueEvidenceRow, Attachment } from "./types";
+import type { Row, ClueWorkspace, Attachment } from "./types";
 import ClueDetailHeader from "./ClueDetail/ClueDetailHeader";
 import ClueEvidencePanel from "./ClueDetail/ClueEvidencePanel";
 
-interface InvestigationDetailModalProps {
-  open: boolean;
+export interface InvestigationDetailContentProps {
   investigationDetail: Row | null;
   clueWorkspace: ClueWorkspace | null;
   clueWorkspaceLoading: boolean;
   selectedEvidenceId: number | null;
   projectedPersonDisplayName: (displayName: unknown, username: unknown) => string;
-  onClose: () => void;
   onOpenLinkedCustomer: (name: string) => void;
   onOpenLinkedInvestigation: (serialNo: string, module: "investigation" | "clue" | "task") => void;
   onOpenLinkedCase: (caseNo: string) => void;
@@ -21,14 +19,17 @@ interface InvestigationDetailModalProps {
   onDeleteEvidence: () => void;
 }
 
-export default function InvestigationDetailModal({
-  open,
+interface InvestigationDetailModalProps extends InvestigationDetailContentProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export function InvestigationDetailContent({
   investigationDetail,
   clueWorkspace,
   clueWorkspaceLoading,
   selectedEvidenceId,
   projectedPersonDisplayName,
-  onClose,
   onOpenLinkedCustomer,
   onOpenLinkedInvestigation,
   onOpenLinkedCase,
@@ -37,19 +38,12 @@ export default function InvestigationDetailModal({
   onEditEvidence,
   onDownloadFile,
   onDeleteEvidence,
-}: InvestigationDetailModalProps) {
+}: InvestigationDetailContentProps) {
   const showEvidence = Boolean(
     investigationDetail &&
       ["待取证", "已取证", "待公证", "已转案件"].includes(investigationDetail.status),
   );
-  return (
-    <Modal
-      width={1040}
-      open={open}
-      title={`调查详情：${investigationDetail?.serial_no || ""}`}
-      footer={<Button onClick={onClose}>关闭</Button>}
-      onCancel={onClose}
-    >
+  return <>
       <ClueDetailHeader
         investigationDetail={investigationDetail}
         projectedPersonDisplayName={projectedPersonDisplayName}
@@ -70,6 +64,17 @@ export default function InvestigationDetailModal({
           onDownloadFile={onDownloadFile}
         />
       )}
-    </Modal>
-  );
+  </>;
+}
+
+export default function InvestigationDetailModal(props: InvestigationDetailModalProps) {
+  return <Modal
+    width={1040}
+    open={props.open}
+    title={`调查详情：${props.investigationDetail?.serial_no || ""}`}
+    footer={<Button onClick={props.onClose}>关闭</Button>}
+    onCancel={props.onClose}
+  >
+    <InvestigationDetailContent {...props} />
+  </Modal>;
 }
