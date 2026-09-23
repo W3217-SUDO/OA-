@@ -253,7 +253,7 @@ export function CustomerDetailView({
         <h3>开票信息</h3>
         <div className="customer-view-fields customer-view-fields-four">
           <label><span>开票地址</span><Input disabled value={customer.data.invoice_address || ""} /></label>
-          <label><span>统一社会信用代码</span><Input disabled value={customer.data.credit_code || customer.data.taxpayer_id || ""} /></label>
+          <label className="customer-credit-code-field"><span>统一社会信用代码</span><Input disabled value={customer.data.credit_code || customer.data.taxpayer_id || ""} /></label>
           <label><span>开 户 行</span><Input disabled value={customer.data.bank_name || ""} /></label>
           <label><span>帐 号</span><Input disabled value={customer.data.bank_account || ""} /></label>
         </div>

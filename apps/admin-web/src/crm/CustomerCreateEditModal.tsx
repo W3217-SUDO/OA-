@@ -291,7 +291,7 @@ export function CustomerCreateEditModal({
             {organizationType === "个人" ? (
               <Form.Item label="身份证号" name="identity_no" rules={[{ required: true, message: "请输入身份证号" }, { pattern: /^\d{17}[\dXx]$/, message: "请输入18位身份证号" }]}><Input maxLength={18} /></Form.Item>
             ) : organizationType ? (
-              <Form.Item label="统一社会信用代码" name="credit_code" rules={[{ required: true, message: "请输入统一社会信用代码" }, { pattern: /^[0-9A-Za-z]{18}$/, message: "请输入18位统一社会信用代码" }]}><Input maxLength={18} /></Form.Item>
+              <Form.Item className="customer-credit-code-field" label="统一社会信用代码" name="credit_code" rules={[{ required: true, message: "请输入统一社会信用代码" }, { pattern: /^[0-9A-Za-z]{18}$/, message: "请输入18位统一社会信用代码" }]}><Input maxLength={18} /></Form.Item>
             ) : null}
             <Form.Item label="注册地址" name="registered_address" rules={customerRegistrationAddressRules}><Input /></Form.Item>
             <Form.Item label="邮编" name="postal_code" rules={customerPostalCodeRules}><Input /></Form.Item>

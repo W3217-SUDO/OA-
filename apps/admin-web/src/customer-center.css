@@ -193,6 +193,7 @@
   border-bottom: 1px solid #eee;
 }
 .customer-view-fields label > span { padding-right: 6px; text-align: right; white-space: nowrap; }
+.customer-view-fields .customer-credit-code-field { grid-template-columns: 132px minmax(0, 1fr); }
 .customer-view-fields label > span i { padding-right: 2px; color: #f00; font-style: normal; }
 .customer-view-fields .ant-input,
 .customer-view-fields .ant-select,
@@ -251,6 +252,7 @@
 .customer-create-form .ant-form-item-row { flex-wrap: nowrap; }
 .customer-create-form .ant-form-item-control-input { min-height: 23px; }
 .customer-create-form .ant-form-item-label { flex: 0 0 88px; padding: 0 6px 0 0; }
+.customer-create-form .customer-credit-code-field .ant-form-item-label { flex-basis: 132px; }
 .customer-create-form .ant-form-item-label > label { height: 23px; font-size: 12px; }
 .customer-create-form .ant-input,
 .customer-create-form .ant-select-selector { min-height: 23px !important; height: 23px !important; border-radius: 0 !important; font-size: 12px; }
@@ -376,6 +378,9 @@
     display: grid;
     grid-template-columns: 96px minmax(0, 1fr);
     align-items: center;
+  }
+  .customer-create-form .customer-credit-code-field .ant-form-item-row {
+    grid-template-columns: 144px minmax(0, 1fr);
   }
   .customer-create-form .ant-form-item-label { flex-basis: auto; padding-right: 8px; text-align: left; }
   .customer-create-form .ant-form-item-label > label { height: auto; font-size: 13px; }
