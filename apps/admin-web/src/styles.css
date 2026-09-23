@@ -78,12 +78,24 @@ body {
 }
 .bug-feedback-trigger {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 1201;
-  border-color: #009b55;
-  color: #007e46;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  right: 4px;
+  bottom: 4px;
+  z-index: 900;
+  height: 24px;
+  min-width: 0;
+  padding: 0 6px;
+  border-color: #d9d9d9;
+  border-radius: 3px;
+  background: #f5f5f5;
+  color: #777;
+  font-size: 12px;
+  box-shadow: none;
+}
+.bug-feedback-trigger:hover,
+.bug-feedback-trigger:focus-visible {
+  border-color: #aaa;
+  background: #eee;
+  color: #555;
 }
 .sidebar {
   height: 100%;
@@ -607,7 +619,7 @@ body {
   .bug-feedback-trigger {
     right: 8px;
     bottom: calc(70px + env(safe-area-inset-bottom));
-    min-height: 40px;
+    min-height: 32px;
   }
   html,
   body,
