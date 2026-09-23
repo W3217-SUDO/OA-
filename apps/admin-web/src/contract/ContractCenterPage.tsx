@@ -9,7 +9,6 @@ import { loadContractInvoiceData } from "./contractInvoiceData";
 import { buildCaseContractContext,rememberCaseContractContext } from "../caseContractPrefill";
 import { confirmOperation } from "../components/common/confirmOperation";
 import "../contract-center.css";
-import { openContractCustomerCreation } from "../contractCenterCustomerNavigation";
 import {
 CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY,
 clearContractCustomerContext,
@@ -1226,7 +1225,6 @@ export default function ContractCenterPage({
             onUploadDraftAttachment={uploadDraftContractAttachment}
             onStartCreate={startCreate}
             onNavigate={onNavigate}
-            onOpenContractCustomerCreation={() => openContractCustomerCreation(onNavigate)}
           />
           <div className="contract-page-actions">
             <Space>
@@ -1675,7 +1673,6 @@ export default function ContractCenterPage({
           onUploadDraftAttachment={uploadDraftContractAttachment}
           onStartCreate={startCreate}
           onNavigate={onNavigate}
-          onOpenContractCustomerCreation={() => openContractCustomerCreation(onNavigate)}
         />
       </Modal>
 

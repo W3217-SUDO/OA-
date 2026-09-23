@@ -68,7 +68,6 @@ export interface ContractWizardContentProps {
   onUploadDraftAttachment: () => void;
   onStartCreate: () => void;
   onNavigate?: (key: string) => void;
-  onOpenContractCustomerCreation: () => void;
 }
 
 export function ContractWizardContent({
@@ -107,12 +106,11 @@ export function ContractWizardContent({
   onUploadDraftAttachment,
   onStartCreate,
   onNavigate,
-  onOpenContractCustomerCreation,
 }: ContractWizardContentProps) {
   const showSteps = !editing && wizardStep < CONTRACT_CREATE_STEP_TITLES.length;
   const stepClass = mode === "page" ? "contract-page-steps" : "contract-create-steps";
 
-  if (mode === "page") return <ContractPageWizardContent {...{ wizardStep, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealApprovalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, personName, onContractFileChange, onApproveWizard, onOpenContractCustomerCreation, onClearLinkedCustomerContext, onDownloadAttachment }} />;
+  if (mode === "page") return <ContractPageWizardContent {...{ wizardStep, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealApprovalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, personName, onContractFileChange, onApproveWizard, onClearLinkedCustomerContext, onDownloadAttachment }} />;
 
   return (
     <>

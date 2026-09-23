@@ -1,5 +1,3 @@
-export type ContractCenterNavigate = (target: string) => void;
-
 export type ContractCustomerRelationTarget = {
   id?: number;
   serial_no?: string;
@@ -17,12 +15,4 @@ export const buildContractCustomerQueryFromRelation = (
   return customerId || customerNo || customer
     ? { customer_id: customerId, customer_no: customerNo, customer, exclude_archived: true }
     : null;
-};
-
-export const openContractCustomerCreation = (
-  onNavigate?: ContractCenterNavigate,
-): boolean => {
-  if (!onNavigate) return false;
-  onNavigate("customer-new");
-  return true;
 };

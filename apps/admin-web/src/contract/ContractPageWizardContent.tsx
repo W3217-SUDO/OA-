@@ -4,20 +4,15 @@ import { displayContractStatus } from "../contractStatusPresentation.mjs";
 import { CONTRACT_ATTACHMENT_ACCEPT } from "../contractWorkflowPolicy.mjs";
 import { CONTRACT_CREATE_STEP_TITLES, CONTRACT_FEE_MODE_OPTIONS, CONTRACT_TYPE_OPTIONS, colors, } from "./constants";
 import type { ContractWizardContentProps } from "./ContractCreateWizard";
-export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealApprovalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, personName, onContractFileChange, onApproveWizard, onOpenContractCustomerCreation, onClearLinkedCustomerContext, onDownloadAttachment }: Pick<ContractWizardContentProps, "wizardStep" | "wizardDraft" | "form" | "submitForm" | "reviewForm" | "sealForm" | "attachments" | "historyItems" | "stepItems" | "customerOptions" | "approvalOptions" | "sealApprovalOptions" | "sealAssets" | "currentApproval" | "canActOnCurrentApproval" | "contractApproverLabel" | "personName" | "onContractFileChange" | "onApproveWizard" | "onOpenContractCustomerCreation" | "onClearLinkedCustomerContext" | "onDownloadAttachment">) {
+export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealApprovalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, personName, onContractFileChange, onApproveWizard, onClearLinkedCustomerContext, onDownloadAttachment }: Pick<ContractWizardContentProps, "wizardStep" | "wizardDraft" | "form" | "submitForm" | "reviewForm" | "sealForm" | "attachments" | "historyItems" | "stepItems" | "customerOptions" | "approvalOptions" | "sealApprovalOptions" | "sealAssets" | "currentApproval" | "canActOnCurrentApproval" | "contractApproverLabel" | "personName" | "onContractFileChange" | "onApproveWizard" | "onClearLinkedCustomerContext" | "onDownloadAttachment">) {
     return <>
     <div className="contract-page-steps">
             {CONTRACT_CREATE_STEP_TITLES.map((title, index) => (<div key={title} className={wizardStep === index ? "active" : wizardStep > index ? "done" : ""}>{index + 1}. {title}</div>))}
           </div>
 
         {wizardStep === 0 && (<Form form={form} layout="horizontal" className="contract-page-form">
-              <Form.Item label="客户" required>
-                <Space.Compact style={{ width: "100%" }}>
-                  <Form.Item name="customer_id" noStyle rules={[{ required: true, message: "请选择客户" }]}>
-                    <Select style={{ flex: 1 }} showSearch optionFilterProp="label" placeholder="输入客户名称关键字后选择" options={customerOptions} notFoundContent="没有匹配客户，请先在客户管理中新建客户" onChange={() => onClearLinkedCustomerContext()}/>
-                  </Form.Item>
-                  <Button onClick={() => onOpenContractCustomerCreation()}>新建客户</Button>
-                </Space.Compact>
+              <Form.Item label="客户" name="customer_id" rules={[{ required: true, message: "请选择客户" }]}>
+                <Select style={{ width: "100%" }} showSearch optionFilterProp="label" placeholder="输入客户名称关键字后选择" options={customerOptions} notFoundContent="没有匹配客户，请先在客户管理中新建客户" onChange={() => onClearLinkedCustomerContext()}/>
               </Form.Item>
               <Form.Item label="合同主体" name="contract_body" rules={[{ required: true }]}><Select options={["律所", "平台"].map((v) => ({ value: v, label: v }))}/></Form.Item>
               <Form.Item label="合同类别" name="type" rules={[{ required: true, message: "请选择合同类别" }]}><Select allowClear showSearch optionFilterProp="label" placeholder="请选择合同类别" options={CONTRACT_TYPE_OPTIONS}/></Form.Item>
