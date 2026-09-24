@@ -33,7 +33,7 @@ export function createExternalCaseFeeColumns(context: {
                 if (!receipts.length) return invoiceDate || "—";
                 return <Space direction="vertical" size={0}>
                     {invoiceDate && <span>开票：{invoiceDate}</span>}
-                    {receipts.map((receipt, index) => <span key={`${receipt.attachmentId}-${index}`}>票据：{receipt.billDate || "—"}</span>)}
+                    {receipts.map((receipt, index) => <span key={`${receipt.attachmentId}-${index}`}>{receipt.billDate || "—"}</span>)}
                 </Space>;
             } },
         { title: "发票号", width: 220, render: (_: unknown, row: CaseRow) => {
@@ -42,8 +42,8 @@ export function createExternalCaseFeeColumns(context: {
                 return <Space direction="vertical" size={0}>
                     {row.data.invoice_no && <Button type="link" className="case-cell-link" onClick={() => context.openRelatedInvoice(row)}>{row.data.invoice_no}</Button>}
                     {receipts.map((receipt, index) => receipt.attachmentId > 0
-                        ? <Button key={`${receipt.attachmentId}-${index}`} type="link" className="case-cell-link" onClick={() => context.openCaseReceiptFiles(row)}>票据 {receipt.billNo || `文件${index + 1}`}</Button>
-                        : <span key={`missing-${index}`}>票据 {receipt.billNo || `文件${index + 1}`}（附件缺失）</span>)}
+                        ? <Button key={`${receipt.attachmentId}-${index}`} type="link" className="case-cell-link" onClick={() => context.openCaseReceiptFiles(row)}>{receipt.billNo || `文件${index + 1}`}</Button>
+                        : <span key={`missing-${index}`}>{receipt.billNo || `文件${index + 1}`}（附件缺失）</span>)}
                 </Space>;
             } },
         { title: "申请付款金额", width: 130, align: "right" as const, render: (_: unknown, row: CaseRow) => row.data.payment_requested_amount ?? 0 },
