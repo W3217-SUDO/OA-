@@ -1,5 +1,5 @@
 import type { UploadFile } from "antd";
-import { message, Modal } from "antd";
+import { Button, message, Modal, Table } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import type { MessageType } from "antd/es/message/interface";
 import dayjs from "dayjs";
@@ -14,6 +14,7 @@ import { PLATFORM_AGENCY_FEE_SUBTYPE } from "../../caseRelationConsumption.mjs";
 import { buildCasePaymentContext } from "../../caseSecondBatchParity";
 import { feeTypeSelection, initialFeeTypeId, type FeeTypeCatalogItem } from "../../feeTypeHierarchy.mjs";
 import { formatRequiredDate } from "../../formSafety";
+import { caseReceiptFiles } from "../caseReceiptFiles";
 import type { AttachmentRow, CaseAssistedFee, CaseCommissionPreview, CaseCommissionPreviewRow, CaseCommissionResult, CaseDetailCapabilities, CaseFileTypeOption, CasePaymentTypeOption, CaseRow, ContractRow, PaymentTypeCreateTarget, Profile, TaskRow } from "../types";
 /** legal finance operations; dependencies are read when each operation runs. */
 export interface CaseFinanceDependencies {
@@ -834,21 +835,76 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             setFeeInformSubmitting(false);
         }
     };
+    const downloadBillFile = async (path: string, filename: string) => {
+        const response = await api.get(path, { responseType: "blob" });
+        const url = URL.createObjectURL(response.data);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
     const downloadFeeInformBill = async (row: CaseRow) => {
         try {
             const inform = await loadLatestFeeInform(row);
             if (!inform)
                 return;
-            const response = await api.get(`/finance/fee-informs/${inform.id}/bill/download`, { responseType: "blob" });
-            const url = URL.createObjectURL(response.data);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = inform.receipt_attachment?.original_name || "费用通知票据";
-            link.click();
-            URL.revokeObjectURL(url);
+            await downloadBillFile(`/finance/fee-informs/${inform.id}/bill/download`, inform.receipt_attachment?.original_name || "费用通知票据");
         }
         catch (error: any) {
             message.error(error?.response?.data?.detail || "查看票据文件失败");
+        }
+    };
+    const openCaseReceiptFiles = async (row: CaseRow) => {
+        try {
+            const receipts = caseReceiptFiles(row.data);
+            const [attachmentsResponse, informsResponse] = await Promise.all([
+                api.get("/attachments", { params: { record_id: row.id, category: "案件票据文件", page_size: 200 } }),
+                api.get(`/finance/fees/${row.id}/informs`),
+            ]);
+            const attachments = new Map((attachmentsResponse.data?.items || []).map((item: any) => [Number(item.id), item]));
+            const rows = receipts.flatMap((receipt, index) => {
+                const attachment = attachments.get(receipt.attachmentId) as { original_name?: string } | undefined;
+                if (!attachment) return [];
+                return [{
+                    key: `receipt-${receipt.attachmentId}-${index}`,
+                    source: "案件票据",
+                    billNo: receipt.billNo,
+                    billDate: receipt.billDate,
+                    filename: attachment.original_name || receipt.originalName || "票据文件",
+                    path: `/attachments/${receipt.attachmentId}/download`,
+                }];
+            });
+            for (const inform of informsResponse.data?.items || []) {
+                if (!inform.receipt_attachment?.id) continue;
+                rows.push({
+                    key: `inform-${inform.id}`,
+                    source: "费用通知票据",
+                    billNo: String(inform.data?.bill_no || ""),
+                    billDate: String(inform.data?.bill_date || "").slice(0, 10),
+                    filename: String(inform.receipt_attachment.original_name || "费用通知票据"),
+                    path: `/finance/fee-informs/${inform.id}/bill/download`,
+                });
+            }
+            if (!rows.length) {
+                message.warning(receipts.length ? "票据附件不存在或当前账号无权查看" : "该费用尚无票据文件");
+                return;
+            }
+            Modal.info({
+                title: `票据文件：${row.serial_no}`,
+                width: 760,
+                okText: "关闭",
+                content: <Table size="small" rowKey="key" pagination={false} scroll={{ x: 620 }} dataSource={rows} columns={[
+                    { title: "来源", dataIndex: "source", width: 110 },
+                    { title: "票据号", dataIndex: "billNo", width: 150, render: (value: string) => value || "—" },
+                    { title: "日期", dataIndex: "billDate", width: 110, render: (value: string) => value || "—" },
+                    { title: "文件", dataIndex: "filename", ellipsis: true },
+                    { title: "操作", width: 80, render: (_: unknown, item: { path: string; filename: string }) => <Button type="link" onClick={() => void downloadBillFile(item.path, item.filename).catch((error: any) => message.error(error?.response?.data?.detail || "下载票据失败"))}>下载</Button> },
+                ]} />,
+            });
+        }
+        catch (error: any) {
+            message.error(error?.response?.data?.detail || "加载票据文件失败");
         }
     };
     const unlockFeeInform = async (row: CaseRow) => {
@@ -920,7 +976,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         if (key === "bill")
             return void openFeeInformBill(selectedFee!);
         if (key === "download-bill")
-            return void downloadFeeInformBill(selectedFee!);
+            return void (caseReceiptFiles(selectedFee!.data).length ? openCaseReceiptFiles(selectedFee!) : downloadFeeInformBill(selectedFee!));
         if (key === "unlock-inform")
             return void unlockFeeInform(selectedFee!);
         if (key === "link-inform")
@@ -1013,5 +1069,5 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             setCaseCommissionSubmitting(false);
         }
     };
-    return { loadCounselDetailAssistedFees, saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, openRelatedFee, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, openPaymentRequest, submitPaymentRequest, previewInternalPayment, submitCaseFeePayment, submitInternalPayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, refreshCaseFeeDetail, createFeeInform, loadLatestFeeInform, openFeeInformArrival, confirmFeeInformArrival, openFeeInformBill, uploadFeeInformBill, downloadFeeInformBill, unlockFeeInform, openFeeInformLinks, saveFeeInformLinks, deleteFeeInform, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions };
+    return { loadCounselDetailAssistedFees, saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, openRelatedFee, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, openPaymentRequest, submitPaymentRequest, previewInternalPayment, submitCaseFeePayment, submitInternalPayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, refreshCaseFeeDetail, createFeeInform, loadLatestFeeInform, openFeeInformArrival, confirmFeeInformArrival, openFeeInformBill, uploadFeeInformBill, downloadFeeInformBill, openCaseReceiptFiles, unlockFeeInform, openFeeInformLinks, saveFeeInformLinks, deleteFeeInform, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions };
 }

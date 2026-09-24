@@ -11,6 +11,7 @@ import { getCaseReminderDateValidationError } from "../../caseFifthBatchParity.m
 import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCasePhaseChangePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload } from "../../caseSecondBatchParity";
 import { buildCaseHearingPayload, buildCaseUnarchiveReviewPayload, getCaseArchiveReviewValidationError, getCaseHearingValidationError, getCaseUnarchiveReviewValidationError } from "../../caseWorkflowFrontendParity.mjs";
 import { formatRequiredDate } from "../../formSafety";
+import { collectCasePartyIdentities } from "../CasePartyIdentityFields";
 import { ARCHIVE_LOCKED_STATUSES, CASE_LITIGANT_PARTY_LABELS, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE, getCompanyScheduleCourtLevels, isCompanyCaseListRoute, noCaseDetailWriteCapability } from "../constants";
 import type { AttachmentRow, CaseClueEvidenceRow, CaseClueWorkspace, CaseDetailCapabilities, CaseEventRow, CaseFileTypeOption, CaseLitigantCandidate, CaseLitigantPartyField, CaseLogKind, CaseLogRow, CasePhaseOption, CaseRow, CaseTaskKind, CaseTaskPageState, ContractRow, Profile } from "../types";
 /** legal workflow operations; dependencies are read when each operation runs. */
@@ -1154,7 +1155,9 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 title: String(values.title || "").trim(),
                 customer_type: "当事人",
                 status: "潜在",
-                credit_code: String(values.credit_code || "").trim(),
+                organization_type: String(values.organization_type || "").trim(),
+                identity_no: values.organization_type === "个人" ? String(values.identity_no || "").trim() : "",
+                credit_code: values.organization_type === "个人" ? "" : String(values.identity_no || "").trim(),
                 phone: String(values.phone || "").trim(),
                 legal_representative: String(values.legal_representative || "").trim(),
                 registered_address: String(values.registered_address || "").trim(),
@@ -1169,6 +1172,10 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             setCaseCustomers((current) => current.some((item) => item.id === data.id) ? current : [data, ...current]);
             const currentValues = caseLitigantsForm.getFieldValue(creatingCasePartyRole) || [];
             caseLitigantsForm.setFieldValue(creatingCasePartyRole, Array.from(new Set([...currentValues, candidate.title])));
+            caseLitigantsForm.setFieldValue(["party_identities", creatingCasePartyRole, candidate.title], {
+                organization_type: String(values.organization_type || ""),
+                identity_no: String(values.identity_no || "").trim(),
+            });
             message.success(`${CASE_LITIGANT_PARTY_LABELS[creatingCasePartyRole]}当事人已新增并选中`);
             setCreatingCasePartyRole(null);
             casePartyCreateForm.resetFields();
@@ -1186,7 +1193,9 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             return;
         const values = await caseLitigantsForm.validateFields();
         try {
-            const { data } = await api.put(`/cases/${editingCaseLitigants.id}/litigants-detail`, values);
+            const payload = { ...values, ...collectCasePartyIdentities(values) };
+            delete payload.party_identities;
+            const { data } = await api.put(`/cases/${editingCaseLitigants.id}/litigants-detail`, payload);
             message.success("当事人信息已保存");
             setEditingCaseLitigants(null);
             setViewingCounselCase(data);

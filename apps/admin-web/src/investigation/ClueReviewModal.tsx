@@ -27,7 +27,7 @@ export default function ClueReviewModal({
   onOpenCase,
   embedded = false,
 }: ClueReviewModalProps) {
-  const [conflicts, setConflicts] = useState<{ clues: string[]; cases: string[] } | null>(null);
+  const [conflicts, setConflicts] = useState<{ clues: string[]; cases: string[]; case_search_available: boolean } | null>(null);
   const [conflictError, setConflictError] = useState("");
   useEffect(() => {
     if (!open || !clueReviewing || clueReviewing.status !== "待审批") {
@@ -52,7 +52,7 @@ export default function ClueReviewModal({
         <div className="clue-review-conflicts">
           {conflictError ? <Alert type="error" showIcon title={conflictError} /> : !conflicts ? <Spin size="small" /> : <>
             <div>疑似冲突线索：{conflictLinks(conflicts.clues, onOpenClue)}</div>
-            <div>疑似冲突案件：{conflictLinks(conflicts.cases, onOpenCase)}</div>
+            <div>疑似冲突案件：{conflicts.case_search_available ? conflictLinks(conflicts.cases, onOpenCase) : "未录入被调查对象或生产者，无法比对"}</div>
           </>}
         </div>
       )}

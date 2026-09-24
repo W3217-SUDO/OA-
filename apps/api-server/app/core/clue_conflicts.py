@@ -1,11 +1,18 @@
 """调查线索审批的疑似重复线索与案件检索。"""
 import re
 import unicodedata
+from typing import TypedDict
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BusinessRecord
+
+
+class ClueConflicts(TypedDict):
+    clues: list[str]
+    cases: list[str]
+    case_search_available: bool
 
 
 def _name(value: object) -> str:
@@ -40,25 +47,80 @@ def _contains_any(source: set[str], targets: set[str]) -> bool:
     return any(name in target for name in source for target in targets)
 
 
-async def clue_conflicts(clue: BusinessRecord, db: AsyncSession) -> dict[str, list[str]]:
+def _holder_reference(record: BusinessRecord) -> tuple[str, str, str]:
+    data = record.data or {}
+    legacy = _legacy_data(data)
+    holder_id = str(data.get("rights_holder_id") or data.get("customer_record_id") or data.get("customer_id") or "").strip()
+    holder_no = str(data.get("rights_holder_no") or data.get("customer_no") or legacy.get("CustomerNo") or "").strip()
+    holder_name = _name(data.get("rights_holder") or record.customer)
+    return holder_id, holder_no, holder_name
+
+
+def _case_defendants(data: dict) -> set[str]:
+    if "defendants" in data:
+        raw = data["defendants"]
+        if isinstance(raw, list):
+            return {_name(value.get("name") if isinstance(value, dict) else value) for value in raw} - {""}
+        return {_name(value) for value in re.split(r"[,，;；、|]+", str(raw or ""))} - {""}
+    if "opponent" in data or "defendant" in data:
+        return {_name(value) for value in re.split(r"[,，;；、|]+", str(data.get("opponent") or data.get("defendant") or ""))} - {""}
+    legacy = _legacy_data(data)
+    return {_name(value) for value in re.split(r"[,，;；、|]+", str(legacy.get("AppelleeNames") or ""))} - {""}
+
+
+async def clue_conflicts(clue: BusinessRecord, db: AsyncSession) -> ClueConflicts:
     """沿用旧系统的同权利人、店铺及调查主体匹配边界。"""
     data = clue.data or {}
-    holder = _name(data.get("rights_holder") or clue.customer)
-    if not holder:
-        return {"clues": [], "cases": []}
+    holder_id, holder_no, holder = _holder_reference(clue)
+    if not (holder_id or holder_no or holder):
+        return {"clues": [], "cases": [], "case_search_available": False}
     legacy = _legacy_data(data)
     shop_name = _name(data.get("shop_name") or data.get("store_name") or legacy.get("StoreName") or clue.title)
     shop_id = _name(data.get("shop_id") or data.get("store_id") or legacy.get("StoreId"))
     indictees = _clue_parties(data, "indictees", "indictee", "Indictee")
     producers = _clue_parties(data, "producers", "producer", "Producer")
+    has_case_subject = bool(indictees or producers)
+    holder_conditions = []
+    if holder:
+        holder_text = str(data.get("rights_holder") or clue.customer).strip()
+        holder_conditions.extend((
+            BusinessRecord.customer == holder_text,
+            BusinessRecord.data["rights_holder"].as_string() == holder_text,
+        ))
+    if holder_id:
+        holder_conditions.extend((
+            BusinessRecord.data["customer_id"].as_string() == holder_id,
+            BusinessRecord.data["customer_record_id"].as_string() == holder_id,
+            BusinessRecord.data["rights_holder_id"].as_string() == holder_id,
+        ))
+        if holder_id.isdigit():
+            holder_conditions.extend((
+                BusinessRecord.data["customer_id"].as_integer() == int(holder_id),
+                BusinessRecord.data["customer_record_id"].as_integer() == int(holder_id),
+                BusinessRecord.data["rights_holder_id"].as_integer() == int(holder_id),
+            ))
+    if holder_no:
+        holder_conditions.extend((
+            BusinessRecord.data["customer_no"].as_string() == holder_no,
+            BusinessRecord.data["rights_holder_no"].as_string() == holder_no,
+            BusinessRecord.data["legacy_record"]["CustomerNo"].as_string() == holder_no,
+        ))
     records = (await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module.in_(["clue", "case"]),
+        BusinessRecord.module.in_(["clue", "case"] if has_case_subject else ["clue"]),
         BusinessRecord.status.not_in(["已删除", "已回收", "已合并"]),
+        or_(*holder_conditions),
     ))).all()
     clue_nos: list[str] = []
     case_nos: list[str] = []
     for item in records:
-        if item.id == clue.id or _name((item.data or {}).get("rights_holder") or item.customer) != holder:
+        if item.id == clue.id:
+            continue
+        other_holder_id, other_holder_no, other_holder = _holder_reference(item)
+        if holder_id and other_holder_id and holder_id != other_holder_id:
+            continue
+        if holder_no and other_holder_no and holder_no != other_holder_no:
+            continue
+        if not ((holder_id and other_holder_id) or (holder_no and other_holder_no)) and other_holder != holder:
             continue
         other = item.data or {}
         if item.module == "clue":
@@ -72,21 +134,6 @@ async def clue_conflicts(clue: BusinessRecord, db: AsyncSession) -> dict[str, li
             if same_shop or same_shop_id or same_indictee or same_producer:
                 clue_nos.append(item.serial_no)
         else:
-            legacy_appellees = _name(_legacy_data(other).get("AppelleeNames"))
-            raw_defendants = other.get("defendants")
-            if legacy_appellees:
-                defendants = {legacy_appellees}
-            elif isinstance(raw_defendants, list):
-                defendants = {
-                    _name(value.get("name") if isinstance(value, dict) else value)
-                    for value in raw_defendants
-                }
-            else:
-                defendants = set()
-            if not defendants - {""}:
-                defendants = {_name(value) for value in re.split(
-                    r"[,，;；、|]+", str(other.get("opponent") or other.get("defendant") or ""),
-                )}
-            if _contains_any(indictees | producers, defendants - {""}):
+            if _contains_any(indictees | producers, _case_defendants(other)):
                 case_nos.append(item.serial_no)
-    return {"clues": sorted(set(clue_nos)), "cases": sorted(set(case_nos))}
+    return {"clues": sorted(set(clue_nos)), "cases": sorted(set(case_nos)), "case_search_available": has_case_subject}

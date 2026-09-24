@@ -790,6 +790,8 @@ async def _persist_case_litigant_customers(
     parties_by_role: dict[str, list[str]],
     identity: dict,
     db: AsyncSession,
+    *,
+    party_identities: dict[str, dict] | None = None,
 ) -> list[BusinessRecord]:
     """Materialize newly typed case parties in the customer register.
 
@@ -862,6 +864,12 @@ async def _persist_case_litigant_customers(
                 "roles": roles,
             },
         }
+        party_identity = (party_identities or {}).get(title) or {}
+        organization_type = str(party_identity.get("organization_type") or "")
+        identity_no = str(party_identity.get("identity_no") or "")
+        if organization_type and identity_no:
+            data["organization_type"] = organization_type
+            data["identity_no" if organization_type == "个人" else "credit_code"] = identity_no
         party = BusinessRecord(
             module="customer",
             serial_no=serial_no,

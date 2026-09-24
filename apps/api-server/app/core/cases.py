@@ -1552,15 +1552,41 @@ async def _persist_case_litigants(
     third_parties = _clean_case_litigant_values(body.third_parties)
     third_party_agents = _clean_case_litigant_agents(body.third_party_agents)
     customer_name = str(case_record.customer or "").strip()
+    current_data = dict(case_record.data or {})
+    selected_names = set(plaintiffs + defendants + third_parties)
+    existing_customers = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "customer",
+        BusinessRecord.status != "已回收",
+        BusinessRecord.title.in_(selected_names),
+    ))).all()) if selected_names else []
+    customers_by_name: dict[str, list[BusinessRecord]] = {}
+    for existing_customer in existing_customers:
+        customers_by_name.setdefault(existing_customer.title.strip(), []).append(existing_customer)
 
-    def clean_party_identities(raw_items, party_names: list[str]) -> list[dict]:
-        cleaned = []
+    def previous_party_names(plural: str, singular: str | None = None) -> list[str]:
+        names = current_data.get(plural)
+        if not names and singular and current_data.get(singular):
+            names = [current_data[singular]]
+        return _clean_case_litigant_values(names or [])
+
+    def clean_party_identities(raw_items, party_names: list[str], previous_names: list[str], previous_items: list[dict]) -> list[dict]:
+        previous_by_name = {
+            str(item.get("name") or "").strip(): item
+            for item in previous_items if isinstance(item, dict) and str(item.get("name") or "").strip()
+        }
+        cleaned_by_name: dict[str, dict] = {}
         for item in raw_items:
             name = str(item.name or "").strip()
             organization_type = str(item.organization_type or "").strip()
             identity_no = str(item.identity_no or "").strip().upper()
             if name not in party_names:
                 raise HTTPException(status_code=422, detail=f"当事人 {name} 不在当前案件当事人名单中")
+            if name in cleaned_by_name:
+                raise HTTPException(status_code=422, detail=f"当事人 {name} 的证件信息重复")
+            previous = previous_by_name.get(name)
+            if previous and organization_type == previous.get("organization_type") and identity_no == str(previous.get("identity_no") or "").strip().upper():
+                cleaned_by_name[name] = previous
+                continue
             if organization_type not in {"公司企业", "事业单位", "机关团体", "个人", "个体工商户", "其他"}:
                 raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的组织类型无效")
             if organization_type == "个人":
@@ -1568,17 +1594,40 @@ async def _persist_case_litigants(
                     raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的身份证号格式无效")
             elif len(identity_no) != 18 or not identity_no.isalnum():
                 raise HTTPException(status_code=422, detail=f"对方当事人 {name} 的统一社会信用代码格式无效")
-            cleaned.append({"name": name, "organization_type": organization_type, "identity_no": identity_no})
-        required_names = [name for name in party_names if name != customer_name]
-        identity_names = {item["name"] for item in cleaned}
-        missing = [name for name in required_names if name not in identity_names]
+            cleaned_by_name[name] = {"name": name, "organization_type": organization_type, "identity_no": identity_no}
+        for name in party_names:
+            if name in cleaned_by_name:
+                continue
+            if name in previous_by_name:
+                cleaned_by_name[name] = previous_by_name[name]
+                continue
+            matches = customers_by_name.get(name) or []
+            if len(matches) != 1:
+                continue
+            customer_data = matches[0].data or {}
+            organization_type = str(customer_data.get("organization_type") or "").strip()
+            identity_no = str((customer_data.get("identity_no") if organization_type == "个人" else customer_data.get("credit_code")) or "").strip().upper()
+            if organization_type == "个人":
+                valid = len(identity_no) == 18 and identity_no[:17].isdigit() and identity_no[-1] in "0123456789X"
+            else:
+                valid = organization_type in {"公司企业", "事业单位", "机关团体", "个体工商户", "其他"} and len(identity_no) == 18 and identity_no.isalnum()
+            if valid:
+                cleaned_by_name[name] = {"name": name, "organization_type": organization_type, "identity_no": identity_no}
+        required_names = [name for name in party_names if name != customer_name and (advance_creation or name not in previous_names)]
+        missing = [name for name in required_names if name not in cleaned_by_name]
         if missing:
             raise HTTPException(status_code=422, detail=f"请补充对方当事人证件信息：{'、'.join(missing)}")
-        return cleaned
+        return [cleaned_by_name[name] for name in party_names if name in cleaned_by_name]
 
-    plaintiff_identities = clean_party_identities(body.plaintiff_identities, plaintiffs)
-    defendant_identities = clean_party_identities(body.defendant_identities, defendants)
-    third_party_identities = clean_party_identities(body.third_party_identities, third_parties)
+    plaintiff_identities = clean_party_identities(
+        body.plaintiff_identities, plaintiffs, previous_party_names("plaintiffs", "plaintiff"), current_data.get("plaintiff_identities") or [],
+    )
+    defendant_identities = clean_party_identities(
+        body.defendant_identities, defendants, previous_party_names("defendants", "opponent"), current_data.get("defendant_identities") or [],
+    )
+    third_party_identities = clean_party_identities(
+        body.third_party_identities, third_parties, previous_party_names("third_parties"), current_data.get("third_party_identities") or [],
+    )
     case_type = str((case_record.data or {}).get("case_type") or "")
     permission_key = CASE_CREATE_PERMISSION_BY_TYPE.get(case_type)
     if enforce_create_permission and permission_key and identity.get("role") != "admin":
@@ -1592,8 +1641,8 @@ async def _persist_case_litigants(
         {"原告": plaintiffs, "被告": defendants, "第三人": third_parties},
         identity,
         db,
+        party_identities={item["name"]: item for item in [*plaintiff_identities, *defendant_identities, *third_party_identities]},
     )
-    current_data = dict(case_record.data or {})
     next_creation_step = current_data.get("case_creation_step")
     if advance_creation and str(next_creation_step or "") in {"basic", "litigants"}:
         next_creation_step = "litigants"

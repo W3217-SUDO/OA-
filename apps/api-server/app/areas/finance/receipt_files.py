@@ -148,6 +148,7 @@ async def upload_receipt_files(
             metadata = {
                 "attachment_id": attachment.id, "bill_no": bill_no.strip(),
                 "bill_date": str(bill_date), "bill_amount": (fee.data or {}).get("amount"),
+                "original_name": filename,
                 "uploaded_by": identity["username"], "uploaded_at": datetime.now().isoformat(timespec="seconds"),
             }
             fee.data = {**(fee.data or {}), "receipt_files": [*(fee.data or {}).get("receipt_files", []), metadata]}

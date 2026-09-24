@@ -1,5 +1,6 @@
-import { Button } from "antd";
+import { Button, Space } from "antd";
 import { caseFeeRefundLabel } from "../../caseFeeLegacyProjection.mjs";
+import { caseReceiptFiles } from "../caseReceiptFiles";
 import type { CaseRow } from "../types";
 export function createExternalCaseFeeColumns(context: {
     readonly viewingCounselCase: CaseRow | null;
@@ -7,6 +8,7 @@ export function createExternalCaseFeeColumns(context: {
     readonly casePersonDisplayName: (source: unknown, displayName?: unknown) => string;
     readonly openRelatedIncomingPayment: (fee: CaseRow) => void;
     readonly openRelatedInvoice: (fee: CaseRow) => void;
+    readonly openCaseReceiptFiles: (fee: CaseRow) => void;
 }) {
     return [
         { title: "合同编号", width: 150, render: (_: unknown, row: CaseRow) => {
@@ -25,8 +27,25 @@ export function createExternalCaseFeeColumns(context: {
                 const value = row.data.received_amount ?? row.data.cashed_amount;
                 return Number(value || 0) !== 0 ? <Button type="link" className="case-cell-link" onClick={() => context.openRelatedIncomingPayment(row)}>{value}</Button> : value ?? "/";
             } },
-        { title: "开票日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.invoice_date || "").slice(0, 10) || "—" },
-        { title: "发票号", width: 180, render: (_: unknown, row: CaseRow) => row.data.invoice_no ? <Button type="link" className="case-cell-link" onClick={() => context.openRelatedInvoice(row)}>{row.data.invoice_no}</Button> : "—" },
+        { title: "开票日期", width: 160, render: (_: unknown, row: CaseRow) => {
+                const receipts = caseReceiptFiles(row.data);
+                const invoiceDate = String(row.data.invoice_date || "").slice(0, 10);
+                if (!receipts.length) return invoiceDate || "—";
+                return <Space direction="vertical" size={0}>
+                    {invoiceDate && <span>开票：{invoiceDate}</span>}
+                    {receipts.map((receipt, index) => <span key={`${receipt.attachmentId}-${index}`}>票据：{receipt.billDate || "—"}</span>)}
+                </Space>;
+            } },
+        { title: "发票号", width: 220, render: (_: unknown, row: CaseRow) => {
+                const receipts = caseReceiptFiles(row.data);
+                if (!row.data.invoice_no && !receipts.length) return "—";
+                return <Space direction="vertical" size={0}>
+                    {row.data.invoice_no && <Button type="link" className="case-cell-link" onClick={() => context.openRelatedInvoice(row)}>{row.data.invoice_no}</Button>}
+                    {receipts.map((receipt, index) => receipt.attachmentId > 0
+                        ? <Button key={`${receipt.attachmentId}-${index}`} type="link" className="case-cell-link" onClick={() => context.openCaseReceiptFiles(row)}>票据 {receipt.billNo || `文件${index + 1}`}</Button>
+                        : <span key={`missing-${index}`}>票据 {receipt.billNo || `文件${index + 1}`}（附件缺失）</span>)}
+                </Space>;
+            } },
         { title: "申请付款金额", width: 130, align: "right" as const, render: (_: unknown, row: CaseRow) => row.data.payment_requested_amount ?? 0 },
     ];
 }

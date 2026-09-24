@@ -2890,12 +2890,15 @@ async def list_case_litigant_candidates(
 ):
     """案件当事人选择器只返回公司客户的最小身份字段。"""
     from app.core.permissions import (
-        _require_case_action,
+        _record_scope_conditions, _require_case_action,
     )
     await _require_case_action(identity, db, "case.detail.update")
+    scope_identity = {**identity, "role": identity.get("_actual_role") or identity.get("role")}
+    scope_identity.pop("_page_menu_capability", None)
     conditions = [
         BusinessRecord.module == "customer",
         BusinessRecord.status != "已回收",
+        *(await _record_scope_conditions(scope_identity, db)),
     ]
     normalized_keyword = keyword.strip()
     if normalized_keyword:

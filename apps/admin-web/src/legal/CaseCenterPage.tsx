@@ -117,6 +117,7 @@ import { useReceiptFees } from "./hooks/useReceiptFees";
 import { ReceiptBatchUploadModal } from "./ReceiptBatchUploadModal";
 import { createCaseColumns } from "./columns/caseColumns";
 import { createExternalCaseFeeColumns } from "./columns/externalCaseFeeColumns";
+import { CasePartyIdentityFields, casePartyIdentityFormValues } from "./CasePartyIdentityFields";
 import { rememberTaskDetailTarget } from "../taskDetailNavigation";
 import { createGroupedOriginalCaseColumns } from "./columns/groupedOriginalCaseColumns";
 import { createHearingColumns } from "./columns/hearingColumns";
@@ -1398,7 +1399,7 @@ export default function CaseCenterPage({
     get load() { return reloadCaseData; },
   });
 
-  const { loadCounselDetailAssistedFees, saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, openRelatedFee, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, openPaymentRequest, submitPaymentRequest, previewInternalPayment, submitCaseFeePayment, submitInternalPayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, refreshCaseFeeDetail, createFeeInform, loadLatestFeeInform, openFeeInformArrival, confirmFeeInformArrival, openFeeInformBill, uploadFeeInformBill, downloadFeeInformBill, unlockFeeInform, openFeeInformLinks, saveFeeInformLinks, deleteFeeInform, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions } = createCaseFinanceActions({
+  const { loadCounselDetailAssistedFees, saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, openRelatedFee, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, openPaymentRequest, submitPaymentRequest, previewInternalPayment, submitCaseFeePayment, submitInternalPayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, refreshCaseFeeDetail, createFeeInform, loadLatestFeeInform, openFeeInformArrival, confirmFeeInformArrival, openFeeInformBill, uploadFeeInformBill, downloadFeeInformBill, openCaseReceiptFiles, unlockFeeInform, openFeeInformLinks, saveFeeInformLinks, deleteFeeInform, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions } = createCaseFinanceActions({
     get counselDetailAssistedFeePage() { return counselDetailAssistedFeePage; },
     get counselDetailAssistedFeePageSize() { return counselDetailAssistedFeePageSize; },
     get counselDetailAssistedFeeRequestRef() { return counselDetailAssistedFeeRequestRef; },
@@ -2079,7 +2080,7 @@ export default function CaseCenterPage({
   };
   const openCasePartyCreator = (role: CaseLitigantPartyField) => {
     casePartyCreateForm.resetFields();
-    casePartyCreateForm.setFieldsValue({ title: "", credit_code: "", phone: "", legal_representative: "", registered_address: "" });
+    casePartyCreateForm.setFieldsValue({ title: "", organization_type: undefined, identity_no: "", phone: "", legal_representative: "", registered_address: "" });
     setCreatingCasePartyRole(role);
   };
 
@@ -2141,6 +2142,7 @@ export default function CaseCenterPage({
       defendant_agents: normalizeCaseLitigantAgents(row.data.defendant_agents),
       third_parties: row.data.third_parties || [],
       third_party_agents: normalizeCaseLitigantAgents(row.data.third_party_agents),
+      party_identities: casePartyIdentityFormValues(row.data),
       comment: "",
     });
     setEditingCaseLitigants(row);
@@ -2835,6 +2837,7 @@ export default function CaseCenterPage({
     get casePersonDisplayName() { return casePersonDisplayName; },
     get openRelatedIncomingPayment() { return openRelatedIncomingPayment; },
     get openRelatedInvoice() { return openRelatedInvoice; },
+    get openCaseReceiptFiles() { return openCaseReceiptFiles; },
   });
   const closeCaseCommission = () => {
     setCaseCommissionPreview(null);
@@ -4524,6 +4527,8 @@ export default function CaseCenterPage({
             {renderCasePartySelector("defendants", true)}
             {renderCasePartySelector("third_parties")}
           </div>
+          {(["plaintiffs", "defendants", "third_parties"] as CaseLitigantPartyField[]).map((role) =>
+            <CasePartyIdentityFields key={role} form={caseLitigantsForm} role={role} originals={casePartyIdentityFormValues(editingCaseLitigants?.data || {})} />)}
           {renderCaseLitigantAgentEditor("plaintiff_agents")}
           {renderCaseLitigantAgentEditor("defendant_agents")}
           {renderCaseLitigantAgentEditor("third_party_agents")}
@@ -4545,7 +4550,10 @@ export default function CaseCenterPage({
         <Form form={casePartyCreateForm} layout="vertical">
           <Form.Item label="当事人名称" name="title" rules={[{ required: true, whitespace: true, message: "请输入当事人名称" }]}><Input maxLength={256} /></Form.Item>
           <div className="form-grid">
-            <Form.Item label="统一社会信用代码/证件号" name="credit_code"><Input maxLength={128} /></Form.Item>
+            <Form.Item label="组织类型" name="organization_type" rules={[{ required: true, message: "请选择组织类型" }]}><Select options={["公司企业","事业单位","机关团体","个人","个体工商户","其他"].map(value=>({value,label:value}))} /></Form.Item>
+            <Form.Item noStyle shouldUpdate={(previous,current)=>previous.organization_type!==current.organization_type}>
+              {({getFieldValue})=>{const isPerson=getFieldValue("organization_type")==="个人";return <Form.Item label={isPerson?"身份证号":"统一社会信用代码"} name="identity_no" rules={[{required:true,message:"请输入证件号"},{pattern:isPerson?/^\d{17}[\dXx]$/:/^[0-9A-Za-z]{18}$/,message:isPerson?"请输入18位身份证号":"请输入18位统一社会信用代码"}]}><Input maxLength={18}/></Form.Item>}}
+            </Form.Item>
             <Form.Item label="联系电话" name="phone"><Input maxLength={64} /></Form.Item>
             <Form.Item label="法定代表人" name="legal_representative"><Input maxLength={128} /></Form.Item>
             <Form.Item label="注册地址" name="registered_address"><Input maxLength={256} /></Form.Item>
