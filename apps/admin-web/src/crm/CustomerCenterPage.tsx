@@ -462,7 +462,7 @@ export default function CustomerCenterPage({
   const save = async () => {
     const v = await form.validateFields();
     const detailFields = [
-      "contact", "phone", "level", "credit_code", "legal_representative",
+      "contact", "phone", "level", "organization_type", "identity_no", "credit_code", "legal_representative",
       "registered_address", "invoice_title", "taxpayer_id", "invoice_address",
       "invoice_phone", "bank_name", "bank_account", "customer_type",
       "short_name", "fax", "legal_agent_id_no", "legal_agent_title",
@@ -476,6 +476,8 @@ export default function CustomerCenterPage({
     const details = Object.fromEntries(
       detailFields.map((key) => [key, v[key] || ""]),
     );
+    if (v.organization_type === "个人") details.credit_code = "";
+    else details.identity_no = "";
     const contactAccounts = Array.isArray(v.contact)
       ? v.contact.map((value: string) => String(value || "").trim()).filter(Boolean)
       : String(v.contact || "").trim()

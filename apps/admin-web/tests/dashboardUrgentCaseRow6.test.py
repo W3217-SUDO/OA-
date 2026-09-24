@@ -72,7 +72,6 @@ class DashboardUrgentCaseRow6Test(unittest.IsolatedAsyncioTestCase):
                           "case_id": case.id, "case_no": case.serial_no},
                 ))
             await db.commit()
-            self.expected_company_case_ids = {cases["own"].id, cases["company"].id}
             self.expected_personal_case_ids = {cases["own"].id}
             self.company_case_id = cases["company"].id
 
@@ -102,11 +101,11 @@ class DashboardUrgentCaseRow6Test(unittest.IsolatedAsyncioTestCase):
         metric = next(item for item in metrics_response.json()["metrics"] if item["key"] == "urgent-cases")
         return metric, case_response.json()
 
-    async def test_company_case_permission_counts_due_case_tasks_and_matches_drilldown(self):
+    async def test_company_case_permission_does_not_expand_personal_urgent_cases(self):
         metric, search = await self._dashboard_and_cases()
-        self.assertEqual(metric["value"], "2件")
-        self.assertEqual(search["total"], 2)
-        self.assertEqual({item["id"] for item in search["items"]}, self.expected_company_case_ids)
+        self.assertEqual(metric["value"], "0件")
+        self.assertEqual(search["total"], 0)
+        self.assertEqual(search["items"], [])
 
     async def test_without_company_case_permission_only_personal_cases_are_counted(self):
         app.dependency_overrides[current_identity] = lambda: {"username": self.member, "role": "user"}

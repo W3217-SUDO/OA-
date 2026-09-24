@@ -302,10 +302,12 @@ export const ARCHIVE_FINAL_STATUSES = ["已归档", "亏损归档"];
 export const ARCHIVE_LOCKED_STATUSES = [...ARCHIVE_REVIEW_STATUSES, ...ARCHIVE_FINAL_STATUSES];
 
 export const noCaseDetailWriteCapability: CaseDetailCapabilities = {
-  can_write: false, can_generate_document: false, can_upload_attachment: false, can_delete_attachment: false,
+  can_write: false, can_generate_document: false, can_manage_document: false, can_upload_attachment: false, can_delete_attachment: false,
   can_create_reminder: false, can_delete_reminder: false, can_create_log: false,
   can_update_progress: false, can_change_phase: false, can_manage_hearing: false, can_create_case_task: false, can_delete_case: false, can_duplicate_case: false, can_merge_case: false, can_assign_team: false,
   can_edit_hearing_lawyer: false, can_edit_basic: false, can_edit_court_info: false, can_close_case: false, can_archive: false,
+  can_edit_notary: false, can_edit_litigants: false, can_edit_settlement: false,
+  can_edit_criminal_public_security: false, can_edit_criminal_procuratorate: false, can_edit_criminal_court: false,
   can_create_finance: false, can_edit_finance: false, can_delete_finance: false,
   can_refund_finance: false, can_apply_fee_payment: false, can_apply_fee_invoice: false,
   can_manage_fee_notice: false, can_confirm_fee_arrival: false, can_view_fee_receipt: false,

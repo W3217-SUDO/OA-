@@ -2,6 +2,7 @@
 
 import tempfile
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.config import settings
 from app.core.clue_conflicts import clue_conflicts
+from app.core.cases import _urgent_case_ids
 from app.database import Base, get_db
 from app.main import app
 from app.models import BusinessRecord, FileAttachment, SystemParameter, User
@@ -64,6 +66,92 @@ class Rows0922Test(unittest.IsolatedAsyncioTestCase):
     def record(module, serial, customer="CODEX-0922-holder", data=None):
         return BusinessRecord(module=module, serial_no=serial, title=serial, customer=customer,
                               owner=IDENTITY["username"], department="测试部", status="有效", data=data or {})
+
+    async def test_urgent_cases_only_include_my_open_tasks_due_within_fifteen_days(self):
+        today = date(2026, 9, 25)
+        async with self.sessions() as db:
+            cases = [self.record("case", f"CODEX-0922-urgent-{number}") for number in range(5)]
+            db.add_all(cases)
+            await db.flush()
+            tasks = []
+            for index, days in enumerate((15, 16, -1, 1, 1)):
+                task = self.record("task", f"CODEX-0922-task-{index}", data={
+                    "source": "案件任务", "case_id": cases[index].id,
+                    "deadline": (today + timedelta(days=days)).isoformat(),
+                })
+                task.status = "进行中" if index != 3 else "已完成"
+                if index == 4:
+                    task.owner = "CODEX-0922-other"
+                tasks.append(task)
+            db.add_all(tasks)
+            await db.commit()
+            urgent = await _urgent_case_ids(cases, db, IDENTITY["username"], as_of=today)
+            self.assertEqual(urgent, {cases[0].id, cases[2].id})
+
+    async def test_customer_generic_edit_rejects_duplicate_identity_and_persists_valid_change(self):
+        async with self.sessions() as db:
+            first = self.record("customer", "CODEX-0922-customer-1", data={
+                "organization_type": "公司企业", "credit_code": "913100000000000001",
+            })
+            second = self.record("customer", "CODEX-0922-customer-2", data={
+                "organization_type": "公司企业", "credit_code": "913100000000000002",
+            })
+            db.add_all([first, second])
+            await db.commit()
+            second_id = second.id
+        duplicate = await self.client.patch(f"{API}/records/{second_id}", json={"data": {
+            "organization_type": "公司企业", "credit_code": "913100000000000001",
+        }})
+        self.assertEqual(duplicate.status_code, 409, duplicate.text)
+        valid = await self.client.patch(f"{API}/records/{second_id}", json={"data": {
+            "organization_type": "公司企业", "credit_code": "913100000000000003",
+        }})
+        self.assertEqual(valid.status_code, 200, valid.text)
+        async with self.sessions() as db:
+            saved = await db.get(BusinessRecord, second_id)
+            self.assertEqual(saved.data["credit_code"], "913100000000000003")
+
+    async def test_official_receipt_requires_both_case_numbers_and_reaches_company_files(self):
+        serial = "CODEX-0922-receipt-case"
+        court_no = "（2026）沪0101民初1号"
+        async with self.sessions() as db:
+            case = self.record("case", serial, data={"court_case_no": court_no})
+            db.add(case)
+            await db.commit()
+            case_id = case.id
+        with patch("app.areas.aws.router.UPLOAD_ROOT", Path(self.temporary.name)):
+            wrong = await self.client.post(
+                f"{API}/documents/official/upload",
+                data={"document_date": "2026-09-25"},
+                files={"file": (f"{serial}_（2026）沪0101民初2号.pdf", b"pdf", "application/pdf")},
+            )
+            self.assertEqual(wrong.status_code, 422, wrong.text)
+            accepted = await self.client.post(
+                f"{API}/documents/official/upload",
+                data={"document_date": "2026-09-25"},
+                files={"file": (f"{serial}_{court_no}.pdf", b"pdf", "application/pdf")},
+            )
+        self.assertEqual(accepted.status_code, 201, accepted.text)
+        attachment = accepted.json()["attachment"]
+        self.assertEqual(attachment["record_id"], case_id)
+        self.assertEqual(attachment["category"], "官方收文")
+        for scope in ("official", "company"):
+            listing = await self.client.get(f"{API}/documents/receipts", params={"scope": scope})
+            self.assertEqual(listing.status_code, 200, listing.text)
+            self.assertEqual(listing.json()["total"], 1)
+        local_file = Path(self.temporary.name) / "CODEX-0922-notice.pdf"
+        local_file.write_bytes(b"pdf")
+        async with self.sessions() as db:
+            db.add(FileAttachment(
+                record_id=case_id, category="案件文档", original_name="CODEX-0922-通知书.pdf",
+                stored_name=local_file.name, content_type="application/pdf", size=3,
+                path=str(local_file), uploader=IDENTITY["username"], remark="",
+            ))
+            await db.commit()
+        mine = await self.client.get(f"{API}/documents/receipts", params={"scope": "mine"})
+        company = await self.client.get(f"{API}/documents/receipts", params={"scope": "company"})
+        self.assertEqual(mine.json()["total"], 1)
+        self.assertEqual(company.json()["total"], 2)
 
     async def test_conflict_uses_current_defendant_and_same_holder(self):
         async with self.sessions() as db:
@@ -119,7 +207,7 @@ class Rows0922Test(unittest.IsolatedAsyncioTestCase):
             matched = await clue_conflicts(clue, db)
             self.assertEqual(matched["cases"], ["CODEX-0922-party-case"])
 
-    async def test_detail_adds_name_only_defendant_without_weakening_creation(self):
+    async def test_detail_requires_identity_for_new_defendant(self):
         async with self.sessions() as db:
             case = self.record("case", "CODEX-0922-name-only-case", data={
                 "case_type": "民事案件", "case_creation_step": "basic",
@@ -142,7 +230,14 @@ class Rows0922Test(unittest.IsolatedAsyncioTestCase):
             }],
         })
         self.assertEqual(invalid.status_code, 422, invalid.text)
-        detail = await self.client.put(f"{API}/cases/{case_id}/litigants-detail", json=payload)
+        missing = await self.client.put(f"{API}/cases/{case_id}/litigants-detail", json=payload)
+        self.assertEqual(missing.status_code, 422, missing.text)
+        detail = await self.client.put(f"{API}/cases/{case_id}/litigants-detail", json={
+            **payload,
+            "defendant_identities": [{
+                "name": "新增被告", "organization_type": "公司企业", "identity_no": "913100000000000002",
+            }],
+        })
         self.assertEqual(detail.status_code, 200, detail.text)
         self.assertEqual(detail.json()["data"]["defendants"], payload["defendants"])
         self.assertEqual(detail.json()["data"]["opponent"], "旧被告、新增被告")
@@ -152,7 +247,7 @@ class Rows0922Test(unittest.IsolatedAsyncioTestCase):
             ))
             self.assertIsNotNone(party)
             self.assertEqual(party.data["case_litigant_origin"]["case_id"], case_id)
-            self.assertNotIn("credit_code", party.data)
+            self.assertEqual(party.data["credit_code"], "913100000000000002")
             matched = await clue_conflicts(clue, db)
             self.assertEqual(matched["cases"], ["CODEX-0922-name-only-case"])
 

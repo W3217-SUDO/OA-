@@ -43,14 +43,16 @@ class RoleActionTreeTest(unittest.TestCase):
         self.assertIn("case-mine", checked)
         self.assertIn("action:case.progress.update", checked)
         self.assertIn("action:case.task.create", checked)
+        self.assertIn("action:case.document.manage", checked)
         self.assertNotIn("案件承办", checked)
 
         role.permissions = _explicit_case_role_permissions([
-            *[key for key in checked if key != "action:case.progress.update"],
+            *[key for key in checked if key not in {"action:case.progress.update", "action:case.document.manage"}],
             "action:case.fee.create",
         ])
         self.assertIn(CASE_ACTIONS_EXPLICIT_MARKER, role.permissions)
         self.assertNotIn("case.progress.update", _effective_job_role_action_keys(role))
+        self.assertNotIn("case.document.manage", _effective_job_role_action_keys(role))
         self.assertIn("case.detail.update", _effective_job_role_action_keys(role))
         self.assertIn("case.fee.create", _effective_job_role_action_keys(role))
         self.assertIn("case-mine", _job_role_tree_checked_permissions(role))
@@ -84,12 +86,13 @@ class RoleActionPersistenceTest(unittest.IsolatedAsyncioTestCase):
 
                 checked = _job_role_tree_checked_permissions(role)
                 role.permissions = _explicit_case_role_permissions([
-                    key for key in checked if key != "action:case.progress.update"
+                    key for key in checked if key not in {"action:case.progress.update", "action:case.document.manage"}
                 ])
                 await db.commit()
                 await db.refresh(role)
                 after = await _user_permission_payload(user, db)
                 self.assertNotIn("case.progress.update", after["action_keys"])
+                self.assertNotIn("case.document.manage", after["action_keys"])
                 self.assertIn("case.detail.update", after["action_keys"])
                 self.assertIn("case-mine", after["menu_keys"])
         finally:

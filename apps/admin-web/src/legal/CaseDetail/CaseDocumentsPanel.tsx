@@ -118,10 +118,10 @@ export const CaseDocumentsPanel = ({
             {item.category==="AI空间"?<RobotOutlined className="case-doc-icon"/>:item.type==="group"&&expandedCounselDocGroups[item.category]?<FolderOpenOutlined className="case-doc-icon"/>:<FolderOutlined className="case-doc-icon"/>}
             <span>{item.label}</span>
           </button>
-          {counselDetailCapabilities.can_write&&item.category==="案件文档全部"&&(
+          {counselDetailCapabilities.can_manage_document&&item.category==="案件文档全部"&&(
             <Button type="text" className="case-doc-tree-action case-doc-tree-add" icon={<PlusCircleFilled/>} title="新增自定义案件文档目录" aria-label="新增自定义案件文档目录" onClick={()=>openCaseDocumentFolderEditor({mode:"create"})}/>
           )}
-          {counselDetailCapabilities.can_write&&item.custom&&activeCounselDocCategory===item.category&&<><Button type="text" className="case-doc-tree-action" icon={<EditOutlined/>} title={`重命名目录${item.label}`} aria-label={`重命名目录${item.label}`} onClick={()=>openCaseDocumentFolderEditor({mode:"rename",originalName:item.label})}/><Button type="text" danger className="case-doc-tree-action" icon={<CloseOutlined/>} title={`删除目录${item.label}`} aria-label={`删除目录${item.label}`} onClick={()=>deleteCaseDocumentFolder(item.label)}/></>}
+          {counselDetailCapabilities.can_manage_document&&item.custom&&activeCounselDocCategory===item.category&&<><Button type="text" className="case-doc-tree-action" icon={<EditOutlined/>} title={`重命名目录${item.label}`} aria-label={`重命名目录${item.label}`} onClick={()=>openCaseDocumentFolderEditor({mode:"rename",originalName:item.label})}/><Button type="text" danger className="case-doc-tree-action" icon={<CloseOutlined/>} title={`删除目录${item.label}`} aria-label={`删除目录${item.label}`} onClick={()=>deleteCaseDocumentFolder(item.label)}/></>}
           </div>
         ))}
       </aside>
@@ -132,7 +132,7 @@ export const CaseDocumentsPanel = ({
         {title:"上传人",dataIndex:"uploader_display_name",width:110,render:(_:unknown,row:AttachmentRow)=>row.uploader_display_name||row.uploader||"—"},
         {title:"文件名称",dataIndex:"original_name",width:360,ellipsis:true},
         {title:"上传时间",dataIndex:"created_at",width:180,render:(value:string)=>value&&dayjs(value).isValid()?dayjs(value).format("YYYY-MM-DD HH:mm:ss"):"—"},
-        {title:"操作",key:"actions",width:isAiSpaceFolder?410:420,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_write&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_write&&!isAiSpaceFolder&&row.record_id===viewingCase.id&&/.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCaseWordEditor(row)}>在线编辑</Button>}{counselDetailCapabilities.can_write&&!row.is_related_document&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_write&&row.record_id===viewingCase.id&&row.is_locked&&<Button type="link" onClick={()=>void unlockCounselDetailAttachment(row)}>解锁</Button>}{counselDetailCapabilities.can_write&&canApplySealToCounselAttachment(row)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>申请用印</Button>}</Space>},
+        {title:"操作",key:"actions",width:isAiSpaceFolder?410:420,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_manage_document&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_manage_document&&!isAiSpaceFolder&&row.record_id===viewingCase.id&&/.docx?$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCaseWordEditor(row)}>在线编辑</Button>}{counselDetailCapabilities.can_manage_document&&!row.is_related_document&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_upload_attachment&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_manage_document&&row.record_id===viewingCase.id&&row.is_locked&&<Button type="link" onClick={()=>void unlockCounselDetailAttachment(row)}>解锁</Button>}{counselDetailCapabilities.can_write&&canApplySealToCounselAttachment(row)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>申请用印</Button>}</Space>},
       ]}/>
       {caseDocumentGenerationError && <Alert
         type="error"
@@ -144,7 +144,7 @@ export const CaseDocumentsPanel = ({
       />}
       <Space wrap className="case-document-toolbar">
         <Select value={counselUploadCategory} disabled={isAiSpaceFolder} style={{width:180}} onChange={setCounselUploadCategory} options={activeCounselUploadCategoryOptions}/>
-        {counselDetailCapabilities.can_write&&isAiSpaceFolder&&<Button icon={<FileWordOutlined/>} onClick={openCreateAiDraft}>新建 Word 文档</Button>}
+        {counselDetailCapabilities.can_upload_attachment&&isAiSpaceFolder&&<Button icon={<FileWordOutlined/>} onClick={openCreateAiDraft}>新建 Word 文档</Button>}
         {counselDetailCapabilities.can_upload_attachment && <Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}
         {counselDetailCapabilities.can_generate_document && <Dropdown
           trigger={["click"]}
@@ -166,7 +166,7 @@ export const CaseDocumentsPanel = ({
           aria-haspopup="menu"
           aria-expanded={caseDocumentGenerationMenuOpen}
         >生成操作</Button></Dropdown>}
-        {counselDetailCapabilities.can_write && <Dropdown trigger={["click"]} menu={{items:[{key:"delete",label:"删除"},{key:"seal",label:"申请用印"},{key:"move",label:"更改文档目录"}],onClick:({key})=>handleCounselDocumentMoreAction(key)}}><Button>更多操作</Button></Dropdown>}
+        {(counselDetailCapabilities.can_delete_attachment || counselDetailCapabilities.can_manage_document || counselDetailCapabilities.can_write) && <Dropdown trigger={["click"]} menu={{items:[...(counselDetailCapabilities.can_delete_attachment ? [{key:"delete",label:"删除"}] : []),...(counselDetailCapabilities.can_write ? [{key:"seal",label:"申请用印"}] : []),...(counselDetailCapabilities.can_manage_document ? [{key:"move",label:"更改文档目录"}] : [])],onClick:({key})=>handleCounselDocumentMoreAction(key)}}><Button>更多操作</Button></Dropdown>}
         {activeCounselDocCategory&&<Tag color="green">当前目录：{activeCounselDocLabel}</Tag>}
       </Space>
       </div>

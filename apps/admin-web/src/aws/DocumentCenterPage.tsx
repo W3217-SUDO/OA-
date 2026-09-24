@@ -726,6 +726,8 @@ export default function DocumentCenterPage({
     try {
       await api.post(officialImport ? "/documents/official/upload" : "/attachments", form);
       message.success(officialImport ? "官文已上传并生成收文记录" : "文件上传成功");
+      setFile(null);
+      uploadForm.resetFields();
       setUploadOpen(false);
       load();
     } catch (error: any) {
@@ -1509,7 +1511,7 @@ export default function DocumentCenterPage({
         file={file}
         onFileChange={setFile}
         onOk={upload}
-        onCancel={() => setUploadOpen(false)}
+        onCancel={() => { setFile(null); uploadForm.resetFields(); setUploadOpen(false); }}
       />
 
       <TemplateModal

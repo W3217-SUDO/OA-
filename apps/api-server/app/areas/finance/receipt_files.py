@@ -9,9 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import UPLOAD_ROOT
+from app.core.cases import _case_action_granted
 from app.core.dependencies import current_identity, get_db, settings
 from app.core.finance import _fee_query_rows
-from app.core.permissions import _permission_payload_for_identity, _record_scope_conditions, _require_record_module_menu
+from app.core.permissions import _permission_payload_for_identity, _record_scope_conditions, _require_case_action, _require_record_module_menu
 from app.models import BusinessRecord, FileAttachment, WorkflowEvent
 
 
@@ -84,7 +85,8 @@ async def list_receipt_fees(
         data = row.get("data") or {}
         row["data"] = {**data, "receipt_status": "已上传" if data.get("receipt_files") else "未上传"}
     start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": len(rows), "page": page, "page_size": page_size}
+    can_upload = await _case_action_granted(_actual_identity(identity), db, "case.fee.receipt.upload")
+    return {"items": rows[start:start + page_size], "total": len(rows), "page": page, "page_size": page_size, "can_upload": can_upload}
 
 
 @router.post(f"{settings.api_prefix}/finance/receipt-files/batch", status_code=status.HTTP_201_CREATED)
@@ -92,6 +94,7 @@ async def upload_receipt_files(
     fee_ids: str = Form(...), bill_no: str = Form(...), bill_date: date = Form(...),
     file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
+    await _require_case_action(_actual_identity(identity), db, "case.fee.receipt.upload")
     try:
         selected_ids = list(dict.fromkeys(int(value.strip()) for value in fee_ids.split(",")))
     except ValueError as exc:

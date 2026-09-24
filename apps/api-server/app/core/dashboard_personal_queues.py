@@ -21,7 +21,7 @@ async def personal_queues(identity, db):
         row["amount"] = round(row["amount"] + amount, 2)
 
     urgent_cases = await dashboard_urgent_cases(identity, db, identity["_dashboard_case_ids"])
-    urgent_case_ids = await _urgent_case_ids(urgent_cases, db)
+    urgent_case_ids = await _urgent_case_ids(urgent_cases, db, identity["username"])
     for case in urgent_cases:
         if case.id in urgent_case_ids:
             add("urgent-cases", case)

@@ -8,6 +8,7 @@ export function useReceiptFees(route: string) {
   const active = route === "case-files-receipt";
   const [rows, setRows] = useState<CaseRow[]>([]);
   const [total, setTotal] = useState(0);
+  const [canUpload, setCanUpload] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(active);
@@ -38,11 +39,13 @@ export function useReceiptFees(route: string) {
       if (request !== sequence.current) return false;
       setRows(data.items);
       setTotal(data.total);
+      setCanUpload(data.can_upload === true);
       return true;
     } catch (failure: any) {
       if (request !== sequence.current) return false;
       setRows([]);
       setTotal(0);
+      setCanUpload(false);
       const detail = failure?.response?.data?.detail;
       setError(typeof detail === "string" ? detail : "案件费用票据列表加载失败，请重试");
       return false;
@@ -55,9 +58,10 @@ export function useReceiptFees(route: string) {
     current.current = { query: {}, page: 1, pageSize: 20 };
     setRows([]);
     setTotal(0);
+    setCanUpload(false);
     void search({}, 1, 20);
     return () => { sequence.current += 1; };
   }, [route, search]);
 
-  return { rows, total, page, pageSize, loading, error, search, reload: () => search() };
+  return { rows, total, page, pageSize, canUpload, loading, error, search, reload: () => search() };
 }

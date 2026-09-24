@@ -233,7 +233,6 @@ statusColors
 import { CaseAgentDrawer } from "./CaseAgentDrawer";
 import { CaseCreateWizard } from "./CaseCreateWizard";
 import {
-CaseCaseLogsPanel,
 CaseCaseTasksPanel,
 CaseCluesPanel,
 CaseCustomerTasksPanel,
@@ -1864,7 +1863,7 @@ export default function CaseCenterPage({
     setCaseLogOpen(true);
   };
   const openCaseLogViewer = (row: CaseRow) => {
-    void openCounselDetail(row, "case-logs");
+    void openCounselDetail(row);
   };
   const openCaseListLogCreator = (row: CaseRow) => {
     if (!getCaseCapability(row).can_create_log) return message.warning("当前账号没有新增该案件日志的权限");
@@ -2954,19 +2953,19 @@ export default function CaseCenterPage({
   const caseDetailPrimaryActionButtons = viewingCounselCase ? <div className="case-detail-legacy-operation-menu">
     {counselDetailCapabilities.can_edit_basic && <Button type="text" block disabled={detailEditLocked} onClick={openLegacyBasicInfo}>{primaryOperationLabels[0]}</Button>}
     {counselDetailCapabilities.can_change_phase && <Button type="text" block disabled={detailEditLocked} onClick={() => void openPhaseChange([viewingCounselCase])}>{primaryOperationLabels[1]}</Button>}
-    {counselDetailCapabilities.can_edit_basic && isCivilCaseType(viewingCounselCase.data.case_type) && <Button type="text" block disabled={detailEditLocked} onClick={openLegacyNotaryInfo}>{primaryOperationLabels[2]}</Button>}
+    {counselDetailCapabilities.can_edit_notary && isCivilCaseType(viewingCounselCase.data.case_type) && <Button type="text" block disabled={detailEditLocked} onClick={openLegacyNotaryInfo}>{primaryOperationLabels[2]}</Button>}
     {counselDetailCapabilities.can_edit_hearing_lawyer && <Button type="text" block disabled={detailEditLocked} onClick={() => openCaseHearingLawyer(viewingCounselCase)}>{primaryOperationLabels[3]}</Button>}
-    {counselDetailCapabilities.can_edit_basic && <Button type="text" block disabled={detailEditLocked} onClick={() => openCaseLitigants(viewingCounselCase)}>{primaryOperationLabels[4]}</Button>}
-    {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "public-security")}>修改公安信息</Button>}
-    {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "courts")}>修改法院信息</Button>}
+    {counselDetailCapabilities.can_edit_litigants && <Button type="text" block disabled={detailEditLocked} onClick={() => openCaseLitigants(viewingCounselCase)}>{primaryOperationLabels[4]}</Button>}
+    {counselDetailCapabilities.can_edit_criminal_public_security && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "public-security")}>修改公安信息</Button>}
+    {counselDetailCapabilities.can_edit_criminal_court && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "courts")}>修改法院信息</Button>}
     {counselDetailCapabilities.can_edit_court_info && <div className="case-detail-legacy-submenu">
       <Button type="text" block disabled={detailEditLocked} className="case-detail-legacy-submenu-trigger">{viewingCounselCase.data.case_type === "仲裁" ? "修改仲裁信息" : primaryOperationLabels[5]}</Button>
       <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-court-submenu">
         {getCompanyScheduleCourtLevels().map(([key, label]) => <Button key={key} type="text" block onClick={() => openCompanyScheduleCourtInfo(viewingCounselCase, key)}>{label}</Button>)}
       </div>
     </div>}
-    {counselDetailCapabilities.can_edit_basic && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "procuratorates")}>修改检察院信息</Button>}
-    {counselDetailCapabilities.can_edit_basic && (isNormalCaseBasicType(viewingCounselCase.data.case_type) || viewingCounselCase.data.case_type === "仲裁") && <Button type="text" block disabled={detailEditLocked} onClick={openLegacySettlementAmount}>{primaryOperationLabels[6]}</Button>}
+    {counselDetailCapabilities.can_edit_criminal_procuratorate && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "procuratorates")}>修改检察院信息</Button>}
+    {counselDetailCapabilities.can_edit_settlement && (isNormalCaseBasicType(viewingCounselCase.data.case_type) || viewingCounselCase.data.case_type === "仲裁") && <Button type="text" block disabled={detailEditLocked} onClick={openLegacySettlementAmount}>{primaryOperationLabels[6]}</Button>}
     {counselDetailCapabilities.can_archive && <div className="case-detail-legacy-submenu">
       <Button type="text" block disabled={ARCHIVE_LOCKED_STATUSES.includes(viewingCounselCase.status)} className="case-detail-legacy-submenu-trigger">{primaryOperationLabels[7]}</Button>
       <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-archive-submenu">
@@ -2974,7 +2973,7 @@ export default function CaseCenterPage({
         <Button type="text" block disabled={ARCHIVE_LOCKED_STATUSES.includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase, "deficit")}>亏损归档</Button>
       </div>
     </div>}
-    {(counselDetailCapabilities.can_edit_basic || counselDetailCapabilities.can_merge_case || counselDetailCapabilities.can_duplicate_case) && <div className="case-detail-legacy-submenu case-detail-legacy-more-submenu" data-testid="case-detail-more-operation">
+    {(counselDetailCapabilities.can_generate_document || counselDetailCapabilities.can_merge_case || counselDetailCapabilities.can_duplicate_case) && <div className="case-detail-legacy-submenu case-detail-legacy-more-submenu" data-testid="case-detail-more-operation">
       <Button type="text" block className="case-detail-legacy-submenu-trigger">{primaryOperationLabels[8]}</Button>
       <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-more-operation-panel">{caseDetailMoreActionButtons}</div>
     </div>}
@@ -3027,7 +3026,7 @@ export default function CaseCenterPage({
         {specialMode==="invoice"&&<div className="case-invoice-import"><input ref={caseUploadRef} hidden type="file" accept=".xlsx,.xls,.csv,.pdf,.zip" onChange={event=>uploadCaseInvoiceFile(event.target.files?.[0])}/><Space><Button onClick={()=>caseUploadRef.current?.click()}>上传文件</Button><Button type="primary" onClick={startCaseInvoiceImport}>开始导入</Button></Space></div>}
         {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className="case-special-query" initialValues={shouldUseCompanyScheduleQueryFields(initialView)?getCompanyScheduleQueryInitialValues(dayjs()):undefined} onFinish={values=>{setCaseQuery(values);if(specialMode==="receipt"){setSelectedCaseKeys([]);void receiptList.search(values,1,receiptList.pageSize);}}}>
           {(specialFilters[specialMode]||[]).map(([key,label,type,placeholder])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker placeholder={placeholder!==undefined?[placeholder,placeholder]:undefined}/>:type==="select"?<Select allowClear placeholder={placeholder} options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input placeholder={placeholder}/>}</Form.Item>)}
-          <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button>{specialMode==="receipt"&&<Button type="primary" onClick={()=>{const rows=receiptRows.filter(row=>selectedCaseKeySet.has(String(row.id)));if(!rows.length)return message.warning("请选择费用记录");if(new Set(rows.map(row=>row.customer)).size>1)return message.warning("批量上传的费用必须属于同一客户");setReceiptUploadRows(rows);}}>批量上传</Button>}<Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});if(specialMode==="receipt"){setSelectedCaseKeys([]);void receiptList.search({},1,receiptList.pageSize);}}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>
+          <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button>{specialMode==="receipt"&&receiptList.canUpload&&<Button type="primary" onClick={()=>{const rows=receiptRows.filter(row=>selectedCaseKeySet.has(String(row.id)));if(!rows.length)return message.warning("请选择费用记录");if(new Set(rows.map(row=>row.customer)).size>1)return message.warning("批量上传的费用必须属于同一客户");setReceiptUploadRows(rows);}}>批量上传</Button>}<Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});if(specialMode==="receipt"){setSelectedCaseKeys([]);void receiptList.search({},1,receiptList.pageSize);}}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>
         </ListFilterBar>}
         {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
         {specialMode!=="invoice"&&specialMode!=="receipt"&&<input ref={caseUploadRef} hidden type="file" onChange={event=>{const file=event.target.files?.[0];event.target.value="";void uploadCaseFile(file);}}/>}
@@ -3211,7 +3210,7 @@ export default function CaseCenterPage({
                   else if (key.startsWith("batch-")) { batchUpdateForm.resetFields(); setBatchUpdateOpen(true); }
                   if (key.startsWith("document-")) void generateSelectedCaseDocuments(key.slice("document-".length));
                   if (key === "case-tasks") openCaseTasks(selectedCase);
-                  if (key === "case-logs") void openCounselDetail(selectedCase, "case-logs");
+                  if (key === "case-logs") void openCounselDetail(selectedCase);
                   if (key === "export-print-table") exportSelectedCasesExcel(true);
                 },
               }}
@@ -4152,13 +4151,6 @@ export default function CaseCenterPage({
                 handleInternalFeeAction={handleInternalFeeAction}
                 openInformDateBatchUpdate={openInformDateBatchUpdate}
               />},
-              {key:"case-logs",label:"案件日志",children:<CaseCaseLogsPanel
-                logs={counselLogs}
-                capabilities={counselDetailCapabilities}
-                casePersonDisplayName={casePersonDisplayName}
-                onCreateLog={openCounselLogCreator}
-                onViewLog={setViewingCaseLog}
-              />},
               {key:"logs",label:"系统日志",children:<CaseSystemLogsPanel
                 logs={counselDetailHistory}
                 capabilities={counselDetailCapabilities}
@@ -4539,7 +4531,7 @@ export default function CaseCenterPage({
         width={620}
         open={Boolean(creatingCasePartyRole)}
         title={`新增${creatingCasePartyRole ? CASE_LITIGANT_PARTY_LABELS[creatingCasePartyRole] : ""}当事人`}
-        okText={creatingCasePartyRole === "defendants" ? "添加并选中" : "保存并选中"}
+        okText={creatingCasePartyRole === "defendants" ? "保存被告到案件" : "保存并选中"}
         cancelText="取消"
         confirmLoading={creatingCasePartySubmitting}
         onOk={() => void saveCaseParty()}
@@ -4549,7 +4541,6 @@ export default function CaseCenterPage({
       >
         <Form form={casePartyCreateForm} layout="vertical">
           <Form.Item label="当事人名称" name="title" rules={[{ required: true, whitespace: true, message: "请输入当事人名称" }]}><Input maxLength={256} /></Form.Item>
-          {creatingCasePartyRole !== "defendants" &&
           <div className="form-grid">
             <Form.Item label="组织类型" name="organization_type" rules={[{ required: true, message: "请选择组织类型" }]}><Select options={["公司企业","事业单位","机关团体","个人","个体工商户","其他"].map(value=>({value,label:value}))} /></Form.Item>
             <Form.Item noStyle shouldUpdate={(previous,current)=>previous.organization_type!==current.organization_type}>
@@ -4558,7 +4549,7 @@ export default function CaseCenterPage({
             <Form.Item label="联系电话" name="phone"><Input maxLength={64} /></Form.Item>
             <Form.Item label="法定代表人" name="legal_representative"><Input maxLength={128} /></Form.Item>
             <Form.Item label="注册地址" name="registered_address"><Input maxLength={256} /></Form.Item>
-          </div>}
+          </div>
         </Form>
       </Modal>
       <Modal

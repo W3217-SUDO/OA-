@@ -1965,6 +1965,7 @@ export default function App() {
           />
         </div>
         <Space className="top-actions">
+          <BugFeedback />
           <Tooltip title="返回控制台">
             <Button
               type="text"
@@ -2070,6 +2071,7 @@ export default function App() {
           </Dropdown>
         </Space>
         <Space className="mobile-top-actions">
+          <BugFeedback compact />
           <NotificationCenter onNavigate={navigate} grantedMenuKeys={grantedMenuKeys} />
           <Badge count={taskUnreadCount} size="small" overflowCount={99}>
             <Button
@@ -2238,7 +2240,6 @@ export default function App() {
           <span>我的</span>
         </button>
       </nav>
-      <BugFeedback />
     </Layout>
   );
 }

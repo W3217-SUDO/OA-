@@ -799,8 +799,11 @@ JOB_ROLE_ACTION_KEY_GRANTS: dict[str, tuple[str, ...]] = {
     "合同付款核销": ("contract.payment.writeoff",),
     "案件分配": ("case.team.assign",),
     "案件承办": (
-        "case.detail.update", "case.log.create", "case.reminder.manage",
-        "case.task.create", "case.attachment.write", "case.progress.update", "case.phase.update",
+        "case.detail.update", "case.court.update", "case.notary.update", "case.litigants.update",
+        "case.settlement.update", "case.criminal.public_security.update",
+        "case.criminal.procuratorate.update", "case.criminal.court.update",
+        "case.log.create", "case.reminder.manage",
+        "case.task.create", "case.attachment.write", "case.document.manage", "case.progress.update", "case.phase.update",
         "case.assisted_fee.manage",
     ),
     "案件进展维护": ("case.progress.update", "case.phase.update"),
@@ -857,13 +860,20 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
         )
     definitions.extend([
         *({"code": code, "menu_key": "case-mine", "label": label} for code, label in (
-            ("case.detail.update", "修改案件基本信息"), ("case.team.assign", "分配案件人员"),
+            ("case.detail.update", "修改案件基本信息"), ("case.court.update", "修改案件法院信息"),
+            ("case.notary.update", "修改案件公证信息"), ("case.litigants.update", "修改案件当事人"),
+            ("case.settlement.update", "修改诉讼标的金额"),
+            ("case.criminal.public_security.update", "修改刑事案件公安信息"),
+            ("case.criminal.procuratorate.update", "修改刑事案件检察院信息"),
+            ("case.criminal.court.update", "修改刑事案件法院信息"),
+            ("case.team.assign", "分配案件人员"),
             ("case.progress.update", "维护案件进展"),
             ("case.phase.update", "修改案件阶段"), ("case.hearing.manage", "维护开庭排期"),
             ("case.task.create", "新建案件任务"), ("case.duplicate", "复制案件"),
             ("case.delete", "删除案件"), ("case.merge", "合并案件"),
             ("case.reminder.manage", "维护案件提醒"), ("case.log.create", "新增案件日志"),
             ("case.document.generate", "生成案件文书"), ("case.document.upload", "上传案件文件"),
+            ("case.document.manage", "维护案件文件及目录"),
             ("case.document.delete", "删除案件文件"), ("case.archive.submit", "提交案件归档"),
             ("case.archive.review", "审核案件归档"), ("case.fee.create", "新增案件费用"),
             ("case.fee.update", "修改案件费用"), ("case.fee.delete", "删除案件费用"),
@@ -872,6 +882,7 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
             ("case.fee.arrival", "确认费用到账"), ("case.fee.receipt.view", "查看票据文件"),
             ("case.fee.mark_unpaid", "标记不缴费"), ("case.assisted_fee.manage", "维护资助费用"),
         )),
+        {"code": "case.fee.receipt.upload", "menu_key": "case-files-receipt", "label": "上传案件票据文件"},
     ])
     return definitions
 

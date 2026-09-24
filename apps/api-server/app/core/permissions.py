@@ -1407,7 +1407,7 @@ async def _require_case_court_info_write_access(case_record: BusinessRecord, ide
     """Authorize the independent court-info dialog without workflow side effects."""
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能修改法院信息")
-    await _require_case_action(identity, db, "case.detail.update")
+    await _require_case_action(identity, db, "case.court.update")
 
 
 async def _require_case_phase_change_access(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
@@ -1431,12 +1431,16 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
     can_assign_team = active and await _case_action_granted(identity, db, "case.team.assign")
     can_edit_hearing_lawyer = active and await _case_action_granted(identity, db, "case.hearing.manage")
     can_edit_basic = active and await _case_action_granted(identity, db, "case.detail.update")
-    can_edit_court_info = can_edit_basic
+    can_edit_court_info = active and await _case_action_granted(identity, db, "case.court.update")
+    can_edit_notary = active and await _case_action_granted(identity, db, "case.notary.update")
+    can_edit_litigants = active and await _case_action_granted(identity, db, "case.litigants.update")
+    can_edit_settlement = active and await _case_action_granted(identity, db, "case.settlement.update")
     can_close_case = active and await _case_action_granted(identity, db, "case.archive.submit")
     can_archive_case = active and await _case_action_granted(identity, db, "case.archive.submit")
     base = {
         "can_write": False, "can_manage_assisted_fees": False, "can_generate_document": False, "can_upload_attachment": False,
-        "can_delete_attachment": False, "can_create_reminder": False,
+        "can_manage_document": active and await _case_action_granted(identity, db, "case.document.manage"),
+        "can_delete_attachment": active and await _case_action_granted(identity, db, "case.document.delete"), "can_create_reminder": False,
         "can_delete_reminder": False, "can_create_log": False,
         "can_update_progress": False, "can_change_phase": False, "can_manage_hearing": False,
         "can_create_case_task": False, "can_duplicate_case": can_create_same_type,
@@ -1444,6 +1448,11 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_merge_case": active and await _case_action_granted(identity, db, "case.merge"),
         "can_assign_team": can_assign_team, "can_edit_hearing_lawyer": can_edit_hearing_lawyer,
         "can_edit_basic": can_edit_basic, "can_edit_court_info": can_edit_court_info,
+        "can_edit_notary": can_edit_notary, "can_edit_litigants": can_edit_litigants,
+        "can_edit_settlement": can_edit_settlement,
+        "can_edit_criminal_public_security": active and await _case_action_granted(identity, db, "case.criminal.public_security.update"),
+        "can_edit_criminal_procuratorate": active and await _case_action_granted(identity, db, "case.criminal.procuratorate.update"),
+        "can_edit_criminal_court": active and await _case_action_granted(identity, db, "case.criminal.court.update"),
         "can_close_case": can_close_case, "can_archive": can_archive_case,
         # Capability endpoints are reached only after the case has passed the
         # caller's data-scope check. Match the legacy rule: anyone who can see
@@ -1501,7 +1510,6 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         **base,
         "can_write": True,
         "can_manage_assisted_fees": can_manage_assisted_fees,
-        "can_delete_attachment": base["can_upload_attachment"],
         "can_update_progress": can_progress, "can_manage_hearing": can_manage_hearing,
     }
 

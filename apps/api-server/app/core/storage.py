@@ -184,10 +184,11 @@ async def _case_word_editor_attachment(
     case_id: int, attachment_id: int, identity: dict, db: AsyncSession,
 ) -> tuple[BusinessRecord, FileAttachment, Path]:
     from app.core.permissions import (
-        _ensure_record_module, _require_case_detail_write_access,
+        _ensure_record_module, _require_case_action, _require_case_detail_write_access,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_detail_write_access(case_record, identity, db)
+    await _require_case_action(identity, db, "case.document.manage")
     item = await db.get(FileAttachment, attachment_id)
     if not item or item.record_id != case_record.id or item.category == AI_SPACE_CATEGORY:
         raise HTTPException(status_code=404, detail="案件正式 Word 文件不存在")

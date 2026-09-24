@@ -2796,7 +2796,7 @@ async def update_case_notary_info(case_id: int, body: CaseNotaryInfoInput, ident
         _ensure_record_module, _record_dict_for_identity, _require_case_action,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_case_action(identity, db, "case.detail.update")
+    await _require_case_action(identity, db, "case.notary.update")
     data = dict(case_record.data or {})
     if str(data.get("case_type") or "") not in CIVIL_CASE_TYPES:
         raise HTTPException(status_code=409, detail="仅民事案件可以维护公证信息")
@@ -2861,7 +2861,7 @@ async def update_case_settlement_amount(case_id: int, body: CaseSettlementAmount
         _ensure_record_module, _record_dict_for_identity, _require_case_action,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_case_action(identity, db, "case.detail.update")
+    await _require_case_action(identity, db, "case.settlement.update")
     data = dict(case_record.data or {})
     if str(data.get("case_type") or "") not in NORMAL_CASE_BASIC_TYPES | {"仲裁"}:
         raise HTTPException(status_code=409, detail="当前案件类型不能维护诉讼或判决金额")
@@ -2892,7 +2892,7 @@ async def list_case_litigant_candidates(
     from app.core.permissions import (
         _record_scope_conditions, _require_case_action,
     )
-    await _require_case_action(identity, db, "case.detail.update")
+    await _require_case_action(identity, db, "case.litigants.update")
     scope_identity = {**identity, "role": identity.get("_actual_role") or identity.get("role")}
     scope_identity.pop("_page_menu_capability", None)
     conditions = [
@@ -2937,7 +2937,7 @@ async def update_case_litigants(case_id: int, body: CaseLitigantsInput, identity
     if creation_step:
         await _require_record_owner_or_manager(case_record, identity, db)
     else:
-        await _require_case_action(identity, db, "case.detail.update")
+        await _require_case_action(identity, db, "case.litigants.update")
     return await _persist_case_litigants(
         case_record, body, identity, db,
         advance_creation=True,
@@ -2956,7 +2956,7 @@ async def update_case_litigants_from_detail(case_id: int, body: CaseLitigantsInp
         _ensure_record_module, _require_case_action,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
-    await _require_case_action(identity, db, "case.detail.update")
+    await _require_case_action(identity, db, "case.litigants.update")
     return await _persist_case_litigants(
         case_record, body, identity, db,
         advance_creation=False,
@@ -3280,7 +3280,7 @@ async def maintain_criminal_litigants(case_id: int, body: CaseLitigantsInput, id
     from app.core.system import (
         _save_criminal_detail,
     )
-    record = await _criminal_detail_maintenance_case(case_id, identity, db)
+    record = await _criminal_detail_maintenance_case(case_id, identity, db, "case.litigants.update")
     payload = {
         "plaintiffs": _clean_case_litigant_values(body.plaintiffs),
         "plaintiff_agents": _clean_case_litigant_agents(body.plaintiff_agents),
@@ -3306,7 +3306,7 @@ async def maintain_criminal_public_security(case_id: int, body: CriminalPublicSe
     from app.core.system import (
         _criminal_maintenance_payload, _save_criminal_detail,
     )
-    record = await _criminal_detail_maintenance_case(case_id, identity, db)
+    record = await _criminal_detail_maintenance_case(case_id, identity, db, "case.criminal.public_security.update")
     return await _save_criminal_detail(record, _criminal_maintenance_payload(body), "修改刑事案件公安机关信息", body.comment, identity, db)
 
 
@@ -3318,7 +3318,7 @@ async def maintain_criminal_procuratorates(case_id: int, body: CriminalProcurato
     from app.core.system import (
         _criminal_maintenance_payload, _save_criminal_detail,
     )
-    record = await _criminal_detail_maintenance_case(case_id, identity, db)
+    record = await _criminal_detail_maintenance_case(case_id, identity, db, "case.criminal.procuratorate.update")
     return await _save_criminal_detail(record, _criminal_maintenance_payload(body), "修改刑事案件检察院信息", body.comment, identity, db)
 
 
@@ -3330,7 +3330,7 @@ async def maintain_criminal_courts(case_id: int, body: CriminalCourtMaintenanceI
     from app.core.system import (
         _criminal_maintenance_payload, _save_criminal_detail,
     )
-    record = await _criminal_detail_maintenance_case(case_id, identity, db)
+    record = await _criminal_detail_maintenance_case(case_id, identity, db, "case.criminal.court.update")
     return await _save_criminal_detail(record, _criminal_maintenance_payload(body), "修改刑事案件审级法院信息", body.comment, identity, db)
 
 
@@ -5121,10 +5121,11 @@ async def create_case_document_folder(
         _normalize_case_document_folder_name,
     )
     from app.core.permissions import (
-        _ensure_case_document_folder_name_available, _ensure_record_module, _require_case_detail_write_access,
+        _ensure_case_document_folder_name_available, _ensure_record_module, _require_case_action, _require_case_detail_write_access,
     )
     record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_detail_write_access(record, identity, db)
+    await _require_case_action(identity, db, "case.document.manage")
     name = _normalize_case_document_folder_name(body.name)
     await _ensure_case_document_folder_name_available(name, record, db)
     folders = [*_case_custom_document_folders(record), name]
@@ -5143,10 +5144,11 @@ async def rename_case_document_folder(case_id: int, body: CaseDocumentFolderRena
         _normalize_case_document_folder_name,
     )
     from app.core.permissions import (
-        _ensure_case_document_folder_name_available, _ensure_record_module, _require_case_detail_write_access,
+        _ensure_case_document_folder_name_available, _ensure_record_module, _require_case_action, _require_case_detail_write_access,
     )
     record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_detail_write_access(record, identity, db)
+    await _require_case_action(identity, db, "case.document.manage")
     original_name = _normalize_case_document_folder_name(body.original_name)
     name = _normalize_case_document_folder_name(body.name)
     folders = _case_custom_document_folders(record)
@@ -5174,10 +5176,11 @@ async def delete_case_document_folder(case_id: int, body: CaseDocumentFolderInpu
         _normalize_case_document_folder_name,
     )
     from app.core.permissions import (
-        _ensure_record_module, _require_case_detail_write_access,
+        _ensure_record_module, _require_case_action, _require_case_detail_write_access,
     )
     record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_detail_write_access(record, identity, db)
+    await _require_case_action(identity, db, "case.document.manage")
     name = _normalize_case_document_folder_name(body.name)
     folders = _case_custom_document_folders(record)
     if name not in folders:
@@ -5300,13 +5303,14 @@ async def update_case_ai_draft_content(
         _case_ai_draft, _case_ai_draft_bytes,
     )
     from app.core.permissions import (
-        _ensure_record_module, _require_case_detail_write_access,
+        _ensure_record_module, _require_case_action, _require_case_detail_write_access,
     )
     from app.core.storage import (
         _attachment_dict,
     )
     record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_detail_write_access(record, identity, db)
+    await _require_case_action(identity, db, "case.document.manage")
     item = await _case_ai_draft(record, attachment_id, db)
     if Path(item.original_name).suffix.lower() not in AI_SPACE_EDITABLE_SUFFIXES:
         raise HTTPException(status_code=422, detail="当前草稿格式不支持在线编辑")
@@ -5597,8 +5601,9 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
     )
     from app.core.permissions import (
         _ensure_attachment_record_visible, _ensure_case_word_editor_not_locked, _ensure_record_module, _identity_role_ids, _require_case_detail_write_access,
-        _require_case_related_attachment_target,
+        _require_case_action, _require_case_related_attachment_target,
     )
+    await _require_case_action(identity, db, "case.document.delete")
     attachment_ids = list(dict.fromkeys(body.attachment_ids))
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all())
     if len(attachments) != len(attachment_ids):
@@ -5645,13 +5650,14 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
 async def unlock_case_attachment(case_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Unlock one civil case document after enforcing the case-detail write gate."""
     from app.core.permissions import (
-        _ensure_record_module, _require_case_detail_write_access,
+        _ensure_record_module, _require_case_action, _require_case_detail_write_access,
     )
     from app.core.storage import (
         _attachment_dict,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_detail_write_access(case_record, identity, db)
+    await _require_case_action(identity, db, "case.document.manage")
     if case_record.status == "已合并":
         raise HTTPException(status_code=409, detail="已合并案件不能解锁案件文件")
     attachment = await db.scalar(select(FileAttachment).where(
@@ -5681,10 +5687,11 @@ async def move_case_attachments(case_id: int, body: CaseAttachmentMoveInput, ide
         _case_custom_document_folders, _sync_case_document_readiness,
     )
     from app.core.permissions import (
-        _ensure_case_word_editor_not_locked, _ensure_record_module, _require_case_detail_write_access,
+        _ensure_case_word_editor_not_locked, _ensure_record_module, _require_case_action, _require_case_detail_write_access,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_detail_write_access(case_record, identity, db)
+    await _require_case_action(identity, db, "case.document.manage")
     category = body.category.strip()
     custom_folders = set(_case_custom_document_folders(case_record))
     configured = await db.scalar(select(SystemParameter.id).where(
@@ -5719,7 +5726,7 @@ async def move_case_attachments(case_id: int, body: CaseAttachmentMoveInput, ide
 async def rename_case_attachment(attachment_id: int, body: CaseAttachmentRenameInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Rename only the display/download name of one case attachment; never move its stored file."""
     from app.core.permissions import (
-        _ensure_case_word_editor_not_locked, _ensure_record_module, _require_case_detail_write_access,
+        _ensure_case_word_editor_not_locked, _ensure_record_module, _require_case_action, _require_case_detail_write_access,
     )
     from app.core.storage import (
         _attachment_dict,
@@ -5729,6 +5736,7 @@ async def rename_case_attachment(attachment_id: int, body: CaseAttachmentRenameI
         raise HTTPException(status_code=404, detail="案件文件不存在")
     case_record = await _ensure_record_module(item.record_id, "case", identity, db)
     await _require_case_detail_write_access(case_record, identity, db)
+    await _require_case_action(identity, db, "case.document.manage")
     _ensure_case_word_editor_not_locked(item)
     requested_name = body.original_name.strip()
     if not requested_name or "/" in requested_name or "\\" in requested_name or Path(requested_name).name != requested_name or requested_name in {".", ".."}:
@@ -6686,6 +6694,7 @@ async def record_history(record_id: int, identity: dict = Depends(current_identi
 
 @router.patch(f"{settings.api_prefix}/records/{{record_id}}")
 async def update_record(record_id: int, body: RecordUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.customer_identity import validate_customer_identity
     from app.core.crm import (
         _mark_customer_modified, _resolve_active_customer_managers,
     )
@@ -6757,6 +6766,9 @@ async def update_record(record_id: int, body: RecordUpdate, identity: dict = Dep
                 if incoming_managers != existing_managers:
                     return _legacy_failure_response("客户管理人必须通过客户管理人专用入口修改")
             customer_data["customer_managers"] = existing_managers
+            identity_fields = {"organization_type", "identity_no", "credit_code"}
+            if any(customer_data.get(key) != existing_customer_data.get(key) for key in identity_fields):
+                await validate_customer_identity(customer_data, db, exclude_id=record.id)
             changes["data"] = customer_data
     old_status = record.status
     for field, value in changes.items():

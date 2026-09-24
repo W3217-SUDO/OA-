@@ -352,13 +352,14 @@ def _case_phase_changed_days(item: BusinessRecord, *, as_of: date | None = None)
     return max(((as_of or date.today()) - _case_phase_changed_date(item)).days, 0)
 
 
-async def _urgent_case_ids(cases: list[BusinessRecord], db: AsyncSession, *, as_of: date | None = None) -> set[int]:
+async def _urgent_case_ids(cases: list[BusinessRecord], db: AsyncSession, username: str, *, as_of: date | None = None) -> set[int]:
     """返回存在逾期或未来十五天内未完成任务的案件。"""
     from app.core.formatters import _record_links_to_case
     today = as_of or date.today()
     terminal_statuses = {"已完成", "已验收", "待确认", "已停止", "已撤回", "已拒绝", "已取消", "已删除"}
     tasks = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "task", BusinessRecord.status.not_in(terminal_statuses),
+        BusinessRecord.module == "task", BusinessRecord.owner == username,
+        BusinessRecord.status.not_in(terminal_statuses),
     ))).all())
     urgent_ids: set[int] = set()
     for task in tasks:
@@ -1194,13 +1195,13 @@ async def _query_counsel_cases(
         from app.core.dashboard_scope import CASE_QUEUES
         queue_name = CASE_QUEUES[body.dashboard_queue]
         if queue_name == "urgent":
-            urgent_ids = await _urgent_case_ids(records, db)
+            urgent_ids = await _urgent_case_ids(records, db, identity["username"])
             records = [record for record in records if record.id in urgent_ids]
         else:
             records = [record for record in records if _matches_dashboard_case_queue(record, queue_name)]
     elif body.case_queue:
         if body.case_queue == "urgent":
-            urgent_ids = await _urgent_case_ids(records, db)
+            urgent_ids = await _urgent_case_ids(records, db, identity["username"])
             records = [record for record in records if record.id in urgent_ids]
         else:
             records = [record for record in records if _matches_dashboard_case_queue(record, body.case_queue)]
@@ -1624,7 +1625,7 @@ async def _persist_case_litigants(
     )
     defendant_identities = clean_party_identities(
         body.defendant_identities, defendants, previous_party_names("defendants", "opponent"), current_data.get("defendant_identities") or [],
-        require_new_identity=advance_creation,
+        require_new_identity=True,
     )
     third_party_identities = clean_party_identities(
         body.third_party_identities, third_parties, previous_party_names("third_parties"), current_data.get("third_party_identities") or [],
@@ -1678,11 +1679,11 @@ async def _persist_case_litigants(
     return _record_dict(case_record)
 
 
-async def _criminal_detail_maintenance_case(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+async def _criminal_detail_maintenance_case(case_id: int, identity: dict, db: AsyncSession, action_code: str) -> BusinessRecord:
     from app.core.permissions import (
         _ensure_record_module, _require_case_action, _require_case_creation_completed,
     )
-    record = await _ensure_record_module(case_id, "case", identity, db); await _require_case_action(identity, db, "case.detail.update")
+    record = await _ensure_record_module(case_id, "case", identity, db); await _require_case_action(identity, db, action_code)
     if str((record.data or {}).get("case_type") or "") != "刑事案件": raise HTTPException(status_code=409, detail="该接口仅用于刑事案件")
     _require_case_creation_completed(record)
     if record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}: raise HTTPException(status_code=409, detail="归档中的刑事案件不能维护资料")

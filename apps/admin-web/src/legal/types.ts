@@ -361,6 +361,7 @@ export type CaseWordEditor = {
 export type CaseDetailCapabilities = {
   can_write: boolean;
   can_generate_document: boolean;
+  can_manage_document: boolean;
   can_upload_attachment: boolean;
   can_delete_attachment: boolean;
   can_create_reminder: boolean;
@@ -377,6 +378,12 @@ export type CaseDetailCapabilities = {
   can_edit_hearing_lawyer: boolean;
   can_edit_basic: boolean;
   can_edit_court_info: boolean;
+  can_edit_notary: boolean;
+  can_edit_litigants: boolean;
+  can_edit_settlement: boolean;
+  can_edit_criminal_public_security: boolean;
+  can_edit_criminal_procuratorate: boolean;
+  can_edit_criminal_court: boolean;
   can_close_case: boolean;
   can_archive: boolean;
   can_create_finance: boolean;

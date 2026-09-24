@@ -150,6 +150,7 @@ export function UploadModal({
         </Form.Item>
         <Form.Item label="选择文件" required>
           <Upload
+            fileList={file ? [{ uid: "selected-file", name: file.name, status: "done" }] : []}
             beforeUpload={(f) => {
               onFileChange(f);
               return false;
