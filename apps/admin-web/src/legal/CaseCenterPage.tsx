@@ -4519,7 +4519,7 @@ export default function CaseCenterPage({
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
-      <Modal width={960} open={Boolean(editingCaseLitigants)} title={`修改当事人：${editingCaseLitigants?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseLitigants} onCancel={()=>setEditingCaseLitigants(null)} forceRender destroyOnHidden>
+      <Modal width={960} open={Boolean(editingCaseLitigants)} title={`修改当事人：${editingCaseLitigants?.serial_no || ""}`} okText="保存修改" cancelText="取消" onOk={saveCaseLitigants} onCancel={()=>setEditingCaseLitigants(null)} forceRender destroyOnHidden style={{ top: 24 }} styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto" } }}>
         <Alert type="info" showIcon title="输入关键字可搜索系统已有当事人；点击字段右侧加号可新增并立即选中。下方三组代理人按本案独立维护，保存后仅更新本案当事人。" style={{marginBottom:12}} />
         <Form form={caseLitigantsForm} layout="vertical">
           <div className="form-grid">
@@ -4539,7 +4539,7 @@ export default function CaseCenterPage({
         width={620}
         open={Boolean(creatingCasePartyRole)}
         title={`新增${creatingCasePartyRole ? CASE_LITIGANT_PARTY_LABELS[creatingCasePartyRole] : ""}当事人`}
-        okText="保存并选中"
+        okText={creatingCasePartyRole === "defendants" ? "添加并选中" : "保存并选中"}
         cancelText="取消"
         confirmLoading={creatingCasePartySubmitting}
         onOk={() => void saveCaseParty()}
@@ -4549,6 +4549,7 @@ export default function CaseCenterPage({
       >
         <Form form={casePartyCreateForm} layout="vertical">
           <Form.Item label="当事人名称" name="title" rules={[{ required: true, whitespace: true, message: "请输入当事人名称" }]}><Input maxLength={256} /></Form.Item>
+          {creatingCasePartyRole !== "defendants" &&
           <div className="form-grid">
             <Form.Item label="组织类型" name="organization_type" rules={[{ required: true, message: "请选择组织类型" }]}><Select options={["公司企业","事业单位","机关团体","个人","个体工商户","其他"].map(value=>({value,label:value}))} /></Form.Item>
             <Form.Item noStyle shouldUpdate={(previous,current)=>previous.organization_type!==current.organization_type}>
@@ -4557,7 +4558,7 @@ export default function CaseCenterPage({
             <Form.Item label="联系电话" name="phone"><Input maxLength={64} /></Form.Item>
             <Form.Item label="法定代表人" name="legal_representative"><Input maxLength={128} /></Form.Item>
             <Form.Item label="注册地址" name="registered_address"><Input maxLength={256} /></Form.Item>
-          </div>
+          </div>}
         </Form>
       </Modal>
       <Modal

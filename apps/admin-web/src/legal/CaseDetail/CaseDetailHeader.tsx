@@ -66,7 +66,7 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
             <colgroup><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/></colgroup>
             <tbody>
               <tr><th>我方案号</th><td>{viewingCase.serial_no||"—"}</td><th>起诉案由</th><td>{viewingCase.data.cause_or_charge||viewingCase.data.cause_of_action||"—"}</td><th>案件阶段</th><td>{viewingCase.status||"—"}</td><th>原告</th><td>{viewingCase.data.plaintiff||viewingCase.customer||"—"}</td></tr>
-              <tr><th>案件名称</th><td colSpan={3}>{viewingCase.title||"—"}</td><th>开庭律师</th><td>{casePersonDisplayNames(caseHeaderHearingLawyers(viewingCase.data))}</td><th>被告</th><td>{viewingCase.data.defendant||viewingCase.data.opponent||caseDetailNames(viewingCase.data.defendants)}</td></tr>
+              <tr><th>案件名称</th><td colSpan={3}>{viewingCase.title||"—"}</td><th>开庭律师</th><td>{casePersonDisplayNames(caseHeaderHearingLawyers(viewingCase.data))}</td><th>被告</th><td>{caseDetailNames(Array.isArray(viewingCase.data.defendants) && viewingCase.data.defendants.length ? viewingCase.data.defendants : viewingCase.data.opponent || viewingCase.data.defendant)}</td></tr>
               <tr><th>案件参与人</th><td colSpan={7}>{legacyCaseParticipantDisplayNames(viewingCase.data)}</td></tr>
               <tr><th>原告代理人</th><td colSpan={3}>{renderCaseLitigantAgentSummary(viewingCase.data.plaintiff_agents)}</td><th>被告代理人</th><td colSpan={3}>{renderCaseLitigantAgentSummary(viewingCase.data.defendant_agents)}</td></tr>
               <tr><th>第三人代理人</th><td colSpan={7}>{renderCaseLitigantAgentSummary(viewingCase.data.third_party_agents)}</td></tr>

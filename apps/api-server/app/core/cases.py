@@ -1569,7 +1569,7 @@ async def _persist_case_litigants(
             names = [current_data[singular]]
         return _clean_case_litigant_values(names or [])
 
-    def clean_party_identities(raw_items, party_names: list[str], previous_names: list[str], previous_items: list[dict]) -> list[dict]:
+    def clean_party_identities(raw_items, party_names: list[str], previous_names: list[str], previous_items: list[dict], *, require_new_identity: bool = True) -> list[dict]:
         previous_by_name = {
             str(item.get("name") or "").strip(): item
             for item in previous_items if isinstance(item, dict) and str(item.get("name") or "").strip()
@@ -1613,7 +1613,7 @@ async def _persist_case_litigants(
                 valid = organization_type in {"公司企业", "事业单位", "机关团体", "个体工商户", "其他"} and len(identity_no) == 18 and identity_no.isalnum()
             if valid:
                 cleaned_by_name[name] = {"name": name, "organization_type": organization_type, "identity_no": identity_no}
-        required_names = [name for name in party_names if name != customer_name and (advance_creation or name not in previous_names)]
+        required_names = [name for name in party_names if name != customer_name and (advance_creation or (require_new_identity and name not in previous_names))]
         missing = [name for name in required_names if name not in cleaned_by_name]
         if missing:
             raise HTTPException(status_code=422, detail=f"请补充对方当事人证件信息：{'、'.join(missing)}")
@@ -1624,6 +1624,7 @@ async def _persist_case_litigants(
     )
     defendant_identities = clean_party_identities(
         body.defendant_identities, defendants, previous_party_names("defendants", "opponent"), current_data.get("defendant_identities") or [],
+        require_new_identity=advance_creation,
     )
     third_party_identities = clean_party_identities(
         body.third_party_identities, third_parties, previous_party_names("third_parties"), current_data.get("third_party_identities") or [],

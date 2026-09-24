@@ -1148,6 +1148,24 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         const { creatingCasePartyRole, casePartyCreateForm, setCreatingCasePartySubmitting, setCaseLitigantCandidates, setCaseCustomers, caseLitigantsForm, setCreatingCasePartyRole } = context;
         if (!creatingCasePartyRole)
             return;
+        if (creatingCasePartyRole === "defendants") {
+            const { title } = await casePartyCreateForm.validateFields(["title"]);
+            const name = String(title || "").trim();
+            const currentValues: string[] = caseLitigantsForm.getFieldValue("defendants") || [];
+            if (currentValues.includes(name)) {
+                message.warning("该被告已在本案当事人名单中");
+                return;
+            }
+            setCaseLitigantCandidates((current) => [
+                { id: 0, serial_no: "", title: name },
+                ...current.filter((item) => item.title !== name),
+            ]);
+            caseLitigantsForm.setFieldValue("defendants", [...currentValues, name]);
+            message.success("被告已加入，保存当事人信息后生效");
+            setCreatingCasePartyRole(null);
+            casePartyCreateForm.resetFields();
+            return;
+        }
         const values = await casePartyCreateForm.validateFields();
         setCreatingCasePartySubmitting(true);
         try {

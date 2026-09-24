@@ -106,10 +106,6 @@ class Rows0922Test(unittest.IsolatedAsyncioTestCase):
         payload = {"plaintiffs": ["旧原告"], "defendants": ["旧被告", "目标被告"],
                    "defendant_identities": [{"name": "目标被告", "organization_type": "公司企业",
                                              "identity_no": "913100000000000001"}]}
-        missing_identity = await self.client.put(f"{API}/cases/{case_id}/litigants-detail", json={
-            **payload, "defendant_identities": [],
-        })
-        self.assertEqual(missing_identity.status_code, 422, missing_identity.text)
         result = await self.client.put(f"{API}/cases/{case_id}/litigants-detail", json=payload)
         self.assertEqual(result.status_code, 200, result.text)
         self.assertEqual(result.json()["data"]["defendants"], ["旧被告", "目标被告"])
@@ -122,6 +118,43 @@ class Rows0922Test(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(customer.data["credit_code"], "913100000000000001")
             matched = await clue_conflicts(clue, db)
             self.assertEqual(matched["cases"], ["CODEX-0922-party-case"])
+
+    async def test_detail_adds_name_only_defendant_without_weakening_creation(self):
+        async with self.sessions() as db:
+            case = self.record("case", "CODEX-0922-name-only-case", data={
+                "case_type": "民事案件", "case_creation_step": "basic",
+                "plaintiffs": ["旧原告"], "defendants": ["旧被告"],
+                "defendant": "旧被告", "customer_id": 41,
+            })
+            clue = self.record("clue", "CODEX-0922-name-only-clue", data={
+                "rights_holder_id": 41, "producer": "新增被告",
+            })
+            db.add_all([case, clue])
+            await db.commit()
+            case_id = case.id
+        payload = {"plaintiffs": ["旧原告"], "defendants": ["旧被告", "新增被告"]}
+        creation = await self.client.put(f"{API}/cases/{case_id}/litigants", json=payload)
+        self.assertEqual(creation.status_code, 422, creation.text)
+        invalid = await self.client.put(f"{API}/cases/{case_id}/litigants-detail", json={
+            **payload,
+            "defendant_identities": [{
+                "name": "新增被告", "organization_type": "公司企业", "identity_no": "111",
+            }],
+        })
+        self.assertEqual(invalid.status_code, 422, invalid.text)
+        detail = await self.client.put(f"{API}/cases/{case_id}/litigants-detail", json=payload)
+        self.assertEqual(detail.status_code, 200, detail.text)
+        self.assertEqual(detail.json()["data"]["defendants"], payload["defendants"])
+        self.assertEqual(detail.json()["data"]["opponent"], "旧被告、新增被告")
+        async with self.sessions() as db:
+            party = await db.scalar(select(BusinessRecord).where(
+                BusinessRecord.module == "customer", BusinessRecord.title == "新增被告",
+            ))
+            self.assertIsNotNone(party)
+            self.assertEqual(party.data["case_litigant_origin"]["case_id"], case_id)
+            self.assertNotIn("credit_code", party.data)
+            matched = await clue_conflicts(clue, db)
+            self.assertEqual(matched["cases"], ["CODEX-0922-name-only-case"])
 
     async def test_receipt_upload_links_only_selected_fee(self):
         async with self.sessions() as db:
