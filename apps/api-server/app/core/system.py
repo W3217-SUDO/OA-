@@ -33,6 +33,9 @@ def _record_dict(record: BusinessRecord, allowed_fields: set[str] | None = None)
         _customer_contact_dict, _customer_guid,
     )
     data = dict(record.data or {})
+    if record.module == "conflict_review":
+        from app.core.conflict_review import review_summary
+        data = review_summary(record)
     if record.module == "finance" and data.get("fee_type") == "内部费用":
         data["applicant"] = next((str(data.get(key) or "").strip() for key in (
             "applicant", "payment_applied_by", "commission_created_by", "handler",
@@ -1182,10 +1185,12 @@ async def _commission_employee_index(db: AsyncSession) -> dict[str, BusinessReco
 
 
 async def _save_criminal_detail(record: BusinessRecord, payload: dict, action: str, comment: str, identity: dict, db: AsyncSession):
+    from app.core.conflict_review import assess_conflict_review
     from app.core.legacy_sync import (
         _sync_legacy_projection,
     )
     record.data = {**(record.data or {}), **payload}
+    await assess_conflict_review(record, identity, db, trigger="case_save")
     db.add(WorkflowEvent(record_id=record.id, action=action, from_status=record.status, to_status=record.status, operator=identity["username"], comment=comment.strip()))
     await _sync_legacy_projection(record, identity, db)
     await db.commit(); await db.refresh(record); return _record_dict(record)

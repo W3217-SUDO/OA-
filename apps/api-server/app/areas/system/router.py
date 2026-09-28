@@ -878,7 +878,7 @@ async def list_system_configs(keyword: str = "", page: int | None = Query(None, 
 
 @router.patch(f"{settings.api_prefix}/system/configs/{{config_key}}")
 async def update_system_config(config_key: str, body: SystemConfigUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.conflict_review import CONFIG_KEY, auto_review_status, require_auto_review_ready
+    from app.core.conflict_review import CONFIG_KEY, auto_review_status, can_manage_auto_review
     from app.core.permissions import (
         _require_admin,
     )
@@ -886,11 +886,11 @@ async def update_system_config(config_key: str, body: SystemConfigUpdate, identi
         _system_audit, _validate_system_config,
     )
     _require_admin(identity)
+    if config_key == CONFIG_KEY and not can_manage_auto_review(identity):
+        raise HTTPException(status_code=403, detail="仅实际管理员或获系统配置授权的人员可以管理自动利益冲突审查")
     item = await db.scalar(select(SystemConfig).where(SystemConfig.key == config_key))
     if not item: raise HTTPException(status_code=404, detail="系统配置不存在")
     value = _validate_system_config(config_key, body.value)
-    if config_key == CONFIG_KEY:
-        require_auto_review_ready(value["enabled"])
     if config_key == "investigation_assignment":
         supervisor = await db.scalar(select(User).where(User.username == value["supervisor_username"], User.is_active.is_(True)))
         if not supervisor:

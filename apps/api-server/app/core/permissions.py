@@ -490,6 +490,8 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
         permission["data_scope"] = overrides["data_scope"]
     can_approve_contract = await _is_contract_approver(user, db)
     menu_keys = list(permission["menu_keys"])
+    if "conflict.review.approve" in permission.get("action_keys", []) and "customer-conflict" not in menu_keys:
+        menu_keys.append("customer-conflict")
     if can_approve_contract and "contract-audit" not in menu_keys:
         menu_keys.append("contract-audit")
     return {
@@ -563,17 +565,21 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession):
 
 
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
+    from app.core.conflict_review import can_review_conflicts
+    conflict_scope = [] if await can_review_conflicts(identity, db) else [or_(
+        BusinessRecord.module != "conflict_review", BusinessRecord.owner == identity.get("username", ""),
+    )]
     if "_dashboard_record_ids" in identity:
-        return [BusinessRecord.id.in_(identity["_dashboard_record_ids"])]
+        return [*conflict_scope, BusinessRecord.id.in_(identity["_dashboard_record_ids"])]
     if identity.get("role") == "admin" or identity.get("_page_menu_capability"):
-        return []
+        return conflict_scope
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user:
         raise HTTPException(status_code=401, detail="当前用户不存在")
     permission = await _user_permission_payload(user, db)
     scope = permission["data_scope"]
     if scope == "全所数据":
-        return []
+        return conflict_scope
     public_customer = and_(BusinessRecord.module == "customer", BusinessRecord.status == "公海")
     # JSON arrays are serialized with quoted string members.  Matching the
     # quoted username keeps ``ann`` from gaining access to rows assigned or
@@ -631,14 +637,14 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         return or_(condition, customer_menu_scope) if customer_menu_scope is not None else condition
 
     if scope == "本部门数据":
-        return [include_customer_menu_scope(or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*conflict_scope, include_customer_menu_scope(or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
     if scope == "授权审批数据":
         # Approval range is not a blanket view of every pending record.  A
         # contract becomes visible here only for its current pending approver;
         # other modules retain their own owner/share/participant projections
         # until they expose an equally concrete candidate relation.
-        return [include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
-    return [include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*conflict_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+    return [*conflict_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
 
 
 async def _visible_legacy_ipr_case_ids(identity: dict, db: AsyncSession) -> set[int]:
@@ -742,6 +748,10 @@ async def _visible_legacy_contract_history_parent_keys(identity: dict, db: Async
 
 
 async def _ensure_record_visible(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    from app.core.conflict_review import ensure_conflict_review_visible
+    candidate = await db.get(BusinessRecord, record_id)
+    if candidate and candidate.module == "conflict_review":
+        return await ensure_conflict_review_visible(record_id, identity, db)
     conditions = [BusinessRecord.id == record_id, *(await _record_scope_conditions(identity, db))]
     record = await db.scalar(select(BusinessRecord).where(*conditions))
     if not record:
@@ -893,10 +903,20 @@ async def _visible_record_ids(identity: dict, db: AsyncSession) -> set[int]:
 
 
 async def _filter_visible_attachments(items: list[FileAttachment], identity: dict, db: AsyncSession) -> list[FileAttachment]:
+    from app.core.conflict_review import can_review_conflicts
+    review_ids = {item.record_id for item in items if item.record_id}
+    reviews = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(review_ids), BusinessRecord.module == "conflict_review",
+    ))).all()) if review_ids else []
+    reviewer = await can_review_conflicts(identity, db) if reviews else False
+    allowed_review_ids = {row.id for row in reviews if reviewer or row.owner == identity.get("username")}
+    if reviews:
+        denied = {row.id for row in reviews if row.id not in allowed_review_ids}
+        items = [item for item in items if item.record_id not in denied]
     if identity.get("role") == "admin":
         return items
     record_ids = await _visible_record_ids(identity, db)
-    return [item for item in items if (item.record_id and item.record_id in record_ids) or (not item.record_id and item.uploader == identity["username"])]
+    return [item for item in items if (item.record_id and item.record_id in (record_ids | allowed_review_ids)) or (not item.record_id and item.uploader == identity["username"])]
 
 
 def _require_dingtalk_access(user: User) -> None:
@@ -1260,6 +1280,11 @@ async def _ensure_case_fixed_tasks(case_record: BusinessRecord, db: AsyncSession
         ("filing-registration", "立案登记", 7, "完成法院立案信息登记并上传受理材料"),
         ("service-tracking", "送达跟踪", 14, "跟踪法院送达情况并记录送达结果"),
     ]
+    if all(key in existing_keys for key, *_ in specs):
+        return existing
+    from app.core.conflict_review import get_conflict_review_gate
+    if (await get_conflict_review_gate(case_record, db, action="生成立案任务", existing_only=True))["blocking"]:
+        return existing
     created: list[BusinessRecord] = []
     for key, title, days, description in specs:
         if key in existing_keys:

@@ -56,6 +56,12 @@ async def _active_case_task_user(data: dict, db: AsyncSession, *, username_keys:
     raise HTTPException(status_code=422, detail=f"案件未设置有效{field_name}，无法生成执行申请提醒任务")
 
 
+async def _automatic_case_conflict_blocked(case_record: BusinessRecord, db: AsyncSession) -> bool:
+    """仅阻止已触发审查的案件，不中断尚未进入新流程的历史案件日常任务。"""
+    from app.core.conflict_review import get_conflict_review_gate
+    return (await get_conflict_review_gate(case_record, db, action="生成自动任务", existing_only=True))["blocking"]
+
+
 async def _ensure_execution_application_reminder_task(
     case_record: BusinessRecord,
     db: AsyncSession,
@@ -66,6 +72,8 @@ async def _ensure_execution_application_reminder_task(
 ) -> BusinessRecord | None:
     """Create the legacy execution reminder once when a case enters first-instance pending execution."""
     if case_record.status != "一审待执行" or previous_status == "一审待执行":
+        return None
+    if await _automatic_case_conflict_blocked(case_record, db):
         return None
     existing = await db.scalar(select(BusinessRecord).where(
         BusinessRecord.module == "task",
@@ -807,6 +815,8 @@ async def _ensure_document_preparation_task(
     """Create the legacy document-preparation assignment once its two conditions hold."""
     if case_record.status != "文书准备" and transition_date is None:
         return None
+    if await _automatic_case_conflict_blocked(case_record, db):
+        return None
 
     case_data = case_record.data or {}
     assistant_username, assistant_user = await _resolve_case_task_username(
@@ -995,6 +1005,8 @@ async def _ensure_timestamp_evidence_handoff_task(
 ) -> BusinessRecord | None:
     """Create the legacy timestamp-file handoff task once all conditions hold."""
     if case_record.status != "文书准备" or not await _case_originates_from_timestamp_evidence(case_record, db):
+        return None
+    if await _automatic_case_conflict_blocked(case_record, db):
         return None
 
     case_data = case_record.data or {}
@@ -1214,6 +1226,8 @@ async def _ensure_phase_automatic_tasks(
 ) -> list[BusinessRecord]:
     if case_record.status == previous_status:
         return []
+    if await _automatic_case_conflict_blocked(case_record, db):
+        return []
     effective_today = today or date.today()
     lawyer, assistant = await _case_rule_people(case_record, db)
     created: list[BusinessRecord] = []
@@ -1424,6 +1438,19 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
         BusinessRecord.module == "task",
     )) or 0)
     cases = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case"))).all())
+    # 一次读取已进入利冲流程的来源，只对这些案件及其关联合同计算门禁。
+    from app.core.conflict_review_facts import text_values
+    review_data = list((await db.scalars(select(BusinessRecord.data).where(BusinessRecord.module == "conflict_review"))).all())
+    reviewed_ids = {str(item.get("source_record_id")) for item in review_data}
+    reviewed_contract_numbers = {str(item.get("source_no")) for item in review_data if item.get("source_module") == "contract"}
+    eligible_cases = []
+    for item in cases:
+        data = item.data or {}
+        reviewed = str(item.id) in reviewed_ids or str(data.get("contract_record_id") or data.get("contract_id")) in reviewed_ids or bool(set(text_values(data.get("contract_no"))) & reviewed_contract_numbers)
+        if reviewed and await _automatic_case_conflict_blocked(item, db):
+            continue
+        eligible_cases.append(item)
+    cases = eligible_cases
     cases_by_id = {item.id: item for item in cases}
     cases_by_no = {item.serial_no: item for item in cases}
     related_records = list((await db.scalars(select(BusinessRecord).where(
@@ -1735,6 +1762,8 @@ async def _advance_case_from_fixed_task(task: BusinessRecord, db: AsyncSession, 
     ranks = {"新案待分配": 0, "文书准备": 1, "一审立案受理": 2, "一审准备开庭": 3, "待上诉": 4, "二审": 5, "执行": 6}
     if ranks.get(target, -1) <= ranks.get(case_record.status, -1):
         return
+    from app.core.conflict_review import require_conflict_clear
+    await require_conflict_clear(case_record, db, action="通过固定任务推进案件阶段", existing_only=True)
     previous = case_record.status; case_record.status = target
     case_record.data = {**(case_record.data or {}), "stage_advanced_by_task_id": task.id, "stage_advanced_at": datetime.now().isoformat(timespec="seconds"), "business_stage": "审理" if target == "一审准备开庭" else "立案"}
     db.add(WorkflowEvent(record_id=case_record.id, action="固定任务验收自动推进阶段", from_status=previous, to_status=target, operator=operator, comment=f"任务 {task.serial_no}：{task.title}"))

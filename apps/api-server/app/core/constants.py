@@ -466,7 +466,7 @@ DEFAULT_SYSTEM_CONFIGS = {
         "value": {"supervisor_username": ""},
     },
     "conflict_auto_review": {
-        "label": "自动利冲审查", "group": "业务配置", "description": "自动利冲审查总开关；审查引擎未接入前不可开启。",
+        "label": "自动利冲审查", "group": "业务配置", "description": "提交合同审批、合同用印和保存案件时自动检索并发起人工核查；关闭不解除已有审查阻断。",
         "value": {"enabled": False},
     },
 }
@@ -504,6 +504,7 @@ DEFAULT_DEPARTMENTS = [
 
 
 SYSTEM_ADMIN_JOB_PERMISSIONS = [
+    "利益冲突审批",
     "案件费用修改", "案件费用删除",
     "客户查看", "客户新建", "客户修改", "客户分配", "客户回收/恢复", "客户共享", "利益冲突检索", "合同查看", "合同新建", "合同修改", "合同提交审批", "合同审批", "合同归档",
     "案件查看", "案件新建", "案件分配", "案件承办", "案件进展维护", "案件法院信息修改", "开庭排期", "案件办结", "案件归档申请", "案件归档审核", "调查任务发起", "调查任务办理", "线索审核", "公证管理", "证据管理",
@@ -720,6 +721,7 @@ ARCHIVE_REQUIRED_CATEGORIES = {"委托材料", "证据材料", "诉讼文书", "
 
 
 JOB_ACTION_MENU_GRANTS: dict[str, tuple[str, ...]] = {
+    "利益冲突审批": ("customer-conflict",),
     # Historical personnel roles stored approval capabilities as business-action
     # labels. Keep those records effective without widening them to an entire
     # business center.
@@ -729,6 +731,7 @@ JOB_ACTION_MENU_GRANTS: dict[str, tuple[str, ...]] = {
 
 
 JOB_ROLE_LABEL_MENU_GRANTS: dict[str, tuple[str, ...]] = {
+    "利益冲突审批": ("customer-conflict",),
     "客户查看": ("customer",), "客户新建": ("customer-new",), "客户修改": ("customer-mine",),
     "客户分配": ("customer",), "客户回收/恢复": ("customer-recycle",), "客户共享": ("customer-shared",),
     "利益冲突检索": ("customer-conflict",),
@@ -781,6 +784,7 @@ JOB_ROLE_LABEL_MENU_GRANTS.update({
 
 
 JOB_ROLE_ACTION_KEY_GRANTS: dict[str, tuple[str, ...]] = {
+    "利益冲突审批": ("conflict.review.approve",),
     "案件费用修改": ("case.fee.update",),
     "案件费用删除": ("case.fee.delete",),
     "员工新建": ("hr.employee.create",),
@@ -863,6 +867,7 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
             for operation in operations
         )
     definitions.extend([
+        {"code": "conflict.review.approve", "menu_key": "customer-conflict", "label": "利益冲突审批"},
         *({"code": code, "menu_key": "case-mine", "label": label} for code, label in (
             ("case.detail.update", "修改案件基本信息"), ("case.court.update", "修改案件法院信息"),
             ("case.notary.update", "修改案件公证信息"), ("case.litigants.update", "修改案件当事人"),
