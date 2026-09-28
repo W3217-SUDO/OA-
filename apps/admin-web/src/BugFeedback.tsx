@@ -3,7 +3,7 @@ import { Button, Form, Input, message, Modal } from "antd";
 import { BugOutlined } from "@ant-design/icons";
 import { api } from "./api";
 
-export default function BugFeedback({ compact = false }: { compact?: boolean }) {
+export default function BugFeedback() {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [screenshot, setScreenshot] = useState<File | null>(null);
@@ -30,7 +30,7 @@ export default function BugFeedback({ compact = false }: { compact?: boolean }) 
   };
 
   return <>
-    <Button type="text" className="bug-feedback-trigger" icon={<BugOutlined />} aria-label="问题反馈" title="问题反馈" onClick={() => setOpen(true)}>{compact ? null : "问题反馈"}</Button>
+    <Button type="primary" className="bug-feedback-trigger" icon={<BugOutlined />} aria-label="问题反馈" title="问题反馈" onClick={() => setOpen(true)}>问题反馈</Button>
     <Modal open={open} title="问题反馈" okText="提交反馈" confirmLoading={submitting}
       onOk={() => void submit()} onCancel={() => setOpen(false)}>
       <Form form={form} layout="vertical">

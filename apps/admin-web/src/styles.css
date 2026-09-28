@@ -76,13 +76,24 @@ body {
 .mobile-sidebar-mask {
   display: none;
 }
-.bug-feedback-trigger {
+.bug-feedback-trigger.ant-btn {
+  position: fixed;
+  right: 20px;
+  bottom: 76px;
+  z-index: 900;
+  height: 40px;
+  padding: 0 16px;
+  border-color: #008d4c;
+  border-radius: 4px;
+  background: #008d4c;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   color: #fff;
 }
-.bug-feedback-trigger:hover,
-.bug-feedback-trigger:focus-visible {
+.bug-feedback-trigger.ant-btn:hover,
+.bug-feedback-trigger.ant-btn:focus-visible {
+  border-color: #00723e;
+  background: #00723e;
   color: #fff;
-  background: rgba(255, 255, 255, 0.16);
 }
 .sidebar {
   height: 100%;
@@ -603,10 +614,9 @@ body {
   }
 }
 @media (max-width: 991px) {
-  .bug-feedback-trigger {
-    right: 8px;
-    bottom: calc(70px + env(safe-area-inset-bottom));
-    min-height: 32px;
+  .bug-feedback-trigger.ant-btn {
+    right: 12px;
+    bottom: calc(78px + env(safe-area-inset-bottom));
   }
   html,
   body,
