@@ -533,6 +533,9 @@ def _validate_system_config(key: str, value: dict) -> dict:
         if set(value) != {"supervisor_username"} or not isinstance(value["supervisor_username"], str):
             raise HTTPException(status_code=422, detail="调查任务分配人配置无效")
         value = {"supervisor_username": value["supervisor_username"].strip()}
+    elif key == "conflict_auto_review":
+        if set(value) != {"enabled"} or not isinstance(value["enabled"], bool):
+            raise HTTPException(status_code=422, detail="自动利冲审查开关必须为布尔值")
     else:
         raise HTTPException(status_code=404, detail="系统配置不存在")
     return value

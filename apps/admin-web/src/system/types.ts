@@ -34,6 +34,16 @@ export type SystemConfig = {
   description: string;
   updated_by: string;
   updated_at: string;
+  ready?: boolean;
+  effective?: boolean;
+  reason?: string;
+};
+
+export type ConflictAutoReviewStatus = {
+  enabled: boolean;
+  ready: boolean;
+  effective: boolean;
+  reason: string;
 };
 
 export type CacheRow = {

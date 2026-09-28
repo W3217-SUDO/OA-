@@ -855,12 +855,13 @@ async def delete_system_parameter(parameter_id: int, identity: dict = Depends(cu
 
 @router.get(f"{settings.api_prefix}/system/configs")
 async def list_system_configs(keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.conflict_review import CONFIG_KEY, auto_review_status
     from app.core.permissions import (
         _require_admin,
     )
     _require_admin(identity)
     items = (await db.scalars(select(SystemConfig).order_by(SystemConfig.id))).all()
-    result = [{"key": item.key, "label": item.label, "group": item.group, "value": item.value or {}, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at} for item in items]
+    result = [{"key": item.key, "label": item.label, "group": item.group, "value": item.value or {}, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at, **(auto_review_status(item.value) if item.key == CONFIG_KEY else {})} for item in items]
     supervisor_options = [
         {"username": user.username, "display_name": user.display_name}
         for user in (await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all()
@@ -877,6 +878,7 @@ async def list_system_configs(keyword: str = "", page: int | None = Query(None, 
 
 @router.patch(f"{settings.api_prefix}/system/configs/{{config_key}}")
 async def update_system_config(config_key: str, body: SystemConfigUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.conflict_review import CONFIG_KEY, auto_review_status, require_auto_review_ready
     from app.core.permissions import (
         _require_admin,
     )
@@ -887,14 +889,20 @@ async def update_system_config(config_key: str, body: SystemConfigUpdate, identi
     item = await db.scalar(select(SystemConfig).where(SystemConfig.key == config_key))
     if not item: raise HTTPException(status_code=404, detail="系统配置不存在")
     value = _validate_system_config(config_key, body.value)
+    if config_key == CONFIG_KEY:
+        require_auto_review_ready(value["enabled"])
     if config_key == "investigation_assignment":
         supervisor = await db.scalar(select(User).where(User.username == value["supervisor_username"], User.is_active.is_(True)))
         if not supervisor:
             raise HTTPException(status_code=422, detail="调查任务分配人必须是启用的系统人员")
+    previous_value = dict(item.value or {})
     item.value = value; item.updated_by = identity["username"]
-    await _system_audit(db, identity, "更新系统配置", f"系统配置:{item.key}", {"key": item.key})
+    audit_detail = {"key": item.key}
+    if config_key == CONFIG_KEY:
+        audit_detail.update({"previous_enabled": previous_value.get("enabled") is True, "enabled": value["enabled"]})
+    await _system_audit(db, identity, "更新系统配置", f"系统配置:{item.key}", audit_detail)
     await db.commit(); await db.refresh(item)
-    return {"key": item.key, "label": item.label, "group": item.group, "value": item.value, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at}
+    return {"key": item.key, "label": item.label, "group": item.group, "value": item.value, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at, **(auto_review_status(item.value) if item.key == CONFIG_KEY else {})}
 
 
 @router.get(f"{settings.api_prefix}/system/cache")

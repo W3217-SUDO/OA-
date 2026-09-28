@@ -3,6 +3,7 @@ import { Alert, Button, Card, Select, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import { api } from "./api";
+import type { ConflictAutoReviewStatus } from "./system/types";
 
 type ConflictRule = {
   id: string;
@@ -23,6 +24,7 @@ type ConflictRuleCatalogResponse = {
   legal_source_url: string;
   policy_status: "PENDING_CONFIRMATION";
   automation_status: "MANUAL_REVIEW_ONLY";
+  auto_review: ConflictAutoReviewStatus;
   rules: ConflictRule[];
 };
 
@@ -77,14 +79,16 @@ export default function ConflictRuleCatalog() {
   }, [reloadKey]);
 
   const visibleRules = catalog?.rules.filter((rule) => category === "ALL" || rule.category === category) || [];
+  const autoReview = catalog?.auto_review;
+  const statusAvailable = Boolean(autoReview && typeof autoReview.effective === "boolean");
 
   return (
     <Card className="panel conflict-rules-panel" title="利益冲突审查规则">
       <Alert
-        type="warning"
+        type={!statusAvailable ? error ? "error" : "info" : autoReview?.effective ? "success" : "warning"}
         showIcon
-        message="规则目录供人工审查参考，自动判定尚未启用"
-        description="现有名称/证件号检索仅显示历史匹配，不代表利益冲突审查通过。身份、同案关系或证据不明时须人工核实；待确认例外不得自动放行。"
+        message={!statusAvailable ? error ? "自动利冲审查状态不可用" : "正在读取自动利冲审查状态" : autoReview?.effective ? "自动利冲审查运行中" : "规则目录供人工审查参考，自动利冲审查未运行"}
+        description={`${statusAvailable ? autoReview?.reason || "" : ""} 现有名称/证件号检索仅显示历史匹配，不代表利益冲突审查通过；身份、同案关系或证据不明时须人工核实。`}
       />
       {error && (
         <Alert

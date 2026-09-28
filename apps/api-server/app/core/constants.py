@@ -465,6 +465,10 @@ DEFAULT_SYSTEM_CONFIGS = {
         "label": "调查任务分配人", "group": "业务配置", "description": "合同新建调查任务时固定流转到该调查主管，由其再分配调查子任务。",
         "value": {"supervisor_username": ""},
     },
+    "conflict_auto_review": {
+        "label": "自动利冲审查", "group": "业务配置", "description": "自动利冲审查总开关；审查引擎未接入前不可开启。",
+        "value": {"enabled": False},
+    },
 }
 
 
