@@ -171,3 +171,44 @@
     width: calc(100% - 24px);
   }
 }
+
+.conflict-rules-panel.ant-card {
+  margin-top: 12px;
+  min-width: 0;
+}
+
+.conflict-rules-panel .ant-card-body {
+  min-width: 0;
+}
+
+.conflict-rule-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 14px 0 10px;
+}
+
+.conflict-rule-toolbar .ant-select {
+  min-width: 180px;
+}
+
+.conflict-rule-title {
+  min-width: 210px;
+}
+
+.conflict-rule-details p {
+  margin: 4px 0;
+  white-space: normal;
+}
+
+.conflict-rule-source {
+  margin-top: 10px;
+  color: #666;
+  font-size: 12px;
+}
+
+.conflict-rule-error {
+  margin-top: 10px;
+}

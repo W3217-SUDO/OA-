@@ -476,6 +476,7 @@ from app.models_shared import (
 from app.areas.aws.router import router as aws_router
 from app.areas.contract.router import router as contract_router
 from app.areas.crm.router import router as crm_router
+from app.areas.crm.conflict_rules_router import router as conflict_rules_router
 from app.areas.finance.router import router as finance_router
 from app.areas.hr.router import router as hr_router
 from app.areas.investigation.router import router as investigation_router
@@ -545,6 +546,7 @@ include_route_slice(app, system_router, 53, 55)
 include_route_slice(app, tp_router, 18, 35)
 include_route_slice(app, finance_router, 28, 42)
 include_route_slice(app, crm_router, 52, 54)
+app.include_router(conflict_rules_router)
 include_route_slice(app, finance_router, 42, 64)
 include_route_slice(app, system_router, 55, 57)
 include_route_slice(app, finance_router, 64, 82)
@@ -592,4 +594,4 @@ include_route_slice(app, investigation_router, 41, len(investigation_router.rout
 include_route_slice(app, hr_router, 31, len(hr_router.routes))
 include_route_slice(app, system_router, 91, len(system_router.routes))
 include_route_slice(app, aws_router, 18, len(aws_router.routes))
-verify_route_coverage(app, [aws_router, contract_router, crm_router, finance_router, hr_router, investigation_router, ipr_router, legal_router, rpt_router, system_router, tp_router, wms_router])
+verify_route_coverage(app, [aws_router, contract_router, crm_router, conflict_rules_router, finance_router, hr_router, investigation_router, ipr_router, legal_router, rpt_router, system_router, tp_router, wms_router])

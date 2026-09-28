@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Button, Card, Input, Table, message } from "antd";
 import { api } from "./api";
+import ConflictRuleCatalog from "./ConflictRuleCatalog";
 import "./customer-conflict.css";
 
 type ConflictSearchResult = {
@@ -90,6 +91,7 @@ export default function CustomerConflictPage() {
   const foundItem = result?.found ? result : null;
 
   return (
+    <>
     <Card className="panel conflict-panel" title="客户利益冲突检索">
       <div className="conflict-steps" aria-label="检索步骤">
         <div className={foundItem ? "" : "active"}>
@@ -145,5 +147,7 @@ export default function CustomerConflictPage() {
         </div>
       )}
     </Card>
+    <ConflictRuleCatalog />
+    </>
   );
 }

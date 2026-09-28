@@ -1,0 +1,190 @@
+{
+  "version": "2026-09-28-draft",
+  "source_title": "利益冲突检索系统交付文档（2026-09-28）",
+  "legal_source": "上海市律师协会律师执业利益冲突认定和处理规则（试行，2023年第四次修订）",
+  "legal_source_url": "https://www.lawyers.org.cn/info/12f43ae5268fb02fe0ecd36bb7033251",
+  "policy_status": "PENDING_CONFIRMATION",
+  "automation_status": "MANUAL_REVIEW_ONLY",
+  "rules": [
+    {
+      "id": "R-A01", "category": "A", "title": "承办律师本人或近亲属为对方当事人", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第7条第（一）项、第12条第（一）项",
+      "trigger": "拟接受委托或对方当事人、承办律师发生变化时",
+      "required_facts": ["承办律师身份", "近亲属申报", "对方当事人身份"],
+      "manual_boundary": "必须确认同一主体；同名或身份资料不足时先人工核实。"
+    },
+    {
+      "id": "R-A02", "category": "A", "title": "承办律师本人或近亲属为对方法定代表人或代理人", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第7条第（二）项、第12条第（一）项",
+      "trigger": "拟接受委托或对方法定代表人、代理人发生变化时",
+      "required_facts": ["承办律师及近亲属身份", "对方法定代表人和代理人", "对抗关系事实"],
+      "manual_boundary": "法定代表人与对方当事人之间存在对抗关系的例外须审查岗核实，不能自动放行。"
+    },
+    {
+      "id": "R-A03", "category": "A", "title": "近亲属任对方董监高或律师，或与其有利害关系", "outcome_if_confirmed": "WAIVER_REQUIRED",
+      "legal_basis": "上海规则第7条第（三）项、第13条第（一）项",
+      "trigger": "拟接受委托或近亲属关系、对方人员发生变化时",
+      "required_facts": ["近亲属申报", "对方董监高及律师", "利害关系事实"],
+      "manual_boundary": "名单缺失不等于不存在利害关系；申报或疑似关系交人工查证。"
+    },
+    {
+      "id": "R-A04", "category": "A", "title": "本人或近亲属为对方控股出资人或实际控制人", "outcome_if_confirmed": "WAIVER_REQUIRED",
+      "legal_basis": "上海规则第7条第（四）项、第13条第（一）项",
+      "trigger": "拟接受委托或股权、控制关系发生变化时",
+      "required_facts": ["本人及近亲属身份", "对方股权及实际控制关系"],
+      "manual_boundary": "普通少数股东不能仅凭持股事实认定为控股出资人；控制关系不明先核实。"
+    },
+    {
+      "id": "R-B01", "category": "B", "title": "本所其他人员实际担任本案仲裁员、调解员或听证员", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第8条第（一）项、第12条第（二）项",
+      "trigger": "拟接受委托或本案程序组成人员变化时",
+      "required_facts": ["本所人员名单", "本案仲裁员、调解员及听证员实际任命事实"],
+      "manual_boundary": "同机构名册仅为辅助预警；未确认担任本案职务时为待核实，不直接认定禁止。"
+    },
+    {
+      "id": "R-B02", "category": "B", "title": "本所或本所其他人员为本案对方当事人", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第8条第（二）项、第12条第（二）项",
+      "trigger": "拟接受委托或对方当事人发生变化时",
+      "required_facts": ["律所主体身份", "本所人员身份", "对方当事人身份"],
+      "manual_boundary": "同名主体必须核实证件或登记身份。"
+    },
+    {
+      "id": "R-B03", "category": "B", "title": "刑事辩护案件中本所其他人员为被害人", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第8条第（三）项、第12条第（二）项",
+      "trigger": "本所接受刑事辩方委托或被害人信息变化时",
+      "required_facts": ["本方为犯罪嫌疑人或被告人辩方", "被害人身份", "本所人员身份"],
+      "manual_boundary": "仅在本所担任辩方时适用；代理被害人一方不按本条认定。"
+    },
+    {
+      "id": "R-B04", "category": "B", "title": "刑事辩护案件中本所其他人员为被害人近亲属", "outcome_if_confirmed": "WAIVER_REQUIRED",
+      "legal_basis": "上海规则第8条第（四）项、第13条第（二）项",
+      "trigger": "本所接受刑事辩方委托或被害人、人员亲属信息变化时",
+      "required_facts": ["本方刑事辩方身份", "被害人身份", "本所人员近亲属关系"],
+      "manual_boundary": "仅在本所担任辩方且亲属关系确认后适用。"
+    },
+    {
+      "id": "R-B05", "category": "B", "title": "本所其他人员为对方近亲属、控股出资人或实际控制人", "outcome_if_confirmed": "WAIVER_REQUIRED",
+      "legal_basis": "上海规则第8条第（五）项、第13条第（二）项",
+      "trigger": "拟接受委托或本所人员、对方控制关系变化时",
+      "required_facts": ["本所其他人员身份与亲属申报", "对方当事人及控制关系"],
+      "manual_boundary": "本条针对本所其他人员；承办律师本人或其近亲属另按A类核查。"
+    },
+    {
+      "id": "R-C01", "category": "C", "title": "法官或检察官离任未满两年担任诉讼代理人或辩护人", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第9条第（一）项、第12条第（三）项",
+      "trigger": "拟接受诉讼代理或刑事辩护委托时",
+      "required_facts": ["承办律师法检任职履历", "离任日期", "拟办业务类型"],
+      "manual_boundary": "不能把原任职机关辖区内所有案件直接认定为本条命中；原机关实际办理过的案件另查具体事实。"
+    },
+    {
+      "id": "R-C02", "category": "C", "title": "承办律师曾亲自处理或审理本事项", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第9条第（二）项、第12条第（三）项",
+      "trigger": "拟接受委托或律师既往履历补录时",
+      "required_facts": ["律师既往亲自处理事项", "拟办案件事实及法律关系", "本人申报"],
+      "manual_boundary": "同一机构、同一客户不等于亲自处理同一事项，须核实历史经办事实。"
+    },
+    {
+      "id": "R-C03", "category": "C", "title": "转所一年内代理曾任控股出资人、实控人或董监高组织的对方", "outcome_if_confirmed": "WAIVER_REQUIRED",
+      "legal_basis": "上海规则第9条第（三）项、第13条第（三）项",
+      "trigger": "拟接受委托或律师入所履历变化时",
+      "required_facts": ["律师曾任组织及职务", "转入律所日期", "该组织在拟案中的对方身份"],
+      "manual_boundary": "须核实曾任职务、对立关系和未满一年三个条件。"
+    },
+    {
+      "id": "R-C04", "category": "C", "title": "拟案落入原单位依法有效的离职执业限制范围", "outcome_if_confirmed": "WAIVER_REQUIRED",
+      "legal_basis": "上海规则第9条第（四）项、第13条第（三）项",
+      "trigger": "拟接受委托或律师限制申报变化时",
+      "required_facts": ["原单位限制依据", "限制期限与范围", "拟办事项"],
+      "manual_boundary": "限制效力需人工审查；另有更严格法定禁止的应升级处理。"
+    },
+    {
+      "id": "R-D01", "category": "D", "title": "同一律师在同案或同一非诉事务中代理对立双方", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第10条第（一）项、第12条第（四）项",
+      "trigger": "拟接受委托或律师、当事人及事项关系变化时",
+      "required_facts": ["律师及有效委托", "本方与对方身份", "同案或同事务认定"],
+      "manual_boundary": "非诉当事人认可并继续委托的例外须人工核实，不自动放行。"
+    },
+    {
+      "id": "R-D02", "category": "D", "title": "同一律师辩护同一刑案其他嫌疑人或被告人", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第10条第（二）项、第12条第（四）项",
+      "trigger": "拟接受刑事辩护委托或刑案并分案时",
+      "required_facts": ["同一律师的刑事辩护委托", "各被代理人身份", "同案事实分组"],
+      "manual_boundary": "关联犯罪虽未同案办理，也可能属于同一案件；同案认定应复核。"
+    },
+    {
+      "id": "R-D03", "category": "D", "title": "法律顾问期间代理顾问单位对方或利益冲突方", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第10条第（三）项、第12条第（四）项",
+      "trigger": "拟接受新委托或新增法律顾问委托时",
+      "required_facts": ["律师有效法律顾问委托", "顾问单位", "拟案双方与服务时间"],
+      "manual_boundary": "新签顾问委托也须反向核查已在办的对立案件。"
+    },
+    {
+      "id": "R-D04", "category": "D", "title": "同一律师在原委托终止后同案后续程序接受原对方委托", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第10条第（四）项、第12条第（四）项",
+      "trigger": "拟接受后续审理或处理委托时",
+      "required_facts": ["律师历史委托", "同案事实分组", "原委托方与拟委托方的对立关系"],
+      "manual_boundary": "同案后续程序没有一年截止期限；不得套用非诉冷却期。"
+    },
+    {
+      "id": "R-D05", "category": "D", "title": "同一律师在非诉委托终止一年内就同事务接受原对方委托", "outcome_if_confirmed": "WAIVER_REQUIRED",
+      "legal_basis": "上海规则第10条第（五）项、第13条第（四）项",
+      "trigger": "拟接受非诉委托时",
+      "required_facts": ["律师非诉历史委托", "同一法律事务", "原委托终止日期", "双方利害关系"],
+      "manual_boundary": "仅适用非诉同法律事务且未满一年；超过一年仍须独立审查保密义务。"
+    },
+    {
+      "id": "R-D06", "category": "D", "title": "同一律师服务期间接受现委托人在本案或另一案件中的对方委托", "outcome_if_confirmed": "WAIVER_REQUIRED",
+      "legal_basis": "上海规则第10条第（六）项、第13条第（四）项",
+      "trigger": "拟接受新委托或现有委托关系发生变化时",
+      "required_facts": ["律师有效委托及期间", "在办事项双方", "现委托人在另一案件中的对方", "拟委托方"],
+      "manual_boundary": "包括另一案件中的对方；应核对委托关系是否在同一时段存续。"
+    },
+    {
+      "id": "R-E01", "category": "E", "title": "本所不同律师在同案或同一非诉事务中代理对立双方", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第11条第（一）项、第12条第（五）项",
+      "trigger": "拟接受委托或律师团队、当事人变化时",
+      "required_facts": ["全所有效委托与律师团队", "同案或同事务", "对立双方身份"],
+      "manual_boundary": "非诉认可继续委托的例外须人工核实；同一刑案不同被告人应按E03单独核查。"
+    },
+    {
+      "id": "R-E02", "category": "E", "title": "本所在原委托终止后同案后续程序接受原对方委托", "outcome_if_confirmed": "BLOCK",
+      "legal_basis": "上海规则第11条第（二）项、第12条第（五）项",
+      "trigger": "拟接受后续审理或处理委托时",
+      "required_facts": ["全所历史委托", "同案事实分组", "原委托方与拟委托方的对立关系"],
+      "manual_boundary": "同案后续程序没有一年截止期限。"
+    },
+    {
+      "id": "R-E03", "category": "E", "title": "本所其他律师辩护同一刑案其他被告人而未获在先被告人同意", "outcome_if_confirmed": "WAIVER_REQUIRED",
+      "legal_basis": "上海规则第11条第（三）项、第13条第（五）项",
+      "trigger": "拟接受同一刑案其他辩方委托时",
+      "required_facts": ["全所刑案委托", "被代理人及律师团队", "在先被告人同意事实"],
+      "manual_boundary": "同一律师代理不同被告人按D02绝对禁止；在先同意须人工核实并留痕。"
+    },
+    {
+      "id": "R-E04", "category": "E", "title": "本所在非诉委托终止一年内就同事务接受原对方委托", "outcome_if_confirmed": "WAIVER_REQUIRED",
+      "legal_basis": "上海规则第11条第（四）项、第13条第（五）项",
+      "trigger": "拟接受非诉委托时",
+      "required_facts": ["全所非诉历史委托", "同一法律事务", "终止日期", "双方利害关系"],
+      "manual_boundary": "仅适用非诉同事务且未满一年；超过一年仍须独立审查保密义务。"
+    },
+    {
+      "id": "R-E05", "category": "E", "title": "本所服务期间接受现委托人在本案或另一案件中的对方委托", "outcome_if_confirmed": "WAIVER_REQUIRED",
+      "legal_basis": "上海规则第11条第（五）项、第13条第（五）项",
+      "trigger": "拟接受新委托或现有委托关系发生变化时",
+      "required_facts": ["全所有效委托及期间", "在办事项双方", "现委托人在另一案件中的对方", "拟委托方"],
+      "manual_boundary": "包括另一案件中的对方；应核对委托关系是否在同一时段存续。"
+    },
+    {
+      "id": "R-F01", "category": "F", "title": "破产管理人既有关系披露与期间相关新委托限制", "outcome_if_confirmed": "SPECIAL",
+      "legal_basis": "上海规则第20条",
+      "trigger": "法院指定破产管理人、发现既有关系或拟接受期间新委托时",
+      "required_facts": ["管理人指定及任职期间", "债务人、债权人及其对方", "既有及拟新增委托", "与破产案关联性", "法院查实更换事实"],
+      "manual_boundary": "指定后应披露既有关系，披露本身不直接阻断；未披露且经法院查实更换应登记冲突；管理期间与破产案相关的新委托才属于绝对禁止。",
+      "branches": [
+        {"condition": "被指定管理人前已存在可能影响忠实履职的委托关系", "action": "DISCLOSURE_REQUIRED", "description": "向人民法院如实披露；披露本身不构成自动阻断。"},
+        {"condition": "未如实披露且经人民法院查实后更换管理人", "action": "CONFLICT_RECORDED", "description": "登记已确认的利益冲突及法院处理事实。"},
+        {"condition": "担任管理人期间拟接受与破产案件相关的债务人、债权人或其对方的新委托", "action": "BLOCK", "description": "确认相关性后属于绝对禁止。"}
+      ]
+    }
+  ]
+}
