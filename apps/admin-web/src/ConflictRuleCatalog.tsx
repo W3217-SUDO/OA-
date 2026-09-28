@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Select, Table, Tag } from "antd";
+import { Alert, Button, Card, Select, Switch, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import { api } from "./api";
@@ -26,6 +26,13 @@ type ConflictRuleCatalogResponse = {
   automation_status: "MANUAL_REVIEW_ONLY";
   auto_review: ConflictAutoReviewStatus;
   rules: ConflictRule[];
+};
+
+type AutoReviewConfigResponse = {
+  value: { enabled: boolean };
+  ready: boolean;
+  effective: boolean;
+  reason: string;
 };
 
 const categoryNames: Record<string, string> = {
@@ -60,6 +67,8 @@ export default function ConflictRuleCatalog() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [autoReviewSaving, setAutoReviewSaving] = useState(false);
+  const [autoReviewError, setAutoReviewError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -81,9 +90,53 @@ export default function ConflictRuleCatalog() {
   const visibleRules = catalog?.rules.filter((rule) => category === "ALL" || rule.category === category) || [];
   const autoReview = catalog?.auto_review;
   const statusAvailable = Boolean(autoReview && typeof autoReview.effective === "boolean");
+  const autoReviewEnabled = autoReview?.enabled === true;
+  const canManageAutoReview = autoReview?.can_manage === true;
+  const autoReviewDisabled = loading || autoReviewSaving || !statusAvailable || !canManageAutoReview || (!autoReviewEnabled && autoReview?.ready !== true);
+
+  const saveAutoReview = async (enabled: boolean) => {
+    if (autoReviewDisabled || (enabled && autoReview?.ready !== true)) return;
+    setAutoReviewSaving(true);
+    setAutoReviewError("");
+    try {
+      const { data } = await api.patch<AutoReviewConfigResponse>("/system/configs/conflict_auto_review", { value: { enabled } });
+      if (data.value.enabled !== enabled) throw new Error("服务器返回的自动利冲审查配置不一致");
+      setCatalog((current) => current && ({
+        ...current,
+        auto_review: {
+          ...current.auto_review,
+          enabled: data.value.enabled,
+          ready: data.ready,
+          effective: data.effective,
+          reason: data.reason,
+        },
+      }));
+    } catch (requestError: any) {
+      setAutoReviewError(requestError?.response?.data?.detail || requestError?.message || "自动利冲审查配置保存失败");
+    } finally {
+      setAutoReviewSaving(false);
+    }
+  };
 
   return (
     <Card className="panel conflict-rules-panel" title="利益冲突审查规则">
+      <div className="conflict-rule-control">
+        <span className="conflict-rule-control-label">自动利冲审查</span>
+        <Switch
+          aria-label="自动利冲审查总开关"
+          checked={autoReviewEnabled}
+          loading={autoReviewSaving}
+          disabled={autoReviewDisabled}
+          onChange={(enabled) => void saveAutoReview(enabled)}
+        />
+        <span className="conflict-rule-control-reason">
+          {statusAvailable
+            ? autoReview?.ready ? autoReview.reason : `未就绪：${autoReview?.reason}`
+            : error ? "自动利冲审查状态不可用" : "正在读取自动利冲审查状态"}
+        </span>
+        {statusAvailable && !canManageAutoReview && <Tag>只读</Tag>}
+      </div>
+      {autoReviewError && <Alert className="conflict-rule-error" type="error" showIcon message={autoReviewError} />}
       <Alert
         type={!statusAvailable ? error ? "error" : "info" : autoReview?.effective ? "success" : "warning"}
         showIcon

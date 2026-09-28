@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.areas.crm.conflict_rule_catalog import get_conflict_rule_catalog
 from app.config import settings
-from app.core.conflict_review import CONFIG_KEY, auto_review_status
+from app.core.conflict_review import CONFIG_KEY, auto_review_status, can_manage_auto_review
 from app.core.dependencies import current_identity, get_db
 from app.core.permissions import _require_customer_conflict_permission
 from app.models import SystemConfig
@@ -23,5 +23,8 @@ async def list_conflict_rules(
     await _require_customer_conflict_permission(identity, db)
     config = await db.scalar(select(SystemConfig).where(SystemConfig.key == CONFIG_KEY))
     catalog = get_conflict_rule_catalog()
-    catalog["auto_review"] = auto_review_status(config.value if config else None)
+    catalog["auto_review"] = {
+        **auto_review_status(config.value if config else None),
+        "can_manage": can_manage_auto_review(identity),
+    }
     return catalog

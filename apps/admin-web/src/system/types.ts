@@ -44,6 +44,7 @@ export type ConflictAutoReviewStatus = {
   ready: boolean;
   effective: boolean;
   reason: string;
+  can_manage: boolean;
 };
 
 export type CacheRow = {

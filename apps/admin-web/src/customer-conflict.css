@@ -181,6 +181,23 @@
   min-width: 0;
 }
 
+.conflict-rule-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.conflict-rule-control-label {
+  font-weight: 600;
+}
+
+.conflict-rule-control-reason {
+  color: #666;
+  font-size: 12px;
+}
+
 .conflict-rule-toolbar {
   display: flex;
   flex-wrap: wrap;
