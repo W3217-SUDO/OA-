@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Button, Form, Input, message, Modal } from "antd";
-import { BugOutlined } from "@ant-design/icons";
 import { api } from "./api";
 
 export default function BugFeedback() {
@@ -30,7 +29,7 @@ export default function BugFeedback() {
   };
 
   return <>
-    <Button type="primary" className="bug-feedback-trigger" icon={<BugOutlined />} aria-label="问题反馈" title="问题反馈" onClick={() => setOpen(true)}>问题反馈</Button>
+    <Button className="bug-feedback-trigger" aria-label="问题反馈" title="问题反馈" onClick={() => setOpen(true)}>问题反馈</Button>
     <Modal open={open} title="问题反馈" okText="提交反馈" confirmLoading={submitting}
       onOk={() => void submit()} onCancel={() => setOpen(false)}>
       <Form form={form} layout="vertical">
