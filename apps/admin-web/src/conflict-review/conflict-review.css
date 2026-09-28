@@ -1,0 +1,11 @@
+.conflict-review-workspace { margin-top: 16px; }
+.conflict-review-notice { margin-bottom: 14px; }
+.conflict-review-panel { display: grid; gap: 14px; }
+.conflict-review-finding { border: 1px solid #e5e7eb; padding: 14px; background: #fff; }
+.conflict-review-finding.absolute { border-left: 4px solid #cf1322; }
+.conflict-review-finding.relative, .conflict-review-finding.special { border-left: 4px solid #d4a106; }
+.conflict-review-finding h4 { margin: 0 0 8px; }
+.conflict-review-finding p { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.conflict-review-actions { padding-top: 12px; border-top: 1px solid #e5e7eb; }
+.conflict-review-toolbar { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; margin-bottom: 14px; }
+.conflict-review-evidence { padding-left: 22px; margin-bottom: 8px; }

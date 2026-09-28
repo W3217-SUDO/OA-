@@ -1,0 +1,47 @@
+export type ConflictKind = "absolute" | "relative" | "special";
+export type ConflictStatus = "pending" | "approved_false_positive" | "approved_waiver" | "rejected" | "stopped" | "clear" | "expired";
+export type ConflictAttachment = { id: number; original_name: string; size: number; current?: boolean; download_url?: string };
+export type ConflictFinding = {
+  rule_id: string;
+  title: string;
+  kind: ConflictKind;
+  reason: string;
+  evidence: string[];
+  unresolved: boolean;
+  required_facts: string[];
+  manual_boundary: string;
+  branches?: Array<{ condition: string; action: string; description: string }>;
+  status: ConflictStatus;
+  feedback: { action: string; reason: string; attachment_ids: number[]; at: string; by: string } | null;
+  decision: { decision: string; reason: string; at: string; by: string } | null;
+};
+export type ConflictReview = {
+  id: number;
+  source_record_id: number;
+  source_module: string;
+  source_title: string;
+  source_no: string;
+  status: ConflictStatus;
+  kind: ConflictKind;
+  blocking: boolean;
+  fingerprint: string;
+  revision: number;
+  findings: ConflictFinding[];
+  missing_facts: string[];
+  history: Array<{ action?: string; reason?: string; at?: string; by?: string; rule_id?: string }>;
+  attachments: ConflictAttachment[];
+  can_feedback: boolean;
+  can_review: boolean;
+  can_view: boolean;
+  can_view_detail: boolean;
+  can_check?: boolean;
+  submitter: string;
+  created_at: string;
+  updated_at: string;
+};
+export type ConflictRecordState = { record_id: number; review: ConflictReview | null; blocking: boolean; enabled: boolean; can_check: boolean; can_view: boolean; message?: string };
+export type ConflictReviewList = { items: ConflictReview[]; total: number; page: number; page_size: number; can_review: boolean };
+
+export const conflictKindLabel = (kind: ConflictKind) => kind === "absolute" ? "绝对禁止" : kind === "relative" ? "相对禁止" : "专项待核实";
+const statusLabels: Record<string, string> = { pending: "待核查", approved_false_positive: "误判核查通过", approved_waiver: "书面豁免通过", rejected: "审核不通过", stopped: "已停止代理", clear: "未发现已知冲突", expired: "资料已变化，须重新审查" };
+export const conflictStatusLabel = (status: string) => statusLabels[status] || status;

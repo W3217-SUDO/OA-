@@ -12,6 +12,8 @@ import {
 } from "antd";
 import { DownloadOutlined, FileDoneOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { useConflictReview } from "../conflict-review/useConflictReview";
+import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 import type { FormInstance } from "antd";
 import type { AttachmentRow, EventRow, SealRow } from "./types";
 import { personDisplayName, sealAttachmentLabel, sealAttachmentListLabel, statusColors } from "./constants";
@@ -78,6 +80,7 @@ export function SealDetailDrawer({
   onOpenCaseDetail,
   onOpenContractDetail,
 }: SealDetailDrawerProps) {
+  const conflict = useConflictReview(detail?.id, open);
   const isAuditTab = tab === "audit";
   const canApprove = detail ? canSealAction("approve", detail) : false;
   const canReject = detail ? canSealAction("reject", detail) : false;
@@ -96,7 +99,7 @@ export function SealDetailDrawer({
         detail && showAuditFooter ? (
           <Space>
             {canApprove && (
-              <Button type="primary" loading={actionSubmitting} onClick={() => onDetailApproval(true)}>
+              <Button type="primary" loading={actionSubmitting} disabled={conflict.blocked} onClick={() => onDetailApproval(true)}>
                 通过
               </Button>
             )}
@@ -113,6 +116,7 @@ export function SealDetailDrawer({
     >
       {detail && (
         <>
+          <ConflictReviewNotice guard={conflict} />
           <Descriptions
             bordered
             size="small"

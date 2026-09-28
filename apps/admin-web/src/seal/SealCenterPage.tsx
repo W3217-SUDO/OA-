@@ -784,12 +784,14 @@ export default function SealCenterPage({
         : await postSeal("/seals/applications", data);
       ensureSealSuccess(response, "鐢宠淇濆瓨澶辫触");
       const savedApplication = response.data as SealRow;
+      setEditingApplication(savedApplication);
       const queuedFilesUploaded = pendingCreateFiles.length
         ? await uploadSealFiles(pendingCreateFiles, savedApplication)
         : true;
       if (submitAfterSave && !queuedFilesUploaded) {
         throw new Error("附件上传失败，未提交审批");
       }
+      if (queuedFilesUploaded) setPendingCreateFiles([]);
       if (submitAfterSave) {
         await postSeal(`/seals/applications/${savedApplication.id}/submit`, {
           comment: "申请人在编辑弹窗内确认材料无误并提交审批",
@@ -802,7 +804,6 @@ export default function SealCenterPage({
             ? "用印申请已修改"
             : "用印申请已保存为草稿",
       );
-      if (queuedFilesUploaded) setPendingCreateFiles([]);
       setCreateOpen(false);
       setEditingApplication(null);
       createForm.resetFields();

@@ -17,6 +17,7 @@ message
 import dayjs from "dayjs";
 import { useEffect,useMemo,useRef,useState } from "react";
 import { api } from "../api";
+import { IprConflictActions } from "./IprConflictActions";
 import { confirmOperation } from "../components/common/confirmOperation";
 import { DetailTabs } from "../components/common/DetailTabs";
 import {
@@ -2235,12 +2236,7 @@ export default function IprCenterPage({
                 </Button>
               )}
               {["草稿", "已驳回"].includes(detail.status) && (
-                <Button
-                  type="primary"
-                  onClick={() => action(detail, "submit")}
-                >
-                  提交立案审核
-                </Button>
+                <IprConflictActions recordId={detail.id} mode="submit" detail onSubmit={() => action(detail, "submit")} />
               )}
               {detail.status === "在办" && (
                 <Button onClick={() => openMaintenance(detail)}>

@@ -1,5 +1,6 @@
 import DashboardPersonCell from "./DashboardPersonCell";
 import { useDashboardData, type DashboardData, type DashboardSection } from "./dashboardData";
+import { ConflictReviewHost } from "./conflict-review/ConflictReviewHost";
 import { dashboardWorkspace } from "./dashboardWorkspace";
 import {
   Component,
@@ -1894,6 +1895,7 @@ export default function App() {
   );
   return (
     <Layout className="app-shell">
+      <ConflictReviewHost key={sessionUser?.username || ""} />
       <Header className="topbar">
         <div
           className={`logo ${collapsed ? "logo-collapsed" : ""}`}

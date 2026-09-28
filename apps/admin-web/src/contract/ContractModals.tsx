@@ -1,6 +1,8 @@
 import { CheckOutlined,CloseOutlined,PlusOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import { InvoiceApplicationForm } from "./InvoiceApplicationForm";
+import { useConflictReview } from "../conflict-review/useConflictReview";
+import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 import type { InvoiceApplicationSubject } from "./contractInvoiceApplication";
 import {
 Alert,
@@ -357,6 +359,7 @@ export function ContractReviewModal({
   onCancel,
   onApprove,
 }: ContractReviewModalProps) {
+  const conflict = useConflictReview(reviewing?.id, open);
   return (
     <Modal
       width={680}
@@ -368,7 +371,7 @@ export function ContractReviewModal({
             <Button danger icon={<CloseOutlined />} onClick={() => onApprove(false)}>
               拒绝
             </Button>
-            <Button type="primary" icon={<CheckOutlined />} onClick={() => onApprove(true)}>
+            <Button type="primary" icon={<CheckOutlined />} disabled={conflict.blocked} onClick={() => onApprove(true)}>
               通过当前节点
             </Button>
           </Space>
@@ -378,6 +381,7 @@ export function ContractReviewModal({
       }
       onCancel={onCancel}
     >
+      <ConflictReviewNotice guard={conflict} />
       <Steps direction="vertical" items={stepItems} />
       {reviewing?.status === "审批中" && canActOnCurrentApproval && (
         <Form form={reviewForm} layout="vertical">

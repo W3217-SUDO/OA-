@@ -1191,13 +1191,15 @@ export default function InvestigationCenterPage({
         ...validatedBatchCaseValues,
         clue_ids: selectedClues,
       });
+      const pendingCount = data.pending_reviews?.length || 0;
       if (data.failed)
         message.warning(
           `生成 ${data.created} 个案件，${data.failed} 条未处理：${data.errors
             .slice(0, 3)
             .map((x: any) => x.error)
-            .join("；")}`,
+            .join("；")}${pendingCount ? `；其中 ${pendingCount} 件待利益冲突核查，尚未完成立案` : ""}`,
         );
+      else if (pendingCount) message.warning(`已保存 ${data.created} 个案件，其中 ${pendingCount} 件待利益冲突核查，尚未完成立案；请在“我的审查”查看全部记录`);
       else message.success(`已生成 ${data.created} 个待分配案件`);
       setBatchOpen(false);
       setSelectedClues([]);

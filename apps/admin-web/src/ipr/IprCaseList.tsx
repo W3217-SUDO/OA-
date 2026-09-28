@@ -11,6 +11,7 @@ Tag,
 import { useMemo } from "react";
 import { isLegacyIprRecord,statusColor } from "./constants";
 import type { IprRecord } from "./types";
+import { IprConflictActions } from "./IprConflictActions";
 
 interface IprCaseListProps {
   items: IprRecord[];
@@ -189,9 +190,7 @@ export function IprCaseList({
               </Button>
             )}
             {["草稿", "已驳回"].includes(row.status) && (
-              <Button type="link" onClick={() => onAction(row, "submit")}>
-                提交审核
-              </Button>
+              <IprConflictActions recordId={row.id} summary={row.data.conflict_review} mode="submit" onSubmit={() => onAction(row, "submit")} />
             )}
             {row.status === "在办" && (
               <Button
@@ -228,21 +227,7 @@ export function IprCaseList({
             {reviewView &&
               row.status === "待立案审核" &&
               ["admin", "manager"].includes(profile.role || "") && (
-                <>
-                  <Button
-                    type="link"
-                    onClick={() => onAction(row, "review", true)}
-                  >
-                    通过
-                  </Button>
-                  <Button
-                    type="link"
-                    danger
-                    onClick={() => onAction(row, "review", false)}
-                  >
-                    驳回
-                  </Button>
-                </>
+                <IprConflictActions recordId={row.id} summary={row.data.conflict_review} mode="review" onReview={(approved) => onAction(row, "review", approved)} />
               )}
           </Space>
         ),

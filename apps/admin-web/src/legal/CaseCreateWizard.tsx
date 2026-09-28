@@ -4,6 +4,8 @@ import { Button,Checkbox,DatePicker,Form,Input,Select,Space,Steps } from "antd";
 import dayjs from "dayjs";
 import { resolveCaseSourcePerson } from "../caseContractPrefill";
 import type { CaseRow,ContractRow } from "./types";
+import { useConflictReview } from "../conflict-review/useConflictReview";
+import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 
 interface LitigantLabels {
   plaintiff: string;
@@ -16,6 +18,7 @@ interface LitigantLabels {
 
 interface CaseCreateWizardProps {
   createFlowToken: string;
+  createdCaseId: number | null;
   createStep: number;
   setCreateStep: (step: number) => void;
   createForm: FormInstance;
@@ -54,6 +57,7 @@ interface CaseCreateWizardProps {
 
 export const CaseCreateWizard = ({
   createFlowToken,
+  createdCaseId,
   createStep,
   setCreateStep,
   createForm,
@@ -89,6 +93,7 @@ export const CaseCreateWizard = ({
   saveLitigants,
   finishCreateFlow,
 }: CaseCreateWizardProps) => {
+  const conflict = useConflictReview(createdCaseId ?? undefined, createStep > 0);
   const resolveCasePersonValue = (source: string) => {
     const normalized = String(source || "").trim();
     if (!normalized) return "";
@@ -106,6 +111,7 @@ export const CaseCreateWizard = ({
           ? [{ title: "基本信息" }, { title: "当事人信息" }]
           : [{ title: "基本信息" }, { title: "当事人信息" }, { title: "司法机关信息" }]}
       />
+      {createStep > 0 && <ConflictReviewNotice guard={conflict} />}
       <Form
         form={createForm}
         className="case-create-wizard-form"

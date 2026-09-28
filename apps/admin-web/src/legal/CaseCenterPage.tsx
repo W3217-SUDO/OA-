@@ -1,5 +1,7 @@
 import { CaseClueDetails } from "./CaseDetail/CaseClueDetails";
 import { CaseClueSelect } from "./CaseClueSelect";
+import { useConflictReview } from "../conflict-review/useConflictReview";
+import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 import { caseContractDocuments } from "./services/caseDocuments";
 import { CommissionPerson } from "./CommissionPerson";
 import {
@@ -2520,6 +2522,8 @@ export default function CaseCenterPage({
     ));
   }, [caseFileTypeCatalog, caseRelations, selectedBatchCases]);
   const selectedCase = (counselListMode?counselCases:originalCases).find((row) => selectedCaseKeySet.has(String(row.id)));
+  const selectedCaseConflict = useConflictReview(selectedCase?.id, selectedCase?.status === "待立案审批");
+  const detailCaseConflict = useConflictReview(viewingCounselCase?.id, Boolean(viewingCounselCase));
   const selectedCaseCapability = getCaseCapability(selectedCase);
   const selectedCases = (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeySet.has(String(row.id)));
   const canDeleteSelectedCompanyCase = isCompanyCaseListRoute(initialView)
@@ -2986,6 +2990,7 @@ export default function CaseCenterPage({
       {isCreateView && (
         <CaseCreateWizard
           createFlowToken={createFlowToken}
+          createdCaseId={createdCaseId}
           createStep={createStep}
           setCreateStep={setCreateStep}
           createForm={createForm}
@@ -3107,6 +3112,7 @@ export default function CaseCenterPage({
           </div>;
         })}</div></aside>
         <Card className="panel case-original-panel" title="案件列表" extra={<Button type="link" onClick={()=>document.querySelector('.case-advanced-query')?.classList.toggle('case-query-expanded')}>高级搜索</Button>}>
+          {selectedCase?.status === "待立案审批" && <ConflictReviewNotice guard={selectedCaseConflict} />}
           <ListFilterBar form={caseQueryForm} className="case-advanced-query case-query-expanded" onFinish={(values)=>{setCaseQuery(values);setOriginalPage(1);if(counselListMode)void loadCounselCases(values,1,counselPageSize);else void loadOrdinaryCases(values,1,originalPageSize);}}>
             {counselListMode ? <>
               <Form.Item label="客户" name="customer"><Input placeholder="客户"/></Form.Item><Form.Item label="案号" name="serial_no"><Input placeholder="案号"/></Form.Item><Form.Item label="关键字" name="keyword"><Input placeholder="案号、案件名称、客户名称"/></Form.Item><Form.Item label="顾问期间" name="counsel_range"><DatePicker.RangePicker /></Form.Item>
@@ -3163,7 +3169,7 @@ export default function CaseCenterPage({
               title={!selectedCaseKeys.length ? "请先选择案件" : canDeleteSelectedCompanyCase ? `删除选中的 ${selectedCases.length} 条公司案件` : "当前账号、所选案件状态或选择范围不允许删除"}
               onClick={()=>void deleteCompanyCase(selectedCases)}
             >删除案件</Button>}
-            {["admin","manager"].includes(profile.role||"")&&selectedCase?.status==="待立案审批"&&<Button onClick={()=>void reviewCaseCreation(selectedCase,true)}>立案审批通过</Button>}
+            {["admin","manager"].includes(profile.role||"")&&selectedCase?.status==="待立案审批"&&<Button disabled={selectedCaseConflict.blocked} onClick={()=>void reviewCaseCreation(selectedCase,true)}>立案审批通过</Button>}
             {["admin","manager"].includes(profile.role||"")&&selectedCase?.status==="待立案审批"&&<Button danger onClick={()=>void reviewCaseCreation(selectedCase,false)}>立案审批驳回</Button>}
             {counselListMode&&<>
               <Button onClick={()=>selectedCase?void openCounselDetail(selectedCase):message.warning("请先选择案件")}>查看详情</Button>
@@ -4021,6 +4027,7 @@ export default function CaseCenterPage({
         </Space>}
       >
         {viewingCounselCase&&<div className="case-detail-workbench">
+          <ConflictReviewNotice guard={detailCaseConflict} />
           <CaseDetailHeader
             viewingCase={viewingCounselCase}
             casePersonDisplayName={casePersonDisplayName}

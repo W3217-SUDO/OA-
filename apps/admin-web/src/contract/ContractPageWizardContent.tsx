@@ -4,8 +4,12 @@ import { displayContractStatus } from "../contractStatusPresentation.mjs";
 import { CONTRACT_ATTACHMENT_ACCEPT } from "../contractWorkflowPolicy.mjs";
 import { CONTRACT_CREATE_STEP_TITLES, CONTRACT_FEE_MODE_OPTIONS, CONTRACT_TYPE_OPTIONS, colors, } from "./constants";
 import type { ContractWizardContentProps } from "./ContractCreateWizard";
+import { useConflictReview } from "../conflict-review/useConflictReview";
+import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealApprovalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, personName, onContractFileChange, onApproveWizard, onClearLinkedCustomerContext, onDownloadAttachment }: Pick<ContractWizardContentProps, "wizardStep" | "wizardDraft" | "form" | "submitForm" | "reviewForm" | "sealForm" | "attachments" | "historyItems" | "stepItems" | "customerOptions" | "approvalOptions" | "sealApprovalOptions" | "sealAssets" | "currentApproval" | "canActOnCurrentApproval" | "contractApproverLabel" | "personName" | "onContractFileChange" | "onApproveWizard" | "onClearLinkedCustomerContext" | "onDownloadAttachment">) {
+    const conflict = useConflictReview(wizardDraft?.id, wizardStep > 0);
     return <>
+    {wizardStep > 0 && <ConflictReviewNotice guard={conflict} />}
     <div className="contract-page-steps">
             {CONTRACT_CREATE_STEP_TITLES.map((title, index) => (<div key={title} className={wizardStep === index ? "active" : wizardStep > index ? "done" : ""}>{index + 1}. {title}</div>))}
           </div>
@@ -58,7 +62,7 @@ export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submi
               {wizardDraft?.status === "审批中" && currentApproval && (canActOnCurrentApproval ? (<Form form={reviewForm} layout="vertical" className="contract-review-form">
                   <div className="contract-current-approval">当前节点：第 {currentApproval.step_order} 级 · {personName(currentApproval.approver_display_name || currentApproval.approver)}</div>
                   <Form.Item label="审批意见" name="comment"><Input.TextArea rows={3} placeholder="填写通过意见；拒绝时必须填写原因"/></Form.Item>
-                  <Space><Button danger icon={<CloseOutlined />} onClick={() => onApproveWizard(false)}>拒绝</Button><Button type="primary" icon={<CheckOutlined />} onClick={() => onApproveWizard(true)}>通过当前节点</Button></Space>
+                  <Space><Button danger icon={<CloseOutlined />} onClick={() => onApproveWizard(false)}>拒绝</Button><Button type="primary" icon={<CheckOutlined />} disabled={conflict.blocked} onClick={() => onApproveWizard(true)}>通过当前节点</Button></Space>
                 </Form>) : <Alert type="info" showIcon title={`合同已进入 ${personName(currentApproval.approver_display_name || currentApproval.approver)} 的待审批列表`} description="请等待指定审批人处理。"/>)}
               <Divider titlePlacement="start">合同附件</Divider>
               <div className="contract-attachment-list">{attachments.length ? attachments.map((item) => <Button key={item.id} type="link" onClick={() => onDownloadAttachment(item)}>{item.original_name}</Button>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无合同附件"/>}</div>

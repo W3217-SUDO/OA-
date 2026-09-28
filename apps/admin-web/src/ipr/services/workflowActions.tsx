@@ -284,7 +284,9 @@ export function createIprWorkflowActions(context: IprWorkflowDependencies) {
             const rowErrors = data.errors || [];
             setIprBatchCreateErrors(rowErrors);
             if (data.created_count) {
-                message.success(`已创建 ${data.created_count} 件知识产权案件`);
+                const pendingCount = data.pending_reviews?.length || 0;
+                if (pendingCount) message.warning(`已保存 ${data.created_count} 件知识产权案件，其中 ${pendingCount} 件待利益冲突核查，尚未完成立案；请在“我的审查”查看全部记录`);
+                else message.success(`已创建 ${data.created_count} 件知识产权案件`);
                 void load(1, pageSize);
             }
             if (!rowErrors.length)

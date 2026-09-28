@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
-import { Button, Card, Input, Table, message } from "antd";
+import { Button, Card, Input, Table, Tabs, message } from "antd";
 import { api } from "./api";
 import ConflictRuleCatalog from "./ConflictRuleCatalog";
+import { ConflictReviewQueue } from "./conflict-review/ConflictReviewQueue";
 import "./customer-conflict.css";
 
 type ConflictSearchResult = {
@@ -48,6 +49,7 @@ export default function CustomerConflictPage() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ConflictSearchResult | null>(null);
+  const [canReview, setCanReview] = useState(false);
   const requestSequence = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
 
@@ -147,7 +149,13 @@ export default function CustomerConflictPage() {
         </div>
       )}
     </Card>
-    <ConflictRuleCatalog />
+    <Card className="panel conflict-review-workspace" title="利益冲突审查">
+      <Tabs items={[
+        { key: "my", label: "我的审查", children: <ConflictReviewQueue view="my" onPermission={setCanReview} /> },
+        ...(canReview ? [{ key: "queue", label: "待核查审批", children: <ConflictReviewQueue view="queue" /> }] : []),
+        { key: "rules", label: "规则目录", children: <ConflictRuleCatalog /> },
+      ]} />
+    </Card>
     </>
   );
 }

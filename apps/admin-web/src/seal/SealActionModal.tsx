@@ -12,6 +12,8 @@ import { UploadOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import type { AttachmentRow, SealActionState } from "./types";
 import { personDisplayName } from "./constants";
+import { useConflictReview } from "../conflict-review/useConflictReview";
+import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 
 interface SealActionModalProps {
   action: SealActionState | null;
@@ -47,6 +49,7 @@ export function SealActionModal({
   onUploadStampAttachments,
 }: SealActionModalProps) {
   const actionType = action?.type || "approve";
+  const conflict = useConflictReview(action?.row.id, Boolean(action) && ["approve", "stamp"].includes(actionType));
   const titleMap: Record<string, string> = {
     approve: "审批通过",
     reject: "审批拒绝",
@@ -61,9 +64,11 @@ export function SealActionModal({
       okText="确认"
       cancelText="取消"
       confirmLoading={submitting}
+      okButtonProps={{ disabled: conflict.blocked }}
       onOk={onOk}
       onCancel={onCancel}
     >
+      <ConflictReviewNotice guard={conflict} />
       {(actionType === "approve" || actionType === "reject") && (
         <Descriptions
           size="small"

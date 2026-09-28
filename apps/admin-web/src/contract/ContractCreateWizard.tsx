@@ -19,6 +19,8 @@ Tag,
 Timeline,
 } from "antd";
 import { AttachmentFileInput } from "../components/common/AttachmentContent";
+import { useConflictReview } from "../conflict-review/useConflictReview";
+import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 import { displayContractStatus } from "../contractStatusPresentation.mjs";
 import { CONTRACT_ATTACHMENT_ACCEPT } from "../contractWorkflowPolicy.mjs";
 import {
@@ -107,6 +109,7 @@ export function ContractWizardContent({
   onStartCreate,
   onNavigate,
 }: ContractWizardContentProps) {
+  const conflict = useConflictReview(wizardDraft?.id, mode === "modal" && !editing && wizardStep > 0);
   const showSteps = !editing && wizardStep < CONTRACT_CREATE_STEP_TITLES.length;
   const stepClass = mode === "page" ? "contract-page-steps" : "contract-create-steps";
 
@@ -114,6 +117,7 @@ export function ContractWizardContent({
 
   return (
     <>
+      {!editing && wizardStep > 0 && <ConflictReviewNotice guard={conflict} />}
       {showSteps && (
         <Steps
           className={stepClass}
@@ -276,7 +280,7 @@ export function ContractWizardContent({
                   <Button danger icon={<CloseOutlined />} onClick={() => onApproveWizard(false)}>
                     拒绝
                   </Button>
-                  <Button type="primary" icon={<CheckOutlined />} onClick={() => onApproveWizard(true)}>
+                  <Button type="primary" icon={<CheckOutlined />} disabled={conflict.blocked} onClick={() => onApproveWizard(true)}>
                     通过当前节点
                   </Button>
                 </Space>

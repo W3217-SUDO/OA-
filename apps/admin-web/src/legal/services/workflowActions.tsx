@@ -829,8 +829,11 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             const { data } = await api.post("/investigations/clues/batch-cases", buildClueConversionPayload(values));
             setClueConversionOpen(false);
             clueConversionForm.resetFields();
+            const pendingCount = data.pending_reviews?.length || 0;
             if (data.failed)
-                message.warning(`已生成 ${data.created || 0} 件案件，${data.failed} 条线索未转案`);
+                message.warning(`已保存 ${data.created || 0} 件案件，${data.failed} 条线索未转案${pendingCount ? `，其中 ${pendingCount} 件待利益冲突核查，尚未完成立案` : ""}`);
+            else if (pendingCount)
+                message.warning(`已保存 ${data.created || 0} 件案件，其中 ${pendingCount} 件待利益冲突核查，尚未完成立案；请在“我的审查”查看全部记录`);
             else
                 message.success(`已从线索生成 ${data.created || 0} 件案件`);
             await load();
