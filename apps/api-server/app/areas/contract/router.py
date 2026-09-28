@@ -315,6 +315,7 @@ async def contract_approvals(contract_id: int, identity: dict = Depends(current_
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/submit")
 async def submit_contract(contract_id: int, body: ContractSubmitInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.conflict_review import assess_conflict_review
     from app.core.contracts import (
         _is_contract_approver,
     )
@@ -354,14 +355,18 @@ async def submit_contract(contract_id: int, body: ContractSubmitInput, identity:
             "current_approver": approvers[0],
             "sync_seal": body.sync_seal,
         }
+        await assess_conflict_review(contract, identity, db, trigger="contract_submit")
         db.add(WorkflowEvent(record_id=contract.id, action="提交合同审批", from_status=old, to_status="审批中", operator=identity["username"], comment=body.comment or f"审批人：{approvers[0]}")); await db.commit(); await db.refresh(contract)
         return await _record_dict_for_identity(contract, identity, db)
     except HTTPException as exc:
+        if isinstance(exc.detail, dict) and exc.detail.get("code") == "CONFLICT_REVIEW_REQUIRED":
+            raise
         return _legacy_contract_business_failure_response(exc)
 
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/approve")
 async def approve_contract(contract_id: int, body: ContractApprovalInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.conflict_review import assess_conflict_review, require_conflict_clear
     from app.core.legacy_sync import (
         _legacy_contract_business_failure_response, _sync_legacy_contract_audit, _sync_legacy_official_audit,
     )
@@ -379,6 +384,8 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
         explicit_delegate = current.approver != identity["username"] and can_act
         if not can_act:
             raise HTTPException(status_code=403, detail=f"当前节点应由 {current.approver} 审批")
+        if body.approved:
+            await require_conflict_clear(contract, db, action="合同审批")
         current.comment = body.comment.strip(); current.acted_at = datetime.now(); old = contract.status
         if not body.approved:
             current.status = "已拒绝"; contract.status = "已拒绝"
@@ -398,6 +405,7 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
                 if seal_application_id and (contract.data or {}).get("sync_seal"):
                     seal_application = await db.get(BusinessRecord, seal_application_id)
                     if seal_application and seal_application.module == "seal" and seal_application.status == "草稿":
+                        await assess_conflict_review(seal_application, identity, db, trigger="contract_seal_submit")
                         seal_application.status = "待审批"
                         contract.data = {**(contract.data or {}), "sync_seal_submitted_at": datetime.now().isoformat(timespec="seconds"), "sync_seal_file_required": False}
                         db.add(WorkflowEvent(record_id=seal_application.id, action="合同通过后自动提交同步用印", from_status="草稿", to_status="待审批", operator=identity["username"], comment=f"来源合同 {contract.serial_no} 已审批通过"))
@@ -407,11 +415,14 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
         db.add(WorkflowEvent(record_id=contract.id, action=action, from_status=old, to_status=contract.status, operator=identity["username"], comment=f"第{current.step_order}级 {approval_actor}：{body.comment}")); await db.commit(); await db.refresh(contract)
         return await _record_dict_for_identity(contract, identity, db)
     except HTTPException as exc:
+        if isinstance(exc.detail, dict) and exc.detail.get("code") == "CONFLICT_REVIEW_REQUIRED":
+            raise
         return _legacy_contract_business_failure_response(exc)
 
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/seal-application", status_code=status.HTTP_201_CREATED)
 async def create_contract_seal_application(contract_id: int, body: ContractSealApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.conflict_review import assess_conflict_review
     from app.core.contracts import (
         _single_linked_case_for_contract,
     )
@@ -503,6 +514,8 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
     try:
         db.add(seal)
         await db.flush()
+        if submitted:
+            await assess_conflict_review(seal, identity, db, trigger="contract_seal_submit")
         copied_targets = await _copy_seal_source_attachments(seal, source_attachment_ids, identity, db)
         previous_seal_ids = [int(item) for item in (contract.data or {}).get("seal_application_ids", []) if str(item).isdigit()]
         previous_seal_items = [item for item in (contract.data or {}).get("seal_applications", []) if isinstance(item, dict)]

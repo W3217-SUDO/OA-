@@ -1529,6 +1529,7 @@ async def _persist_case_litigants(
     enforce_create_permission: bool,
     action: str,
 ):
+    from app.core.conflict_review import assess_conflict_review
     from app.core.crm import (
         _persist_case_litigant_customers,
     )
@@ -1665,6 +1666,7 @@ async def _persist_case_litigants(
     if "case_creation_step" in current_data or advance_creation:
         updated_data["case_creation_step"] = next_creation_step
     case_record.data = updated_data
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
     db.add(WorkflowEvent(
         record_id=case_record.id,
         action=action,

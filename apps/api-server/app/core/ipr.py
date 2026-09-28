@@ -244,7 +244,9 @@ def _ipr_litigation_rows(data: dict, key: str) -> list[dict]:
 
 
 async def _save_ipr_litigation_data(record: BusinessRecord, data: dict, identity: dict, db: AsyncSession, action: str, comment: str = "") -> None:
+    from app.core.conflict_review import assess_conflict_review
     record.data = data
+    await assess_conflict_review(record, identity, db, trigger="case_save")
     db.add(WorkflowEvent(record_id=record.id, action=action, from_status=record.status, to_status=record.status, operator=identity["username"], comment=comment))
     await db.commit()
     await db.refresh(record)

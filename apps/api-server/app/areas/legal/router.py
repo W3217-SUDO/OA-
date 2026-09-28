@@ -42,6 +42,7 @@ from app.models_shared import (
     SealPackageDownloadInput, SealStampInput, TaskActionInput, TransitionInput,
 )
 from fastapi import APIRouter
+from app.core.conflict_review import assess_conflict_review, get_conflict_review_gate, require_conflict_clear
 from fastapi.responses import FileResponse
 
 router = APIRouter()
@@ -424,6 +425,8 @@ async def import_business_records(module: str = Query(min_length=1, max_length=3
     from app.core.tasks import (
         _active_task_username, _validate_task_deadline,
     )
+    if module == "conflict_review":
+        raise HTTPException(status_code=409, detail="利益冲突审查必须使用专用入口办理")
     await _require_record_module_menu(module, identity, db, action="批量导入")
     if module not in RECORD_IMPORT_COLUMNS: raise HTTPException(status_code=422, detail="该业务模块不支持批量导入")
     if module == "case": raise HTTPException(status_code=409, detail="案件必须使用分阶段专用入口创建，不能通过通用导入绕过")
@@ -1028,6 +1031,9 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
     cases = []
     for case in [*(by_id[value] for value in case_ids), *(by_no[value] for value in case_nos)]:
         if all(existing.id != case.id for existing in cases): cases.append(case)
+    if body.case_stage is not None:
+        for case in cases:
+            await require_conflict_clear(case, db, action="批量修改案件阶段")
     for case in cases:
         _require_case_creation_completed(case)
         if case.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
@@ -1055,6 +1061,17 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
             changes.append(f"诉讼标的：{data.get('litigation_amount', 0)} → {body.litigation_amount}")
             data["litigation_amount"] = body.litigation_amount
         case.data = data
+        await assess_conflict_review(case, identity, db, trigger="case_save")
+        gate = await get_conflict_review_gate(case, db, action="批量修改案件阶段")
+        if gate["blocking"] and body.case_stage is not None:
+            restored_data = dict(case.data or {})
+            if "case_stage" in before_data:
+                restored_data["case_stage"] = before_data["case_stage"]
+            else:
+                restored_data.pop("case_stage", None)
+            case.data = restored_data
+            changes = [item for item in changes if not item.startswith("案件阶段：")]
+            changes.append("案件阶段未变更：待利益冲突核查")
         if _case_commission_personnel_changed(before_data, data):
             await _recalculate_case_draft_commissions(case, db, identity["username"])
         db.add(WorkflowEvent(record_id=case.id, action="批量修改案件", from_status=case.status, to_status=case.status, operator=identity["username"], comment="；".join(changes + ([body.comment.strip()] if body.comment.strip() else []))))
@@ -2330,6 +2347,7 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
         record_id=record.id, action="从合同新建案件", to_status=record.status,
         operator=identity["username"], comment=f"关联合同：{contract.serial_no}｜{contract.title}",
     ))
+    await assess_conflict_review(record, identity, db, trigger="case_save")
     await _sync_legacy_projection(record, identity, db)
     await db.commit()
     await db.refresh(record)
@@ -2642,7 +2660,8 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
     for key in {
         "fixed_tasks_generated", "fixed_task_ids", "case_reminder_ids", "task_ids", "schedule_ids",
         "archived_at", "archived_by", "archive_comment", "submitted_at", "submitted_by",
-        "approval_comment", "approval_by", "approval_at", "progress_logs",
+        "approval_comment", "approval_by", "approval_at", "progress_logs", "conflict_review",
+        "conflict_review_requires_creation_approval", "conflict_review_target_phase",
     }:
         copied_data.pop(key, None)
     contract_snapshot = {
@@ -2718,6 +2737,7 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
         record_id=source_id, action="案件被复制", from_status=source_status, to_status=source_status,
         operator=identity["username"], comment=f"新案件：{copied.serial_no}",
     ))
+    await assess_conflict_review(copied, identity, db, trigger="case_save")
     await db.commit(); await db.refresh(copied)
     return _record_dict(copied, await _allowed_field_keys(identity, db))
 
@@ -2757,6 +2777,8 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
     if source_contract_id != target_contract_id:
         raise HTTPException(status_code=422, detail="仅允许合并同一合同下的案件")
 
+    await require_conflict_clear(source, db, action="合并案件")
+    await require_conflict_clear(target, db, action="合并案件")
     await merge_case_relations(source, target, db)
     moved_fees, moved_assisted_fees, moved_attachments = await move_case_finance_files(source, target, identity, db)
 
@@ -2779,6 +2801,7 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
             comment=f"已合并至 {target.serial_no}；迁移费用 {moved_fees} 条、资助费用 {moved_assisted_fees} 条、案件文件 {moved_attachments} 个。{body.comment.strip()}",
         ),
     ])
+    await assess_conflict_review(target, identity, db, trigger="case_save")
     await db.commit(); await db.refresh(target); await db.refresh(source)
     return {
         "target": await _record_dict_for_identity(target, identity, db),
@@ -2848,6 +2871,7 @@ async def update_case_notary_info(case_id: int, body: CaseNotaryInfoInput, ident
         operator=identity["username"],
         comment=f"公证书号：{previous_notary or '空'} → {body.notary_nos.strip()}；存放位置：{previous_address or '空'} → {deposit_address}。{body.comment.strip()}",
     ))
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
     await db.commit(); await db.refresh(case_record)
     return await _record_dict_for_identity(case_record, identity, db)
 
@@ -2987,6 +3011,16 @@ async def complete_case_creation(case_id: int, body: CaseCreationCompleteInput, 
         permission = await _permission_payload_for_identity(identity, db)
         if permission_key not in set(permission.get("menu_keys", [])):
             raise HTTPException(status_code=403, detail="当前角色没有法律顾问案件新建权限")
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
+    gate = await get_conflict_review_gate(case_record, db, action="完成案件新建")
+    if gate["blocking"]:
+        await db.commit()
+        raise HTTPException(status_code=409, detail={
+            "code": "CONFLICT_REVIEW_REQUIRED", "message": gate["message"],
+            "record_id": gate["record_id"], "review_id": (gate.get("review") or {}).get("id"),
+            "conflict_review": gate.get("review"),
+        })
+    case_data = case_record.data or {}
     previous_status = case_record.status
     case_record.status = "待立案审批"
     case_record.data = {
@@ -3064,6 +3098,7 @@ async def update_counsel_case_basic(case_id: int, body: CaseCounselBasicInput, i
         operator=identity["username"],
         comment=f"修改前：{old_summary}" + (f"｜说明：{body.comment.strip()}" if body.comment.strip() else ""),
     ))
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
     await db.commit()
     await db.refresh(case_record)
     return _record_dict(case_record)
@@ -3171,6 +3206,11 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         "clue_nos": clue_nos,
     }, handling_lawyers, handling_usernames, assistant_values, assistant_usernames)
     case_record.data = updated_case_data
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
+    gate = await get_conflict_review_gate(case_record, db, action="修改案件阶段")
+    if gate["blocking"]:
+        phase = previous_status
+        case_record.status = previous_status
     await sync_case_clues(case_record, ordered_clues, db, previous_clue_ids)
     if _case_commission_personnel_changed(case_data, updated_case_data):
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
@@ -3183,8 +3223,9 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     # These rules depend on both the current phase and assigned people. Run
     # after every basic-information save so assigning the assistant after the
     # phase transition cannot silently lose the automatic tasks.
-    await _ensure_document_preparation_task(case_record, db, system_operator=identity["username"])
-    await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator=identity["username"])
+    if not gate["blocking"]:
+        await _ensure_document_preparation_task(case_record, db, system_operator=identity["username"])
+        await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator=identity["username"])
     db.add(WorkflowEvent(
         record_id=case_record.id, action="修改普通案件基本信息",
         from_status=previous_status, to_status=case_record.status, operator=identity["username"],
@@ -3256,6 +3297,11 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
         "clue_id": clue_ids[0] if clue_ids else None, "source_clue_no": clue_nos[0] if clue_nos else "", "clue_nos": clue_nos,
     }, lawyers, lawyer_usernames, assistant_values[0] if assistant_values else "", assistant_usernames[0] if assistant_usernames else "")
     case_record.data = updated_case_data
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
+    gate = await get_conflict_review_gate(case_record, db, action="修改案件阶段")
+    if gate["blocking"]:
+        phase = previous_status
+        case_record.status = previous_status
     await sync_case_clues(case_record, clues, db, previous_clue_ids)
     if _case_commission_personnel_changed(case_data, updated_case_data):
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
@@ -3405,11 +3451,25 @@ async def update_case_judicial(case_id: int, body: CaseJudicialInput, identity: 
         for forbidden_key in (key for key in judicial_data if key.startswith(CRIMINAL_JUDICIAL_PREFIXES)):
             if str(judicial_data.get(forbidden_key) or "").strip():
                 raise HTTPException(status_code=422, detail="行政案件不能填写公安或检察院信息")
+    case_record.data = {**(case_record.data or {}), **judicial_data}
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
+    gate = await get_conflict_review_gate(case_record, db, action="完成案件新建")
+    if gate["blocking"]:
+        db.add(WorkflowEvent(
+            record_id=case_record.id, action="保存司法机关信息待利益冲突核查",
+            from_status=case_record.status, to_status=case_record.status,
+            operator=identity["username"], comment=gate["message"],
+        ))
+        await db.commit()
+        raise HTTPException(status_code=409, detail={
+            "code": "CONFLICT_REVIEW_REQUIRED", "message": gate["message"],
+            "record_id": gate["record_id"], "review_id": (gate.get("review") or {}).get("id"),
+            "conflict_review": gate.get("review"),
+        })
     previous_status = case_record.status
     case_record.status = "待立案审批"
     case_record.data = {
         **(case_record.data or {}),
-        **judicial_data,
         "case_creation_step": "completed",
         "case_creation_completed_at": datetime.now().isoformat(timespec="seconds"),
         "case_creation_completed_by": identity["username"],
@@ -3446,15 +3506,17 @@ async def review_case_creation(case_id: int, body: CaseCreationReviewInput, iden
         raise HTTPException(status_code=403, detail="只有管理员或案件主管可以审批新建案件")
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     data = case_record.data or {}
-    if data.get("batch_converted"):
+    if data.get("batch_converted") and not data.get("conflict_review_requires_creation_approval"):
         raise HTTPException(status_code=409, detail="线索自动生成案件无需人工立案审批")
     if data.get("case_creation_step") != "completed" or data.get("case_creation_approval_status") != "待审批" or case_record.status != "待立案审批":
         raise HTTPException(status_code=409, detail="该案件不在待立案审批状态")
     if not body.approved and not body.comment.strip():
         raise HTTPException(status_code=422, detail="驳回时必须填写原因")
+    if body.approved:
+        await require_conflict_clear(case_record, db, action="立案审批")
     previous = case_record.status
     if body.approved:
-        case_record.status = "新案待分配"
+        case_record.status = str(data.get("conflict_review_target_phase") or "新案待分配") if data.get("conflict_review_requires_creation_approval") else "新案待分配"
         approval_status = "已通过"
     else:
         case_record.status = "新案待分配"
@@ -3463,6 +3525,7 @@ async def review_case_creation(case_id: int, body: CaseCreationReviewInput, iden
         **data, "case_creation_approval_status": approval_status, "business_stage": "立案",
         "case_creation_reviewer": identity["username"], "case_creation_reviewed_at": datetime.now().isoformat(timespec="seconds"),
         "case_creation_review_comment": body.comment.strip(),
+        **({"case_register_date": str(date.today()), "filing_date": str(date.today())} if body.approved and data.get("conflict_review_requires_creation_approval") else {}),
         **({"case_creation_step": "litigants"} if not body.approved else {}),
     }
     action = "案件创建审批通过" if body.approved else "案件创建审批驳回"
@@ -4185,6 +4248,16 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
         "hearing_lawyer": hearing_values[0],
     }, handling_lawyers, handling_usernames, assistant, assistant_username)
     case_record.data = case_data
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
+    gate = await get_conflict_review_gate(case_record, db, action="案件分配")
+    if gate["blocking"]:
+        db.add(WorkflowEvent(
+            record_id=case_record.id, action="保存案件人员分配待利益冲突核查",
+            from_status=previous, to_status=previous, operator=identity["username"], comment=gate["message"],
+        ))
+        await db.commit()
+        await db.refresh(case_record)
+        return _record_dict(case_record)
     if _case_commission_personnel_changed(previous_case_data, case_data):
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     if case_record.status == "新案待分配":
@@ -4254,6 +4327,7 @@ async def update_case_hearing_lawyer(
             + (f"；说明：{body.comment.strip()}" if body.comment.strip() else "")
         ),
     ))
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
     await db.commit()
     await db.refresh(case_record)
     return _record_dict(case_record)
@@ -4536,6 +4610,7 @@ async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends
         if case_record.status == "已合并":
             raise HTTPException(status_code=409, detail="已合并案件不能修改案件阶段")
         await _require_case_phase_change_access(case_record, identity, db)
+        await require_conflict_clear(case_record, db, action="修改案件阶段")
         case_data = case_record.data or {}
         if not await _case_phase_is_allowed(str(case_data.get("case_type") or ""), phase["id"], db):
             raise HTTPException(status_code=422, detail=f"案件 {case_record.serial_no} 的类型不允许使用阶段“{phase['name']}”")
@@ -4637,10 +4712,18 @@ async def update_case_progress(case_id: int, body: CaseProgressInput, identity: 
         merged_progress["second_court_case_no"] = body.second_instance_case_no.strip()
     if body.second_court_name.strip():
         merged_progress["second_instance_court"] = body.second_court_name.strip()
+    previous_business_stage = (case_record.data or {}).get("business_stage")
+    case_record.data = merged_progress
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
+    gate = await get_conflict_review_gate(case_record, db, action="登记案件诉讼进展")
+    if gate["blocking"]:
+        target = previous
+        case_record.data = {**case_record.data, "business_stage": previous_business_stage}
     if target != previous:
-        merged_progress["phase_changed_at"] = datetime.now().isoformat(timespec="seconds")
-    case_record.status = target; case_record.data = merged_progress
-    db.add(WorkflowEvent(record_id=case_record.id, action="登记案件诉讼进展", from_status=previous, to_status=target, operator=identity["username"], comment=body.comment or "根据法院案号、裁判日期等案件要素自动推进阶段"))
+        case_record.data = {**case_record.data, "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
+    case_record.status = target
+    progress_comment = "诉讼进展资料已保存，案件阶段待利益冲突核查" if gate["blocking"] else "根据法院案号、裁判日期等案件要素自动推进阶段"
+    db.add(WorkflowEvent(record_id=case_record.id, action="登记案件诉讼进展", from_status=previous, to_status=target, operator=identity["username"], comment=body.comment or progress_comment))
     await db.commit(); await db.refresh(case_record); return _record_dict(case_record)
 
 
@@ -4702,6 +4785,7 @@ async def update_case_court_info(case_id: int, body: CaseCourtInfoInput, identit
         operator=identity["username"],
         comment=body.comment.strip() or "直接维护法院信息",
     ))
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
     await db.commit()
     await db.refresh(case_record)
     return _record_dict(case_record)
@@ -6180,6 +6264,7 @@ async def submit_seal_application(record_id: int, body: TaskActionInput, identit
     attachment_count = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == item.id, FileAttachment.category == "用印文件")) or 0)
     if not attachment_count:
         raise HTTPException(status_code=409, detail="请先上传至少一个用印文件后再提交审批")
+    await assess_conflict_review(item, identity, db, trigger="contract_seal_submit")
     old = item.status; item.status = "待审批"
     db.add(WorkflowEvent(record_id=item.id, action="提交用印审批", from_status=old, to_status=item.status, operator=identity["username"], comment=body.comment))
     await _sync_legacy_official_audit(item, identity, db, 10, body.comment)
@@ -6251,6 +6336,8 @@ async def approve_seal_application(record_id: int, body: SealApprovalInput, iden
     item = await _get_seal_application_for_action(record_id, "approve" if body.approved else "reject", identity, db)
     if not body.approved and not body.comment.strip():
         raise HTTPException(status_code=422, detail="驳回时必须填写审批意见")
+    if body.approved:
+        await require_conflict_clear(item, db, action="用印审批")
     old = item.status; item.status = "待用印" if body.approved else "已拒绝"
     item.data = {
         **(item.data or {}),
@@ -6281,6 +6368,7 @@ async def stamp_seal_application(record_id: int, body: SealStampInput, identity:
     if item.status == "已用印" and (item.data or {}).get("stamped_at"):
         return await _seal_record_dict(item, db, identity=identity)
     if item.status != "待用印": raise HTTPException(status_code=409, detail="申请尚未审批通过或已经用印")
+    await require_conflict_clear(item, db, action="实际用印")
     requested = int((item.data or {}).get("copies") or 0)
     if body.actual_copies > requested: raise HTTPException(status_code=409, detail=f"实际用印份数不能超过申请份数 {requested}")
     asset = await db.get(SealAsset, int((item.data or {}).get("seal_asset_id") or 0))
@@ -6343,6 +6431,7 @@ async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dic
             capabilities = await _seal_application_capabilities(item, identity, db)
             if not capabilities["stamp"]:
                 raise HTTPException(status_code=403, detail=f"当前账号没有登记申请 {item.serial_no} 实际用印的权限")
+            await require_conflict_clear(item, db, action="批量用印")
             requested = int((item.data or {}).get("copies") or 0)
             if body.actual_copies > requested:
                 raise HTTPException(status_code=409, detail=f"申请 {item.serial_no} 实际用印份数不能超过申请份数 {requested}")
@@ -6585,6 +6674,8 @@ async def create_record(body: RecordInput, identity: dict = Depends(current_iden
     from app.core.system import (
         _record_dict,
     )
+    if body.module == "conflict_review":
+        raise HTTPException(status_code=409, detail="利益冲突审查必须使用专用入口办理")
     if body.module == "finance_fee_inform":
         raise HTTPException(status_code=422, detail="费用通知必须使用案件费用的专用通知入口创建")
     await _require_record_module_menu(body.module, identity, db, action="新建")
@@ -6596,6 +6687,10 @@ async def create_record(body: RecordInput, identity: dict = Depends(current_iden
         raise HTTPException(status_code=422, detail="新建合同必须使用合同专用入口")
     if body.module == "case":
         raise HTTPException(status_code=422, detail="新建案件必须选择已审批合同，请使用案件创建入口")
+    if body.module == "seal":
+        raise HTTPException(status_code=422, detail="新建用印申请必须使用用印专用入口")
+    if body.module == "ipr_case":
+        raise HTTPException(status_code=422, detail="新建知识产权案件必须使用知识产权案件专用入口")
     if body.module == "task":
         raise HTTPException(status_code=422, detail="任务必须使用任务专用入口创建")
     if body.module == "finance_package":
@@ -6705,6 +6800,8 @@ async def update_record(record_id: int, body: RecordUpdate, identity: dict = Dep
         _ensure_record_visible, _ensure_unique_customer_name, _record_dict_for_identity, _require_record_module_menu, _require_record_owner_or_manager,
     )
     record = await _ensure_record_visible(record_id, identity, db)
+    if record.module == "conflict_review":
+        raise HTTPException(status_code=409, detail="利益冲突审查必须使用专用入口办理")
     await _require_record_module_menu(record.module, identity, db, action="编辑")
     await _require_record_owner_or_manager(record, identity, db)
     changes = body.model_dump(exclude_unset=True)
@@ -6797,6 +6894,8 @@ async def transition_record(record_id: int, body: TransitionInput, identity: dic
         _record_dict,
     )
     record = await _ensure_record_visible(record_id, identity, db)
+    if record.module == "conflict_review":
+        raise HTTPException(status_code=409, detail="利益冲突审查必须使用专用入口办理")
     await _require_record_module_menu(record.module, identity, db, action="流转")
     if record.module not in GENERIC_RECORD_TRANSITION_MODULES:
         return _legacy_failure_response("该业务必须使用专用审批或办理入口变更状态")
@@ -6833,6 +6932,8 @@ async def delete_record(record_id: int, identity: dict = Depends(current_identit
     record = await db.get(BusinessRecord, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="记录不存在")
+    if record.module == "conflict_review":
+        raise HTTPException(status_code=409, detail="利益冲突审查必须保留审查历史，不能通过通用入口删除")
     if record.module not in GENERIC_RECORD_DELETABLE_MODULES:
         raise HTTPException(status_code=409, detail="该业务记录不能通过通用入口物理删除，请使用专用撤销、作废或冲正流程")
     if record.module == "hr":

@@ -1566,6 +1566,7 @@ async def bind_clue_source_contract(clue_id: int, body: ClueSourceContractBindin
 
 @router.post(f"{settings.api_prefix}/investigations/clues/batch-cases", status_code=status.HTTP_201_CREATED)
 async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.conflict_review import assess_conflict_review, get_conflict_review_gate
     from app.core.cases import (
         _case_team_payload, _next_case_serial, _resolve_active_case_people,
     )
@@ -1579,7 +1580,8 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         _ensure_case_fixed_tasks, _record_scope_conditions,
     )
     clues = {item.id: item for item in (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "clue", BusinessRecord.id.in_(set(body.clue_ids)), *(await _record_scope_conditions(identity, db))))).all()}
-    created_ids: list[int] = []; errors: list[dict] = []
+    created_ids: list[int] = []; errors: list[dict] = []; pending_reviews: list[dict] = []
+    created_records: list[BusinessRecord] = []
     for clue_id in dict.fromkeys(body.clue_ids):
         clue = clues.get(clue_id)
         if not clue: errors.append({"clue_id": clue_id, "error": "线索不存在"}); continue
@@ -1675,10 +1677,36 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         if notary: notary.data = {**(notary.data or {}), "case_id": case_record.id, "case_no": serial_no}
         case_fields_comment = f"案由 {cause_or_charge or '未填写'} / 经办律师 {'、'.join(handling_lawyers) or '未填写'} / 律师助理 {assistant or '未填写'}"
         db.add_all([WorkflowEvent(record_id=clue.id, action="已取证线索生成案件", from_status=previous, to_status="已转案件", operator=identity["username"], comment=f"来源任务合同 {contract_reference}，生成案件 {serial_no}；{case_fields_comment}"), WorkflowEvent(record_id=case_record.id, action="线索生成案件", to_status=case_record.status, operator=identity["username"], comment=f"来源线索 {clue.serial_no} / 来源任务合同 {contract_reference}；{case_fields_comment}")])
-        await _ensure_case_fixed_tasks(case_record, db, operator="system")
         created_ids.append(case_record.id)
+        created_records.append(case_record)
+    # 先保存整批事实并完成全部审查，再创建允许立案案件的下游任务。
+    for case_record in created_records:
+        await assess_conflict_review(case_record, identity, db, trigger="case_save")
+    ready_cases: list[BusinessRecord] = []
+    for case_record in created_records:
+        gate = await get_conflict_review_gate(case_record, db, action="线索转案立案")
+        if gate["blocking"]:
+            pending_data = dict(case_record.data or {})
+            for key in ("case_register_date", "filing_date", "case_creation_approved_by"):
+                pending_data.pop(key, None)
+            pending_data.update({
+                "case_creation_approval_status": "待审批",
+                "conflict_review_requires_creation_approval": True,
+                "conflict_review_target_phase": case_record.status,
+            })
+            previous_status = case_record.status
+            case_record.data = pending_data
+            case_record.status = "待立案审批"
+            db.add(WorkflowEvent(record_id=case_record.id, action="转案资料待利益冲突核查",
+                                 from_status=previous_status, to_status=case_record.status,
+                                 operator=identity["username"], comment=gate["message"]))
+            pending_reviews.append({"case_id": case_record.id, "case_no": case_record.serial_no, "conflict_review": gate.get("review")})
+        else:
+            ready_cases.append(case_record)
+    for case_record in ready_cases:
+        await _ensure_case_fixed_tasks(case_record, db, operator="system")
     await db.commit()
-    return {"created": len(created_ids), "created_ids": created_ids, "failed": len(errors), "errors": errors}
+    return {"created": len(created_ids), "created_ids": created_ids, "failed": len(errors), "errors": errors, "pending_reviews": pending_reviews}
 
 
 @router.get(f"{settings.api_prefix}/investigations/{{record_id}}/materials")

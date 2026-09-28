@@ -1944,6 +1944,8 @@ async def upload_attachment(
             category = expected_category
     if record_id is not None:
         record = await _ensure_attachment_record_visible(record_id, identity, db)
+        if record.module == "conflict_review":
+            raise HTTPException(status_code=409, detail="利益冲突审查附件必须使用审查专用入口上传")
         if record.module == JAR_FEE_MODULE:
             raise HTTPException(status_code=409, detail="JAR交案费文件必须使用交案费专用文件接口")
         if source_case_id is not None:
@@ -2403,6 +2405,8 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     if item.category == "客户联系人照片":
         raise HTTPException(status_code=409, detail="联系人照片请在客户联系人中维护")
     record = await db.get(BusinessRecord, item.record_id) if item.record_id else None
+    if record and record.module == "conflict_review":
+        raise HTTPException(status_code=409, detail="利益冲突审查证据必须使用审查专用入口管理")
     if record and record.module == "hr" and item.category == "员工头像" and int((record.data or {}).get("avatar_attachment_id") or 0) == item.id:
         raise HTTPException(status_code=409, detail="当前员工头像不能通过附件接口删除，请上传新头像替换")
     if record and record.module == JAR_FEE_MODULE:
@@ -2660,6 +2664,8 @@ async def delete_smoke_record(record_id: int, identity: dict = Depends(current_i
     )
     if not explicit_test_marker:
         raise HTTPException(status_code=403, detail="只能清理带明确测试标识的本地冒烟记录")
+    if record.module == "conflict_review":
+        raise HTTPException(status_code=409, detail="利益冲突审查不能通过通用清理入口删除")
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == record_id))).all())
     attachment_paths = [Path(item.path) for item in attachments]
     for attachment in attachments:

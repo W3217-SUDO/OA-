@@ -489,12 +489,14 @@ async def _convert_notary_to_case(
     automatic: bool = False,
 ) -> BusinessRecord:
     """将公证审核记录转为新案；人工审核和 30 日超期规则共用同一闭环。"""
+    from app.core.conflict_review import require_conflict_clear
     clue_data = clue.data or {}
     case_record = await db.get(BusinessRecord, int(clue_data.get("converted_case_id") or 0))
     if not case_record or case_record.module != "case":
         raise HTTPException(status_code=409, detail="请先从已取证线索批量生成“等待公证书”案件")
     if case_record.status not in {"等待公证书", "等待审核公证书"}:
         raise HTTPException(status_code=409, detail=f"案件 {case_record.serial_no} 当前阶段不允许公证审核")
+    await require_conflict_clear(case_record, db, action="公证审核转案")
     case_serial = case_record.serial_no
     previous_case_status = case_record.status
     case_record.status = "新案待分配"

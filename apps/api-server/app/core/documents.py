@@ -158,6 +158,7 @@ async def _execute_case_agent_action(
     db: AsyncSession,
     context: dict | None = None,
 ) -> dict:
+    from app.core.conflict_review import assess_conflict_review, get_conflict_review_gate
     from app.areas.contract.router import (
         update_contract_draft,
     )
@@ -275,17 +276,29 @@ async def _execute_case_agent_action(
                 raise HTTPException(status_code=422, detail=f"{field}内容过长")
             setattr(case_record, field, normalized)
             applied[field] = normalized
+        await assess_conflict_review(case_record, identity, db, trigger="case_save")
+        gate = await get_conflict_review_gate(case_record, db, action="智能体修改案件阶段")
+        stage_blocked = gate["blocking"] and case_record.status != before_status
+        if stage_blocked:
+            case_record.status = before_status
+            applied.pop("status", None)
         db.add(WorkflowEvent(
             record_id=case_record.id,
             action="智能体审批后更新案件",
             from_status=before_status,
             to_status=case_record.status,
             operator=identity["username"],
-            comment=f"操作：{action.get('summary', '')}；字段：{', '.join(applied)}",
+            comment=f"操作：{action.get('summary', '')}；字段：{', '.join(applied)}" + ("；事实已保存，案件阶段待利益冲突核查" if stage_blocked else ""),
         ))
         await db.commit()
         await db.refresh(case_record)
-        return {"record_id": case_record.id, "operation": action_type, "updated_fields": applied}
+        if stage_blocked:
+            raise HTTPException(status_code=409, detail={
+                "code": "CONFLICT_REVIEW_REQUIRED", "message": "事实已保存，案件阶段待利益冲突核查",
+                "record_id": gate["record_id"], "review_id": (gate["review"] or {}).get("id"),
+                "conflict_review": gate["review"],
+            })
+        return {"record_id": case_record.id, "operation": action_type, "updated_fields": applied, "conflict_review": (case_record.data or {}).get("conflict_review")}
 
     if action_type == "case.data.update":
         changes = _case_agent_changes(payload)
@@ -300,18 +313,36 @@ async def _execute_case_agent_action(
             if isinstance(normalized, str) and len(normalized) > 1000:
                 raise HTTPException(status_code=422, detail=f"{field}内容过长")
             normalized_changes[field] = normalized
-        case_record.data = {**(case_record.data or {}), **normalized_changes}
+        previous_data = dict(case_record.data or {})
+        case_record.data = {**previous_data, **normalized_changes}
+        await assess_conflict_review(case_record, identity, db, trigger="case_save")
+        gate = await get_conflict_review_gate(case_record, db, action="智能体修改案件阶段")
+        stage_blocked = gate["blocking"] and "case_stage" in normalized_changes
+        if stage_blocked:
+            updated_data = dict(case_record.data or {})
+            if "case_stage" in previous_data:
+                updated_data["case_stage"] = previous_data["case_stage"]
+            else:
+                updated_data.pop("case_stage", None)
+            case_record.data = updated_data
+            normalized_changes.pop("case_stage")
         db.add(WorkflowEvent(
             record_id=case_record.id,
             action="智能体审批后更新案件信息",
             from_status=case_record.status,
             to_status=case_record.status,
             operator=identity["username"],
-            comment=f"操作：{action.get('summary', '')}；字段：{', '.join(normalized_changes)}",
+            comment=f"操作：{action.get('summary', '')}；字段：{', '.join(normalized_changes)}" + ("；事实已保存，案件阶段待利益冲突核查" if stage_blocked else ""),
         ))
         await db.commit()
         await db.refresh(case_record)
-        return {"record_id": case_record.id, "operation": action_type, "updated_fields": normalized_changes}
+        if stage_blocked:
+            raise HTTPException(status_code=409, detail={
+                "code": "CONFLICT_REVIEW_REQUIRED", "message": "事实已保存，案件阶段待利益冲突核查",
+                "record_id": gate["record_id"], "review_id": (gate["review"] or {}).get("id"),
+                "conflict_review": gate["review"],
+            })
+        return {"record_id": case_record.id, "operation": action_type, "updated_fields": normalized_changes, "conflict_review": (case_record.data or {}).get("conflict_review")}
 
     if action_type == "case.task.create":
         collaborators = payload.get("collaborators") or []

@@ -31,6 +31,7 @@ from app.models_shared import (
     IprLitigationPartyInput, IprOfficialCandidateConfirmInput, IprOfficialCandidateCorrectInput, IprOfficialCandidateMatchInput, IprOfficialFileActionInput,
     IprOfficialFileBatchActionInput, TaskInput,
 )
+from app.core.conflict_review import assess_conflict_review, get_conflict_review_gate, require_conflict_clear
 from fastapi import APIRouter
 
 router = APIRouter()
@@ -366,7 +367,7 @@ async def update_ipr_litigation_court_info(case_id: int, body: IprLitigationCour
     data = dict(record.data or {})
     data.update({key: str(value).strip() for key, value in body.model_dump().items()})
     await _save_ipr_litigation_data(record, data, identity, db, "修改知识产权诉讼法院及当事人信息", data.get("court_case_no", ""))
-    return await get_ipr_litigation_court_info(case_id, identity, db)
+    return {**await get_ipr_litigation_court_info(case_id, identity, db), "conflict_review": (record.data or {}).get("conflict_review")}
 
 
 @router.get(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/courts")
@@ -397,7 +398,7 @@ async def create_ipr_litigation_court(case_id: int, body: IprLitigationCourtInpu
     item = {**body.model_dump(), "id": uuid4().hex, "filing_date": str(body.filing_date or ""), "hearing_date": str(body.hearing_date or ""), "created_by": identity["username"]}
     rows.append(item); data["litigation_courts"] = rows
     await _save_ipr_litigation_data(record, data, identity, db, "新增知识产权诉讼法院信息", item["court_name"])
-    return item
+    return {**item, "conflict_review": (record.data or {}).get("conflict_review")}
 
 
 @router.put(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/courts/{{court_id}}")
@@ -415,7 +416,7 @@ async def update_ipr_litigation_court(case_id: int, court_id: str, body: IprLiti
     item.update({**body.model_dump(), "id": court_id, "filing_date": str(body.filing_date or ""), "hearing_date": str(body.hearing_date or ""), "updated_by": identity["username"]})
     data["litigation_courts"] = rows
     await _save_ipr_litigation_data(record, data, identity, db, "修改知识产权诉讼法院信息", item["court_name"])
-    return item
+    return {**item, "conflict_review": (record.data or {}).get("conflict_review")}
 
 
 @router.delete(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/courts/{{court_id}}", status_code=status.HTTP_204_NO_CONTENT)
@@ -460,7 +461,7 @@ async def create_ipr_litigation_party(case_id: int, body: IprLitigationPartyInpu
     data = dict(record.data or {}); rows = _ipr_litigation_rows(data, "litigation_parties")
     item = {**body.model_dump(), "id": uuid4().hex, "created_by": identity["username"]}; rows.append(item); data["litigation_parties"] = rows
     await _save_ipr_litigation_data(record, data, identity, db, "新增知识产权诉讼当事人", f"{item['party_type']}：{item['name']}")
-    return item
+    return {**item, "conflict_review": (record.data or {}).get("conflict_review")}
 
 
 @router.put(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/parties/{{party_id}}")
@@ -476,7 +477,7 @@ async def update_ipr_litigation_party(case_id: int, party_id: str, body: IprLiti
     if not item: raise HTTPException(status_code=404, detail="诉讼当事人不存在")
     item.update({**body.model_dump(), "id": party_id, "updated_by": identity["username"]}); data["litigation_parties"] = rows
     await _save_ipr_litigation_data(record, data, identity, db, "修改知识产权诉讼当事人", f"{item['party_type']}：{item['name']}")
-    return item
+    return {**item, "conflict_review": (record.data or {}).get("conflict_review")}
 
 
 @router.delete(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/parties/{{party_id}}", status_code=status.HTTP_204_NO_CONTENT)
@@ -529,6 +530,7 @@ async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(cur
     db.add(record); await db.flush()
     db.add(IprCaseCustomer(case_record_id=record.id, customer_record_id=customer.id, is_primary=True, created_by=identity["username"]))
     db.add(WorkflowEvent(record_id=record.id, action="新建知识产权案件草稿", to_status=record.status, operator=identity["username"], comment=f"{case_kind}{'诉讼' if body.case_category == 'litigation' else '非诉讼'}案件"))
+    await assess_conflict_review(record, identity, db, trigger="case_save")
     await db.commit(); await db.refresh(record)
     return _record_dict(record, await _allowed_field_keys(identity, db))
 
@@ -604,6 +606,7 @@ async def batch_create_ipr_cases(body: IprCaseBatchCreateInput, identity: dict =
         department=customer.department,
     )
     created: list[BusinessRecord] = []
+    pending_reviews: list[dict] = []
     try:
         db.add(batch)
         await db.flush()
@@ -665,6 +668,10 @@ async def batch_create_ipr_cases(body: IprCaseBatchCreateInput, identity: dict =
                 comment=f"批次 {batch_no} 第 {row_no} 行",
             ))
             created.append(record)
+        for record in created:
+            summary = await assess_conflict_review(record, identity, db, trigger="case_save")
+            if summary and summary["blocking"]:
+                pending_reviews.append({"case_id": record.id, "case_no": record.serial_no, "conflict_review": summary})
         await db.commit()
     except Exception:
         await db.rollback()
@@ -677,6 +684,7 @@ async def batch_create_ipr_cases(body: IprCaseBatchCreateInput, identity: dict =
         "invalid_count": len(errors),
         "created": [_record_dict(record, allowed_fields) for record in created],
         "errors": errors,
+        "pending_reviews": pending_reviews,
     }
 
 
@@ -726,6 +734,7 @@ async def reboot_ipr_case(case_id: int, body: IprCaseRebootInput, identity: dict
     new_data = json.loads(json.dumps(source_data, ensure_ascii=False, default=str))
     for key in {"closed_at", "closed_by", "reopened_at", "reopened_by", "reboot_case_ids", "reboot_case_nos", "last_rebooted_at", "last_rebooted_by"}:
         new_data.pop(key, None)
+    new_data.pop("conflict_review", None)
     new_data.update({
         "reboot_root_serial": root_serial,
         "reboot_source_case_id": source.id,
@@ -795,6 +804,7 @@ async def reboot_ipr_case(case_id: int, body: IprCaseRebootInput, identity: dict
             operator=identity["username"],
             comment=f"原案件 {source.serial_no}" + (f"；{body.reason.strip()}" if body.reason.strip() else ""),
         ))
+        await assess_conflict_review(reboot_case, identity, db, trigger="case_save")
         await db.commit()
     except Exception:
         await db.rollback()
@@ -821,6 +831,7 @@ async def update_ipr_case(case_id: int, body: IprCaseUpdateInput, identity: dict
     if record.status not in {"草稿", "已驳回", "在办"}:
         raise HTTPException(status_code=409, detail="仅草稿、已驳回或在办的知识产权案件可以修改")
     before = record.status
+    previous_phase = (record.data or {}).get("case_phase")
     data = dict(record.data or {})
     values = body.model_dump(exclude_unset=True)
     litigation_keys = {"court_case_no", "court_name", "judge", "clerk", "plaintiff", "defendant", "third_parties"}
@@ -864,6 +875,15 @@ async def update_ipr_case(case_id: int, body: IprCaseUpdateInput, identity: dict
     if "description" in values:
         record.description = str(values.pop("description") or "").strip()
     record.data = data
+    await assess_conflict_review(record, identity, db, trigger="case_save")
+    gate = await get_conflict_review_gate(record, db, action="修改知识产权案件阶段")
+    if gate["blocking"] and "case_phase" in body.model_fields_set:
+        restored_data = dict(record.data or {})
+        if previous_phase is None:
+            restored_data.pop("case_phase", None)
+        else:
+            restored_data["case_phase"] = previous_phase
+        record.data = restored_data
     db.add(WorkflowEvent(record_id=record.id, action="修改知识产权案件基本信息", from_status=before, to_status=record.status, operator=identity["username"], comment="更新案件基本信息"))
     await db.commit(); await db.refresh(record)
     return _record_dict(record, await _allowed_field_keys(identity, db))
@@ -908,6 +928,7 @@ async def update_ipr_case_links(case_id: int, body: IprCaseCrossModuleLinkInput,
         changed.append("付款：无")
     record.data = data
     db.add(WorkflowEvent(record_id=record.id, action="关联知识产权案件跨模块记录", from_status=record.status, to_status=record.status, operator=identity["username"], comment="；".join(changed) or "更新跨模块关联"))
+    await assess_conflict_review(record, identity, db, trigger="case_save")
     await db.commit(); await db.refresh(record)
     return _record_dict(record, await _allowed_field_keys(identity, db))
 
@@ -1056,8 +1077,9 @@ async def replace_ipr_case_customers(case_id: int, body: IprCaseCustomerReplaceI
     case_record.department = primary.department or case_record.department
     data = dict(case_record.data or {}); data["primary_customer_id"] = primary.id; case_record.data = data
     db.add(WorkflowEvent(record_id=case_record.id, action="维护知识产权案件客户", from_status=case_record.status, to_status=case_record.status, operator=identity["username"], comment=f"主客户：{primary.title}；客户数：{len(selected_ids)}；新增：{len(after_ids - before_ids)}；移除：{len(before_ids - after_ids)}"))
+    await assess_conflict_review(case_record, identity, db, trigger="case_save")
     await db.commit()
-    return await list_ipr_case_customers(case_id, identity, db)
+    return {**await list_ipr_case_customers(case_id, identity, db), "conflict_review": (case_record.data or {}).get("conflict_review")}
 
 
 @router.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/customers/{{customer_id}}/contact-candidates")
@@ -1238,6 +1260,7 @@ async def maintain_ipr_case(case_id: int, body: IprCaseMaintenanceInput, identit
         to_status=record.status, operator=identity["username"],
         comment="；".join(changes) + (f"；{body.comment.strip()}" if body.comment.strip() else ""),
     ))
+    await assess_conflict_review(record, identity, db, trigger="case_save")
     await db.commit(); await db.refresh(record)
     return _record_dict(record, await _allowed_field_keys(identity, db))
 
@@ -1289,7 +1312,8 @@ async def batch_maintain_ipr_cases(body: IprCaseBatchMaintenanceInput, identity:
         if changes:
             record.data = data
             db.add(WorkflowEvent(record_id=record.id, action="批量维护知识产权案件", from_status=record.status, to_status=record.status, operator=identity["username"], comment="；".join(changes) + (f"；{body.comment.strip()}" if body.comment.strip() else "")))
-        updated.append({"id": record.id, "serial_no": record.serial_no, "changed": bool(changes)})
+            await assess_conflict_review(record, identity, db, trigger="case_save")
+        updated.append({"id": record.id, "serial_no": record.serial_no, "changed": bool(changes), "conflict_review": (record.data or {}).get("conflict_review")})
     await db.commit()
     return {"updated": sum(1 for item in updated if item["changed"]), "items": updated}
 
@@ -2717,6 +2741,16 @@ async def submit_ipr_case(case_id: int, identity: dict = Depends(current_identit
     if record.status not in IPR_CASE_DRAFT_STATUSES: raise HTTPException(status_code=409, detail="当前状态不能提交知识产权立案审核")
     data = record.data or {}
     if not str(data.get("application_no") or "").strip(): raise HTTPException(status_code=422, detail="提交立案审核前必须填写申请号或注册号")
+    await assess_conflict_review(record, identity, db, trigger="case_save")
+    gate = await get_conflict_review_gate(record, db, action="提交知识产权立案")
+    if gate["blocking"]:
+        await db.commit()
+        raise HTTPException(status_code=409, detail={
+            "code": "CONFLICT_REVIEW_REQUIRED", "message": gate["message"],
+            "record_id": gate["record_id"], "review_id": (gate.get("review") or {}).get("id"),
+            "conflict_review": gate.get("review"),
+        })
+    data = record.data or {}
     previous = record.status; record.status = "待立案审核"; record.data = {**data, "submitted_at": datetime.now().isoformat(timespec="seconds"), "submitted_by": identity["username"]}
     db.add(WorkflowEvent(record_id=record.id, action="提交知识产权立案审核", from_status=previous, to_status=record.status, operator=identity["username"], comment=""))
     await db.commit(); await db.refresh(record)
@@ -2735,6 +2769,8 @@ async def review_ipr_case(case_id: int, body: IprCaseReviewInput, identity: dict
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     if record.status != "待立案审核": raise HTTPException(status_code=409, detail="该知识产权案件不在待立案审核状态")
     if not body.approved and not body.comment.strip(): raise HTTPException(status_code=422, detail="驳回必须填写原因")
+    if body.approved:
+        await require_conflict_clear(record, db, action="知识产权立案审核")
     previous = record.status; record.status = "在办" if body.approved else "已驳回"; record.data = {**(record.data or {}), "reviewed_at": datetime.now().isoformat(timespec="seconds"), "reviewed_by": identity["username"], "review_comment": body.comment.strip()}
     db.add(WorkflowEvent(record_id=record.id, action="知识产权立案审核通过" if body.approved else "知识产权立案审核驳回", from_status=previous, to_status=record.status, operator=identity["username"], comment=body.comment.strip()))
     await db.commit(); await db.refresh(record)
@@ -2769,6 +2805,7 @@ async def reopen_ipr_case(case_id: int, body: IprCaseLifecycleInput, identity: d
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="仅管理员或管理人员可以重新开启知识产权案件")
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     if record.status != "已结案": raise HTTPException(status_code=409, detail="仅已结案知识产权案件可以重新开启")
+    await require_conflict_clear(record, db, action="重新开启知识产权案件")
     previous = record.status; record.status = "在办"; record.data = {**(record.data or {}), "reopened_at": datetime.now().isoformat(timespec="seconds"), "reopened_by": identity["username"]}
     db.add(WorkflowEvent(record_id=record.id, action="重新开启知识产权案件", from_status=previous, to_status=record.status, operator=identity["username"], comment=body.comment.strip()))
     await db.commit(); await db.refresh(record)
