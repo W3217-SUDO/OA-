@@ -148,7 +148,13 @@ async def assess_conflict_review(record: BusinessRecord, identity: dict, db: Asy
         review = existing
     else:
         previous = dict(existing.data or {}) if existing else {}
-        submitter = existing.owner if existing else await source_submitter(record, db)
+        if existing:
+            submitter = existing.owner
+        elif trigger == "case_save" and record.module in {"case", "ipr_case"}:
+            # 复制、线索转案等来源可能保留旧提交人，首次保存使用本次实际操作人。
+            submitter = identity["username"]
+        else:
+            submitter = await source_submitter(record, db)
         findings = assessment["findings"]
         new_ids = {item["rule_id"] for item in findings}
         # 改类型或删当事人不能让尚未解除的原绝对疑点从审查中消失。
