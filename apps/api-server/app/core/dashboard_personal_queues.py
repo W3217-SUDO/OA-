@@ -15,10 +15,13 @@ async def personal_queues(identity, db):
     by_no = {case.serial_no: case for case in cases}
     queues = {key: {} for key in QUEUE_KEYS}
 
-    def add(key, case, amount=0):
-        row = queues[key].setdefault(case.id, {"id": case.id, "serial_no": case.serial_no,
+    def add(key, case, amount=0, fee_id=None):
+        queue_id = (case.id, fee_id) if fee_id is not None else case.id
+        row = queues[key].setdefault(queue_id, {"id": case.id, "serial_no": case.serial_no,
             "title": case.title, "status": case.status, "amount": 0})
         row["amount"] = round(row["amount"] + amount, 2)
+        if fee_id is not None:
+            row["fee_id"] = fee_id
 
     urgent_cases = await dashboard_urgent_cases(identity, db, identity["_dashboard_case_ids"])
     urgent_case_ids = await _urgent_case_ids(urgent_cases, db, identity["username"])
@@ -37,7 +40,7 @@ async def personal_queues(identity, db):
             data = row["data"]
             case = by_id.get(data.get("case_id")) or by_no.get(data.get("case_no"))
             if case:
-                add(key, case)
+                add(key, case, fee_id=row["id"] if key == "refund-pending" else None)
     for row in await dashboard_receivables(identity, db):
         case = by_id.get(row.get("case_record_id"))
         if case:
