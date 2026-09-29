@@ -1666,16 +1666,14 @@ async def create_case_log(case_id: int, body: CaseLogInput, identity: dict = Dep
     content = body.content.strip()
     if not content:
         raise HTTPException(status_code=422, detail="请输入日志内容")
-    if body.kind == "refund":
-        if not body.case_fee_id:
-            raise HTTPException(status_code=422, detail="请选择退费对应的案件费用")
+    if body.kind == "refund" and body.case_fee_id is not None:
+        from app.core.refund_logs import refund_fee_case
         case_fee = await db.scalar(select(BusinessRecord).where(
             BusinessRecord.id == body.case_fee_id,
             BusinessRecord.module == "finance",
         ))
-        fee_data = case_fee.data if case_fee else {}
-        linked_case_id = int(fee_data.get("case_id") or fee_data.get("case_record_id") or 0)
-        if not case_fee or linked_case_id != case_record.id:
+        linked_case = await refund_fee_case(case_fee, db) if case_fee else None
+        if not linked_case or linked_case.id != case_record.id:
             raise HTTPException(status_code=422, detail="所选案件费用不属于当前案件")
     log_record = BusinessRecord(
         module="case_log", serial_no=f"CASELOG-{uuid4().hex.upper()}",

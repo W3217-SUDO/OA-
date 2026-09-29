@@ -177,6 +177,8 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
             const { data } = await api.get("/finance/case-fees/refunds/logs", { params: { fee_id: row.id } });
             const items = (data.items || []).map((item: any) => ({
                 ...item,
+                action: item.type,
+                comment: item.content,
                 source_case_no: row.data?.case_no || row.serial_no || "",
             }));
             setSettlementContextRows(items);

@@ -1116,27 +1116,29 @@ async def add_refund_case_fee_logs(
     from app.core.finance import (
         _editable_refund_case_fees,
     )
+    from app.core.refund_logs import REFUND_LOG_LABELS, refund_fee_case
     items = await _editable_refund_case_fees(body.ids, identity, db)
-    labels = {"court": "法院", "received": "到账", "other": "其他"}
     for item in items:
         await _require_linked_case_fee_action(item, "case.fee.refund", identity, db)
         data = item.data or {}
-        label = labels[body.kind]
-        case_id = int(data.get("case_id") or data.get("case_record_id") or 0)
-        case_record = await db.get(BusinessRecord, case_id) if case_id else None
-        db.add(BusinessRecord(
+        label = REFUND_LOG_LABELS[body.kind]
+        case_record = await refund_fee_case(item, db)
+        log_record = BusinessRecord(
             module="case_log", serial_no=f"CASELOG-{uuid4().hex.upper()}", title=f"{label}退费日志",
             customer=item.customer, status="有效", owner=identity["username"], department=item.department,
             description=body.content.strip(), data={
                 "kind": "refund", "refund_type": body.kind, "case_fee_id": item.id,
-                "case_id": case_id or None,
+                "case_id": case_record.id if case_record else None,
                 "case_no": case_record.serial_no if case_record else str(data.get("case_no") or ""),
             },
-        ))
-        db.add(WorkflowEvent(
+        )
+        event = WorkflowEvent(
             record_id=item.id, action=f"添加{label}退费日志", operator=identity["username"],
             comment=body.content.strip(),
-        ))
+        )
+        db.add_all([log_record, event])
+        await db.flush()
+        log_record.data = {**log_record.data, "workflow_event_id": event.id}
     await db.commit()
     return {"created": len(items), "kind": body.kind}
 
@@ -1147,29 +1149,9 @@ async def list_refund_case_fee_logs(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.permissions import _ensure_record_module
-    await _ensure_record_module(fee_id, "finance", identity, db)
-    records = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "case_log", BusinessRecord.status != "已删除",
-        BusinessRecord.data["case_fee_id"].as_integer() == fee_id,
-        BusinessRecord.data["kind"].as_string() == "refund",
-    ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
-    historical_events = list((await db.scalars(select(WorkflowEvent).where(
-        WorkflowEvent.record_id == fee_id,
-        WorkflowEvent.action.like("添加%退费日志"),
-    ).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
-    record_signatures = {(record.owner, record.description or "") for record in records}
-    labels = {"court": "法院", "received": "到账", "other": "其他"}
-    result_items = [{
-        "id": record.id, "content": record.description, "operator": record.owner,
-        "kind": "refund", "type": labels.get(str((record.data or {}).get("refund_type") or ""), "退费"),
-        "created_at": record.created_at,
-    } for record in records]
-    result_items.extend({
-        "id": f"legacy-{event.id}", "content": event.comment, "operator": event.operator,
-        "kind": "refund", "type": event.action.removeprefix("添加").removesuffix("退费日志"),
-        "created_at": event.created_at,
-    } for event in historical_events if (event.operator, event.comment or "") not in record_signatures)
-    result_items.sort(key=lambda item: str(item["created_at"] or ""), reverse=True)
+    from app.core.refund_logs import refund_fee_log_items
+    fee = await _ensure_record_module(fee_id, "finance", identity, db)
+    result_items = await refund_fee_log_items(fee, db)
     return {"items": result_items, "total": len(result_items)}
 
 

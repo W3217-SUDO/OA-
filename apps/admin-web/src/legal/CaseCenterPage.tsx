@@ -4392,11 +4392,12 @@ export default function CaseCenterPage({
       </Modal>
       <Modal open={caseLogOpen} title={`${caseLogKind === "refund" ? "新增退费日志" : "新增案件日志"}：${caseLogTarget?.serial_no || viewingCounselCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={createCounselLog} onCancel={()=>{setCaseLogOpen(false);setCaseLogTarget(null);}}>
         <Form form={caseLogForm} layout="vertical">
-          {caseLogKind === "refund" && <Form.Item label="关联费用" name="case_fee_id" rules={[{required:true,message:"请选择退费对应的案件费用"}]}>
+          {caseLogKind === "refund" && <Form.Item label="关联费用" name="case_fee_id" extra="可选，不选择则记录为案件退费日志">
             <Select
+              allowClear
               showSearch
               optionFilterProp="label"
-              placeholder="请选择退费对应的案件费用"
+              placeholder="可选，不选择则记录为案件退费日志"
               options={counselDetailFinance.map((row)=>({
                 value:row.id,
                 label:`${row.data.expense_subtype || row.data.fee_type || row.title}｜${Number(row.data.amount || 0).toFixed(2)} 元｜${row.serial_no}`,
