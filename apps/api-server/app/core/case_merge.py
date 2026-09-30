@@ -77,6 +77,32 @@ async def finance_rows_for_merge(source, db):
     ))).all())
 
 
+async def ensure_case_merge_contract_scope(case, contract_id, db):
+    """合并前核对案件及其费用、合同标的确实归属同一合同。"""
+    contract = await db.get(BusinessRecord, contract_id)
+    if not contract or contract.module != "contract":
+        raise HTTPException(422, "案件关联合同不存在，不能合并")
+    contract_no = contract.serial_no
+    for fee in await finance_rows_for_merge(case, db):
+        data = fee.data or {}
+        for key in ("contract_record_id", "contract_id"):
+            value = data.get(key)
+            if value in (None, ""):
+                continue
+            try:
+                linked_id = int(value)
+            except (TypeError, ValueError):
+                raise HTTPException(409, f"案件 {case.serial_no} 的费用 {fee.serial_no} 关联合同无效，不能合并")
+            if linked_id != contract_id:
+                raise HTTPException(409, f"案件 {case.serial_no} 的费用 {fee.serial_no} 属于其他合同，不能合并")
+        linked_no = str(data.get("contract_no") or "").strip()
+        if linked_no and linked_no != contract_no:
+            raise HTTPException(409, f"案件 {case.serial_no} 的费用 {fee.serial_no} 属于其他合同，不能合并")
+    objects = (await db.scalars(select(ContractObject).where(ContractObject.case_record_id == case.id))).all()
+    if any(item.contract_record_id != contract_id for item in objects):
+        raise HTTPException(409, f"案件 {case.serial_no} 的合同标的属于其他合同，不能合并")
+
+
 async def move_case_finance_files(source, target, identity, db):
     fees = await finance_rows_for_merge(source, db)
     for fee in fees:

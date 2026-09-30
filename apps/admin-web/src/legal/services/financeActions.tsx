@@ -71,6 +71,8 @@ export interface CaseFinanceDependencies {
     readonly setFeeCase: React.Dispatch<React.SetStateAction<CaseRow | null>>;
     readonly setCasePaymentTypesLoading: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setCasePaymentTypes: React.Dispatch<React.SetStateAction<CasePaymentTypeOption[]>>;
+    readonly setCasePaymentTypesError: React.Dispatch<React.SetStateAction<string>>;
+    readonly casePaymentTypeRequestRef: React.RefObject<number>;
     readonly paymentTypeCreateTarget: PaymentTypeCreateTarget | null;
     readonly paymentTypeCreateForm: FormInstance<any>;
     readonly setPaymentTypeCreating: React.Dispatch<React.SetStateAction<boolean>>;
@@ -378,26 +380,30 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         setCaseFeePaymentDrafts([]);
         setFeeCase(row);
     };
-    const loadCasePaymentTypes = async (feeId: number) => {
-        const { setCasePaymentTypesLoading, setCasePaymentTypes } = context;
+    const loadCasePaymentTypes = async (feeId: number, keyword = "") => {
+        const { setCasePaymentTypesLoading, setCasePaymentTypes, setCasePaymentTypesError, casePaymentTypeRequestRef } = context;
+        const requestId = ++casePaymentTypeRequestRef.current;
         setCasePaymentTypesLoading(true);
+        setCasePaymentTypesError("");
         try {
-            const { data } = await api.get(`/finance/fees/${feeId}/payment-types`);
+            const { data } = await api.get(`/finance/fees/${feeId}/payment-types`, { params: { keyword } });
             const items = Array.isArray(data?.items) ? data.items : [];
-            setCasePaymentTypes(items);
+            if (requestId === casePaymentTypeRequestRef.current)
+                setCasePaymentTypes(items);
             return items as CasePaymentTypeOption[];
         }
         catch (error: any) {
-            setCasePaymentTypes([]);
-            message.error(error?.response?.data?.detail || "付款单位加载失败");
-            return [];
+            if (requestId === casePaymentTypeRequestRef.current)
+                setCasePaymentTypesError(error?.response?.data?.detail || "付款单位加载失败，请重试");
+            return null;
         }
         finally {
-            setCasePaymentTypesLoading(false);
+            if (requestId === casePaymentTypeRequestRef.current)
+                setCasePaymentTypesLoading(false);
         }
     };
     const createCasePaymentType = async () => {
-        const { paymentTypeCreateTarget, paymentTypeCreateForm, setPaymentTypeCreating, setCasePaymentTypes, setCaseFeePaymentDrafts, paymentRequestForm, setPaymentTypeCreateTarget, setPaymentTypeSearch } = context;
+        const { paymentTypeCreateTarget, paymentTypeCreateForm, setPaymentTypeCreating, setCasePaymentTypes, setCasePaymentTypesError, setCaseFeePaymentDrafts, paymentRequestForm, setPaymentTypeCreateTarget, setPaymentTypeSearch } = context;
         if (!paymentTypeCreateTarget)
             return;
         const values = await paymentTypeCreateForm.validateFields();
@@ -406,6 +412,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             const { data } = await api.post(`/finance/fees/${paymentTypeCreateTarget.feeId}/payment-types`, values);
             const created = data as CasePaymentTypeOption;
             setCasePaymentTypes((items) => [...items.filter((item) => item.id !== created.id), created]);
+            setCasePaymentTypesError("");
             if (paymentTypeCreateTarget.draftIndex !== undefined) {
                 setCaseFeePaymentDrafts((items) => items.map((item, index) => index === paymentTypeCreateTarget.draftIndex ? { ...item, payment_type_id: created.id } : item));
             }
@@ -499,7 +506,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
     };
     const submitCreatedCaseFeePayments = async () => {
         const { caseFeePaymentDrafts, createdCaseFees, setCaseFeeSubmitting, feeCase, closeCaseFeeCreator, load, viewingCounselCase, openCounselDetail } = context;
-        if (caseFeePaymentDrafts.some((item, index) => createdCaseFees[index]?.data.expense_scope !== "内部" && !item.payment_type_id)) {
+        if (caseFeePaymentDrafts.some((item, index) => createdCaseFees[index]?.data.expense_scope !== "内部" && createdCaseFees[index]?.data.fee_type !== "官方费用" && !item.payment_type_id)) {
             message.warning("请选择系统付款单位");
             return;
         }
@@ -542,18 +549,22 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             const values = await courtRefundForm.validateFields();
             const requestKey = courtRefundForm.getFieldValue("request_key");
             courtRefundForm.setFieldValue("request_key", requestKey);
-            await api.post("/finance/refunds", {
-                request_key: requestKey,
-                fee_record_id: courtRefundFee.id,
-                case_no: viewingCounselCase.serial_no,
-                customer: viewingCounselCase.customer,
-                court: courtRefundFee.data.court || viewingCounselCase.data.court || "",
-                original_payment_no: courtRefundFee.data.document_no || courtRefundFee.serial_no,
-                amount: Number(values.amount),
-                applicant: profile.display_name || profile.username,
-                reason: courtRefundFee.data.fee_type === "代理费" ? "代理费法院退费" : "诉讼费退款",
-            });
-            message.success("法院退费申请已创建");
+            if (Number(values.amount) === 0) {
+                await api.post(`/finance/fees/${courtRefundFee.id}/court-refund/reset`);
+            } else {
+                await api.post("/finance/refunds", {
+                    request_key: requestKey,
+                    fee_record_id: courtRefundFee.id,
+                    case_no: viewingCounselCase.serial_no,
+                    customer: viewingCounselCase.customer,
+                    court: courtRefundFee.data.court || viewingCounselCase.data.court || "",
+                    original_payment_no: courtRefundFee.data.document_no || courtRefundFee.serial_no,
+                    amount: Number(values.amount),
+                    applicant: profile.display_name || profile.username,
+                    reason: courtRefundFee.data.fee_type === "代理费" ? "代理费法院退费" : "诉讼费退款",
+                });
+            }
+            message.success(Number(values.amount) === 0 ? "法院退费金额已归零" : "法院退费申请已创建");
             setCourtRefundFee(null);
             courtRefundForm.resetFields();
             await openCounselDetail(viewingCounselCase);
@@ -581,7 +592,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         paymentRequestForm.setFieldsValue({
             amount: remaining,
             payment_remark: row.data.payment_remark || row.description || "",
-            payment_type_id: options.some((item) => item.id === storedPaymentTypeId) ? storedPaymentTypeId : undefined,
+            payment_type_id: options?.some((item) => item.id === storedPaymentTypeId) ? storedPaymentTypeId : undefined,
         });
         setPaymentTypeSearch("");
         setPaymentRequestFee(row);

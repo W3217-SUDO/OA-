@@ -2721,7 +2721,7 @@ async def duplicate_case(case_id: int, identity: dict = Depends(current_identity
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/merge")
 async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """合并同客户案件关系，保留主案字段及来源审计记录。"""
-    from app.core.case_merge import merge_case_relations, move_case_finance_files
+    from app.core.case_merge import ensure_case_merge_contract_scope, merge_case_relations, move_case_finance_files
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity, _record_scope_conditions,
     )
@@ -2746,12 +2746,17 @@ async def merge_case(case_id: int, body: CaseMergeInput, identity: dict = Depend
     target_type = str((target.data or {}).get("case_type") or "").strip()
     if source_type != target_type:
         raise HTTPException(status_code=422, detail="仅允许合并同一案件类型的案件")
-    source_contract_id = int((source.data or {}).get("contract_record_id") or (source.data or {}).get("contract_id") or 0)
-    target_contract_id = int((target.data or {}).get("contract_record_id") or (target.data or {}).get("contract_id") or 0)
+    try:
+        source_contract_id = int((source.data or {}).get("contract_record_id") or (source.data or {}).get("contract_id") or 0)
+        target_contract_id = int((target.data or {}).get("contract_record_id") or (target.data or {}).get("contract_id") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="案件关联合同无效，不能合并")
     if not source_contract_id or not target_contract_id:
         raise HTTPException(status_code=422, detail="两个案件都必须关联同一份合同后才能合并")
     if source_contract_id != target_contract_id:
         raise HTTPException(status_code=422, detail="仅允许合并同一合同下的案件")
+    await ensure_case_merge_contract_scope(source, source_contract_id, db)
+    await ensure_case_merge_contract_scope(target, target_contract_id, db)
 
     await require_conflict_clear(source, db, action="合并案件")
     await require_conflict_clear(target, db, action="合并案件")

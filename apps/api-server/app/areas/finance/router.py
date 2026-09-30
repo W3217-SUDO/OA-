@@ -1744,6 +1744,24 @@ async def batch_refund_status(body: RefundBatchStatusInput, identity: dict = Dep
     return {"items": [await _record_dict_for_identity(item, identity, db) for item in items], "status": body.status, "count": len(items)}
 
 
+@router.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/court-refund/reset")
+async def reset_finance_fee_court_refund(fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.agency_refund import reset_case_court_refunds
+    from app.core.permissions import _ensure_record_module, _record_dict_for_identity
+
+    source = await _ensure_record_module(fee_id, "finance", identity, db)
+    await _require_linked_case_fee_action(source, "case.fee.refund", identity, db)
+    data = source.data or {}
+    agency_fee = data.get("fee_type") == "代理费" and data.get("expense_scope") == "律所" and not data.get("refund_fee")
+    if data.get("fee_type") != "官方费用" and not agency_fee:
+        raise HTTPException(422, "法院退费只能关联官费或律所代理费")
+    await db.scalar(select(BusinessRecord.id).where(BusinessRecord.id == source.id).with_for_update())
+    await reset_case_court_refunds(source, identity, db)
+    await db.commit()
+    await db.refresh(source)
+    return await _record_dict_for_identity(source, identity, db)
+
+
 @router.post(f"{settings.api_prefix}/finance/refunds", status_code=status.HTTP_201_CREATED)
 async def create_litigation_refund(body: LitigationRefundInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
@@ -4971,12 +4989,12 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
     if body.amount is not None:
         payment_type = None
         if data.get("expense_scope") != "内部" and data.get("fee_type") != "内部费用":
-            if not body.payment_type_id:
+            if not body.payment_type_id and data.get("fee_type") != "官方费用":
                 raise HTTPException(status_code=422, detail="请选择系统付款单位")
-            payment_type = await _active_payment_type(body.payment_type_id, db)
-            payment_type_data = _finance_payment_type_dict(payment_type)
-            payee = payment_type_data["payee"]
-            account = payment_type_data["account"]
+            payment_type = await _active_payment_type(body.payment_type_id, db) if body.payment_type_id else None
+            payment_type_data = _finance_payment_type_dict(payment_type) if payment_type else {}
+            payee = payment_type_data.get("payee", "")
+            account = payment_type_data.get("account", "")
         else:
             account = body.payment_account.strip()
             if not account:
@@ -5507,15 +5525,15 @@ async def create_refund_page_case_fees(
                     if not payee_user:
                         raise HTTPException(status_code=422, detail=f"第 {index} 行内部费用支付对象不存在或已停用")
                 else:
-                    if not request_item.payment_type_id:
+                    if not request_item.payment_type_id and request_item.fee_type != "官方费用":
                         raise HTTPException(status_code=422, detail=f"第 {index} 行请选择系统收款单位")
-                    payment_type = await _active_payment_type(request_item.payment_type_id, db)
+                    payment_type = await _active_payment_type(request_item.payment_type_id, db) if request_item.payment_type_id else None
             serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}{uuid4().hex[:6]}"
             case_data = case_record.data or {}
             payment_type_data = _finance_payment_type_dict(payment_type) if payment_type else {}
             payee_name = (
                 _contract_person_display_name(payee_user.display_name, {payee_user.username.lower(): payee_user.display_name})
-                if payee_user else str(payment_type_data.get("payee") or case_data.get("court_name") or case_data.get("court") or "")
+                if payee_user else str(payment_type_data.get("payee") or ("" if body.submit_payment and request_item.fee_type == "官方费用" else case_data.get("court_name") or case_data.get("court") or ""))
             )
             record_status = "待审批" if body.submit_payment else "草稿"
             item = BusinessRecord(

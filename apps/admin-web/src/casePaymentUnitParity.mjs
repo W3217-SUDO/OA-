@@ -11,7 +11,7 @@ export const buildCasePaymentTypeSelectOptions = (items = []) =>
 
 export const buildExternalPaymentRequestPayload = (values = {}, comment = "") => ({
   amount: Number(values.amount),
-  payment_type_id: Number(values.payment_type_id),
+  payment_type_id: values.payment_type_id ? Number(values.payment_type_id) : undefined,
   payment_remark: String(values.payment_remark || "").trim(),
   comment: String(values.payment_remark || comment || "").trim(),
 });

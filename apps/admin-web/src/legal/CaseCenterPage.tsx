@@ -561,6 +561,9 @@ export default function CaseCenterPage({
   const [feeInformSubmitting, setFeeInformSubmitting] = useState(false);
   const [casePaymentTypes, setCasePaymentTypes] = useState<CasePaymentTypeOption[]>([]);
   const [casePaymentTypesLoading, setCasePaymentTypesLoading] = useState(false);
+  const [casePaymentTypesError, setCasePaymentTypesError] = useState("");
+  const casePaymentTypeRequestRef = useRef(0);
+  const casePaymentTypeSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [paymentTypeSearch, setPaymentTypeSearch] = useState("");
   const [paymentTypeCreateTarget, setPaymentTypeCreateTarget] = useState<PaymentTypeCreateTarget | null>(null);
   const [paymentTypeCreating, setPaymentTypeCreating] = useState(false);
@@ -1449,6 +1452,8 @@ export default function CaseCenterPage({
     get setFeeCase() { return setFeeCase; },
     get setCasePaymentTypesLoading() { return setCasePaymentTypesLoading; },
     get setCasePaymentTypes() { return setCasePaymentTypes; },
+    get setCasePaymentTypesError() { return setCasePaymentTypesError; },
+    get casePaymentTypeRequestRef() { return casePaymentTypeRequestRef; },
     get paymentTypeCreateTarget() { return paymentTypeCreateTarget; },
     get paymentTypeCreateForm() { return paymentTypeCreateForm; },
     get setPaymentTypeCreating() { return setPaymentTypeCreating; },
@@ -1511,6 +1516,19 @@ export default function CaseCenterPage({
     get caseCommissionRows() { return caseCommissionRows; },
     get setCaseCommissionSubmitting() { return setCaseCommissionSubmitting; },
   });
+
+  const searchCasePaymentTypes = (feeId: number, keyword: string) => {
+    setPaymentTypeSearch(keyword);
+    if (casePaymentTypeSearchTimerRef.current)
+      clearTimeout(casePaymentTypeSearchTimerRef.current);
+    casePaymentTypeSearchTimerRef.current = setTimeout(() => {
+      void loadCasePaymentTypes(feeId, keyword);
+    }, 250);
+  };
+  useEffect(() => () => {
+    if (casePaymentTypeSearchTimerRef.current)
+      clearTimeout(casePaymentTypeSearchTimerRef.current);
+  }, []);
 
   const deleteCounselDetailAssistedFee = (row: CaseAssistedFee) => {
     if (!viewingCounselCase) return;
@@ -3716,6 +3734,7 @@ export default function CaseCenterPage({
           </Form>
         </> : <>
           <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={activeFeeContractScope === "内部" ? <ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个案号生成一个申请单。</li></ol> : <ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>代理费不允许付款。</li></ol>} />
+          {casePaymentTypesError && activeFeeContractScope !== "内部" && <Alert type="error" title={casePaymentTypesError} action={createdCaseFees[0] && <Button size="small" onClick={() => void loadCasePaymentTypes(createdCaseFees[0].id, paymentTypeSearch)}>重新加载</Button>} />}
           {activeFeeContractScope === "内部" ? <div className="case-fee-payment-table">
             <div className="case-fee-payment-head"><span>案号</span><span>费用类型</span><span>金额</span><span>收款人</span><span>付款账号</span></div>
             {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}><span>{feeCase?.serial_no || "—"}</span><span>{row.data.expense_subtype || row.data.fee_type || "—"}</span><span>{row.data.amount ?? 0}</span><Input value={caseFeePaymentDrafts[index]?.payment_payee || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_payee: event.target.value } : item))} /><Input value={caseFeePaymentDrafts[index]?.payment_account || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_account: event.target.value } : item))} /></div>)}
@@ -3724,7 +3743,7 @@ export default function CaseCenterPage({
             {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}>
               <span>{row.data.contract_no || "—"}</span><span>{feeCase?.serial_no || "—"}</span><span>{row.data.expense_subtype || row.data.fee_type || "—"}</span><span>{row.data.amount ?? 0}</span>
               <Input value={caseFeePaymentDrafts[index]?.payment_remark || ""} placeholder="付款备注" onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_remark: event.target.value } : item))} />
-              <Select showSearch optionFilterProp="label" loading={casePaymentTypesLoading} placeholder="输入关键字选择收款单位" options={casePaymentTypeSelectOptions} value={caseFeePaymentDrafts[index]?.payment_type_id} onSearch={setPaymentTypeSearch} onChange={(value) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_type_id: value } : item))} notFoundContent={<Button type="link" icon={<PlusOutlined />} onClick={() => openPaymentTypeCreator(row.id, index)}>新增“{paymentTypeSearch || "付款单位"}”</Button>} />
+              <Select showSearch filterOption={false} loading={casePaymentTypesLoading} placeholder={row.data.fee_type === "官方费用" ? "官费可不选收款单位" : "输入关键字选择收款单位"} options={casePaymentTypeSelectOptions} value={caseFeePaymentDrafts[index]?.payment_type_id} onSearch={(keyword) => searchCasePaymentTypes(row.id, keyword)} onChange={(value) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_type_id: value } : item))} notFoundContent={casePaymentTypesLoading ? "加载中..." : casePaymentTypesError ? <Button type="link" onClick={() => void loadCasePaymentTypes(row.id, paymentTypeSearch)}>{casePaymentTypesError}，点击重试</Button> : <Button type="link" icon={<PlusOutlined />} onClick={() => openPaymentTypeCreator(row.id, index)}>新增“{paymentTypeSearch || "付款单位"}”</Button>} />
               <Button type="text" title="新增付款单位" aria-label="新增付款单位" icon={<PlusOutlined />} onClick={() => openPaymentTypeCreator(row.id, index)} />
             </div>)}
           </div>}
@@ -3850,6 +3869,7 @@ export default function CaseCenterPage({
       >
         <Steps size="small" current={1} items={[{ title: "新增费用" }, { title: "申请付款" }]} />
         <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={paymentRequestFee?.data.expense_scope === "内部" ? <ol><li>同一收款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个案号生成一个申请单。</li></ol> : <ol><li>同一收款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>代理费不允许付款。</li></ol>} />
+        {casePaymentTypesError && paymentRequestFee && <Alert type="error" title={casePaymentTypesError} action={<Button size="small" onClick={() => void loadCasePaymentTypes(paymentRequestFee.id, paymentTypeSearch)}>重新加载</Button>} />}
         <Form form={paymentRequestForm} component={false}>
           <div className="case-fee-payment-table case-fee-payment-request-table case-fee-payment-unit-table">
             <div className="case-fee-payment-head"><span>合同号</span><span>案号</span><span>费用类型</span><span>金额</span><span>付款备注</span><span>收款单位</span><span>操作</span></div>
@@ -3859,7 +3879,7 @@ export default function CaseCenterPage({
               <span>{paymentRequestFee?.data.expense_subtype || paymentRequestFee?.data.fee_type || paymentRequestFee?.title || "—"}</span>
               <Form.Item name="amount" rules={[{ required: true, message: "请输入申请付款金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
               <Form.Item name="payment_remark"><Input placeholder="付款备注" /></Form.Item>
-              <Form.Item name="payment_type_id" rules={[{ required: true, message: "请选择系统付款单位" }]}><Select showSearch optionFilterProp="label" loading={casePaymentTypesLoading} placeholder="输入关键字选择收款单位" options={casePaymentTypeSelectOptions} onSearch={setPaymentTypeSearch} notFoundContent={<Button type="link" icon={<PlusOutlined />} onClick={() => paymentRequestFee && openPaymentTypeCreator(paymentRequestFee.id)}>新增“{paymentTypeSearch || "付款单位"}”</Button>} /></Form.Item>
+              <Form.Item name="payment_type_id" rules={[{ required: paymentRequestFee?.data.fee_type !== "官方费用", message: "请选择系统付款单位" }]}><Select showSearch filterOption={false} loading={casePaymentTypesLoading} placeholder={paymentRequestFee?.data.fee_type === "官方费用" ? "官费可不选收款单位" : "输入关键字选择收款单位"} options={casePaymentTypeSelectOptions} onSearch={(keyword) => paymentRequestFee && searchCasePaymentTypes(paymentRequestFee.id, keyword)} notFoundContent={casePaymentTypesLoading ? "加载中..." : casePaymentTypesError ? <Button type="link" onClick={() => paymentRequestFee && void loadCasePaymentTypes(paymentRequestFee.id, paymentTypeSearch)}>{casePaymentTypesError}，点击重试</Button> : <Button type="link" icon={<PlusOutlined />} onClick={() => paymentRequestFee && openPaymentTypeCreator(paymentRequestFee.id)}>新增“{paymentTypeSearch || "付款单位"}”</Button>} /></Form.Item>
               <Button type="text" title="新增付款单位" aria-label="新增付款单位" icon={<PlusOutlined />} onClick={() => paymentRequestFee && openPaymentTypeCreator(paymentRequestFee.id)} />
             </div>
           </div>
@@ -4812,7 +4832,7 @@ export default function CaseCenterPage({
         <Alert type="info" showIcon title={`原案：${viewingCounselCase?.serial_no || ""}；原官费：${courtRefundFee?.serial_no || ""}；原金额：${courtRefundFee?.data.amount ?? 0}`} style={{ marginBottom: 16 }} />
         <Form form={courtRefundForm} layout="vertical">
           <Form.Item label="退费金额" name="amount" rules={[{ required: true, message: "请输入退费金额" }]}>
-            <InputNumber min={0.01} max={Math.max(Number(courtRefundFee?.data.amount || 0) - Number(courtRefundFee?.data.refund_amount || courtRefundFee?.data.refund_requested_amount || 0), 0)} precision={2} style={{ width: "100%" }} />
+            <InputNumber min={0} max={Math.max(Number(courtRefundFee?.data.amount || 0) - Number(courtRefundFee?.data.refund_amount || courtRefundFee?.data.refund_requested_amount || 0), 0)} precision={2} style={{ width: "100%" }} />
           </Form.Item>
         </Form>
       </Modal>
