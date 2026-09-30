@@ -42,7 +42,7 @@ class Investigation929ApiTest(unittest.IsolatedAsyncioTestCase):
             db.add(SystemConfig(key="investigation_assignment", label="调查主管", value={"supervisor_username": f"{self.prefix}-supervisor"}))
             contract = self.record("contract", "contract", "publisher", status="审批通过", data={})
             db.add(contract); await db.flush()
-            common = {"publisher": f"{self.prefix}-publisher", "source_owner": f"{self.prefix}-publisher", "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "right_type": "商标", "authorized_from": str(date.today()), "authorized_to": str(date.today() + timedelta(days=200)), "region": "上海"}
+            common = {"publisher": f"{self.prefix}-publisher", "source_owner": f"{self.prefix}-publisher", "auditor": f"{self.prefix}-supervisor", "contract_id": contract.id, "contract_record_id": contract.id, "contract_no": contract.serial_no, "right_type": "商标", "authorized_from": str(date.today()), "authorized_to": str(date.today() + timedelta(days=200)), "authorization_scope_type": "R", "authorization_scope": "上海市 市辖区", "authorization_regions": [["上海市", "市辖区"]], "region": "上海"}
             parent = self.record("investigation", "parent", "supervisor", data=common)
             other = self.record("investigation", "other", "outsider", data={})
             db.add_all([parent, other]); await db.flush()
@@ -132,7 +132,7 @@ class Investigation929ApiTest(unittest.IsolatedAsyncioTestCase):
             await self.request(role, "DELETE", f"/attachments/{uploaded['id']}", 204)
         await self.request("assignee", "GET", "/investigations/999999/task-detail", 404)
         deadline, end = date.today()+timedelta(days=900), date.today()+timedelta(days=60)
-        payload = {"title": "CODEX-929-R16 长期调查", "owner": f"{self.prefix}-assignee", "deadline": str(deadline), "start_date": str(date.today()+timedelta(days=2)), "end_date": str(end), "province": "上海市", "city": "上海市"}
+        payload = {"title": "CODEX-929-R16 长期调查", "owner": f"{self.prefix}-assignee", "deadline": str(deadline), "start_date": str(date.today()+timedelta(days=2)), "end_date": str(end), "province": "上海市", "city": "市辖区"}
         created = (await self.request("supervisor", "POST", f"/investigations/{self.parent_id}/tasks", 201, json=payload)).json()
         async with SessionLocal() as db:
             stored = await db.get(BusinessRecord, created["id"])

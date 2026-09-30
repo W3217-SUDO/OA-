@@ -9,6 +9,26 @@ def _region_tokens(value: object) -> set[str]:
     return {part for part in re.split(r"[、,，;；\s]+", str(value or "")) if part}
 
 
+def scalar_investigation_task_regions(province: str, city: str) -> list[list[str]]:
+    """将旧单值省市参数转换为同一套受授权校验的区域路径。"""
+    province = province.strip()
+    city = city.strip()
+    if not province or any(mark in province + city for mark in ",，、;；"):
+        raise HTTPException(status_code=422, detail="请提交明确的调查省市；多地域请使用调查区域列表")
+    return [[province, city] if city else [province]]
+
+
+def investigation_regions_cover_country(
+    paths: list[list[str]], cities_by_province: dict[str, list[str]],
+) -> bool:
+    """判断已验证的调查路径是否覆盖所有省市，保留全国授权语义。"""
+    selected = {tuple(path) for path in paths}
+    return all(
+        (province,) in selected or all((province, city) in selected for city in cities)
+        for province, cities in cities_by_province.items()
+    )
+
+
 def normalize_investigation_task_regions(
     paths: list[list[str]], authorization: dict, cities_by_province: dict[str, list[str]],
 ) -> tuple[list[list[str]], str, str, str]:

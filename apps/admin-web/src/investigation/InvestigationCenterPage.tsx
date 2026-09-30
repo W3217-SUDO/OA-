@@ -44,6 +44,7 @@ import { consumeInvestigationDetailTarget } from "../investigationDetailNavigati
 import { rememberInvestigationDetailTarget } from "../investigationDetailNavigation";
 import { formatRequiredDate } from "../formSafety";
 import { INVESTIGATION_REGION_GROUPS } from "../investigationRegionOptions.mjs";
+import { intersectInvestigationTaskScopes, investigationTaskPathAllowed } from "./taskRegionScope";
 import {
   COLLECTED_CLUE_STATUSES,
   clueCaseNo,
@@ -116,7 +117,7 @@ const investigationTaskRegionOptions = (groups: InvestigationRegionGroup[]) =>
   }));
 
 const investigationTaskScopeGroups = (data: Record<string, any>) => {
-  if (data.authorization_scope_type === "R" && Array.isArray(data.authorization_regions)) {
+  if (data.authorization_scope_type === "R" && Array.isArray(data.authorization_regions) && data.authorization_regions.length > 0) {
     return (INVESTIGATION_REGION_GROUPS as InvestigationRegionGroup[]).map(group => ({
       ...group, cities: group.cities.filter(city => data.authorization_regions.some((path: string[]) => path[0] === group.province && (path.length === 1 || path[1] === city))),
     })).filter(group => group.cities.length > 0);
@@ -248,6 +249,7 @@ export default function InvestigationCenterPage({
   const [allowedCategories, setAllowedCategories] = useState<string[]>([]);
   const [materialFiles, setMaterialFiles] = useState<File[]>([]);
   const [taskTarget, setTaskTarget] = useState<Row | null>(null);
+  const [taskAuthorizationTarget, setTaskAuthorizationTarget] = useState<Row | null>(null);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [creatingSubtask, setCreatingSubtask] = useState(false);
   const [subtaskActionTarget, setSubtaskActionTarget] = useState<{
@@ -279,6 +281,7 @@ export default function InvestigationCenterPage({
   const [evidenceForm] = Form.useForm();
   const [certificateForm] = Form.useForm();
   const [taskForm] = Form.useForm();
+  const selectedTaskParentId = Form.useWatch("parent_task_id", taskForm);
   const [subtaskActionForm] = Form.useForm();
   const [materialForm] = Form.useForm();
   const [batchForm] = Form.useForm();
@@ -341,13 +344,15 @@ export default function InvestigationCenterPage({
     );
     return matched?.username || matched?.value || raw;
   };
-  const resetTaskForm = (target: Row) => {
-    const allowedGroups = investigationTaskScopeGroups(target.data || {});
+  const resetTaskForm = (target: Row, authorization: Row) => {
+    const allowedGroups = investigationTaskScopeGroups(authorization.data || {});
     const inheritedProvince = String(target.data.province || "").trim();
     const inheritedCity = String(target.data.city || "").trim();
     const provinceGroup = allowedGroups.find((group) => group.province === inheritedProvince);
     const inheritedRegions = Array.isArray(target.data.investigation_regions)
-      ? target.data.investigation_regions
+      ? target.data.investigation_regions.filter(
+        (path: string[]) => investigationTaskPathAllowed(path, allowedGroups, INVESTIGATION_REGION_GROUPS as InvestigationRegionGroup[]),
+      )
       : provinceGroup && inheritedCity && provinceGroup.cities.includes(inheritedCity)
         ? [[inheritedProvince, inheritedCity]]
         : [];
@@ -355,19 +360,18 @@ export default function InvestigationCenterPage({
     taskForm.setFieldsValue({
       title: `${target.title || target.serial_no} - 调查子任务`,
       priority: "普通",
-      start_date: target.data.authorized_from
-        ? dayjs(String(target.data.authorized_from))
+      start_date: authorization.data.authorized_from
+        ? dayjs(String(authorization.data.authorized_from))
         : undefined,
-      end_date: target.data.authorized_to
-        ? dayjs(String(target.data.authorized_to))
+      end_date: authorization.data.authorized_to
+        ? dayjs(String(authorization.data.authorized_to))
         : undefined,
-      deadline: target.data.authorized_to
-        ? dayjs(String(target.data.authorized_to))
+      deadline: authorization.data.authorized_to
+        ? dayjs(String(authorization.data.authorized_to))
         : undefined,
-      authorization_scope: String(target.data.authorization_scope || "").trim(),
       investigation_regions: inheritedRegions,
       contract_record_id:
-        target.data.contract_id || target.data.contract_record_id || undefined,
+        authorization.data.contract_id || authorization.data.contract_record_id || undefined,
     });
   };
   const load = async (key = tab) => {
@@ -1604,50 +1608,42 @@ export default function InvestigationCenterPage({
         api.get(`/investigations/${row.id}/tasks`),
         api.get("/records", { params: { module: "contract", page_size: 100 } }),
       ]);
+      const authorization = data.record as Row;
+      if (!authorization || authorization.module !== "investigation") {
+        throw new Error("调查任务未关联有效的父调查事项");
+      }
       const existingTasks = data.items as TaskRow[];
-      const parentTask =
-        existingTasks.find((task) => !task.parent_task_id) || existingTasks[0];
-      const hasParent = Boolean(parentTask);
-      const taskContext =
-        createSubtask && parentTask
-          ? ({
-              ...row,
-              title: parentTask.title || row.title,
-              serial_no: parentTask.serial_no || row.serial_no,
-              data: {
-                ...(parentTask.data || {}),
-                ...(row.data || {}),
-              },
-            } as Row)
-          : row;
+      const parentTask = existingTasks.find((task) => !task.parent_task_id);
       setTaskTarget(row);
+      setTaskAuthorizationTarget(authorization);
       setTasks(existingTasks);
       // The investigation record is itself the parent task. A first child
       // can therefore be created even when no task projection exists yet.
       setCreatingSubtask(Boolean(createSubtask));
-      resetTaskForm(taskContext);
-      taskForm.setFieldValue(
-        "parent_task_id",
-        createSubtask && hasParent ? parentTask.id : undefined,
-      );
+      resetTaskForm(row, authorization);
+      const parentId = createSubtask && parentTask ? parentTask.id : undefined;
+      taskForm.setFieldValue("parent_task_id", parentId);
+      if (parentId) updateTaskParent(parentId, authorization, existingTasks);
       setContractOptions(
         contractData.items.filter(
           (contract: Contract) =>
             contract.status !== "草稿" &&
-            contract.customer === row.customer,
+            contract.customer === authorization.customer,
         ),
       );
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "调查任务加载失败");
+      message.error(error?.response?.data?.detail || error?.message || "调查任务加载失败");
     }
   };
   const createTask = async (nextAction: "complete" | "continue") => {
-    if (!taskTarget) return;
+    if (!taskTarget || !taskAuthorizationTarget) {
+      message.error("调查任务授权信息未加载");
+      return;
+    }
     try {
       const v = await taskForm.validateFields();
       await api.post(`/investigations/${taskTarget.id}/tasks`, {
         ...v,
-        authorization_scope: v.authorization_scope || "",
         deadline: formatRequiredDate(v.deadline, "截止日期"),
         start_date: v.start_date ? formatRequiredDate(v.start_date, "开始日期") : undefined,
         end_date: v.end_date ? formatRequiredDate(v.end_date, "结束日期") : undefined,
@@ -1655,12 +1651,23 @@ export default function InvestigationCenterPage({
       message.success(nextAction === "continue" ? "子任务已创建，可继续分配" : "子任务已创建");
       const { data } = await api.get(`/investigations/${taskTarget.id}/tasks`);
       setTasks(data.items);
+      const authorization = data.record as Row;
+      if (authorization?.module === "investigation") {
+        setTaskAuthorizationTarget(authorization);
+      }
       if (nextAction === "complete") {
         setTaskTarget(null);
+        setTaskAuthorizationTarget(null);
         setCreatingSubtask(false);
         return;
       }
-      resetTaskForm(taskTarget);
+      resetTaskForm(taskTarget, authorization?.module === "investigation" ? authorization : taskAuthorizationTarget);
+      taskForm.setFieldValue("parent_task_id", v.parent_task_id);
+      if (v.parent_task_id) updateTaskParent(
+        v.parent_task_id,
+        authorization?.module === "investigation" ? authorization : taskAuthorizationTarget,
+        data.items,
+      );
     } catch (error: any) {
       if (error?.errorFields) {
         const name = String(error.errorFields[0]?.name?.[0] || "");
@@ -1678,6 +1685,20 @@ export default function InvestigationCenterPage({
         error?.response?.data?.detail || error?.message || "任务创建失败",
       );
     }
+  };
+  const updateTaskParent = (
+    parentId: number, authorization = taskAuthorizationTarget, availableTasks = tasks,
+  ) => {
+    if (!authorization) return;
+    const parent = availableTasks.find((item) => item.id === parentId);
+    const rootGroups = investigationTaskScopeGroups(authorization.data || {});
+    const allowedGroups = parent
+      ? intersectInvestigationTaskScopes(rootGroups, investigationTaskScopeGroups(parent.data || {}))
+      : rootGroups;
+    const selected = taskForm.getFieldValue("investigation_regions") || [];
+    taskForm.setFieldValue("investigation_regions", selected.filter(
+      (path: string[]) => investigationTaskPathAllowed(path, allowedGroups, INVESTIGATION_REGION_GROUPS as InvestigationRegionGroup[]),
+    ));
   };
   const openSubtaskAction = (row: Row, action: SubtaskLifecycleAction) => {
     subtaskActionForm.resetFields();
@@ -3485,12 +3506,19 @@ export default function InvestigationCenterPage({
         },
       ]
     : [];
-  const taskScopeGroups = taskTarget
-    ? investigationTaskScopeGroups(taskTarget.data || {})
+  const taskRootScopeGroups = taskAuthorizationTarget
+    ? investigationTaskScopeGroups(taskAuthorizationTarget.data || {})
     : [];
-  const taskAuthorizationScope = String(
-    taskTarget?.data.authorization_scope || "未配置",
-  ).trim();
+  const selectedTaskParent = tasks.find((item) => item.id === Number(selectedTaskParentId));
+  const taskScopeGroups = selectedTaskParent
+    ? intersectInvestigationTaskScopes(
+      taskRootScopeGroups, investigationTaskScopeGroups(selectedTaskParent.data || {}),
+    )
+    : taskRootScopeGroups;
+  const rootTaskScope = String(taskAuthorizationTarget?.data.authorization_scope || "未配置").trim();
+  const taskAuthorizationScope = selectedTaskParent
+    ? `${rootTaskScope}；父任务：${selectedTaskParent.data?.authorization_scope || "未配置"}`
+    : rootTaskScope;
   const taskRegionOptions = investigationTaskRegionOptions(taskScopeGroups);
   const detailContentProps = {
     investigationDetail,
@@ -3917,6 +3945,7 @@ export default function InvestigationCenterPage({
       <TaskDetailDrawer
         open={Boolean(taskTarget)}
         taskTarget={taskTarget}
+        authorizationTarget={taskAuthorizationTarget}
         tasks={tasks}
         creatingSubtask={creatingSubtask}
         taskForm={taskForm}
@@ -3927,9 +3956,11 @@ export default function InvestigationCenterPage({
         personDisplayName={personDisplayName}
         onClose={() => {
           setTaskTarget(null);
+          setTaskAuthorizationTarget(null);
           setCreatingSubtask(false);
         }}
         onCreateTask={(action) => void createTask(action)}
+        onParentTaskChange={updateTaskParent}
       />
       {!isAuditClue && <InvestigationDetailModal
         open={Boolean(investigationDetail)}

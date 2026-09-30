@@ -1324,7 +1324,10 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     from app.core.investigation import (
         _investigation_authorization_expired, _resolve_investigation_task_root,
     )
-    from app.core.investigation_task_regions import normalize_investigation_task_regions
+    from app.core.investigation_task_regions import (
+        investigation_regions_cover_country, normalize_investigation_task_regions,
+        scalar_investigation_task_regions,
+    )
     from app.core.legacy_sync import (
         _sync_legacy_projection,
     )
@@ -1342,6 +1345,9 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     if body.deadline < date.today():
         raise HTTPException(status_code=422, detail="任务截止日期不能早于今天")
     source = await _resolve_investigation_task_root(source, identity, db)
+    if source.module != "investigation":
+        raise HTTPException(status_code=409, detail="调查任务未关联有效的父调查事项")
+    await _require_investigation_assignment_access(source, identity, db)
     source_data = source.data or {}
     is_legacy_investigation = bool(
         source_data.get("migration_source")
@@ -1432,29 +1438,22 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     authorized_to = _investigation_task_date(parent_data.get("authorized_to")) or _investigation_task_date(source_data.get("authorized_to")) or end_date
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=422, detail="调查结束时间必须不早于开始时间")
-    parent_or_source = parent_data or source_data
-    requested_scope = body.authorization_scope.strip()
     investigation_regions = body.investigation_regions
-    if investigation_regions is not None:
-        investigation_regions, region, province, city = normalize_investigation_task_regions(
-            investigation_regions, parent_or_source, _AUTHORIZATION_CITIES,
+    if investigation_regions is None:
+        if body.authorization_scope.strip() and not body.province.strip():
+            raise HTTPException(status_code=422, detail="授权区域文本不能代替调查省市，请选择调查区域")
+        investigation_regions = scalar_investigation_task_regions(body.province, body.city)
+    investigation_regions, region, province, city = normalize_investigation_task_regions(
+        investigation_regions, source_data, _AUTHORIZATION_CITIES,
+    )
+    if parent_data:
+        normalize_investigation_task_regions(
+            investigation_regions, parent_data, _AUTHORIZATION_CITIES,
         )
-        district = ""
-    else:
-        requested_province = body.province.strip()
-        requested_city = body.city.strip()
-        requested_district = body.district.strip()
-        province = requested_province or str(parent_or_source.get("province") or "").strip()
-        city = requested_city or str(parent_or_source.get("city") or "").strip()
-        district = requested_district or str(parent_or_source.get("district") or "").strip()
-        if any((requested_province, requested_city, requested_district)):
-            region = " ".join(part for part in (requested_province, requested_city, requested_district) if part)
-        elif requested_scope:
-            region = requested_scope
-        else:
-            region = str(parent_or_source.get("region") or parent_or_source.get("address") or "").strip()
-            if not region:
-                region = " ".join(part for part in (province, city, district) if part)
+    district = body.district.strip() if body.investigation_regions is None else ""
+    if district:
+        region = f"{region} {district}"
+    national_scope = investigation_regions_cover_country(investigation_regions, _AUTHORIZATION_CITIES)
     from app.core.clue_audit_scope import investigation_customer_data
     task_data = {
         **(await investigation_customer_data(source, db)),
@@ -1464,9 +1463,9 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         "contract_record_id": contract.id if contract else None,
         "contract_no": contract.serial_no if contract else "",
         "contract_name": contract.title if contract else "",
-        "authorization_scope": requested_scope or str(parent_or_source.get("authorization_scope") or ""),
-        "authorization_scope_type": parent_or_source.get("authorization_scope_type", ""),
-        "authorization_regions": parent_or_source.get("authorization_regions", []),
+        "authorization_scope": "全国" if national_scope else region,
+        "authorization_scope_type": "N" if national_scope else "R",
+        "authorization_regions": investigation_regions,
         "attachment_ids": attachment_ids,
         "investigation_record_id": source.id, "investigation_no": source.serial_no,
         "investigation_module": source.module,
@@ -1480,8 +1479,7 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         "parent_task_id": parent.id if parent else None,
         "parent_task_no": parent.serial_no if parent else "",
     }
-    if investigation_regions is not None:
-        task_data["investigation_regions"] = investigation_regions
+    task_data["investigation_regions"] = investigation_regions
     serial_no = await _next_rw_task_serial_no(db)
     task = BusinessRecord(module="task", serial_no=serial_no, title=body.title.strip(), customer=source.customer, status="待接收", owner=owner, department=user.department if user else source.department, description=body.description, data=task_data)
     db.add(task); await db.flush()

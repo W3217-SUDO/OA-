@@ -7,6 +7,7 @@ import type { Row, TaskRow, Contract, WarehouseCatalogItem } from "./types";
 interface TaskDetailDrawerProps {
   open: boolean;
   taskTarget: Row | null;
+  authorizationTarget: Row | null;
   tasks: TaskRow[];
   creatingSubtask: boolean;
   taskForm: any;
@@ -17,11 +18,13 @@ interface TaskDetailDrawerProps {
   personDisplayName: (value: unknown) => string;
   onClose: () => void;
   onCreateTask: (nextAction: "complete" | "continue") => void;
+  onParentTaskChange: (parentId: number) => void;
 }
 
 export default function TaskDetailDrawer({
   open,
   taskTarget,
+  authorizationTarget,
   tasks,
   creatingSubtask,
   taskForm,
@@ -32,6 +35,7 @@ export default function TaskDetailDrawer({
   personDisplayName,
   onClose,
   onCreateTask,
+  onParentTaskChange,
 }: TaskDetailDrawerProps) {
   return (
     <Drawer
@@ -105,16 +109,13 @@ export default function TaskDetailDrawer({
         style={{ marginTop: 16 }}
       >
         <Form form={taskForm} layout="vertical">
-          <Form.Item name="authorization_scope" hidden>
-            <Input />
-          </Form.Item>
           {creatingSubtask && !tasks.some((task) => !task.parent_task_id) && (
             <Alert
               type="info"
               showIcon
               style={{ marginBottom: 16 }}
               message={`父调查任务：${taskTarget?.serial_no || "当前调查任务"}`}
-              description="本次子任务继承当前调查任务的客户、合同及授权范围，请在授权范围内选择调查区域。"
+              description="本次子任务使用父调查事项的客户、合同及当前授权范围，请在授权范围内选择调查区域。"
             />
           )}
           <Form.Item
@@ -131,6 +132,7 @@ export default function TaskDetailDrawer({
               rules={[{ required: true, message: "请选择父任务" }]}
             >
               <Select
+                onChange={onParentTaskChange}
                 options={tasks
                   .filter((task) => !task.parent_task_id)
                   .map((task) => ({
@@ -141,9 +143,9 @@ export default function TaskDetailDrawer({
             </Form.Item>
           )}
           <div className="form-grid">
-            {!isLegacyInvestigationRecord(taskTarget) &&
-              !taskTarget?.data.contract_id &&
-              !taskTarget?.data.contract_record_id && (
+            {!isLegacyInvestigationRecord(authorizationTarget) &&
+              !authorizationTarget?.data.contract_id &&
+              !authorizationTarget?.data.contract_record_id && (
                 <Form.Item
                   label="关联合同"
                   name="contract_record_id"
@@ -211,7 +213,7 @@ export default function TaskDetailDrawer({
             showIcon
             style={{ marginBottom: 16 }}
             message={`授权区域：${taskAuthorizationScope || "未配置"}`}
-            description={`授权时间：${taskTarget?.data.authorized_from || "未配置"} 至 ${taskTarget?.data.authorized_to || "未配置"}`}
+            description={`授权时间：${authorizationTarget?.data.authorized_from || "未配置"} 至 ${authorizationTarget?.data.authorized_to || "未配置"}`}
           />
           <Form.Item label="备注" name="description">
             <Input.TextArea rows={3} />

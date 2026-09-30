@@ -23,7 +23,7 @@ from sqlalchemy import select
 
 from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import BusinessRecord, LegacyInvestigationTask, RolePermission, SystemConfig, User
+from app.models import BusinessRecord, LegacyInvestigationTask, Notification, RolePermission, SystemConfig, User, WorkflowEvent
 from app.security import create_token
 
 
@@ -71,6 +71,8 @@ class Investigation930ContractTaskApiTest(unittest.IsolatedAsyncioTestCase):
                 customer=contract.customer, status="进行中", owner=f"{self.prefix}-assignee",
                 department="调查部", data={
                     "contract_id": contract.id, "contract_no": contract.serial_no,
+                    "migration_source": "legacy-investigation",
+                    "legacy_record": {"Auditor": f"{self.prefix}-supervisor"},
                     "publisher": f"{self.prefix}-publisher",
                     "assigner": f"{self.prefix}-supervisor",
                     "authorization_scope": "全国",
@@ -80,6 +82,22 @@ class Investigation930ContractTaskApiTest(unittest.IsolatedAsyncioTestCase):
             db.add(historical)
             await db.flush()
             self.historical_id = historical.id
+            unknown_supervisor = BusinessRecord(
+                module="investigation", serial_no=f"{self.prefix}-UNKNOWN", title="主管来源缺失的调查",
+                customer=contract.customer, status="进行中", owner=f"{self.prefix}-assignee",
+                department="调查部", data={
+                    "contract_id": contract.id, "contract_no": contract.serial_no,
+                    "migration_source": "legacy-investigation",
+                    "legacy_record": {},
+                    "publisher": f"{self.prefix}-publisher",
+                    "assigner": f"{self.prefix}-supervisor",
+                    "authorization_scope": "全国",
+                    "authorized_to": str(date.today() + timedelta(days=30)),
+                },
+            )
+            db.add(unknown_supervisor)
+            await db.flush()
+            self.unknown_supervisor_id = unknown_supervisor.id
             await db.commit()
         self.client = httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://isolated-930.test",
@@ -118,6 +136,11 @@ class Investigation930ContractTaskApiTest(unittest.IsolatedAsyncioTestCase):
         await self.request("supervisor", "POST", f"/investigations/{first['id']}/assign", json={"investigator": f"{self.prefix}-assignee"})
         after = await self.request("supervisor", "GET", "/records?module=investigation&scope=mine&investigation_view=unassigned")
         self.assertEqual({item["id"] for item in after["items"]}, {first["id"], second["id"], self.historical_id})
+        await self.request("supervisor", "POST", f"/investigations/{self.unknown_supervisor_id}/tasks", 403, json={
+            "title": "无权威主管调查", "owner": f"{self.prefix}-assignee",
+            "deadline": str(today + timedelta(days=10)),
+            "investigation_regions": [["江苏省", "南京市"]],
+        })
         outsider = await self.request("outsider", "GET", "/records?module=investigation&scope=mine&investigation_view=unassigned")
         self.assertEqual(outsider["total"], 0)
         await self.request("outsider", "POST", f"/investigations/{first['id']}/assign", 403, json={
@@ -207,6 +230,116 @@ class Investigation930ContractTaskApiTest(unittest.IsolatedAsyncioTestCase):
             })
             self.assertEqual(linked.data["last_investigation_no"], concurrent[-1]["serial_no"])
         EVIDENCE.joinpath("api-results.json").write_text(json.dumps(self.results, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    async def test_root_authorization_blocks_scalar_and_stale_parent(self):
+        today = date.today()
+        root = await self.request("publisher", "POST", f"/contracts/{self.contract_id}/investigation", 201, json={
+            "title": "区域授权复核", "owner": f"{self.prefix}-supervisor",
+            "authorized_from": str(today), "authorized_to": str(today + timedelta(days=30)),
+            "region": "全国", "authorization_scope": "全国", "right_type": "商标",
+        })
+        body = {
+            "title": "初次多地任务", "owner": f"{self.prefix}-assignee",
+            "deadline": str(today + timedelta(days=10)),
+            "investigation_regions": [["上海市", "市辖区"], ["江苏省", "南京市"]],
+        }
+        parent = await self.request("supervisor", "POST", f"/investigations/{root['id']}/tasks", 201, json=body)
+        from app.areas.investigation.router import _AUTHORIZATION_CITIES
+        nationwide = await self.request("supervisor", "POST", f"/investigations/{root['id']}/tasks", 201, json={
+            **body, "title": "全国调查", "investigation_regions": [[province] for province in _AUTHORIZATION_CITIES],
+        })
+        self.assertEqual(nationwide["data"]["authorization_scope_type"], "N")
+        self.assertEqual(nationwide["data"]["authorization_scope"], "全国")
+        async with SessionLocal() as db:
+            nationwide_legacy = await db.scalar(select(LegacyInvestigationTask).where(
+                LegacyInvestigationTask.TaskNo == nationwide["serial_no"],
+            ))
+            self.assertEqual(nationwide_legacy.InvestigationScope, "全国")
+        async with SessionLocal() as db:
+            record = await db.get(BusinessRecord, root["id"])
+            record.data = {
+                **record.data, "authorization_scope_type": "R",
+                "authorization_scope": "江苏省 南京市",
+                "authorization_regions": [["江苏省", "南京市"]],
+            }
+            await db.commit()
+
+        async def persisted_counts():
+            async with SessionLocal() as db:
+                return {
+                    "tasks": len((await db.scalars(select(BusinessRecord.id).where(
+                        BusinessRecord.module == "task",
+                        BusinessRecord.data["investigation_record_id"].as_integer() == root["id"],
+                    ))).all()),
+                    "events": len((await db.scalars(select(WorkflowEvent.id).where(
+                        WorkflowEvent.record_id == root["id"],
+                    ))).all()),
+                    "notifications": len((await db.scalars(select(Notification.id).where(
+                        Notification.source_type == "task",
+                    ))).all()),
+                    "legacy_tasks": len((await db.scalars(select(LegacyInvestigationTask.TaskId).where(
+                        LegacyInvestigationTask.InvestigationNo == root["serial_no"],
+                    ))).all()),
+                }
+
+        before = await persisted_counts()
+        invalid = [
+            {"province": "上海市", "city": "市辖区"},
+            {"investigation_regions": None, "province": "上海市", "city": "市辖区"},
+            {"investigation_regions": [["上海市", "市辖区"]], "parent_task_id": parent["id"]},
+            {"investigation_regions": None},
+            {"province": "上海市", "city": "南京市"},
+        ]
+        for region in invalid:
+            await self.request("supervisor", "POST", f"/investigations/{root['id']}/tasks", 422, json={
+                "title": "越界请求", "owner": f"{self.prefix}-assignee",
+                "deadline": str(today + timedelta(days=10)), **region,
+            })
+            self.assertEqual(await persisted_counts(), before)
+
+        scope_only = await self.request("supervisor", "POST", f"/investigations/{root['id']}/tasks", 422, json={
+            "title": "仅传授权文本", "owner": f"{self.prefix}-assignee",
+            "deadline": str(today + timedelta(days=10)), "authorization_scope": "江苏省 南京市",
+        })
+        self.assertIn("授权区域文本不能代替调查省市", scope_only["detail"])
+        self.assertEqual(await persisted_counts(), before)
+
+        valid = await self.request("supervisor", "POST", f"/investigations/{root['id']}/tasks", 201, json={
+            **body, "title": "南京调查", "parent_task_id": parent["id"],
+            "investigation_regions": [["江苏省", "南京市"]],
+        })
+        self.assertEqual(valid["data"]["authorization_regions"], [["江苏省", "南京市"]])
+        self.assertEqual(valid["data"]["authorization_scope"], "江苏省 南京市")
+
+        async with SessionLocal() as db:
+            clue = BusinessRecord(
+                module="clue", serial_no=f"{self.prefix}-CLUE", title="共享线索入口",
+                customer=root["customer"], status="已取证", owner=f"{self.prefix}-assignee",
+                department="调查部", data={
+                    "source_task_id": parent["id"], "investigation_record_id": root["id"],
+                },
+            )
+            db.add(clue)
+            await db.commit()
+            await db.refresh(clue)
+            clue_id = clue.id
+        shared = await self.request("admin", "GET", f"/investigations/{clue_id}/tasks")
+        self.assertEqual(shared["record"]["id"], root["id"])
+        self.assertEqual(shared["record"]["data"]["authorization_regions"], [["江苏省", "南京市"]])
+        before_clue = await persisted_counts()
+        await self.request("assignee", "POST", f"/investigations/{clue_id}/tasks", 403, json={
+            **body, "investigation_regions": [["江苏省", "南京市"]],
+        })
+        self.assertEqual(await persisted_counts(), before_clue)
+        from_clue = await self.request("admin", "POST", f"/investigations/{clue_id}/tasks", 201, json={
+            **body, "title": "线索入口南京调查", "investigation_regions": [["江苏省", "南京市"]],
+        })
+        self.assertEqual(from_clue["data"]["investigation_regions"], [["江苏省", "南京市"]])
+        self.assertEqual((await persisted_counts())["tasks"], before["tasks"] + 2)
+        EVIDENCE.joinpath("region-rework-api-results.json").write_text(
+            json.dumps({"requests": self.results, "before_invalid": before,
+                        "after_valid": await persisted_counts()}, ensure_ascii=False, indent=2), encoding="utf-8",
+        )
 
     async def asyncTearDown(self):
         await self.client.aclose()
