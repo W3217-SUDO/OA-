@@ -116,6 +116,17 @@ class SystemCenterBackendD5Contract(unittest.IsolatedAsyncioTestCase):
             self.assertIn("items", legacy.json(), path)
             if path == "/system/menus":
                 self.assertIn("total", legacy.json())
+                self.assertNotIn("page", legacy.json())
+            elif path == "/system/configs":
+                self.assertNotIn("page", legacy.json())
+                self.assertNotIn("total", legacy.json())
+            else:
+                self.assertEqual(len(legacy.json()["items"]), 8)
+                self.assertEqual(legacy.json()["total"], 8)
+                self.assertEqual(legacy.json()["page"], 1)
+                self.assertEqual(legacy.json()["page_size"], 15)
+                self.assertEqual(legacy.json()["pages"], 1)
+                self.assertIn("total", legacy.json())
 
     async def test_cache_management_uses_real_memory_stats_clear_all_and_admin_boundary(self):
         # Populate both a registered bucket and an arbitrary parameter bucket.
@@ -150,17 +161,6 @@ class SystemCenterBackendD5Contract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.get(f"{API}/system/cache")).status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual((await self.client.post(f"{API}/system/cache/clear-all")).status_code, status.HTTP_403_FORBIDDEN)
         app.dependency_overrides[current_identity] = lambda: ADMIN
-                self.assertNotIn("page", legacy.json())
-            elif path == "/system/configs":
-                self.assertNotIn("page", legacy.json())
-                self.assertNotIn("total", legacy.json())
-            else:
-                self.assertEqual(len(legacy.json()["items"]), 8)
-                self.assertEqual(legacy.json()["total"], 8)
-                self.assertEqual(legacy.json()["page"], 1)
-                self.assertEqual(legacy.json()["page_size"], 15)
-                self.assertEqual(legacy.json()["pages"], 1)
-                self.assertIn("total", legacy.json())
 
     async def test_role_list_supports_legacy_and_paged_keyword_shapes(self):
         legacy = await self.client.get(f"{API}/system/role-permissions")

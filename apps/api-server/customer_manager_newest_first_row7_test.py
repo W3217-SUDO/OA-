@@ -1,17 +1,6 @@
-import ast
-from pathlib import Path
 import unittest
 
-
-SOURCE = Path(__file__).with_name("app") / "main.py"
-module = ast.parse(SOURCE.read_text(encoding="utf-8"))
-function_node = next(
-    node for node in module.body
-    if isinstance(node, ast.FunctionDef) and node.name == "_prioritize_new_customer_managers"
-)
-namespace = {}
-exec(compile(ast.Module(body=[function_node], type_ignores=[]), str(SOURCE), "exec"), namespace)
-_prioritize_new_customer_managers = namespace["_prioritize_new_customer_managers"]
+from app.core.crm import _prioritize_new_customer_managers
 
 
 class CustomerManagerNewestFirstRow7Test(unittest.TestCase):
