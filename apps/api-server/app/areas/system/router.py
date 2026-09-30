@@ -1329,7 +1329,7 @@ async def list_notifications(
         if notification_type not in {"系统通知", "用户通知"}: raise HTTPException(status_code=422, detail="消息类型无效")
         conditions.append(Notification.notification_type == notification_type)
     if source_type:
-        if source_type not in {"task", "finance", "contract", "case", "ipr_warning", "message"}: raise HTTPException(status_code=422, detail="消息来源无效")
+        if source_type not in {"task", "finance", "contract", "case", "feedback", "ipr_warning", "message"}: raise HTTPException(status_code=422, detail="消息来源无效")
         conditions.append(Notification.source_type == source_type)
     if level:
         if level not in {"info", "warning", "error"}: raise HTTPException(status_code=422, detail="提醒级别无效")
@@ -1346,9 +1346,9 @@ async def list_notifications(
     total = int(await db.scalar(select(func.count()).select_from(Notification).where(*conditions)) or 0)
     items = (await db.scalars(select(Notification).where(*conditions).order_by(Notification.created_at.desc(), Notification.id.desc()).offset((page - 1) * page_size).limit(page_size))).all()
     unread = int(await db.scalar(select(func.count()).select_from(Notification).where(Notification.recipient == identity["username"], Notification.recipient_deleted.is_(False), Notification.is_read.is_(False))) or 0)
-    source_ids = {item.source_id for item in items if item.source_type in {"task", "case"} and item.source_id}
+    source_ids = {item.source_id for item in items if item.source_type in {"task", "case", "feedback"} and item.source_id}
     source_records = (await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module.in_(("task", "case")), BusinessRecord.id.in_(source_ids),
+        BusinessRecord.module.in_(("task", "case", "bug_feedback")), BusinessRecord.id.in_(source_ids),
     ))).all() if source_ids else []
     records_by_id = {record.id: record for record in source_records}
     users_by_username = await _user_display_map(

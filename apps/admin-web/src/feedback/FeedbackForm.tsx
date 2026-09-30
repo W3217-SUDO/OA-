@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Button, Form, Input, message, Space } from "antd";
 import { api } from "../api";
 
-type Props = { sourcePage: string; onCancel: () => void; onSubmitted?: () => void };
+type Props = { sourcePage: string; onCancel: () => void; onSubmitted?: (id: number) => void };
 
 export default function FeedbackForm({ sourcePage, onCancel, onSubmitted }: Props) {
   const [submitting, setSubmitting] = useState(false);
@@ -22,7 +22,7 @@ export default function FeedbackForm({ sourcePage, onCancel, onSubmitted }: Prop
       form.resetFields();
       setScreenshot(null);
       if (fileInput.current) fileInput.current.value = "";
-      onSubmitted?.();
+      onSubmitted?.(data.id);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "反馈提交失败");
     } finally {

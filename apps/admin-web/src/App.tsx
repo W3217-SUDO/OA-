@@ -1812,7 +1812,7 @@ export default function App() {
     ) : route === "agent-center" ? (
       <AgentCenterPage />
     ) : route === FEEDBACK_ROUTE ? (
-      <FeedbackPage isAdmin={actualRole === "admin"} onNavigate={navigate} />
+      <FeedbackPage onNavigate={navigate} />
     ) : route.startsWith("seal-") ? (
       <SealCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "customer-conflict" ? (

@@ -8,6 +8,7 @@ import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
 import { resolveNotificationNavigation } from "./notificationNavigation";
+import { rememberFeedbackTarget } from "./feedback/navigation";
 
 type Notice = {
   id: number;
@@ -88,12 +89,22 @@ export default function NotificationCenter({ onNavigate, grantedMenuKeys }: { on
         return;
       }
     }
+    if (item.source_type === "feedback" && item.source_id) {
+      try {
+        await api.get(`/feedback/${item.source_id}`);
+      } catch {
+        message.warning("当前账号无法查看关联反馈，消息仍保持未读");
+        setSelectedNotice(item);
+        return;
+      }
+    }
     if (!item.is_read) await api.post(`/notifications/${item.id}/read`);
     const nextNotice = { ...item, is_read: true };
     setItems((rows) => rows.map((row) => row.id === item.id ? nextNotice : row));
     setUnread((value) => Math.max(0, value - (item.is_read ? 0 : 1)));
     window.dispatchEvent(new Event("sunhold:notifications-updated"));
     if (item.source_type === "contract" && item.source_id) rememberContractDetailTarget({ id: item.source_id });
+    if (item.source_type === "feedback" && item.source_id) rememberFeedbackTarget(item.source_id);
     if (item.source_type === "case" && item.source_id) rememberCaseDetailTarget({ id: item.source_id });
     if (item.source_type === "task" && item.source_id) {
       if (item.target_route?.startsWith("investigation-task-")) {

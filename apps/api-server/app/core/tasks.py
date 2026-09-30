@@ -341,6 +341,8 @@ def _notification_dict(
         target_route = "finance-audit"
     elif item.source_type == "case":
         target_route = "case-mine"
+    elif item.source_type == "feedback":
+        target_route = "feedback"
     elif item.source_type == "task":
         target_route = "task-my-accepted"
         if source_record and source_record.module == "task":

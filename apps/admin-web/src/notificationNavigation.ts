@@ -13,9 +13,10 @@ const fallbackRoutes: Record<string, string> = {
   finance_archive_settlement: "finance-fee-query",
   contract: "contract-audit",
   case: "case-schedule",
+  feedback: "feedback",
 };
 
-const personalTaskRoutes = new Set(["task-my-accepted", "task-my-created", "task-my-collaborating"]);
+const personalTaskRoutes = new Set(["task-my-accepted", "task-my-created", "task-my-collaborating", "feedback"]);
 
 export function resolveNotificationNavigation(
   item: NoticeTarget,
