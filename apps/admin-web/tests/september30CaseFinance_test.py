@@ -194,6 +194,31 @@ class September30CaseFinanceTest(unittest.IsolatedAsyncioTestCase):
         released = await self.client.post(reset_path)
         self.assertEqual(released.status_code, 200, released.text)
 
+    async def test_zero_refund_clears_rejected_request_and_its_derivative(self):
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            fee.data = {**fee.data, "fee_type": "官方费用", "expense_subtype": "一审诉讼费"}
+            db.add(SystemParameter(category="fee_type", code="AGENCY-REFUND", name="律师代理费（退费）",
+                extra={"parent_code": "AGENCY"}, is_active=True))
+            await db.commit()
+        created = await self.client.post(f"{API}/finance/refunds", json={
+            "fee_record_id": self.fee_id, "case_no": "CODEX-0916-case", "customer": "Batch customer",
+            "court": "法院", "original_payment_no": "CODEX-0930", "amount": 20,
+            "applicant": "回归申请人", "request_key": "CODEX-0930-rejected",
+        })
+        self.assertEqual(created.status_code, 201, created.text)
+        refund = created.json()
+        submitted = await self.client.post(f"{API}/finance/refunds/{refund['id']}/submit", json={"comment": "提交"})
+        self.assertEqual(submitted.status_code, 200, submitted.text)
+        rejected = await self.client.post(f"{API}/finance/refunds/{refund['id']}/review", json={"approved": False, "comment": "驳回"})
+        self.assertEqual(rejected.status_code, 200, rejected.text)
+        self.assertEqual(rejected.json()["status"], "已驳回")
+        reset = await self.client.post(f"{API}/finance/fees/{self.fee_id}/court-refund/reset")
+        self.assertEqual(reset.status_code, 200, reset.text)
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(BusinessRecord, refund["id"])).status, "已作废")
+            self.assertEqual((await db.get(BusinessRecord, refund["data"]["refund_fee_id"])).status, "已删除")
+
     async def test_official_fee_payment_application_allows_no_unit_only_for_official(self):
         route = f"{API}/finance/fees/{self.fee_id}/submit"
         body = {"amount": 100, "comment": "官费申请付款"}

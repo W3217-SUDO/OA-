@@ -47,12 +47,12 @@ async def reset_case_court_refunds(source, identity, db):
     refunds = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "refund",
         BusinessRecord.data["fee_record_id"].as_integer() == source.id,
-        BusinessRecord.status.not_in({"已驳回", "已作废"}),
+        BusinessRecord.status != "已作废",
     ).order_by(BusinessRecord.id).with_for_update())).all())
     linked_fees = []
     linked_commissions = []
     for refund in refunds:
-        if refund.status != "草稿":
+        if refund.status not in {"草稿", "已驳回"}:
             raise HTTPException(409, "退款申请已进入审批或到账流程，请先撤回后再归零")
         fee_id = (refund.data or {}).get("refund_fee_id")
         if not fee_id:
@@ -61,7 +61,7 @@ async def reset_case_court_refunds(source, identity, db):
         if not fee or fee.module != "finance" or (fee.data or {}).get("refund_record_id") != refund.id:
             raise HTTPException(409, "关联代理费退费记录不存在或关联不一致")
         data = fee.data or {}
-        if fee.status not in {"草稿", "待审批", "已审批", "待付款", "已撤回"}:
+        if fee.status not in {"草稿", "待审批", "已审批", "待付款", "已撤回", "已驳回"}:
             raise HTTPException(409, "关联代理费退费已进入付款或结算流程，不能归零")
         if data.get("payment_package_id") or data.get("payment_package_no") or float(data.get("paid_amount") or 0):
             raise HTTPException(409, "关联代理费退费已进入付款包或付款流程，不能归零")
