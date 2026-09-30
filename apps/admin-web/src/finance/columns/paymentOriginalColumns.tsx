@@ -39,7 +39,7 @@ export function createPaymentOriginalColumns(context: {
         {
             title: "申请金额", ...moneyColumnStyle("申请金额"),
             width: 115,
-            render: (_: unknown, row: Fee) => row.data.amount == null ? "—" : money(row.data.amount),
+            render: (_: unknown, row: Fee) => row.data.amount == null ? "—" : money(row.data.payment_request_amount ?? row.data.amount),
         },
         {
             title: "截止日期", ...moneyColumnStyle("截止日期"),

@@ -47,6 +47,14 @@ export function invoiceEditValues(record) {
   };
 }
 
+export function invoiceCurrentSourceFields(selectedRows, selectedIds) {
+  const ids = [...new Set(selectedIds.map(Number))];
+  const selected = ids.map((id) => selectedRows.find((row) => Number(row.id) === id));
+  if (selected.some((row) => !row)) throw new Error("所选开票费用不存在或无权访问，请重新选择");
+  const contracts = new Set(selected.map((row) => String(row.data?.contract_id || row.data?.contract_record_id || row.data?.contract_no || "")));
+  return { external_contract_no: contracts.size === 1 ? String(selected[0]?.data?.external_contract_no || "").trim() : "" };
+}
+
 export async function fetchInvoiceRecord(client, id) {
   const { data } = await client.get(`/finance/invoices/${id}`);
   if (!data || data.module !== "invoice" || String(data.id) !== String(id)) throw new Error("发票详情记录不匹配");

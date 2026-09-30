@@ -3784,6 +3784,7 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         except HTTPException:
             continue
 
+    from app.core.contracts import _contract_customer_record_dicts
     context = {
         "schema_version": "1.1",
         "space": {"id": f"case:{case_record.id}", "kind": "business_graph", "case_id": case_record.id, "case_no": case_record.serial_no, "generated_at": datetime.now(timezone.utc)},
@@ -3792,7 +3793,7 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         "people": people,
         "contracts": contract_payload,
         "finances": {
-            "fees": [_record_dict(item, allowed_fields) for item in finance_records],
+            "fees": await _contract_customer_record_dicts(finance_records, allowed_fields, db, identity=identity),
             "invoices": [_record_dict(item, allowed_fields) for item in invoice_records],
             "contract_payments": [_record_dict(item, allowed_fields) for item in payment_records],
             "incoming_payments": [_incoming_payment_dict(item, show_amount=show_finance_amount) for item in incoming],

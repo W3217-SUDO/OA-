@@ -109,12 +109,11 @@ async def normalized_payment(body, contract, identity, db, payment=None):
         raise HTTPException(422, "每条付款明细只能选择案件费用或合同标的之一")
     if len({line_key(line) for line in body.lines}) != len(body.lines):
         raise HTTPException(422, "同一费用只能提交一次")
-    # Fee writers also contend on these rows; always acquire them in ID order.
+    # 案件入口与合同入口使用同一费用锁，SQLite 也串行核对余额。
     fee_ids = sorted({line.case_fee_id for line in body.lines if line.case_fee_id})
     if fee_ids:
-        await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(fee_ids)).order_by(
-            BusinessRecord.id,
-        ).with_for_update().execution_options(populate_existing=True))
+        from app.core.case_fee_payments import lock_case_fee_rows
+        await lock_case_fee_rows(fee_ids, db)
     payment_type = await _active_payment_type(body.payment_type_id, db)
     type_data = _finance_payment_type_dict(payment_type)
     rows = await payment_candidates(contract, identity, db, payment)

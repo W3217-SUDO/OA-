@@ -567,17 +567,19 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         const { counselDetailCapabilities, paymentRequestForm, setPaymentTypeSearch, setPaymentRequestFee } = context;
         if (!counselDetailCapabilities.can_create_finance)
             return message.warning("当前账号没有申请付款权限");
-        if (!["草稿", "已退回", "已审批", "部分付款"].includes(row.status)) {
+        if (!["草稿", "已退回", "已审批", "部分付款", "已驳回", "已撤回"].includes(row.status)) {
             return message.warning(`当前费用状态“${row.status}”不能申请付款`);
         }
         const paid = Number(row.data.paid_amount || 0);
         const requested = Number(row.data.payment_requested_amount || 0);
-        const remaining = Math.max(Number(row.data.amount || 0) - paid - requested, 0);
+        const remaining = Number(row.data.payment_remaining_amount ?? Math.max(Number(row.data.amount || 0) - Math.max(paid, requested), 0));
+        if (remaining <= 0)
+            return message.warning("该费用没有可申请付款的余额");
         const options = await loadCasePaymentTypes(row.id);
         const storedPaymentTypeId = Number(row.data.payment_type_id) || undefined;
         paymentRequestForm.resetFields();
         paymentRequestForm.setFieldsValue({
-            amount: remaining || Number(row.data.amount || 0),
+            amount: remaining,
             payment_remark: row.data.payment_remark || row.description || "",
             payment_type_id: options.some((item) => item.id === storedPaymentTypeId) ? storedPaymentTypeId : undefined,
         });

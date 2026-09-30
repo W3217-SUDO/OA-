@@ -1518,14 +1518,14 @@ export default function FinanceCenterPage({
       if (!invoiceDetailRequestGuard.isLatest(token)) return;
       if (!["草稿", "已驳回"].includes(row.status)) { message.warning("当前发票状态不能编辑"); return; }
       const values = invoiceEditValues(row);
-      const reference = await loadInvoiceReferenceData({ invoice_id: row.id, customer: row.customer, isCurrent: () => invoiceDetailRequestGuard.isLatest(token) });
+      const reference = await loadInvoiceReferenceData({ invoice_id: row.id, customer: row.customer, selected_fee_ids: values.case_fee_ids.join(","), isCurrent: () => invoiceDetailRequestGuard.isLatest(token) });
       if (!invoiceDetailRequestGuard.isLatest(token)) return;
       setInvoiceEditTarget(row);
       setInvoiceSourceFeeId(null);
       setInvoiceSelectedFeeIds(values.case_fee_ids);
       setInvoiceFeeAmounts(Object.fromEntries(values.case_fee_allocations.map((item: any) => [item.fee_id, item.amount])));
       invoiceForm.resetFields();
-      invoiceForm.setFieldsValue({ ...reference.customerDefaults, ...values });
+      invoiceForm.setFieldsValue({ ...reference.customerDefaults, ...values, ...reference.sourceFields });
       setInvoiceOpen(true);
     } catch (error: any) {
       if (invoiceDetailRequestGuard.isLatest(token)) message.error(error?.response?.data?.detail || error.message || "发票编辑信息加载失败");
@@ -3299,7 +3299,7 @@ export default function FinanceCenterPage({
       付款包号码: row.serial_no,
       付款总金额: data.total_amount ?? data.amount,
       付款单据号: data.invoice_no || data.writeoff_voucher_no,
-      申请金额: data.amount,
+      申请金额: data.payment_request_amount ?? data.amount,
       金额: data.amount ?? row.amount,
       提成金额: data.amount ?? row.amount,
       提成人: financePersonDisplayName(

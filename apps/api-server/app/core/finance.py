@@ -526,36 +526,8 @@ async def _active_contract_payment_fee_reservations(
     *,
     contract: BusinessRecord | None = None,
 ) -> dict[int, float]:
-    if not fee_ids:
-        return {}
-    conditions = [
-        BusinessRecord.module == "contract_payment",
-        BusinessRecord.status.in_(["待审批", "待付款", "待核销", "已付款", "已核销"]),
-    ]
-    if contract:
-        conditions.append(or_(
-            BusinessRecord.data["contract_id"].as_integer() == contract.id,
-            BusinessRecord.data["contract_record_id"].as_integer() == contract.id,
-            BusinessRecord.data["contract_no"].as_string() == contract.serial_no,
-        ))
-    reservations: dict[int, float] = {}
-    for record in (await db.scalars(select(BusinessRecord).where(*conditions))).all():
-        if contract and not _fee_matches_contract(record, contract):
-            continue
-        for line in (record.data or {}).get("lines", []):
-            if not isinstance(line, dict):
-                continue
-            try:
-                fee_id = int(line.get("case_fee_id") or 0)
-            except (TypeError, ValueError):
-                continue
-            if fee_id not in fee_ids:
-                continue
-            reservations[fee_id] = _round_fee_amount(
-                reservations.get(fee_id, 0) + float(line.get("amount") or 0)
-            )
-    return reservations
-
+    from app.core.case_fee_payments import contract_fee_reservations
+    return await contract_fee_reservations(fee_ids, db, contract=contract)
 
 async def _resolve_case_fee_contract(
     case_record: BusinessRecord | None,
@@ -744,7 +716,6 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
         ContractObject.contract_record_id == contract.id
     ).order_by(ContractObject.id))).all()
     used_by_object: dict[int, float] = {}
-    used_by_fee: dict[int, float] = {}
     active_records = [
         record for record in (await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "contract_payment",
@@ -768,10 +739,8 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
                 object_id = int(line.get("contract_object_id") or 0)
             except (TypeError, ValueError):
                 continue
-            if fee_id:
-                used_by_fee[fee_id] = _round_fee_amount(used_by_fee.get(fee_id, 0) + float(line.get("amount") or 0))
-                if object_id:
-                    snapshot_fee_objects.add((record.id, object_id))
+            if fee_id and object_id:
+                snapshot_fee_objects.add((record.id, object_id))
     object_ids = [item.id for item in objects]
     if object_ids and active_record_ids:
         lines = (await db.scalars(select(ContractPaymentLine).where(
@@ -796,7 +765,11 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
         ).order_by(BusinessRecord.id))).all()
         if _is_contract_payment_case_fee(fee) and _fee_matches_contract(fee, contract)
     ]
+    from app.core.contract_payment_sources import merged_contract_fees
+    fee_records = list({fee.id: fee for fee in [*fee_records, *await merged_contract_fees(contract, db)]}.values())
     fee_ids = {fee.id for fee in fee_records}
+    # 合并来源费用可从两个合同入口请款，占额必须按费用全局汇总。
+    used_by_fee = await _active_contract_payment_fee_reservations(fee_ids, db)
     direct_paid_by_fee: dict[int, float] = {}
     if fee_ids:
         transactions = await db.scalars(select(FinanceTransaction).where(
@@ -3365,6 +3338,9 @@ async def _finance_payment_type_for_fee(fee_id: int, identity: dict, db: AsyncSe
 async def _review_finance_fee_records(items: list[BusinessRecord], approved: bool, comment: str, identity: dict, db: AsyncSession) -> None:
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有费用审批权限")
+    from app.core.case_fee_payments import lock_case_fee_rows, release_direct_fee_request
+    from app.core.invoice_sources import is_external_case_fee
+    await lock_case_fee_rows([item.id for item in items if is_external_case_fee(item)], db)
     lifecycle_statuses = await _case_commission_lifecycle_statuses(items, db)
     blocked = [
         f"{item.serial_no}（{lifecycle_statuses[item.id]}）"
@@ -3385,6 +3361,8 @@ async def _review_finance_fee_records(items: list[BusinessRecord], approved: boo
     target_status = "已审批" if approved else "已驳回"
     normalized_comment = comment.strip() or ("审批通过" if approved else "审批拒绝")
     for item in items:
+        if not approved and is_external_case_fee(item):
+            await release_direct_fee_request(item, db)
         data = item.data or {}
         is_refund = data.get("fee_type") == "内部费用" and (
             bool(data.get("is_refund")) or float(data.get("amount") or 0) < 0

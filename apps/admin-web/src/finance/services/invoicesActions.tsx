@@ -5,6 +5,7 @@ import { api } from "../../api";
 import { buildInvoiceApplicationPayload } from "../../financeInvoiceHelpers.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { legacyInvoiceUpdateFailureMessage } from "../constants";
+import { invoiceCurrentSourceFields } from "../invoiceDetails.mjs";
 import type { Fee, FinanceFlow } from "../types";
 type OriginalFieldSpec = {
     label: string;
@@ -291,11 +292,14 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
         const current = () => typeof isCurrent !== "function" || isCurrent();
         const invoiceId = options.invoice_id ?? invoiceEditTarget?.id;
         const customer = options.customer ?? invoiceForm.getFieldValue("customer");
+        const selectedIds: number[] = (options.selected_fee_ids != null
+            ? String(options.selected_fee_ids).split(",").filter(Boolean).map(Number)
+            : invoiceForm.getFieldValue("case_fee_ids") || []).map(Number);
         if (!invoiceId && !customer && !options.customer_id) {
-            return { contractRows: [], customerRows: [], candidateRows: [], selectedRows: [], total: 0, page: 1, pageSize: 50 };
+            return { contractRows: [], customerRows: [], candidateRows: [], selectedRows: [], sourceFields: { external_contract_no: "" }, total: 0, page: 1, pageSize: 50 };
         }
         const { data } = await api.get("/finance/invoice-context", { params: {
-            ...requestOptions, invoice_id: invoiceId, customer, page: options.page || 1, page_size: Math.min(100, options.page_size || 50),
+            ...requestOptions, invoice_id: invoiceId, customer, selected_fee_ids: selectedIds.join(","), page: options.page || 1, page_size: Math.min(100, options.page_size || 50),
         } });
         const candidateRows: Fee[] = data.items || [];
         const selectedRows: Fee[] = data.selected_items || [];
@@ -305,31 +309,30 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
             customer: row.customer, status: "", owner: "", data: { external_contract_no: row.data.external_contract_no },
         }])).values());
         const customerRows = data.customer_record ? [data.customer_record] : [];
-        const selectedIds: number[] = invoiceForm.getFieldValue("case_fee_ids") || [];
+        const sourceFields = invoiceCurrentSourceFields(selectedRows, selectedIds);
         if (current()) {
             setContracts((previous) => current() ? Array.from(new Map([...previous, ...contractRows].map((row) => [row.id, row])).values()) : previous);
             setCustomers((previous) => current() ? Array.from(new Map([...previous, ...customerRows].map((row: any) => [row.id, row])).values()) : previous);
             setInvoiceCandidateFees((previous) => current() ? Array.from(new Map([...previous.filter((row) => selectedIds.includes(row.id)), ...allRows].map((row) => [row.id, row])).values()) : previous);
+            if (JSON.stringify((invoiceForm.getFieldValue("case_fee_ids") || []).map(Number)) === JSON.stringify(selectedIds)) {
+                invoiceForm.setFieldsValue(sourceFields);
+            }
         }
         return { contractRows, customerRows, candidateRows, selectedRows, customerDefaults: data.customer_defaults,
-            customerRecord: data.customer_record, customerMissing: data.customer_missing_or_forbidden,
+            sourceFields, customerRecord: data.customer_record, customerMissing: data.customer_missing_or_forbidden,
             total: Number(data.total || 0), page: Number(data.page || 1), pageSize: Number(data.page_size || 50) };
     };
     const createInvoice = async (submit = false) => {
-        const { invoiceForm, cases, contracts, invoiceCandidateFees, fees, invoiceEditTarget, setInvoiceOpen, setInvoiceEditTarget, load } = context;
+        const { invoiceForm, cases, invoiceEditTarget, setInvoiceOpen, setInvoiceEditTarget, load } = context;
         const v = await invoiceForm.validateFields();
-        const linked = buildInvoiceApplicationPayload({
-            values: v,
-            cases,
-            contracts,
-            caseFees: context.invoiceFeeOptions,
-            requireSource: !invoiceEditTarget,
-        });
-        if (linked.ok === false) {
-            message.error(linked.error);
-            return;
-        }
         try {
+            const reference = await loadInvoiceReferenceData({ invoice_id: invoiceEditTarget?.id,
+                customer: v.customer, customer_id: v.customer_record_id, selected_fee_ids: (v.case_fee_ids || []).join(",") });
+            const linked = buildInvoiceApplicationPayload({
+                values: { ...v, ...reference.sourceFields }, cases, contracts: reference.contractRows,
+                caseFees: reference.selectedRows, requireSource: !invoiceEditTarget,
+            });
+            if (linked.ok === false) { message.error(linked.error); return; }
             let saved: Fee;
             if (invoiceEditTarget) {
                 const response = await api.patch(`/finance/invoices/${invoiceEditTarget.id}`, linked.payload);

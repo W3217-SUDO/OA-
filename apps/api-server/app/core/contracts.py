@@ -102,6 +102,7 @@ async def _contract_customer_record_dict(
     users_by_username: dict[str, User] | None = None,
     contract_context: dict | None = None,
     identity: dict | None = None,
+    payment_totals: dict | None = None,
 ) -> dict:
     from app.core.cases import (
         _case_phase_changed_days,
@@ -122,6 +123,11 @@ async def _contract_customer_record_dict(
         _record_dict, _record_person_usernames,
     )
     result = _record_dict(record, allowed_fields)
+    if record.module == "finance":
+        from app.core.case_fee_payments import apply_fee_payment_projection, fee_payment_totals
+        if payment_totals is None:
+            payment_totals = await fee_payment_totals([record], db) if allowed_fields is None or "finance.amount" in allowed_fields else {}
+        return apply_fee_payment_projection(result, payment_totals, allowed_fields)
     if record.module not in {"case", "contract", "customer", "investigation", "task", "clue", "notary", "evidence"}:
         return result
     data = result["data"]
@@ -306,6 +312,8 @@ async def _contract_customer_record_dicts(
     users = list((await db.scalars(select(User).where(func.lower(User.username).in_(usernames)))).all()) if usernames else []
     names_by_username = {user.username.lower(): user.display_name for user in users}
     users_by_username = {user.username.lower(): user for user in users}
+    from app.core.case_fee_payments import fee_payment_totals
+    payment_totals = await fee_payment_totals(records, db) if allowed_fields is None or "finance.amount" in allowed_fields else {}
     results = [
         await _contract_customer_record_dict(
             record, allowed_fields, db,
@@ -314,6 +322,7 @@ async def _contract_customer_record_dicts(
             users_by_username=users_by_username,
             contract_context=contract_context,
             identity=identity,
+            payment_totals=payment_totals,
         )
         for record in records
     ]

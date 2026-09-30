@@ -26,9 +26,18 @@ async def payment_document(row, identity, db):
                 raise HTTPException(status_code=404, detail='付款包明细不存在或无权访问')
             requests.append(request)
     groups = []
+    package_items = {int(item['id']): item for item in data.get('items', [])} if row.module == 'finance_package' else {}
     for request in requests:
         request_view = await _record_dict_for_identity(request, identity, db)
         request_data = dict(request_view.get('data') or {})
+        if request.module == 'finance' and 'amount' in request_data:
+            if row.module == 'finance_package':
+                if request.id not in package_items:
+                    raise HTTPException(409, '付款包缺少该费用的付款明细')
+                current_amount = package_items[request.id]['amount']
+            else:
+                current_amount = request_data.get('payment_request_amount', request_data.get('direct_payment_requested_amount') or request_data['amount'])
+            request_data = {**request_data, 'fee_amount': request_data['amount'], 'amount': current_amount}
         contract = await related('contract', request_data.get('contract_id'), request_data.get('contract_no'))
         contract_view = await _record_dict_for_identity(contract, identity, db) if contract else {}
         contract_data = contract_view.get('data') or {}
@@ -56,7 +65,7 @@ async def payment_document(row, identity, db):
                         plaintiff=case_data.get('plaintiff') or case_view.get('customer') or item.get('plaintiff'),
                         defendant=case_data.get('defendant') or case_data.get('opponent') or item.get('defendant'),
                         contract_no=group['contract_no'], contract_name=group['contract_name'],
-                        fee_amount=fee_data.get('amount', item.get('amount')),
+                        fee_amount=fee_data.get('amount', item.get('fee_amount', item.get('amount'))),
                         current_payment=line.get('requested_amount', line.get('payment_amount', line.get('amount', request_data.get('amount')))),
                         fee_remark=fee_view.get('description') or fee_data.get('remark') or item.get('fee_remark'),
                         payment_remark=line.get('remark') or request_view.get('description'),
@@ -68,6 +77,8 @@ async def payment_document(row, identity, db):
         groups.append(group)
     if groups:
         data = {**groups[0], **data}
+        if row.module == 'finance' and 'amount' in groups[0]:
+            data['amount'] = groups[0]['amount']
     data['document_groups'] = groups
     data['items'] = [item for group in groups for item in group['items']]
     result['data'] = data

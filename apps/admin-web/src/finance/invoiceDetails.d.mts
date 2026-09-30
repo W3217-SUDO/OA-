@@ -5,4 +5,5 @@ export function invoiceServiceRows(record: any): InvoiceServiceRow[];
 export function invoiceObjectRows(record: any): InvoiceObjectRow[];
 export function invoiceObjectFees(record: any): Fee[];
 export function invoiceEditValues(record: any): Record<string, any> & { case_fee_ids: number[]; case_fee_allocations: Array<{ fee_id: number; amount: number | null }> };
+export function invoiceCurrentSourceFields(selectedRows: Fee[], selectedIds: number[]): { external_contract_no: string };
 export function fetchInvoiceRecord(client: { get: (url: string) => Promise<{ data: any }> }, id: number): Promise<Fee>;

@@ -1303,6 +1303,17 @@ async def _invoice_source_metadata(case_fees: list[BusinessRecord], db: AsyncSes
     return contracts, contract_ids, contract_nos, case_ids, case_nos
 
 
+def _invoice_current_external_number(contracts: list[BusinessRecord]) -> str:
+    from app.core.formatters import _normalize_external_contract_numbers
+
+    if len(contracts) != 1:
+        return ""
+    data = dict(contracts[0].data or {})
+    if "external_contract_numbers" not in data and "external_contract_no" not in data:
+        data["external_contract_no"] = data.get("ref_contract_no") or ""
+    return _normalize_external_contract_numbers(data)["external_contract_no"]
+
+
 @router.post(f"{settings.api_prefix}/finance/invoices", status_code=status.HTTP_201_CREATED)
 async def create_invoice_application(body: InvoiceApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contracts import _contract_allows_finance_application
@@ -1341,6 +1352,7 @@ async def create_invoice_application(body: InvoiceApplicationInput, identity: di
     elif len(case_nos) == 1: data["case_no"] = case_nos[0]
     if contract_record: data["contract_no"] = contract_record.serial_no
     elif len(contract_nos) == 1: data["contract_no"] = contract_nos[0]
+    data["external_contract_no"] = _invoice_current_external_number(source_contracts)
     item = BusinessRecord(module="invoice", serial_no=serial, title=f"{body.customer}发票申请", customer=body.customer.strip(), status="草稿", owner=identity["username"], department=user.department, description=body.remark, data=data)
     db.add(item); await db.flush()
     db.add(WorkflowEvent(record_id=item.id, action="创建发票申请", to_status=item.status, operator=identity["username"], comment=f"{body.invoice_type}：{data['amount']:.2f} 元"))
@@ -1404,6 +1416,7 @@ async def update_invoice_application(invoice_id: int, body: InvoiceApplicationIn
         data["case_nos"] = case_nos
         data["contract_ids"] = contract_ids
         data["contract_nos"] = contract_nos
+        data["external_contract_no"] = _invoice_current_external_number(source_contracts)
         if case_record:
             data["case_no"] = case_record.serial_no
         elif len(case_nos) == 1:
@@ -1448,7 +1461,9 @@ async def submit_invoice_application(invoice_id: int, body: FinanceActionInput, 
     item = await _ensure_record_module(invoice_id, "invoice", identity, db); await _require_record_owner_or_manager(item, identity, db)
     if item.status not in {"草稿", "已驳回"}: raise HTTPException(status_code=409, detail="当前发票申请不能提交")
     from app.core.invoice_sources import invoice_source_fees, validate_invoice_fee_policy
-    await validate_invoice_fee_policy(await invoice_source_fees(item, identity, db), db)
+    source_fees = await invoice_source_fees(item, identity, db)
+    await validate_invoice_fee_policy(source_fees, db)
+    source_contracts, _, _, _, _ = await _invoice_source_metadata(source_fees, db)
     data = item.data or {}; missing = [name for name, value in {"客户名称": item.customer, "发票抬头": data.get("invoice_title"), "纳税人识别号": data.get("taxpayer_id"), "开票金额": data.get("amount")}.items() if not value]
     if data.get("delivery_method") == "电子发票" and not data.get("email"): missing.append("电子邮箱")
     if data.get("delivery_method") != "电子发票" and not data.get("delivery_address"): missing.append("邮寄地址")
@@ -1456,7 +1471,7 @@ async def submit_invoice_application(invoice_id: int, body: FinanceActionInput, 
     previous = item.status
     submitted_at = datetime.now().isoformat(timespec="seconds")
     item.status = "待审批"
-    item.data = {**data, "submitted_at": submitted_at, "submitted_by": identity["username"]}
+    item.data = {**data, "external_contract_no": _invoice_current_external_number(source_contracts), "submitted_at": submitted_at, "submitted_by": identity["username"]}
     db.add(WorkflowEvent(record_id=item.id, action="提交发票申请", from_status=previous, to_status=item.status, operator=identity["username"], comment=body.comment))
     await db.commit(); await db.refresh(item); return await _record_dict_for_identity(item, identity, db)
 
@@ -4799,6 +4814,10 @@ async def cancel_finance_payment(
     item = await _ensure_record_module(fee_id, "finance", identity, db)
     await _require_record_owner_or_manager(item, identity, db)
     await _require_linked_case_fee_action(item, "case.fee.payment", identity, db)
+    from app.core.case_fee_payments import lock_case_fee_rows, release_direct_fee_request
+    from app.core.invoice_sources import is_external_case_fee
+    if is_external_case_fee(item):
+        item = (await lock_case_fee_rows([item.id], db))[0]
     if item.status not in FINANCE_PAYMENT_CANCELABLE_STATUSES:
         raise HTTPException(status_code=409, detail="当前付款申请状态不能撤回")
     reason = body.reason.strip()
@@ -4806,6 +4825,8 @@ async def cancel_finance_payment(
         raise HTTPException(status_code=422, detail="请输入撤回原因")
     previous = item.status
     changed_at = datetime.now().isoformat(timespec="seconds")
+    if is_external_case_fee(item):
+        await release_direct_fee_request(item, db)
     item.status = "已撤回"
     item.data = {
         **(item.data or {}),
@@ -4840,11 +4861,17 @@ async def rollback_finance_payment(
         raise HTTPException(status_code=403, detail="当前角色没有付款回滚权限")
     item = await _ensure_record_module(fee_id, "finance", identity, db)
     await _require_linked_case_fee_action(item, "case.fee.payment", identity, db)
+    from app.core.case_fee_payments import lock_case_fee_rows, release_direct_fee_request
+    from app.core.invoice_sources import is_external_case_fee
+    if is_external_case_fee(item):
+        item = (await lock_case_fee_rows([item.id], db))[0]
     if item.status not in FINANCE_PAYMENT_ROLLBACKABLE_STATUSES:
         raise HTTPException(status_code=409, detail="当前付款申请状态不能回滚")
     previous = item.status
     changed_at = datetime.now().isoformat(timespec="seconds")
     comment = body.comment.strip()
+    if is_external_case_fee(item):
+        await release_direct_fee_request(item, db)
     item.status = "草稿"
     item.data = {
         **(item.data or {}),
@@ -4905,10 +4932,16 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
     item = await _ensure_record_module(fee_id, "finance", identity, db)
     await _require_record_owner_or_manager(item, identity, db)
     is_payment_request = body.amount is not None
+    if is_payment_request:
+        from app.core.case_fee_payments import lock_case_fee_rows
+        item = (await lock_case_fee_rows([item.id], db))[0]
     await _require_linked_case_fee_action(
         item, "case.fee.payment" if is_payment_request else "case.fee.update", identity, db,
     )
     allowed_statuses = {"草稿", "已退回", "已审批", "部分付款"} if is_payment_request else {"草稿", "已退回"}
+    from app.core.invoice_sources import is_external_case_fee
+    if is_payment_request and is_external_case_fee(item):
+        allowed_statuses |= {"已驳回", "已撤回"}
     if item.status not in allowed_statuses:
         raise HTTPException(status_code=409, detail="当前状态不能申请付款" if is_payment_request else "当前状态不能提交审批")
     data = item.data or {}
@@ -4959,7 +4992,8 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
         )) or 0))
         previous_requested = _round_fee_amount(float(data.get("payment_requested_amount") or 0))
         contract_reserved = (await _active_contract_payment_fee_reservations({item.id}, db)).get(item.id, 0)
-        remaining = _round_fee_amount(abs(float(data.get("amount") or 0)) - paid - previous_requested - contract_reserved)
+        # 已付与直接申请是同一申请生命周期，不能相加重复扣减。
+        remaining = _round_fee_amount(abs(float(data.get("amount") or 0)) - max(paid, float(data.get("paid_amount") or 0), previous_requested) - contract_reserved)
         if requested > remaining + 0.001:
             raise HTTPException(status_code=409, detail=f"申请付款金额不能超过未付款金额 {remaining:.2f}")
         applied_at = datetime.now().isoformat(timespec="seconds")
@@ -4967,7 +5001,9 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
         item.status = "待审批"
         item.data = {
             **data,
-            "payment_requested_amount": _round_fee_amount(previous_requested + requested),
+            "payment_requested_amount": _round_fee_amount(max(previous_requested, paid, float(data.get("paid_amount") or 0)) + requested),
+            **({"payment_request_amount": requested, "writeoff_status": "", "payment_package_id": None,
+                "payment_package_no": "", "payment_package_amount": None} if payment_type else {}),
             "payment_account": account,
             "payment_payee": payee,
             "payment_type_id": payment_type.id if payment_type else None,
@@ -5281,6 +5317,13 @@ async def create_finance_transaction(body: FinanceTransactionInput, identity: di
     record = await _ensure_record_module(body.finance_record_id, "finance", identity, db)
     if body.transaction_type != "付款":
         raise HTTPException(status_code=409, detail="开票和退款流水必须由发票或退费专用流程生成")
+    from app.core.case_fee_payments import direct_fee_payment_amounts, lock_case_fee_rows
+    from app.core.invoice_sources import is_external_case_fee
+    if is_external_case_fee(record):
+        record = (await lock_case_fee_rows([record.id], db))[0]
+        payable = (await direct_fee_payment_amounts([record], db))[record.id]
+        if body.amount > payable + .001:
+            raise HTTPException(409, "付款金额不能超过直接申请的未付金额")
     if record.status not in {"已审批", "部分付款"}: raise HTTPException(status_code=409, detail="费用审批通过后才能付款")
     paid = await db.scalar(select(func.coalesce(func.sum(FinanceTransaction.amount), 0)).where(FinanceTransaction.finance_record_id == record.id, FinanceTransaction.transaction_type == "付款"))
     if float(paid or 0) + body.amount > float((record.data or {}).get("amount", 0)) + 0.001: raise HTTPException(status_code=409, detail="付款金额不能超过费用金额")
@@ -5617,7 +5660,7 @@ async def get_invoice_application(invoice_id: int, identity: dict = Depends(curr
 @router.get(f"{settings.api_prefix}/finance/invoice-context")
 async def invoice_application_context(
     customer: str = "", customer_no: str = "", customer_id: int | None = None,
-    contract_ids: str = "", invoice_id: int | None = None, keyword: str = "",
+    contract_ids: str = "", invoice_id: int | None = None, keyword: str = "", selected_fee_ids: str | None = None,
     page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
@@ -5633,12 +5676,21 @@ async def invoice_application_context(
 
     await _require_record_module_menu("invoice", identity, db, action="查看")
     selected_ids = set()
+    saved_selected_ids = set()
     if invoice_id is not None:
         invoice = await _editable_invoice_application(invoice_id, identity, db)
         if customer and customer.strip() != invoice.customer.strip():
             raise HTTPException(status_code=409, detail="编辑客户与原发票不一致")
         customer = invoice.customer
         selected_ids = _invoice_linked_fee_ids(invoice.data or {})
+        saved_selected_ids = set(selected_ids)
+    if selected_fee_ids is not None:
+        try:
+            selected_ids = {int(value.strip()) for value in selected_fee_ids.split(",") if value.strip()}
+            if any(value <= 0 for value in selected_ids) or len(selected_ids) > 100:
+                raise ValueError()
+        except ValueError:
+            raise HTTPException(status_code=422, detail="所选费用ID必须为正整数，最多100个") from None
     requested_contracts = []
     try:
         requested_ids = {int(value.strip()) for value in contract_ids.split(",") if value.strip()}
@@ -5690,6 +5742,8 @@ async def invoice_application_context(
     needle = keyword.strip().casefold()
     start = (page - 1) * page_size
     selected = await _invoice_fee_details(identity, db, ids=selected_ids, customer=customer, exclude_invoice_id=invoice_id) if selected_ids else []
+    if {row["id"] for row in selected} != selected_ids:
+        raise HTTPException(status_code=403, detail="所选开票费用不存在、无权访问或不属于当前客户")
     items, total, cursor = [], 0, 0
     # Eligibility depends on active allocations. Scan scoped IDs in bounded SQL
     # pages, hydrate one page at a time, and retain only the requested output page.
@@ -5705,7 +5759,7 @@ async def invoice_application_context(
             data = row["data"]
             if requested_ids and data.get("contract_id") not in requested_ids:
                 continue
-            if row["id"] not in selected_ids and (
+            if row["id"] not in saved_selected_ids and (
                 not data.get("contract_allows_invoice") or row["status"] in {"已删除", "已作废", "不缴费"}
                 or data.get("remaining_invoice_amount") is None or data["remaining_invoice_amount"] <= 0
             ):

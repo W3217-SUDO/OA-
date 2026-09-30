@@ -23,6 +23,7 @@ export function InvoiceApplicationPage({ form, target, fees, selectedIds, onSele
   const requestId = useRef(0);
   const customerRequestId = useRef(0);
   const customerId = Form.useWatch("customer_record_id", form);
+  const externalContractNo = Form.useWatch("external_contract_no", form);
   const autoServiceAmount = useRef<number | null>(null);
   const totalAmount = Form.useWatch("amount", form);
   const allocations = Form.useWatch("case_fee_allocations", form) || [];
@@ -53,9 +54,13 @@ export function InvoiceApplicationPage({ form, target, fees, selectedIds, onSele
       if (token === requestId.current) { setSourceRows([]); setSourceError(failure?.response?.data?.detail || failure.message || "开票费用加载失败"); }
     } finally { if (token === requestId.current) setSourceLoading(false); }
   };
+  const refreshSources = useRef(() => {});
+  refreshSources.current = () => { if (!busy) void loadSources(); };
   useEffect(() => {
     void loadSources();
-    return () => { requestId.current += 1; customerRequestId.current += 1; };
+    const refresh = () => refreshSources.current();
+    window.addEventListener("focus", refresh);
+    return () => { window.removeEventListener("focus", refresh); requestId.current += 1; customerRequestId.current += 1; };
   }, [target?.id]);
   useEffect(() => {
     if (!target && !(form.getFieldValue("service_items") || []).length) {
@@ -91,6 +96,9 @@ export function InvoiceApplicationPage({ form, target, fees, selectedIds, onSele
     } finally { setBusy(false); }
   };
   const visibleFees = feeTab === "selected" ? fees.filter((row) => selectedIds.includes(row.id)) : sourceRows;
+  const missingContracts = [...new Set(fees.filter((row) => selectedIds.includes(row.id)
+    && String(row.data?.contract_no || "").toUpperCase().startsWith("SH")
+    && !String(row.data?.external_contract_no || "").trim()).map((row) => String(row.data.contract_no)))];
   return <section className="finance-original-panel finance-invoice-request-page" aria-label={target ? "编辑发票申请" : "新增发票申请"}>
     <header className="finance-original-title"><h2>{target ? "编辑发票申请" : "新增发票申请"}</h2><Button disabled={busy} onClick={onClose}>返回</Button></header>
     <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }}>
@@ -99,7 +107,7 @@ export function InvoiceApplicationPage({ form, target, fees, selectedIds, onSele
       <Descriptions.Item label="状态">{target?.status || "草稿"}</Descriptions.Item>
     </Descriptions>
     <Form form={form} layout="vertical" disabled={busy} className="finance-invoice-request-form">
-      {["case_record_id", "contract_record_id", "case_fee_ids", "case_fee_allocations"].map((name) => <Form.Item key={name} name={name} hidden><Input /></Form.Item>)}
+      {["case_record_id", "contract_record_id", "case_fee_ids", "case_fee_allocations", "external_contract_no"].map((name) => <Form.Item key={name} name={name} hidden><Input /></Form.Item>)}
       <div className="finance-invoice-detail-section-title">申请信息</div>
       <div className="finance-invoice-request-grid">
         {target ? <Form.Item label="客户名称" name="customer" rules={[{ required: true }]}><Input readOnly /></Form.Item> : <>
@@ -117,10 +125,16 @@ export function InvoiceApplicationPage({ form, target, fees, selectedIds, onSele
         </>}
         <Form.Item label="来源案件" name="case_no"><Input readOnly /></Form.Item>
         <Form.Item label="合同编号" name="contract_no"><Input readOnly /></Form.Item>
-        <Form.Item label="外部合同号" name="external_contract_no"><Input readOnly /></Form.Item>
+        <Form.Item label="外部合同号" extra="在新建合同或合同变更中维护，开票自动读取，无需每次填写。">
+          <Space wrap><span>{externalContractNo || (selectedIds.length ? "请查看费用明细对应的合同资料" : "选择费用后自动显示")}</span>
+            <Button type="link" loading={sourceLoading} onClick={() => void loadSources()}>刷新合同资料</Button></Space>
+        </Form.Item>
         <Form.Item label="申请开票金额" name="amount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} readOnly style={{ width: "100%" }} /></Form.Item>
         <Form.Item label="高开发票金额" name="extra_amount"><InputNumber min={0} precision={2} style={{ width: "100%" }} /></Form.Item>
       </div>
+      {missingContracts.length > 0 && <Alert type="warning" showIcon message="关联合同尚未填写外部合同号，补充后才能申请开票"
+        description={<Space direction="vertical"><span>请在合同详情的“合同变更”中补充；无变更权限时，请联系合同经办人处理。完成后点击“刷新合同资料”。</span>
+          <Space wrap>{missingContracts.map((number) => <Button key={number} type="link" onClick={() => openContract(number)}>查看合同 {number}</Button>)}</Space></Space>} />}
       <div className="finance-invoice-detail-section-title">发票内容</div>
       <div className="finance-invoice-request-grid">
         <Form.Item label="发票类型" name="invoice_type" rules={[{ required: true }]}><Select options={["增值税普通发票", "增值税专用发票", "电子普通发票", "电子专用发票"].map((value) => ({ value, label: value }))} /></Form.Item>

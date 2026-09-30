@@ -60,7 +60,7 @@ class PaymentBatchInput(BaseModel):
 @router.post(f'{settings.api_prefix}/finance/payment-workflow/submit-batch')
 async def submit_payment_batch(body: PaymentBatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     rows = [await payment_record(record_id, identity, db) for record_id in sorted(set(body.record_ids))]
-    if any(row.status not in {'已审批', '待付款'} or (row.data or {}).get('writeoff_status') in {'待核销', '已核销'} for row in rows):
+    if any(row.status not in {'已审批', '待付款', '部分付款'} or (row.data or {}).get('writeoff_status') in {'待核销', '已核销'} for row in rows):
         raise HTTPException(409, '只能合并待付款申请')
     payees = {str((row.data or {}).get('payee') or row.customer).strip() for row in rows}
     banks = {(str((row.data or {}).get('account_bank') or (row.data or {}).get('bank_name') or ''), str((row.data or {}).get('account') or (row.data or {}).get('bank_account') or '')) for row in rows}
@@ -71,8 +71,11 @@ async def submit_payment_batch(body: PaymentBatchInput, identity: dict = Depends
             from app.core.contract_payment_lifecycle import ensure_unsettled
             await _require_contract_action(identity, db, 'contract.payment.pay', '办理付款')
             await ensure_unsettled(row, db)
-    details = [{**(row.data or {}), 'id': row.id, 'request_no': row.serial_no} for row in rows]
-    total = round(sum(float((row.data or {}).get('amount') or 0) for row in rows), 2)
+    from app.core.case_fee_payments import direct_fee_payment_amounts
+    direct_amounts = await direct_fee_payment_amounts(rows, db)
+    amounts = {row.id: direct_amounts[row.id] if row.id in direct_amounts else float((row.data or {}).get('amount') or 0) for row in rows}
+    details = [{**(row.data or {}), 'id': row.id, 'request_no': row.serial_no, 'fee_amount': (row.data or {}).get('amount'), 'amount': amounts[row.id]} for row in rows]
+    total = round(sum(amounts.values()), 2)
     number = f'P{datetime.now():%y%m%d}-{uuid4().hex[:8]}'
     package = BusinessRecord(module='finance_package', serial_no=number, title='付款申请单', customer=rows[0].customer,
         owner=identity['username'], department=rows[0].department, status='待核销',
@@ -81,7 +84,7 @@ async def submit_payment_batch(body: PaymentBatchInput, identity: dict = Depends
     db.add(package); await db.flush()
     for row in rows:
         previous=row.status; row.status='待核销'
-        row.data={**(row.data or {}),'payment_status':'待核销','writeoff_status':'待核销','payment_package_id':package.id,'payment_package_no':number}
+        row.data={**(row.data or {}),'payment_status':'待核销','writeoff_status':'待核销','payment_package_id':package.id,'payment_package_no':number,'payment_package_amount':amounts[row.id]}
         db.add(WorkflowEvent(record_id=row.id,action='合并提交付款单',from_status=previous,to_status='待核销',operator=identity['username'],comment=number))
     await db.commit(); await db.refresh(package)
     return await _record_dict_for_identity(package,identity,db)
@@ -98,6 +101,9 @@ async def payment_record(record_id, identity, db, allow_package=False):
     if row.module == 'contract_payment':
         from app.core.contract_payment_lifecycle import locked_payment
         row, _ = await locked_payment(record_id, identity, db)
+    elif row.module == 'finance':
+        from app.core.case_fee_payments import lock_case_fee_rows
+        row = (await lock_case_fee_rows([row.id], db))[0]
     else:
         await db.refresh(row, with_for_update=True)
     return row
@@ -145,6 +151,15 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
             linked_fees.append(fee)
     if row.module == 'finance_package' and not linked_fees:
         raise HTTPException(409, '付款包费用为空')
+    package_amounts = {int(item['id']): float(item['amount']) for item in data.get('items', [])} if row.module == 'finance_package' else {}
+    if row.module == 'finance_package' and (set(package_amounts) != {fee.id for fee in linked_fees}
+            or abs(sum(package_amounts.values()) - amount) > .001):
+        raise HTTPException(409, '付款包明细金额与付款金额不一致')
+    from app.core.case_fee_payments import direct_fee_paid_amounts, lock_case_fee_rows
+    from app.core.invoice_sources import is_external_case_fee
+    direct_fees = [fee for fee in linked_fees if is_external_case_fee(fee)] if row.module == 'finance_package' else []
+    await lock_case_fee_rows([fee.id for fee in direct_fees], db)
+    direct_paid = await direct_fee_paid_amounts(direct_fees, db)
     invoice_targets = list(linked_fees)
     for payment in linked_fees if row.module == 'finance_package' else []:
         if payment.module == 'contract_payment':
@@ -193,16 +208,20 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
         for fee in linked_fees:
             fee.data = {**(fee.data or {}), 'invoice_no': invoice_no.strip(), 'invoice_record_id': invoice.id}
             if row.module == 'finance_package':
-                fee.status = '已付款'
-                fee.data = {**fee.data, 'payment_status': '已付款', 'writeoff_status': '已核销',
-                            'paid_amount': fee.data.get('actual_commission', fee.data.get('amount', 0)),
+                direct_fee = is_external_case_fee(fee)
+                paid_total = package_amounts[fee.id] + direct_paid[fee.id] if direct_fee else fee.data.get('actual_commission', fee.data.get('amount', 0))
+                fee.status = '部分付款' if direct_fee and paid_total + .001 < float(fee.data.get('amount') or 0) else '已付款'
+                fee.data = {**fee.data, 'payment_status': fee.status, 'writeoff_status': '已核销',
+                            'paid_amount': paid_total,
                             'paid_date': str(paid_date), 'payment_date': str(paid_date),
                             'writeoff_voucher_no': invoice_no.strip()}
-                db.add(WorkflowEvent(record_id=fee.id, action='付款包核销', from_status='待核销', to_status='已付款', operator=identity['username'], comment=row.serial_no))
+                db.add(WorkflowEvent(record_id=fee.id, action='付款包核销', from_status='待核销', to_status=fee.status, operator=identity['username'], comment=row.serial_no))
         for target in invoice_targets:
             target.data = {**(target.data or {}), 'invoice_no':invoice_no.strip(), 'invoice_record_id':invoice.id}
         for target in linked_fees if row.module == 'finance_package' else [row]:
-            tx_amount = float((target.data or {}).get('paid_amount') or (target.data or {}).get('amount') or 0) if row.module == 'finance_package' else amount
+            tx_amount = amount
+            if row.module == 'finance_package':
+                tx_amount = package_amounts[target.id] if is_external_case_fee(target) else float((target.data or {}).get('paid_amount') or (target.data or {}).get('amount') or 0)
             db.add(FinanceTransaction(finance_record_id=target.id, transaction_type='合同付款' if target.module == 'contract_payment' else '付款',
                 amount=tx_amount, transaction_date=paid_date, voucher_no=invoice_no.strip(), counterparty=str(data.get('payee') or row.customer),
                 operator=identity['username'], remark=remark))

@@ -3801,7 +3801,7 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
             <Descriptions.Item label="申请金额">
               {feeDetail.data.amount == null
                 ? "—"
-                : money(feeDetail.data.amount)}
+                : money(feeDetail.data.payment_request_amount ?? feeDetail.data.amount)}
             </Descriptions.Item>
             <Descriptions.Item label="费用类型">
               {feeDetail.data.fee_type || "—"}
