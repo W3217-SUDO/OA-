@@ -565,29 +565,31 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession):
 
 
 def _investigation_supervisor_condition(username: str):
-    auditor = func.lower(func.trim(func.coalesce(BusinessRecord.data["auditor"].as_string(), "")))
-    assigner = func.lower(func.trim(func.coalesce(BusinessRecord.data["assigner"].as_string(), "")))
-    legacy = or_(
-        func.trim(func.coalesce(BusinessRecord.data["migration_source"].as_string(), "")) != "",
-        func.coalesce(BusinessRecord.data["legacy_investigation_id"].as_integer(), 0) > 0,
+    data = BusinessRecord.data
+    auditor = func.lower(func.trim(func.coalesce(data["auditor"].as_string(), "")))
+    original_auditor = func.lower(func.trim(func.coalesce(data["legacy_record"]["Auditor"].as_string(), "")))
+    migrated = or_(
+        func.trim(func.coalesce(data["migration_source"].as_string(), "")) != "",
+        func.coalesce(data["legacy_investigation_id"].as_integer(), 0) > 0,
     )
     return or_(
         auditor == username.lower(),
-        and_(auditor == "", ~legacy, or_(
-            func.lower(BusinessRecord.owner) == username.lower(),
-            assigner == username.lower(),
-        )),
+        and_(auditor == "", migrated, original_auditor == username.lower()),
     )
 
 
 async def _require_investigation_assignment_access(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
-    if record.module == "investigation" and await db.scalar(select(BusinessRecord.id).where(
-        BusinessRecord.id == record.id,
-        _investigation_supervisor_condition(identity["username"]),
-    )):
-        return
     from app.core.investigation_access import _actual_identity
     actual_identity = await _actual_identity(identity, db)
+    if record.module == "investigation":
+        if await db.scalar(select(BusinessRecord.id).where(
+            BusinessRecord.id == record.id,
+            _investigation_supervisor_condition(actual_identity["username"]),
+        )):
+            return
+        if "admin" in actual_identity.get("_actual_role_ids", []):
+            return
+        raise HTTPException(status_code=403, detail="只有该调查任务的审核人或系统管理员可以分配子任务")
     await _require_record_owner_or_manager(record, actual_identity, db)
 
 
