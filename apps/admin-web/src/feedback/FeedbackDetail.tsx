@@ -10,7 +10,7 @@ type PersonOption = { username: string; label: string };
 
 const requiresComment = new Set(["请求补充", "提交修复", "重新打开"]);
 const statusColors: Record<string, string> = {
-  待处理: "default", 处理中: "processing", 待补充: "warning", 待验证: "cyan", 已解决: "success",
+  待处理: "default", 处理中: "processing", 待补充: "warning", 待验证: "cyan", 已处理: "green", 已解决: "success",
 };
 
 export default function FeedbackDetail({ feedbackId, onBack }: Props) {
@@ -183,7 +183,7 @@ export default function FeedbackDetail({ feedbackId, onBack }: Props) {
     <div><Space wrap>
       <Button type="primary" disabled={busy || !comment.trim()} loading={busy} onClick={reply}>发送回复</Button>
       {feedback.available_actions.map((action) => <Button key={action}
-        type={action === "确认解决" ? "primary" : "default"} disabled={busy}
+        type={["标记已处理", "确认解决"].includes(action) ? "primary" : "default"} disabled={busy}
         onClick={() => transition(action)}>{action}</Button>)}
     </Space></div>
   </section>;
