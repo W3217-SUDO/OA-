@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Descriptions, Image, Modal, Spin } from "antd";
+import { Alert, Button, Descriptions, Image, Spin } from "antd";
 import dayjs from "dayjs";
 import { api } from "../api";
 import type { FeedbackRecord } from "./types";
 
-type Props = { feedback: FeedbackRecord | null; onClose: () => void };
+type Props = { feedback: FeedbackRecord; onBack: () => void };
 
-export default function FeedbackDetail({ feedback, onClose }: Props) {
+export default function FeedbackDetail({ feedback, onBack }: Props) {
   const [imageUrl, setImageUrl] = useState("");
   const [imageError, setImageError] = useState("");
   const [loadingImage, setLoadingImage] = useState(false);
@@ -15,7 +15,7 @@ export default function FeedbackDetail({ feedback, onClose }: Props) {
     setImageUrl("");
     setImageError("");
     setLoadingImage(false);
-    if (!feedback?.has_screenshot) return;
+    if (!feedback.has_screenshot) return;
     const controller = new AbortController();
     let objectUrl = "";
     setLoadingImage(true);
@@ -41,11 +41,10 @@ export default function FeedbackDetail({ feedback, onClose }: Props) {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [feedback?.id, feedback?.has_screenshot]);
+  }, [feedback.id, feedback.has_screenshot]);
 
-  return <Modal open={!!feedback} title="反馈详情" width={850} onCancel={onClose}
-    footer={<Button onClick={onClose}>关闭</Button>}>
-    {feedback && <>
+  return <section aria-label="反馈详情">
+      <Button onClick={onBack} style={{ marginBottom: 16 }}>返回列表</Button>
       <Descriptions bordered size="small" column={1} items={[
         { key: "serial", label: "反馈编号", children: feedback.serial_no },
         { key: "owner", label: "提交人", children: feedback.owner_display_name ? `${feedback.owner_display_name}（${feedback.owner}）` : feedback.owner },
@@ -61,6 +60,5 @@ export default function FeedbackDetail({ feedback, onClose }: Props) {
         {imageUrl && !imageError && <Image src={imageUrl} alt="用户提交的问题截图" style={{ maxWidth: "100%" }}
           onError={() => setImageError("截图无法显示，请重新打开详情重试")} />}
       </div>
-    </>}
-  </Modal>;
+  </section>;
 }

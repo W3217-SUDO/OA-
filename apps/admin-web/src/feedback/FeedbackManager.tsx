@@ -1,19 +1,15 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Input, Modal, Space, Table } from "antd";
+import { Alert, Button, Input, Space, Table } from "antd";
 import type { TableColumnsType } from "antd";
 import dayjs from "dayjs";
 import { api } from "../api";
 import FeedbackDetail from "./FeedbackDetail";
+import FeedbackForm from "./FeedbackForm";
 import type { FeedbackPage, FeedbackRecord } from "./types";
 
-type Props = {
-  open: boolean;
-  refreshKey: number;
-  onClose: () => void;
-  onCreate: () => void;
-};
+type Props = { sourcePage: string };
 
-export default function FeedbackManager({ open, refreshKey, onClose, onCreate }: Props) {
+export default function FeedbackManager({ sourcePage }: Props) {
   const [rows, setRows] = useState<FeedbackRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -24,9 +20,11 @@ export default function FeedbackManager({ open, refreshKey, onClose, onCreate }:
   const [pageSize, setPageSize] = useState(20);
   const [reload, setReload] = useState(0);
   const [viewing, setViewing] = useState<FeedbackRecord | null>(null);
+  const [creating, setCreating] = useState(false);
+  const listVisible = !viewing && !creating;
 
   useEffect(() => {
-    if (!open) return;
+    if (!listVisible) return;
     const controller = new AbortController();
     setLoading(true);
     setError("");
@@ -43,7 +41,7 @@ export default function FeedbackManager({ open, refreshKey, onClose, onCreate }:
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [open, page, pageSize, query, reload, refreshKey]);
+  }, [listVisible, page, pageSize, query, reload]);
 
   const columns: TableColumnsType<FeedbackRecord> = [
     { title: "提交人", width: 140, ellipsis: true,
@@ -55,21 +53,18 @@ export default function FeedbackManager({ open, refreshKey, onClose, onCreate }:
     { title: "操作", width: 80, render: (_, row) => <Button type="link" size="small" onClick={() => setViewing(row)}>查看</Button> },
   ];
 
-  const close = () => {
-    setViewing(null);
-    onClose();
-  };
+  if (viewing) return <FeedbackDetail feedback={viewing} onBack={() => setViewing(null)} />;
+  if (creating) return <FeedbackForm sourcePage={sourcePage} onCancel={() => setCreating(false)}
+    onSubmitted={() => { setCreating(false); setReload((current) => current + 1); }} />;
 
-  return <>
-    <Modal open={open} title="问题反馈管理" width={1100} onCancel={close}
-      footer={<Button onClick={close}>关闭</Button>}>
+  return <section aria-label="问题反馈列表">
       <Space wrap style={{ marginBottom: 16 }}>
         <Input.Search value={keyword} allowClear maxLength={200} placeholder="搜索问题、提交人或页面"
           aria-label="搜索问题反馈" style={{ width: 320 }} enterButton="查询"
           onChange={(event) => setKeyword(event.target.value)}
           onSearch={(value) => { setQuery(value.trim()); setPage(1); setReload((current) => current + 1); }} />
         <Button onClick={() => setReload((current) => current + 1)} loading={loading}>刷新</Button>
-        <Button type="primary" onClick={onCreate}>提交反馈</Button>
+        <Button type="primary" onClick={() => setCreating(true)}>提交反馈</Button>
       </Space>
       {error ? <Alert type="error" showIcon title={error} /> : <Table<FeedbackRecord>
         rowKey="id" size="small" tableLayout="fixed" columns={columns} dataSource={rows}
@@ -78,7 +73,5 @@ export default function FeedbackManager({ open, refreshKey, onClose, onCreate }:
           showTotal: (count) => `共 ${count} 条`,
           onChange: (nextPage, nextSize) => { setPage(nextPage); setPageSize(nextSize); },
         }} />}
-    </Modal>
-    <FeedbackDetail feedback={open ? viewing : null} onClose={() => setViewing(null)} />
-  </>;
+  </section>;
 }

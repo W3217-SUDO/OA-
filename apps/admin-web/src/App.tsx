@@ -58,6 +58,7 @@ import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/reque
 import { getENV as getDingTalkEnvironment } from "dingtalk-jsapi/lib/env";
 import NotificationCenter from "./NotificationCenter";
 import BugFeedback from "./BugFeedback";
+import { FEEDBACK_ROUTE, FEEDBACK_SOURCE_PAGE_KEY, FEEDBACK_SOURCE_ROUTE_KEY, rememberFeedbackSource } from "./feedback/navigation";
 import GlobalSearch from "./GlobalSearch";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
@@ -157,6 +158,7 @@ const SealCenterPage = lazyWithVersionRecovery("seal", () => import("./seal"));
 const UserCenterPage = lazyWithVersionRecovery("user", () => import("./UserCenterPage"));
 const MessageCenterPage = lazyWithVersionRecovery("message", () => import("./MessageCenterPage"));
 const CommunicationLogPage = lazyWithVersionRecovery("communication", () => import("./CommunicationLogPage"));
+const FeedbackPage = lazyWithVersionRecovery("feedback", () => import("./feedback/FeedbackPage"));
 const CustomerPortalPage = lazyWithVersionRecovery("customer-portal", () => import("./CustomerPortalPage"));
 
 const { Header, Sider, Content } = Layout;
@@ -851,6 +853,8 @@ const legacyRouteAliases: Record<string, string> = {
 };
 const normalizeWorkspaceRoute = (route: string) => legacyRouteAliases[route] || route;
 const businessNavigationSessionKeys = [
+  FEEDBACK_SOURCE_PAGE_KEY,
+  FEEDBACK_SOURCE_ROUTE_KEY,
   "sunhold:case-detail-context",
   "sunhold:contract-detail-context",
   "sunhold:customer-detail-context",
@@ -875,6 +879,7 @@ function replaceWithRootRoute() {
   window.history.replaceState(null, "", window.location.pathname);
 }
 const routePageLabels: Record<string, string> = {
+  [FEEDBACK_ROUTE]: "问题反馈",
   "task-my-accepted": "我接受的任务",
   "task-my-created": "我发起的任务",
   "task-my-collaborating": "我协作的任务",
@@ -1736,6 +1741,8 @@ export default function App() {
     return (
       <Login
         onSuccess={(user) => {
+          sessionStorage.removeItem(FEEDBACK_SOURCE_PAGE_KEY);
+          sessionStorage.removeItem(FEEDBACK_SOURCE_ROUTE_KEY);
           setSessionUser(user);
           resetWorkspaceForSession();
           setLoggedIn(true);
@@ -1762,6 +1769,7 @@ export default function App() {
     !!dashboardTarget ||
     actualRole === "admin" ||
     route === "dashboard" ||
+    route === FEEDBACK_ROUTE ||
     ["task-my-accepted", "task-my-created", "task-my-collaborating", "task-my-unread"].includes(active) ||
     (active === "case-global-search" &&
       Array.from(grantedMenuKeys).some((key) =>
@@ -1803,6 +1811,8 @@ export default function App() {
       <Dashboard onNavigate={navigate} />
     ) : route === "agent-center" ? (
       <AgentCenterPage />
+    ) : route === FEEDBACK_ROUTE ? (
+      <FeedbackPage isAdmin={actualRole === "admin"} onNavigate={navigate} />
     ) : route.startsWith("seal-") ? (
       <SealCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "customer-conflict" ? (
@@ -2240,7 +2250,7 @@ export default function App() {
           <span>我的</span>
         </button>
       </nav>
-      <BugFeedback isAdmin={actualRole === "admin"} />
+      <BugFeedback onOpen={() => { rememberFeedbackSource(active); navigate(FEEDBACK_ROUTE); }} />
     </Layout>
   );
 }
