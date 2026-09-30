@@ -24,22 +24,20 @@ IDENTITY = {
 
 
 class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
-    def test_pending_settlement_page_uses_commission_source_and_columns(self):
+    def test_pending_settlement_page_uses_case_fee_source_and_legacy_columns(self):
         route_config = (REPO_ROOT / "apps/admin-web/src/finance/config/routeConfigs.tsx").read_text(encoding="utf-8")
         queries = (REPO_ROOT / "apps/admin-web/src/finance/services/queriesActions.tsx").read_text(encoding="utf-8")
         page = (REPO_ROOT / "apps/admin-web/src/finance/FinanceCenterPage.tsx").read_text(encoding="utf-8")
         view = (REPO_ROOT / "apps/admin-web/src/finance/FinanceCenterView.tsx").read_text(encoding="utf-8")
 
         settle_config = route_config.split('"finance-internal-settle": {', 1)[1].split("},", 1)[0]
-        for header in ("提成编号", "状态", "提成金额", "案件编号", "提成人", "来源代理费编号"):
+        for header in ("案号", "原告", "被告", "金额", "回款单位", "到账金额", "到账时间", "结算状态", "案件阶段", "案源人", "开庭律师", "律师助理", "调查员", "品管"):
             self.assertIn(f'"{header}"', settle_config)
-        for unrelated_header in ("回款单位", "到账金额", "到账时间"):
-            self.assertNotIn(f'"{unrelated_header}"', settle_config)
         self.assertIn('initialView === "finance-internal-settle"', queries)
         self.assertIn('api.get("/finance/settlements/pending")', queries)
-        self.assertIn("提成编号: row.serial_no", page)
-        self.assertIn("来源代理费编号: data.source_fee_no", page)
-        self.assertNotIn("markCommissionPaid", view)
+        self.assertIn("回款单位: data.received_payer_name", page)
+        self.assertIn("到账金额: isInvoiceUnissuedRoute", page)
+        self.assertIn("标记提成已发", view)
 
     async def asyncSetUp(self):
         self.engine = create_async_engine(
@@ -111,6 +109,8 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
                     "hearing_lawyer_usernames": ["row12-hearing"],
                     "hearing_lawyer_username": "row12-hearing",
                     "hearing_lawyer": "历史开庭律师",
+                    "handling_lawyer_username": "row12-hearing",
+                    "handling_lawyer": "开庭律师甲",
                     "assistant_usernames": ["row12-assistant"],
                     "assistant": "律师助理乙", "assistants": ["律师助理乙", "历史助理"],
                     "source_person_usernames": ["row12-source"],
@@ -181,13 +181,15 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         rows = {item["commission_type"]: item for item in data["items"]}
         self.assertEqual(rows["开庭提成"]["employee_display_name"], "开庭律师甲")
         self.assertEqual(rows["开庭提成"]["base_amount"], 8400)
-        self.assertEqual(rows["开庭提成"]["reference_commission"], 420)
+        self.assertEqual(rows["开庭提成"]["reference_commission"], 1680)
         self.assertEqual(len(rows["开庭提成"]["scheme_details"]), 5)
         self.assertTrue(all({"role", "rate", "fixed"} <= set(item) for item in rows["开庭提成"]["scheme_details"]))
         self.assertEqual(rows["案源固定提成"]["reference_commission"], 300)
         self.assertEqual(rows["调查提成"]["reference_commission"], 840)
         self.assertTrue(any("律师助理乙" in message and "文书" in message for message in data["missing_messages"]))
-        self.assertEqual(data["case_date"], "2024-06-15")
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            self.assertEqual(data["case_date"], str(case.created_at.date()))
         self.assertFalse(any("历史" in message for message in data["missing_messages"]))
 
     async def test_preview_uses_latest_customer_brand_manager_and_live_finance_summary(self):
@@ -282,7 +284,7 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(rows), 2)
             rows_by_type = {(row.data or {}).get("commission_type"): row for row in rows}
             self.assertEqual((rows_by_type[selected[0]["commission_type"]].data or {}).get("base_amount"), 8000)
-            self.assertEqual((rows_by_type[selected[0]["commission_type"]].data or {}).get("reference_commission"), 400)
+            self.assertEqual((rows_by_type[selected[0]["commission_type"]].data or {}).get("reference_commission"), 1600)
             self.assertEqual((rows_by_type[selected[1]["commission_type"]].data or {}).get("base_amount"), 8400)
             self.assertTrue(all(row.status == "待结算" for row in rows))
             self.assertTrue(all((row.data or {}).get("payment_status") == "待结算" for row in rows))
@@ -323,10 +325,9 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
 
         pending = await self.client.get(f"{API}/finance/settlements/pending")
         self.assertEqual(pending.status_code, 200, pending.text)
-        pending_rows = [item for item in pending.json()["items"] if item["id"] == commission_id]
+        pending_rows = [item for item in pending.json()["items"] if item["id"] == self.fee_id]
         self.assertEqual(len(pending_rows), 1)
-        self.assertEqual(pending_rows[0]["status"], "待结算")
-        self.assertEqual(pending_rows[0]["data"]["settlement_status"], "待结算")
+        self.assertEqual(pending_rows[0]["data"]["case_no"], "CODEX-831-R12-CASE")
 
         blocked = await self.client.post(
             f"{API}/finance/fees/{commission_id}/review",
@@ -358,7 +359,7 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
 
         pending = await self.client.get(f"{API}/finance/settlements/pending")
         self.assertEqual(pending.status_code, 200, pending.text)
-        self.assertNotIn(commission_id, [item["id"] for item in pending.json()["items"]])
+        self.assertIn(self.fee_id, [item["id"] for item in pending.json()["items"]])
 
         blocked = await self.client.post(
             f"{API}/finance/fees/{commission_id}/review",
@@ -481,20 +482,16 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             f"{API}/cases/{self.case_id}/commission-preview",
             params={"source_fee_id": self.fee_id},
         )
-        self.assertEqual(response.status_code, 200, response.text)
-        data = response.json()
-        self.assertTrue(any("外部合作律师" in message and "开庭" in message for message in data["missing_messages"]))
-        self.assertTrue(any("外部合作律师" in message and "文书" in message for message in data["missing_messages"]))
-        self.assertTrue(any("外部合作律师" in message and "案源" in message for message in data["missing_messages"]))
-        self.assertTrue(any(item["commission_type"] == "调查提成" for item in data["items"]))
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn("请先补充完整案件人员", response.json()["detail"])
 
-    async def test_non_agency_fee_is_rejected(self):
+    async def test_official_fee_can_preview_commissions(self):
         response = await self.client.get(
             f"{API}/cases/{self.case_id}/commission-preview",
             params={"source_fee_id": self.other_fee_id},
         )
-        self.assertEqual(response.status_code, 422, response.text)
-        self.assertIn("必须选择一条代理费", response.text)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["source_fee"]["id"], self.other_fee_id)
 
     async def test_migrated_lawyer_agency_fee_subtype_is_accepted(self):
         async with self.sessions() as db:

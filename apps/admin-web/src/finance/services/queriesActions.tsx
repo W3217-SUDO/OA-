@@ -560,9 +560,16 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     ? loadPaymentQueryPage({}, 1, paymentQueryPageSize)
                     : initialView === "finance-internal-mine"
                         ? loadMyInternalApplications()
+                    : ["finance-internal-audit", "finance-internal-fee-audit"].includes(initialView)
+                        ? api.get("/finance/internal-review-requests", {
+                            params: { kind: initialView === "finance-internal-audit" ? "commission" : "other" },
+                        })
                     : ["finance-payment-waiting", "finance-payment-print", "finance-payment-writeoff"].includes(initialView)
                         ? api.get("/finance/payment-workflow/list", {params:{stage:initialView.replace("finance-payment-", "")}})
-                    : api.get("/records", { params: { module: "finance", page_size: 100 } }),
+                    : api.get("/records", { params: {
+                        module: "finance", page_size: 100,
+                        finance_view: initialView.startsWith("finance-payment-") ? "external" : undefined,
+                    } }),
                 initialView === "finance-payment-query"
                     ? Promise.resolve({
                         data: {
@@ -595,7 +602,9 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                 initialView === "finance-internal-settle"
                     ? api.get("/finance/settlements/pending")
                     : Promise.resolve({ data: { items: [], total: 0 } }),
-                api.get("/finance/fees/refund-review-candidates"),
+                initialView === "finance-internal-refund-audit"
+                    ? api.get("/finance/fees/refund-review-candidates")
+                    : Promise.resolve({ data: { items: [], total: 0 } }),
                 api.get("/finance/payment-packages", {
                     params: paymentPackageRequestParams(initialView, initialView === "finance-internal-writeoff"
                         ? { status: "待核销" }

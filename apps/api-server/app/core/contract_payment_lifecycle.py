@@ -259,12 +259,14 @@ async def query_payments(filters, identity, db):
     from app.core.permissions import _record_scope_conditions, _require_record_module_menu
     from app.core.system import _allowed_field_keys
     from app.core.contracts import _contract_customer_record_dicts
+    from app.core.internal_requests import external_finance_condition
     await _require_record_module_menu("finance", identity, db, action="查询请款")
     record = BusinessRecord
     data = record.data
     legacy_kind = func.coalesce(data["legacy_kind"].as_string(), "")
     conditions = [or_(record.module == "contract_payment", and_(
         record.module == "finance", legacy_kind.in_(["", "ap_payment"]),
+        external_finance_condition(),
     )), *(await _record_scope_conditions(identity, db))]
     scope = filters.get("scope", "all")
     applicant_value = func.coalesce(func.nullif(data["applicant"].as_string(), ""), record.owner)

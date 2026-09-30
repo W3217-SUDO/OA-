@@ -552,6 +552,7 @@ async def list_records(
     customer_id: int | None = Query(default=None, gt=0), customer: str = "", customer_no: str = "", exclude_archived: bool = False,
     title: str = "", serial_no: str = "", record_type: str = Query("", alias="type"),
     case_no: str = "", fee_type: str = "", contract_body: str = "", source_person: str = "",
+    finance_view: str = Query("", pattern="^(|external)$"),
     case_type: str = "", case_stage: str = "", contract_no: str = "", fee_group: str = "",
     receipt_status: str = "", notary_no: str = "", package_no: str = "",
     signed_at_start: str = "", signed_at_end: str = "",
@@ -601,6 +602,10 @@ async def list_records(
         conditions.append(BusinessRecord.status != "已合并")
     if module == "finance":
         conditions.append(BusinessRecord.status != "已删除")
+        if finance_view == "external":
+            from app.core.internal_requests import external_finance_condition
+
+            conditions.append(external_finance_condition())
     relation_customer = None
     if module == "contract" and customer_id:
         relation_customer = await _customer_or_404(customer_id, identity, db)
@@ -911,6 +916,9 @@ async def create_case_commissions(
         raise HTTPException(status_code=401, detail="当前用户不存在")
     case_record = await db.get(BusinessRecord, case_id)
     source_fee = await db.get(BusinessRecord, body.source_fee_id)
+    source_data = source_fee.data or {}
+    refund_commission = source_data.get("refund_fee") is True and source_data.get("fee_type") == "代理费"
+    initial_status = "待审批" if refund_commission else "待结算"
     application_no = _new_internal_payment_package_no()
     applied_at = datetime.now().isoformat(timespec="seconds")
     created: list[BusinessRecord] = []
@@ -919,7 +927,7 @@ async def create_case_commissions(
         record = BusinessRecord(
             module="finance", serial_no=serial,
             title=f"{case_record.serial_no} {template['commission_type']}",
-            customer=case_record.customer, status="待结算",
+            customer=case_record.customer, status=initial_status,
             owner=template["employee_username"] or identity["username"],
             department=actor.department, description=remark,
             data={
@@ -938,8 +946,9 @@ async def create_case_commissions(
                 "source_fee_amount": preview["source_fee"]["amount"],
                 "payment_application_no": application_no,
                 "payment_requested_amount": amount,
-                "payment_status": "待结算",
-                "commission_lifecycle": "case_agency_fee",
+                "payment_status": initial_status,
+                "commission_lifecycle": "case_agency_refund" if refund_commission else "case_agency_fee",
+                "is_refund": refund_commission,
                 "commission_created_at": applied_at,
                 "commission_created_by": identity["username"],
                 "applicant": identity["username"],
@@ -948,7 +957,7 @@ async def create_case_commissions(
         )
         db.add(record); await db.flush()
         db.add(WorkflowEvent(
-            record_id=record.id, action="创建案件提成", to_status="待结算",
+            record_id=record.id, action="创建案件提成", to_status=initial_status,
             operator=identity["username"],
             comment=f"{application_no}｜{template['employee_display_name']}｜{template['commission_type']}｜{amount:.2f} 元｜来源 {source_fee.serial_no}",
         ))

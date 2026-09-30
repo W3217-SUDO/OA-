@@ -2135,6 +2135,15 @@ export default function FinanceCenterPage({
     queryField("费用类型", "feeType"),
   ];
   const internalMineOperation = (_: unknown, row: Fee) => {
+    const applicationItems = Array.isArray(row.data?.application_items)
+      ? row.data.application_items as Fee[]
+      : [row];
+    const applicant = String(row.data?.applicant || "").trim();
+    const isApplicant = Boolean(applicant) && applicant === currentUser.username;
+    const hasPaidItem = applicationItems.some((item) =>
+      Number(item.data?.paid_amount || 0) > 0 ||
+      item.data?.writeoff_status === "已核销");
+    const mayChange = isApplicant && !hasPaidItem && row.status !== "部分处理";
     const maySubmit =
       ["草稿", "已退回"].includes(row.status) &&
       (role === "admin" || role === "manager" || row.owner === currentUser.username);
@@ -2143,8 +2152,10 @@ export default function FinanceCenterPage({
       row.data.fee_type === "内部费用" &&
       row.status === "草稿" &&
       (canManage || row.owner === currentUser.username);
-    const mayCancel =
-      canWithdrawFinanceFee(row) && row.data.fee_type === "内部费用";
+    const mayCancel = mayChange &&
+      ["草稿", "待结算", "待归档", "待审批"].includes(row.status);
+    const mayRollback = mayChange &&
+      ["待结算", "待归档", "待审批", "已审批", "待付款"].includes(row.status);
     return (
       <Space size={0}>
         {maySubmit && (
@@ -2160,6 +2171,11 @@ export default function FinanceCenterPage({
         {mayCancel && (
           <Button type="link" danger onClick={() => openPaymentCancel(row)}>
             撤回
+          </Button>
+        )}
+        {mayRollback && (
+          <Button type="link" onClick={() => openPaymentRollback(row)}>
+            回滚
           </Button>
         )}
         <Button type="link" onClick={() => void openPaymentDetail(row)}>
@@ -2233,6 +2249,14 @@ export default function FinanceCenterPage({
         <Button type="link" onClick={() => void openPaymentDetail(row)}>
           查看
         </Button>
+      </Space>
+    ) : ["finance-internal-audit", "finance-internal-fee-audit", "finance-internal-refund-audit"].includes(initialView) ? (
+      <Space size={0}>
+        {canApprove && row.status === "待审批" && (
+          <Button type="link" onClick={() => setFeeReviewTargets([row])}>
+            审批
+          </Button>
+        )}
       </Space>
     ) : initialView === "finance-payment-waiting" ? (
       <Space size={0}>
@@ -3341,8 +3365,10 @@ export default function FinanceCenterPage({
         data.cashed_date || row.received_date || data.receipt_date,
       到账金额: isInvoiceUnissuedRoute
         ? data.cashed_amount
-        : row.amount ?? data.receipt_amount,
-      回款单位: row.payer_name || data.payer_name || data.payee,
+        : initialView === "finance-internal-settle"
+          ? data.cashed_amount
+          : row.amount ?? data.receipt_amount,
+      回款单位: data.received_payer_name || row.payer_name || data.payer_name || data.payee,
       到账单位:
         data.received_payer_name || row.payer_name || data.payee,
       收款人: data.payee || tx?.counterparty,
@@ -3491,7 +3517,7 @@ export default function FinanceCenterPage({
   );
   const activeRouteConfig = routeConfigs[initialView];
   const settlementColumnWidths = [
-    170, 90, 110, 110, 170, 120, 220, 130, 160, 140, 180,
+    170, 160, 160, 110, 160, 110, 130, 120, 130, 130, 130, 130, 130, 110,
   ];
   const generalSettlementColumnWidths = [
     88, 212, 176, 264, 141, 106, 106, 106, 106, 106, 106, 106, 106, 106,
@@ -3756,7 +3782,11 @@ export default function FinanceCenterPage({
   };
   const feeReviewRows = useMemo(
     () =>
-      feeReviewTargets.flatMap((fee) => {
+      feeReviewTargets.flatMap((application) => {
+        const items = Array.isArray(application.data?.application_items)
+          ? application.data.application_items as Fee[]
+          : [application];
+        return items.flatMap((fee) => {
         const details =
           Array.isArray(fee.data?.commission_details) &&
           fee.data.commission_details.length
@@ -3790,6 +3820,7 @@ export default function FinanceCenterPage({
           paid_document: detail.paid_document ?? fee.data?.paid_document,
           paid_hearing: detail.paid_hearing ?? fee.data?.paid_hearing,
         }));
+        });
       }),
     [feeReviewTargets],
   );
@@ -4250,6 +4281,34 @@ export default function FinanceCenterPage({
   };
 
   const runSettlementMoreAction = (key: string) => {
+    if (key === "mark-paid") {
+      if (!selectedOriginalRows.length) {
+        message.warning("请选择需要标记的案件费用");
+        return;
+      }
+      Modal.confirm({
+        title: "确认提成已发放",
+        content: `将标记 ${selectedOriginalRows.length} 条案件费用关联的提成为已发放。`,
+        okText: "确认",
+        cancelText: "取消",
+        onOk: async () => {
+          setSettlementActionLoading(true);
+          try {
+            await api.post("/finance/settlements/mark-commission-paid", {
+              fee_ids: selectedOriginalRows.map(Number),
+            });
+            message.success("提成发放标识已更新");
+            setSelectedOriginalRows([]);
+            await load();
+          } catch (error: any) {
+            message.error(error?.response?.data?.detail || "标记提成已发失败");
+          } finally {
+            setSettlementActionLoading(false);
+          }
+        },
+      });
+      return;
+    }
     const feeTypeByKey: Record<string, string> = {
       "official-fee": "官方费用",
       "agency-fee": "代理费",

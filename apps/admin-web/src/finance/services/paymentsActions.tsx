@@ -308,12 +308,13 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
         status: string;
         query: Record<string, any>;
     }) => {
-        const { financeFeeRefreshGuard, setFees, setFinanceFeeListMeta } = context;
+        const { financeFeeRefreshGuard, setFees, setFinanceFeeListMeta, initialView } = context;
         const token = financeFeeRefreshGuard.begin();
         try {
             const response = await api.get("/records", {
                 params: {
                     module: "finance",
+                    finance_view: initialView.startsWith("finance-payment-") ? "external" : undefined,
                     page: Math.max(1, page),
                     page_size: Math.min(100, Math.max(1, pageSize)),
                     keyword: String(query?.keyword || query?.paymentNo || "").trim(),
@@ -338,7 +339,7 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
         }
     };
     const submitPaymentCancel = async () => {
-        const { paymentCancelTarget, paymentCancelReason, setPaymentCancelTarget, setPaymentCancelReason, financeFeeListMeta, originalQuery } = context;
+        const { paymentCancelTarget, paymentCancelReason, setPaymentCancelTarget, setPaymentCancelReason, financeFeeListMeta, originalQuery, initialView } = context;
         if (!paymentCancelTarget)
             return;
         const reason = paymentCancelReason.trim();
@@ -347,13 +348,16 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
             return;
         }
         try {
-            await api.post(paymentActionPath(paymentCancelTarget, "cancel"), {
+            const internalApplication = initialView === "finance-internal-mine";
+            await api.post(internalApplication
+                ? `/finance/internal-applications/${paymentCancelTarget.id}/withdraw`
+                : paymentActionPath(paymentCancelTarget, "cancel"), {
                 reason,
             });
-            message.success("撤销成功！");
+            message.success("撤回成功");
             setPaymentCancelTarget(null);
             setPaymentCancelReason("");
-            if (isContractPayment(paymentCancelTarget)) {
+            if (internalApplication || isContractPayment(paymentCancelTarget)) {
                 await context.load();
                 return;
             }
@@ -369,17 +373,26 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
         }
     };
     const submitPaymentRollback = async () => {
-        const { paymentRollbackTarget, paymentRollbackComment, setPaymentRollbackTarget, setPaymentRollbackComment, financeFeeListMeta, originalQuery } = context;
+        const { paymentRollbackTarget, paymentRollbackComment, setPaymentRollbackTarget, setPaymentRollbackComment, financeFeeListMeta, originalQuery, initialView } = context;
         if (!paymentRollbackTarget)
             return;
+        if (initialView === "finance-internal-mine" && !paymentRollbackComment.trim()) {
+            message.warning("请输入回滚原因");
+            return;
+        }
         try {
-            await api.post(paymentActionPath(paymentRollbackTarget, "rollback"), {
-                comment: paymentRollbackComment.trim(),
+            const internalApplication = initialView === "finance-internal-mine";
+            await api.post(internalApplication
+                ? `/finance/internal-applications/${paymentRollbackTarget.id}/rollback`
+                : paymentActionPath(paymentRollbackTarget, "rollback"), {
+                ...(internalApplication
+                    ? { reason: paymentRollbackComment.trim() }
+                    : { comment: paymentRollbackComment.trim() }),
             });
             message.success("回滚成功！");
             setPaymentRollbackTarget(null);
             setPaymentRollbackComment("");
-            if (isContractPayment(paymentRollbackTarget)) {
+            if (internalApplication || isContractPayment(paymentRollbackTarget)) {
                 await context.load();
                 return;
             }
@@ -541,12 +554,30 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
         setPaymentPrintPreview(preview);
     };
     const submitFeeReview = async (approved: boolean) => {
-        const { feeReviewTargets, setFeeReviewLoading, feeReviewComment, setFeeReviewTargets, setFeeReviewComment, setSelectedOriginalRows, load } = context;
+        const { feeReviewTargets, setFeeReviewLoading, feeReviewComment, setFeeReviewTargets, setFeeReviewComment, setSelectedOriginalRows, load, initialView } = context;
         if (!feeReviewTargets.length)
             return;
         setFeeReviewLoading(true);
         try {
-            if (feeReviewTargets.every((item) => item.data?._source_module === "contract_payment")) {
+            const reviewItems = feeReviewTargets.flatMap((item) =>
+                Array.isArray(item.data?.application_items) && item.data.application_items.length
+                    ? item.data.application_items as Fee[]
+                    : [item]);
+            const internalKind = initialView === "finance-internal-audit"
+                ? "commission"
+                : initialView === "finance-internal-fee-audit"
+                    ? "other"
+                    : initialView === "finance-internal-refund-audit"
+                        ? "refund"
+                        : "";
+            if (internalKind) {
+                await api.post(`/finance/internal-applications/batch-review?kind=${internalKind}`, {
+                    fee_ids: feeReviewTargets.map((item) => item.id),
+                    approved,
+                    comment: feeReviewComment,
+                });
+            }
+            else if (feeReviewTargets.every((item) => item.data?._source_module === "contract_payment")) {
                 for (const target of feeReviewTargets) {
                     await api.post(`/contract-payment-applications/${target.id}/review`, {
                         approved,
@@ -554,15 +585,15 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
                     });
                 }
             }
-            else if (feeReviewTargets.length === 1) {
-                await api.post(`/finance/fees/${feeReviewTargets[0].id}/review`, {
+            else if (reviewItems.length === 1) {
+                await api.post(`/finance/fees/${reviewItems[0].id}/review`, {
                     approved,
                     comment: feeReviewComment,
                 });
             }
             else {
                 await api.post("/finance/fees/batch-review", {
-                    fee_ids: feeReviewTargets.map((item) => item.id),
+                    fee_ids: reviewItems.map((item) => item.id),
                     approved,
                     comment: feeReviewComment,
                 });

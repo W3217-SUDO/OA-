@@ -1165,6 +1165,7 @@ async def list_refund_case_fee_logs(
 async def query_finance_fees(
     scope: str = Query("company", pattern="^(mine|company)$"),
     unpaid_official: bool = False,
+    external_only: bool = False,
     case_no: str = "", court_case_no: str = "", notary_no: str = "",
     refund_amount_from: float | None = None, refund_amount_to: float | None = None,
     customer: str = "", paid_organization: str = "",
@@ -1190,7 +1191,7 @@ async def query_finance_fees(
     if paid_from and paid_to and paid_from > paid_to:
         raise HTTPException(status_code=422, detail="付款开始日期不能晚于结束日期")
     rows = await _fee_query_rows(
-        identity, db, scope=scope, unpaid_official=unpaid_official,
+        identity, db, scope=scope, unpaid_official=unpaid_official, external_only=external_only,
         case_no=case_no, court_case_no=court_case_no,
         notary_no=notary_no, refund_amount_from=refund_amount_from,
         refund_amount_to=refund_amount_to, customer=customer,
@@ -1214,6 +1215,7 @@ async def export_finance_fee_query(
     ids: str = "", selected_only: bool = False,
     scope: str = Query("company", pattern="^(mine|company)$"),
     unpaid_official: bool = False,
+    external_only: bool = False,
     case_no: str = "", court_case_no: str = "", notary_no: str = "",
     refund_amount_from: float | None = None, refund_amount_to: float | None = None,
     customer: str = "", paid_organization: str = "", payment_status: str = "",
@@ -1242,7 +1244,7 @@ async def export_finance_fee_query(
     if selected_only and not selected_ids:
         raise HTTPException(status_code=422, detail="请选择需要导出的费用.")
     rows = await _fee_query_rows(
-        identity, db, scope=scope, unpaid_official=unpaid_official,
+        identity, db, scope=scope, unpaid_official=unpaid_official, external_only=external_only,
         case_no=case_no, court_case_no=court_case_no,
         notary_no=notary_no, refund_amount_from=refund_amount_from,
         refund_amount_to=refund_amount_to, customer=customer,
@@ -1868,6 +1870,42 @@ async def list_internal_fees(
     total_amount = round(sum(float((row.get("data") or {}).get("amount", 0) or 0) for row in rows), 2)
     start = (page - 1) * page_size
     return {"items": rows[start:start + page_size], "total": total, "total_amount": total_amount, "page": page, "page_size": page_size}
+
+
+@router.get(f"{settings.api_prefix}/finance/internal-review-requests")
+async def list_internal_review_requests(
+    kind: str = Query(pattern="^(commission|other|refund)$"),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    from app.core.internal_requests import internal_review_rows
+
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(403, "当前角色没有内部请款审批权限")
+    rows = await internal_review_rows(identity, db, kind)
+    return {"items": rows, "total": len(rows)}
+
+
+@router.post(f"{settings.api_prefix}/finance/internal-applications/{{fee_id}}/{{action}}")
+async def change_internal_payment_application(
+    fee_id: int, action: str, body: FinancePaymentCancelInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    from app.core.internal_requests import change_internal_application
+
+    if action not in {"withdraw", "rollback"}:
+        raise HTTPException(404, "请款单操作不存在")
+    return await change_internal_application(fee_id, action, body.reason, identity, db)
+
+
+@router.post(f"{settings.api_prefix}/finance/internal-applications/batch-review")
+async def batch_review_internal_applications(
+    body: FinanceFeeBatchReviewInput,
+    kind: str = Query(pattern="^(commission|other|refund)$"),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    from app.core.internal_requests import review_internal_applications
+
+    return await review_internal_applications(body.fee_ids, kind, body.approved, body.comment, identity, db)
 
 
 @router.get(f"{settings.api_prefix}/finance/internal-fees/export")
@@ -4359,27 +4397,9 @@ async def delete_general_settlement_application(application_id: int, identity: d
 
 @router.get(f"{settings.api_prefix}/finance/settlements/pending")
 async def list_pending_finance_settlements(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """Return only automatic commissions whose real lifecycle is pending settlement."""
-    from app.core.finance import (
-        _internal_fee_rows,
-    )
-    rows = await _internal_fee_rows(
-        identity, db, scope="company", case_no="", handling_lawyer="",
-        assistant="", source_person="", customer="", customer_manager="",
-        investigator="", payment_status="", paid_from=None, paid_to=None,
-        payee="", case_stages="", fee_types="",
-    )
-    rows = [
-        row for row in rows
-        if row.get("status") == "待结算"
-        and (row.get("data") or {}).get("source_fee_id")
-        and str((row.get("data") or {}).get("commission_type") or "").strip()
-    ]
-    for row in rows:
-        row["data"] = {
-            **(row.get("data") or {}),
-            "settlement_status": "待结算",
-        }
+    from app.core.internal_requests import pending_case_fee_settlements
+
+    rows = await pending_case_fee_settlements(identity, db)
     return {"items": rows, "total": len(rows)}
 
 
@@ -4395,14 +4415,32 @@ async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkIn
         BusinessRecord.id.in_(fee_ids),
         BusinessRecord.module == "finance",
         *(await _record_scope_conditions(identity, db)),
-    ))).all()
+    ).with_for_update())).all()
     if len(fees) != len(fee_ids):
         raise HTTPException(status_code=404, detail="部分案件费用不存在或无权访问")
-    invalid = [item.serial_no for item in fees if item.status != "已付款" or (item.data or {}).get("fee_type") != "内部费用" or (item.data or {}).get("commission_paid")]
+    invalid = [item.serial_no for item in fees if
+               (item.data or {}).get("fee_type") != "代理费"
+               or (item.data or {}).get("refund_fee")
+               or (item.data or {}).get("commission_paid")]
     if invalid:
-        raise HTTPException(status_code=409, detail="仅可标识尚未发放提成的已付款内部费用：" + "、".join(invalid))
+        raise HTTPException(status_code=409, detail="仅可标识尚未发放提成的律师代理费：" + "、".join(invalid))
+    linked = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance",
+        BusinessRecord.status.not_in(("已删除", "已撤回", "已驳回", "已拒绝", "已作废")),
+        BusinessRecord.data["fee_type"].as_string() == "内部费用",
+        BusinessRecord.data["source_fee_id"].as_integer().in_(fee_ids),
+    ).with_for_update())).all()
+    linked_by_source = {fee_id: [] for fee_id in fee_ids}
+    for commission in linked:
+        if (commission.data or {}).get("commission_type"):
+            linked_by_source[int((commission.data or {})["source_fee_id"])].append(commission)
+    missing = [item.serial_no for item in fees if not linked_by_source[item.id]]
+    if missing:
+        raise HTTPException(409, "来源费用没有可标识的提成：" + "、".join(missing))
+    if any((item.data or {}).get("commission_paid") for group in linked_by_source.values() for item in group):
+        raise HTTPException(409, "关联提成已有部分发放标识，请核对后处理")
     marked_at = datetime.now().isoformat(timespec="seconds")
-    for item in fees:
+    for item in [*fees, *(commission for group in linked_by_source.values() for commission in group)]:
         item.data = {
             **(item.data or {}),
             "commission_paid": True,
@@ -4417,26 +4455,12 @@ async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkIn
 
 @router.get(f"{settings.api_prefix}/finance/fees/refund-review-candidates")
 async def list_internal_refund_review_candidates(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """List internal negative-amount requests for the dedicated refund review page."""
-    from app.core.permissions import (
-        _record_dict_for_identity, _record_scope_conditions,
-    )
-    items = (await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "finance",
-        *(await _record_scope_conditions(identity, db)),
-    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all()
-    refund_items = [
-        item for item in items
-        if (item.data or {}).get("fee_type") == "内部费用"
-        and (
-            bool((item.data or {}).get("is_refund"))
-            or float((item.data or {}).get("amount") or 0) < 0
-        )
-    ]
-    return {
-        "items": [await _record_dict_for_identity(item, identity, db) for item in refund_items],
-        "total": len(refund_items),
-    }
+    from app.core.internal_requests import internal_review_rows
+
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(403, "当前角色没有内部提成退费审批权限")
+    rows = await internal_review_rows(identity, db, "refund")
+    return {"items": rows, "total": len(rows)}
 
 
 @router.get(f"{settings.api_prefix}/finance/payment-packages/{{package_no}}/print-word")

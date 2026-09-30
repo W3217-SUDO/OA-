@@ -1819,7 +1819,7 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
                     : isArchiveSettlementActiveRoute
                       ? 1904
                     : initialView === "finance-internal-settle"
-                      ? 1246
+                      ? 1990
                       : isInvoiceUnissuedRoute
                         ? 1904
                       : [
@@ -2510,6 +2510,15 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
                         更多操作 ▾
                       </Button>
                     </Dropdown>
+                    {canApprove && (
+                      <Button
+                        disabled={!selectedOriginalRows.length}
+                        loading={settlementActionLoading}
+                        onClick={() => runSettlementMoreAction("mark-paid")}
+                      >
+                        标记提成已发
+                      </Button>
+                    )}
                   </Space>
                 ) : isRefundCaseFeeRoute ? (
                   <Space size={7} wrap>

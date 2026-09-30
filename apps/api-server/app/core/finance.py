@@ -1798,7 +1798,7 @@ async def _invoice_case_fee_rows(
 
 async def _fee_query_rows(
     identity: dict, db: AsyncSession, *,
-    scope: str = "company", unpaid_official: bool = False,
+    scope: str = "company", unpaid_official: bool = False, external_only: bool = False,
     case_no: str = "", court_case_no: str = "", notary_no: str = "",
     refund_amount_from: float | None = None, refund_amount_to: float | None = None,
     customer: str = "", paid_organization: str = "", payment_status: str = "",
@@ -1824,6 +1824,11 @@ async def _fee_query_rows(
     filtered: list[dict] = []
     for row in rows:
         data = row.get("data") or {}
+        if external_only:
+            from app.core.finance_batch_parity import is_internal_fee
+
+            if is_internal_fee({**data, "fee_type": data.get("base_fee_type") or data.get("fee_type")}):
+                continue
         refund_amount = data.get("refund_requested_amount")
         if refund_amount_from is not None and (refund_amount is None or float(refund_amount) < refund_amount_from):
             continue
@@ -2173,6 +2178,8 @@ def _is_case_agency_fee_commission(item: BusinessRecord) -> bool:
         item.module == "finance"
         and item.status in _CASE_COMMISSION_PENDING_STATUSES
         and data.get("fee_type") == "内部费用"
+        and data.get("commission_lifecycle") != "case_agency_refund"
+        and not data.get("is_refund")
         and str(data.get("commission_type") or "").strip()
         and source_fee_id
         and (data.get("case_id") or str(data.get("case_no") or "").strip())
@@ -2191,6 +2198,18 @@ async def _case_commission_lifecycle_statuses(
         int((item.data or {}).get("source_fee_id") or 0)
         for item in candidates
     }
+    source_fees = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance", BusinessRecord.id.in_(source_fee_ids),
+    ))).all()
+    refund_source_ids = {
+        item.id for item in source_fees
+        if (item.data or {}).get("refund_fee") is True
+        and (item.data or {}).get("fee_type") == "代理费"
+    }
+    candidates = [item for item in candidates if int((item.data or {}).get("source_fee_id") or 0) not in refund_source_ids]
+    if not candidates:
+        return {}
+    source_fee_ids -= refund_source_ids
     paid_source_fee_ids: set[int] = set()
     source_ids = sorted(source_fee_ids)
     for start in range(0, len(source_ids), 50):
@@ -2367,7 +2386,11 @@ async def _internal_fee_rows(
         _allowed_field_keys,
     )
     scope_conditions = await _record_scope_conditions(identity, db)
-    fees = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", *scope_conditions).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    if scope == "applications":
+        fee_conditions = [BusinessRecord.data["applicant"].as_string() == identity["username"]]
+    else:
+        fee_conditions = scope_conditions
+    fees = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", *fee_conditions).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     fees = [item for item in fees if (item.data or {}).get("fee_type") == "内部费用" and item.status != "已删除"]
     if ids is not None:
         def application_key(item):
@@ -3340,7 +3363,22 @@ async def _review_finance_fee_records(items: list[BusinessRecord], approved: boo
         raise HTTPException(status_code=403, detail="当前角色没有费用审批权限")
     from app.core.case_fee_payments import lock_case_fee_rows, release_direct_fee_request
     from app.core.invoice_sources import is_external_case_fee
+    from app.core.internal_requests import refund_commission_ids
     await lock_case_fee_rows([item.id for item in items if is_external_case_fee(item)], db)
+    refund_ids = await refund_commission_ids(items, db)
+    for item in items:
+        if item.id not in refund_ids:
+            continue
+        previous = item.status
+        if previous in {"待结算", "待归档"}:
+            item.status = "待审批"
+            db.add(WorkflowEvent(
+                record_id=item.id, action="退费提成转入专项审批",
+                from_status=previous, to_status="待审批",
+                operator=identity["username"], comment="关联来源为律师代理费（退费）",
+            ))
+        item.data = {**(item.data or {}), "is_refund": True,
+                     "commission_lifecycle": "case_agency_refund"}
     lifecycle_statuses = await _case_commission_lifecycle_statuses(items, db)
     blocked = [
         f"{item.serial_no}（{lifecycle_statuses[item.id]}）"
