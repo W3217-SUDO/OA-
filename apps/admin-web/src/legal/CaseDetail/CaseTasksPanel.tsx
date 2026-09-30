@@ -1,5 +1,6 @@
 import type { TablePaginationConfig } from "antd";
-import { Button,Table,Tag } from "antd";
+import { Button,Tag } from "antd";
+import Table from "../../components/ResizableTable";
 import { caseTaskTypeLabel } from "../constants";
 import type { CaseDetailCapabilities,CaseRow,TaskRow } from "../types";
 

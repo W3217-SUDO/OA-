@@ -1,4 +1,5 @@
-import { Button, Card, Descriptions, Drawer, Space, Table, Tag, Timeline } from "antd";
+import { Button, Card, Descriptions, Drawer, Space, Tag, Timeline } from "antd";
+import Table from "../components/ResizableTable";
 import { UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Attachment, HistoryEvent, RecordRow } from "./types";

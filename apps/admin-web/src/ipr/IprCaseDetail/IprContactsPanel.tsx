@@ -1,4 +1,5 @@
-import { Card,Checkbox,Modal,Table } from "antd";
+import { Card,Checkbox,Modal } from "antd";
+import Table from "../../components/ResizableTable";
 import type { CustomerContact,IprCaseContact,IprCaseCustomer,IprRecord } from "../types";
 
 interface IprContactsPanelProps {

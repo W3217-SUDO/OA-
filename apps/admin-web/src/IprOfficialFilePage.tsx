@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Card, DatePicker, Descriptions, Drawer, Dropdown, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from "antd";
+import { Button, Card, DatePicker, Descriptions, Drawer, Dropdown, Form, Input, Modal, Popconfirm, Select, Space, Tag, message } from "antd";
+import Table from "./components/ResizableTable";
 import type { TableColumnsType } from "antd";
 import { api } from "./api";
 import { formatRequiredDate } from "./formSafety";

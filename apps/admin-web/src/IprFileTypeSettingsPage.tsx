@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, message } from "antd";
+import { Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, message } from "antd";
+import Table from "./components/ResizableTable";
 import { api } from "./api";
 
 type FileType = { id: number; code: string; name: string; sort_order: number; is_active: boolean; extra: { case_kinds?: string[]; requires_transmission?: boolean; allow_repeat?: boolean; hedging_file_type_codes?: string[]; hedging_fee_type_codes?: string[] } };

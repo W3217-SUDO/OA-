@@ -13,10 +13,10 @@ import {
   Select,
   Space,
   Statistic,
-  Table,
   Tabs,
   Tag,
 } from "antd";
+import Table from "../components/ResizableTable";
 import {
   DeleteOutlined,
   PlusOutlined,

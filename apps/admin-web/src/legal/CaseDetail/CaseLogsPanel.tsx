@@ -1,4 +1,5 @@
-import { Button,Space,Table } from "antd";
+import { Button,Space } from "antd";
+import Table from "../../components/ResizableTable";
 import type { CaseDetailCapabilities,CaseLogKind,CaseLogRow } from "../types";
 
 interface CaseCaseLogsPanelProps {

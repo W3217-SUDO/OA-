@@ -1,5 +1,6 @@
 import {useRef, useState} from 'react'
-import {Button, message, Modal, Space, Table, Tag} from 'antd'
+import {Button, message, Modal, Space, Tag} from 'antd'
+import Table from "./components/ResizableTable";
 import {DownloadOutlined, UploadOutlined} from '@ant-design/icons'
 import {api} from './api'
 

@@ -1,4 +1,5 @@
-import { Alert, Button, Descriptions, Form, Input, InputNumber, Select, Space, Table, Tabs, message } from "antd";
+import { Alert, Button, Descriptions, Form, Input, InputNumber, Select, Space, Tabs, message } from "antd";
+import Table from "../components/ResizableTable";
 import type { FormInstance } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { InvoiceServiceItemsTable } from "../contract/InvoiceServiceItemsTable";

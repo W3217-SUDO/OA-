@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Descriptions, Input, InputNumber, message, Select, Space, Table } from "antd";
+import { Alert, Button, Card, Descriptions, Input, InputNumber, message, Select, Space } from "antd";
+import Table from "../components/ResizableTable";
 import { api } from "../api";
 import { money } from "./constants";
 

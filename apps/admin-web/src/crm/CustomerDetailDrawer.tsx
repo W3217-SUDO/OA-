@@ -9,11 +9,11 @@ import {
   Popconfirm,
   Select,
   Space,
-  Table,
   Tabs,
   Tag,
   Upload,
 } from "antd";
+import Table from "../components/ResizableTable";
 import { ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import { displayChinesePersonName, displayChinesePersonNames } from "../contractPeoplePresentation.mjs";
 import { CUSTOMER_CONTACT_FORM_DEFAULTS, CUSTOMER_DOCUMENT_FORM_DEFAULTS, canDeleteCustomerAttachment, getCustomerAttachmentDate } from "../customerUiBatchI15.mjs";

@@ -1,5 +1,6 @@
 import { PlusOutlined } from "@ant-design/icons";
-import { Alert,Button,Space,Table,Tag } from "antd";
+import { Alert,Button,Space,Tag } from "antd";
+import Table from "../../components/ResizableTable";
 import dayjs from "dayjs";
 import type { CaseEventCapabilities,CaseEventRow } from "../types";
 

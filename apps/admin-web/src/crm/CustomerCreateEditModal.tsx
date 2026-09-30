@@ -8,10 +8,10 @@ import {
   Popconfirm,
   Select,
   Space,
-  Table,
   Tabs,
   Upload,
 } from "antd";
+import Table from "../components/ResizableTable";
 import { displayChinesePersonName } from "../contractPeoplePresentation.mjs";
 import { ReloadOutlined } from "@ant-design/icons";
 import { matchesDirectoryOption } from "../customerUiBatchI14.mjs";

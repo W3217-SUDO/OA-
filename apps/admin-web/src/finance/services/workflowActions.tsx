@@ -1,4 +1,5 @@
-import { message, Modal, Table, Alert } from "antd";
+import { message, Modal, Alert } from "antd";
+import Table from "../../components/ResizableTable";
 import { api } from "../../api";
 import type { FinanceFlow } from "../types";
 type OriginalFieldSpec = {

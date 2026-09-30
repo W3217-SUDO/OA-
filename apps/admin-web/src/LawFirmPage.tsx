@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Button, Descriptions, Drawer, Form, Input, Modal, Popconfirm, Space, Switch, Table, Tabs, Upload, message } from "antd";
+import { Button, Descriptions, Drawer, Form, Input, Modal, Popconfirm, Space, Switch, Tabs, Upload, message } from "antd";
+import Table from "./components/ResizableTable";
 import { DownloadOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import { api } from "./api";
 

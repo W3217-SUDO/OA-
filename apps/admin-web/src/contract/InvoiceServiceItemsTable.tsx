@@ -1,5 +1,6 @@
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
-import { Button, Form, Input, InputNumber, Table, Tooltip } from "antd";
+import { Button, Form, Input, InputNumber, Tooltip } from "antd";
+import Table from "../components/ResizableTable";
 import type { FormInstance } from "antd";
 import { invoiceMoney, invoiceTotal } from "./contractInvoiceApplication";
 

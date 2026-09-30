@@ -5,11 +5,11 @@ import {
   Form,
   Input,
   Space,
-  Table,
   Tag,
   Timeline,
   Upload,
 } from "antd";
+import Table from "../components/ResizableTable";
 import { DownloadOutlined, FileDoneOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useConflictReview } from "../conflict-review/useConflictReview";

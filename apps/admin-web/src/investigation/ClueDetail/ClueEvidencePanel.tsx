@@ -1,4 +1,5 @@
-import { Table, Typography, Button, Space } from "antd";
+import { Typography, Button, Space } from "antd";
+import Table from "../../components/ResizableTable";
 import type { Attachment, ClueEvidenceRow, ClueWorkspace } from "../types";
 
 interface ClueEvidencePanelProps {

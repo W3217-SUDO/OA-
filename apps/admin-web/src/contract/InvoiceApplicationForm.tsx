@@ -1,4 +1,5 @@
-import { Button, DatePicker, Divider, Form, Input, InputNumber, Select, Space, Table, Tag } from "antd";
+import { Button, DatePicker, Divider, Form, Input, InputNumber, Select, Space, Tag } from "antd";
+import Table from "../components/ResizableTable";
 import type { FormInstance } from "antd";
 import type { Key } from "react";
 import { useState } from "react";

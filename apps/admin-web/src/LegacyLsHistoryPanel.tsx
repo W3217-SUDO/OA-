@@ -1,5 +1,6 @@
 import { ReloadOutlined } from "@ant-design/icons";
-import { Alert, Button, Collapse, Descriptions, Empty, Input, List, Spin, Table, Timeline, Typography } from "antd";
+import { Alert, Button, Collapse, Descriptions, Empty, Input, List, Spin, Timeline, Typography } from "antd";
+import Table from "./components/ResizableTable";
 import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useMemo, useState } from "react";
 

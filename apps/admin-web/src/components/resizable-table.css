@@ -1,0 +1,23 @@
+.oa-resizable-table .ant-table-thead th.oa-resizable-header {
+  position: relative;
+}
+
+.oa-resizable-table .ant-table-content {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.oa-resizable-table .ant-table-thead th.oa-resizable-header::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 9px;
+  border-right: 2px solid transparent;
+  cursor: col-resize;
+  content: "";
+}
+
+.oa-resizable-table .ant-table-thead th.oa-resizable-header:hover::after {
+  border-right-color: #00a65a;
+}

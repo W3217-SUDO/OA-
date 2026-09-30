@@ -36,13 +36,13 @@ Select,
 Space,
 Statistic,
 Steps,
-Table,
 Tabs,
 Tag,
 TimePicker,
 TreeSelect,
 Upload
 } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import type { Key } from "react";
 import { useEffect,useMemo,useRef,useState,type ClipboardEvent } from "react";
@@ -386,6 +386,7 @@ export default function CaseCenterPage({
   const [phaseEditing, setPhaseEditing] = useState<CaseRow[] | null>(null);
   const [phaseOptions, setPhaseOptions] = useState<CasePhaseOption[]>([]);
   const [phaseCatalog, setPhaseCatalog] = useState<CasePhaseOption[]>([]);
+  const [phasePanelCollapsed, setPhasePanelCollapsed] = useState(false);
   const [expandedPhaseGroups, setExpandedPhaseGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(LEGACY_DEFAULT_EXPANDED_PHASE_GROUPS.map((label) => [label, true])),
   );
@@ -3113,8 +3114,8 @@ export default function CaseCenterPage({
             void reviewUnarchive(selectedArchiveCase, true);
           }}>解档审批</Button>}
         </Space></div>
-      </Card> : originalListMode && <div className="case-original-layout">
-        <aside className="case-phase-panel"><div className="case-phase-title">案件阶段</div><div className="case-phase-tree">{phaseTreeItems.map(({label,value,count,children})=>{
+      </Card> : originalListMode && <div className={`case-original-layout${phasePanelCollapsed ? " case-phase-collapsed" : ""}`}>
+        <aside className="case-phase-panel" aria-label="案件阶段筛选"><div className="case-phase-title"><span>{phasePanelCollapsed ? "阶段" : "案件阶段"}</span><button type="button" className="case-phase-collapse-button" aria-label={phasePanelCollapsed ? "展开案件阶段" : "收起案件阶段"} aria-expanded={!phasePanelCollapsed} onClick={() => setPhasePanelCollapsed((collapsed) => !collapsed)}>{phasePanelCollapsed ? "›" : "‹"}</button></div>{!phasePanelCollapsed && <div className="case-phase-tree">{phaseTreeItems.map(({label,value,count,children})=>{
           const grouped = children.length > 0 || LEGACY_PHASE_GROUPS.has(label);
           const expanded = Boolean(expandedPhaseGroups[label]);
           return <div key={value} className={grouped ? "case-phase-group" : "case-phase-group case-phase-group-leaf"}>
@@ -3124,7 +3125,7 @@ export default function CaseCenterPage({
             </div>
             {expanded && <div className="case-phase-children">{children.map((child)=><button key={`${label}-${child.value}`} type="button" className="case-phase-child" onClick={()=>void searchByPhase(child.value)}>📁 {child.label}【{child.count}】</button>)}</div>}
           </div>;
-        })}</div></aside>
+        })}</div>}</aside>
         <Card className="panel case-original-panel" title="案件列表" extra={<Button type="link" onClick={()=>document.querySelector('.case-advanced-query')?.classList.toggle('case-query-expanded')}>高级搜索</Button>}>
           {selectedCase?.status === "待立案审批" && <ConflictReviewNotice guard={selectedCaseConflict} />}
           <ListFilterBar form={caseQueryForm} className="case-advanced-query case-query-expanded" onFinish={(values)=>{setCaseQuery(values);setOriginalPage(1);if(counselListMode)void loadCounselCases(values,1,counselPageSize);else void loadOrdinaryCases(values,1,originalPageSize);}}>

@@ -1,4 +1,5 @@
-import { Button,Drawer,Input,Space,Table } from "antd";
+import { Button,Drawer,Input,Space } from "antd";
+import Table from "../components/ResizableTable";
 
 interface FeeReviewDrawerProps {
   open: boolean;

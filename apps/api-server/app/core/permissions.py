@@ -1066,8 +1066,14 @@ async def _user_has_job_permission(user: User, permission_name: str, db: AsyncSe
     return permission_name in permissions or permission_name in set().union(*(implied_permissions.get(item, set()) for item in permissions))
 
 
+_CASE_ALL_READ_JOB_ROLE_CODES = frozenset({
+    "FINANCE", "FINANCE-SPECIALIST", "FINANCE-SUPERVISOR",
+    "LEGACY-ROLE-7", "LEGACY-ROLE-19", "LEGACY-ROLE-4",
+})
+
+
 async def _can_search_all_cases_from_global_search(identity: dict, db: AsyncSession) -> bool:
-    """顶栏搜索范围与角色的公司案件功能权限保持一致。"""
+    """按真实管理员、公司案件功能或财务/流程岗位授予案件只读范围。"""
     user = await db.scalar(select(User).where(
         User.username == str(identity.get("username") or ""),
         User.is_active.is_(True),
@@ -1078,10 +1084,30 @@ async def _can_search_all_cases_from_global_search(identity: dict, db: AsyncSess
     if "admin" in _system_user_role_ids(user):
         return True
     permission = await _user_permission_payload(user, db)
-    return any(
+    if any(
         key == "case-company" or key.startswith("case-company-")
         for key in permission.get("menu_keys", [])
-    )
+    ):
+        return True
+    role_name = _configured_user_job_role_name(user)
+    role = await _job_role_for_name(role_name, db) if role_name else None
+    return bool(role and role.code in _CASE_ALL_READ_JOB_ROLE_CODES)
+
+
+async def _ensure_case_read_visible(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    """仅案件读取入口使用；写入和其他业务仍按原数据范围校验。"""
+    record = await db.get(BusinessRecord, record_id)
+    if record and record.module == "case" and await _can_search_all_cases_from_global_search(identity, db):
+        return record
+    return await _ensure_record_visible(record_id, identity, db)
+
+
+async def _ensure_case_read_module(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    """读取案件详情资源时校验案件类型；不影响写入端点的数据范围。"""
+    record = await _ensure_case_read_visible(record_id, identity, db)
+    if record.module != "case":
+        raise HTTPException(status_code=404, detail="业务记录不存在")
+    return record
 
 
 async def _user_can_write_investigation_clue(user: User, db: AsyncSession) -> bool:

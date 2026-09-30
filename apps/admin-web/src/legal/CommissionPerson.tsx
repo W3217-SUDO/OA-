@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Button, Descriptions, Modal, Table } from "antd";
+import { Button, Descriptions, Modal } from "antd";
+import Table from "../components/ResizableTable";
 
 export function CommissionPerson({ row }: { row: any }) {
   const [open, setOpen] = useState(false);

@@ -5,9 +5,9 @@ Card,
 Input,
 Select,
 Space,
-Table,
 Tag,
 } from "antd";
+import Table from "../components/ResizableTable";
 import { useMemo } from "react";
 import { isLegacyIprRecord,statusColor } from "./constants";
 import type { IprRecord } from "./types";

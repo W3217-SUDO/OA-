@@ -1,4 +1,5 @@
-import { Alert, Button, DatePicker, Descriptions, Form, Input, InputNumber, Space, Spin, Table, message } from "antd";
+import { Alert, Button, DatePicker, Descriptions, Form, Input, InputNumber, Space, Spin, message } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";

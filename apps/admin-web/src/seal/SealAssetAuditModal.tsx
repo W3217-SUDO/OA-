@@ -1,4 +1,5 @@
-import { Button, DatePicker, Descriptions, Input, Modal, Space, Table, Tag } from "antd";
+import { Button, DatePicker, Descriptions, Input, Modal, Space, Tag } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import type { SealAsset, AssetAuditFilters } from "./types";
 import type { SealAssetAuditRow } from "../sealWorkflowPolicy";

@@ -1,4 +1,5 @@
-import { Button, Modal, Table } from "antd";
+import { Button, Modal } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import type { SealAuditRow } from "../sealWorkflowPolicy";
 

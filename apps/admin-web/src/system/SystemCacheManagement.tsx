@@ -6,8 +6,8 @@ import {
   Input,
   Popconfirm,
   Space,
-  Table,
 } from "antd";
+import Table from "../components/ResizableTable";
 import { ReloadOutlined, ClearOutlined } from "@ant-design/icons";
 import type { CacheRow, CacheSummary } from "./types";
 import { formatTime } from "./constants";

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { DownloadOutlined } from "@ant-design/icons";
-import { Alert, Button, DatePicker, Empty, Form, Input, Select, Spin, Table, message } from "antd";import {
+import { Alert, Button, DatePicker, Empty, Form, Input, Select, Spin, message } from "antd";
+import Table from "./components/ResizableTable";import {
   Bar,
   BarChart,
   Cell,

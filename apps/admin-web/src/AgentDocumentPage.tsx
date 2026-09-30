@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react'
-import {Alert, Button, Card, Drawer, Form, Input, message, Modal, Popconfirm, Select, Space, Table, Tag, Tooltip} from 'antd'
+import {Alert, Button, Card, Drawer, Form, Input, message, Modal, Popconfirm, Select, Space, Tag, Tooltip} from 'antd'
+import Table from "./components/ResizableTable";
 import {CheckCircleOutlined, CloudSyncOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, FileAddOutlined, ReloadOutlined, SaveOutlined, UploadOutlined} from '@ant-design/icons'
 import {api} from './api'
 import {rememberCaseDetailTarget} from './caseDetailNavigation'

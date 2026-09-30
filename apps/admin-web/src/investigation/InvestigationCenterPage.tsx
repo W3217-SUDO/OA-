@@ -19,12 +19,12 @@ import {
   Select,
   Space,
   Steps,
-  Table,
   Tabs,
   Tag,
   Tooltip,
   Typography,
 } from "antd";
+import Table from "../components/ResizableTable";
 import {
   CheckCircleOutlined,
   DeleteOutlined,

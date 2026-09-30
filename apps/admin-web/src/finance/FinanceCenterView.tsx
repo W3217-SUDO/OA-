@@ -29,12 +29,12 @@ Modal,
 Select,
 Space,
 Steps,
-Table,
 Tabs,
 Tag,
 TreeSelect,
 message,
 } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import RecordImportButton from "../RecordImportButton";
 import {

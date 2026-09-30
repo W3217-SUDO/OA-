@@ -1,4 +1,5 @@
-import { Modal, Table, Form, Select, Input, Button, Space, Tag } from "antd";
+import { Modal, Form, Select, Input, Button, Space, Tag } from "antd";
+import Table from "../components/ResizableTable";
 import { DownloadOutlined, DeleteOutlined, UploadOutlined } from "@ant-design/icons";
 import type { Attachment } from "./types";
 

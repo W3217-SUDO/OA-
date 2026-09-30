@@ -1,4 +1,5 @@
-import { Button,Table } from "antd";
+import { Button } from "antd";
+import Table from "../../components/ResizableTable";
 import type { CaseDetailCapabilities,CaseReminderRow } from "../types";
 
 interface CaseRemindersPanelProps {

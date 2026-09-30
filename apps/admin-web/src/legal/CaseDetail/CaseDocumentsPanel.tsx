@@ -7,7 +7,8 @@ FolderOutlined,
 PlusCircleFilled,
 RobotOutlined,
 } from "@ant-design/icons";
-import { Alert,Button,Dropdown,Select,Space,Table,Tag } from "antd";
+import { Alert,Button,Dropdown,Select,Space,Tag } from "antd";
+import Table from "../../components/ResizableTable";
 import dayjs from "dayjs";
 import type { Key } from "react";
 import { dispatchCaseDocumentGenerationMenuClick } from "../../caseDocumentGenerationActions.mjs";

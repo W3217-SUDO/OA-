@@ -1,4 +1,5 @@
-import { Button, Card, DatePicker, Dropdown, Form, Input, Popconfirm, Select, Space, Table, Tag } from "antd";
+import { Button, Card, DatePicker, Dropdown, Form, Input, Popconfirm, Select, Space, Tag } from "antd";
+import Table from "../components/ResizableTable";
 import {
   DeleteOutlined,
   DownloadOutlined,

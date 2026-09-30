@@ -10,10 +10,10 @@ Input,
 Select,
 Space,
 Statistic,
-Table,
 Tabs,
 Tag,
 } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import { money } from "./constants";
 import type { LegacyFinanceRecord,LegacyFinanceSummary } from "./types";

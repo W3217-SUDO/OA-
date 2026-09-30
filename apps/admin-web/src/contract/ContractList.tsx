@@ -7,10 +7,10 @@ Form,
 Input,
 Select,
 Space,
-Table,
 Tooltip,
 Tag,message
 } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import type { Key } from "react";
 import { ListFilterBar } from "../components/common/ListFilterBar";

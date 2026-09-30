@@ -1,7 +1,8 @@
 import { ReloadOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import type { TablePaginationConfig } from "antd";
-import { Button,Input,message,Space,Table } from "antd";
+import { Button,Input,message,Space } from "antd";
+import Table from "../../components/ResizableTable";
 import type { CaseDetailCapabilities,CaseRow } from "../types";
 
 interface CaseCluesPanelProps {

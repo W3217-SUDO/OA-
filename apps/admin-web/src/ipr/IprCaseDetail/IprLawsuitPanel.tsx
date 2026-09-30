@@ -9,9 +9,9 @@ Input,
 InputNumber,
 Modal,
 Select,
-Space,
-Table
+Space
 } from "antd";
+import Table from "../../components/ResizableTable";
 import { IPR_LAWSUIT_FEE_OPTIONS } from "../constants";
 import type {
 IprLawsuitCourt,

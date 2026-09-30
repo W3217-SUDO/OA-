@@ -1,4 +1,5 @@
-import { Alert,Button,Card,Checkbox,DatePicker,Descriptions,Form,Input,Modal,Select,Space,Table } from "antd";
+import { Alert,Button,Card,Checkbox,DatePicker,Descriptions,Form,Input,Modal,Select,Space } from "antd";
+import Table from "../../components/ResizableTable";
 import { personDisplayName } from "../constants";
 import type { IprCaseEvent,IprDetailPageState,IprRecord,ReminderEventType } from "../types";
 

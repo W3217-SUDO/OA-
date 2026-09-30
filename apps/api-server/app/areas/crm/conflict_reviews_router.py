@@ -44,12 +44,17 @@ class DecisionInput(BaseModel):
 
 
 async def _source_for_reader(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
-    from app.core.permissions import _ensure_contract_approval_access, _ensure_record_visible, _require_record_module_menu, _seal_application_capabilities
+    from app.core.permissions import (
+        _ensure_case_read_visible, _ensure_contract_approval_access, _ensure_record_visible,
+        _require_record_module_menu, _seal_application_capabilities,
+    )
     record = await db.get(BusinessRecord, record_id)
     if not record or record.module not in {"case", "ipr_case", "contract", "seal"}:
         raise HTTPException(status_code=404, detail="合同、案件或用印记录不存在")
     if await can_review_conflicts(identity, db):
         return record
+    if record.module == "case":
+        return await _ensure_case_read_visible(record_id, identity, db)
     if record.module == "contract":
         return await _ensure_contract_approval_access(record_id, identity, db)
     if record.module == "seal":

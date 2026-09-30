@@ -1,4 +1,5 @@
-import { Button, Table } from "antd";
+import { Button } from "antd";
+import Table from "../components/ResizableTable";
 import { normalizeIncomingPaymentForContract, normalizeInvoiceObject, normalizePaidObject } from "../contractObjectPresentation.mjs";
 import { amount } from "./constants";
 import type { Contract } from "./types";

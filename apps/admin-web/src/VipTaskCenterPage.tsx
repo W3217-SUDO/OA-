@@ -13,9 +13,9 @@ import {
   Popconfirm,
   Select,
   Space,
-  Table,
   Tag,
 } from "antd";
+import Table from "./components/ResizableTable";
 import { DeleteOutlined, EditOutlined, MessageOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";

@@ -1,4 +1,5 @@
-import { Button,Space,Table,Tag } from "antd";
+import { Button,Space,Tag } from "antd";
+import Table from "../../components/ResizableTable";
 import type { CaseAssistedFee,CaseDetailCapabilities } from "../types";
 
 interface CaseAssistedFeesPanelProps {

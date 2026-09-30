@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Input, Select, Space, Table, Tag } from "antd";
+import { Alert, Button, Input, Select, Space, Tag } from "antd";
+import Table from "../components/ResizableTable";
 import type { TableColumnsType } from "antd";
 import dayjs from "dayjs";
 import { api } from "../api";

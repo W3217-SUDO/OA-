@@ -13,11 +13,11 @@ import {
   Select,
   Space,
   Switch,
-  Table,
   Tag,
   Tooltip,
   Tree,
 } from "antd";
+import Table from "./components/ResizableTable";
 import type { TableColumnsType, TreeDataNode } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { api } from "./api";

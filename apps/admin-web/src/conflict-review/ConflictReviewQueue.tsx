@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Select, Table, Tabs, Tag } from "antd";
+import { Alert, Button, Select, Tabs, Tag } from "antd";
+import Table from "../components/ResizableTable";
 import { api } from "../api";
 import { CONFLICT_REVIEW_UPDATED_EVENT, openConflictReview } from "./events";
 import { conflictKindLabel, conflictStatusLabel } from "./types";

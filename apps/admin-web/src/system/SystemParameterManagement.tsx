@@ -11,8 +11,8 @@ import {
   Select,
   Space,
   Switch,
-  Table,
 } from "antd";
+import Table from "../components/ResizableTable";
 import type { TableColumnsType } from "antd";
 import {
   ClearOutlined,

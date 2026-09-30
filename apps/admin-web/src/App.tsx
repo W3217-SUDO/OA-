@@ -25,11 +25,11 @@ import {
   message,
   Modal,
   Space,
-  Table,
   Tabs,
   Tag,
   Tooltip,
 } from "antd";
+import Table from "./components/ResizableTable";
 import {
   BankOutlined,
   DashboardOutlined,

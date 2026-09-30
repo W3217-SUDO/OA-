@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Collapse, Descriptions, Modal, Space, Spin, Table } from "antd";
+import { Alert, Button, Collapse, Descriptions, Modal, Space, Spin } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import { api } from "../api";
 import { AttachmentPreviewContent, type PreviewAttachment } from "../components/common/AttachmentContent";

@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useState} from 'react'
-import {Button, Card, DatePicker, Drawer, Empty, Form, Input, message, Modal, Popconfirm, Select, Space, Table, Tabs, Tag} from 'antd'
+import {Button, Card, DatePicker, Drawer, Empty, Form, Input, message, Modal, Popconfirm, Select, Space, Tabs, Tag} from 'antd'
+import Table from "./components/ResizableTable";
 import type {TableColumnsType} from 'antd'
 import type {Key} from 'react'
 import {DeleteOutlined, MailOutlined, PlusOutlined} from '@ant-design/icons'

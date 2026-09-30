@@ -5,9 +5,9 @@ import {
   Form,
   Modal,
   Select,
-  Table,
   TreeSelect,
 } from "antd";
+import Table from "../components/ResizableTable";
 import type { RolePermission, MenuRow } from "./types";
 import { formatTime } from "./constants";
 import { buildMenuTreeData } from "./SystemMenuManagement";

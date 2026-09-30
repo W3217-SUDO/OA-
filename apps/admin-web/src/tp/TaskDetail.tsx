@@ -6,10 +6,10 @@ import {
   List,
   Modal,
   Space,
-  Table,
   Tag,
   Upload,
 } from "antd";
+import Table from "../components/ResizableTable";
 import {
   CommentOutlined,
   DeleteOutlined,

@@ -1,4 +1,5 @@
-import { Drawer, Table, Card, Form, Alert, Input, Select, DatePicker, Cascader, Button, Space, Tag } from "antd";
+import { Drawer, Card, Form, Alert, Input, Select, DatePicker, Cascader, Button, Space, Tag } from "antd";
+import Table from "../components/ResizableTable";
 import { isLegacyInvestigationRecord } from "./constants";
 import type { Row, TaskRow, Contract, WarehouseCatalogItem } from "./types";
 

@@ -1,4 +1,5 @@
-import { Button,Card,Modal,Table } from "antd";
+import { Button,Card,Modal } from "antd";
+import Table from "../../components/ResizableTable";
 import type { IprLawFirm,IprLawFirmCandidate,IprRecord } from "../types";
 
 interface IprLawFirmsPanelProps {

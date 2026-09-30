@@ -9,9 +9,9 @@ import {
   Modal,
   Select,
   Space,
-  Table,
   Tag,
 } from "antd";
+import Table from "../components/ResizableTable";
 import type { FormInstance } from "antd";
 import type {
   TaskRow,

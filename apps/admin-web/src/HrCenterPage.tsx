@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useState} from 'react'
-import {Avatar, Button, Card, DatePicker, Descriptions, Empty, Form, Input, InputNumber, message, Modal, Popconfirm, Radio, Select, Space, Switch, Table, Tabs, Tag, Tooltip, Upload} from 'antd'
+import {Avatar, Button, Card, DatePicker, Descriptions, Empty, Form, Input, InputNumber, message, Modal, Popconfirm, Radio, Select, Space, Switch, Tabs, Tag, Tooltip, Upload} from 'antd'
+import Table from "./components/ResizableTable";
 import type {TableColumnsType} from 'antd'
 import type {ReactNode} from 'react'
 import dayjs from 'dayjs'

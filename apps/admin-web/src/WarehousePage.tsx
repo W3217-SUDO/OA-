@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useState, type Key} from 'react'
-import {Button, Card, DatePicker, Descriptions, Dropdown, Empty, Form, Input, message, Modal, Select, Space, Table, Tag, Timeline, Tree} from 'antd'
+import {Button, Card, DatePicker, Descriptions, Dropdown, Empty, Form, Input, message, Modal, Select, Space, Tag, Timeline, Tree} from 'antd'
+import Table from "./components/ResizableTable";
 import type {MenuProps, TableColumnsType, TreeDataNode} from 'antd'
 import {EllipsisOutlined} from '@ant-design/icons'
 import dayjs, {type Dayjs} from 'dayjs'

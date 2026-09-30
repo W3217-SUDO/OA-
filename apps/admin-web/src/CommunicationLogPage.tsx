@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react'
-import {Button, Card, DatePicker, Descriptions, Empty, Form, Input, List, message, Modal, Popconfirm, Select, Table, Upload} from 'antd'
+import {Button, Card, DatePicker, Descriptions, Empty, Form, Input, List, message, Modal, Popconfirm, Select, Upload} from 'antd'
+import Table from "./components/ResizableTable";
 import type {TableColumnsType} from 'antd'
 import {DeleteOutlined, PaperClipOutlined, PlusOutlined, UploadOutlined} from '@ant-design/icons'
 import dayjs from 'dayjs'

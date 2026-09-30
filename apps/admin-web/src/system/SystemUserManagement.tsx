@@ -9,10 +9,10 @@ import {
   Select,
   Space,
   Switch,
-  Table,
   Tag,
   Tooltip,
 } from "antd";
+import Table from "../components/ResizableTable";
 import { ReloadOutlined, PlusOutlined } from "@ant-design/icons";
 import type { SystemUser } from "./types";
 import {

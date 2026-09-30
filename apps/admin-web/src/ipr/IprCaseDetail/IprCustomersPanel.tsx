@@ -1,4 +1,5 @@
-import { Button,Card,Checkbox,Modal,Space,Table,Tag } from "antd";
+import { Button,Card,Checkbox,Modal,Space,Tag } from "antd";
+import Table from "../../components/ResizableTable";
 import type { IprCaseCustomer,IprCaseCustomerCandidate,IprRecord } from "../types";
 
 interface IprCustomersPanelProps {

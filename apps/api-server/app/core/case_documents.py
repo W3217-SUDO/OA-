@@ -4,7 +4,7 @@ import re
 from sqlalchemy import String, cast, func, or_, select
 
 from app.models import BusinessRecord, FileAttachment
-from app.core.permissions import _ensure_record_module, _record_scope_conditions
+from app.core.permissions import _ensure_case_read_module, _record_scope_conditions
 from app.core.storage import _attachment_dict
 from app.core.formatters import _person_display_name, _user_display_map
 from app.core.case_document_sources import case_document_sources
@@ -23,7 +23,7 @@ def _ids(data, keys):
 
 
 async def case_document_page(case_id, identity, db, page, page_size):
-    case = await _ensure_record_module(case_id, "case", identity, db)
+    case = await _ensure_case_read_module(case_id, identity, db)
     sources = case_document_sources(case)
     scope = await _record_scope_conditions(identity, db)
     clue_relations = []

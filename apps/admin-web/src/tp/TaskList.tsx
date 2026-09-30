@@ -8,9 +8,9 @@ import {
   Input,
   Select,
   Space,
-  Table,
   Tag,
 } from "antd";
+import Table from "../components/ResizableTable";
 import type { FormInstance, TablePaginationConfig } from "antd";
 import type { SorterResult } from "antd/es/table/interface";
 import type {

@@ -1,4 +1,5 @@
-import { Alert,Button,Card,Descriptions,Space,Table,Tag } from "antd";
+import { Alert,Button,Card,Descriptions,Space,Tag } from "antd";
+import Table from "../../components/ResizableTable";
 import dayjs from "dayjs";
 import { isIprLawsuit,isLegacyIprRecord,personDisplayName } from "../constants";
 import type { CpcApplication,IprRecord } from "../types";

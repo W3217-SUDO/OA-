@@ -1,4 +1,5 @@
-import { Button,Dropdown,Space,Table } from "antd";
+import { Button,Dropdown,Space } from "antd";
+import Table from "../../components/ResizableTable";
 import type { Key } from "react";
 import { PLATFORM_AGENCY_FEE_SUBTYPE } from "../../caseRelationConsumption.mjs";
 import type { CaseDetailCapabilities,CaseRow } from "../types";

@@ -1377,9 +1377,9 @@ async def list_case_logs(case_id: int, identity: dict = Depends(current_identity
         _person_reference_display, _user_display_map,
     )
     from app.core.permissions import (
-        _ensure_record_module,
+        _ensure_case_read_module,
     )
-    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    case_record = await _ensure_case_read_module(case_id, identity, db)
     from app.core.case_document_sources import case_document_sources
     source_case_nos = [item["serial_no"] for item in case_document_sources(case_record) if item.get("serial_no")]
     business_logs = list((await db.scalars(select(BusinessRecord).where(
@@ -1458,12 +1458,12 @@ async def list_case_relations(
         _legacy_case_fee_projection,
     )
     from app.core.permissions import (
-        _ensure_record_module,
+        _ensure_case_read_module,
     )
     from app.core.system import (
         _record_dict,
     )
-    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    case_record = await _ensure_case_read_module(case_id, identity, db)
     case_data = case_record.data or {}
     raw_clue_nos = case_data.get("investigation_clue_nos") or case_data.get("clue_nos") or []
     if isinstance(raw_clue_nos, str):
@@ -3550,10 +3550,17 @@ async def case_list_action_capabilities(
 @router.get(f"{settings.api_prefix}/cases/{{case_id}}/action-capabilities")
 async def case_detail_action_capabilities(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _case_detail_action_capabilities, _ensure_record_module,
+        _case_detail_action_capabilities, _ensure_case_read_module, _ensure_record_module,
     )
-    case_record = await _ensure_record_module(case_id, "case", identity, db)
-    return {"case_id": case_record.id, **(await _case_detail_action_capabilities(case_record, identity, db))}
+    case_record = await _ensure_case_read_module(case_id, identity, db)
+    capabilities = await _case_detail_action_capabilities(case_record, identity, db)
+    try:
+        await _ensure_record_module(case_id, "case", identity, db)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        capabilities = {key: False if key.startswith("can_") else value for key, value in capabilities.items()}
+    return {"case_id": case_record.id, **capabilities}
 
 
 @router.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/context")
@@ -4329,12 +4336,12 @@ async def list_case_tasks(
         _task_display_dict,
     )
     from app.core.permissions import (
-        _ensure_record_module,
+        _ensure_case_read_module,
     )
     from app.core.system import (
         _record_dict,
     )
-    case_record = await _ensure_record_module(case_id, "case", identity, db)
+    case_record = await _ensure_case_read_module(case_id, identity, db)
     from app.core.case_task_view import case_task_relation
     link_condition = case_task_relation(case_record)
     base_task_condition = [BusinessRecord.module == "task", link_condition]
@@ -5169,9 +5176,9 @@ async def list_case_document_folders(
         _case_formal_document_folder_payload,
     )
     from app.core.permissions import (
-        _ensure_record_module,
+        _ensure_case_read_module,
     )
-    record = await _ensure_record_module(case_id, "case", identity, db)
+    record = await _ensure_case_read_module(case_id, identity, db)
     return {"case_id": record.id, **(await _case_formal_document_folder_payload(record, db))}
 
 
@@ -6737,14 +6744,16 @@ async def create_record(body: RecordInput, identity: dict = Depends(current_iden
 @router.get(f"{settings.api_prefix}/records/{{record_id}}")
 async def get_record(record_id: int, scope: str = Query("", pattern="^(|audit)$"), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_record_visible, _record_dict_for_identity, _require_record_module_menu,
+        _can_search_all_cases_from_global_search, _ensure_case_read_visible,
+        _record_dict_for_identity, _require_record_module_menu,
     )
     if scope == "audit":
         from app.core.clue_audit_scope import ensure_clue_audit_record
         record = await ensure_clue_audit_record(record_id, identity, db)
     else:
-        record = await _ensure_record_visible(record_id, identity, db)
-    await _require_record_module_menu(record.module, identity, db, action="查看")
+        record = await _ensure_case_read_visible(record_id, identity, db)
+    if record.module != "case" or not await _can_search_all_cases_from_global_search(identity, db):
+        await _require_record_module_menu(record.module, identity, db, action="查看")
     return await _record_dict_for_identity(record, identity, db)
 
 
@@ -6754,10 +6763,11 @@ async def record_history(record_id: int, identity: dict = Depends(current_identi
         _person_reference_display, _user_display_map,
     )
     from app.core.permissions import (
-        _ensure_record_visible, _require_record_module_menu,
+        _can_search_all_cases_from_global_search, _ensure_case_read_visible, _require_record_module_menu,
     )
-    record = await _ensure_record_visible(record_id, identity, db)
-    await _require_record_module_menu(record.module, identity, db, action="查看")
+    record = await _ensure_case_read_visible(record_id, identity, db)
+    if record.module != "case" or not await _can_search_all_cases_from_global_search(identity, db):
+        await _require_record_module_menu(record.module, identity, db, action="查看")
     events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record_id).order_by(WorkflowEvent.created_at.desc(), WorkflowEvent.id.desc()))).all())
     users_by_username = await _user_display_map({event.operator for event in events}, db)
     return {

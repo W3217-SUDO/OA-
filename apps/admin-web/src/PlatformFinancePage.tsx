@@ -14,9 +14,9 @@ import {
   message,
   Select,
   Space,
-  Table,
   Tag,
 } from "antd";
+import Table from "./components/ResizableTable";
 import type { TableColumnsType } from "antd";
 import { DownloadOutlined, EyeOutlined, ReloadOutlined, SearchOutlined, UndoOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";

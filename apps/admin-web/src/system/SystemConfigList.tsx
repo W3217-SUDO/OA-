@@ -4,9 +4,9 @@ import {
   Empty,
   message,
   Switch,
-  Table,
   Tag,
 } from "antd";
+import Table from "../components/ResizableTable";
 import { api } from "../api";
 import type { SystemConfig } from "./types";
 

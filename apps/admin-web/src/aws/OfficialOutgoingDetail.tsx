@@ -1,4 +1,5 @@
-import { Button, Card, Descriptions, Drawer, Popconfirm, Space, Table, Timeline, Upload } from "antd";
+import { Button, Card, Descriptions, Drawer, Popconfirm, Space, Timeline, Upload } from "antd";
+import Table from "../components/ResizableTable";
 import { UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import type { Attachment, HistoryEvent, RecordRow } from "./types";

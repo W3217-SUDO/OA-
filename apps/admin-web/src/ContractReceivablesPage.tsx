@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space, Table } from "antd";
+import { Button, Card, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space } from "antd";
+import Table from "./components/ResizableTable";
 import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";

@@ -1,4 +1,5 @@
-import { Alert,Button,Card,DatePicker,Form,Input,InputNumber,Modal,Select,Space,Table,Tag } from "antd";
+import { Alert,Button,Card,DatePicker,Form,Input,InputNumber,Modal,Select,Space,Tag } from "antd";
+import Table from "../../components/ResizableTable";
 import type { AnnualFee,IprDetailPageState,IprRecord } from "../types";
 
 interface IprAnnualFeesPanelProps {

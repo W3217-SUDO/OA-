@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState} from 'react'
-import {Alert, Button, Card, DatePicker, Descriptions, Form, Input, InputNumber, message, Modal, Popconfirm, Select, Space, Table} from 'antd'
+import {Alert, Button, Card, DatePicker, Descriptions, Form, Input, InputNumber, message, Modal, Popconfirm, Select, Space} from 'antd'
+import Table from "./components/ResizableTable";
 import type {TableColumnsType} from 'antd'
 import {DownloadOutlined, PlusOutlined, ReloadOutlined} from '@ant-design/icons'
 import dayjs from 'dayjs'

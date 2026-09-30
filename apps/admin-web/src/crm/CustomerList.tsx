@@ -6,8 +6,8 @@ import {
   Input,
   Select,
   Space,
-  Table,
 } from "antd";
+import Table from "../components/ResizableTable";
 import {
   PlusOutlined,
   ReloadOutlined,

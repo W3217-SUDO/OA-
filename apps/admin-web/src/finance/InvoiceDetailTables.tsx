@@ -1,4 +1,5 @@
-import { Button, Table } from "antd";
+import { Button } from "antd";
+import Table from "../components/ResizableTable";
 import { invoiceObjectRows, invoiceServiceRows } from "./invoiceDetails.mjs";
 import type { InvoiceObjectRow, InvoiceServiceRow } from "./invoiceDetails.mjs";
 

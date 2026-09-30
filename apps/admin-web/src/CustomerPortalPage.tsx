@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Alert, Button, Card, Form, Input, message, Select, Space, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, Button, Card, Form, Input, message, Select, Space, Tabs, Tag, Typography } from "antd";
+import Table from "./components/ResizableTable";
 import { api } from "./api";
 
 type Credentials = { account: string; password: string };

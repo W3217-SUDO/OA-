@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Alert, Card, Descriptions, Spin, Table, Tag, Typography } from "antd";
+import { Alert, Card, Descriptions, Spin, Tag, Typography } from "antd";
+import Table from "./components/ResizableTable";
 import type { TableColumnsType } from "antd";
 import { api } from "./api";
 

@@ -10,10 +10,10 @@ InputNumber,
 Modal,
 Select,
 Space,
-Table,
 Tag,
 message
 } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import { useEffect,useMemo,useRef,useState } from "react";
 import { api } from "../api";

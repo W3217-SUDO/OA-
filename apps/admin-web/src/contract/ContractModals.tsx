@@ -19,9 +19,9 @@ Modal,
 Select,
 Space,
 Steps,
-Table,
 Timeline
 } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import { useEffect, useState, type Key } from "react";
 import { ContractPaymentUnitPicker } from "./ContractPaymentUnitPicker";

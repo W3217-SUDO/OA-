@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { Button, Card, Input, Table, Tabs, message } from "antd";
+import { Button, Card, Input, Tabs, message } from "antd";
+import Table from "./components/ResizableTable";
 import { api } from "./api";
 import ConflictRuleCatalog from "./ConflictRuleCatalog";
 import { ConflictReviewQueue } from "./conflict-review/ConflictReviewQueue";

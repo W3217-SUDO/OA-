@@ -1,5 +1,6 @@
 import type { UploadFile } from "antd";
-import { Button, message, Modal, Table } from "antd";
+import { Button, message, Modal } from "antd";
+import Table from "../../components/ResizableTable";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import type { MessageType } from "antd/es/message/interface";
 import dayjs from "dayjs";

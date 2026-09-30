@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, message } from "antd";
+import { Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Tag, message } from "antd";
+import Table from "./components/ResizableTable";
 import type { TableColumnsType } from "antd";
 import dayjs from "dayjs";
 import { api } from "./api";

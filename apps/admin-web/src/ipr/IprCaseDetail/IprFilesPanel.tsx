@@ -1,4 +1,5 @@
-import { Alert,Button,Card,DatePicker,Form,Input,Modal,Select,Space,Table,Tag } from "antd";
+import { Alert,Button,Card,DatePicker,Form,Input,Modal,Select,Space,Tag } from "antd";
+import Table from "../../components/ResizableTable";
 import { AttachmentFileInput } from "../../components/common/AttachmentContent";
 import type { Attachment,IprDetailPageState,IprFileType,IprRecord } from "../types";
 

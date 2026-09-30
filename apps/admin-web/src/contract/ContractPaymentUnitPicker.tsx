@@ -1,4 +1,5 @@
-import { Button, Checkbox, Input, Modal, Select, Space, Table, message } from "antd";
+import { Button, Checkbox, Input, Modal, Select, Space, message } from "antd";
+import Table from "../components/ResizableTable";
 import { useEffect, useRef, useState } from "react";
 import type { PaymentTypeOption } from "./types";
 

@@ -1,4 +1,5 @@
-import { Button, Modal, Space, Table } from "antd";
+import { Button, Modal, Space } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import type { AttachmentRow, SealRow } from "./types";
 import { personDisplayName } from "./constants";

@@ -6,9 +6,10 @@ Input,
 Pagination,
 Popconfirm,
 Space,
-Table,Tag,
+Tag,
 Timeline
 } from "antd";
+import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import type { Key } from "react";
 import { ContractFinancialRecords } from "./ContractFinancialRecords";

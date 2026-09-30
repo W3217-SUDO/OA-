@@ -10,9 +10,9 @@ import {
   Popconfirm,
   Space,
   Switch,
-  Table,
   Tree,
 } from "antd";
+import Table from "../components/ResizableTable";
 import { EditOutlined, PlusOutlined } from "@ant-design/icons";
 import type { MenuRow } from "./types";
 
