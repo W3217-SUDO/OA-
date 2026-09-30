@@ -282,6 +282,351 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([(await db.get(BusinessRecord, item_id)).status
                               for item_id in self.normal_commissions], ["草稿", "草稿"])
 
+    async def test_generic_single_actions_cannot_change_internal_application(self):
+        fee_id = self.normal_commissions[0]
+        actions = (
+            (f"/finance/fees/{fee_id}/cancel", {"reason": "绕过申请人"}),
+            (f"/finance/fees/{fee_id}/rollback", {"comment": "绕过整单"}),
+            (f"/finance/fees/{fee_id}/approve", {"comment": "单笔通过"}),
+            (f"/finance/fees/{fee_id}/review", {"approved": False, "comment": "单笔拒绝"}),
+            ("/finance/fees/batch-review", {"fee_ids": [fee_id], "approved": True, "comment": "部分审批"}),
+            ("/finance/fees/batch-review", {"fee_ids": [fee_id, self.normal_source_id],
+                                             "approved": True, "comment": "混合审批"}),
+        )
+        async with self.sessions() as db:
+            event_count = len((await db.scalars(select(WorkflowEvent))).all())
+        for path, payload in actions:
+            response = await self.client.post(f"{settings.api_prefix}{path}", json=payload)
+            self.assertEqual(response.status_code, 409, (path, response.text))
+            async with self.sessions() as db:
+                self.assertEqual([(await db.get(BusinessRecord, item_id)).status
+                                  for item_id in self.normal_commissions], ["待审批", "待审批"])
+                self.assertEqual((await db.get(BusinessRecord, self.normal_source_id)).status, "草稿")
+                self.assertEqual(len((await db.scalars(select(WorkflowEvent))).all()), event_count)
+
+    async def test_application_submit_and_void_update_every_member(self):
+        async with self.sessions() as db:
+            for fee_id in self.normal_commissions:
+                item = await db.get(BusinessRecord, fee_id)
+                item.status = "草稿"
+                item.data = {**item.data, "handler": "finance-applicant"}
+            await db.commit()
+        submitted = await self.client.post(
+            f"{settings.api_prefix}/finance/fees/{self.normal_commissions[0]}/submit",
+            json={"comment": "整单提交"},
+        )
+        self.assertEqual(submitted.status_code, 200, submitted.text)
+        self.assertEqual(set(submitted.json()["fee_ids"]), set(self.normal_commissions))
+        async with self.sessions() as db:
+            self.assertEqual([(await db.get(BusinessRecord, fee_id)).status
+                              for fee_id in self.normal_commissions], ["待审批", "待审批"])
+            for fee_id in self.normal_commissions:
+                self.assertEqual(len((await db.scalars(select(WorkflowEvent).where(
+                    WorkflowEvent.record_id == fee_id, WorkflowEvent.action == "提交费用审批",
+                ))).all()), 1)
+        self.identity = {**self.identity, "username": "another-admin"}
+        denied = await self.client.post(
+            f"{settings.api_prefix}/finance/fees/{self.normal_commissions[0]}/submit",
+            json={"comment": "非申请人提交"},
+        )
+        self.assertEqual(denied.status_code, 403, denied.text)
+        self.identity = {**self.identity, "username": "finance-applicant"}
+        async with self.sessions() as db:
+            for fee_id in self.normal_commissions:
+                item = await db.get(BusinessRecord, fee_id)
+                item.status = "已驳回"
+            await db.commit()
+        voided = await self.client.post(
+            f"{settings.api_prefix}/finance/fees/{self.normal_commissions[0]}/void",
+            json={"comment": "整单作废"},
+        )
+        self.assertEqual(voided.status_code, 200, voided.text)
+        self.assertEqual(set(voided.json()["fee_ids"]), set(self.normal_commissions))
+        async with self.sessions() as db:
+            for fee_id in self.normal_commissions:
+                item = await db.get(BusinessRecord, fee_id)
+                self.assertEqual(item.status, "已作废")
+                self.assertEqual(item.data["payment_status"], "已作废")
+                self.assertEqual(len((await db.scalars(select(WorkflowEvent).where(
+                    WorkflowEvent.record_id == fee_id, WorkflowEvent.action == "请款单作废",
+                ))).all()), 1)
+
+    async def test_application_submit_and_void_fail_without_partial_writes(self):
+        async with self.sessions() as db:
+            for fee_id in self.normal_commissions:
+                item = await db.get(BusinessRecord, fee_id)
+                item.status = "草稿"
+                item.data = {**item.data, "handler": "finance-applicant"}
+            second = await db.get(BusinessRecord, self.normal_commissions[1])
+            second.status = "待审批"
+            await db.commit()
+            event_count = len((await db.scalars(select(WorkflowEvent))).all())
+        blocked_submit = await self.client.post(
+            f"{settings.api_prefix}/finance/fees/{self.normal_commissions[0]}/submit",
+            json={"comment": "不得部分提交"},
+        )
+        self.assertEqual(blocked_submit.status_code, 409, blocked_submit.text)
+        async with self.sessions() as db:
+            self.assertEqual([(await db.get(BusinessRecord, fee_id)).status
+                              for fee_id in self.normal_commissions], ["草稿", "待审批"])
+            self.assertEqual(len((await db.scalars(select(WorkflowEvent))).all()), event_count)
+            for fee_id in self.normal_commissions:
+                item = await db.get(BusinessRecord, fee_id)
+                item.status = "已驳回"
+            db.add(FinanceTransaction(
+                finance_record_id=self.normal_commissions[1], transaction_type="付款",
+                amount=1, transaction_date=date(2026, 9, 30), operator="finance-applicant",
+            ))
+            await db.commit()
+            event_count = len((await db.scalars(select(WorkflowEvent))).all())
+        blocked_void = await self.client.post(
+            f"{settings.api_prefix}/finance/fees/{self.normal_commissions[0]}/void",
+            json={"comment": "不得部分作废"},
+        )
+        self.assertEqual(blocked_void.status_code, 409, blocked_void.text)
+        async with self.sessions() as db:
+            self.assertEqual([(await db.get(BusinessRecord, fee_id)).status
+                              for fee_id in self.normal_commissions], ["已驳回", "已驳回"])
+            self.assertEqual(len((await db.scalars(select(WorkflowEvent))).all()), event_count)
+
+    async def test_application_submit_rejects_mixed_internal_fee_categories(self):
+        async with self.sessions() as db:
+            for fee_id in self.normal_commissions:
+                item = await db.get(BusinessRecord, fee_id)
+                item.status = "草稿"
+                item.data = {**item.data, "handler": "finance-applicant"}
+            other = await db.get(BusinessRecord, self.normal_commissions[1])
+            other.data = {key: value for key, value in other.data.items()
+                          if key != "commission_type"}
+            await db.commit()
+            event_count = len((await db.scalars(select(WorkflowEvent))).all())
+        response = await self.client.post(
+            f"{settings.api_prefix}/finance/fees/{self.normal_commissions[0]}/submit",
+            json={"comment": "混合类别不应提交"},
+        )
+        self.assertEqual(response.status_code, 409, response.text)
+        async with self.sessions() as db:
+            self.assertEqual([(await db.get(BusinessRecord, fee_id)).status
+                              for fee_id in self.normal_commissions], ["草稿", "草稿"])
+            self.assertEqual(len((await db.scalars(select(WorkflowEvent))).all()), event_count)
+
+    async def test_ordinary_applicant_can_withdraw_when_payee_owns_fee(self):
+        async with self.sessions() as db:
+            db.add(User(username="finance-standard", display_name="普通申请人", role="user",
+                        department="其他部门", password_hash="x", is_active=True))
+            for fee_id in self.normal_commissions:
+                item = await db.get(BusinessRecord, fee_id)
+                item.data = {**item.data, "applicant": "finance-standard"}
+            await db.commit()
+        self.identity = {"username": "finance-standard", "display_name": "普通申请人",
+                         "role": "user", "department": "其他部门"}
+        listed = await self.client.get(f"{settings.api_prefix}/finance/internal-fees",
+                                       params={"scope": "applications", "page": 1, "page_size": 20})
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertIn("T930-NORMAL", {row["serial_no"] for row in listed.json()["items"]})
+        withdrawn = await self.client.post(
+            f"{settings.api_prefix}/finance/internal-applications/{self.normal_commissions[0]}/withdraw",
+            json={"reason": "普通申请人撤回"},
+        )
+        self.assertEqual(withdrawn.status_code, 200, withdrawn.text)
+        async with self.sessions() as db:
+            self.assertEqual([(await db.get(BusinessRecord, fee_id)).status
+                              for fee_id in self.normal_commissions], ["已撤回", "已撤回"])
+
+    async def test_standalone_internal_fee_submit_and_external_actions_remain_available(self):
+        async with self.sessions() as db:
+            standalone = self._record("T930-STANDALONE", "独立内部费用", "草稿", {
+                "fee_type": "内部费用", "expense_scope": "内部", "amount": 5,
+                "handler": "finance-applicant",
+            })
+            payment = self._record("T930-CASE-PAYMENT", "独立内部付款", "草稿", {
+                "fee_type": "内部费用", "expense_scope": "内部", "amount": 5,
+                "handler": "finance-applicant",
+            })
+            external = await db.get(BusinessRecord, self.normal_source_id)
+            external.status = "待审批"
+            external_cancel = self._record("T930-EXTERNAL-CANCEL", "外部费用撤回", "待审批", {
+                "fee_type": "代理费", "expense_scope": "律所", "amount": 5,
+            })
+            external_rollback = self._record("T930-EXTERNAL-ROLLBACK", "外部费用回滚", "待审批", {
+                "fee_type": "代理费", "expense_scope": "律所", "amount": 5,
+            })
+            db.add_all([standalone, payment, external_cancel, external_rollback])
+            await db.commit()
+            standalone_id, payment_id = standalone.id, payment.id
+            external_cancel_id, external_rollback_id = external_cancel.id, external_rollback.id
+        submitted = await self.client.post(f"{settings.api_prefix}/finance/fees/{standalone_id}/submit",
+                                           json={"comment": "任务中心提交"})
+        self.assertEqual(submitted.status_code, 200, submitted.text)
+        payment_request = await self.client.post(f"{settings.api_prefix}/finance/fees/{payment_id}/submit", json={
+            "amount": 2, "payment_payee": "测试收款人", "payment_account": "TEST-ACCOUNT",
+            "comment": "案件费用提交付款",
+        })
+        self.assertEqual(payment_request.status_code, 200, payment_request.text)
+        approved = await self.client.post(f"{settings.api_prefix}/finance/fees/{self.normal_source_id}/approve",
+                                          json={"comment": "外部费审批"})
+        self.assertEqual(approved.status_code, 200, approved.text)
+        cancelled = await self.client.post(f"{settings.api_prefix}/finance/fees/{external_cancel_id}/cancel",
+                                           json={"reason": "外部费撤回"})
+        rolled_back = await self.client.post(f"{settings.api_prefix}/finance/fees/{external_rollback_id}/rollback",
+                                             json={"comment": "外部费回滚"})
+        self.assertEqual(cancelled.status_code, 200, cancelled.text)
+        self.assertEqual(rolled_back.status_code, 200, rolled_back.text)
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(BusinessRecord, standalone_id)).status, "待审批")
+            self.assertEqual((await db.get(BusinessRecord, payment_id)).status, "待审批")
+            self.assertEqual((await db.get(BusinessRecord, self.normal_source_id)).status, "已审批")
+            self.assertEqual((await db.get(BusinessRecord, external_cancel_id)).status, "已撤回")
+            self.assertEqual((await db.get(BusinessRecord, external_rollback_id)).status, "草稿")
+
+    async def test_standalone_internal_fee_generic_followup_actions_remain_available(self):
+        async with self.sessions() as db:
+            ids = []
+            for suffix in ("REVIEW", "CANCEL", "ROLLBACK"):
+                item = self._record(f"T930-STANDALONE-{suffix}", "独立内部费用", "待审批", {
+                    "fee_type": "内部费用", "expense_scope": "内部", "amount": 5,
+                    "handler": "finance-applicant",
+                })
+                db.add(item)
+                await db.flush()
+                ids.append(item.id)
+            await db.commit()
+        queue = await self.client.get(f"{settings.api_prefix}/finance/internal-review-requests",
+                                      params={"kind": "other"})
+        self.assertEqual(queue.status_code, 200, queue.text)
+        self.assertTrue(set(ids).issubset({row["id"] for row in queue.json()["items"]}))
+        reviewed = await self.client.post(f"{settings.api_prefix}/finance/fees/{ids[0]}/review",
+                                          json={"approved": True, "comment": "独立费审批"})
+        cancelled = await self.client.post(f"{settings.api_prefix}/finance/fees/{ids[1]}/cancel",
+                                           json={"reason": "独立费撤回"})
+        rolled_back = await self.client.post(f"{settings.api_prefix}/finance/fees/{ids[2]}/rollback",
+                                             json={"comment": "独立费回滚"})
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        self.assertEqual(cancelled.status_code, 200, cancelled.text)
+        self.assertEqual(rolled_back.status_code, 200, rolled_back.text)
+        async with self.sessions() as db:
+            self.assertEqual([(await db.get(BusinessRecord, fee_id)).status for fee_id in ids],
+                             ["已审批", "已撤回", "草稿"])
+
+    async def test_unnumbered_applicant_request_still_requires_applicant_route(self):
+        async with self.sessions() as db:
+            item = self._record("T930-APPLICANT-SINGLE", "内部请款", "待审批", {
+                "fee_type": "内部费用", "expense_scope": "内部", "amount": 5,
+                "applicant": "finance-applicant",
+            }, owner="payee-owner")
+            db.add(item)
+            await db.commit()
+            fee_id = item.id
+        blocked = await self.client.post(f"{settings.api_prefix}/finance/fees/{fee_id}/cancel",
+                                         json={"reason": "单笔旁路"})
+        self.assertEqual(blocked.status_code, 409, blocked.text)
+        withdrawn = await self.client.post(
+            f"{settings.api_prefix}/finance/internal-applications/{fee_id}/withdraw",
+            json={"reason": "申请人撤回"},
+        )
+        self.assertEqual(withdrawn.status_code, 200, withdrawn.text)
+        self.assertEqual(withdrawn.json()["fee_ids"], [fee_id])
+        async with self.sessions() as db:
+            item = await db.get(BusinessRecord, fee_id)
+            self.assertEqual(item.status, "已撤回")
+            item.status = "草稿"
+            item.data = {**item.data, "handler": "finance-applicant"}
+            await db.commit()
+        submitted = await self.client.post(
+            f"{settings.api_prefix}/finance/fees/{fee_id}/submit",
+            json={"comment": "无编号申请单提交"},
+        )
+        self.assertEqual(submitted.status_code, 200, submitted.text)
+        self.assertEqual(submitted.json()["application_no"], "T930-APPLICANT-SINGLE")
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(BusinessRecord, fee_id)).status, "待审批")
+
+    async def test_archived_settled_historical_commission_can_be_reviewed(self):
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.status = "已归档"
+            db.add(BusinessRecord(
+                module="finance_settlement", serial_no="T930-SETTLED", title="一般结算",
+                customer="测试客户", status="已付款", owner="finance-applicant",
+                department="上海分所", data={"allocation_details": [{"fee_id": self.normal_source_id}]},
+            ))
+            historical_ids = []
+            for suffix in ("A", "B"):
+                item = self._record(f"T930-HISTORY-{suffix}", "历史提成", "待归档", {
+                    "fee_type": "内部费用", "expense_scope": "内部", "amount": 3,
+                    **({"commission_lifecycle": "case_agency_fee"} if suffix == "A" else {}),
+                    "source_fee_id": self.normal_source_id,
+                    "payment_application_no": "T930-HISTORY", "applicant": "finance-applicant",
+                })
+                db.add(item)
+                await db.flush()
+                historical_ids.append(item.id)
+            await db.commit()
+        other = await self.client.get(f"{settings.api_prefix}/finance/internal-review-requests",
+                                      params={"kind": "other"})
+        self.assertEqual(other.status_code, 200, other.text)
+        self.assertFalse(set(historical_ids) & {row["id"] for row in other.json()["items"]})
+        commission = await self.client.get(f"{settings.api_prefix}/finance/internal-review-requests",
+                                           params={"kind": "commission"})
+        self.assertEqual(commission.status_code, 200, commission.text)
+        selected = [row for row in commission.json()["items"] if row["serial_no"] == "T930-HISTORY"]
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0]["status"], "待审批")
+        self.assertEqual(len(selected[0]["data"]["application_items"]), 2)
+        reviewed = await self.client.post(f"{settings.api_prefix}/finance/internal-applications/batch-review",
+                                          params={"kind": "commission"}, json={
+            "fee_ids": historical_ids[:1], "approved": True, "comment": "历史提成审批",
+        })
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        async with self.sessions() as db:
+            for fee_id in historical_ids:
+                item = await db.get(BusinessRecord, fee_id)
+                self.assertEqual(item.status, "已审批")
+                events = (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == fee_id))).all()
+                self.assertEqual([event.action for event in events], ["案件归档完成，提成进入待审批", "费用审批通过"])
+
+    async def test_unsettled_commission_cannot_be_approved_by_direct_request(self):
+        async with self.sessions() as db:
+            item = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == "T930-NP"))
+            fee_id = item.id
+            event_count = len((await db.scalars(select(WorkflowEvent).where(
+                WorkflowEvent.record_id == fee_id,
+            ))).all())
+        denied = await self.client.post(f"{settings.api_prefix}/finance/internal-applications/batch-review",
+                                        params={"kind": "commission"}, json={
+            "fee_ids": [fee_id], "approved": True, "comment": "未结算不得审批",
+        })
+        self.assertEqual(denied.status_code, 409, denied.text)
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(BusinessRecord, fee_id)).status, "待结算")
+            self.assertEqual(len((await db.scalars(select(WorkflowEvent).where(
+                WorkflowEvent.record_id == fee_id,
+            ))).all()), event_count)
+
+    async def test_other_internal_fee_review_is_whole_application(self):
+        async with self.sessions() as db:
+            ids = []
+            for suffix in ("A", "B"):
+                item = self._record(f"T930-OTHER-{suffix}", "内部交通费", "待审批", {
+                    "fee_type": "内部费用", "expense_scope": "内部", "amount": 5,
+                    "payment_application_no": "T930-OTHER-APP", "applicant": "finance-applicant",
+                })
+                db.add(item)
+                await db.flush()
+                ids.append(item.id)
+            await db.commit()
+        reviewed = await self.client.post(f"{settings.api_prefix}/finance/internal-applications/batch-review",
+                                          params={"kind": "other"}, json={
+            "fee_ids": ids[:1], "approved": False, "comment": "其他费整单拒绝",
+        })
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        self.assertEqual(set(reviewed.json()["fee_ids"]), set(ids))
+        async with self.sessions() as db:
+            for fee_id in ids:
+                self.assertEqual((await db.get(BusinessRecord, fee_id)).status, "已驳回")
+                events = (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == fee_id))).all()
+                self.assertEqual(len(events), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

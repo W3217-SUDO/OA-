@@ -30,10 +30,24 @@ from app.models_shared import (
     RefundAmountUpdateInput, RefundBatchStatusInput, RefundCaseFeeBatchCreateInput, RefundCompleteInput,
 )
 from fastapi import APIRouter
+from app.core.finance_batch_parity import is_internal_fee
 
 router = APIRouter()
 from app.areas.finance.receipt_files import router as receipt_files_router
 from app.areas.finance.payment_workflow import router as payment_workflow_router
+
+
+def _is_internal_application(item: BusinessRecord) -> bool:
+    data = item.data or {}
+    return is_internal_fee(data) and bool(
+        str(data.get("payment_application_no") or "").strip()
+        or str(data.get("applicant") or "").strip()
+    )
+
+
+def _require_non_internal_application_action(item: BusinessRecord) -> None:
+    if _is_internal_application(item):
+        raise HTTPException(409, "内部请款单请使用整单审批或申请人操作入口")
 
 
 async def _require_linked_case_fee_action(item: BusinessRecord, action_key: str, identity: dict, db: AsyncSession) -> None:
@@ -4854,6 +4868,7 @@ async def cancel_finance_payment(
         _ensure_record_module, _record_dict_for_identity, _require_record_owner_or_manager,
     )
     item = await _ensure_record_module(fee_id, "finance", identity, db)
+    _require_non_internal_application_action(item)
     await _require_record_owner_or_manager(item, identity, db)
     await _require_linked_case_fee_action(item, "case.fee.payment", identity, db)
     from app.core.case_fee_payments import lock_case_fee_rows, release_direct_fee_request
@@ -4902,6 +4917,7 @@ async def rollback_finance_payment(
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有付款回滚权限")
     item = await _ensure_record_module(fee_id, "finance", identity, db)
+    _require_non_internal_application_action(item)
     await _require_linked_case_fee_action(item, "case.fee.payment", identity, db)
     from app.core.case_fee_payments import lock_case_fee_rows, release_direct_fee_request
     from app.core.invoice_sources import is_external_case_fee
@@ -4972,6 +4988,12 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
         _ensure_record_module, _record_dict_for_identity, _require_record_owner_or_manager,
     )
     item = await _ensure_record_module(fee_id, "finance", identity, db)
+    if _is_internal_application(item):
+        if body.amount is not None:
+            raise HTTPException(409, "内部请款单付款申请不能按单笔费用提交")
+        from app.core.internal_requests import submit_internal_application
+
+        return await submit_internal_application(fee_id, body.comment, identity, db)
     await _require_record_owner_or_manager(item, identity, db)
     is_payment_request = body.amount is not None
     if is_payment_request:
@@ -5163,6 +5185,7 @@ async def approve_finance_fee(fee_id: int, body: FinanceActionInput, identity: d
         _ensure_record_module, _record_dict_for_identity,
     )
     item = await _ensure_record_module(fee_id, "finance", identity, db)
+    _require_non_internal_application_action(item)
     await _review_finance_fee_records([item], True, body.comment, identity, db)
     await db.commit(); await db.refresh(item); return await _record_dict_for_identity(item, identity, db)
 
@@ -5183,6 +5206,8 @@ async def batch_review_finance_fees(body: FinanceFeeBatchReviewInput, identity: 
     ))).all()
     if len(items) != len(fee_ids):
         raise HTTPException(status_code=404, detail="部分费用不存在或无权访问")
+    for item in items:
+        _require_non_internal_application_action(item)
     await _review_finance_fee_records(items, body.approved, body.comment, identity, db)
     await db.commit()
     return {"reviewed": len(items), "fee_ids": fee_ids, "status": "已审批" if body.approved else "已驳回"}
@@ -5197,6 +5222,7 @@ async def review_finance_fee(fee_id: int, body: FinanceFeeReviewInput, identity:
         _ensure_record_module, _record_dict_for_identity,
     )
     item = await _ensure_record_module(fee_id, "finance", identity, db)
+    _require_non_internal_application_action(item)
     await _review_finance_fee_records([item], body.approved, body.comment, identity, db)
     await db.commit(); await db.refresh(item)
     return await _record_dict_for_identity(item, identity, db)
@@ -5213,6 +5239,10 @@ async def void_rejected_finance_fee(fee_id: int, body: FinanceActionInput, ident
     data = item.data or {}
     if data.get("fee_type") != "内部费用":
         raise HTTPException(status_code=409, detail="该入口仅可作废内部费用请款单")
+    if _is_internal_application(item):
+        from app.core.internal_requests import void_internal_application
+
+        return await void_internal_application(fee_id, body.comment, identity, db)
     if item.status not in {"已拒绝", "已退回", "已驳回"}:
         raise HTTPException(status_code=409, detail="仅已拒绝的内部费用请款单可以作废")
     previous = item.status

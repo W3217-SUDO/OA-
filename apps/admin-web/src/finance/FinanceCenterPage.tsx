@@ -2144,9 +2144,12 @@ export default function FinanceCenterPage({
       Number(item.data?.paid_amount || 0) > 0 ||
       item.data?.writeoff_status === "已核销");
     const mayChange = isApplicant && !hasPaidItem && row.status !== "部分处理";
+    const hasApplication = Boolean(String(row.data?.payment_application_no || "").trim() || applicant);
     const maySubmit =
       ["草稿", "已退回"].includes(row.status) &&
-      (role === "admin" || role === "manager" || row.owner === currentUser.username);
+      (hasApplication
+        ? isApplicant
+        : role === "admin" || role === "manager" || row.owner === currentUser.username);
     const mayEdit =
       row.module === "finance" &&
       row.data.fee_type === "内部费用" &&

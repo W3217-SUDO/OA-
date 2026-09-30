@@ -20,6 +20,15 @@ def is_internal_fee(data: dict) -> bool:
             or bool(data.get('commission_lifecycle')))
 
 
+def is_internal_commission(data: dict) -> bool:
+    if not is_internal_fee(data):
+        return False
+    if str(data.get('commission_type') or '').strip() or str(data.get('commission_lifecycle') or '').strip():
+        return True
+    source_fee_id = str(data.get('source_fee_id') or '').strip()
+    return source_fee_id.isdigit() and int(source_fee_id) > 0
+
+
 def group_commission_applications(rows: list[dict]) -> list[dict]:
     groups = OrderedDict()
     for row in rows:

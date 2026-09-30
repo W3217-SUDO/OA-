@@ -7,7 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BusinessRecord, FinanceTransaction, WorkflowEvent
-from app.core.finance_batch_parity import group_commission_applications, is_internal_fee
+from app.core.finance_batch_parity import group_commission_applications, is_internal_commission, is_internal_fee
 
 
 def external_finance_condition():
@@ -47,7 +47,7 @@ async def refund_commission_ids(items: list[BusinessRecord], db: AsyncSession) -
     return {
         item.id for item in items
         if is_internal_fee(item.data or {})
-        and str((item.data or {}).get("commission_type") or "").strip()
+        and is_internal_commission(item.data or {})
         and _is_refund_commission({"data": item.data or {}}, sources)
     }
 
@@ -115,7 +115,7 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
     selected = []
     for row in rows:
         data = row.get("data") or {}
-        commission = bool(str(data.get("commission_type") or "").strip())
+        commission = is_internal_commission(data)
         refund = commission and _is_refund_commission(row, sources)
         if kind == "refund" and refund and row["status"] in {"待结算", "待归档", "待审批"}:
             selected.append({**row, "status": "待审批", "data": {**data, "is_refund": True}})
@@ -170,7 +170,7 @@ async def review_internal_applications(
     identity: dict, db: AsyncSession,
 ) -> dict:
     """审批完整请款单，阻止跨类别或缺项的部分审批。"""
-    from app.core.finance import _review_finance_fee_records
+    from app.core.finance import _case_commission_lifecycle_statuses, _review_finance_fee_records
     from app.core.permissions import _record_scope_conditions
 
     if identity.get("role") not in {"admin", "manager", "auditor"}:
@@ -184,14 +184,16 @@ async def review_internal_applications(
         raise HTTPException(404, "部分请款单不存在或无权访问")
     members = await _application_members(anchors, db, lock=True)
     refund_ids = await refund_commission_ids(members, db)
+    lifecycle_statuses = await _case_commission_lifecycle_statuses(members, db)
     for item in members:
         data = item.data or {}
-        commission = bool(str(data.get("commission_type") or "").strip())
+        commission = is_internal_commission(data)
         member_kind = "refund" if item.id in refund_ids else "commission" if commission else "other"
         if not is_internal_fee(data) or member_kind != kind:
             raise HTTPException(409, "请款单含其他审批类别，不能部分审批")
         allowed = {"待审批", "待结算", "待归档"} if kind == "refund" else {"待审批"}
-        if item.status not in allowed:
+        effective_status = lifecycle_statuses.get(item.id, item.status)
+        if effective_status not in allowed:
             raise HTTPException(409, "请款单含非待审批费用，不能部分审批")
     await _review_finance_fee_records(members, approved, comment, identity, db)
     await db.commit()
@@ -251,16 +253,8 @@ async def change_internal_application(
     fee_id: int, action: str, comment: str, identity: dict, db: AsyncSession,
 ) -> dict:
     """在同一事务中撤回或回滚请款单的全部费用。"""
-    from app.core.permissions import _ensure_record_module
-
-    first = await _ensure_record_module(fee_id, "finance", identity, db)
+    first, candidates = await _locked_internal_application(fee_id, identity, db)
     initial = first.data or {}
-    if not is_internal_fee(initial):
-        raise HTTPException(422, "只有内部费用请款单可执行该操作")
-    application_no = str(initial.get("payment_application_no") or "").strip()
-    candidates = await _application_members([first], db, lock=True)
-    if not candidates or first.id not in {item.id for item in candidates}:
-        raise HTTPException(404, "请款单不存在")
     applicant = str(initial.get("applicant") or "").strip()
     if not applicant or applicant != str(identity.get("username") or "").strip():
         raise HTTPException(403, "只有请款申请人可以撤回或回滚")
@@ -271,19 +265,10 @@ async def change_internal_application(
         if action == "withdraw" else
         {"待结算", "待归档", "待审批", "已审批", "待付款"}
     )
-    invalid = [item.serial_no for item in candidates if item.status not in allowed or not is_internal_fee(item.data or {})]
+    invalid = [item.serial_no for item in candidates if item.status not in allowed]
     if invalid:
         raise HTTPException(409, "请款单包含不可操作的费用：" + "、".join(invalid))
-    ids = [item.id for item in candidates]
-    paid_ids = set((await db.scalars(select(FinanceTransaction.finance_record_id).where(
-        FinanceTransaction.finance_record_id.in_(ids), FinanceTransaction.transaction_type == "付款",
-    ))).all())
-    if paid_ids or any(
-        float((item.data or {}).get("paid_amount") or 0) > 0
-        or str((item.data or {}).get("writeoff_status") or "") == "已核销"
-        for item in candidates
-    ):
-        raise HTTPException(409, "请款单已有付款或核销记录，不能撤回或回滚")
+    await _ensure_internal_application_unpaid(candidates, db, "撤回或回滚")
     target = "已撤回" if action == "withdraw" else "草稿"
     changed_at = datetime.now().isoformat(timespec="seconds")
     for item in candidates:
@@ -301,4 +286,102 @@ async def change_internal_application(
             comment=comment.strip(),
         ))
     await db.commit()
-    return {"application_no": application_no or first.serial_no, "fee_ids": ids, "status": target}
+    return {"application_no": str(initial.get("payment_application_no") or "").strip() or first.serial_no,
+            "fee_ids": [item.id for item in candidates], "status": target}
+
+
+async def _locked_internal_application(
+    fee_id: int, identity: dict, db: AsyncSession,
+) -> tuple[BusinessRecord, list[BusinessRecord]]:
+    from app.core.permissions import _ensure_record_module
+
+    first = await _ensure_record_module(fee_id, "finance", identity, db)
+    if not is_internal_fee(first.data or {}):
+        raise HTTPException(422, "只有内部费用请款单可执行该操作")
+    candidates = await _application_members([first], db, lock=True)
+    if not candidates or first.id not in {item.id for item in candidates}:
+        raise HTTPException(404, "请款单不存在")
+    invalid = [item.serial_no for item in candidates if not is_internal_fee(item.data or {})]
+    if invalid:
+        raise HTTPException(409, "请款单包含非内部费用：" + "、".join(invalid))
+    return first, candidates
+
+
+async def _ensure_internal_application_unpaid(
+    candidates: list[BusinessRecord], db: AsyncSession, action: str,
+) -> None:
+    ids = [item.id for item in candidates]
+    paid_ids = set((await db.scalars(select(FinanceTransaction.finance_record_id).where(
+        FinanceTransaction.finance_record_id.in_(ids), FinanceTransaction.transaction_type == "付款",
+    ))).all())
+    if paid_ids or any(
+        float((item.data or {}).get("paid_amount") or 0) > 0
+        or str((item.data or {}).get("writeoff_status") or "") == "已核销"
+        for item in candidates
+    ):
+        raise HTTPException(409, f"请款单已有付款或核销记录，不能{action}")
+
+
+async def submit_internal_application(
+    fee_id: int, comment: str, identity: dict, db: AsyncSession,
+) -> dict:
+    """由申请人整单提交尚未审批的内部请款。"""
+    first, candidates = await _locked_internal_application(fee_id, identity, db)
+    applicant = str((first.data or {}).get("applicant") or "").strip()
+    if not applicant or applicant != str(identity.get("username") or "").strip():
+        raise HTTPException(403, "只有请款申请人可以提交审批")
+    invalid = [item.serial_no for item in candidates if item.status not in {"草稿", "已退回"}]
+    if invalid:
+        raise HTTPException(409, "请款单包含不可提交的费用：" + "、".join(invalid))
+    refund_ids = await refund_commission_ids(candidates, db)
+    kinds = {"refund" if item.id in refund_ids else
+             "commission" if is_internal_commission(item.data or {}) else "other"
+             for item in candidates}
+    if len(kinds) != 1:
+        raise HTTPException(409, "请款单包含不同费用类别，不能混合提交")
+    missing = [item.serial_no for item in candidates
+               if not (item.data or {}).get("handler") or not (item.data or {}).get("case_no")]
+    if missing:
+        raise HTTPException(422, "缺少费用审批要素：" + "、".join(missing))
+    await _ensure_internal_application_unpaid(candidates, db, "提交审批")
+    for item in candidates:
+        previous = item.status
+        item.status = "待审批"
+        item.data = {**(item.data or {}), "payment_status": "待审批"}
+        db.add(WorkflowEvent(
+            record_id=item.id, action="提交费用审批", from_status=previous,
+            to_status="待审批", operator=identity["username"], comment=comment.strip(),
+        ))
+    await db.commit()
+    return {"application_no": str((first.data or {}).get("payment_application_no") or "").strip() or first.serial_no,
+            "fee_ids": [item.id for item in candidates], "status": "待审批"}
+
+
+async def void_internal_application(
+    fee_id: int, comment: str, identity: dict, db: AsyncSession,
+) -> dict:
+    """将已拒绝请款单的全部费用作废。"""
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(403, "当前角色没有请款单作废权限")
+    first, candidates = await _locked_internal_application(fee_id, identity, db)
+    invalid = [item.serial_no for item in candidates if item.status not in {"已拒绝", "已退回", "已驳回"}]
+    if invalid:
+        raise HTTPException(409, "请款单包含不可作废的费用：" + "、".join(invalid))
+    await _ensure_internal_application_unpaid(candidates, db, "作废")
+    changed_at = datetime.now().isoformat(timespec="seconds")
+    for item in candidates:
+        previous = item.status
+        item.status = "已作废"
+        item.data = {
+            **(item.data or {}), "payment_status": "已作废",
+            "void_comment": comment.strip(), "voided_by": identity["username"],
+            "voided_at": changed_at,
+        }
+        db.add(WorkflowEvent(
+            record_id=item.id, action="请款单作废", from_status=previous,
+            to_status="已作废", operator=identity["username"],
+            comment=comment.strip() or "已拒绝请款单作废",
+        ))
+    await db.commit()
+    return {"application_no": str((first.data or {}).get("payment_application_no") or "").strip() or first.serial_no,
+            "fee_ids": [item.id for item in candidates], "status": "已作废"}

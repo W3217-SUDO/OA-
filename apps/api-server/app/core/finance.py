@@ -2169,6 +2169,8 @@ _CASE_COMMISSION_ARCHIVED_CASE_STATUSES = {"已归档", "亏损归档"}
 
 
 def _is_case_agency_fee_commission(item: BusinessRecord) -> bool:
+    from app.core.finance_batch_parity import is_internal_commission
+
     data = item.data or {}
     try:
         source_fee_id = int(data.get("source_fee_id") or 0)
@@ -2180,7 +2182,7 @@ def _is_case_agency_fee_commission(item: BusinessRecord) -> bool:
         and data.get("fee_type") == "内部费用"
         and data.get("commission_lifecycle") != "case_agency_refund"
         and not data.get("is_refund")
-        and str(data.get("commission_type") or "").strip()
+        and is_internal_commission(data)
         and source_fee_id
         and (data.get("case_id") or str(data.get("case_no") or "").strip())
     )
