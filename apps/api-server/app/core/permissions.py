@@ -1132,7 +1132,9 @@ async def _ensure_case_read_visible(record_id: int, identity: dict, db: AsyncSes
     record = await db.get(BusinessRecord, record_id)
     if record and record.module == "case" and await _can_search_all_cases_from_global_search(identity, db):
         return record
-    return await _ensure_record_visible(record_id, identity, db)
+    # 页面菜单带来的临时管理员身份不能放宽非全所用户的案件数据范围。
+    from app.core.investigation_access import _actual_identity
+    return await _ensure_record_visible(record_id, await _actual_identity(identity, db), db)
 
 
 async def _ensure_case_read_module(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
