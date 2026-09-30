@@ -16,7 +16,6 @@ import {
 } from "antd";
 import { ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import { displayChinesePersonName, displayChinesePersonNames } from "../contractPeoplePresentation.mjs";
-import { LegacyContractHistoryPanel } from "../LegacyContractHistoryPanel";
 import { CUSTOMER_CONTACT_FORM_DEFAULTS, CUSTOMER_DOCUMENT_FORM_DEFAULTS, canDeleteCustomerAttachment, getCustomerAttachmentDate } from "../customerUiBatchI15.mjs";
 import type { FormInstance } from "antd";
 import type {
@@ -26,7 +25,6 @@ import type {
   CustomerEvent,
   CustomerNotice,
   DirectoryUser,
-  LegacyCustomerHistory,
   Note,
 } from "./types";
 
@@ -39,7 +37,6 @@ interface CustomerDetailDrawerProps {
   attachmentError: string;
   customerEventError: string;
   sharedObjectsError: string;
-  legacyCustomerHistoryError: string;
   contactPage: number;
   contactPageSize: number;
   contactTotal: number;
@@ -47,7 +44,6 @@ interface CustomerDetailDrawerProps {
   events: CustomerEvent[];
   attachments: Attachment[];
   sharedObjects: string[];
-  legacyCustomerHistory: LegacyCustomerHistory;
   canManage: boolean;
   directory: DirectoryUser[];
   contactForm: FormInstance;
@@ -90,7 +86,6 @@ export function CustomerDetailDrawer({
   attachmentError,
   customerEventError,
   sharedObjectsError,
-  legacyCustomerHistoryError,
   contactPage,
   contactPageSize,
   contactTotal,
@@ -98,7 +93,6 @@ export function CustomerDetailDrawer({
   events,
   attachments,
   sharedObjects,
-  legacyCustomerHistory,
   canManage,
   directory,
   contactForm,
@@ -145,54 +139,6 @@ export function CustomerDetailDrawer({
     contact.photo_attachment_id ? <Button type="link" onClick={() => void onViewContactPhoto(contact)}>查看照片</Button> : null
   );
 
-  const legacyCustomerHistoryStatusLabel = (value?: string) => ({
-    exact_username: "用户名精确匹配",
-    missing_new_user: "新系统无对应员工",
-    blank_source_username: "旧系统未记录员工",
-    exact_legacy_customer_guid: "客户精确匹配",
-    legacy_parent_missing: "旧客户缺失",
-    legacy_parent_mismatch: "旧客户信息不一致",
-    ambiguous_legacy_customer_guid: "客户映射存在歧义",
-    missing_new_customer_guid: "新系统无对应客户",
-    not_declared: "旧系统未记录照片",
-    missing_local_file: "源文件缺失",
-    zero_baseline: "旧系统记录数为零",
-    nonzero_requires_dedicated_reaudit: "存在记录，需专项复核",
-  }[value || ""] || value || "—");
-
-  const legacyCustomerHistoryTab = {
-    key: "legacy-customer-history",
-    label: `旧系统历史（${legacyCustomerHistory.counts.coordinators + legacyCustomerHistory.counts.contacts + legacyCustomerHistory.counts.events + legacyCustomerHistory.counts.files}）`,
-    children: (
-      <>
-        {legacyCustomerHistoryError && <Alert type="warning" showIcon message={legacyCustomerHistoryError} style={{ marginBottom: 8 }} />}
-        <Alert type="info" showIcon message="旧 CRM 历史为只读证据，不会写入当前跟进记录、实时附件或工作流。源文件缺失时仅展示元数据，不能下载或预览。" style={{ marginBottom: 12 }} />
-        <Table rowKey={(row: any) => `coordinator-${row.id}`} size="small" pagination={false} dataSource={legacyCustomerHistory.coordinators} locale={{ emptyText: "暂无旧系统协作人" }} columns={[
-          { title: "旧系统协作人", dataIndex: "source_username", render: (value: string, row: any) => row.mapped_user?.display_name || value || "—" },
-          { title: "用户映射", dataIndex: "user_mapping_status", render: (value: string) => legacyCustomerHistoryStatusLabel(value) },
-          { title: "父客户映射", dataIndex: "parent_mapping_status", render: (value: string) => legacyCustomerHistoryStatusLabel(value) },
-          { title: "来源主键", dataIndex: "source_primary_key" },
-        ]} />
-        <Table style={{ marginTop: 12 }} rowKey={(row: any) => `contact-${row.id}`} size="small" pagination={false} dataSource={legacyCustomerHistory.contacts} locale={{ emptyText: "暂无旧系统联系人" }} columns={[
-          { title: "姓名", dataIndex: "contact_name" }, { title: "职务", dataIndex: "title" }, { title: "移动电话", dataIndex: "mobile_phone" }, { title: "邮箱", dataIndex: "email" },
-          { title: "照片恢复状态", dataIndex: "photo_recovery_status", render: (value: string) => legacyCustomerHistoryStatusLabel(value) }, { title: "来源主键", dataIndex: "source_primary_key" },
-        ]} />
-        <Table style={{ marginTop: 12 }} rowKey={(row: any) => `event-${row.id}`} size="small" pagination={false} dataSource={legacyCustomerHistory.events} locale={{ emptyText: "暂无旧系统事项" }} columns={[
-          { title: "事项内容", dataIndex: "content" }, { title: "操作人", dataIndex: "operator_username", render: (value: string, row: any) => row.mapped_user?.display_name || value || "—" },
-          { title: "操作时间", dataIndex: "operated_at" }, { title: "来源主键", dataIndex: "source_primary_key" },
-        ]} />
-        <Table style={{ marginTop: 12 }} rowKey={(row: any) => `file-${row.id}`} size="small" pagination={false} dataSource={legacyCustomerHistory.files} locale={{ emptyText: "暂无旧系统文件" }} columns={[
-          { title: "文件名", dataIndex: "original_name" }, { title: "声明大小", dataIndex: "declared_size_bytes", render: (value: number) => value ? `${value} B` : "—" },
-          { title: "证照", dataIndex: "is_license", render: (value: boolean) => value ? "是" : "否" }, { title: "上传人", dataIndex: "uploader_username", render: (value: string, row: any) => row.mapped_user?.display_name || value || "—" },
-          { title: "物理恢复状态", dataIndex: "physical_recovery_status", render: (value: string) => legacyCustomerHistoryStatusLabel(value) }, { title: "操作", render: () => <span>源文件缺失，不能下载或预览</span> },
-        ]} />
-        <Table style={{ marginTop: 12 }} rowKey="source_table" size="small" pagination={false} dataSource={legacyCustomerHistory.zero_baselines} locale={{ emptyText: "未导入旧系统零基线" }} columns={[
-          { title: "旧系统零基线", dataIndex: "source_table" }, { title: "源记录数", dataIndex: "source_row_count" }, { title: "状态", dataIndex: "audit_status", render: (value: string) => legacyCustomerHistoryStatusLabel(value) },
-        ]} />
-      </>
-    ),
-  };
-
   return (
     <Drawer
       size={720}
@@ -206,11 +152,6 @@ export function CustomerDetailDrawer({
         activeKey={detailTab}
         onChange={onTabChange}
         items={[
-          {
-            key: "legacy-contract-history",
-            label: "历史合同",
-            children: <LegacyContractHistoryPanel customerNo={String(customer?.serial_no || (customer?.data as any)?.customer_no || "")} />,
-          },
           {
             key: "contacts",
             label: `联系人（${customer?.data.contacts?.length || 0}）`,
@@ -300,7 +241,6 @@ export function CustomerDetailDrawer({
               </>
             ),
           },
-          legacyCustomerHistoryTab,
           {
             key: "contracts",
             label: `合同（${customer?.data.contract_count ?? 0}）`,

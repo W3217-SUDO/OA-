@@ -34,7 +34,7 @@ async def company_hearing_conditions(identity, db):
     return [BusinessRecord.module == 'case', BusinessRecord.status.notin_(['已合并', '已删除', '已回收'])]
 
 
-async def dashboard_identity(identity, db):
+async def dashboard_identity(identity, db, *, personal_cases=False):
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if user is None or not user.is_active:
         raise HTTPException(401, "当前用户不存在或已停用")
@@ -42,7 +42,9 @@ async def dashboard_identity(identity, db):
     role = await _job_role_for_name(_configured_user_job_role_name(user), db)
     all_cases = "admin" in roles or bool(role and role.name == "财务审核管理")
     conditions = [BusinessRecord.module == "case", BusinessRecord.status.notin_(["已合并", "已删除", "已回收"])]
-    if not all_cases:
+    if personal_cases:
+        conditions.append(await _case_mine_scope_condition(identity, db))
+    elif not all_cases:
         owned_contracts = list((await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "contract", BusinessRecord.owner == user.username,
             BusinessRecord.status.notin_(["已回收", "已删除"]),
@@ -95,13 +97,31 @@ async def dashboard_request_identity(queue, expected, identity, db):
         return identity
     if queue not in expected:
         raise HTTPException(422, "控制台业务入口无效")
-    scoped_identity = await dashboard_identity(identity, db)
+    scoped_identity = await dashboard_identity(identity, db, personal_cases=queue == "refund-pending")
     if queue == "urgent-cases":
         cases = await dashboard_urgent_cases(identity, db, scoped_identity["_dashboard_case_ids"])
         case_ids = {case.id for case in cases}
         scoped_identity["_dashboard_case_ids"] = case_ids
         scoped_identity["_dashboard_record_ids"] = case_ids
     return scoped_identity
+
+
+async def personal_refund_identity(scoped_identity, db):
+    """从已经加载的控制台范围收窄退款范围，不重复投影合同和费用详情。"""
+    case_query = select(BusinessRecord.id).where(
+        BusinessRecord.id.in_(scoped_identity["_dashboard_case_ids"]),
+        await _case_mine_scope_condition(scoped_identity, db),
+    )
+    case_ids = set((await db.scalars(case_query)).all())
+    case_nos = select(BusinessRecord.serial_no).where(BusinessRecord.id.in_(case_ids))
+    fee_ids = set((await db.scalars(select(BusinessRecord.id).where(
+        BusinessRecord.id.in_(scoped_identity["_dashboard_fee_ids"]),
+        or_(BusinessRecord.data["case_id"].as_integer().in_(case_ids),
+            BusinessRecord.data["case_record_id"].as_integer().in_(case_ids),
+            BusinessRecord.data["case_no"].as_string().in_(case_nos)),
+    ))).all()) if case_ids else set()
+    return {**scoped_identity, "_dashboard_case_ids": case_ids,
+            "_dashboard_fee_ids": fee_ids, "_dashboard_record_ids": case_ids | fee_ids}
 
 
 async def dashboard_urgent_cases(identity, db, personal_case_ids):

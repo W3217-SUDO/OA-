@@ -1,5 +1,18 @@
 const contractBody = (contract) => String(contract?.data?.contract_body || "律所").trim();
 
+export const defaultCaseFeeContractId = (contracts, sourceCase, expenseScope) => {
+  if (!["律所", "平台"].includes(expenseScope)) return undefined;
+  const data = sourceCase?.data || {};
+  const candidates = contracts.filter((contract) => contract.customer === sourceCase?.customer
+    && contractBody(contract) === expenseScope);
+  const linkedId = Number(data.contract_record_id || data.contract_id || 0);
+  // 已有明确 ID 时只认该记录，不能改选同客户的其他合同。
+  if (linkedId) return candidates.some((contract) => contract.id === linkedId) ? linkedId : undefined;
+  const number = String(data.contract_no || "").trim();
+  const matches = number ? candidates.filter((contract) => contract.serial_no === number) : [];
+  return matches.length === 1 ? matches[0].id : undefined;
+};
+
 export const buildCaseFeeContractOptions = (contracts, sourceCase, editingFee, expenseScope = "") => {
   const customer = String(editingFee?.customer || sourceCase?.customer || "").trim();
   const scopedBody = ["律所", "平台"].includes(String(expenseScope).trim())

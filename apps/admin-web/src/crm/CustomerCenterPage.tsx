@@ -3,7 +3,6 @@ import type { Key } from "react";
 import { Form, message, Modal } from "antd";
 import dayjs from "dayjs";
 import { api } from "../api";
-import { LegacyContractHistoryPanel } from "../LegacyContractHistoryPanel";
 import { buildChinesePersonOptions, displayChinesePersonName, displayChinesePersonNames } from "../contractPeoplePresentation.mjs";
 import { customerStatusLabel } from "../customerStatusLabel";
 import { consumeCustomerDetailTarget, rememberCustomerDetailTarget } from "../customerDetailNavigation";
@@ -71,14 +70,12 @@ import { CustomerCreateEditModal } from "./CustomerCreateEditModal";
 import { CustomerCreatePage } from "./CustomerCreatePage";
 import { CustomerModals } from "./CustomerModals";
 import {
-  EMPTY_LEGACY_CUSTOMER_HISTORY,
   type Attachment,
   type Contact,
   type Customer,
   type CustomerEvent,
   type CustomerNotice,
   type DirectoryUser,
-  type LegacyCustomerHistory,
   type Note,
   type Profile,
 } from "./types";
@@ -142,8 +139,6 @@ export default function CustomerCenterPage({
   const [customerEventError, setCustomerEventError] = useState("");
   const [sharedObjects, setSharedObjects] = useState<string[]>([]);
   const [sharedObjectsError, setSharedObjectsError] = useState("");
-  const [legacyCustomerHistory, setLegacyCustomerHistory] = useState<LegacyCustomerHistory>(EMPTY_LEGACY_CUSTOMER_HISTORY);
-  const [legacyCustomerHistoryError, setLegacyCustomerHistoryError] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailTab, setDetailTab] = useState("contacts");
   const [documentFile, setDocumentFile] = useState<File | null>(null);
@@ -662,8 +657,6 @@ export default function CustomerCenterPage({
     let customerEventErrorMessage = "";
     let sharedObjectItems: string[] = [];
     let sharedObjectsErrorMessage = "";
-    let legacyHistoryItems: LegacyCustomerHistory = EMPTY_LEGACY_CUSTOMER_HISTORY;
-    let legacyHistoryErrorMessage = "";
     const customerGuid = getCustomerGuid(target);
     const customerEventListPath = buildCustomerEventListPath(customerGuid);
     const customerFileListPath = buildCustomerFileListPath(customerGuid);
@@ -677,7 +670,7 @@ export default function CustomerCenterPage({
       },
     };
     try {
-      const [recordRes, fileRes, historyRes, customerEventRes, sharedObjectsRes, contactRes, legacyHistoryRes] = await Promise.all([
+      const [recordRes, fileRes, historyRes, customerEventRes, sharedObjectsRes, contactRes] = await Promise.all([
         api.get("/customers", {
           params: {
             scope: originalCustomerScope,
@@ -716,12 +709,6 @@ export default function CustomerCenterPage({
         contactListRequest
           ? api.get(contactListRequest.url, { params: contactListRequest.params }).catch(() => fallbackContactResponse)
           : Promise.resolve(fallbackContactResponse),
-        customerGuid
-          ? api.get(`/customers/guid/${encodeURIComponent(customerGuid)}/legacy-history`).catch((error) => {
-              legacyHistoryErrorMessage = getCustomerResponseMessage(error, "旧系统客户历史加载失败");
-              return { data: EMPTY_LEGACY_CUSTOMER_HISTORY };
-            })
-          : Promise.resolve({ data: EMPTY_LEGACY_CUSTOMER_HISTORY }),
       ]);
       let resolvedCustomer = target;
       try {
@@ -767,15 +754,6 @@ export default function CustomerCenterPage({
       } catch (error: any) {
         sharedObjectsErrorMessage = getCustomerResponseMessage(error, "共享对象加载失败");
       }
-      const rawLegacyHistory = legacyHistoryRes?.data || EMPTY_LEGACY_CUSTOMER_HISTORY;
-      legacyHistoryItems = {
-        coordinators: Array.isArray(rawLegacyHistory.coordinators) ? rawLegacyHistory.coordinators : [],
-        contacts: Array.isArray(rawLegacyHistory.contacts) ? rawLegacyHistory.contacts : [],
-        events: Array.isArray(rawLegacyHistory.events) ? rawLegacyHistory.events : [],
-        files: Array.isArray(rawLegacyHistory.files) ? rawLegacyHistory.files : [],
-        zero_baselines: Array.isArray(rawLegacyHistory.zero_baselines) ? rawLegacyHistory.zero_baselines : [],
-        counts: { ...EMPTY_LEGACY_CUSTOMER_HISTORY.counts, ...(rawLegacyHistory.counts || {}) },
-      };
     } finally {
       setEvents(historyItems);
       setHistoryError(historyErrorMessage);
@@ -785,8 +763,6 @@ export default function CustomerCenterPage({
       setCustomerEventError(customerEventErrorMessage);
       setSharedObjects(sharedObjectItems);
       setSharedObjectsError(sharedObjectsErrorMessage);
-      setLegacyCustomerHistory(legacyHistoryItems);
-      setLegacyCustomerHistoryError(legacyHistoryErrorMessage);
       setDetailLoading(false);
     }
   };
@@ -1405,7 +1381,6 @@ export default function CustomerCenterPage({
           attachmentError={attachmentError}
           customerEventError={customerEventError}
           sharedObjectsError={sharedObjectsError}
-          legacyCustomerHistoryError={legacyCustomerHistoryError}
           contactPage={contactPage}
           contactPageSize={contactPageSize}
           contactTotal={contactTotal}
@@ -1413,7 +1388,6 @@ export default function CustomerCenterPage({
           events={events}
           attachments={attachments}
           sharedObjects={sharedObjects}
-          legacyCustomerHistory={legacyCustomerHistory}
           customerLicenseAttachment={customerLicenseAttachment}
           customerLicenseThumb={customerLicenseThumb}
           canManage={canManageCurrentCustomer}
@@ -1573,7 +1547,6 @@ export default function CustomerCenterPage({
         attachmentError={attachmentError}
         customerEventError={customerEventError}
         sharedObjectsError={sharedObjectsError}
-        legacyCustomerHistoryError={legacyCustomerHistoryError}
         contactPage={contactPage}
         contactPageSize={contactPageSize}
         contactTotal={contactTotal}
@@ -1581,7 +1554,6 @@ export default function CustomerCenterPage({
         events={events}
         attachments={attachments}
         sharedObjects={sharedObjects}
-        legacyCustomerHistory={legacyCustomerHistory}
         canManage={canManageCurrentCustomer}
         directory={directory}
         contactForm={contactForm}

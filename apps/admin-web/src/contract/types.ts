@@ -111,12 +111,6 @@ export type ApproverSetting = { username: string; display_name: string; display_
 
 export type Attachment = { id: number; original_name: string; category: string; size: number; created_at: string; uploader?: string; uploader_display_name?: string };
 
-export type LegacyHistoricalAttachment = {
-  id: number; legacy_file_id: number; legacy_file_guid: string; legacy_parent_no: string;
-  file_name: string; legacy_declared_size_bytes: number | null; legacy_file_path: string;
-  legacy_is_active: boolean; physical_exists: boolean; recovery_status: string; quarantine_reasons: string[];
-  download_available: false; preview_available: false; download_reason: string;
-};
 
 export type AttachmentPreview = { name: string; kind: "image" | "pdf" | "text" | "docx"; url?: string; text?: string };
 
@@ -132,9 +126,7 @@ export type ContractPaymentCandidate = { contract_object_id:number | null; case_
 
 export type PaymentTypeOption = { value:number; label:string; id:number; code:string; name:string; nature:string; payee:string; account_bank:string; account:string };
 
-export type ContractArchiveSubject = { contract_object_id:number; case_record_id:number; case_no:string; case_title:string; case_fee_ids:number[]; fee_type:string; contract_amount:number; paid_amount:number; invoiced_amount:number; fee_archived:boolean; materials_ready:boolean; archive_checks:Record<string,boolean> };
 
-export type ContractArchiveSummary = { id:number; serial_no:string; title:string; customer:string; status:string };
 
 export type ContractObjectRow = {
   id: number;

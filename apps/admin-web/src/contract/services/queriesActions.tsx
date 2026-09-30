@@ -1,6 +1,5 @@
 import { message } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
-import type { MessageType } from "antd/es/message/interface";
 import dayjs from "dayjs";
 import { api } from "../../api";
 import { rememberCaseDetailTarget } from "../../caseDetailNavigation";
@@ -16,7 +15,7 @@ import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "../..
 import { consumeCustomerRelationTarget } from "../../customerRelationNavigation";
 import { resolveDetailRelation } from "../../detailRelationResolver";
 import { CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY, CONTRACT_DETAIL_TAB_STORAGE_KEY, CONTRACT_SEAL_READY_STATUSES, consumeContractDetailTabKey, normalizeContractDetailTabKey } from "../constants";
-import type { Attachment, Contract, ContractArchiveSubject, ContractArchiveSummary, ContractEvent, ContractWorkflowCapabilities, CustomerRef, DirectoryUser, HistoryEvent, Profile, SealAsset, Step } from "../types";
+import type { Attachment, Contract, ContractEvent, CustomerRef, DirectoryUser, HistoryEvent, Profile, SealAsset, Step } from "../types";
 type ContractObjectRow = {
     id: number;
     case_record_id: number;
@@ -79,13 +78,6 @@ export interface ContractQueriesDependencies {
     readonly setDetailApprovalsError: React.Dispatch<React.SetStateAction<string | null>>;
     readonly contractEventKeyword: string;
     readonly contractEventPageSize: number;
-    readonly contractCapabilities: (contract?: Contract | null | undefined, options?: Record<string, unknown>) => ContractWorkflowCapabilities;
-    readonly denyContractAction: () => MessageType;
-    readonly setArchiveSubjectsLoading: React.Dispatch<React.SetStateAction<boolean>>;
-    readonly setArchiveSummary: React.Dispatch<React.SetStateAction<ContractArchiveSummary | null>>;
-    readonly setArchiveSubjects: React.Dispatch<React.SetStateAction<ContractArchiveSubject[]>>;
-    readonly setSelectedArchiveObjectKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
-    readonly setArchiveClosureComment: React.Dispatch<React.SetStateAction<string>>;
     readonly contractListRequestGuard: {
         begin(): number;
         isLatest(requestId: number): boolean;
@@ -290,27 +282,6 @@ export function createContractQueriesActions(context: ContractQueriesDependencie
         }
         catch (error: any) {
             setDetailApprovalsError(extractContractErrorMessage(error, "合同审批信息加载失败"));
-        }
-    };
-    const loadArchiveSubjects = async (contract: Contract) => {
-        const { contractCapabilities, denyContractAction, setArchiveSubjectsLoading, setArchiveSummary, setArchiveSubjects, setSelectedArchiveObjectKeys, setArchiveClosureComment } = context;
-        if (!contractCapabilities(contract).canArchive) {
-            denyContractAction();
-            return;
-        }
-        setArchiveSubjectsLoading(true);
-        try {
-            const { data } = await api.get(`/contracts/${contract.id}/archive-subjects`);
-            setArchiveSummary(data.contract || null);
-            setArchiveSubjects(data.items || []);
-            setSelectedArchiveObjectKeys([]);
-            setArchiveClosureComment("");
-        }
-        catch (error: any) {
-            message.error(extractContractErrorMessage(error, "合同归档完结数据加载失败"));
-        }
-        finally {
-            setArchiveSubjectsLoading(false);
         }
     };
     const resolveContractDetailTarget = async (target: ContractDetailNavigationContext): Promise<Contract | null> => {
@@ -570,5 +541,5 @@ export function createContractQueriesActions(context: ContractQueriesDependencie
             message.error(error?.response?.data?.detail || "关联案件加载失败");
         }
     };
-    return { openViewing, reloadContractEvents, reloadDetailApprovals, loadArchiveSubjects, resolveContractDetailTarget, load, loadWizardContext, refreshWizard, exportCsv, exportExcel, exportContractDetailExcel, openRelatedCustomer, openRelatedCase };
+    return { openViewing, reloadContractEvents, reloadDetailApprovals, resolveContractDetailTarget, load, loadWizardContext, refreshWizard, exportCsv, exportExcel, exportContractDetailExcel, openRelatedCustomer, openRelatedCase };
 }

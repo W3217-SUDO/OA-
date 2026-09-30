@@ -3138,9 +3138,13 @@ export default function FinanceCenterPage({
       <Button type="link" onClick={() => openRecordFiles(row, "发票扫描件")}>
         附件
       </Button>
-      <Button type="link" onClick={() => openInvoiceProcess(row)}>
+      {row.data.can_review && row.status === "待审批" && <>
+        <Button type="link" onClick={() => reviewFlow("invoices", row, true)}>审批通过</Button>
+        <Button type="link" danger onClick={() => reviewFlow("invoices", row, false)}>驳回</Button>
+      </>}
+      {row.data.can_issue && row.status === "待开票" && <Button type="link" onClick={() => openInvoiceProcess(row)}>
         开票
-      </Button>
+      </Button>}
     </Space>
   );
   const openInvoiceNumberChange = (row: FinanceFlow) => {

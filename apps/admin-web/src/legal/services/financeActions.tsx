@@ -6,7 +6,7 @@ import dayjs from "dayjs";
 import type { Key } from "react";
 import { api } from "../../api";
 import { rememberBusinessRecordDetailTarget } from "../../businessRecordDetailNavigation";
-import { buildCaseFeeContractOptions } from "../../caseFeeContractOptions.mjs";
+import { buildCaseFeeContractOptions, defaultCaseFeeContractId } from "../../caseFeeContractOptions.mjs";
 import { resolveCaseFeeInvoiceEligibility } from "../../caseFeeInvoiceEligibility.mjs";
 import { resolveCaseFileTypeSelection } from "../../caseFifthBatchParity.mjs";
 import { buildExternalPaymentRequestPayload } from "../../casePaymentUnitParity.mjs";
@@ -365,8 +365,8 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         feeForm.resetFields();
         feeForm.setFieldsValue({ source_file_type: sourceFileType, items: [{
                     title: `${row.title}案件费用`, amount: row.data.amount || undefined,
-                    // Fees belong to the contract selected for that fee, not the case header contract.
-                    contract_record_id: undefined,
+                    // 首次带入案件绑定，用户仍可为本笔费用改选合同。
+                    contract_record_id: defaultCaseFeeContractId(availableContracts, row, expenseScope),
                     expense_scope: expenseScope, fee_type_id: initialTypeId,
                     expense_subtype: initialType?.name,
                     fee_type: initialType?.base_fee_type,
@@ -672,9 +672,9 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         try {
             const { data } = await api.post("/cases/invoice-files/import");
             if (data.unmatched)
-                message.warning(`已处理 ${data.processed} 个文件，匹配案件 ${data.matched} 个，${data.unmatched} 个文件名未识别案件编号`);
+                message.warning(`已处理 ${data.processed} 个文件，匹配发票申请 ${data.matched} 个，${data.unmatched} 个导入失败，请查看导入状态`);
             else
-                message.success(`已完成 ${data.processed} 个发票文件导入并匹配案件`);
+                message.success(`已完成 ${data.processed} 个发票文件导入并关联申请费用`);
             await load();
         }
         catch (error: any) {
@@ -907,6 +907,18 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             message.error(error?.response?.data?.detail || "加载票据文件失败");
         }
     };
+    const openCaseInvoiceFiles = async (row: CaseRow) => {
+        try {
+            const { data } = await api.get("/attachments", { params: { record_id: row.id, category: "案件发票文件", page_size: 200 } });
+            if (!data.items.length) return message.info("该费用尚无发票文件");
+            Modal.info({ title: `发票文件：${row.serial_no}`, width: 700, okText: "关闭",
+                content: <Table size="small" rowKey="id" dataSource={data.items} pagination={{ pageSize: 10 }} columns={[
+                    { title: "文件名", dataIndex: "original_name" }, { title: "导入说明", dataIndex: "remark" },
+                    { title: "操作", render: (_: unknown, item: { id: number; original_name: string }) => <Button type="link" onClick={() => void downloadBillFile(`/attachments/${item.id}/download`, item.original_name).catch((error: any) => message.error(error?.response?.data?.detail || "下载发票文件失败"))}>下载</Button> },
+                ]} />,
+            });
+        } catch (error: any) { message.error(error?.response?.data?.detail || "查看发票文件失败"); }
+    };
     const unlockFeeInform = async (row: CaseRow) => {
         try {
             const inform = await loadLatestFeeInform(row);
@@ -967,7 +979,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         const { openInformDateBatchUpdate, requireSingleFee, openFeeInformCreator, editCaseFee, deleteCaseFee, markCaseFeeNoPayment, markCaseFeeRefundNotRequired, viewingCounselCase, onNavigate } = context;
         if (key === "inform-date")
             return openInformDateBatchUpdate(keys);
-        if (!requireSingleFee(keys, selectedFee, key === "refund" ? "办理法院退费" : key === "payment" ? "申请付款" : key === "invoice" ? "申请开票" : key === "edit" ? "修改" : key === "delete" ? "删除" : key === "inform" ? "新建费用通知" : key === "arrival" ? "到账确认" : key === "bill" ? "上传票据" : key === "download-bill" ? "查看票据文件" : key === "unlock-inform" ? "费用通知解锁" : key === "link-inform" ? "关联费用信息" : key === "delete-inform" ? "删除费用通知" : "标记不缴费"))
+        if (!requireSingleFee(keys, selectedFee, key === "refund" ? "办理法院退费" : key === "payment" ? "申请付款" : key === "invoice" ? "申请开票" : key === "edit" ? "修改" : key === "delete" ? "删除" : key === "inform" ? "新建费用通知" : key === "arrival" ? "到账确认" : key === "bill" ? "上传票据" : key === "download-bill" ? "查看票据文件" : key === "invoice-files" ? "查看发票文件" : key === "unlock-inform" ? "费用通知解锁" : key === "link-inform" ? "关联费用信息" : key === "delete-inform" ? "删除费用通知" : "标记不缴费"))
             return;
         if (key === "inform")
             return openFeeInformCreator(selectedFee!);
@@ -975,6 +987,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             return void openFeeInformArrival(selectedFee!);
         if (key === "bill")
             return void openFeeInformBill(selectedFee!);
+        if (key === "invoice-files") return void openCaseInvoiceFiles(selectedFee!);
         if (key === "download-bill")
             return void (caseReceiptFiles(selectedFee!.data).length ? openCaseReceiptFiles(selectedFee!) : downloadFeeInformBill(selectedFee!));
         if (key === "unlock-inform")

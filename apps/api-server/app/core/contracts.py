@@ -434,7 +434,11 @@ async def _delete_contract_records(
     retaining every downstream-record guard before physical removal.
     """
     ids = list(dict.fromkeys([int(item_id) for item_id in [*body.contract_ids, *body.contractIds] if int(item_id) > 0]))
-    prepared: list[tuple[BusinessRecord, list[FileAttachment]]] = []
+    from app.core.contract_delete import contract_dependent_drafts, delete_dependent_draft
+    from app.security import user_role_ids
+    prepared: list[tuple[BusinessRecord, list[FileAttachment], list[BusinessRecord]]] = []
+    user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
+    actual_admin = bool(user and "admin" in user_role_ids(user))
     try:
         if not ids:
             raise HTTPException(status_code=422, detail="请选择要删除的合同")
@@ -444,12 +448,10 @@ async def _delete_contract_records(
         by_id = {item.id: item for item in contracts}
         ordered = [by_id[item_id] for item_id in ids]
         for contract in ordered:
-            if identity["role"] != "admin" and contract.owner != identity["username"]:
+            if not user or (not actual_admin and contract.owner != identity["username"]):
                 raise HTTPException(status_code=403, detail="只能删除本人创建的空合同")
             if not allow_company_contract and not allow_empty_contract and contract.status != "已回收":
                 raise HTTPException(status_code=409, detail="只有回收站合同可以整体删除")
-            if not allow_empty_contract and int(await db.scalar(select(func.count()).select_from(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id)) or 0):
-                raise HTTPException(status_code=409, detail="合同已有审批记录，不能整体删除")
             if int(await db.scalar(select(func.count()).select_from(ReceivablePlan).where(ReceivablePlan.contract_record_id == contract.id)) or 0):
                 raise HTTPException(status_code=409, detail="合同已有应收计划，不能整体删除")
             if int(await db.scalar(select(func.count()).select_from(IncomingPayment).where(IncomingPayment.contract_record_id == contract.id)) or 0):
@@ -457,20 +459,14 @@ async def _delete_contract_records(
             contract_object_ids = select(ContractObject.id).where(ContractObject.contract_record_id == contract.id)
             if int(await db.scalar(select(func.count()).select_from(ContractPaymentLine).where(ContractPaymentLine.contract_object_id.in_(contract_object_ids))) or 0):
                 raise HTTPException(status_code=409, detail="合同已有付款申请明细，不能整体删除")
-            related_record = await db.scalar(select(BusinessRecord.serial_no).where(
-                BusinessRecord.id != contract.id,
-                or_(
-                    BusinessRecord.data["contract_record_id"].as_integer() == contract.id,
-                    BusinessRecord.data["contract_id"].as_integer() == contract.id,
-                ),
-            ).limit(1))
-            if related_record:
-                raise HTTPException(status_code=409, detail="合同已被其他业务关联，不能整体删除")
+            drafts = await contract_dependent_drafts(contract, db)
             attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == contract.id))).all())
-            prepared.append((contract, attachments))
-        for contract, attachments in prepared:
+            prepared.append((contract, attachments, drafts))
+        for contract, attachments, drafts in prepared:
             for attachment in attachments:
                 await db.delete(attachment)
+            for draft in drafts:
+                attachments.extend(await delete_dependent_draft(draft, identity, db))
             await db.execute(delete(ContractObjectLog).where(ContractObjectLog.contract_object_id.in_(select(ContractObject.id).where(ContractObject.contract_record_id == contract.id))))
             await db.execute(delete(ContractObject).where(ContractObject.contract_record_id == contract.id))
             await db.execute(delete(ContractEvent).where(ContractEvent.contract_record_id == contract.id))
@@ -481,7 +477,7 @@ async def _delete_contract_records(
     except HTTPException as exc:
         await db.rollback()
         return JSONResponse(status_code=status.HTTP_200_OK, content={"IsSuccess": False, "Message": str(exc.detail), "deleted": 0})
-    for _, attachments in prepared:
+    for _, attachments, _ in prepared:
         for attachment in attachments:
             path = Path(attachment.path)
             if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:

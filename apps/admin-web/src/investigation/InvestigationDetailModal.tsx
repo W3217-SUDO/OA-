@@ -1,4 +1,5 @@
-import { Modal, Button } from "antd";
+import { Modal, Button, Drawer } from "antd";
+import InvestigationTaskDetail from "./InvestigationTaskDetail";
 import type { Row, ClueWorkspace, Attachment } from "./types";
 import ClueDetailHeader from "./ClueDetail/ClueDetailHeader";
 import ClueEvidencePanel from "./ClueDetail/ClueEvidencePanel";
@@ -68,6 +69,11 @@ export function InvestigationDetailContent({
 }
 
 export default function InvestigationDetailModal(props: InvestigationDetailModalProps) {
+  if (props.investigationDetail && ["investigation", "task"].includes(props.investigationDetail.module)) {
+    return <Drawer open={props.open} size={1080} title={`调查详情：${props.investigationDetail.serial_no}`} onClose={props.onClose} destroyOnHidden>
+      {props.open && <InvestigationTaskDetail key={props.investigationDetail.id} record={props.investigationDetail} personName={props.projectedPersonDisplayName} onOpenCustomer={props.onOpenLinkedCustomer} onOpenClue={props.onOpenLinkedInvestigation} />}
+    </Drawer>;
+  }
   return <Modal
     width={1040}
     open={props.open}

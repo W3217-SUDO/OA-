@@ -1454,7 +1454,7 @@ function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
             )}
           </div>
         </Card>
-        <Card title="▥ 开庭排期" className="dashboard-card target-hearing-card">
+        <Card title={<Button type="link" style={{ padding: 0, color: "inherit", fontSize: "inherit", fontWeight: "inherit" }} onClick={() => onNavigate("case-mine-schedule")}>开庭排期</Button>} className="dashboard-card target-hearing-card">
           {sectionStatus("cases")}
           <Table
             rowKey={(r) => `${r.case_no}-${r.time}`}

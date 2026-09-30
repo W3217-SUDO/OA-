@@ -508,6 +508,9 @@ def _fee_matches_contract(fee: BusinessRecord, contract: BusinessRecord) -> bool
 def _is_contract_payment_case_fee(item: BusinessRecord) -> bool:
     """Keep payment candidates to live case-fee records, not finance side records."""
     data = item.data or {}
+    from app.core.invoice_sources import is_external_case_fee
+    if not is_external_case_fee(item):
+        return False
     if item.module != "finance" or item.status in {"已删除", "已作废", "不缴费"}:
         return False
     if str(data.get("legacy_kind") or "").strip() == "ap_payment":
@@ -843,6 +846,9 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
             "remark": str(data.get("remark") or fee.description or ""),
         })
     for item in objects:
+        from app.core.finance_batch_parity import is_internal_fee
+        if is_internal_fee({"fee_type": item.fee_type}):
+            continue
         case = await _ensure_record_visible(item.case_record_id, identity, db)
         if case.module != "case":
             continue
@@ -1036,6 +1042,8 @@ async def _validate_invoice_source_links(
         for fee in case_fees:
             if not _fee_matches_contract(fee, contract_record):
                 raise HTTPException(status_code=409, detail="所选案件费用必须属于当前合同")
+    from app.core.invoice_sources import validate_invoice_fee_policy
+    await validate_invoice_fee_policy(case_fees, db)
     for linked in (case_record, contract_record):
         if linked and linked.customer.strip() != body.customer.strip():
             raise HTTPException(status_code=409, detail="关联案件或合同必须属于发票客户")
@@ -1290,8 +1298,13 @@ async def _invoice_list_rows(
         applicant = user_display_names.get(applicant_account, applicant_account)
         if scope == "mine" and not ({applicant_account, applicant} & personal_names):
             continue
-        if scope == "pending" and item.status != "待开票":
-            continue
+        from app.core.invoice_permissions import invoice_finance_scope, invoice_permissions
+        capabilities = (await invoice_permissions(identity, db))[invoice_finance_scope(item)]
+        if scope == "pending":
+            if item.status not in {"待审批", "待开票"}:
+                continue
+            if not capabilities["review" if item.status == "待审批" else "issue"]:
+                continue
         if not contains(applicant, applicant_filter):
             continue
         if not contains(item.customer, customer) or not contains(item.serial_no, application_no):
@@ -1319,6 +1332,8 @@ async def _invoice_list_rows(
         result = _record_dict(item, allowed_fields)
         result_data = dict(result.get("data") or {})
         result_data.update({
+            "can_review": capabilities["review"] and item.status == "待审批",
+            "can_issue": capabilities["issue"] and item.status == "待开票",
             "invoice_type_display": display_type,
             "applicant": applicant,
             "application_date": str(data.get("application_date") or item.created_at),

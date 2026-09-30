@@ -269,7 +269,7 @@ export type CaseTaskAttachment = {
 
 export type CaseTaskPageState = { items: TaskRow[]; total: number; page: number; pageSize: number; pages: number };
 
-export type AttachmentRow = {id:number;record_id:number|null;original_name:string;category:string;document_category?:string;is_related_document?:boolean;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean;is_locked?:boolean};
+export type AttachmentRow = {invoice_record_id?:number|null;case_no?:string;case_type?:string;fee_type?:string;fee_amount?:number;invoice_no?:string;invoice_amount?:number;invoice_date?:string;applicant?:string;applicant_display_name?:string;match_status?:string;id:number;record_id:number|null;original_name:string;category:string;document_category?:string;is_related_document?:boolean;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean;is_locked?:boolean};
 
 export type CaseAssistedFee = {
   id: number;

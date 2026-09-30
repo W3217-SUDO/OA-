@@ -11,6 +11,12 @@ type CaseFeeSource = {
   data?: Record<string, unknown>;
 };
 
+export function defaultCaseFeeContractId(
+  contracts: ContractOptionSource[],
+  sourceCase: CaseFeeSource | null | undefined,
+  expenseScope: string,
+): number | undefined;
+
 export function buildCaseFeeContractOptions(
   contracts: ContractOptionSource[],
   sourceCase?: CaseFeeSource | null,

@@ -574,7 +574,7 @@ async def list_records(
         _apply_notary_auto_conversion,
     )
     from app.core.permissions import (
-        _case_mine_scope_condition, _record_scope_conditions, _require_record_module_menu, _user_has_job_permission,
+        _case_mine_scope_condition, _record_scope_conditions, _require_record_module_menu,
     )
     from app.core.system import (
         _allowed_field_keys,
@@ -591,13 +591,12 @@ async def list_records(
         )
     await _require_record_module_menu(module, identity, db, action="查看")
     clue_audit_scope = module == "clue" and scope == "audit"
-    if clue_audit_scope:
-        audit_user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
-        if not audit_user or not await _user_has_job_permission(audit_user, "线索审批", db):
-            return {"items": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
     if module in {"notary", "case"}:
         await _apply_notary_auto_conversion(db)
     conditions = [BusinessRecord.module == module]
+    if clue_audit_scope:
+        from app.core.clue_audit_scope import clue_audit_condition
+        conditions.append(await clue_audit_condition(identity, db))
     if module == "case":
         conditions.append(BusinessRecord.status != "已合并")
     if module == "finance":
@@ -1880,40 +1879,19 @@ async def list_pending_execution_cases(
     }
 
 
+@router.get(f"{settings.api_prefix}/cases/invoice-files")
+async def list_case_invoice_files(
+    page: int = Query(1, ge=1), page_size: int = Query(200, ge=1, le=200),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    from app.core.case_invoice_files import invoice_file_rows
+    return await invoice_file_rows(identity, db, page, page_size)
+
+
 @router.post(f"{settings.api_prefix}/cases/invoice-files/import")
 async def import_case_invoice_files(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """把当前用户上传的案件发票文件按文件名中的案件编号匹配到案件。"""
-    from app.core.permissions import (
-        _record_scope_conditions,
-    )
-    pending = (await db.scalars(
-        select(FileAttachment).where(
-            FileAttachment.category == "案件发票文件",
-            FileAttachment.uploader == identity["username"],
-            FileAttachment.record_id.is_(None),
-        ).order_by(FileAttachment.id)
-    )).all()
-    cases = (await db.scalars(
-        select(BusinessRecord).where(
-            BusinessRecord.module == "case",
-            *(await _record_scope_conditions(identity, db)),
-        )
-    )).all()
-    matched = 0
-    unmatched = 0
-    for attachment in pending:
-        normalized = attachment.original_name.upper().replace(" ", "")
-        case = next((item for item in cases if item.serial_no.upper() in normalized), None)
-        if case:
-            attachment.record_id = case.id
-            attachment.remark = f"案件发票文件导入｜自动匹配 {case.serial_no}"
-            db.add(WorkflowEvent(record_id=case.id, action="导入案件发票文件", from_status=case.status, to_status=case.status, operator=identity["username"], comment=attachment.original_name))
-            matched += 1
-        else:
-            attachment.remark = "案件发票文件导入｜文件名未识别案件编号"
-            unmatched += 1
-    await db.commit()
-    return {"processed": len(pending), "matched": matched, "unmatched": unmatched}
+    from app.core.case_invoice_files import import_invoice_files
+    return await import_invoice_files(identity, db)
 
 
 @router.post(f"{settings.api_prefix}/cases/counsel/search")
@@ -6448,6 +6426,7 @@ async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dic
                     copied = FileAttachment(
                         record_id=item.id,
                         category=SEAL_STAMPED_FILE_CATEGORY,
+                        invoice_record_id=source_attachment.invoice_record_id,
                         original_name=source_attachment.original_name,
                         stored_name=target.name,
                         content_type=source_attachment.content_type or "application/octet-stream",
@@ -6752,10 +6731,11 @@ async def create_record(body: RecordInput, identity: dict = Depends(current_iden
 @router.get(f"{settings.api_prefix}/records/{{record_id}}")
 async def get_record(record_id: int, scope: str = Query("", pattern="^(|audit)$"), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_pending_clue_audit_record, _ensure_record_visible, _record_dict_for_identity, _require_record_module_menu,
+        _ensure_record_visible, _record_dict_for_identity, _require_record_module_menu,
     )
     if scope == "audit":
-        record = await _ensure_pending_clue_audit_record(record_id, identity, db)
+        from app.core.clue_audit_scope import ensure_clue_audit_record
+        record = await ensure_clue_audit_record(record_id, identity, db)
     else:
         record = await _ensure_record_visible(record_id, identity, db)
     await _require_record_module_menu(record.module, identity, db, action="查看")
@@ -6798,6 +6778,10 @@ async def update_record(record_id: int, body: RecordUpdate, identity: dict = Dep
         _ensure_record_visible, _ensure_unique_customer_name, _record_dict_for_identity, _require_record_module_menu, _require_record_owner_or_manager,
     )
     record = await _ensure_record_visible(record_id, identity, db)
+    if record.module == "investigation":
+        from app.core.investigation_access import _actual_identity
+        identity = await _actual_identity(identity, db)
+        record = await _ensure_record_visible(record_id, identity, db)
     if record.module == "conflict_review":
         raise HTTPException(status_code=409, detail="利益冲突审查必须使用专用入口办理")
     await _require_record_module_menu(record.module, identity, db, action="编辑")

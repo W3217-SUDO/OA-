@@ -364,6 +364,7 @@ async def create_official_outgoing_document(body: OfficialOutgoingCreateInput, i
             target.write_bytes(source_path.read_bytes())
             copied_paths.append(target)
             db.add(FileAttachment(
+                invoice_record_id=source_file.invoice_record_id,
                 record_id=record.id, category="正式发文附件", original_name=source_file.original_name,
                 stored_name=target.name, content_type=source_file.content_type, size=target.stat().st_size,
                 path=str(target), uploader=identity["username"], remark=f"从{body.source_type} {source.serial_no}带入；来源附件ID {source_file.id}",

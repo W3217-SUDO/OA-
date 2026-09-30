@@ -1,7 +1,6 @@
 import {
 Alert,
 Button,
-Checkbox,
 Descriptions,Divider,Empty,
 Input,
 Pagination,
@@ -12,6 +11,7 @@ Timeline
 } from "antd";
 import dayjs from "dayjs";
 import type { Key } from "react";
+import { ContractFinancialRecords } from "./ContractFinancialRecords";
 import { DetailTabs } from "../components/common/DetailTabs";
 import {
 CONTRACT_OBJECT_PAGE_SIZES,
@@ -20,9 +20,6 @@ paginateContractObjectRows,
 import {
 contractObjectActionPolicy,
 contractObjectHasLogs,
-normalizeIncomingPaymentForContract,
-normalizeInvoiceObject,
-normalizePaidObject,
 } from "../contractObjectPresentation.mjs";
 import { displayContractStatus } from "../contractStatusPresentation.mjs";
 import {
@@ -30,18 +27,13 @@ buildContractEventsRequest,
 CONTRACT_EVENT_PAGE_SIZES,
 contractAttachmentActionPolicy,
 } from "../contractWorkflowPolicy.mjs";
-import { LegacyContractHistoryPanel } from "../LegacyContractHistoryPanel";
-import { legacyAttachmentQuarantineLabel,legacyAttachmentRecoveryLabel } from "../legacyHistoricalAttachmentPresentation";
-import { amount,archiveCheckLabels } from "./constants";
+import { amount } from "./constants";
 import type {
 Attachment,
 Contract,
-ContractArchiveSubject,
-ContractArchiveSummary,
 ContractEvent,
 ContractObjectRow,
 ContractWorkflowCapabilities,
-LegacyHistoricalAttachment,
 Step,
 } from "./types";
 
@@ -67,17 +59,8 @@ interface ContractDetailViewProps {
   contractEventKeyword: string;
   contractEventsLoading: boolean;
   contractEventsError: string | null;
-  legacyHistoricalAttachments: LegacyHistoricalAttachment[];
-  legacyHistoricalAttachmentsLoading: boolean;
-  legacyHistoricalAttachmentsError: string | null;
   detailApprovals: Step[];
   detailApprovalsError: string | null;
-  archiveSummary: ContractArchiveSummary | null;
-  archiveSubjects: ContractArchiveSubject[];
-  archiveSubjectsLoading: boolean;
-  archiveClosureSaving: boolean;
-  selectedArchiveObjectKeys: Key[];
-  archiveClosureComment: string;
   detailReceipts: any[];
   detailInvoices: Contract[];
   detailPayments: Contract[];
@@ -103,9 +86,6 @@ interface ContractDetailViewProps {
   onDownloadAttachment: (item: Attachment) => void;
   onReloadAttachments: () => void;
   onReloadApprovals: () => void;
-  onArchiveClosureCommentChange: (value: string) => void;
-  onArchiveSelectionChange: (keys: Key[]) => void;
-  onSubmitArchiveClosure: () => void;
   onContractFileChange: (file: File | null) => void;
   onOpenRelatedCustomer: () => void;
   onOpenRelatedCase: (caseNo: unknown) => void;
@@ -138,17 +118,8 @@ export function ContractDetailView({
   contractEventKeyword,
   contractEventsLoading,
   contractEventsError,
-  legacyHistoricalAttachments,
-  legacyHistoricalAttachmentsLoading,
-  legacyHistoricalAttachmentsError,
   detailApprovals,
   detailApprovalsError,
-  archiveSummary,
-  archiveSubjects,
-  archiveSubjectsLoading,
-  archiveClosureSaving,
-  selectedArchiveObjectKeys,
-  archiveClosureComment,
   detailReceipts,
   detailInvoices,
   detailPayments,
@@ -174,9 +145,6 @@ export function ContractDetailView({
   onDownloadAttachment,
   onReloadAttachments,
   onReloadApprovals,
-  onArchiveClosureCommentChange,
-  onArchiveSelectionChange,
-  onSubmitArchiveClosure,
   onContractFileChange,
   onOpenRelatedCustomer,
   onOpenRelatedCase,
@@ -193,69 +161,11 @@ export function ContractDetailView({
     viewing && buildContractEventsRequest(viewing, { page: contractEventPage, pageSize: contractEventPageSize, keyword: contractEventKeyword }).path,
   );
 
-  const presentedReceipts = detailReceipts
-    .map((row) => {
-      const item = normalizeIncomingPaymentForContract(row, viewing || {});
-      if (!item) return null;
-      return {
-        ...row,
-        receipt_no: item.sequenceNo,
-        received_date: item.receivedDate,
-        bank_reference: item.bankReference,
-        amount: item.amount,
-        official_amount: item.officialAmount,
-        agency_amount: item.agencyAmount,
-        other_amount: item.otherAmount,
-        payment_method: item.paymentMethod,
-        claimant: item.claimant,
-      };
-    })
-    .filter(Boolean);
-
-  const presentedInvoices = detailInvoices.map((row) => {
-    const item = normalizeInvoiceObject(row);
-    return {
-      ...row,
-      serial_no: item.applicationNo,
-      status: item.status,
-      description: item.remark,
-      data: {
-        ...row.data,
-        invoice_no: item.invoiceNo,
-        invoice_date: item.invoiceDate,
-        amount: item.amount,
-        official_amount: item.officialAmount,
-        agency_amount: item.agencyAmount,
-        other_amount: item.otherAmount,
-        __lineThrough: item.lineThrough,
-      },
-    };
-  });
-
-  const presentedPayments = detailPayments.map((row) => {
-    const item = normalizePaidObject(row);
-    return {
-      ...row,
-      serial_no: item.applicationNo,
-      data: {
-        ...row.data,
-        applicant: item.applicant,
-        pending_amount: item.pendingAmount,
-        payment_date: item.paymentDate,
-        payment_reference: item.packageNo,
-        amount: item.paidAmount,
-        payment_type: item.paymentType,
-        official_amount: item.officialAmount,
-        other_amount: item.otherAmount,
-        __lineThrough: item.lineThrough,
-      },
-    };
-  });
-
   // ==================== 详情工作台模式 ====================
   if (isContractDetailView && viewing) {
     return (
       <div className="contract-detail-workbench">
+        <h3 className="contract-detail-section-title">基本信息</h3>
         <section className="contract-detail-summary">
           <div>
             <span>客户编码：</span>
@@ -293,25 +203,16 @@ export function ContractDetailView({
             <b>{viewing.title || "—"}</b>
           </div>
         </section>
+        <h3 className="contract-detail-section-title">财务信息</h3>
         <section className="contract-detail-finance-summary">
           {[
-            ["官费支付金额", viewing.data.official_paid],
-            ["官费到账金额", viewing.data.official_received],
-            ["官费未到金额", viewing.data.official_unreceived],
-            ["官费亏损金额", viewing.data.official_loss],
-            ["代理费总金额", viewing.data.agency_total],
-            ["代理费到账金额", viewing.data.agency_received],
-            ["代理费待收金额", viewing.data.agency_due],
-            ["其他金额", viewing.data.other_total],
-            ["其他金额已支付", viewing.data.other_paid],
-            ["其他金额待支付", viewing.data.other_due],
-            ["发票已开金额", viewing.data.invoice_opened],
-            ["发票应开金额", viewing.data.invoice_should],
-            ["发票高开金额", viewing.data.invoice_excess],
-          ].map(([label, value]) => (
-            <div key={String(label)}>
-              <span>{label}：</span>
-              <b>{amount(Number(value || 0))}</b>
+            [["官费支付金额", viewing.data.official_paid], ["官费到账金额", viewing.data.official_received], ["官费未到金额", viewing.data.official_unreceived], ["官费亏损金额", viewing.data.official_loss]],
+            [["代理费总金额", viewing.data.agency_total], ["代理费到账金额", viewing.data.agency_received], ["代理费待收金额", viewing.data.agency_due]],
+            [["其他金额", viewing.data.other_total], ["其他金额已支付", viewing.data.other_paid], ["其他金额待支付", viewing.data.other_due]],
+            [["发票已开金额", viewing.data.invoice_opened], ["发票应开金额", viewing.data.invoice_should], ["发票高开金额", viewing.data.invoice_excess]],
+          ].map((group, index) => (
+            <div className="contract-detail-finance-group" key={index}>
+              {group.map(([label, value]) => <div key={String(label)}><span>{label}：</span><b>{amount(Number(value || 0))}</b></div>)}
             </div>
           ))}
         </section>
@@ -415,6 +316,7 @@ export function ContractDetailView({
                         },
                       ]}
                     />
+                    <ContractFinancialRecords viewing={viewing} detailReceipts={detailReceipts} detailInvoices={detailInvoices} detailPayments={detailPayments} personName={personName} onOpenRelatedPayment={onOpenRelatedPayment} />
                   </>
                 ),
               },
@@ -483,26 +385,6 @@ export function ContractDetailView({
                       />
                     )}
                   </>
-                ),
-              },
-              {
-                key: "workflow",
-                label: "流程记录",
-                children: contractWorkflowEvents.length ? (
-                  <Timeline
-                    items={contractWorkflowEvents.map((event) => ({
-                      children: (
-                        <div className="contract-history-item">
-                          <b>{event.content}</b>
-                          <small>
-                            {personName(event.operator)} · {dayjs(event.created_at).format("YYYY-MM-DD HH:mm")}
-                          </small>
-                        </div>
-                      ),
-                    }))}
-                  />
-                ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无流程记录" />
                 ),
               },
               {
@@ -615,222 +497,6 @@ export function ContractDetailView({
                 ),
               },
               {
-                key: "legacy-contract-history",
-                label: "历史合同",
-                children: (
-                  <LegacyContractHistoryPanel
-                    contractNo={viewing.serial_no}
-                    customerNo={String(viewing.data.customer_no || "")}
-                  />
-                ),
-              },
-              {
-                key: "legacy-attachments",
-                label: "历史附件元数据",
-                children: (
-                  <>
-                    <Alert
-                      type="info"
-                      showIcon
-                      style={{ marginBottom: 8 }}
-                      message="仅元数据：旧系统源文件不可恢复"
-                      description="此处保留历史文件编号、父合同、声明大小、旧路径和隔离状态；没有下载或预览功能。"
-                    />
-                    {legacyHistoricalAttachmentsError ? (
-                      <Alert type="error" showIcon message={legacyHistoricalAttachmentsError} />
-                    ) : legacyHistoricalAttachmentsLoading ? (
-                      <span>正在加载历史合同附件元数据…</span>
-                    ) : (
-                      <Table<LegacyHistoricalAttachment>
-                        size="small"
-                        rowKey="id"
-                        pagination={false}
-                        dataSource={legacyHistoricalAttachments}
-                        locale={{ emptyText: "暂无已导入的历史合同附件元数据" }}
-                        columns={[
-                          { title: "历史文件ID", dataIndex: "legacy_file_id", width: 130 },
-                          { title: "文件名称", dataIndex: "file_name", ellipsis: true },
-                          { title: "历史合同号", dataIndex: "legacy_parent_no", width: 150 },
-                          {
-                            title: "声明大小",
-                            dataIndex: "legacy_declared_size_bytes",
-                            width: 110,
-                            render: (value: number | null) => (value == null ? "—" : `${value} B`),
-                          },
-                          {
-                            title: "恢复状态",
-                            dataIndex: "recovery_status",
-                            width: 210,
-                            render: (value: string) => (
-                              <Tag color="orange">{legacyAttachmentRecoveryLabel(value)}</Tag>
-                            ),
-                          },
-                          {
-                            title: "隔离原因",
-                            dataIndex: "quarantine_reasons",
-                            width: 210,
-                            render: (values: string[]) => legacyAttachmentQuarantineLabel(values),
-                          },
-                          {
-                            title: "物理文件",
-                            width: 140,
-                            render: () => <Tag color="default">源文件不可恢复</Tag>,
-                          },
-                        ]}
-                      />
-                    )}
-                  </>
-                ),
-              },
-              {
-                key: "archive",
-                label: "归档完结",
-                children: (
-                  <>
-                    {archiveSummary && (
-                      <Descriptions
-                        size="small"
-                        bordered
-                        column={3}
-                        items={[
-                          { key: "contract", label: "合同编号", children: archiveSummary.serial_no },
-                          { key: "title", label: "合同名称", children: archiveSummary.title },
-                          { key: "customer", label: "客户", children: archiveSummary.customer || "—" },
-                        ]}
-                        style={{ marginBottom: 12 }}
-                      />
-                    )}
-                    <Alert
-                      type="info"
-                      showIcon
-                      message="按案件费用逐项归档完结"
-                      description="勾选未完结的案件费用后提交。支付、开票和材料检查结果来自服务端归档核验，提交将写入费用与合同标的操作记录。"
-                      style={{ marginBottom: 12 }}
-                    />
-                    <Table<ContractArchiveSubject>
-                      rowKey="contract_object_id"
-                      size="small"
-                      loading={archiveSubjectsLoading}
-                      pagination={false}
-                      scroll={{ x: 1280 }}
-                      dataSource={archiveSubjects}
-                      locale={{ emptyText: "暂无可归档完结的合同标的" }}
-                      columns={[
-                        {
-                          title: "案件编号",
-                          dataIndex: "case_no",
-                          width: 150,
-                          render: (value: string) =>
-                            value ? (
-                              <Button type="link" className="contract-cell-link" onClick={() => onOpenRelatedCase(value)}>
-                                {value}
-                              </Button>
-                            ) : (
-                              "—"
-                            ),
-                        },
-                        { title: "案件名称", dataIndex: "case_title", width: 190, ellipsis: true },
-                        { title: "费用类型", dataIndex: "fee_type", width: 120 },
-                        {
-                          title: "合同费用",
-                          dataIndex: "contract_amount",
-                          width: 110,
-                          render: (value: number) => amount(value),
-                        },
-                        {
-                          title: "已支付",
-                          dataIndex: "paid_amount",
-                          width: 100,
-                          render: (value: number) => amount(value),
-                        },
-                        {
-                          title: "已开票",
-                          dataIndex: "invoiced_amount",
-                          width: 100,
-                          render: (value: number) => amount(value),
-                        },
-                        {
-                          title: "关联费用",
-                          dataIndex: "case_fee_ids",
-                          width: 96,
-                          render: (value: number[]) => value?.length || 0,
-                        },
-                        {
-                          title: "归档核验",
-                          width: 260,
-                          render: (_: unknown, row: ContractArchiveSubject) => (
-                            <Space size={[4, 4]} wrap>
-                              {Object.entries(row.archive_checks || {}).map(([key, passed]) => (
-                                <Tag key={key} color={passed ? "green" : "orange"}>
-                                  {archiveCheckLabels[key] || key}
-                                  {passed ? "已完成" : "待处理"}
-                                </Tag>
-                              ))}
-                            </Space>
-                          ),
-                        },
-                        {
-                          title: "费用完结",
-                          width: 100,
-                          render: (_: unknown, row: ContractArchiveSubject) => (
-                            <Tag color={row.fee_archived ? "green" : "default"}>
-                              {row.fee_archived ? "已完结" : "未完结"}
-                            </Tag>
-                          ),
-                        },
-                        {
-                          title: "本次完结",
-                          width: 110,
-                          fixed: "right",
-                          render: (_: unknown, row: ContractArchiveSubject) => (
-                            <Checkbox
-                              checked={selectedArchiveObjectKeys.includes(row.contract_object_id)}
-                              disabled={
-                                !detailContractCapabilities.canArchive ||
-                                row.fee_archived ||
-                                !row.case_fee_ids.length
-                              }
-                              onChange={(event) =>
-                                onArchiveSelectionChange(
-                                  event.target.checked
-                                    ? Array.from(new Set([...selectedArchiveObjectKeys, row.contract_object_id]))
-                                    : selectedArchiveObjectKeys.filter((key) => key !== row.contract_object_id),
-                                )
-                              }
-                            >
-                              完结
-                            </Checkbox>
-                          ),
-                        },
-                      ]}
-                    />
-                    <div style={{ marginTop: 12 }}>
-                      <Input.TextArea
-                        value={archiveClosureComment}
-                        disabled={!detailContractCapabilities.canArchive}
-                        onChange={(event) => onArchiveClosureCommentChange(event.target.value)}
-                        maxLength={1000}
-                        showCount
-                        rows={3}
-                        placeholder="填写归档完结说明"
-                      />
-                      <Space style={{ marginTop: 12 }}>
-                        <span>已选 {selectedArchiveObjectKeys.length} 个合同标的</span>
-                        <Popconfirm title="确认提交归档完结？" description="所选案件费用将被标记为已归档完结，并写入操作记录。" onConfirm={onSubmitArchiveClosure}>
-                          <Button
-                            type="primary"
-                            loading={archiveClosureSaving}
-                            disabled={!detailContractCapabilities.canArchive || !selectedArchiveObjectKeys.length}
-                          >
-                            提交归档完结
-                          </Button>
-                        </Popconfirm>
-                      </Space>
-                    </div>
-                  </>
-                ),
-              },
-              {
                 key: "approvals",
                 label: "审批信息",
                 children: (
@@ -882,157 +548,6 @@ export function ContractDetailView({
               },
             ]}
           />
-          <section className="contract-record-section">
-            <h3>回款记录</h3>
-            <Table
-              size="small"
-              rowKey="id"
-              pagination={false}
-              scroll={{ x: 1180 }}
-              dataSource={presentedReceipts as any[]}
-              locale={{ emptyText: "暂无回款记录" }}
-              columns={[
-                { title: "序号", width: 64, render: (_: unknown, __: any, index: number) => index + 1 },
-                { title: "回款单号", dataIndex: "receipt_no", width: 150 },
-                { title: "回款日期", dataIndex: "received_date", width: 120 },
-                { title: "银行单据号", dataIndex: "bank_reference", width: 150 },
-                { title: "回款金额", dataIndex: "amount", width: 110, render: (value: number) => amount(value) },
-                { title: "官费", width: 100, render: (_: unknown, row: any) => amount(row.official_amount || 0) },
-                { title: "代理费", width: 100, render: (_: unknown, row: any) => amount(row.agency_amount || 0) },
-                { title: "其他费用", width: 100, render: (_: unknown, row: any) => amount(row.other_amount || 0) },
-                { title: "回款方式", dataIndex: "payment_method", width: 120 },
-                { title: "回款分配人", dataIndex: "claimant", width: 120 },
-              ]}
-            />
-          </section>
-          <section className="contract-record-section">
-            <h3>开票记录</h3>
-            <Table
-              size="small"
-              rowKey="id"
-              pagination={false}
-              scroll={{ x: 1120 }}
-              dataSource={presentedInvoices}
-              rowClassName={(row: any) => (row.data?.__lineThrough ? "contract-line-through" : "")}
-              locale={{ emptyText: "暂无开票记录" }}
-              columns={[
-                { title: "序号", width: 64, render: (_: unknown, __: Contract, index: number) => index + 1 },
-                { title: "请票单号", dataIndex: "serial_no", width: 150 },
-                {
-                  title: "发票号码",
-                  width: 150,
-                  render: (_: unknown, row: Contract) => (row.data as any).invoice_no || "—",
-                },
-                {
-                  title: "开票日期",
-                  width: 120,
-                  render: (_: unknown, row: Contract) => (row.data as any).invoice_date || "—",
-                },
-                {
-                  title: "开票金额",
-                  width: 110,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).amount || 0),
-                },
-                {
-                  title: "官费",
-                  width: 100,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).official_amount || 0),
-                },
-                {
-                  title: "代理费",
-                  width: 100,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).agency_amount || 0),
-                },
-                {
-                  title: "其他费用",
-                  width: 100,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).other_amount || 0),
-                },
-                { title: "状态", dataIndex: "status", width: 110 },
-                { title: "备注", dataIndex: "description", width: 180 },
-              ]}
-            />
-          </section>
-          <section className="contract-record-section">
-            <h3>付款记录</h3>
-            <Table
-              size="small"
-              rowKey="id"
-              pagination={false}
-              scroll={{ x: 1120 }}
-              dataSource={presentedPayments}
-              rowClassName={(row: any) => (row.data?.__lineThrough ? "contract-line-through" : "")}
-              locale={{ emptyText: "暂无付款记录" }}
-              columns={[
-                { title: "序号", width: 64, render: (_: unknown, __: Contract, index: number) => index + 1 },
-                {
-                  title: "申请单号",
-                  dataIndex: "serial_no",
-                  width: 150,
-                  render: (value: string, row: Contract) =>
-                    value ? (
-                      <Button type="link" className="contract-cell-link" onClick={() => onOpenRelatedPayment(row)}>
-                        {value}
-                      </Button>
-                    ) : (
-                      "—"
-                    ),
-                },
-                {
-                  title: "申请人",
-                  width: 120,
-                  render: (_: unknown, row: Contract) =>
-                    personName(
-                      (row.data as any).applicant_display_name ||
-                        (row.data as any).applicant ||
-                        (row as any).owner_display_name ||
-                        row.owner,
-                    ),
-                },
-                {
-                  title: "待付金额",
-                  width: 110,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).pending_amount || 0),
-                },
-                {
-                  title: "付款日期",
-                  width: 120,
-                  render: (_: unknown, row: Contract) => (row.data as any).payment_date || "—",
-                },
-                {
-                  title: "付款单据",
-                  width: 140,
-                  render: (_: unknown, row: Contract) => (row.data as any).payment_reference || "—",
-                },
-                {
-                  title: "付款金额",
-                  width: 110,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).amount || 0),
-                },
-                {
-                  title: "付款类型",
-                  width: 120,
-                  render: (_: unknown, row: Contract) => (row.data as any).payment_type || "—",
-                },
-                {
-                  title: "付款标的",
-                  width: 260,
-                  dataIndex: "line_summary",
-                  render: (value: string) => value || "—",
-                },
-                {
-                  title: "官费",
-                  width: 100,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).official_amount || 0),
-                },
-                {
-                  title: "其他费用",
-                  width: 100,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).other_amount || 0),
-                },
-              ]}
-            />
-          </section>
         </div>
       </div>
     );

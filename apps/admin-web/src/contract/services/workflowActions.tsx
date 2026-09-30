@@ -11,17 +11,12 @@ import type { ContractMutationGate } from "../../contractMutationGate.mjs";
 import { buildContractApprovalPayload, buildContractEventsRequest, extractContractErrorMessage, normalizeContractActionResponse, normalizeContractAttachment, validateContractApprovalSubmission, validateContractAttachment, validateContractDraftValues } from "../../contractWorkflowPolicy.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY, CONTRACT_SEAL_READY_STATUSES, WIZARD_STORAGE_KEY } from "../constants";
-import type { ApproverSetting, Attachment, Change, Contract, ContractArchiveSubject, ContractWorkflowCapabilities, CustomerRef, DirectoryUser, Profile, Step } from "../types";
+import type { ApproverSetting, Attachment, Change, Contract, ContractWorkflowCapabilities, CustomerRef, DirectoryUser, Profile, Step } from "../types";
 /** contract workflow operations; dependencies are read when each operation runs. */
 export interface ContractWorkflowDependencies {
     readonly viewing: Contract | null;
     readonly contractCapabilities: (contract?: Contract | null | undefined, options?: Record<string, unknown>) => ContractWorkflowCapabilities;
     readonly denyContractAction: () => MessageType;
-    readonly archiveSubjects: ContractArchiveSubject[];
-    readonly selectedArchiveObjectKeys: React.Key[];
-    readonly setArchiveClosureSaving: React.Dispatch<React.SetStateAction<boolean>>;
-    readonly archiveClosureComment: string;
-    readonly loadArchiveSubjects: (contract: Contract) => Promise<void>;
     readonly load: (queryOverride?: Record<string, any> | undefined, paginationOverride?: {
         current: number;
         pageSize: number;
@@ -129,37 +124,6 @@ export interface ContractWorkflowDependencies {
     readonly setDirectory: React.Dispatch<React.SetStateAction<DirectoryUser[]>>;
 }
 export function createContractWorkflowActions(context: ContractWorkflowDependencies) {
-    const submitArchiveClosure = async () => {
-        const { viewing, contractCapabilities, denyContractAction, archiveSubjects, selectedArchiveObjectKeys, setArchiveClosureSaving, archiveClosureComment, loadArchiveSubjects, load } = context;
-        if (!viewing)
-            return;
-        if (!contractCapabilities(viewing).canArchive) {
-            denyContractAction();
-            return;
-        }
-        const selectedSubjects = archiveSubjects.filter((item) => selectedArchiveObjectKeys.includes(item.contract_object_id));
-        const caseFeeIds = Array.from(new Set(selectedSubjects.flatMap((item) => item.case_fee_ids || [])));
-        if (!caseFeeIds.length) {
-            message.warning("请选择至少一条可完结的案件费用");
-            return;
-        }
-        setArchiveClosureSaving(true);
-        try {
-            const { data } = await api.post(`/contracts/${viewing.id}/archive-closure`, {
-                case_fee_ids: caseFeeIds,
-                fee_archived: true,
-                comment: archiveClosureComment.trim(),
-            });
-            message.success(`已完结 ${data.updated} 条案件费用${data.changed ? `，其中 ${data.changed} 条状态已变更` : ""}`);
-            await Promise.all([loadArchiveSubjects(viewing), load()]);
-        }
-        catch (error: any) {
-            message.error(extractContractErrorMessage(error, "合同归档完结提交失败"));
-        }
-        finally {
-            setArchiveClosureSaving(false);
-        }
-    };
     const saveContractObject = async () => {
         const { viewing, objectEditing, contractCapabilities, denyContractAction, objectForm, setObjectEditing, openViewing } = context;
         if (!viewing || !objectEditing)
@@ -832,5 +796,5 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
             setApproverSettingsSaving(false);
         }
     };
-    return { submitArchiveClosure, saveContractObject, deleteContractObject, recoverWizard, openSubmitWizardFromList, save, submitWizard, approveWizard, createSealApplication, submit, openReview, approve, saveChange, reviewChange, openChanges, createContractEvent, openInvestigation, createInvestigation, advanceInvestigationWizard, startSelectedSeal, openApproverSettings, saveApproverSettings };
+    return { saveContractObject, deleteContractObject, recoverWizard, openSubmitWizardFromList, save, submitWizard, approveWizard, createSealApplication, submit, openReview, approve, saveChange, reviewChange, openChanges, createContractEvent, openInvestigation, createInvestigation, advanceInvestigationWizard, startSelectedSeal, openApproverSettings, saveApproverSettings };
 }

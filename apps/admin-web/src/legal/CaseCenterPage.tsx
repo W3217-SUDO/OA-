@@ -2681,8 +2681,6 @@ export default function CaseCenterPage({
   const specialCases=(specialMode==="execution"?pendingExecutionCases:scopedCases).filter(caseMatches);
   const phaseRows:any[]=Object.values(specialCases.reduce((acc:Record<string,any>,row)=>{const name=row.owner||"未分配";if(!acc[name])acc[name]={id:name,name,date:dayjs().format("YYYY-MM-DD"),filing:0,refund:0,execution:0,clue:0};if(String(row.status).includes("立案"))acc[name].filing++;if(String(row.status).includes("退费"))acc[name].refund++;if(String(row.status).includes("执行"))acc[name].execution++;if(row.data.investigation_clue)acc[name].clue++;return acc},{}));
   const relatedCase=(id:number)=>cases.find(row=>row.id===id);
-  const relatedFinance=(id:number)=>financeRows.find(row=>row.id===id);
-  const invoiceCase=(row:AttachmentRow)=>{const finance=relatedFinance(row.record_id||0);return relatedCase(row.record_id||0)||cases.find(item=>item.serial_no===finance?.data?.case_no)};
   const scheduleRows=hearings.filter(row=>{const c=relatedCase(row.case_record_id);return c?caseMatches(c):true}).map(row=>({...row,case:relatedCase(row.case_record_id)}));
   const receiptRows=receiptList.rows;
   const invoiceRows=attachments.filter(row=>row.category.includes("发票")||row.category.includes("票据"));
@@ -2747,8 +2745,6 @@ export default function CaseCenterPage({
     get openCaseLogViewer() { return openCaseLogViewer; },
     get openCaseListLogCreator() { return openCaseListLogCreator; },
     get openRelatedCustomer() { return openRelatedCustomer; },
-    get invoiceCase() { return invoiceCase; },
-    get relatedFinance() { return relatedFinance; },
   });
   const customCaseDocumentFolders=getCustomCaseDocumentFolders(viewingCounselCase);
   const counselCaseFileTypeOptions = fileTypeOptionsForCase(viewingCounselCase?.data.case_type);
@@ -3028,7 +3024,7 @@ export default function CaseCenterPage({
         />
       )}
       {specialMode ? <Card className="panel case-original-panel case-special-panel" title={specialTitle[specialMode]} extra={specialMode==="execution"?<Space><Button type="link" onClick={()=>document.querySelector('.case-special-query')?.classList.remove('case-query-hidden')}>高级搜索</Button><Button type="link" onClick={()=>document.querySelector('.case-special-query')?.classList.add('case-query-hidden')}>普通搜索</Button></Space>:null}>
-        {specialMode==="invoice"&&<div className="case-invoice-import"><input ref={caseUploadRef} hidden type="file" accept=".xlsx,.xls,.csv,.pdf,.zip" onChange={event=>uploadCaseInvoiceFile(event.target.files?.[0])}/><Space><Button onClick={()=>caseUploadRef.current?.click()}>上传文件</Button><Button type="primary" onClick={startCaseInvoiceImport}>开始导入</Button></Space></div>}
+        {specialMode==="invoice"&&<div className="case-invoice-import"><input ref={caseUploadRef} hidden type="file" accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.ofd,.zip" onChange={event=>uploadCaseInvoiceFile(event.target.files?.[0])}/><Space><Button onClick={()=>caseUploadRef.current?.click()}>上传文件</Button><Button type="primary" onClick={startCaseInvoiceImport}>开始导入</Button></Space></div>}
         {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className="case-special-query" initialValues={shouldUseCompanyScheduleQueryFields(initialView)?getCompanyScheduleQueryInitialValues(dayjs()):undefined} onFinish={values=>{setCaseQuery(values);if(specialMode==="receipt"){setSelectedCaseKeys([]);void receiptList.search(values,1,receiptList.pageSize);}}}>
           {(specialFilters[specialMode]||[]).map(([key,label,type,placeholder])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker placeholder={placeholder!==undefined?[placeholder,placeholder]:undefined}/>:type==="select"?<Select allowClear placeholder={placeholder} options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input placeholder={placeholder}/>}</Form.Item>)}
           <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button>{specialMode==="receipt"&&receiptList.canUpload&&<Button type="primary" onClick={()=>{const rows=receiptRows.filter(row=>selectedCaseKeySet.has(String(row.id)));if(!rows.length)return message.warning("请选择费用记录");if(new Set(rows.map(row=>row.customer)).size>1)return message.warning("批量上传的费用必须属于同一客户");setReceiptUploadRows(rows);}}>批量上传</Button>}<Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});if(specialMode==="receipt"){setSelectedCaseKeys([]);void receiptList.search({},1,receiptList.pageSize);}}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>

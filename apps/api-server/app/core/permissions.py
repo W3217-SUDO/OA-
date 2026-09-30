@@ -769,22 +769,15 @@ async def _ensure_record_visible(record_id: int, identity: dict, db: AsyncSessio
 
 
 async def _ensure_pending_clue_audit_record(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
-    """按待审批线索入口的岗位权限读取目标记录，不改变普通线索范围。"""
-    user = await db.scalar(select(User).where(
-        User.username == identity["username"], User.is_active.is_(True),
-    ))
-    if not user or not await _user_has_job_permission(user, "线索审批", db):
-        raise HTTPException(status_code=403, detail="当前账号没有线索审批岗位权限")
-    await _require_record_module_menu("clue", identity, db, action="查看")
-    record = await db.get(BusinessRecord, record_id)
-    if not record or record.module != "clue":
-        raise HTTPException(status_code=404, detail="业务记录不存在")
+    """按品牌关系或专门审批岗位读取待审批线索。"""
+    from app.core.clue_audit_scope import ensure_clue_audit_record
+    record = await ensure_clue_audit_record(record_id, identity, db)
     if record.status != "待审批":
         raise HTTPException(status_code=409, detail="只有待审批线索可以进入内部审核")
     return record
 
 
-async def _ensure_attachment_record_visible(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+async def _ensure_attachment_record_visible(record_id: int, identity: dict, db: AsyncSession, *, allow_clue_audit_read: bool = False) -> BusinessRecord:
     """Resolve attachment parent visibility without losing task-participant access.
 
     Task collaborators and initiators deliberately have a narrower record scope than
@@ -796,6 +789,21 @@ async def _ensure_attachment_record_visible(record_id: int, identity: dict, db: 
         _is_task_participant,
     )
     record = await db.get(BusinessRecord, record_id)
+    if allow_clue_audit_read and record and record.module in {"clue", "evidence"}:
+        from app.core.clue_audit_scope import clue_audit_condition
+        data = record.data or {}
+        relation = BusinessRecord.id == record.id if record.module == "clue" else or_(
+            BusinessRecord.id == data.get("clue_id"),
+            BusinessRecord.id == data.get("clue_record_id"),
+            BusinessRecord.serial_no == str(data.get("clue_no") or ""),
+            BusinessRecord.data["collection_evidence_record_id"].as_integer() == record.id,
+        )
+        if await db.scalar(select(BusinessRecord.id).where(relation, await clue_audit_condition(identity, db))):
+            await _require_record_module_menu("clue", identity, db, action="查看")
+            return record
+        # 不属于审核范围时按真实身份走原记录权限，不能因菜单临时提权继续读取。
+        identity = {**identity, "role": identity["_actual_role"],
+                    "role_ids": identity["_actual_role_ids"], "_page_menu_capability": False}
     if record and record.module == "task":
         if not _is_task_participant(record, identity):
             raise HTTPException(status_code=403, detail="只有任务参与人可以访问任务反馈附件")
@@ -999,11 +1007,18 @@ def _role_permission_dict(item: RolePermission) -> dict:
     return {"role": item.role, "display_name": item.display_name, "data_scope": item.data_scope, "menu_keys": menu_keys, "action_keys": action_keys, "field_keys": item.field_keys, "updated_at": item.updated_at}
 
 
-async def _scoped_export_records(module: str, ids: str, identity: dict, db: AsyncSession) -> list[BusinessRecord]:
+async def _scoped_export_records(module: str, ids: str, identity: dict, db: AsyncSession, *, clue_audit: bool = False, statuses: str = "") -> list[BusinessRecord]:
     from app.core.system import (
         _export_ids,
     )
-    conditions = [BusinessRecord.module == module, *(await _record_scope_conditions(identity, db))]
+    if clue_audit and module == "clue":
+        from app.core.clue_audit_scope import clue_audit_condition
+        await _require_record_module_menu("clue", identity, db, action="导出")
+        conditions = [await clue_audit_condition(identity, db)]
+    else:
+        conditions = [BusinessRecord.module == module, *(await _record_scope_conditions(identity, db))]
+    if statuses:
+        conditions.append(BusinessRecord.status.in_([value.strip() for value in statuses.split(",") if value.strip()]))
     selected_ids = _export_ids(ids)
     if selected_ids:
         conditions.append(BusinessRecord.id.in_(selected_ids))

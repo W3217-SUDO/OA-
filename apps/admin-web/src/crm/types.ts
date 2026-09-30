@@ -55,19 +55,7 @@ export type CustomerNotice = {
   created_at: string;
 };
 
-export type LegacyCustomerHistory = {
-  coordinators: any[];
-  contacts: any[];
-  events: any[];
-  files: any[];
-  zero_baselines: { source_table: string; source_row_count: number; audit_status: string }[];
-  counts: { coordinators: number; contacts: number; events: number; files: number };
-};
 
-export const EMPTY_LEGACY_CUSTOMER_HISTORY: LegacyCustomerHistory = {
-  coordinators: [], contacts: [], events: [], files: [], zero_baselines: [],
-  counts: { coordinators: 0, contacts: 0, events: 0, files: 0 },
-};
 
 export type Customer = {
   id: number;

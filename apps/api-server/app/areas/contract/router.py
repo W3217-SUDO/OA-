@@ -971,6 +971,7 @@ async def contract_invoice_candidates(contract_id: int, identity: dict = Depends
     """Return individual, currently invoiceable case-fee rows for a contract."""
     from app.core.contracts import _contract_allows_finance_application
     from app.core.finance import _fee_matches_contract, _invoice_fee_details
+    from app.core.invoice_sources import is_external_case_fee
     from app.core.permissions import _ensure_record_module, _record_scope_conditions, _require_record_module_menu
 
     await _require_record_module_menu("contract", identity, db, action="查看")
@@ -988,7 +989,7 @@ async def contract_invoice_candidates(contract_id: int, identity: dict = Depends
     ]
     fees = [
         fee for fee in (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.id))).all()
-        if _fee_matches_contract(fee, contract)
+        if _fee_matches_contract(fee, contract) and is_external_case_fee(fee)
     ]
     rows = await _invoice_fee_details(identity, db, ids={fee.id for fee in fees}) if fees else []
     items = []

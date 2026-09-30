@@ -658,7 +658,7 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
         data.append("remark", "案件发票文件导入");
         try {
             await api.post("/attachments", data);
-            message.success("发票文件已上传，请点击开始导入完成案件匹配");
+            message.success("发票文件已上传，请点击开始导入按发票号匹配申请费用");
             await load();
         }
         catch (error: any) {

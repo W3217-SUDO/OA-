@@ -5,16 +5,13 @@ import { confirmOperation } from "../../components/common/confirmOperation";
 import { buildContractAttachmentDeletePlan } from "../../contractAttachmentBatch.mjs";
 import type { ContractMutationGate } from "../../contractMutationGate.mjs";
 import { canMutateContractAttachments, contractAttachmentActionPolicy, extractContractErrorMessage, normalizeContractActionResponse, normalizeContractAttachment, validateContractAttachment } from "../../contractWorkflowPolicy.mjs";
-import type { Attachment, Contract, LegacyHistoricalAttachment } from "../types";
+import type { Attachment, Contract } from "../types";
 /** contract documents operations; dependencies are read when each operation runs. */
 export interface ContractDocumentsDependencies {
     readonly setViewingAttachmentsLoading: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setViewingAttachmentsError: React.Dispatch<React.SetStateAction<string | null>>;
     readonly setViewingAttachments: React.Dispatch<React.SetStateAction<Attachment[]>>;
     readonly setSelectedAttachmentKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
-    readonly setLegacyHistoricalAttachmentsLoading: React.Dispatch<React.SetStateAction<boolean>>;
-    readonly setLegacyHistoricalAttachmentsError: React.Dispatch<React.SetStateAction<string | null>>;
-    readonly setLegacyHistoricalAttachments: React.Dispatch<React.SetStateAction<LegacyHistoricalAttachment[]>>;
     readonly wizardDraft: Contract | null;
     readonly contractFile: File | null;
     readonly setContractFile: React.Dispatch<React.SetStateAction<File | null>>;
@@ -47,24 +44,6 @@ export function createContractDocumentsActions(context: ContractDocumentsDepende
         }
         finally {
             setViewingAttachmentsLoading(false);
-        }
-    };
-    const loadLegacyHistoricalAttachments = async (contract: Contract) => {
-        const { setLegacyHistoricalAttachmentsLoading, setLegacyHistoricalAttachmentsError, setLegacyHistoricalAttachments } = context;
-        setLegacyHistoricalAttachmentsLoading(true);
-        setLegacyHistoricalAttachmentsError(null);
-        try {
-            const response = await api.get("/legacy-history/attachments", {
-                params: { legacy_entity_type: "FCM_Contract_File", legacy_parent_no: contract.serial_no, include_inactive: true, page_size: 200 },
-            });
-            setLegacyHistoricalAttachments(response.data.items || []);
-        }
-        catch (error: any) {
-            setLegacyHistoricalAttachments([]);
-            setLegacyHistoricalAttachmentsError(extractContractErrorMessage(error, "历史合同附件元数据加载失败"));
-        }
-        finally {
-            setLegacyHistoricalAttachmentsLoading(false);
         }
     };
     const downloadAttachment = async (item: Attachment) => {
@@ -237,5 +216,5 @@ export function createContractDocumentsActions(context: ContractDocumentsDepende
             },
         });
     };
-    return { reloadViewingAttachments, loadLegacyHistoricalAttachments, downloadAttachment, previewAttachment, uploadDraftContractAttachment, uploadViewingAttachment, deleteViewingAttachment, batchDeleteViewingAttachments };
+    return { reloadViewingAttachments, downloadAttachment, previewAttachment, uploadDraftContractAttachment, uploadViewingAttachment, deleteViewingAttachment, batchDeleteViewingAttachments };
 }

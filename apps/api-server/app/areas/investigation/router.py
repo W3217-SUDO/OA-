@@ -17,6 +17,8 @@ from app.models_shared import (
     RecordInput, RecordUpdate, TaskActionInput,
 )
 from fastapi import APIRouter
+from app.areas.investigation.task_details import router as task_detail_router
+from sqlalchemy import or_
 import json
 
 _AUTHORIZATION_CITIES = {item["province"]: item["cities"] for item in json.loads(
@@ -24,6 +26,7 @@ _AUTHORIZATION_CITIES = {item["province"]: item["cities"] for item in json.loads
 )}
 
 router = APIRouter()
+router.include_router(task_detail_router)
 
 
 @router.get(f"{settings.api_prefix}/investigations/assignment-supervisor")
@@ -36,14 +39,14 @@ async def investigation_assignment_supervisor(identity: dict = Depends(current_i
 
 
 @router.get(f"{settings.api_prefix}/investigations/clues/export")
-async def export_investigation_clues(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def export_investigation_clues(ids: str = "", scope: str = Query("all", pattern="^(all|audit)$"), statuses: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
         _scoped_export_records,
     )
     from app.core.system import (
         _csv_response,
     )
-    records = await _scoped_export_records("clue", ids, identity, db)
+    records = await _scoped_export_records("clue", ids, identity, db, clue_audit=scope == "audit", statuses=statuses)
     rows = []
     for item in records:
         data = item.data or {}
@@ -52,14 +55,14 @@ async def export_investigation_clues(ids: str = "", identity: dict = Depends(cur
 
 
 @router.get(f"{settings.api_prefix}/investigations/clues/handover-export")
-async def export_investigation_handover(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def export_investigation_handover(ids: str = "", scope: str = Query("all", pattern="^(all|audit)$"), statuses: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
         _scoped_export_records,
     )
     from app.core.system import (
         _csv_response,
     )
-    records = await _scoped_export_records("clue", ids, identity, db)
+    records = await _scoped_export_records("clue", ids, identity, db, clue_audit=scope == "audit", statuses=statuses)
     rows = []
     for item in records:
         data = item.data or {}
@@ -73,13 +76,7 @@ async def investigation_action_capabilities(
     scope: str = Query(default="all", pattern="^(all|audit)$"),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
-    """Return the current user's real investigation actions for visible records.
-
-    The investigation workbench must not infer approval authority from a display
-    role.  In particular, clue review is a job-role permission, customer review
-    belongs to the relevant customer manager, and certificate registration also
-    requires authority over the notary record itself.
-    """
+    """返回真实操作权限：线索按审批岗位或品牌关系，客户审核按品牌关系，公证按原权限。"""
     from app.core.permissions import (
         _record_scope_conditions, _user_has_job_permission,
     )
@@ -92,10 +89,15 @@ async def investigation_action_capabilities(
     if len(requested_ids) > 100:
         raise HTTPException(status_code=422, detail="一次最多查询 100 条调查记录的操作权限")
     user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
-    can_review_clue = bool(user and await _user_has_job_permission(user, "线索审批", db))
-    if scope == "audit" and not can_review_clue:
-        return {"items": {}}
-    record_scope = () if scope == "audit" else tuple(await _record_scope_conditions(identity, db))
+    from app.core.clue_audit_scope import clue_audit_condition
+    audit_condition = await clue_audit_condition(identity, db)
+    audit_ids = set((await db.scalars(select(BusinessRecord.id).where(
+        BusinessRecord.id.in_(requested_ids), audit_condition,
+    ))).all())
+    brand_ids = set((await db.scalars(select(BusinessRecord.id).where(
+        BusinessRecord.id.in_(requested_ids), await clue_audit_condition(identity, db, include_job_permission=False),
+    ))).all())
+    record_scope = (audit_condition,) if scope == "audit" else tuple(await _record_scope_conditions(identity, db))
     records = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(requested_ids),
         BusinessRecord.module.in_({"clue", "notary"}),
@@ -103,16 +105,6 @@ async def investigation_action_capabilities(
     ))).all())
     can_review_notary = bool(user and await _user_has_job_permission(user, "公证审核", db))
     can_register_certificate = bool(user and await _user_has_job_permission(user, "公证书号码登记", db))
-    customer_names = {record.customer.strip() for record in records if record.module == "clue" and record.customer.strip()}
-    customer_managers: dict[str, set[str]] = {}
-    if customer_names:
-        customers = list((await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "customer", BusinessRecord.title.in_(customer_names),
-        ))).all())
-        customer_managers = {
-            customer.title.strip(): set((customer.data or {}).get("customer_managers") or [customer.owner])
-            for customer in customers
-        }
     items: dict[str, dict[str, bool]] = {}
     for record in records:
         can_manage_record = (
@@ -121,11 +113,12 @@ async def investigation_action_capabilities(
             or (identity.get("role") == "manager" and user and record.department == user.department)
         )
         items[str(record.id)] = {
-            "review_clue": record.module == "clue" and can_review_clue,
-            "review_customer_clue": record.module == "clue" and (
-                identity.get("role") == "admin"
-                or identity["username"] in customer_managers.get(record.customer.strip(), set())
+            "review_clue": record.module == "clue" and record.id in audit_ids and (
+                not (record.data or {}).get("reviewer")
+                or (record.data or {}).get("reviewer") == identity["username"]
+                or identity.get("_actual_role", identity.get("role")) == "admin"
             ),
+            "review_customer_clue": record.module == "clue" and record.id in brand_ids,
             "review_notary": record.module == "notary" and can_review_notary,
             "register_notary_certificate": record.module == "notary" and can_register_certificate and can_manage_record,
         }
@@ -140,6 +133,7 @@ async def clue_import_template(_: dict = Depends(current_identity)):
 
 @router.post(f"{settings.api_prefix}/investigations/records", status_code=status.HTTP_201_CREATED)
 async def create_investigation_record(body: RecordInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.clue_audit_scope import investigation_customer_data
     from app.core.contracts import (
         _contract_allows_downstream_creation, _contract_person_values,
     )
@@ -192,6 +186,7 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         payload["department"] = supervisor.department
         payload["data"] = {
             **investigation_data,
+            **(await investigation_customer_data(contract, db)),
             "contract_id": contract.id,
             "contract_record_id": contract.id,
             "contract_no": contract.serial_no,
@@ -216,6 +211,7 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         payload["department"] = source_task.department
         source_data = source_task.data or {}
         payload["data"] = {**(payload.get("data") or {}), "source_task_id": source_task.id, "source_task_no": source_task.serial_no, "investigation_record_id": source_data.get("investigation_record_id") or (source_task.id if source_task.module == "investigation" else None), "investigation_no": source_data.get("investigation_no") or (source_task.serial_no if source_task.module == "investigation" else ""), "customer_review": bool(source_data.get("customer_review")), "customer_managers": list(source_data.get("customer_managers") or _contract_person_values(source_data.get("customer_manager"))), "customer_manager": source_data.get("customer_manager") or "、".join(list(source_data.get("customer_managers") or [])), "publisher": identity["username"]}
+        payload["data"].update(await investigation_customer_data(source_task, db))
     if identity.get("role") != "admin" and body.module != "investigation":
         payload["department"] = user.department
         if identity.get("role") == "user":
@@ -242,6 +238,10 @@ async def update_investigation_record(record_id: int, body: RecordUpdate, identi
         _allowed_field_keys, _record_dict,
     )
     record = await _ensure_record_visible(record_id, identity, db)
+    if record.module == "investigation":
+        from app.core.investigation_access import _actual_identity
+        identity = await _actual_identity(identity, db)
+        record = await _ensure_record_visible(record_id, identity, db)
     if record.module not in {*INVESTIGATION_RECORD_MODULES, "task"}:
         raise HTTPException(status_code=404, detail="调查中心记录不存在")
     if record.module == "task":
@@ -720,20 +720,12 @@ async def turn_on_investigation_clue_audit(clue_id: int, body: ClueTurnOnAuditIn
 @router.get(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/conflicts")
 async def investigation_clue_conflicts(clue_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.clue_conflicts import clue_conflicts
-    from app.core.permissions import _ensure_pending_clue_audit_record, _ensure_record_module, _user_has_job_permission
-
-    reviewer = await db.scalar(select(User).where(User.username == identity["username"]))
-    if not reviewer or not await _user_has_job_permission(reviewer, "线索审批", db):
-        raise HTTPException(status_code=403, detail="当前账号没有线索审批岗位权限")
-    pending_clue = await db.get(BusinessRecord, clue_id)
-    if pending_clue and pending_clue.status == "待审批":
-        clue = await _ensure_pending_clue_audit_record(clue_id, identity, db)
-    else:
-        clue = await _ensure_record_module(clue_id, "clue", identity, db)
+    from app.core.clue_audit_scope import ensure_clue_audit_record
+    clue = await ensure_clue_audit_record(clue_id, identity, db)
     if clue.status not in {"待审批", "待客户审核"}:
         raise HTTPException(status_code=409, detail="只有待审批线索可以查看疑似冲突")
     assigned_reviewer = str((clue.data or {}).get("reviewer") or "").strip()
-    if assigned_reviewer and assigned_reviewer != identity["username"] and identity.get("role") != "admin":
+    if assigned_reviewer and assigned_reviewer != identity["username"] and identity.get("_actual_role", identity.get("role")) != "admin":
         raise HTTPException(status_code=403, detail="该线索已分配给其他审核人")
     return await clue_conflicts(clue, db)
 
@@ -749,7 +741,7 @@ async def review_investigation_clue(clue_id: int, body: ClueReviewInput, identit
     )
     clue = await _ensure_pending_clue_audit_record(clue_id, identity, db)
     assigned_reviewer = str((clue.data or {}).get("reviewer") or "").strip()
-    if assigned_reviewer and assigned_reviewer != identity["username"] and identity.get("role") != "admin":
+    if assigned_reviewer and assigned_reviewer != identity["username"] and identity.get("_actual_role", identity.get("role")) != "admin":
         raise HTTPException(status_code=403, detail="该线索已分配给其他审核人")
     conflicts = await clue_conflicts(clue, db)
     next_status = "待客户审核" if body.approved and bool((clue.data or {}).get("customer_review")) else "待取证" if body.approved else "已驳回"
@@ -771,20 +763,13 @@ async def review_investigation_clue(clue_id: int, body: ClueReviewInput, identit
 
 @router.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/customer-review")
 async def customer_review_investigation_clue(clue_id: int, body: ClueReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.permissions import (
-        _ensure_record_module,
-    )
+    from app.core.clue_audit_scope import ensure_clue_audit_record
     from app.core.system import (
         _record_dict,
     )
-    clue = await _ensure_record_module(clue_id, "clue", identity, db)
+    clue = await ensure_clue_audit_record(clue_id, identity, db, include_job_permission=False)
     if clue.status != "待客户审核":
         raise HTTPException(status_code=409, detail="只有待客户审核线索可以确认客户审核结果")
-    if identity.get("role") != "admin":
-        customer = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "customer", BusinessRecord.title == clue.customer))
-        customer_managers = set((customer.data or {}).get("customer_managers") or ([customer.owner] if customer else []))
-        if identity["username"] not in customer_managers:
-            raise HTTPException(status_code=403, detail="仅该客户的客户管理人可以代录客户审核结果")
     clue.status = "待取证" if body.approved else "已驳回"
     clue.data = {**(clue.data or {}), "customer_reviewer": identity["username"], "customer_reviewed_at": datetime.now().isoformat(timespec="seconds"), "customer_review_comment": body.comment, "rejection_reason": "" if body.approved else body.comment}
     db.add(WorkflowEvent(record_id=clue.id, action="客户审核通过" if body.approved else "客户审核驳回", from_status="待客户审核", to_status=clue.status, operator=identity["username"], comment=body.comment))
@@ -946,7 +931,7 @@ async def update_evidence_record(evidence_id: int, body: EvidenceUpdateInput, id
 @router.get(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/workspace")
 async def get_investigation_clue_workspace(clue_id: int, scope: str = Query("", pattern="^(|audit)$"), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_pending_clue_audit_record, _ensure_record_module, _record_scope_conditions,
+        _ensure_record_module, _record_scope_conditions,
     )
     from app.core.storage import (
         _attachment_dict,
@@ -958,12 +943,10 @@ async def get_investigation_clue_workspace(clue_id: int, scope: str = Query("", 
         _optional_record_id, _record_dict,
     )
     if scope == "audit":
-        clue = await _ensure_pending_clue_audit_record(clue_id, identity, db)
+        from app.core.clue_audit_scope import ensure_clue_audit_record
+        clue = await ensure_clue_audit_record(clue_id, identity, db)
     else:
         clue = await _ensure_record_module(clue_id, "clue", identity, db)
-    visible_evidence = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "evidence", *(await _record_scope_conditions(identity, db)),
-    ).order_by(BusinessRecord.created_at.asc(), BusinessRecord.id.asc()))).all())
     clue_data = clue.data or {}
     linked_ids = {
         record_id for value in (
@@ -971,12 +954,14 @@ async def get_investigation_clue_workspace(clue_id: int, scope: str = Query("", 
             + [clue_data.get("collection_evidence_record_id")]
         ) if (record_id := _optional_record_id(value))
     }
-    evidence = [
-        item for item in visible_evidence
-        if item.id in linked_ids
-        or _optional_record_id((item.data or {}).get("clue_id") or (item.data or {}).get("clue_record_id")) == clue.id
-        or str((item.data or {}).get("clue_no") or "").strip() == clue.serial_no
-    ]
+    evidence = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "evidence",
+        *(await _record_scope_conditions(identity, db) if scope != "audit" else []),
+        or_(BusinessRecord.id.in_(linked_ids),
+            BusinessRecord.data["clue_id"].as_integer() == clue.id,
+            BusinessRecord.data["clue_record_id"].as_integer() == clue.id,
+            BusinessRecord.data["clue_no"].as_string() == clue.serial_no),
+    ).order_by(BusinessRecord.created_at.asc(), BusinessRecord.id.asc()))).all())
     record_ids = [clue.id, *[item.id for item in evidence]]
     attachments = list((await db.scalars(select(FileAttachment).where(
         FileAttachment.record_id.in_(record_ids),
@@ -1337,13 +1322,14 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         _ensure_record_module, _ensure_record_visible, _require_record_owner_or_manager,
     )
     from app.core.tasks import (
-        _active_task_username, _add_task_message_notifications, _next_rw_task_serial_no, _validate_task_deadline,
+        _active_task_username, _add_task_message_notifications, _next_rw_task_serial_no,
     )
     source = await _ensure_record_visible(record_id, identity, db)
     if source.module not in INVESTIGATION_MATERIAL_CATEGORIES:
         raise HTTPException(status_code=404, detail="调查业务记录不存在")
     await _require_record_owner_or_manager(source, identity, db)
-    _validate_task_deadline(body.deadline)
+    if body.deadline < date.today():
+        raise HTTPException(status_code=422, detail="任务截止日期不能早于今天")
     source = await _resolve_investigation_task_root(source, identity, db)
     source_data = source.data or {}
     is_legacy_investigation = bool(
@@ -1449,8 +1435,10 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         region = str(parent_or_source.get("region") or parent_or_source.get("address") or "").strip()
         if not region:
             region = " ".join(part for part in (province, city, district) if part)
+    from app.core.clue_audit_scope import investigation_customer_data
     task_data = {
-        "deadline": str(end_date or body.deadline), "priority": body.priority, "source": "调查任务",
+        **(await investigation_customer_data(source, db)),
+        "deadline": str(body.deadline), "priority": body.priority, "source": "调查任务",
         "initiator": identity["username"], "collaborators": [], "case_no": "",
         "contract_id": contract.id if contract else None,
         "contract_record_id": contract.id if contract else None,

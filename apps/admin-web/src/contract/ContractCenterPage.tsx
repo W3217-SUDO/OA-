@@ -89,13 +89,10 @@ import type {
 ApproverSetting,Attachment,
 Change,
 Contract,
-ContractArchiveSubject,
-ContractArchiveSummary,
 ContractEvent,
 ContractPaymentCandidate,
 ContractWorkflowCapabilities,CustomerRef,DirectoryUser,
 HistoryEvent,
-LegacyHistoricalAttachment,
 PaymentTypeOption,
 Profile,
 SealAsset,
@@ -183,9 +180,6 @@ export default function ContractCenterPage({
   const [approverSettingsSaving, setApproverSettingsSaving] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [viewingAttachments, setViewingAttachments] = useState<Attachment[]>([]);
-  const [legacyHistoricalAttachments, setLegacyHistoricalAttachments] = useState<LegacyHistoricalAttachment[]>([]);
-  const [legacyHistoricalAttachmentsLoading, setLegacyHistoricalAttachmentsLoading] = useState(false);
-  const [legacyHistoricalAttachmentsError, setLegacyHistoricalAttachmentsError] = useState<string | null>(null);
   const [detailActiveTab, setDetailActiveTab] = useState("objects");
   const [selectedAttachmentKeys, setSelectedAttachmentKeys] = useState<Key[]>([]);
   const [attachmentBatchSaving, setAttachmentBatchSaving] = useState(false);
@@ -194,12 +188,6 @@ export default function ContractCenterPage({
   const [detailPayments, setDetailPayments] = useState<Contract[]>([]);
   const [detailApprovals, setDetailApprovals] = useState<Step[]>([]);
   const [detailApprovalsError, setDetailApprovalsError] = useState<string | null>(null);
-  const [archiveSummary, setArchiveSummary] = useState<ContractArchiveSummary | null>(null);
-  const [archiveSubjects, setArchiveSubjects] = useState<ContractArchiveSubject[]>([]);
-  const [archiveSubjectsLoading, setArchiveSubjectsLoading] = useState(false);
-  const [archiveClosureSaving, setArchiveClosureSaving] = useState(false);
-  const [selectedArchiveObjectKeys, setSelectedArchiveObjectKeys] = useState<Key[]>([]);
-  const [archiveClosureComment, setArchiveClosureComment] = useState("");
   type ContractObjectRow = {id:number;case_record_id:number;case_no:string;case_title:string;case_type:string;case_phase:string;fee_type:string;amount:number;customer_manager:string;remark:string;logs:Array<{id:number;action:string;before:Record<string,unknown>;after:Record<string,unknown>;operator:string;created_at:string}>};
   const [contractObjects, setContractObjects] = useState<ContractObjectRow[]>([]);
   const [objectPage, setObjectPage] = useState<number>(1);
@@ -272,9 +260,6 @@ export default function ContractCenterPage({
     contractEventRequestTracker.current.next();
     setViewing(null);
     setViewingAttachments([]);
-    setLegacyHistoricalAttachments([]);
-    setLegacyHistoricalAttachmentsLoading(false);
-    setLegacyHistoricalAttachmentsError(null);
     setSelectedAttachmentKeys([]);
     setAttachmentBatchSaving(false);
     setContractObjects([]);
@@ -286,12 +271,6 @@ export default function ContractCenterPage({
     setPaymentTypes([]);
     setSelectedPaymentObjectKeys([]);
     setPaymentAmounts({});
-    setArchiveSummary(null);
-    setArchiveSubjects([]);
-    setArchiveSubjectsLoading(false);
-    setArchiveClosureSaving(false);
-    setSelectedArchiveObjectKeys([]);
-    setArchiveClosureComment("");
     setContractEvents([]);
     setContractWorkflowEvents([]);
     setContractEventPage(1);
@@ -309,7 +288,7 @@ export default function ContractCenterPage({
     setViewingAttachmentsLoading(false);
     setDetailActiveTab("objects");
   };
-  const { openViewing, reloadContractEvents, reloadDetailApprovals, loadArchiveSubjects, resolveContractDetailTarget, load, loadWizardContext, refreshWizard, exportCsv, exportExcel, exportContractDetailExcel, openRelatedCustomer, openRelatedCase } = createContractQueriesActions({
+  const { openViewing, reloadContractEvents, reloadDetailApprovals, resolveContractDetailTarget, load, loadWizardContext, refreshWizard, exportCsv, exportExcel, exportContractDetailExcel, openRelatedCustomer, openRelatedCase } = createContractQueriesActions({
     get isContractDetailView() { return isContractDetailView; },
     get initialView() { return initialView; },
     get query() { return query; },
@@ -342,13 +321,6 @@ export default function ContractCenterPage({
     get setDetailApprovalsError() { return setDetailApprovalsError; },
     get contractEventKeyword() { return contractEventKeyword; },
     get contractEventPageSize() { return contractEventPageSize; },
-    get contractCapabilities() { return contractCapabilities; },
-    get denyContractAction() { return denyContractAction; },
-    get setArchiveSubjectsLoading() { return setArchiveSubjectsLoading; },
-    get setArchiveSummary() { return setArchiveSummary; },
-    get setArchiveSubjects() { return setArchiveSubjects; },
-    get setSelectedArchiveObjectKeys() { return setSelectedArchiveObjectKeys; },
-    get setArchiveClosureComment() { return setArchiveClosureComment; },
     get contractListRequestGuard() { return contractListRequestGuard; },
     get setLoading() { return setLoading; },
     get isContractInvestigationView() { return isContractInvestigationView; },
@@ -384,14 +356,11 @@ export default function ContractCenterPage({
     get buildArchiveExportParams() { return buildArchiveExportParams; },
   });
 
-  const { reloadViewingAttachments, loadLegacyHistoricalAttachments, downloadAttachment, previewAttachment, uploadDraftContractAttachment, uploadViewingAttachment, deleteViewingAttachment, batchDeleteViewingAttachments } = createContractDocumentsActions({
+  const { reloadViewingAttachments, downloadAttachment, previewAttachment, uploadDraftContractAttachment, uploadViewingAttachment, deleteViewingAttachment, batchDeleteViewingAttachments } = createContractDocumentsActions({
     get setViewingAttachmentsLoading() { return setViewingAttachmentsLoading; },
     get setViewingAttachmentsError() { return setViewingAttachmentsError; },
     get setViewingAttachments() { return setViewingAttachments; },
     get setSelectedAttachmentKeys() { return setSelectedAttachmentKeys; },
-    get setLegacyHistoricalAttachmentsLoading() { return setLegacyHistoricalAttachmentsLoading; },
-    get setLegacyHistoricalAttachmentsError() { return setLegacyHistoricalAttachmentsError; },
-    get setLegacyHistoricalAttachments() { return setLegacyHistoricalAttachments; },
     get wizardDraft() { return wizardDraft; },
     get contractFile() { return contractFile; },
     get setContractFile() { return setContractFile; },
@@ -403,19 +372,10 @@ export default function ContractCenterPage({
     get setAttachmentBatchSaving() { return setAttachmentBatchSaving; },
   });
 
-  useEffect(() => {
-    if (viewing && detailActiveTab === "legacy-attachments") void loadLegacyHistoricalAttachments(viewing);
-  }, [detailActiveTab, viewing?.id]);
-
-  const { submitArchiveClosure, saveContractObject, deleteContractObject, recoverWizard, openSubmitWizardFromList, save, submitWizard, approveWizard, createSealApplication, submit, openReview, approve, saveChange, reviewChange, openChanges, createContractEvent, openInvestigation, createInvestigation, advanceInvestigationWizard, startSelectedSeal, openApproverSettings, saveApproverSettings } = createContractWorkflowActions({
+  const { saveContractObject, deleteContractObject, recoverWizard, openSubmitWizardFromList, save, submitWizard, approveWizard, createSealApplication, submit, openReview, approve, saveChange, reviewChange, openChanges, createContractEvent, openInvestigation, createInvestigation, advanceInvestigationWizard, startSelectedSeal, openApproverSettings, saveApproverSettings } = createContractWorkflowActions({
     get viewing() { return viewing; },
     get contractCapabilities() { return contractCapabilities; },
     get denyContractAction() { return denyContractAction; },
-    get archiveSubjects() { return archiveSubjects; },
-    get selectedArchiveObjectKeys() { return selectedArchiveObjectKeys; },
-    get setArchiveClosureSaving() { return setArchiveClosureSaving; },
-    get archiveClosureComment() { return archiveClosureComment; },
-    get loadArchiveSubjects() { return loadArchiveSubjects; },
     get load() { return load; },
     get objectEditing() { return objectEditing; },
     get objectForm() { return objectForm; },
@@ -501,7 +461,6 @@ export default function ContractCenterPage({
     if (key === "attachments") void reloadViewingAttachments(viewing);
     else if (key === "events") void reloadContractEvents(viewing, contractEventPage, contractEventKeyword, contractEventPageSize);
     else if (key === "approvals") void reloadDetailApprovals(viewing);
-    else if (key === "archive") void loadArchiveSubjects(viewing);
     else void openViewing(viewing);
   };
   const returnFromDetail = () => {
@@ -769,7 +728,7 @@ export default function ContractCenterPage({
   const deleteCompanyContract = (contract: Contract) => {
     confirmOperation({
       title: "删除合同",
-      content: "将永久删除该公司合同及其附件和无关联记录，且无法恢复。已有审批、收款、案件、用印或财务关联的合同不能删除。",
+      content: "将永久删除该公司合同及其附件和无关联记录，且无法恢复。已关联案件、任务、线索、收款、实际用印或财务业务的合同不能删除；单独的审批记录不影响空合同删除。",
       okText: "确认删除",
       okButtonProps: { danger: true },
       cancelText: "取消",
@@ -1422,17 +1381,8 @@ export default function ContractCenterPage({
           contractEventKeyword={contractEventKeyword}
           contractEventsLoading={contractEventsLoading}
           contractEventsError={contractEventsError}
-          legacyHistoricalAttachments={legacyHistoricalAttachments}
-          legacyHistoricalAttachmentsLoading={legacyHistoricalAttachmentsLoading}
-          legacyHistoricalAttachmentsError={legacyHistoricalAttachmentsError}
           detailApprovals={detailApprovals}
           detailApprovalsError={detailApprovalsError}
-          archiveSummary={archiveSummary}
-          archiveSubjects={archiveSubjects}
-          archiveSubjectsLoading={archiveSubjectsLoading}
-          archiveClosureSaving={archiveClosureSaving}
-          selectedArchiveObjectKeys={selectedArchiveObjectKeys}
-          archiveClosureComment={archiveClosureComment}
           detailReceipts={detailReceipts}
           detailInvoices={detailInvoices}
           detailPayments={detailPayments}
@@ -1480,11 +1430,6 @@ export default function ContractCenterPage({
           onDownloadAttachment={(item) => void downloadAttachment(item)}
           onReloadAttachments={() => viewing && void reloadViewingAttachments(viewing)}
           onReloadApprovals={() => viewing && void reloadDetailApprovals(viewing)}
-          onArchiveClosureCommentChange={setArchiveClosureComment}
-          onArchiveSelectionChange={(keys) => {
-            setSelectedArchiveObjectKeys(keys);
-          }}
-          onSubmitArchiveClosure={() => void submitArchiveClosure()}
           onContractFileChange={setContractFile}
           onOpenRelatedCustomer={() => viewing && void openRelatedCustomer(viewing)}
           onOpenRelatedCase={(caseNo) => void openRelatedCase(caseNo)}

@@ -49,6 +49,7 @@ def _attachment_dict(
     uploader_display_name = (uploader_names or {}).get(str(item.uploader or "").lower(), "") or CONTRACT_PERSON_NAME_PLACEHOLDER
     return {
         "id": item.id, "record_id": item.record_id, "communication_log_id": item.communication_log_id, "finance_transaction_id": item.finance_transaction_id,
+        "invoice_record_id": item.invoice_record_id,
         "customer_guid": _customer_guid(record) if record and record.module == "customer" else "",
         "record_no": record.serial_no if record else "",
         "record_title": record.title if record else "", "category": item.category, "file_type_code": item.file_type_code,
@@ -243,6 +244,7 @@ async def _authorized_pdf_preview_attachment(
     attachment_id: int, identity: dict, db: AsyncSession,
 ) -> tuple[FileAttachment, Path]:
     """Resolve a previewable PDF through the same authorization path as downloads."""
+    from app.core.investigation_access import ensure_investigation_material_access
     from app.core.permissions import (
         _ensure_attachment_record_visible,
     )
@@ -250,7 +252,8 @@ async def _authorized_pdf_preview_attachment(
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        await _ensure_attachment_record_visible(item.record_id, identity, db)
+        if not await ensure_investigation_material_access(item.record_id, identity, db):
+            await _ensure_attachment_record_visible(item.record_id, identity, db, allow_clue_audit_read=True)
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
 
@@ -336,6 +339,7 @@ async def _copy_seal_source_attachments(
             db.add(FileAttachment(
                 record_id=target_record.id,
                 category=category,
+                invoice_record_id=source.invoice_record_id,
                 original_name=source.original_name,
                 stored_name=target.name,
                 content_type=source.content_type or "application/octet-stream",

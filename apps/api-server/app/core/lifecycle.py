@@ -28,6 +28,9 @@ def _upgrade_schema(connection) -> None:
         _stored_menu_permission_keys,
     )
     columns = {item["name"] for item in inspect(connection).get_columns("file_attachments")}
+    if "invoice_record_id" not in columns:
+        connection.execute(text("ALTER TABLE file_attachments ADD COLUMN invoice_record_id INTEGER REFERENCES business_records(id) ON DELETE SET NULL"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_file_attachments_invoice_record_id ON file_attachments (invoice_record_id)"))
     ipr_case_customer_columns = {item["name"] for item in inspect(connection).get_columns("ipr_case_customers")}
     if "sorting_index" not in ipr_case_customer_columns:
         connection.execute(text("ALTER TABLE ipr_case_customers ADD COLUMN sorting_index INTEGER"))

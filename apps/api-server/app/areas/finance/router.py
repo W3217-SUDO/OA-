@@ -792,8 +792,11 @@ async def list_invoice_applications(
     )
     if invoiced_from and invoiced_to and invoiced_from > invoiced_to:
         raise HTTPException(status_code=422, detail="开票开始日期不能晚于结束日期")
-    if scope == "pending" and identity.get("role") not in {"admin", "manager"}:
-        raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以处理开票")
+    if scope == "pending":
+        from app.core.invoice_permissions import invoice_permissions
+        grants = await invoice_permissions(identity, db)
+        if not any(grants[scope_name][action] for scope_name in ("firm", "platform") for action in ("review", "issue")):
+            raise HTTPException(status_code=403, detail="当前账号没有待处理开票权限")
     rows = await _invoice_list_rows(identity, db, scope=scope, customer=customer, application_no=application_no, invoice_type=invoice_type, invoice_title=invoice_title, invoice_no=invoice_no, invoice_status=invoice_status, invoiced_from=invoiced_from, invoiced_to=invoiced_to, case_no=case_no, applicant_filter=applicant)
     total_amount = round(sum(float((row.get("data") or {}).get("amount", 0) or 0) for row in rows if row.get("status") not in {"已撤回", "已作废"}), 2)
     total_extra_amount = round(sum(float((row.get("data") or {}).get("extra_amount", 0) or 0) for row in rows if row.get("status") not in {"已撤回", "已作废"}), 2)
@@ -816,8 +819,11 @@ async def export_invoice_applications(
         _export_ids,
     )
     selected_ids = set(_export_ids(ids)) if ids.strip() else None
-    if scope == "pending" and identity.get("role") not in {"admin", "manager"}:
-        raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以处理开票")
+    if scope == "pending":
+        from app.core.invoice_permissions import invoice_permissions
+        grants = await invoice_permissions(identity, db)
+        if not any(grants[scope_name][action] for scope_name in ("firm", "platform") for action in ("review", "issue")):
+            raise HTTPException(status_code=403, detail="当前账号没有待处理开票权限")
     rows = await _invoice_list_rows(identity, db, scope=scope, customer=customer, application_no=application_no, invoice_type=invoice_type, invoice_title=invoice_title, invoice_no=invoice_no, invoice_status=invoice_status, invoiced_from=invoiced_from, invoiced_to=invoiced_to, case_no=case_no, applicant_filter=applicant, ids=selected_ids)
     if selected_ids is not None and not rows:
         raise HTTPException(status_code=422, detail="请选择需要导出的发票")
@@ -1441,6 +1447,8 @@ async def submit_invoice_application(invoice_id: int, body: FinanceActionInput, 
     )
     item = await _ensure_record_module(invoice_id, "invoice", identity, db); await _require_record_owner_or_manager(item, identity, db)
     if item.status not in {"草稿", "已驳回"}: raise HTTPException(status_code=409, detail="当前发票申请不能提交")
+    from app.core.invoice_sources import invoice_source_fees, validate_invoice_fee_policy
+    await validate_invoice_fee_policy(await invoice_source_fees(item, identity, db), db)
     data = item.data or {}; missing = [name for name, value in {"客户名称": item.customer, "发票抬头": data.get("invoice_title"), "纳税人识别号": data.get("taxpayer_id"), "开票金额": data.get("amount")}.items() if not value]
     if data.get("delivery_method") == "电子发票" and not data.get("email"): missing.append("电子邮箱")
     if data.get("delivery_method") != "电子发票" and not data.get("delivery_address"): missing.append("邮寄地址")
@@ -1475,8 +1483,9 @@ async def review_invoice_application(invoice_id: int, body: FinanceReviewInput, 
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity,
     )
-    if identity.get("role") not in {"admin", "manager", "auditor"}: raise HTTPException(status_code=403, detail="当前角色没有发票审批权限")
     item = await _ensure_record_module(invoice_id, "invoice", identity, db)
+    from app.core.invoice_permissions import require_invoice_action
+    await require_invoice_action(item, "review", identity, db)
     if item.status != "待审批": raise HTTPException(status_code=409, detail="只有待审批发票申请可以审核")
     item.status = "待开票" if body.approved else "已驳回"
     item.data = {**(item.data or {}), "reviewer": identity["username"], "reviewed_at": datetime.now().isoformat(timespec="seconds"), "review_comment": body.comment}
@@ -1492,8 +1501,9 @@ async def issue_invoice(invoice_id: int, body: InvoiceIssueInput, identity: dict
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity,
     )
-    if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以登记开票")
     item = await _ensure_record_module(invoice_id, "invoice", identity, db)
+    from app.core.invoice_permissions import require_invoice_action
+    await require_invoice_action(item, "issue", identity, db)
     if item.status != "待开票": raise HTTPException(status_code=409, detail="发票审批通过后才能登记开票")
     if await db.scalar(select(FinanceTransaction.id).where(FinanceTransaction.transaction_type == "开票", FinanceTransaction.voucher_no == body.invoice_no)): raise HTTPException(status_code=409, detail="发票号码已经登记")
     data = item.data or {}; tx = FinanceTransaction(finance_record_id=item.id, transaction_type="开票", amount=float(data.get("amount", 0)), transaction_date=body.invoice_date, voucher_no=body.invoice_no.strip(), counterparty=item.customer, operator=identity["username"], remark=f"发票申请 {item.serial_no}；{body.comment}")
@@ -1508,12 +1518,13 @@ async def reject_invoice_issue(invoice_id: int, body: FinanceActionInput, identi
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity,
     )
-    if identity.get("role") not in {"admin", "manager"}:
-        raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以驳回开票")
+
     reason = body.comment.strip()
     if not reason:
         raise HTTPException(status_code=422, detail="请输入驳回原因")
     item = await _ensure_record_module(invoice_id, "invoice", identity, db)
+    from app.core.invoice_permissions import require_invoice_action
+    await require_invoice_action(item, "issue", identity, db)
     if item.status != "待开票":
         raise HTTPException(status_code=409, detail="只有待开票申请可以驳回")
     item.status = "已驳回"

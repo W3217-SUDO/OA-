@@ -3,7 +3,6 @@ import { readContractListQuery } from "../contractListQuery";
 import { normalizeContractDetailReturnView } from "../contractWorkflowPolicy.mjs";
 import type { Profile } from "./types";
 
-export const archiveCheckLabels: Record<string,string> = { case_closed:"案件完结", fees_settled:"费用结清", documents_complete:"材料齐全", finance_complete:"财务完结" };
 
 export const colors: Record<string, string> = {
   草稿: "default",
@@ -28,7 +27,7 @@ export const CONTRACT_DETAIL_RETURN_VIEW_STORAGE_KEY = "sunhold:contract-detail-
 export const CONTRACT_DETAIL_TAB_STORAGE_KEY = "sunhold:contract-detail-active-tab";
 
 export const normalizeContractDetailTabKey = (tab?: string | null) =>
-  ["objects", "events", "workflow", "attachments", "legacy-attachments", "approvals", "archive"].includes(String(tab || ""))
+  ["objects", "events", "attachments", "approvals"].includes(String(tab || ""))
     ? String(tab)
     : "objects";
 

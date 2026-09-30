@@ -22,8 +22,6 @@ export function createSpecialColumns(context: {
         title?: string | undefined;
         customer?: string | undefined;
     }) => Promise<void>;
-    readonly invoiceCase: (row: AttachmentRow) => CaseRow | undefined;
-    readonly relatedFinance: (id: number) => CaseRow | undefined;
 }): Record<string, any[]> {
     return {
         schedule: [
@@ -50,6 +48,14 @@ export function createSpecialColumns(context: {
         stage: [{ title: "姓名", dataIndex: "name" }, { title: "日期", dataIndex: "date" }, { title: "立案进度", dataIndex: "filing" }, { title: "退费进度", dataIndex: "refund" }, { title: "执行进度", dataIndex: "execution" }, { title: "线索进度", dataIndex: "clue" }],
         refund: ["案号", "原告", "被告", "案件阶段", "律师助理", "开庭律师", "费用类型", "金额", "退费金额", "新建时间", "法院名称", "退费进度", "进度时长", "操作"].map((title, i) => ({ title, key: String(i), render: (_: unknown, row: CaseRow) => i === 0 ? <Button type="link" className="case-cell-link" onClick={() => context.openSpecialCaseDetail({ case_no: row.data.case_no || row.serial_no })}>{row.data.case_no || row.serial_no}</Button> : [row.data.plaintiff || row.customer, row.data.opponent, row.data.case_stage || row.status, context.caseAssistantDisplayNames(row.data), context.casePersonDisplayName(row.data.hearing_lawyer, row.data.hearing_lawyer_display_name), row.data.fee_type, row.data.amount, row.data.refund_amount, row.data.created_at || "", row.data.court, row.data.refund_status, row.data.progress_days, "查看"][i - 1] || "" })),
         receipt: ["案号", "案件名称", "客户", "费用类型", "金额", "申请人", "通知日期", "已收", "已付", "已开票"].map((title, i) => ({ title, key: String(i), render: (_: unknown, row: CaseRow) => i === 0 ? <Button type="link" className="case-cell-link" onClick={() => context.openSpecialCaseDetail({ case_no: row.data.case_no })}>{row.data.case_no}</Button> : i === 2 && row.customer ? <Button type="link" className="case-cell-link" onClick={() => context.openRelatedCustomer({ id: Number(row.data.customer_id) || undefined, serial_no: row.data.customer_no, title: row.customer })}>{row.customer}</Button> : [row.data.case_title, row.customer, row.data.fee_type, row.data.amount, context.casePersonDisplayName(row.owner, row.owner_display_name), row.data.notice_date || row.data.inform_date, row.data.cashed_amount, row.data.paid_amount, row.data.invoice_amount][i - 1] ?? "" })),
-        invoice: [{ title: "文件名", dataIndex: "original_name" }, { title: "案件编号", render: (_: unknown, row: AttachmentRow) => { const target = context.invoiceCase(row); const caseNo = target?.serial_no || context.relatedFinance(row.record_id || 0)?.data?.case_no || ""; return caseNo ? <Button type="link" className="case-cell-link" onClick={() => context.openSpecialCaseDetail(target || { case_no: caseNo })}>{caseNo}</Button> : ""; } }, { title: "案件类型", render: (_: unknown, row: AttachmentRow) => context.invoiceCase(row)?.data.case_type || "" }, { title: "发票申请人", render: (_: unknown, row: AttachmentRow) => context.casePersonDisplayName(row.uploader, row.uploader_display_name) }, { title: "费用类型", render: (_: unknown, row: AttachmentRow) => context.relatedFinance(row.record_id || 0)?.data?.fee_type || row.category }, { title: "费用金额", render: (_: unknown, row: AttachmentRow) => context.relatedFinance(row.record_id || 0)?.data?.amount ?? "" }, { title: "票据编号", render: (_: unknown, row: AttachmentRow) => context.relatedFinance(row.record_id || 0)?.data?.invoice_no || row.remark || "" }, { title: "票据金额", render: (_: unknown, row: AttachmentRow) => context.relatedFinance(row.record_id || 0)?.data?.invoice_amount ?? context.relatedFinance(row.record_id || 0)?.data?.amount ?? "" }, { title: "票据日期", render: (_: unknown, row: AttachmentRow) => context.relatedFinance(row.record_id || 0)?.data?.invoice_date || row.created_at }],
+        invoice: [
+            { title: "文件名", dataIndex: "original_name" },
+            { title: "案件编号", render: (_: unknown, row: AttachmentRow) => row.case_no ? <Button type="link" className="case-cell-link" onClick={() => context.openSpecialCaseDetail({ case_no: row.case_no })}>{row.case_no}</Button> : "" },
+            { title: "案件类型", dataIndex: "case_type" },
+            { title: "发票申请人", render: (_: unknown, row: AttachmentRow) => row.applicant ? context.casePersonDisplayName(row.applicant, row.applicant_display_name) : "" },
+            { title: "费用类型", dataIndex: "fee_type" }, { title: "费用金额", dataIndex: "fee_amount" },
+            { title: "票据编号", dataIndex: "invoice_no" }, { title: "票据金额", dataIndex: "invoice_amount" },
+            { title: "票据日期", dataIndex: "invoice_date" }, { title: "导入状态", dataIndex: "match_status" },
+        ],
     };
 }

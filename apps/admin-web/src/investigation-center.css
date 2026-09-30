@@ -94,6 +94,27 @@
 .investigation-audit-side .ant-descriptions-item-content {
   overflow-wrap: anywhere;
 }
+.investigation-clue-summary .ant-descriptions-view {
+  overflow-x: auto;
+}
+.investigation-clue-summary .ant-descriptions-view > table {
+  min-width: 520px;
+  table-layout: fixed;
+}
+.investigation-clue-summary .ant-descriptions-item-label {
+  width: 112px;
+  white-space: nowrap;
+  word-break: normal;
+}
+.investigation-clue-summary .ant-descriptions-item-content {
+  overflow-wrap: anywhere;
+}
+.investigation-clue-summary .business-relation-link {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .clue-audit-review {
   margin-top: 14px;
   border-top: 1px solid #d9e3e8;

@@ -3,11 +3,12 @@ from sqlalchemy import select
 from app.models import BusinessRecord
 from app.core.cases import _matches_dashboard_case_queue, _urgent_case_ids
 from app.core.finance import _fee_query_rows, _refund_case_fee_rows
-from app.core.dashboard_scope import CASE_QUEUES, QUEUE_KEYS, dashboard_identity, dashboard_receivables, dashboard_urgent_cases
+from app.core.dashboard_scope import CASE_QUEUES, QUEUE_KEYS, dashboard_identity, dashboard_receivables, dashboard_urgent_cases, personal_refund_identity
 
 
 async def personal_queues(identity, db):
     identity = await dashboard_identity(identity, db)
+    refund_identity = await personal_refund_identity(identity, db)
     cases = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(identity["_dashboard_case_ids"]),
     ))).all())
@@ -34,7 +35,7 @@ async def personal_queues(identity, db):
                 add(key, case)
     for key, rows in (
         ("official-fee-unpaid", await _fee_query_rows(identity, db, unpaid_official=True)),
-        ("refund-pending", await _refund_case_fee_rows(identity, db)),
+        ("refund-pending", await _refund_case_fee_rows(refund_identity, db)),
     ):
         for row in rows:
             data = row["data"]

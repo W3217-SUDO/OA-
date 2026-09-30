@@ -412,6 +412,7 @@ export default function ClueDetailHeader({
 
   return (
     <Descriptions
+      className="investigation-clue-summary"
       bordered
       size="small"
       column={2}

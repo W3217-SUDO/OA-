@@ -77,7 +77,7 @@ async def _configured_investigation_supervisor(db: AsyncSession) -> User:
     config = await db.scalar(select(SystemConfig).where(SystemConfig.key == "investigation_assignment"))
     configured_username = str((config.value or {}).get("supervisor_username") or "").strip() if config else ""
     if not configured_username:
-        raise HTTPException(status_code=409, detail="请先由管理员在系统配置中设置调查任务分配人")
+        raise HTTPException(status_code=409, detail="请先由管理员在人员管理中配置调查任务分配人员")
     supervisor = await db.scalar(select(User).where(User.username == configured_username, User.is_active.is_(True)))
     if not supervisor:
         raise HTTPException(status_code=409, detail="已配置的调查任务分配人不存在或已停用，请重新设置")

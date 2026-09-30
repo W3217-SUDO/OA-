@@ -40,7 +40,6 @@ import {
 import dayjs from "dayjs";
 import { useCascaderAreaData } from "@vant/area-data";
 import { api } from "../api";
-import { rememberCaseDetailTarget } from "../caseDetailNavigation";
 import { rememberCustomerDetailTarget } from "../customerDetailNavigation";
 import { consumeInvestigationDetailTarget } from "../investigationDetailNavigation";
 import { rememberInvestigationDetailTarget } from "../investigationDetailNavigation";
@@ -196,7 +195,7 @@ const clueStatusesByRoute: Record<string, string[]> = {
   "clue-company-refused": ["已驳回", "已拒绝"],
 };
 
-const internalClueAuditTabs = new Set(["clue-audit-pending", "clue-audit-refused"]);
+const internalClueAuditTabs = new Set(["clue-audit-pending", "clue-audit-customer", "clue-audit-refused", "clue-audit-collect", "clue-audit-collected"]);
 
 export default function InvestigationCenterPage({
   initialTab,
@@ -1314,9 +1313,10 @@ export default function InvestigationCenterPage({
     }
     try {
       const res = await api.get(endpoint, {
-        params: selectedOnly
-          ? { ids: selectedRows.map((row) => row.id).join(",") }
-          : undefined,
+        params: {
+          ...(selectedOnly ? { ids: selectedRows.map((row) => row.id).join(",") } : {}),
+          ...(internalClueAuditTabs.has(initialTab) ? { scope: "audit", statuses: (clueStatusesByRoute[initialTab] || []).join(",") } : {}),
+        },
         responseType: "blob",
       });
       const url = URL.createObjectURL(res.data);
@@ -1355,8 +1355,7 @@ export default function InvestigationCenterPage({
         return;
       }
       if (onNavigate) {
-        rememberCaseDetailTarget({ id: row.id, serial_no: row.serial_no });
-        onNavigate("case-company");
+        onNavigate(`case-detail-${row.id}-${encodeURIComponent(row.serial_no)}`);
         return;
       }
       setLinkedCase(row);
@@ -1489,10 +1488,14 @@ export default function InvestigationCenterPage({
   };
   const openInvestigationDetail = async (row: Row, inAuditPanel = false) => {
     const requestId = ++detailRequestRef.current;
+    if (["investigation", "task"].includes(row.module)) {
+      setInvestigationDetail(row);
+      return;
+    }
     if (inAuditPanel) setInvestigationDetail(row);
     try {
       const { data } = await api.get(`/records/${row.id}`, {
-        params: inAuditPanel && initialTab === "clue-audit-pending" && row.status === "待审批"
+        params: inAuditPanel && internalClueAuditTabs.has(initialTab)
           ? { scope: "audit" } : undefined,
       });
       if (requestId !== detailRequestRef.current) return;
@@ -1533,7 +1536,7 @@ export default function InvestigationCenterPage({
     let cancelled = false;
     setClueWorkspaceLoading(true);
     api.get(`/investigations/clues/${investigationDetail.id}/workspace`, {
-      params: initialTab === "clue-audit-pending" && investigationDetail.status === "待审批"
+      params: internalClueAuditTabs.has(initialTab)
         ? { scope: "audit" } : undefined,
     })
       .then(({ data }) => {
@@ -2084,13 +2087,13 @@ export default function InvestigationCenterPage({
           title: "开始时间",
           width: 110,
           render: (_: unknown, r: Row) =>
-            r.data.started_at || r.data.authorized_from || "—",
+            r.data.start_date || r.data.started_at || r.data.authorized_from || "—",
         },
         {
           title: "结束时间",
           width: 110,
           render: (_: unknown, r: Row) =>
-            r.data.ended_at || r.data.authorized_to || r.data.deadline || "—",
+            r.data.end_date || r.data.ended_at || r.data.authorized_to || r.data.deadline || "—",
         },
         {
           title: "案源人",
@@ -2136,7 +2139,7 @@ export default function InvestigationCenterPage({
             );
           },
         },
-      ];
+      ].filter((column) => initialTab !== "investigation-task-sub-mine" || !["父调查编号", "状态", "办理"].includes(column.title));
     if (initialTab.startsWith("investigation-task-"))
       return [
         {

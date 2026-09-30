@@ -271,7 +271,15 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                 api.get("/cases/eligible-contracts"),
                 api.get("/hearings"),
                 api.get("/cases/summary"),
-                api.get("/attachments"),
+                context.initialView === "case-files-invoice" ? (async () => {
+                    const first = await api.get("/cases/invoice-files", { params: { page_size: 200 } });
+                    const items = [...first.data.items];
+                    for (let page = 2; page <= first.data.pages; page += 1) {
+                        const next = await api.get("/cases/invoice-files", { params: { page, page_size: 200 } });
+                        items.push(...next.data.items);
+                    }
+                    return { data: { items } };
+                })() : api.get("/attachments"),
                 api.get("/cases/reference-options"),
                 api.get("/records", { params: { module: "customer", page_size: 100 } }),
                 api.get("/records", { params: { module: "clue", page_size: 100 } }),

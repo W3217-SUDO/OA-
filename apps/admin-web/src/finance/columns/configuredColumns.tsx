@@ -125,6 +125,20 @@ export function createConfiguredColumns(context: {
           {context.cellValue(row, header)}
         </Button>) : (context.cellValue(row, header)),
     })).map((column) => {
+        if (context.isRefundCaseFeeRoute) {
+            const header = context.activeRouteConfig.headers[Number(column.key.split("-").pop())];
+            if (header === "操作") return column;
+            const render = column.render;
+            return {
+                ...column,
+                ellipsis: { showTitle: false },
+                render: (value: unknown, row: any) => {
+                    const fullValue = context.cellValue(row, header);
+                    const title = typeof fullValue === "string" || typeof fullValue === "number" ? String(fullValue) : undefined;
+                    return <span className="finance-receipt-cell" title={title}>{render(value, row)}</span>;
+                },
+            };
+        }
         if (context.activeRouteConfig.source !== "incoming") return column;
         const header = context.activeRouteConfig.headers[Number(column.key.split("-").pop())];
         if (header === "操作") return { ...column, width: 170 };

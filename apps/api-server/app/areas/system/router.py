@@ -891,7 +891,7 @@ async def update_system_config(config_key: str, body: SystemConfigUpdate, identi
     item = await db.scalar(select(SystemConfig).where(SystemConfig.key == config_key))
     if not item: raise HTTPException(status_code=404, detail="系统配置不存在")
     value = _validate_system_config(config_key, body.value)
-    if config_key == "investigation_assignment":
+    if config_key == "investigation_assignment" and value["supervisor_username"]:
         supervisor = await db.scalar(select(User).where(User.username == value["supervisor_username"], User.is_active.is_(True)))
         if not supervisor:
             raise HTTPException(status_code=422, detail="调查任务分配人必须是启用的系统人员")
@@ -1929,6 +1929,7 @@ async def upload_attachment(
     from app.core.tasks import (
         _add_task_message_notifications, _is_task_participant,
     )
+    from app.core.investigation_access import ensure_investigation_material_access
     record = None
     source_case = None
     transaction = None
@@ -1950,7 +1951,14 @@ async def upload_attachment(
         if category == "普通附件":
             category = expected_category
     if record_id is not None:
+        await ensure_investigation_material_access(record_id, identity, db, write=True)
         record = await _ensure_attachment_record_visible(record_id, identity, db)
+        if record.module in {"clue", "evidence"}:
+            # 审核菜单只授予读取能力，上传仍按真实身份校验原记录和写入范围。
+            identity = {**identity, "role": identity["_actual_role"],
+                        "role_ids": identity["_actual_role_ids"], "_page_menu_capability": False}
+            record = await _ensure_attachment_record_visible(record_id, identity, db)
+            await _require_record_owner_or_manager(record, identity, db)
         if record.module == "conflict_review":
             raise HTTPException(status_code=409, detail="利益冲突审查附件必须使用审查专用入口上传")
         if record.module == JAR_FEE_MODULE:
@@ -2126,6 +2134,7 @@ async def upload_attachment(
 @router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/download")
 async def download_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.areas.aws.receipt_sources import can_read_receipt_attachment
+    from app.core.investigation_access import ensure_investigation_material_access
     from app.core.permissions import (
         _ensure_attachment_record_visible,
     )
@@ -2136,10 +2145,10 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        if await can_read_receipt_attachment(item, identity, db):
+        if await can_read_receipt_attachment(item, identity, db) or await ensure_investigation_material_access(item.record_id, identity, db):
             record = await db.get(BusinessRecord, item.record_id)
         else:
-            record = await _ensure_attachment_record_visible(item.record_id, identity, db)
+            record = await _ensure_attachment_record_visible(item.record_id, identity, db, allow_clue_audit_read=True)
         if record.module == JAR_FEE_MODULE:
             raise HTTPException(status_code=409, detail="JAR交案费文件必须使用交案费专用下载接口")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
@@ -2154,6 +2163,7 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
 async def preview_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Return safe, authenticated metadata/content for the in-app attachment preview."""
     from app.areas.aws.receipt_sources import can_read_receipt_attachment
+    from app.core.investigation_access import ensure_investigation_material_access
     from app.core.permissions import (
             _ensure_attachment_record_visible,
         )
@@ -2164,8 +2174,8 @@ async def preview_attachment(attachment_id: int, identity: dict = Depends(curren
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        if not await can_read_receipt_attachment(item, identity, db):
-            await _ensure_attachment_record_visible(item.record_id, identity, db)
+        if not (await can_read_receipt_attachment(item, identity, db) or await ensure_investigation_material_access(item.record_id, identity, db)):
+            await _ensure_attachment_record_visible(item.record_id, identity, db, allow_clue_audit_read=True)
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
 
@@ -2230,6 +2240,7 @@ async def create_office_preview_link(
     db: AsyncSession = Depends(get_db),
 ):
     """Authorize once, then issue a short-lived URL Office Online can fetch."""
+    from app.core.investigation_access import ensure_investigation_material_access
     from app.core.permissions import (
         _ensure_attachment_record_visible,
     )
@@ -2241,7 +2252,8 @@ async def create_office_preview_link(
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        await _ensure_attachment_record_visible(item.record_id, identity, db)
+        if not await ensure_investigation_material_access(item.record_id, identity, db):
+            await _ensure_attachment_record_visible(item.record_id, identity, db, allow_clue_audit_read=True)
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
     path = _attachment_storage_path(item)
@@ -2404,14 +2416,19 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     from app.core.tasks import (
         _add_task_message_notifications,
     )
+    from app.core.investigation_access import ensure_investigation_material_access
     item = await db.get(FileAttachment, attachment_id)
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
+    if item.record_id:
+        await ensure_investigation_material_access(item.record_id, identity, db, write=True)
     # 联系人照片的附件 ID 保存在客户 contacts JSON 中。若允许通用附件接口删除，
     # 会留下指向已删除文件的引用；必须从联系人维护入口替换或随联系人删除。
     if item.category == "客户联系人照片":
         raise HTTPException(status_code=409, detail="联系人照片请在客户联系人中维护")
     record = await db.get(BusinessRecord, item.record_id) if item.record_id else None
+    if record and record.module in {"clue", "evidence"} and "admin" not in identity["_actual_role_ids"]:
+        raise HTTPException(status_code=403, detail="仅系统管理员可以删除线索或证据附件")
     if record and record.module == "conflict_review":
         raise HTTPException(status_code=409, detail="利益冲突审查证据必须使用审查专用入口管理")
     if record and record.module == "hr" and item.category == "员工头像" and int((record.data or {}).get("avatar_attachment_id") or 0) == item.id:
