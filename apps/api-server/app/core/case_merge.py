@@ -83,6 +83,20 @@ async def ensure_case_merge_contract_scope(case, contract_id, db):
     if not contract or contract.module != "contract":
         raise HTTPException(422, "案件关联合同不存在，不能合并")
     contract_no = contract.serial_no
+    case_data = case.data or {}
+    for key in ("contract_record_id", "contract_id"):
+        value = case_data.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            linked_id = int(value)
+        except (TypeError, ValueError):
+            raise HTTPException(409, f"案件 {case.serial_no} 的关联合同无效，不能合并")
+        if linked_id != contract_id:
+            raise HTTPException(409, f"案件 {case.serial_no} 的关联合同不一致，不能合并")
+    case_contract_no = str(case_data.get("contract_no") or "").strip()
+    if case_contract_no and case_contract_no != contract_no:
+        raise HTTPException(409, f"案件 {case.serial_no} 的合同编号不一致，不能合并")
     for fee in await finance_rows_for_merge(case, db):
         data = fee.data or {}
         for key in ("contract_record_id", "contract_id"):

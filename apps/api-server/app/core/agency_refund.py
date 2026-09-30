@@ -82,6 +82,30 @@ async def reset_case_court_refunds(source, identity, db):
     if linked_ids and await db.scalar(select(FinanceTransaction.id).where(FinanceTransaction.finance_record_id.in_(linked_ids))):
         raise HTTPException(409, "关联退费或代理费退费已有财务流水，不能归零")
     from app.core.case_fee_payments import release_direct_fee_request
+    from app.core.constants import INVOICE_RELEASED_STATUSES
+    from app.core.finance import _invoice_json_fee_condition, _invoice_linked_fee_ids
+    derivative_ids = {item.id for item in linked_fees}
+    contract_payments = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "contract_payment",
+        BusinessRecord.status.not_in({"已撤回", "已驳回", "已拒绝", "已作废", "已删除"}),
+        _invoice_json_fee_condition(BusinessRecord.data, derivative_ids),
+    ).with_for_update())).all()
+    for payment in contract_payments:
+        for line in (payment.data or {}).get("lines") or []:
+            if (isinstance(line, dict) and str(line.get("case_fee_id") or "").isdigit()
+                    and int(line["case_fee_id"]) in derivative_ids):
+                raise HTTPException(409, "关联代理费退费已有合同付款申请，不能归零")
+    invoices = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "invoice",
+        BusinessRecord.status.not_in(INVOICE_RELEASED_STATUSES),
+        _invoice_json_fee_condition(BusinessRecord.data, derivative_ids),
+    ).with_for_update())).all()
+    for invoice in invoices:
+        data = invoice.data or {}
+        allocation_ids = {int(row.get("fee_id")) for row in (data.get("case_fee_allocations") or [])
+                          if isinstance(row, dict) and str(row.get("fee_id") or "").isdigit()}
+        if derivative_ids & (_invoice_linked_fee_ids(data) | allocation_ids):
+            raise HTTPException(409, "关联代理费退费已有开票申请，不能归零")
     changed_at = datetime.now().isoformat(timespec="seconds")
     for commission in linked_commissions:
         previous = commission.status

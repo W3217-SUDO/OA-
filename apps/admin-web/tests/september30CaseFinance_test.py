@@ -52,6 +52,24 @@ class September30CaseFinanceTest(unittest.IsolatedAsyncioTestCase):
             contract = await db.get(BusinessRecord, self.contract_id)
             target_fee.data = {**target_fee.data, "contract_record_id": contract.id, "contract_no": contract.serial_no}
             await db.commit()
+        async with self.sessions() as db:
+            source = await db.get(BusinessRecord, source_id)
+            source.data = {**source.data, "contract_id": other_contract.id}
+            await db.commit()
+        conflicted_head = await self.client.post(route, json={"source_case_no": "CODEX-0930-merge-source"})
+        self.assertEqual(conflicted_head.status_code, 409, conflicted_head.text)
+        async with self.sessions() as db:
+            source = await db.get(BusinessRecord, source_id)
+            target = await db.get(BusinessRecord, self.case_id)
+            source.data = {**source.data, "contract_id": self.contract_id}
+            target.data = {**target.data, "contract_no": "CODEX-0930-wrong-contract-no"}
+            await db.commit()
+        conflicted_number = await self.client.post(route, json={"source_case_no": "CODEX-0930-merge-source"})
+        self.assertEqual(conflicted_number.status_code, 409, conflicted_number.text)
+        async with self.sessions() as db:
+            target = await db.get(BusinessRecord, self.case_id)
+            target.data = {**target.data, "contract_no": contract.serial_no}
+            await db.commit()
         accepted = await self.client.post(route, json={"source_case_no": "CODEX-0930-merge-source"})
         self.assertEqual(accepted.status_code, 200, accepted.text)
         async with self.sessions() as db:
@@ -129,6 +147,53 @@ class September30CaseFinanceTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             self.assertEqual((await db.get(BusinessRecord, refund_id)).status, "已退款")
 
+    async def test_zero_refund_rejects_contract_payment_and_invoice_links(self):
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            fee.data = {**fee.data, "fee_type": "官方费用", "expense_subtype": "一审诉讼费"}
+            db.add(SystemParameter(category="fee_type", code="AGENCY-REFUND", name="律师代理费（退费）",
+                extra={"parent_code": "AGENCY"}, is_active=True))
+            await db.commit()
+        response = await self.client.post(f"{API}/finance/refunds", json={
+            "fee_record_id": self.fee_id, "case_no": "CODEX-0916-case", "customer": "Batch customer",
+            "court": "法院", "original_payment_no": "CODEX-0930", "amount": 20,
+            "applicant": "回归申请人", "request_key": "CODEX-0930-linked",
+        })
+        self.assertEqual(response.status_code, 201, response.text)
+        refund = response.json()
+        derivative_id = refund["data"]["refund_fee_id"]
+        async with self.sessions() as db:
+            db.add(BusinessRecord(module="contract_payment", serial_no="CODEX-0930-contract-pay",
+                title="合同付款申请", owner=IDENTITY["username"], customer="Batch customer", status="待审批",
+                data={"lines": [{"case_fee_id": derivative_id, "amount": 20}]}))
+            await db.commit()
+        reset_path = f"{API}/finance/fees/{self.fee_id}/court-refund/reset"
+        reserved = await self.client.post(reset_path)
+        self.assertEqual(reserved.status_code, 409, reserved.text)
+        async with self.sessions() as db:
+            payment = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == "CODEX-0930-contract-pay"))
+            payment.status = "草稿"
+            await db.commit()
+        draft_reserved = await self.client.post(reset_path)
+        self.assertEqual(draft_reserved.status_code, 409, draft_reserved.text)
+        async with self.sessions() as db:
+            payment = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == "CODEX-0930-contract-pay"))
+            payment.status = "已撤回"
+            db.add(BusinessRecord(module="invoice", serial_no="CODEX-0930-invoice",
+                title="开票申请", owner=IDENTITY["username"], customer="Batch customer", status="草稿",
+                data={"case_fee_ids": [derivative_id], "case_fee_allocations": [{"fee_id": derivative_id, "amount": 20}]}))
+            await db.commit()
+        invoiced = await self.client.post(reset_path)
+        self.assertEqual(invoiced.status_code, 409, invoiced.text)
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(BusinessRecord, refund["id"])).status, "草稿")
+            self.assertNotEqual((await db.get(BusinessRecord, derivative_id)).status, "已删除")
+            invoice = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == "CODEX-0930-invoice"))
+            invoice.status = "已作废"
+            await db.commit()
+        released = await self.client.post(reset_path)
+        self.assertEqual(released.status_code, 200, released.text)
+
     async def test_official_fee_payment_application_allows_no_unit_only_for_official(self):
         route = f"{API}/finance/fees/{self.fee_id}/submit"
         body = {"amount": 100, "comment": "官费申请付款"}
@@ -141,7 +206,24 @@ class September30CaseFinanceTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             fee = await db.get(BusinessRecord, self.fee_id)
             self.assertEqual(fee.data["payment_requested_amount"], 100)
+            self.assertEqual(fee.data["payment_request_amount"], 100)
             self.assertEqual(fee.data["payment_payee"], "")
+        withdrawn = await self.client.post(f"{API}/finance/fees/{self.fee_id}/cancel", json={"reason": "重提官费请款"})
+        self.assertEqual(withdrawn.status_code, 200, withdrawn.text)
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            self.assertEqual(fee.data["payment_requested_amount"], 0)
+            fee.data = {**fee.data, "paid_amount": 20, "payment_requested_amount": 20,
+                        "payment_package_id": 12345, "payment_package_no": "OLD-PACKAGE"}
+            await db.commit()
+        repeated = await self.client.post(route, json={"amount": 80, "comment": "官费再次请款"})
+        self.assertEqual(repeated.status_code, 200, repeated.text)
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            self.assertEqual(fee.data["payment_request_amount"], 80)
+            self.assertEqual(fee.data["payment_requested_amount"], 100)
+            self.assertIsNone(fee.data["payment_package_id"])
+            self.assertEqual(fee.data["payment_package_no"], "")
             fee.status = "草稿"
             fee.data = {**fee.data, "fee_type": "其他费用", "payment_requested_amount": 0}
             await db.commit()

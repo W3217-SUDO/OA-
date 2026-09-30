@@ -74,6 +74,7 @@ export interface CaseFinanceDependencies {
     readonly setCasePaymentTypes: React.Dispatch<React.SetStateAction<CasePaymentTypeOption[]>>;
     readonly setCasePaymentTypesError: React.Dispatch<React.SetStateAction<string>>;
     readonly casePaymentTypeRequestRef: React.RefObject<number>;
+    readonly casePaymentTypeFeeRef: React.RefObject<number | null>;
     readonly paymentTypeCreateTarget: PaymentTypeCreateTarget | null;
     readonly paymentTypeCreateForm: FormInstance<any>;
     readonly setPaymentTypeCreating: React.Dispatch<React.SetStateAction<boolean>>;
@@ -382,10 +383,12 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         setFeeCase(row);
     };
     const loadCasePaymentTypes = async (feeId: number, keyword = "") => {
-        const { setCasePaymentTypesLoading, setCasePaymentTypes, setCasePaymentTypesError, casePaymentTypeRequestRef } = context;
+        const { setCasePaymentTypesLoading, setCasePaymentTypes, setCasePaymentTypesError, casePaymentTypeRequestRef, casePaymentTypeFeeRef } = context;
         const requestId = ++casePaymentTypeRequestRef.current;
+        casePaymentTypeFeeRef.current = feeId;
         setCasePaymentTypesLoading(true);
         setCasePaymentTypesError("");
+        setCasePaymentTypes([]);
         try {
             const { data } = await api.get(`/finance/fees/${feeId}/payment-types`, { params: { keyword } });
             const items = Array.isArray(data?.items) ? data.items : [];

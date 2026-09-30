@@ -5021,7 +5021,7 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
             **data,
             "payment_requested_amount": _round_fee_amount(max(previous_requested, paid, float(data.get("paid_amount") or 0)) + requested),
             **({"payment_request_amount": requested, "writeoff_status": "", "payment_package_id": None,
-                "payment_package_no": "", "payment_package_amount": None} if payment_type else {}),
+                "payment_package_no": "", "payment_package_amount": None} if payment_type or data.get("fee_type") == "官方费用" else {}),
             "payment_account": account,
             "payment_payee": payee,
             "payment_type_id": payment_type.id if payment_type else None,
