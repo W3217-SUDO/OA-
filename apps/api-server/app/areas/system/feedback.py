@@ -2,14 +2,14 @@
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import UPLOAD_ROOT
 from app.core.dependencies import current_identity, get_db, settings
-from app.models import BusinessRecord, FileAttachment
+from app.models import BusinessRecord, FileAttachment, User
 
 router = APIRouter()
 
@@ -67,23 +67,50 @@ async def create_feedback(
 
 
 @router.get(f"{settings.api_prefix}/feedback")
-async def list_feedback(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    query = select(BusinessRecord).where(BusinessRecord.module == "bug_feedback")
-    if identity.get("role") != "admin":
-        query = query.where(BusinessRecord.owner == identity["username"])
-    records = (await db.scalars(query.order_by(BusinessRecord.created_at.desc()).limit(100))).all()
-    return {"items": [
+async def list_feedback(
+    keyword: str = Query("", max_length=200), page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    conditions = [BusinessRecord.module == "bug_feedback"]
+    if "admin" not in identity.get("_actual_role_ids", []):
+        conditions.append(BusinessRecord.owner == identity["username"])
+    keyword = keyword.strip()
+    if keyword:
+        conditions.append(or_(
+            BusinessRecord.serial_no.icontains(keyword, autoescape=True),
+            BusinessRecord.description.icontains(keyword, autoescape=True),
+            BusinessRecord.owner.icontains(keyword, autoescape=True),
+            User.display_name.icontains(keyword, autoescape=True),
+            BusinessRecord.data["page"].as_string().icontains(keyword, autoescape=True),
+        ))
+    total = await db.scalar(select(func.count()).select_from(BusinessRecord).outerjoin(
+        User, User.username == BusinessRecord.owner,
+    ).where(*conditions))
+    has_screenshot = select(FileAttachment.id).where(
+        FileAttachment.record_id == BusinessRecord.id,
+        FileAttachment.category == "问题反馈截图",
+    ).exists()
+    records = (await db.execute(select(BusinessRecord, User.display_name, has_screenshot).outerjoin(
+        User, User.username == BusinessRecord.owner,
+    ).where(*conditions).order_by(
+        BusinessRecord.created_at.desc(), BusinessRecord.id.desc(),
+    ).offset((page - 1) * page_size).limit(page_size))).all()
+    return {"total": total, "page": page, "page_size": page_size, "items": [
         {"id": item.id, "serial_no": item.serial_no, "description": item.description,
          "status": item.status, "owner": item.owner, "page": (item.data or {}).get("page", ""),
+         "owner_display_name": display_name or "", "has_screenshot": bool(screenshot_exists),
          "created_at": item.created_at}
-        for item in records
+        for item, display_name, screenshot_exists in records
     ]}
 
 
 @router.get(f"{settings.api_prefix}/feedback/{{feedback_id}}/screenshot")
 async def feedback_screenshot(feedback_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     record = await db.get(BusinessRecord, feedback_id)
-    if not record or record.module != "bug_feedback" or (identity.get("role") != "admin" and record.owner != identity["username"]):
+    if not record or record.module != "bug_feedback" or (
+        "admin" not in identity.get("_actual_role_ids", []) and record.owner != identity["username"]
+    ):
         raise HTTPException(404, "反馈不存在或无权查看")
     attachment = await db.scalar(select(FileAttachment).where(
         FileAttachment.record_id == feedback_id, FileAttachment.category == "问题反馈截图"))

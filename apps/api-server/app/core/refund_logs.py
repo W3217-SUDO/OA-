@@ -7,6 +7,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.case_document_sources import case_document_sources
+from app.core.formatters import _person_reference_display, _user_display_map
 from app.models import BusinessRecord, LegacyCaseLog, WorkflowEvent
 
 
@@ -116,5 +117,8 @@ async def refund_fee_log_items(fee: BusinessRecord, db: AsyncSession) -> list[di
     items.extend({"id": f"legacy-case-{item.LogId}", "content": item.Content or "", "operator": item.CreateUser or "",
                   "kind": "case", "type": "历史案件日志", "created_at": item.CreateTime, "source": "legacy"}
                  for item in historical_logs)
+    users_by_username = await _user_display_map({item["operator"] for item in items}, db)
+    for item in items:
+        item["operator_display_name"] = _person_reference_display(item["operator"], users_by_username)[0]
     items.sort(key=lambda item: (str(item["created_at"] or ""), str(item["id"])), reverse=True)
     return items

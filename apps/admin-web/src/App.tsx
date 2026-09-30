@@ -2240,7 +2240,7 @@ export default function App() {
           <span>我的</span>
         </button>
       </nav>
-      <BugFeedback />
+      <BugFeedback isAdmin={actualRole === "admin"} />
     </Layout>
   );
 }

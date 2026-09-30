@@ -1,6 +1,6 @@
 import { message, Modal, Table, Alert } from "antd";
 import { api } from "../../api";
-import type { Fee, FinanceFlow } from "../types";
+import type { FinanceFlow } from "../types";
 type OriginalFieldSpec = {
     label: string;
     key?: string;
@@ -37,12 +37,6 @@ export interface FinanceWorkflowDependencies {
         applied: boolean;
         response: any;
     } | null>;
-    readonly setSettlementActionLoading: React.Dispatch<React.SetStateAction<boolean>>;
-    readonly setSettlementContextRows: React.Dispatch<React.SetStateAction<any[]>>;
-    readonly setSettlementContext: React.Dispatch<React.SetStateAction<{
-        mode: "logs" | "tasks" | "log-create" | "task-create";
-        caseRecords: Fee[];
-    } | null>>;
 }
 export function createFinanceWorkflowActions(context: FinanceWorkflowDependencies) {
     const importBankStatement = async (file?: File) => {
@@ -170,26 +164,5 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
             message.error(error?.response?.data?.detail || "提交失败");
         }
     };
-    const openRowCaseLogs = async (row: Fee) => {
-        const { setSettlementActionLoading, setSettlementContextRows, setSettlementContext } = context;
-        setSettlementActionLoading(true);
-        try {
-            const { data } = await api.get("/finance/case-fees/refunds/logs", { params: { fee_id: row.id } });
-            const items = (data.items || []).map((item: any) => ({
-                ...item,
-                action: item.type,
-                comment: item.content,
-                source_case_no: row.data?.case_no || row.serial_no || "",
-            }));
-            setSettlementContextRows(items);
-            setSettlementContext({ mode: "logs", caseRecords: [row] });
-        }
-        catch (error: any) {
-            message.error(error?.response?.data?.detail || "案件日志加载失败");
-        }
-        finally {
-            setSettlementActionLoading(false);
-        }
-    };
-    return { importBankStatement, searchClaimCustomers, submitFlow, openRowCaseLogs };
+    return { importBankStatement, searchClaimCustomers, submitFlow };
 }

@@ -78,6 +78,7 @@ settlementLegacyErrorMessage,
 voucherCategory
 } from "./constants";
 import { FinanceCenterView } from "./FinanceCenterView";
+import { RefundLogDrawer } from "./RefundLogDrawer";
 import { InvoiceDetailTables } from "./InvoiceDetailTables";
 import { ContractPaymentEditPage } from "./ContractPaymentEditPage";
 import { fetchInvoiceRecord, invoiceEditValues, invoiceObjectFees } from "./invoiceDetails.mjs";
@@ -523,6 +524,7 @@ export default function FinanceCenterPage({
     useState<Fee | null>(null);
   const [paymentRollbackComment, setPaymentRollbackComment] = useState("");
   const [settlementBatchOpen, setSettlementBatchOpen] = useState(false);
+  const [refundLogFeeId, setRefundLogFeeId] = useState<number | null>(null);
   const [settlementContext, setSettlementContext] = useState<{
     mode: "tasks" | "logs" | "log-create" | "task-create";
     caseRecords: Fee[];
@@ -1289,6 +1291,7 @@ export default function FinanceCenterPage({
 
   useEffect(() => {
     setTab(first);
+    setRefundLogFeeId(null);
     const defaults =
       contractPaymentSource.active && contractPaymentSource.ok
         ? {
@@ -1370,7 +1373,7 @@ export default function FinanceCenterPage({
     get reconcileForm() { return reconcileForm; },
     get setReconcileOpen() { return setReconcileOpen; },
   });
-  const { importBankStatement, searchClaimCustomers, submitFlow, openRowCaseLogs } = createFinanceWorkflowActions({
+  const { importBankStatement, searchClaimCustomers, submitFlow } = createFinanceWorkflowActions({
     get bankSource() { return initialView.split("-").at(-1) || ""; },
     get load() { return load; },
     get bankUploadRef() { return bankUploadRef; },
@@ -1378,9 +1381,6 @@ export default function FinanceCenterPage({
     get setClaimCustomersLoading() { return setClaimCustomersLoading; },
     get setClaimCustomers() { return setClaimCustomers; },
     get refreshRefundList() { return refreshRefundList; },
-    get setSettlementActionLoading() { return setSettlementActionLoading; },
-    get setSettlementContextRows() { return setSettlementContextRows; },
-    get setSettlementContext() { return setSettlementContext; },
   });
 
   const filteredAllocationCandidates = allocationCandidates.filter((row) => {
@@ -3481,7 +3481,7 @@ export default function FinanceCenterPage({
   };
 
   const refundCaseFeeOperation = (_: unknown, row: Fee) => (
-    <Button type="link" onClick={() => void openRowCaseLogs(row)}>
+    <Button type="link" onClick={() => setRefundLogFeeId(row.id)}>
       日志
     </Button>
   );
@@ -5441,5 +5441,17 @@ export default function FinanceCenterPage({
     contracts,
   };
 
-  return <FinanceCenterView {...viewProps} />;
+  return (
+    <>
+      <FinanceCenterView {...viewProps} />
+      {isRefundCaseFeeRoute && refundLogFeeId !== null && (
+        <RefundLogDrawer
+          key={refundLogFeeId}
+          feeId={refundLogFeeId}
+          onClose={() => setRefundLogFeeId(null)}
+          personDisplayName={financePersonDisplayName}
+        />
+      )}
+    </>
+  );
 }

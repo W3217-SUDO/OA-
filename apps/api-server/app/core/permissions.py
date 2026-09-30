@@ -566,20 +566,25 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession):
 
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     from app.core.conflict_review import can_review_conflicts
-    conflict_scope = [] if await can_review_conflicts(identity, db) else [or_(
+    protected_scope = [] if await can_review_conflicts(identity, db) else [or_(
         BusinessRecord.module != "conflict_review", BusinessRecord.owner == identity.get("username", ""),
     )]
+    # 问题反馈仅对真实管理员和提交人开放，菜单带来的临时管理员能力不扩展此范围。
+    if "admin" not in identity.get("_actual_role_ids", []):
+        protected_scope.append(or_(
+            BusinessRecord.module != "bug_feedback", BusinessRecord.owner == identity.get("username", ""),
+        ))
     if "_dashboard_record_ids" in identity:
-        return [*conflict_scope, BusinessRecord.id.in_(identity["_dashboard_record_ids"])]
+        return [*protected_scope, BusinessRecord.id.in_(identity["_dashboard_record_ids"])]
     if identity.get("role") == "admin" or identity.get("_page_menu_capability"):
-        return conflict_scope
+        return protected_scope
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user:
         raise HTTPException(status_code=401, detail="当前用户不存在")
     permission = await _user_permission_payload(user, db)
     scope = permission["data_scope"]
     if scope == "全所数据":
-        return conflict_scope
+        return protected_scope
     public_customer = and_(BusinessRecord.module == "customer", BusinessRecord.status == "公海")
     # JSON arrays are serialized with quoted string members.  Matching the
     # quoted username keeps ``ann`` from gaining access to rows assigned or
@@ -637,14 +642,14 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         return or_(condition, customer_menu_scope) if customer_menu_scope is not None else condition
 
     if scope == "本部门数据":
-        return [*conflict_scope, include_customer_menu_scope(or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
     if scope == "授权审批数据":
         # Approval range is not a blanket view of every pending record.  A
         # contract becomes visible here only for its current pending approver;
         # other modules retain their own owner/share/participant projections
         # until they expose an equally concrete candidate relation.
-        return [*conflict_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
-    return [*conflict_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+    return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
 
 
 async def _visible_legacy_ipr_case_ids(identity: dict, db: AsyncSession) -> set[int]:
@@ -752,6 +757,10 @@ async def _ensure_record_visible(record_id: int, identity: dict, db: AsyncSessio
     candidate = await db.get(BusinessRecord, record_id)
     if candidate and candidate.module == "conflict_review":
         return await ensure_conflict_review_visible(record_id, identity, db)
+    if candidate and candidate.module == "bug_feedback":
+        if "admin" not in identity.get("_actual_role_ids", []) and candidate.owner != identity.get("username"):
+            raise HTTPException(status_code=404, detail="反馈不存在或无权查看")
+        return candidate
     conditions = [BusinessRecord.id == record_id, *(await _record_scope_conditions(identity, db))]
     record = await db.scalar(select(BusinessRecord).where(*conditions))
     if not record:
@@ -904,15 +913,20 @@ async def _visible_record_ids(identity: dict, db: AsyncSession) -> set[int]:
 
 async def _filter_visible_attachments(items: list[FileAttachment], identity: dict, db: AsyncSession) -> list[FileAttachment]:
     from app.core.conflict_review import can_review_conflicts
-    review_ids = {item.record_id for item in items if item.record_id}
-    reviews = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.id.in_(review_ids), BusinessRecord.module == "conflict_review",
-    ))).all()) if review_ids else []
+    parent_ids = {item.record_id for item in items if item.record_id}
+    protected_records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(parent_ids), BusinessRecord.module.in_(("conflict_review", "bug_feedback")),
+    ))).all()) if parent_ids else []
+    reviews = [row for row in protected_records if row.module == "conflict_review"]
     reviewer = await can_review_conflicts(identity, db) if reviews else False
     allowed_review_ids = {row.id for row in reviews if reviewer or row.owner == identity.get("username")}
     if reviews:
         denied = {row.id for row in reviews if row.id not in allowed_review_ids}
         items = [item for item in items if item.record_id not in denied]
+    if "admin" not in identity.get("_actual_role_ids", []):
+        denied_feedback_ids = {row.id for row in protected_records
+                               if row.module == "bug_feedback" and row.owner != identity.get("username")}
+        items = [item for item in items if item.record_id not in denied_feedback_ids]
     if identity.get("role") == "admin":
         return items
     record_ids = await _visible_record_ids(identity, db)

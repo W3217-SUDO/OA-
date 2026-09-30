@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { Button, Form, Input, message, Modal } from "antd";
 import { api } from "./api";
+import FeedbackManager from "./feedback/FeedbackManager";
 
-export default function BugFeedback() {
+export default function BugFeedback({ isAdmin }: { isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
+  const [managerOpen, setManagerOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [screenshot, setScreenshot] = useState<File | null>(null);
   const [form] = Form.useForm<{ description: string }>();
@@ -21,6 +24,7 @@ export default function BugFeedback() {
       form.resetFields();
       setScreenshot(null);
       setOpen(false);
+      setRefreshKey((value) => value + 1);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "反馈提交失败");
     } finally {
@@ -29,7 +33,9 @@ export default function BugFeedback() {
   };
 
   return <>
-    <Button className="bug-feedback-trigger" aria-label="问题反馈" title="问题反馈" onClick={() => setOpen(true)}>问题反馈</Button>
+    <Button className="bug-feedback-trigger" aria-label="问题反馈" title="问题反馈" onClick={() => isAdmin ? setManagerOpen(true) : setOpen(true)}>问题反馈</Button>
+    {isAdmin && <FeedbackManager open={managerOpen} refreshKey={refreshKey}
+      onClose={() => setManagerOpen(false)} onCreate={() => setOpen(true)} />}
     <Modal open={open} title="问题反馈" okText="提交反馈" confirmLoading={submitting}
       onOk={() => void submit()} onCancel={() => setOpen(false)}>
       <Form form={form} layout="vertical">
