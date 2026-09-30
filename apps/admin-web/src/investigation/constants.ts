@@ -84,11 +84,8 @@ export const isLegacyInvestigationRecord = (row: Row | null) => {
 };
 
 export const investigationListView = (route: string) => {
-  if (
-    route === "investigation-task-unassigned" ||
-    route === "investigation-task-sub-mine"
-  )
-    return "assigned";
+  if (route === "investigation-task-unassigned") return "unassigned";
+  if (route === "investigation-task-sub-mine") return "assigned";
   if (
     route === "investigation-task-published" ||
     route === "investigation-task-overdue" ||

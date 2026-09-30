@@ -38,7 +38,6 @@ import {
   UploadOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { useCascaderAreaData } from "@vant/area-data";
 import { api } from "../api";
 import { rememberCustomerDetailTarget } from "../customerDetailNavigation";
 import { consumeInvestigationDetailTarget } from "../investigationDetailNavigation";
@@ -69,7 +68,6 @@ import type {
   InvestigationRegionGroup,
   SubtaskLifecycleAction,
   ModuleKey,
-  AdministrativeRegionOption,
 } from "./types";
 import {
   moduleMeta,
@@ -107,19 +105,6 @@ import AssignInvestigatorModal from "./AssignInvestigatorModal";
 import FeeApplicationModal from "./FeeApplicationModal";
 
 // Region and scope helpers (kept here due to .mjs dependencies)
-const INVESTIGATION_ADMINISTRATIVE_REGIONS = useCascaderAreaData() as AdministrativeRegionOption[];
-
-const investigationAdministrativeCity = (province: string, city: string) => {
-  const cities = INVESTIGATION_ADMINISTRATIVE_REGIONS.find(
-    (item) => item.text === province,
-  )?.children || [];
-  if (city === "市辖区" && cities.length === 1) return cities[0];
-  return cities.find((item) => item.text === city);
-};
-
-const investigationDistrictsForCity = (province: string, city: string) =>
-  investigationAdministrativeCity(province, city)?.children?.map((item) => item.text) || [];
-
 const investigationTaskRegionOptions = (groups: InvestigationRegionGroup[]) =>
   groups.map(({ province, cities }) => ({
     value: province,
@@ -127,10 +112,6 @@ const investigationTaskRegionOptions = (groups: InvestigationRegionGroup[]) =>
     children: cities.map((city) => ({
       value: city,
       label: city,
-      children: investigationDistrictsForCity(province, city).map((district) => ({
-        value: district,
-        label: district,
-      })),
     })),
   }));
 
@@ -146,7 +127,7 @@ const investigationTaskScopeGroups = (data: Record<string, any>) => {
     .map((item) => item.trim())
     .filter(Boolean);
   const groups = INVESTIGATION_REGION_GROUPS as InvestigationRegionGroup[];
-  if (["全国", "全国范围"].includes(scope) || scopeTokens.includes("全国")) return groups;
+  if (data.authorization_scope_type === "N" || ["全国", "全国范围"].includes(scope) || scopeTokens.includes("全国")) return groups;
 
   const scopeIncludes = (value: string) =>
     scopeTokens.includes(value) || scope.includes(value);
@@ -162,18 +143,12 @@ const investigationTaskScopeGroups = (data: Record<string, any>) => {
     .filter((group) => group.cities.length > 0);
   if (scopedGroups.length) return scopedGroups;
 
-  const inheritedProvince = String(data.province || "").trim();
-  const inheritedCity = String(data.city || "").trim();
-  const inheritedGroup = groups.find((group) => group.province === inheritedProvince);
-  if (inheritedGroup) {
-    return [{
-      province: inheritedGroup.province,
-      cities: inheritedCity && inheritedGroup.cities.includes(inheritedCity)
-        ? [inheritedCity]
-        : inheritedGroup.cities,
-    }];
-  }
-  return groups;
+  const inheritedProvinces = new Set(String(data.province || "").split(/[、,，;；\s]+/).filter(Boolean));
+  const inheritedCities = new Set(String(data.city || "").split(/[、,，;；\s]+/).filter(Boolean));
+  return groups.map(({ province, cities }) => ({
+    province,
+    cities: inheritedProvinces.has(province) ? cities : cities.filter((city) => inheritedCities.has(city)),
+  })).filter((group) => group.cities.length > 0);
 };
 
 const clueStatusesByRoute: Record<string, string[]> = {
@@ -218,7 +193,6 @@ export default function InvestigationCenterPage({
     display_name: "",
     role: "",
   });
-  const [assignmentSupervisor, setAssignmentSupervisor] = useState("");
   const [notaryOfficeOptions, setNotaryOfficeOptions] = useState<
     { value: string }[]
   >([]);
@@ -305,8 +279,6 @@ export default function InvestigationCenterPage({
   const [evidenceForm] = Form.useForm();
   const [certificateForm] = Form.useForm();
   const [taskForm] = Form.useForm();
-  const taskProvince = Form.useWatch("province", taskForm);
-  const taskCity = Form.useWatch("city", taskForm);
   const [subtaskActionForm] = Form.useForm();
   const [materialForm] = Form.useForm();
   const [batchForm] = Form.useForm();
@@ -372,16 +344,13 @@ export default function InvestigationCenterPage({
   const resetTaskForm = (target: Row) => {
     const allowedGroups = investigationTaskScopeGroups(target.data || {});
     const inheritedProvince = String(target.data.province || "").trim();
-    const province = allowedGroups.some((group) => group.province === inheritedProvince)
-      ? inheritedProvince
-      : "";
-    const provinceGroup = allowedGroups.find((group) => group.province === province);
     const inheritedCity = String(target.data.city || "").trim();
-    const city = provinceGroup?.cities.includes(inheritedCity) ? inheritedCity : "";
-    const inheritedDistrict = String(target.data.district || "").trim();
-    const district = investigationDistrictsForCity(province, city).includes(inheritedDistrict)
-      ? inheritedDistrict
-      : "";
+    const provinceGroup = allowedGroups.find((group) => group.province === inheritedProvince);
+    const inheritedRegions = Array.isArray(target.data.investigation_regions)
+      ? target.data.investigation_regions
+      : provinceGroup && inheritedCity && provinceGroup.cities.includes(inheritedCity)
+        ? [[inheritedProvince, inheritedCity]]
+        : [];
     taskForm.resetFields();
     taskForm.setFieldsValue({
       title: `${target.title || target.serial_no} - 调查子任务`,
@@ -396,10 +365,7 @@ export default function InvestigationCenterPage({
         ? dayjs(String(target.data.authorized_to))
         : undefined,
       authorization_scope: String(target.data.authorization_scope || "").trim(),
-      province,
-      city,
-      district,
-      region_path: province && city ? [province, city, ...(district ? [district] : [])] : [],
+      investigation_regions: inheritedRegions,
       contract_record_id:
         target.data.contract_id || target.data.contract_record_id || undefined,
     });
@@ -432,6 +398,23 @@ export default function InvestigationCenterPage({
               },
             });
       const loadedRows = data.items as Row[];
+      if (initialTab === "investigation-task-unassigned" && data.total > loadedRows.length) {
+        const pages = Math.ceil(data.total / 100);
+        const remaining = await Promise.all(
+          Array.from({ length: pages - 1 }, (_, index) =>
+            api.get("/records", {
+              params: {
+                module: "investigation",
+                scope: "mine",
+                investigation_view: "unassigned",
+                page_size: 100,
+                page: index + 2,
+              },
+            }),
+          ),
+        );
+        loadedRows.push(...remaining.flatMap((response) => response.data.items as Row[]));
+      }
       setRows(loadedRows);
       setInvestigationActions({});
       const target = consumeInvestigationDetailTarget();
@@ -496,7 +479,6 @@ export default function InvestigationCenterPage({
         load(initial),
         loadInvestigationBootstrap().then((bootstrapData) => {
           setProfile(bootstrapData.profile);
-          setAssignmentSupervisor(bootstrapData.assignmentSupervisor);
             setNotaryOfficeOptions(bootstrapData.notaryOfficeOptions);
             setCasePeopleOptions(bootstrapData.casePeopleOptions);
             setWarehouseCatalog(bootstrapData.warehouseCatalog);
@@ -558,15 +540,6 @@ export default function InvestigationCenterPage({
           dayjs(String(row.data.authorized_to)).isBefore(dayjs(), "day") &&
           !["已完成", "已取消"].includes(row.status),
       );
-    if (initialTab === "investigation-task-unassigned") {
-      const supervisor = assignmentSupervisor || profile.username;
-      result = result.filter(
-        (row) =>
-          Boolean(supervisor) &&
-          row.owner === supervisor &&
-          !["已完成", "已取消"].includes(row.status),
-      );
-    }
     if (
       initialTab.includes("-my-") &&
       Boolean(profile.username)
@@ -1672,16 +1645,9 @@ export default function InvestigationCenterPage({
     if (!taskTarget) return;
     try {
       const v = await taskForm.validateFields();
-      const regionPath = Array.isArray(v.region_path) ? v.region_path : [];
       await api.post(`/investigations/${taskTarget.id}/tasks`, {
         ...v,
-        province: regionPath[0] || v.province || "",
-        city: regionPath[1] || v.city || "",
-        district: regionPath[2] || v.district || "",
-        // Keep the selected investigation area distinct from the inherited
-        // authorization scope.  The API still inherits the scope from the
-        // parent when this concrete province/city path is supplied.
-        authorization_scope: regionPath.length ? "" : v.authorization_scope || "",
+        authorization_scope: v.authorization_scope || "",
         deadline: formatRequiredDate(v.deadline, "截止日期"),
         start_date: v.start_date ? formatRequiredDate(v.start_date, "开始日期") : undefined,
         end_date: v.end_date ? formatRequiredDate(v.end_date, "结束日期") : undefined,
@@ -1702,9 +1668,7 @@ export default function InvestigationCenterPage({
           title: "任务名称",
           owner: "调查员",
           deadline: "截止日期",
-          province: "调查省份",
-          city: "调查城市",
-          district: "调查区/县",
+          investigation_regions: "调查区域",
         };
         taskForm.scrollToField(error.errorFields[0].name);
         message.warning(`请填写${labels[name] || "必填信息"}后再创建任务`);
@@ -3524,14 +3488,6 @@ export default function InvestigationCenterPage({
   const taskScopeGroups = taskTarget
     ? investigationTaskScopeGroups(taskTarget.data || {})
     : [];
-  const taskSelectedProvince = String(taskProvince || "");
-  const taskCityOptions =
-    taskScopeGroups.find((group) => group.province === taskSelectedProvince)
-      ?.cities || [];
-  const taskDistrictOptions = investigationDistrictsForCity(
-    taskSelectedProvince,
-    String(taskCity || ""),
-  );
   const taskAuthorizationScope = String(
     taskTarget?.data.authorization_scope || "未配置",
   ).trim();
@@ -3964,13 +3920,8 @@ export default function InvestigationCenterPage({
         tasks={tasks}
         creatingSubtask={creatingSubtask}
         taskForm={taskForm}
-        taskProvince={taskProvince}
-        taskCity={taskCity}
         contractOptions={contractOptions}
         casePeopleOptions={casePeopleOptions}
-        taskScopeGroups={taskScopeGroups}
-        taskCityOptions={taskCityOptions}
-        taskDistrictOptions={taskDistrictOptions}
         taskAuthorizationScope={taskAuthorizationScope}
         taskRegionOptions={taskRegionOptions}
         personDisplayName={personDisplayName}

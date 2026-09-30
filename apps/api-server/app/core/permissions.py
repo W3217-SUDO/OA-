@@ -564,6 +564,33 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession):
     return or_(*conditions)
 
 
+def _investigation_supervisor_condition(username: str):
+    auditor = func.lower(func.trim(func.coalesce(BusinessRecord.data["auditor"].as_string(), "")))
+    assigner = func.lower(func.trim(func.coalesce(BusinessRecord.data["assigner"].as_string(), "")))
+    legacy = or_(
+        func.trim(func.coalesce(BusinessRecord.data["migration_source"].as_string(), "")) != "",
+        func.coalesce(BusinessRecord.data["legacy_investigation_id"].as_integer(), 0) > 0,
+    )
+    return or_(
+        auditor == username.lower(),
+        and_(auditor == "", ~legacy, or_(
+            func.lower(BusinessRecord.owner) == username.lower(),
+            assigner == username.lower(),
+        )),
+    )
+
+
+async def _require_investigation_assignment_access(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    if record.module == "investigation" and await db.scalar(select(BusinessRecord.id).where(
+        BusinessRecord.id == record.id,
+        _investigation_supervisor_condition(identity["username"]),
+    )):
+        return
+    from app.core.investigation_access import _actual_identity
+    actual_identity = await _actual_identity(identity, db)
+    await _require_record_owner_or_manager(record, actual_identity, db)
+
+
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     from app.core.conflict_review import can_review_conflicts
     protected_scope = [] if await can_review_conflicts(identity, db) else [or_(
@@ -605,6 +632,10 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         BusinessRecord.module == "investigation",
         func.lower(BusinessRecord.data["publisher"].as_string()) == user.username.lower(),
     )
+    supervised_investigation = and_(
+        BusinessRecord.module == "investigation",
+        _investigation_supervisor_condition(user.username),
+    )
     initiated_task = and_(
         BusinessRecord.module == "task",
         func.lower(func.coalesce(BusinessRecord.data["initiator"].as_string(), "")) == user.username.lower(),
@@ -642,14 +673,14 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         return or_(condition, customer_menu_scope) if customer_menu_scope is not None else condition
 
     if scope == "本部门数据":
-        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
     if scope == "授权审批数据":
         # Approval range is not a blanket view of every pending record.  A
         # contract becomes visible here only for its current pending approver;
         # other modules retain their own owner/share/participant projections
         # until they expose an equally concrete candidate relation.
-        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
-    return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+    return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
 
 
 async def _visible_legacy_ipr_case_ids(identity: dict, db: AsyncSession) -> set[int]:

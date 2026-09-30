@@ -446,6 +446,7 @@ class InvestigationTaskInput(BaseModel):
     province: str = Field(default="", max_length=100)
     city: str = Field(default="", max_length=100)
     district: str = Field(default="", max_length=100)
+    investigation_regions: list[list[str]] | None = Field(default=None, min_length=1, max_length=500)
     priority: str = "普通"
     parent_task_id: int | None = None
     contract_record_id: int | None = Field(default=None, gt=0)

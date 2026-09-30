@@ -574,7 +574,7 @@ async def list_records(
         _apply_notary_auto_conversion,
     )
     from app.core.permissions import (
-        _case_mine_scope_condition, _record_scope_conditions, _require_record_module_menu,
+        _case_mine_scope_condition, _investigation_supervisor_condition, _record_scope_conditions, _require_record_module_menu,
     )
     from app.core.system import (
         _allowed_field_keys,
@@ -684,6 +684,11 @@ async def list_records(
                 publisher_expr == identity["username"].lower(),
                 and_(legacy_publisher_missing, BusinessRecord.owner == identity["username"]),
             ))
+        elif module == "investigation" and investigation_view == "unassigned":
+            conditions.extend([
+                _investigation_supervisor_condition(identity["username"]),
+                BusinessRecord.status.not_in({"已完成", "已取消"}),
+            ])
         elif module == "task":
             investigation_subtask = or_(
                 BusinessRecord.data["investigation_record_id"].as_integer() > 0,

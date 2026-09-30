@@ -1,6 +1,7 @@
 import { Drawer, Card, Form, Alert, Input, Select, DatePicker, Cascader, Button, Space, Tag } from "antd";
 import Table from "../components/ResizableTable";
 import { isLegacyInvestigationRecord } from "./constants";
+import { taskRegionLabel } from "./taskRegionDisplay";
 import type { Row, TaskRow, Contract, WarehouseCatalogItem } from "./types";
 
 interface TaskDetailDrawerProps {
@@ -9,13 +10,8 @@ interface TaskDetailDrawerProps {
   tasks: TaskRow[];
   creatingSubtask: boolean;
   taskForm: any;
-  taskProvince: string | undefined;
-  taskCity: string | undefined;
   contractOptions: Contract[];
   casePeopleOptions: { value: string; label: string; username?: string; search_text?: string }[];
-  taskScopeGroups: { province: string; cities: string[] }[];
-  taskCityOptions: string[];
-  taskDistrictOptions: string[];
   taskAuthorizationScope: string;
   taskRegionOptions: any[];
   personDisplayName: (value: unknown) => string;
@@ -29,13 +25,8 @@ export default function TaskDetailDrawer({
   tasks,
   creatingSubtask,
   taskForm,
-  taskProvince,
-  taskCity,
   contractOptions,
   casePeopleOptions,
-  taskScopeGroups,
-  taskCityOptions,
-  taskDistrictOptions,
   taskAuthorizationScope,
   taskRegionOptions,
   personDisplayName,
@@ -80,8 +71,9 @@ export default function TaskDetailDrawer({
           {
             title: "调查区域",
             width: 160,
+            ellipsis: { showTitle: true },
             render: (_value: unknown, row: TaskRow) =>
-              row.data?.region || [row.data?.province, row.data?.city, row.data?.district].filter(Boolean).join(" ") || "—",
+              taskRegionLabel(row.data),
           },
           {
             title: "开始时间",
@@ -122,7 +114,7 @@ export default function TaskDetailDrawer({
               showIcon
               style={{ marginBottom: 16 }}
               message={`父调查任务：${taskTarget?.serial_no || "当前调查任务"}`}
-              description="本次子任务将自动继承当前调查任务的客户、合同、授权范围、授权时间和调查区域。"
+              description="本次子任务继承当前调查任务的客户、合同及授权范围，请在授权范围内选择调查区域。"
             />
           )}
           <Form.Item
@@ -221,78 +213,34 @@ export default function TaskDetailDrawer({
             message={`授权区域：${taskAuthorizationScope || "未配置"}`}
             description={`授权时间：${taskTarget?.data.authorized_from || "未配置"} 至 ${taskTarget?.data.authorized_to || "未配置"}`}
           />
-          <div className="form-grid">
-            <Form.Item
-              label="调查省份"
-              name="province"
-              rules={[{ required: true, message: "请选择授权范围内的调查省份" }]}
-            >
-              <Select
-                placeholder="请选择授权范围内的省份"
-                options={taskScopeGroups.map((group) => ({
-                  value: group.province,
-                  label: group.province,
-                }))}
-                onChange={() => taskForm.setFieldsValue({
-                  city: undefined,
-                  district: undefined,
-                  region_path: [],
-                })}
-              />
-            </Form.Item>
-            <Form.Item
-              label="调查城市"
-              name="city"
-              rules={[{ required: true, message: "请选择授权范围内的调查城市" }]}
-            >
-              <Select
-                placeholder="请选择授权范围内的城市"
-                disabled={!taskProvince}
-                options={taskCityOptions.map((city) => ({ value: city, label: city }))}
-                onChange={() => taskForm.setFieldsValue({ district: undefined, region_path: [] })}
-              />
-            </Form.Item>
-            <Form.Item
-              label="调查区/县"
-              name="district"
-              rules={[{ required: true, message: "请选择调查城市下的区/县" }]}
-            >
-              <Select
-                placeholder="请选择调查城市下的区/县"
-                disabled={!taskCity}
-                options={taskDistrictOptions.map((district) => ({ value: district, label: district }))}
-                onChange={(district) => {
-                  if (taskProvince && taskCity) {
-                    taskForm.setFieldValue("region_path", [taskProvince, taskCity, district]);
-                  }
-                }}
-              />
-            </Form.Item>
-          </div>
           <Form.Item label="备注" name="description">
             <Input.TextArea rows={3} />
           </Form.Item>
           <Form.Item
             label="调查区域"
-            name="region_path"
-            rules={[{ required: true, type: "array", min: 3, message: "请选择调查区域" }]}
-            extra="按省、市、区/县选择调查区域，系统会自动继承到任务并限制在授权范围内"
+            name="investigation_regions"
+            rules={[{ required: true, type: "array", min: 1, message: "请至少选择一个调查区域" }]}
+            extra="可跨省选择多个省、市，调查区域须在父任务授权范围内"
           >
             <Cascader
               options={taskRegionOptions}
-              placeholder="请选择调查区域"
+              multiple
+              changeOnSelect
+              maxTagCount={3}
+              placeholder="请选择一个或多个调查区域"
               showSearch
               expandTrigger="hover"
-              onChange={(path) => {
-                const [provinceValue, cityValue, districtValue] = (path || []) as string[];
-                taskForm.setFieldsValue({
-                  province: provinceValue || "",
-                  city: cityValue || "",
-                  district: districtValue || "",
-                });
-              }}
             />
           </Form.Item>
+          <Space style={{ marginBottom: 16 }}>
+            <Button size="small" onClick={() => taskForm.setFieldValue(
+              "investigation_regions",
+              taskRegionOptions.flatMap((province) =>
+                province.children.map((city: { value: string }) => [province.value, city.value]),
+              ),
+            )}>全选授权区域</Button>
+            <Button size="small" onClick={() => taskForm.setFieldValue("investigation_regions", [])}>清空</Button>
+          </Space>
           <Space>
             <Button type="primary" onClick={() => onCreateTask("complete")}>
               完成

@@ -5,6 +5,7 @@ import dayjs from "dayjs";
 import { api } from "../api";
 import { AttachmentPreviewContent, type PreviewAttachment } from "../components/common/AttachmentContent";
 import type { Attachment, Row } from "./types";
+import { taskRegionLabel } from "./taskRegionDisplay";
 import "./investigation-task-detail.css";
 
 interface DetailResponse {
@@ -21,7 +22,7 @@ interface Props {
   onOpenClue: (serial: string, module: "clue") => void;
 }
 const dateText = (value: unknown) => value && dayjs(String(value)).isValid() ? dayjs(String(value)).format("YYYY-MM-DD") : "—";
-const region = (row: Row) => row.data.region || [row.data.province, row.data.city, row.data.district].filter(Boolean).join(" ") || "—";
+const region = (row: Row) => taskRegionLabel(row.data);
 const errorText = (error: any, message: string) => typeof error?.response?.data?.detail === "string" ? error.response.data.detail : error?.message || message;
 
 export default function InvestigationTaskDetail({ record, personName, onOpenCustomer, onOpenClue }: Props) {

@@ -934,6 +934,7 @@ function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): s
     }
     return "客户查看";
   }
+  if (normalizedKey.startsWith("contract-change-")) return "合同变更";
   if (normalizedKey.startsWith("contract-investigation-")) return "新建调查任务";
   if (normalizedKey.startsWith("contract-payment-apply-")) return "合同付款";
   if (normalizedKey.startsWith("contract-invoice-apply-")) return "合同开票";

@@ -192,6 +192,7 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
             "contract_no": contract.serial_no,
             "publisher": identity["username"],
             "assigner": identity["username"],
+            "auditor": supervisor.username,
             "source_owner": investigation_data.get("source_owner") or (contract.data or {}).get("source_person") or contract.owner,
         }
     if body.module == "clue":
@@ -1111,7 +1112,7 @@ async def update_investigation_parties(record_id: int, body: InvestigationPartyI
 @router.post(f"{settings.api_prefix}/investigations/{{record_id}}/assign")
 async def assign_investigation_record(record_id: int, body: InvestigationAssignmentInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_record_visible, _require_record_owner_or_manager, _require_task_owner_or_initiator,
+        _ensure_record_visible, _require_investigation_assignment_access, _require_record_owner_or_manager, _require_task_owner_or_initiator,
     )
     from app.core.system import (
         _record_dict,
@@ -1124,6 +1125,8 @@ async def assign_investigation_record(record_id: int, body: InvestigationAssignm
         raise HTTPException(status_code=422, detail="仅调查授权、调查线索或调查任务可以分配调查员")
     if record.module == "task":
         _require_task_owner_or_initiator(record, identity, action="修改任务负责人")
+    elif record.module == "investigation":
+        await _require_investigation_assignment_access(record, identity, db)
     else:
         await _require_record_owner_or_manager(record, identity, db)
     if record.module == "clue" and record.status in {"已转案件"}:
@@ -1232,23 +1235,29 @@ async def list_investigation_tasks(record_id: int, identity: dict = Depends(curr
     from app.core.investigation import (
         _resolve_investigation_task_root,
     )
+    from app.core.investigation_access import _actual_identity
     from app.core.permissions import (
-        _ensure_record_visible, _record_scope_conditions,
+        _ensure_record_visible, _investigation_supervisor_condition, _record_scope_conditions,
     )
     from app.core.system import (
         _record_dict,
     )
-    source = await _ensure_record_visible(record_id, identity, db)
+    actual_identity = await _actual_identity(identity, db)
+    source = await _ensure_record_visible(record_id, actual_identity, db)
     if source.module not in INVESTIGATION_MATERIAL_CATEGORIES:
         raise HTTPException(status_code=404, detail="调查业务记录不存在")
-    root = await _resolve_investigation_task_root(source, identity, db)
+    root = await _resolve_investigation_task_root(source, actual_identity, db)
     root_data = root.data or {}
     can_view_all_children = (
-        identity.get("role") == "admin"
+        actual_identity.get("role") == "admin"
         or root.owner == identity["username"]
         or str(root_data.get("publisher") or "").lower() == identity["username"].lower()
+        or bool(await db.scalar(select(BusinessRecord.id).where(
+            BusinessRecord.id == root.id,
+            _investigation_supervisor_condition(identity["username"]),
+        )))
     )
-    task_scope = [] if can_view_all_children else await _record_scope_conditions(identity, db)
+    task_scope = [] if can_view_all_children else await _record_scope_conditions(actual_identity, db)
     tasks = (
         await db.scalars(
             select(BusinessRecord)
@@ -1315,11 +1324,13 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     from app.core.investigation import (
         _investigation_authorization_expired, _resolve_investigation_task_root,
     )
+    from app.core.investigation_task_regions import normalize_investigation_task_regions
     from app.core.legacy_sync import (
         _sync_legacy_projection,
     )
     from app.core.permissions import (
-        _ensure_record_module, _ensure_record_visible, _require_record_owner_or_manager,
+        _ensure_record_module, _ensure_record_visible, _investigation_supervisor_condition,
+        _require_investigation_assignment_access,
     )
     from app.core.tasks import (
         _active_task_username, _add_task_message_notifications, _next_rw_task_serial_no,
@@ -1327,7 +1338,7 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     source = await _ensure_record_visible(record_id, identity, db)
     if source.module not in INVESTIGATION_MATERIAL_CATEGORIES:
         raise HTTPException(status_code=404, detail="调查业务记录不存在")
-    await _require_record_owner_or_manager(source, identity, db)
+    await _require_investigation_assignment_access(source, identity, db)
     if body.deadline < date.today():
         raise HTTPException(status_code=422, detail="任务截止日期不能早于今天")
     source = await _resolve_investigation_task_root(source, identity, db)
@@ -1346,12 +1357,18 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
             raise HTTPException(status_code=409, detail="父任务不属于当前调查事项")
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     owner = body.owner.strip()
-    can_delegate = identity.get("role") in {"admin", "manager"}
-    if identity.get("role") == "user":
+    actual_role = identity.get("_actual_role", identity.get("role"))
+    can_delegate = actual_role in {"admin", "manager"}
+    if actual_role == "user":
         assignment_config = await db.scalar(select(SystemConfig).where(SystemConfig.key == "investigation_assignment"))
         configured_username = str((assignment_config.value or {}).get("supervisor_username") or "").strip() if assignment_config else ""
-        can_delegate = configured_username.lower() == identity["username"].lower()
-    if identity.get("role") == "user" and not can_delegate:
+        can_delegate = configured_username.lower() == identity["username"].lower() or bool(
+            await db.scalar(select(BusinessRecord.id).where(
+                BusinessRecord.id == source.id,
+                _investigation_supervisor_condition(identity["username"]),
+            ))
+        )
+    if actual_role == "user" and not can_delegate:
         owner = identity["username"]
     owner = await _active_task_username(owner, db, field_name="负责人")
     attachment_ids = list(dict.fromkeys(body.attachment_ids))
@@ -1416,25 +1433,28 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=422, detail="调查结束时间必须不早于开始时间")
     parent_or_source = parent_data or source_data
-    requested_province = body.province.strip()
-    requested_city = body.city.strip()
-    requested_district = body.district.strip()
     requested_scope = body.authorization_scope.strip()
-    province = requested_province or str(parent_or_source.get("province") or "").strip()
-    city = requested_city or str(parent_or_source.get("city") or "").strip()
-    district = requested_district or str(parent_or_source.get("district") or "").strip()
-    # Authorization scope and investigation area are different fields.  When
-    # the form carries a concrete province/city selection, keep that selection
-    # as the task area even if the authorization scope is 全国; only fall back
-    # to the scope label when no concrete area was supplied.
-    if any((requested_province, requested_city, requested_district)):
-        region = " ".join(part for part in (requested_province, requested_city, requested_district) if part)
-    elif requested_scope:
-        region = requested_scope
+    investigation_regions = body.investigation_regions
+    if investigation_regions is not None:
+        investigation_regions, region, province, city = normalize_investigation_task_regions(
+            investigation_regions, parent_or_source, _AUTHORIZATION_CITIES,
+        )
+        district = ""
     else:
-        region = str(parent_or_source.get("region") or parent_or_source.get("address") or "").strip()
-        if not region:
-            region = " ".join(part for part in (province, city, district) if part)
+        requested_province = body.province.strip()
+        requested_city = body.city.strip()
+        requested_district = body.district.strip()
+        province = requested_province or str(parent_or_source.get("province") or "").strip()
+        city = requested_city or str(parent_or_source.get("city") or "").strip()
+        district = requested_district or str(parent_or_source.get("district") or "").strip()
+        if any((requested_province, requested_city, requested_district)):
+            region = " ".join(part for part in (requested_province, requested_city, requested_district) if part)
+        elif requested_scope:
+            region = requested_scope
+        else:
+            region = str(parent_or_source.get("region") or parent_or_source.get("address") or "").strip()
+            if not region:
+                region = " ".join(part for part in (province, city, district) if part)
     from app.core.clue_audit_scope import investigation_customer_data
     task_data = {
         **(await investigation_customer_data(source, db)),
@@ -1460,6 +1480,8 @@ async def create_investigation_task(record_id: int, body: InvestigationTaskInput
         "parent_task_id": parent.id if parent else None,
         "parent_task_no": parent.serial_no if parent else "",
     }
+    if investigation_regions is not None:
+        task_data["investigation_regions"] = investigation_regions
     serial_no = await _next_rw_task_serial_no(db)
     task = BusinessRecord(module="task", serial_no=serial_no, title=body.title.strip(), customer=source.customer, status="待接收", owner=owner, department=user.department if user else source.department, description=body.description, data=task_data)
     db.add(task); await db.flush()

@@ -579,14 +579,6 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
     if requested_owner and requested_owner != supervisor.username:
         raise HTTPException(status_code=422, detail="调查任务必须分配给系统配置的调查主管")
     owner = supervisor.username
-    duplicate = await db.scalar(select(BusinessRecord).where(
-        BusinessRecord.module == "investigation",
-        BusinessRecord.data["contract_id"].as_integer() == contract.id,
-        BusinessRecord.title == body.title.strip(),
-        BusinessRecord.status.not_in({"已取消", "已完成"}),
-    ))
-    if duplicate:
-        raise HTTPException(status_code=409, detail=f"该合同已有同名调查任务 {duplicate.serial_no}")
     contract_context = await _contract_customer_projection_context([contract], db)
     customer, _ = _customer_reference_from_maps(
         contract.customer,
@@ -616,6 +608,7 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
             "customer_review": body.customer_review,
             "publisher": identity["username"],
             "assigner": identity["username"] if owner else "",
+            "auditor": supervisor.username,
             "source_owner": (contract.data or {}).get("source_person") or contract.owner,
             "customer_managers": _contract_customer_manager_values(contract, customer),
             "customer_manager": "、".join(_contract_customer_manager_values(contract, customer)),
