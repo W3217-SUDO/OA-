@@ -1822,6 +1822,7 @@ async def delete_template(template_id: int, identity: dict = Depends(current_ide
 @router.get(f"{settings.api_prefix}/attachments")
 async def list_attachments(
     record_id: int | None = None,
+    case_id: int | None = Query(default=None, ge=1),
     finance_transaction_id: int | None = None,
     category: str = "",
     page: int = Query(1, ge=1),
@@ -1839,8 +1840,14 @@ async def list_attachments(
         _attachment_dict,
     )
     record = None
+    if case_id is not None and record_id is None:
+        raise HTTPException(status_code=422, detail="案件附件查询必须指定关联记录")
     if record_id is not None:
-        record = await _ensure_attachment_record_visible(record_id, identity, db)
+        if case_id is not None:
+            from app.core.case_documents import case_attachment_parent
+            record = await case_attachment_parent(case_id, record_id, identity, db)
+        else:
+            record = await _ensure_attachment_record_visible(record_id, identity, db)
         if record.module == JAR_FEE_MODULE:
             raise HTTPException(status_code=409, detail="JAR交案费文件必须使用交案费专用文件接口")
     conditions = []
@@ -1851,7 +1858,7 @@ async def list_attachments(
     if category:
         conditions.append(FileAttachment.category == category)
     items = (await db.scalars(select(FileAttachment).where(*conditions).order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all()
-    if not (record and record.module == "task"):
+    if case_id is None and not (record and record.module == "task"):
         items = await _filter_visible_attachments(items, identity, db)
     total = len(items)
     items = items[(page - 1) * page_size:(page - 1) * page_size + page_size]
@@ -1871,7 +1878,7 @@ async def list_attachments(
 
 
 @router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}")
-async def get_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def get_attachment(attachment_id: int, case_id: int | None = Query(default=None, ge=1), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.areas.aws.receipt_sources import can_read_receipt_attachment
     from app.core.formatters import (
         _person_display_name, _user_display_map,
@@ -1887,10 +1894,15 @@ async def get_attachment(attachment_id: int, identity: dict = Depends(current_id
         raise HTTPException(status_code=404, detail="附件不存在")
     record = None
     if item.record_id:
-        if await can_read_receipt_attachment(item, identity, db):
+        if case_id is not None:
+            from app.core.case_documents import case_attachment_parent
+            record = await case_attachment_parent(case_id, item.record_id, identity, db)
+        elif await can_read_receipt_attachment(item, identity, db):
             record = await db.get(BusinessRecord, item.record_id)
         else:
             record = await _ensure_attachment_record_visible(item.record_id, identity, db)
+    elif case_id is not None:
+        raise HTTPException(status_code=404, detail="附件不属于该案件")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
     uploader_users = await _user_display_map({item.uploader}, db)
@@ -2132,7 +2144,7 @@ async def upload_attachment(
 
 
 @router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/download")
-async def download_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def download_attachment(attachment_id: int, case_id: int | None = Query(default=None, ge=1), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.areas.aws.receipt_sources import can_read_receipt_attachment
     from app.core.investigation_access import ensure_investigation_material_access
     from app.core.permissions import (
@@ -2145,12 +2157,17 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        if await can_read_receipt_attachment(item, identity, db) or await ensure_investigation_material_access(item.record_id, identity, db):
+        if case_id is not None:
+            from app.core.case_documents import case_attachment_parent
+            record = await case_attachment_parent(case_id, item.record_id, identity, db)
+        elif await can_read_receipt_attachment(item, identity, db) or await ensure_investigation_material_access(item.record_id, identity, db):
             record = await db.get(BusinessRecord, item.record_id)
         else:
             record = await _ensure_attachment_record_visible(item.record_id, identity, db, allow_clue_audit_read=True)
         if record.module == JAR_FEE_MODULE:
             raise HTTPException(status_code=409, detail="JAR交案费文件必须使用交案费专用下载接口")
+    elif case_id is not None:
+        raise HTTPException(status_code=404, detail="附件不属于该案件")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
     path = _attachment_storage_path(item)
@@ -2160,7 +2177,7 @@ async def download_attachment(attachment_id: int, identity: dict = Depends(curre
 
 
 @router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/preview")
-async def preview_attachment(attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def preview_attachment(attachment_id: int, case_id: int | None = Query(default=None, ge=1), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Return safe, authenticated metadata/content for the in-app attachment preview."""
     from app.areas.aws.receipt_sources import can_read_receipt_attachment
     from app.core.investigation_access import ensure_investigation_material_access
@@ -2174,8 +2191,13 @@ async def preview_attachment(attachment_id: int, identity: dict = Depends(curren
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        if not (await can_read_receipt_attachment(item, identity, db) or await ensure_investigation_material_access(item.record_id, identity, db)):
+        if case_id is not None:
+            from app.core.case_documents import case_attachment_parent
+            await case_attachment_parent(case_id, item.record_id, identity, db)
+        elif not (await can_read_receipt_attachment(item, identity, db) or await ensure_investigation_material_access(item.record_id, identity, db)):
             await _ensure_attachment_record_visible(item.record_id, identity, db, allow_clue_audit_read=True)
+    elif case_id is not None:
+        raise HTTPException(status_code=404, detail="附件不属于该案件")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
 
@@ -2236,6 +2258,7 @@ async def preview_attachment(attachment_id: int, identity: dict = Depends(curren
 @router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/office-preview")
 async def create_office_preview_link(
     attachment_id: int,
+    case_id: int | None = Query(default=None, ge=1),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
@@ -2252,8 +2275,13 @@ async def create_office_preview_link(
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        if not await ensure_investigation_material_access(item.record_id, identity, db):
+        if case_id is not None:
+            from app.core.case_documents import case_attachment_parent
+            await case_attachment_parent(case_id, item.record_id, identity, db)
+        elif not await ensure_investigation_material_access(item.record_id, identity, db):
             await _ensure_attachment_record_visible(item.record_id, identity, db, allow_clue_audit_read=True)
+    elif case_id is not None:
+        raise HTTPException(status_code=404, detail="附件不属于该案件")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
     path = _attachment_storage_path(item)
@@ -2317,13 +2345,13 @@ async def stream_office_preview_attachment(token: str, file_name: str, db: Async
 
 @router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/pdf-preview")
 async def get_pdf_preview_metadata(
-    attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    attachment_id: int, case_id: int | None = Query(default=None, ge=1), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """Return authenticated PDF page metadata; image bytes stay on the page endpoint."""
     from app.core.storage import (
         _authorized_pdf_preview_attachment, _open_preview_pdf, _pdf_preview_response_headers,
     )
-    item, path = await _authorized_pdf_preview_attachment(attachment_id, identity, db)
+    item, path = await _authorized_pdf_preview_attachment(attachment_id, identity, db, case_id)
     document = _open_preview_pdf(path)
     try:
         page_count = len(document)
@@ -2331,7 +2359,7 @@ async def get_pdf_preview_metadata(
         document.close()
     page_url_template = (
         f"{settings.api_prefix}/attachments/{item.id}/pdf-preview/pages/{{page}}.png"
-        "?width={width}"
+        f"?width={{width}}{f'&case_id={case_id}' if case_id is not None else ''}"
     )
     return JSONResponse(
         content={
@@ -2354,6 +2382,7 @@ async def render_pdf_preview_page(
     attachment_id: int,
     page_number: int,
     width: int = Query(1440, ge=PDF_PREVIEW_MIN_WIDTH, le=PDF_PREVIEW_MAX_WIDTH),
+    case_id: int | None = Query(default=None, ge=1),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
@@ -2361,7 +2390,7 @@ async def render_pdf_preview_page(
     from app.core.storage import (
         _authorized_pdf_preview_attachment, _open_preview_pdf, _pdf_preview_response_headers,
     )
-    _item, path = await _authorized_pdf_preview_attachment(attachment_id, identity, db)
+    _item, path = await _authorized_pdf_preview_attachment(attachment_id, identity, db, case_id)
     document = _open_preview_pdf(path)
     page = None
     try:

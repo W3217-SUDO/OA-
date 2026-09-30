@@ -294,7 +294,10 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
     };
     const downloadCounselDetailAttachment = async (item: AttachmentRow) => {
         try {
-            const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
+            const caseId = context.viewingCounselCase?.id;
+            if (!caseId)
+                return message.warning("请先打开案件详情再下载文件");
+            const response = await api.get(`/attachments/${item.id}/download`, { params: { case_id: caseId }, responseType: "blob" });
             const url = URL.createObjectURL(response.data);
             const link = document.createElement("a");
             link.href = url;
@@ -321,7 +324,10 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
     };
     const previewCounselDetailAttachment = async (item: AttachmentRow) => {
         try {
-            await openAttachmentOnlinePreview(api, item);
+            const caseId = context.viewingCounselCase?.id;
+            if (!caseId)
+                return message.warning("请先打开案件详情再预览文件");
+            await openAttachmentOnlinePreview(api, item, { caseId });
         }
         catch (error: any) {
             message.error(error?.response?.data?.detail || error?.message || "案件文件预览失败");
@@ -337,7 +343,7 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
         setAttachmentPreviewLoading(true);
         try {
             const response = await api.get(`/attachments/${attachmentPreview.attachmentId}/pdf-preview/pages/${targetPage}.png`, {
-                params: { width: 1440 },
+                params: { width: 1440, case_id: context.viewingCounselCase?.id },
                 responseType: "blob",
             });
             const nextUrl = URL.createObjectURL(response.data);

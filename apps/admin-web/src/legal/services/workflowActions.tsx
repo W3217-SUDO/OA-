@@ -88,6 +88,7 @@ export interface CaseWorkflowDependencies {
     readonly setCounselDetailAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;
     readonly setCounselDetailCustomerAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;
     readonly setCounselDetailContractAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;
+    readonly setCounselDocumentsLoadError: React.Dispatch<React.SetStateAction<string>>;
     readonly setCounselDocumentFolderTree: React.Dispatch<React.SetStateAction<CaseFileTypeOption[]>>;
     readonly setCounselLogs: React.Dispatch<React.SetStateAction<CaseLogRow[]>>;
     readonly setCounselDetailCapabilities: React.Dispatch<React.SetStateAction<CaseDetailCapabilities>>;
@@ -613,7 +614,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         }
     };
     const openCounselDetail = async (row: CaseRow, preferredTab?: string) => {
-        const { isCaseDetailView, initialView, originalPage, originalPageSize, caseQuery, onNavigate, counselDetailClueRequestRef, setCounselDetailClues, setCounselDetailClueKeyword, setCounselDetailClueSearchInput, setCounselDetailCluePage, setCounselDetailCluePageSize, setCounselDetailClueTotal, setCounselDetailCluePages, setActiveCounselDetailTab, setViewingCounselCase, counselDetailCaseIdRef, setLegacyLsHistoryCaseIds, setSelectedCounselAttachmentKeys, setSelectedCounselCaseEventKeys, setActiveCounselDocCategory, setExpandedCounselDocGroups, contracts, caseCustomers, setCounselDetailHistory, applyCounselDetailTaskPageState, applyCounselDetailCustomerTaskPageState, setCounselDetailAttachments, setCounselDetailCustomerAttachments, setCounselDetailContractAttachments, setCounselDocumentFolderTree, setCounselLogs, setCounselDetailCapabilities, setCounselDetailFinance, applyCounselDetailCluePageState } = context;
+        const { isCaseDetailView, initialView, originalPage, originalPageSize, caseQuery, onNavigate, counselDetailClueRequestRef, setCounselDetailClues, setCounselDetailClueKeyword, setCounselDetailClueSearchInput, setCounselDetailCluePage, setCounselDetailCluePageSize, setCounselDetailClueTotal, setCounselDetailCluePages, setActiveCounselDetailTab, setViewingCounselCase, counselDetailCaseIdRef, setLegacyLsHistoryCaseIds, setSelectedCounselAttachmentKeys, setSelectedCounselCaseEventKeys, setActiveCounselDocCategory, setExpandedCounselDocGroups, setCounselDetailHistory, applyCounselDetailTaskPageState, applyCounselDetailCustomerTaskPageState, setCounselDetailAttachments, setCounselDetailCustomerAttachments, setCounselDetailContractAttachments, setCounselDocumentsLoadError, setCounselDocumentFolderTree, setCounselLogs, setCounselDetailCapabilities, setCounselDetailFinance, applyCounselDetailCluePageState } = context;
         if (!isCaseDetailView) {
             sessionStorage.setItem("sunhold:case-detail-tab", preferredTab || "documents");
             const serialNo = String(row.serial_no || `案件-${row.id}`).trim();
@@ -658,14 +659,13 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             document.querySelector<HTMLElement>(".content")?.scrollTo({ top: 0, left: 0 });
             setSelectedCounselAttachmentKeys([]);
             setSelectedCounselCaseEventKeys([]);
+            setCounselDocumentsLoadError("");
+            setCounselDetailAttachments([]);
+            setCounselDetailCustomerAttachments([]);
+            setCounselDetailContractAttachments([]);
             setActiveCounselDocCategory("");
             setExpandedCounselDocGroups({ "调查文档全部": true, "案件文档全部": true });
-            const contractRecordId = Number(detailRecord.data.contract_record_id || detailRecord.data.contract_id)
-                || contracts.find((item) => item.serial_no === detailRecord.data.contract_no)?.id;
-            const customerRecordId = Number(detailRecord.data.customer_record_id || detailRecord.data.customer_id)
-                || caseCustomers.find((item) => item.title === detailRecord.customer)?.id;
-            const emptyAttachmentResponse = { data: { items: [] } };
-            const [historyRes, taskRes, customerTaskRes, attachmentRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes] = await Promise.allSettled([
+            const [historyRes, taskRes, customerTaskRes, attachmentRes, logRes, capabilityRes, relationRes, folderRes] = await Promise.allSettled([
                 api.get(`/records/${row.id}/history`),
                 api.get(`/cases/${row.id}/tasks`, {
                     params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "case" },
@@ -677,8 +677,6 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 api.get(`/cases/${row.id}/logs`),
                 api.get(`/cases/${row.id}/action-capabilities`),
                 api.get(`/cases/${row.id}/relations`, { params: { clue_page: 1, clue_page_size: 10 } }),
-                customerRecordId ? api.get("/attachments", { params: { record_id: customerRecordId, page_size: 200 } }) : Promise.resolve(emptyAttachmentResponse),
-                contractRecordId ? api.get("/attachments", { params: { record_id: contractRecordId, page_size: 200 } }) : Promise.resolve(emptyAttachmentResponse),
                 api.get(`/cases/${row.id}/document-folders`),
             ]);
             setCounselDetailHistory(historyRes.status === "fulfilled" ? historyRes.value.data.items || [] : []);
@@ -694,9 +692,16 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             else {
                 applyCounselDetailCustomerTaskPageState({ items: [], total: 0, page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, pages: 0 }, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE);
             }
-            setCounselDetailAttachments(attachmentRes.status === "fulfilled" ? attachmentRes.value.data.items || [] : []);
-            setCounselDetailCustomerAttachments(customerAttachmentRes.status === "fulfilled" ? customerAttachmentRes.value.data.items || [] : []);
-            setCounselDetailContractAttachments(contractAttachmentRes.status === "fulfilled" ? contractAttachmentRes.value.data.items || [] : []);
+            if (attachmentRes.status === "fulfilled") {
+                const files: AttachmentRow[] = attachmentRes.value.data.items || [];
+                setCounselDetailAttachments(files);
+                setCounselDetailCustomerAttachments(files.filter((item) => item.source_module === "customer"));
+                setCounselDetailContractAttachments(files.filter((item) => item.source_module === "contract"));
+                setCounselDocumentsLoadError("");
+            }
+            else {
+                setCounselDocumentsLoadError(attachmentRes.reason?.response?.data?.detail || "案件文档加载失败，请重试");
+            }
             setCounselDocumentFolderTree(folderRes.status === "fulfilled" && Array.isArray(folderRes.value.data?.tree) ? folderRes.value.data.tree : []);
             setCounselLogs(logRes.status === "fulfilled" ? logRes.value.data.items || [] : []);
             setCounselDetailCapabilities(capabilityRes.status === "fulfilled" ? capabilityRes.value.data || noCaseDetailWriteCapability : noCaseDetailWriteCapability);
@@ -709,7 +714,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             else if (relationRes.status === "rejected" && clueRequestId === counselDetailClueRequestRef.current) {
                 applyCounselDetailCluePageState({ clues: [], clue_total: 0 }, 1, 10);
             }
-            if ([historyRes, taskRes, customerTaskRes, attachmentRes, logRes, capabilityRes, relationRes, customerAttachmentRes, contractAttachmentRes, folderRes].some((result) => result.status === "rejected")) {
+            if ([historyRes, taskRes, customerTaskRes, attachmentRes, logRes, capabilityRes, relationRes, folderRes].some((result) => result.status === "rejected")) {
                 message.warning("部分案件附加信息加载失败，已打开基础详情");
             }
         }

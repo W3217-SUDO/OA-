@@ -1,5 +1,7 @@
 import { Button } from "antd";
-import { Fragment } from "react";
+import type { TableColumnsType } from "antd";
+import { Fragment, type ReactNode } from "react";
+import Table from "../components/ResizableTable";
 
 const show = (value: any) => value === undefined || value === null || value === "" ? "—" : String(value);
 const amount = (value: any) => value === undefined || value === null || value === "" ? "—" : Number(value).toFixed(2);
@@ -28,6 +30,24 @@ export function PaymentDocument({ row, printing, onCase, onContract }: {row:any;
     </tbody></table>
     <div className="payment-print-signatures"><span>客户管理人签字：</span><span>审批人签字：</span><span>出纳签字：</span></div>
   </div>;
+  const headers = internal
+    ? ["序号", "支付对象", "提成类型", "基数", "参考提成", "实际提成", "本次支付", "备注"]
+    : ["序号", "案件类型", "原告", "被告", "案号", "费用类型", "费用金额", "已收", "本次支付", "最后交款时间", "费用备注", "付款备注"];
+  const widths = internal
+    ? [64, 150, 130, 100, 110, 110, 110, 180]
+    : [64, 100, 130, 130, 160, 130, 100, 100, 110, 130, 160, 160];
+  const details: { key: string; cells: ReactNode[] }[] = items.map((item: any, index: number) => ({
+    key: String(item.id ?? `${row.id || row.serial_no}-${index}`),
+    cells: internal
+      ? [index + 1, show(item.payee_display_name || item.payee), show(item.commission_type || item.internal_fee_type), amount(item.base_amount), amount(item.reference_commission), amount(item.actual_commission ?? item.amount), amount(item.payment_requested_amount ?? item.amount), show(item.remark)]
+      : [index + 1, show(item.case_type), show(item.plaintiff), show(item.defendant), link(item.case_no, onCase), show(item.expense_subtype || item.fee_type), amount(item.fee_amount ?? item.amount), amount(item.received_amount ?? item.cashed_amount), amount(item.current_payment ?? item.amount), date(item.deadline || item.due_date), show(item.fee_remark), show(item.payment_remark)],
+  }));
+  const columns: TableColumnsType<(typeof details)[number]> = headers.map((title, index) => ({
+    title,
+    key: String(index),
+    width: widths[index],
+    render: (_value, detail) => detail.cells[index],
+  }));
   return <div className="payment-detail-document">
     <h3>{internal ? "申请付款" : "查看请款单"}</h3>
     <div className="payment-progress">{[internal ? "付款信息查看" : "付款信息填写","提交申请","财务审批","财务付款"].map((step,i)=><div key={step} className={i === (row.status === "待审批" ? 2 : 3) ? "active" : ""}>{step}</div>)}</div>
@@ -42,8 +62,7 @@ export function PaymentDocument({ row, printing, onCase, onContract }: {row:any;
       ["收款单位",show(d.payee_display_name || d.payee)],["开户行",show(d.account_bank || d.bank_name || d.payee_bank || d.bank)],["账号信息",show(d.account || d.bank_account || d.payee_account)],
     ])}
     {!internal && meta([["审批意见",show(d.approval_comment || d.review_comment)],["付款日期",date(d.paid_date || d.payment_date)],["单据号",show(d.invoice_no || d.writeoff_voucher_no)],["付款金额",amount(d.paid_amount ?? d.amount)],["付款备注",show(d.payment_remark || d.writeoff_remark)]])}
-    <div className="payment-info-tab">付款信息</div><div className="payment-table-scroll"><table className="payment-details"><thead><tr>{(internal ? ["序号","支付对象","提成类型","基数","参考提成","实际提成","本次支付","备注"] : ["序号","案件类型","原告","被告","案号","费用类型","费用金额","已收","本次支付","最后交款时间","费用备注","付款备注"]).map(t=><th key={t}>{t}</th>)}</tr></thead><tbody>
-      {items.map((item:any,i:number)=><tr key={item.id || i}>{(internal ? [i+1,show(item.payee_display_name || item.payee),show(item.commission_type || item.internal_fee_type),amount(item.base_amount),amount(item.reference_commission),amount(item.actual_commission ?? item.amount),amount(item.payment_requested_amount ?? item.amount),show(item.remark)] : [i+1,show(item.case_type),show(item.plaintiff),show(item.defendant),link(item.case_no,onCase),show(item.expense_subtype || item.fee_type),amount(item.fee_amount ?? item.amount),amount(item.received_amount ?? item.cashed_amount),amount(item.current_payment ?? item.amount),date(item.deadline || item.due_date),show(item.fee_remark),show(item.payment_remark)]).map((v:any,j:number)=><td key={j}>{v}</td>)}</tr>)}
-    </tbody></table></div>
+    <div className="payment-info-tab">付款信息</div>
+    <Table className="payment-detail-items" rowKey="key" columns={columns} dataSource={details} size="small" pagination={false} scroll={{ x: "max-content" }} locale={{ emptyText: "暂无明细" }} />
   </div>;
 }

@@ -10,6 +10,7 @@ export type OnlinePreviewOptions = {
   createObjectURL?: (blob: Blob) => string;
   revokeObjectURL?: (url: string) => void;
   origin?: string;
+  caseId?: number;
 };
 
 export function buildOfficeOnlineViewerUrl(sourceUrl: string): string;

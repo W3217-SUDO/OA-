@@ -2,6 +2,10 @@
   position: relative;
 }
 
+.oa-resizable-table .ant-table-thead th.oa-resizable-header.ant-table-cell-fix {
+  position: sticky;
+}
+
 .oa-resizable-table .ant-table-content {
   max-width: 100%;
   overflow-x: auto;

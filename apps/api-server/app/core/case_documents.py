@@ -4,7 +4,9 @@ import re
 from sqlalchemy import String, cast, func, or_, select
 
 from app.models import BusinessRecord, FileAttachment
-from app.core.permissions import _ensure_case_read_module, _record_scope_conditions
+from fastapi import HTTPException
+
+from app.core.permissions import _can_search_all_cases_from_global_search, _ensure_case_read_module, _record_scope_conditions
 from app.core.storage import _attachment_dict
 from app.core.formatters import _person_display_name, _user_display_map
 from app.core.case_document_sources import case_document_sources
@@ -22,10 +24,18 @@ def _ids(data, keys):
     return {int(value) for value in _values(data, keys) if value.isdigit() and int(value) > 0}
 
 
-async def case_document_page(case_id, identity, db, page, page_size):
-    case = await _ensure_case_read_module(case_id, identity, db)
+def _case_read_identity(identity):
+    if not identity.get("_page_menu_capability"):
+        return identity
+    return {**identity, "role": identity["_actual_role"], "role_ids": identity["_actual_role_ids"],
+            "_page_menu_capability": False}
+
+
+async def case_document_records(case, identity, db):
+    """解析已授权案件的真实关联文档父记录；普通账号保留原关联范围。"""
+    identity = _case_read_identity(identity)
     sources = case_document_sources(case)
-    scope = await _record_scope_conditions(identity, db)
+    scope = [] if await _can_search_all_cases_from_global_search(identity, db) else await _record_scope_conditions(identity, db)
     clue_relations = []
     for source in sources:
         source_data = source.get("data") or {}
@@ -54,6 +64,18 @@ async def case_document_page(case_id, identity, db, page, page_size):
         *scope,
     ))).all()
     records.update({source.id: source for source in source_cases})
+    customer_ids, customer_nos = set(), set()
+    for source in sources:
+        source_data = source.get("data") or {}
+        customer_ids.update(_ids(source_data, ("customer_id", "customer_record_id")))
+        customer_nos.update(_values(source_data, ("customer_no",)))
+    if customer_ids or customer_nos:
+        customers = (await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "customer",
+            or_(BusinessRecord.id.in_(customer_ids), BusinessRecord.serial_no.in_(customer_nos)),
+            *scope,
+        ))).all()
+        records.update({customer.id: customer for customer in customers})
     contract_ids, contract_nos = set(), set()
     for source in sources:
         contract_ids.update(_ids(source.get("data") or {}, ("contract_id", "contract_record_id")))
@@ -96,6 +118,23 @@ async def case_document_page(case_id, identity, db, page, page_size):
             ),
         ), *scope))).all()
         records.update({record.id: record for record in related})
+    return records
+
+
+async def case_attachment_parent(case_id, record_id, identity, db):
+    """只按目标案件及真实来源关系授权附件父记录，避免扩大独立业务入口。"""
+    identity = _case_read_identity(identity)
+    case = await _ensure_case_read_module(case_id, identity, db)
+    record = (await case_document_records(case, identity, db)).get(record_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="附件不属于该案件或无权访问")
+    return record
+
+
+async def case_document_page(case_id, identity, db, page, page_size):
+    identity = _case_read_identity(identity)
+    case = await _ensure_case_read_module(case_id, identity, db)
+    records = await case_document_records(case, identity, db)
     condition = FileAttachment.record_id.in_(records)
     total = await db.scalar(select(func.count()).select_from(FileAttachment).where(condition))
     files = list((await db.scalars(select(FileAttachment).where(condition)
@@ -109,6 +148,8 @@ async def case_document_page(case_id, identity, db, page, page_size):
         category = item.category
         if source.module == "investigation":
             category = "鉴别资料"
+        elif source.module == "customer":
+            category = "客户文档"
         elif source.module == "contract":
             category = "合同文档"
         elif source.module == "evidence" or (source.module == "clue" and item.category in {"取证文件", "取证文档"}):

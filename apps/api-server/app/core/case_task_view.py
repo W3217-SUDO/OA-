@@ -19,8 +19,8 @@ def case_task_relation(case):
 
 
 async def visible_case_task(case_id, task_id, identity, db):
-    from app.core.permissions import _ensure_record_module
-    case = await _ensure_record_module(case_id, "case", identity, db)
+    from app.core.permissions import _ensure_case_read_module
+    case = await _ensure_case_read_module(case_id, identity, db)
     task = await db.scalar(select(BusinessRecord).where(
         BusinessRecord.id == task_id, BusinessRecord.module == "task", case_task_relation(case),
     ))

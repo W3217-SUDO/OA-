@@ -147,16 +147,17 @@ export async function openAttachmentOnlinePreview(api, attachment, options = {})
 
   const name = attachment.original_name || "附件预览";
   const suffix = String(name).split(".").pop()?.toLowerCase() || "";
+  const caseParams = options.caseId ? { params: { case_id: options.caseId } } : {};
   writePage(target, page(name, '<div class="status">正在加载文件...</div>'));
   try {
-    const { data } = await api.get(`/attachments/${attachment.id}/preview`);
+    const { data } = await api.get(`/attachments/${attachment.id}/preview`, caseParams);
     if (data.kind === "unsupported") {
       const error = new Error(data.detail || "当前文件格式暂不支持在线预览");
       error.response = { data: { detail: error.message } };
       throw error;
     }
     if (data.kind === "image" || data.kind === "pdf") {
-      const response = await api.get(`/attachments/${attachment.id}/download`, { responseType: "blob" });
+      const response = await api.get(`/attachments/${attachment.id}/download`, { ...caseParams, responseType: "blob" });
       const url = createObjectURL(response.data);
       const body = data.kind === "image"
         ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(name)}">`
@@ -166,7 +167,7 @@ export async function openAttachmentOnlinePreview(api, attachment, options = {})
       return data.kind;
     }
     if (data.kind === "docx") {
-      const response = await api.get(`/attachments/${attachment.id}/download`, { responseType: "blob" });
+      const response = await api.get(`/attachments/${attachment.id}/download`, { ...caseParams, responseType: "blob" });
       try {
         writePage(target, page(name, '<div id="docx-layout-preview" class="docx-layout-preview"></div>'));
         const container = target.document.getElementById("docx-layout-preview");
@@ -194,7 +195,7 @@ export async function openAttachmentOnlinePreview(api, attachment, options = {})
       return "workbook";
     }
     if (data.kind === "xlsx" || suffix === "xls" || suffix === "xlsx") {
-      const response = await api.get(`/attachments/${attachment.id}/download`, { responseType: "blob" });
+      const response = await api.get(`/attachments/${attachment.id}/download`, { ...caseParams, responseType: "blob" });
       try {
         const arrayBuffer = await response.data.arrayBuffer();
         const result = renderXlsxFromArrayBuffer(arrayBuffer, name);

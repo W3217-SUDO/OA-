@@ -241,7 +241,7 @@ def _xlsx_preview_text(path: Path) -> str:
 
 
 async def _authorized_pdf_preview_attachment(
-    attachment_id: int, identity: dict, db: AsyncSession,
+    attachment_id: int, identity: dict, db: AsyncSession, case_id: int | None = None,
 ) -> tuple[FileAttachment, Path]:
     """Resolve a previewable PDF through the same authorization path as downloads."""
     from app.core.investigation_access import ensure_investigation_material_access
@@ -252,8 +252,13 @@ async def _authorized_pdf_preview_attachment(
     if not item:
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
-        if not await ensure_investigation_material_access(item.record_id, identity, db):
+        if case_id is not None:
+            from app.core.case_documents import case_attachment_parent
+            await case_attachment_parent(case_id, item.record_id, identity, db)
+        elif not await ensure_investigation_material_access(item.record_id, identity, db):
             await _ensure_attachment_record_visible(item.record_id, identity, db, allow_clue_audit_read=True)
+    elif case_id is not None:
+        raise HTTPException(status_code=404, detail="附件不属于该案件")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
 

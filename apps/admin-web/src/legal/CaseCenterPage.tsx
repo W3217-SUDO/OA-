@@ -479,6 +479,7 @@ export default function CaseCenterPage({
   const [caseDocumentGenerationMenuOpen, setCaseDocumentGenerationMenuOpen] = useState(false);
   const [counselDetailCustomerAttachments, setCounselDetailCustomerAttachments] = useState<AttachmentRow[]>([]);
   const [counselDetailContractAttachments, setCounselDetailContractAttachments] = useState<AttachmentRow[]>([]);
+  const [counselDocumentsLoadError, setCounselDocumentsLoadError] = useState("");
   const [attachmentPreview, setAttachmentPreview] = useState<AttachmentPreview | null>(null);
   const [attachmentPreviewLoading, setAttachmentPreviewLoading] = useState(false);
   const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
@@ -811,6 +812,7 @@ export default function CaseCenterPage({
     get setCounselDetailAttachments() { return setCounselDetailAttachments; },
     get setCounselDetailCustomerAttachments() { return setCounselDetailCustomerAttachments; },
     get setCounselDetailContractAttachments() { return setCounselDetailContractAttachments; },
+    get setCounselDocumentsLoadError() { return setCounselDocumentsLoadError; },
     get setCounselDocumentFolderTree() { return setCounselDocumentFolderTree; },
     get setCounselLogs() { return setCounselLogs; },
     get setCounselDetailCapabilities() { return setCounselDetailCapabilities; },
@@ -4109,6 +4111,8 @@ export default function CaseCenterPage({
                 counselDetailUploadRef={counselDetailUploadRef}
                 uploadCounselDetailAttachment={uploadCounselDetailAttachment}
                 filteredCounselDetailAttachments={filteredCounselDetailAttachments}
+                counselDocumentsLoadError={counselDocumentsLoadError}
+                retryCounselDocuments={() => void openCounselDetail(viewingCounselCase, "documents")}
                 selectedCounselAttachmentKeys={selectedCounselAttachmentKeys}
                 setSelectedCounselAttachmentKeys={setSelectedCounselAttachmentKeys}
                 getCaseFilePagination={getCaseFilePagination}
