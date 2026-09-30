@@ -1,5 +1,6 @@
 """9.30 合同调查、主管待分配队列及多区域子任务的隔离 API 验证。"""
 
+import asyncio
 import json
 import os
 from datetime import date, timedelta
@@ -105,6 +106,11 @@ class Investigation930ContractTaskApiTest(unittest.IsolatedAsyncioTestCase):
         first = await self.request("publisher", "POST", f"/contracts/{self.contract_id}/investigation", 201, json=create_body)
         second = await self.request("publisher", "POST", f"/contracts/{self.contract_id}/investigation", 201, json=create_body)
         self.assertNotEqual(first["serial_no"], second["serial_no"])
+        self.assertRegex(first["serial_no"], r"^DC\d{8}S\d{9}$")
+        self.assertEqual(len(first["serial_no"]), 20)
+        self.assertEqual(int(first["serial_no"][-9:]), first["id"])
+        self.assertEqual(int(second["serial_no"][-9:]), second["id"])
+        self.assertLess(first["serial_no"], second["serial_no"])
         self.assertEqual(first["data"]["auditor"], f"{self.prefix}-supervisor")
 
         before = await self.request("supervisor", "GET", "/records?module=investigation&scope=mine&investigation_view=unassigned")
@@ -173,6 +179,33 @@ class Investigation930ContractTaskApiTest(unittest.IsolatedAsyncioTestCase):
             old.data = {**old.data, "authorized_to": str(today - timedelta(days=1))}
             await db.commit()
         await self.request("supervisor", "POST", f"/investigations/{first['id']}/tasks", 409, json=task_body)
+        headers = {
+            "Authorization": f"Bearer {create_token(f'{self.prefix}-publisher', 'user')}",
+            "X-Page-Key": "investigation-task-unassigned",
+        }
+        responses = await asyncio.gather(*(
+            self.client.post(
+                f"/api/v1/contracts/{self.contract_id}/investigation",
+                headers=headers, json=create_body,
+            ) for _ in range(4)
+        ), return_exceptions=True)
+        self.assertTrue(all(isinstance(response, httpx.Response) for response in responses), responses)
+        self.assertEqual([response.status_code for response in responses], [201] * 4)
+        self.results.extend({
+            "actor": "publisher", "method": "POST", "path": f"/contracts/{self.contract_id}/investigation",
+            "status": response.status_code, "concurrent": True,
+        } for response in responses)
+        concurrent = sorted((response.json() for response in responses), key=lambda item: item["id"])
+        serials = [item["serial_no"] for item in concurrent]
+        self.assertEqual(len(set(serials)), 4)
+        self.assertEqual(serials, sorted(serials))
+        self.assertEqual([int(serial[-9:]) for serial in serials], [item["id"] for item in concurrent])
+        async with SessionLocal() as db:
+            linked = await db.get(BusinessRecord, self.contract_id)
+            self.assertEqual(set(linked.data["investigation_ids"]), {
+                first["id"], second["id"], *(item["id"] for item in concurrent),
+            })
+            self.assertEqual(linked.data["last_investigation_no"], concurrent[-1]["serial_no"])
         EVIDENCE.joinpath("api-results.json").write_text(json.dumps(self.results, ensure_ascii=False, indent=2), encoding="utf-8")
 
     async def asyncTearDown(self):

@@ -588,10 +588,9 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
         contract_context["customers_by_name"],
     )
     source_data = _contract_investigation_source_data(contract, customer)
-    serial = f"DC{datetime.now():%Y%m%d%H%M%S}{uuid4().hex[:4].upper()}"
     investigation = BusinessRecord(
         module="investigation",
-        serial_no=serial,
+        serial_no=f"DC-PENDING-{uuid4().hex}",
         title=body.title.strip(),
         customer=contract.customer,
         status="进行中" if owner else "待分配",
@@ -616,6 +615,17 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
     )
     db.add(investigation)
     await db.flush()
+    if investigation.id > 999_999_999:
+        raise HTTPException(status_code=409, detail="调查编号容量已满")
+    serial = f"DC{datetime.now():%Y%m%d}S{investigation.id:09d}"
+    investigation.serial_no = serial
+    await db.flush()
+    contract = await db.scalar(
+        select(BusinessRecord).where(BusinessRecord.id == contract.id)
+        .with_for_update().execution_options(populate_existing=True)
+    )
+    if contract is None:
+        raise HTTPException(status_code=409, detail="来源合同已不存在")
     attachment_ids = list(dict.fromkeys(int(item) for item in body.attachment_ids if int(item) > 0))
     if attachment_ids:
         attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all())
@@ -623,8 +633,13 @@ async def create_contract_investigation(contract_id: int, body: ContractInvestig
             raise HTTPException(status_code=422, detail="调查任务附件不存在或无权使用")
         for attachment in attachments:
             attachment.record_id = investigation.id
-    linked_ids = list((contract.data or {}).get("investigation_ids", [])); linked_ids.append(investigation.id)
-    contract.data = {**(contract.data or {}), "investigation_ids": list(dict.fromkeys(linked_ids)), "last_investigation_no": serial}
+    contract_data = contract.data or {}
+    linked_ids = list(contract_data.get("investigation_ids", []))
+    last_serial = contract_data.get("last_investigation_no", "")
+    if not linked_ids or investigation.id > max(int(linked_id) for linked_id in linked_ids):
+        last_serial = serial
+    linked_ids.append(investigation.id)
+    contract.data = {**contract_data, "investigation_ids": list(dict.fromkeys(linked_ids)), "last_investigation_no": last_serial}
     db.add_all([
         WorkflowEvent(record_id=investigation.id, action="从合同创建调查任务", to_status=investigation.status, operator=identity["username"], comment=f"来源合同 {contract.serial_no}"),
         WorkflowEvent(record_id=contract.id, action="新建调查任务", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"生成调查任务 {serial}"),
