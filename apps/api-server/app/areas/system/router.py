@@ -1077,7 +1077,8 @@ async def update_system_menu_visibility(body: SystemMenuVisibilityBatchInput, id
     from app.core.system import _system_audit, _system_menu_dict
     _require_admin(identity)
     items = list((await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all())
-    by_key = {item.key: item for item in items}
+    system_items = [item for item in items if item.key in SYSTEM_MENU_ROUTE_KEYS]
+    by_key = {item.key: item for item in system_items}
     requested = {str(key).strip() for key in body.visible_keys if str(key).strip()}
     unknown = requested - set(by_key)
     if unknown:
@@ -1089,12 +1090,18 @@ async def update_system_menu_visibility(body: SystemMenuVisibilityBatchInput, id
         while parent_key and parent_key in by_key:
             requested.add(parent_key)
             parent_key = by_key[parent_key].parent_key
-    for item in items:
-        item.is_visible = item.key in requested
-        item.updated_by = identity["username"]
+    for item in system_items:
+        is_visible = item.key in requested
+        if item.is_visible != is_visible:
+            item.is_visible = is_visible
+            item.updated_by = identity["username"]
     await _system_audit(db, identity, "批量配置菜单显示", "系统菜单", {"visible_keys": sorted(requested)})
+    refreshed = list((await db.scalars(
+        select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id).execution_options(populate_existing=True)
+    )).all())
+    result = {"items": [_system_menu_dict(item) for item in refreshed], "visible_keys": sorted(requested)}
     await db.commit()
-    return {"items": [_system_menu_dict(item) for item in items], "visible_keys": sorted(requested)}
+    return result
 
 
 @router.patch(f"{settings.api_prefix}/system/menus/{{menu_id}}")
