@@ -52,6 +52,7 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
+import { PERMISSIONS_UPDATED_EVENT, resolveGrantedMenuRoute } from "./workspacePermissions";
 import { LegacyLsHistoryPanel } from "./LegacyLsHistoryPanel";
 import "dingtalk-jsapi/entry/union";
 import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/requestAuthCode";
@@ -1499,7 +1500,7 @@ export default function App() {
     () => localStorage.getItem("sunhold:sidebar-auto-collapse") === "yes",
   );
   const routeFromLocation = readWorkspaceRouteFromLocation;
-  const [active, setActive] = useState(routeFromLocation);
+  const [requestedRoute, setActive] = useState(routeFromLocation);
   const [contractDetailTarget, setContractDetailTarget] = useState<ContractDetailNavigationContext | null>(null);
   const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(routeFromLocation()));
   const [workspaceReloadKey, setWorkspaceReloadKey] = useState(0);
@@ -1510,6 +1511,20 @@ export default function App() {
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
   const [taskUnreadCount, setTaskUnreadCount] = useState(0);
+  const effectiveMenuItems = useMemo(
+    () => configuredMenuItems(menuConfig),
+    [menuConfig],
+  );
+  const actualRole = sessionUser?.actual_role || sessionUser?.role;
+  const grantedMenuKeys = useMemo(() => new Set(
+    actualRole === "admin"
+      ? flattenMenu(effectiveMenuItems).map((item) => item.key)
+      : ["user-center", ...(sessionUser?.menu_keys || [])],
+  ), [actualRole, effectiveMenuItems, sessionUser?.menu_keys]);
+  const active = resolveGrantedMenuRoute(requestedRoute, effectiveMenuItems, grantedMenuKeys);
+  useEffect(() => {
+    if (active !== requestedRoute) setActive(active);
+  }, [active, requestedRoute]);
   const sidebarCollapsed = isNarrowViewport
     ? !mobileSidebarOpen
     : collapsed && !sidebarHoverExpanded;
@@ -1599,21 +1614,14 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (!loggedIn) return;
-    api
-      .get("/auth/me")
-      .then(({ data }) => {
-        const user = {
-          username: data.username,
-          display_name: data.display_name,
-          department: data.department,
-          role: data.role,
-          actual_role: data.actual_role || data.role,
-          actual_role_ids: data.actual_role_ids || data.role_ids,
-          menu_keys: data.menu_keys,
-          data_scope: data.data_scope,
-          must_change_password: data.must_change_password,
-        };
-        localStorage.setItem("user", JSON.stringify(user));
+    let controller: AbortController | undefined;
+    const loadProfile = async () => {
+      controller?.abort();
+      const request = new AbortController();
+      controller = request;
+      try {
+        const { data } = await api.get("/auth/me", { signal: request.signal });
+        if (request.signal.aborted) return;
         if (data.must_change_password) {
           // A page refresh must never leave the already-mounted workspace
           // visible after the API reports that this account is still using an
@@ -1626,7 +1634,23 @@ export default function App() {
           message.warning("请重新登录并修改一次性初始密码后再进入系统");
           return;
         }
-        setSessionUser(user);
+        const { data: navigation } = await api.get("/system/menus/navigation", { signal: request.signal });
+        if (request.signal.aborted) return;
+        const user = {
+          username: data.username,
+          display_name: data.display_name,
+          department: data.department,
+          role: data.role,
+          actual_role: data.actual_role || data.role,
+          actual_role_ids: data.actual_role_ids || data.role_ids,
+          menu_keys: data.menu_keys,
+          data_scope: data.data_scope,
+          must_change_password: data.must_change_password,
+        };
+        localStorage.setItem("user", JSON.stringify(user));
+        // 权限与导航一起更新；配置未变时保留页面和菜单展开状态。
+        setSessionUser((current) => JSON.stringify(current) === JSON.stringify(user) ? current : user);
+        setMenuConfig((current) => JSON.stringify(current) === JSON.stringify(navigation.items) ? current : navigation.items);
         if (data.menu_auto_collapse === "yes" || data.menu_auto_collapse === "no") {
           localStorage.setItem(
             "sunhold:sidebar-auto-collapse",
@@ -1634,20 +1658,26 @@ export default function App() {
           );
           setCollapsed(data.menu_auto_collapse === "yes");
         }
-      })
-      .catch(() => undefined);
-  }, [loggedIn]);
-  useEffect(() => {
-    if (!loggedIn) return;
-    const loadMenus = () =>
-      api
-        .get("/system/menus/navigation")
-        .then(({ data }) => setMenuConfig(data.items))
-        .catch(() => setMenuConfig([]));
-    loadMenus();
-    window.addEventListener("sunhold:menus-updated", loadMenus);
-    return () => window.removeEventListener("sunhold:menus-updated", loadMenus);
-  }, [loggedIn]);
+      } catch (error: any) {
+        if (!request.signal.aborted && ![401, 428].includes(error?.response?.status)) {
+          message.error("角色权限信息加载失败，请重试");
+        }
+      }
+    };
+    const refreshProfile = () => { void loadProfile(); };
+    void loadProfile();
+    window.addEventListener("focus", refreshProfile);
+    window.addEventListener(PERMISSIONS_UPDATED_EVENT, refreshProfile);
+    window.addEventListener("sunhold:menus-updated", refreshProfile);
+    window.addEventListener("sunhold:route-reselect", refreshProfile);
+    return () => {
+      controller?.abort();
+      window.removeEventListener("focus", refreshProfile);
+      window.removeEventListener(PERMISSIONS_UPDATED_EVENT, refreshProfile);
+      window.removeEventListener("sunhold:menus-updated", refreshProfile);
+      window.removeEventListener("sunhold:route-reselect", refreshProfile);
+    };
+  }, [loggedIn, active]);
   useEffect(() => {
     if (!loggedIn) return;
     const loadTaskUnread = () =>
@@ -1665,16 +1695,12 @@ export default function App() {
       window.removeEventListener("sunhold:notifications-updated", loadTaskUnread);
     };
   }, [loggedIn]);
-  const effectiveMenuItems = useMemo(
-    () => configuredMenuItems(menuConfig),
-    [menuConfig],
-  );
   useEffect(() => {
     if (!loggedIn) return;
     document.title = resolveWorkspacePageLabel(active, effectiveMenuItems);
   }, [active, effectiveMenuItems, loggedIn]);
   const navigate = (route: string) => {
-    const normalizedRoute = normalizeWorkspaceRoute(route);
+    const normalizedRoute = resolveGrantedMenuRoute(normalizeWorkspaceRoute(route), effectiveMenuItems, grantedMenuKeys);
     if (normalizedRoute === "contract-new") {
       if (sessionStorage.getItem(CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY) !== "customer") {
         clearContractCustomerContext(sessionStorage);
@@ -1704,7 +1730,7 @@ export default function App() {
     const effectiveLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
     setOpenPages((current) => {
       const normalized = Array.from(new Map(current.map((entry) => {
-        const key = normalizeWorkspaceRoute(entry.key);
+        const key = resolveGrantedMenuRoute(normalizeWorkspaceRoute(entry.key), effectiveMenuItems, grantedMenuKeys);
         return [key, { key, label: resolveWorkspacePageLabel(key, effectiveMenuItems) }];
       })).values());
       const next = normalized.some((entry) => entry.key === active)
@@ -1717,7 +1743,7 @@ export default function App() {
       localStorage.setItem("sunhold:open-pages", JSON.stringify(next));
       return next;
     });
-  }, [active, effectiveMenuItems]);
+  }, [active, effectiveMenuItems, grantedMenuKeys]);
   const closeOpenPage = (target: string) => {
     setOpenPages((current) => {
       if (current.length <= 1) return current;
@@ -1750,13 +1776,6 @@ export default function App() {
       />
   );
   const currentPageLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
-  const navigationMenuKeys = flattenMenu(effectiveMenuItems).map((item) => item.key);
-  const actualRole = sessionUser?.actual_role || sessionUser?.role;
-  const grantedMenuKeys = new Set(
-    actualRole === "admin"
-      ? navigationMenuKeys
-      : ["user-center", ...(sessionUser?.menu_keys || [])],
-  );
   const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys);
   const sidebarReloadableItems = menuItemsWithDoubleClickReload(sideMenuItems, (item) => {
     setActive(String(item.key));

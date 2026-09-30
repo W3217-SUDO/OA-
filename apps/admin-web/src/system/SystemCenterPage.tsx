@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Form, message } from "antd";
 import { api } from "../api";
+import { notifyPermissionsUpdated } from "../workspacePermissions";
 import "../system-center.css";
 import {
   categoryByRoute,
@@ -675,6 +676,7 @@ export default function SystemCenterPage({
     const value = await roleForm.validateFields();
     try {
       await api.patch(`/system/role-permissions/${editingRole.role}`, value);
+      notifyPermissionsUpdated();
       message.success("保存成功！");
       setRoleOpen(false);
       void loadRoles();

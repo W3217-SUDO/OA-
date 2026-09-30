@@ -21,6 +21,7 @@ import {
 import type { TableColumnsType, TreeDataNode } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { api } from "./api";
+import { notifyPermissionsUpdated } from "./workspacePermissions";
 // @ts-ignore Role-gated organization actions are covered by a standalone Node test.
 import { canDeleteOrganizationRole, organizationActionAccess } from "./hrAccessGuard.mjs";
 import "./organization-center.css";
@@ -370,6 +371,7 @@ export default function OrganizationCenterPage({
         if (editingRole)
           await api.patch(`/hr/job-roles/${editingRole.id}`, value);
         else await api.post("/hr/job-roles", value);
+        notifyPermissionsUpdated();
       } else {
         const value = await departmentForm.validateFields();
         if (editingDepartment)
@@ -412,6 +414,7 @@ export default function OrganizationCenterPage({
     }
     try {
       await api.delete(`/hr/job-roles/${row.id}`);
+      notifyPermissionsUpdated();
       message.success("删除成功.");
       void load();
     } catch (error: any) {
@@ -465,6 +468,7 @@ export default function OrganizationCenterPage({
         data_scope: roleDataScope || "",
       });
       message.success("角色权限已保存.");
+      notifyPermissionsUpdated();
       setPermissionRole(null);
       void load();
     } catch (error: any) {
