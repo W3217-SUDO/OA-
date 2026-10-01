@@ -1,5 +1,7 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from collections.abc import Sequence
 from datetime import tzinfo
+from types import SimpleNamespace
 from app.core.constants import (
     AI_SPACE_CATEGORY, CASE_DEFENDANT_FIELDS, CASE_DOCUMENT_FOLDER_HEADERS, CASE_EVENT_TIME_ZONE, CASE_PLAINTIFF_FIELDS,
     CONTRACT_PERSON_NAME_PLACEHOLDER, PERSON_NAME_PLACEHOLDER, RECORD_PERSON_FIELDS_BY_MODULE, RECORD_PERSON_LIST_FIELDS_BY_MODULE, UPLOAD_ROOT,
@@ -216,7 +218,9 @@ def _task_display_with_users(record: BusinessRecord, users_by_username: dict[str
     return result
 
 
-async def _task_display_dicts(records: list[BusinessRecord], db: AsyncSession) -> list[dict]:
+async def _task_display_dicts(
+    records: Sequence[BusinessRecord | SimpleNamespace], db: AsyncSession, *, lightweight: bool = False,
+) -> list[dict]:
     from app.core.cases import (
         _case_party_values,
     )
@@ -245,10 +249,24 @@ async def _task_display_dicts(records: list[BusinessRecord], db: AsyncSession) -
         for key in ("initiator", "source_owner", "assigner", "reviewer", "customer_reviewer", "customer_manager", "collaborators"):
             usernames.update(_contract_person_values(data.get(key)))
     users_by_username = await _user_display_map(usernames, db)
-    employees = list((await db.scalars(select(BusinessRecord).where(
+    employee_conditions = (
         BusinessRecord.module == "hr",
         BusinessRecord.status.not_in({"离职", "停用"}),
-    ))).all())
+    )
+    if records and lightweight:
+        employees = [
+            SimpleNamespace(owner=row[0], title=row[1], data={"username": row[2]})
+            for row in (await db.execute(select(
+                BusinessRecord.owner, BusinessRecord.title,
+                BusinessRecord.data["username"],
+            ).where(*employee_conditions))).all()
+        ]
+    elif records:
+        employees = list((await db.scalars(select(BusinessRecord).where(
+            *employee_conditions,
+        ))).all())
+    else:
+        employees = []
     employee_names = {
         str((employee.data or {}).get("username") or employee.owner or "").strip().lower(): str(employee.title or "").strip()
         for employee in employees
@@ -259,9 +277,29 @@ async def _task_display_dicts(records: list[BusinessRecord], db: AsyncSession) -
         case_conditions.append(BusinessRecord.id.in_(case_ids))
     if case_nos:
         case_conditions.append(BusinessRecord.serial_no.in_(case_nos))
-    linked_cases = list((await db.scalars(select(BusinessRecord).where(
+    linked_case_conditions = (
         BusinessRecord.module.in_({"case", "ipr_case"}), or_(*case_conditions),
-    ))).all()) if case_conditions else []
+    ) if case_conditions else ()
+    if lightweight and case_conditions:
+        case_data_fields = tuple(dict.fromkeys(("case_stage", *CASE_PLAINTIFF_FIELDS, *CASE_DEFENDANT_FIELDS)))
+        linked_cases = [
+            SimpleNamespace(
+                id=row[0], module=row[1], serial_no=row[2], title=row[3],
+                customer=row[4], status=row[5],
+                data={key: value for key, value in zip(case_data_fields, row[6:]) if value is not None},
+            )
+            for row in (await db.execute(select(
+                BusinessRecord.id, BusinessRecord.module, BusinessRecord.serial_no,
+                BusinessRecord.title, BusinessRecord.customer, BusinessRecord.status,
+                *(BusinessRecord.data[key] for key in case_data_fields),
+            ).where(*linked_case_conditions))).all()
+        ]
+    elif case_conditions:
+        linked_cases = list((await db.scalars(select(BusinessRecord).where(
+            *linked_case_conditions,
+        ))).all())
+    else:
+        linked_cases = []
     cases_by_id = {item.id: item for item in linked_cases}
     cases_by_no = {item.serial_no: item for item in linked_cases}
 

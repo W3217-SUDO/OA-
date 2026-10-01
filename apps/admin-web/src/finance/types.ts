@@ -14,6 +14,30 @@ export type Fee = {
 
 export type FinanceFlow = Fee;
 
+export type FinanceSummary = {
+  fees: number;
+  pending: number;
+  approved: number;
+  paid: number;
+  total_fee_amount: number;
+  paid_amount: number;
+  invoice_amount: number;
+  refund_amount: number;
+  incoming_unclaimed?: number;
+  amount_visible?: boolean;
+};
+
+export type FinancePageMeta = { total: number; page: number; pageSize: number };
+export type FinanceAmountPageMeta = FinancePageMeta & { totalAmount: number };
+export type FinanceInvoicePageMeta = FinanceAmountPageMeta & { totalExtraAmount: number };
+export type FinanceUnissuedPageMeta = FinanceAmountPageMeta & {
+  totalInvoiceAmount: number;
+  totalCashedAmount: number;
+  totalPaidAmount: number;
+};
+export type FinanceSettlementPageMeta = FinancePageMeta & { totals: Record<string, number> };
+export type FinanceFeeQueryMeta = FinancePageMeta & { totals: Record<string, number | null> };
+
 export type LegacyFinanceRecord = {
   id: number;
   source_table: string;
@@ -204,6 +228,7 @@ export type Receivable = {
 
 export type AllocationCandidate = {
   key: string;
+  is_refund?: boolean;
   receivable_plan_id: number | null;
   fee_record_id?: number | null;
   contract_id: number;
@@ -220,6 +245,113 @@ export type AllocationCandidate = {
   received_amount: number;
   remaining_amount: number;
 };
+
+export type ArchiveSettlementTarget = { id: number | string };
+
+export type ArchiveSettlementRow = Omit<Fee, "id"> & { id: string };
+
+export type OriginalFinanceRow = {
+  id: number | string;
+  module?: string;
+  serial_no?: string;
+  title?: string;
+  customer?: string;
+  status?: string;
+  owner?: string;
+  owner_display_name?: string;
+  description?: string;
+  created_at?: string;
+  updated_at?: string;
+  data?: Fee["data"];
+  amount?: number | null;
+  customer_no?: string;
+  customer_manager?: string;
+  customer_manager_display_name?: string;
+  claimed_customer?: string;
+  received_date?: string;
+  payer_name?: string;
+  payer_account?: string;
+  bank_reference?: string;
+  allocated_amount?: number | null;
+  remaining_amount?: number | null;
+  contract_no?: string;
+  remark?: string;
+};
+
+export type SettlementContext = {
+  mode: "tasks" | "logs" | "log-create" | "task-create";
+  caseRecords: Fee[];
+};
+
+export type SettlementContextRow = {
+  id: number;
+  source_case_no: string;
+  serial_no?: string;
+  title?: string;
+  status?: string;
+  owner?: string;
+  owner_display_name?: string;
+  deadline?: string;
+  action?: string;
+  from_status?: string;
+  to_status?: string;
+  operator?: string;
+  operator_display_name?: string;
+  comment?: string;
+  created_at?: string;
+};
+
+export type SettlementAllocationDetail = {
+  detail_id: string;
+  case_no?: string;
+  case_stage?: string;
+  fee_type?: string;
+  fee_total_amount?: number | null;
+  fee_allocated_amount?: number | null;
+  current_amount?: number | null;
+  allocated_at?: string;
+  settlement_amount?: number | null;
+  archive_fee?: number | null;
+  customer?: string;
+  customer_no?: string;
+  handling_lawyer?: string;
+  handling_lawyers?: string[];
+  handling_lawyer_display_name?: string;
+  handling_lawyer_display_names?: string[];
+  assistant?: string;
+  assistant_display_name?: string;
+  lawyer_assistant_display_name?: string;
+  contract_no?: string;
+};
+
+export type SettlementTaskForm = {
+  title: string;
+  owner: string;
+  deadline: import("dayjs").Dayjs | null;
+  priority: string;
+};
+
+export type RefundBatchFeeSubtype = {
+  id: number;
+  name: string;
+  selectable: boolean;
+  base_fee_type: string;
+};
+
+export type RefundBatchPaymentType = {
+  id: number;
+  payee: string;
+  account_bank: string;
+  account: string;
+};
+
+export type RecordFileTypeNode = {
+  title: string;
+  value: string;
+  children?: RecordFileTypeNode[];
+};
+
+export type RefundCaseFeeLogKind = "court" | "received" | "other";
 
 export type ContractPaymentSourceSuccess = {
   active: true;

@@ -139,9 +139,9 @@ export default function DocumentCenterPage({
   const [attachmentDetail, setAttachmentDetail] = useState<Attachment | null>(null);
   const [templateDetail, setTemplateDetail] = useState<Template | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewName, setPreviewName] = useState("");
-  const [previewKind, setPreviewKind] = useState<"image" | "pdf" | "text">("text");
-  const [previewText, setPreviewText] = useState("");
+  const [previewName] = useState("");
+  const [previewKind] = useState<"image" | "pdf" | "text">("text");
+  const [previewText] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [uploadTarget, setUploadTarget] = useState<RecordRow | null>(null);
   const [file, setFile] = useState<File | null>(null);

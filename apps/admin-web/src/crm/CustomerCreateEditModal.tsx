@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Checkbox,
   Form,
   Input,
   Modal,
@@ -15,7 +14,7 @@ import Table from "../components/ResizableTable";
 import { displayChinesePersonName } from "../contractPeoplePresentation.mjs";
 import { ReloadOutlined } from "@ant-design/icons";
 import { matchesDirectoryOption } from "../customerUiBatchI14.mjs";
-import { CUSTOMER_CONTACT_FORM_DEFAULTS, CUSTOMER_DOCUMENT_FORM_DEFAULTS, canDeleteCustomerAttachment, getCustomerAttachmentDate } from "../customerUiBatchI15.mjs";
+import { canDeleteCustomerAttachment, getCustomerAttachmentDate } from "../customerUiBatchI15.mjs";
 import { customerRegistrationAddressRules, customerPostalCodeRules, prioritizeNewCustomerManagers } from "./constants";
 import type { FormInstance } from "antd";
 import type { Attachment, Contact, Customer, DirectoryUser, Note } from "./types";
@@ -60,45 +59,7 @@ interface CustomerCreateEditModalProps {
   onDocumentFileChange: (file: File | null) => void;
 }
 
-export function CustomerCreateEditModal({
-  open,
-  editing,
-  customerTypeOptions,
-  directoryOptions,
-  directory,
-  customerContactOptions,
-  detailLoading,
-  attachmentError,
-  contactPage,
-  contactPageSize,
-  contactTotal,
-  contacts,
-  attachments,
-  canManage,
-  form,
-  contactForm,
-  noteForm,
-  documentForm,
-  documentFileRef,
-  documentFile,
-  onCancel,
-  onSave,
-  onRefreshContacts,
-  onContactPageChange,
-  onNewEditor,
-  onAddContact,
-  onEditContact,
-  onDeleteContact,
-  onUploadContactPhoto,
-  onViewContactPhoto,
-  onAddNote,
-  onDeleteNote,
-  onViewDocument,
-  onDownloadDocument,
-  onDeleteDocument,
-  onUploadDocument,
-  onDocumentFileChange,
-}: CustomerCreateEditModalProps) {
+export function CustomerCreateEditModal({ open, editing, customerTypeOptions, directoryOptions, directory, customerContactOptions, detailLoading, attachmentError, contactPage, contactPageSize, contactTotal, contacts, attachments, canManage, form, onCancel, onSave, onRefreshContacts, onContactPageChange, onNewEditor, onEditContact, onDeleteContact, onUploadContactPhoto, onViewContactPhoto, onDeleteNote, onViewDocument, onDownloadDocument, onDeleteDocument }: CustomerCreateEditModalProps) {
   const organizationType = Form.useWatch("organization_type", form);
   const userLabel = (value: unknown) => displayChinesePersonName(value, directory);
   const contactPhotoActions = (contact: Contact) => canManage ? (

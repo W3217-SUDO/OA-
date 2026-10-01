@@ -19,20 +19,7 @@ interface IprCaseDetailHeaderProps {
   onDownloadCpcApplication: (application: CpcApplication) => void;
 }
 
-export function IprCaseDetailHeader({
-  detail,
-  cpcApplications,
-  cpcApplicationsLoading,
-  cpcApplicationsError,
-  cpcGenerating,
-  onCopyCase,
-  onIprReboot,
-  onOpenCaseTask,
-  onOpenRebootCase,
-  onLoadCpcApplications,
-  onGenerateCpcApplication,
-  onDownloadCpcApplication,
-}: IprCaseDetailHeaderProps) {
+export function IprCaseDetailHeader({ detail, cpcApplications, cpcApplicationsLoading, cpcApplicationsError, cpcGenerating, onOpenRebootCase, onLoadCpcApplications, onGenerateCpcApplication, onDownloadCpcApplication }: IprCaseDetailHeaderProps) {
   return (
     <>
       {isLegacyIprRecord(detail) ? (

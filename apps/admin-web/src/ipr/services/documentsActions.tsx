@@ -33,7 +33,7 @@ export interface IprDocumentsDependencies {
 }
 export function createIprDocumentsActions(context: IprDocumentsDependencies) {
     const loadIprFiles = async (caseId: number, nextPage = context.filesPageState.page, nextPageSize = context.filesPageState.pageSize) => {
-        const { filesPageState, setAttachments, setFilesPageState, clearIprSectionError, setIprSectionError } = context;
+        const { setAttachments, setFilesPageState, clearIprSectionError, setIprSectionError } = context;
         try {
             const { data } = await api.get<IprDetailPagePayload<Attachment>>(`/ipr/cases/${caseId}/files`, {
                 params: { page: nextPage, page_size: nextPageSize },

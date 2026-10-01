@@ -5,6 +5,7 @@ import math
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from app.core.incoming_settlement import _active_settlements_by_receipt, _revert_incoming_allocation
 from app.models import BusinessRecord, IncomingPayment, ReceivablePlan, WorkflowEvent
 
 
@@ -66,7 +67,6 @@ async def allocation_records(payment_id, identity, db):
 
 
 async def cancel_allocation_records(payment_id, body, identity, db):
-    from app.areas.finance.router import _active_settlements_by_receipt, _revert_incoming_allocation
     from app.core.finance import _round_fee_amount
     if identity.get('role') not in {'admin', 'manager'}:
         raise HTTPException(403, '当前账号没有取消分配权限')

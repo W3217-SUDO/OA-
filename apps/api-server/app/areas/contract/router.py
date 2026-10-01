@@ -1,5 +1,4 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
-from app.models_shared import ContractPaymentLineInput
 from app.core.constants import (
     CONTRACT_APPROVED_STATUS, CONTRACT_PERSON_NAME_PLACEHOLDER, UPLOAD_ROOT, _contract_serial_lock, logger,
 )
@@ -190,48 +189,10 @@ async def create_contract_draft(body: ContractDraftInput, identity: dict = Depen
 
 @router.patch(f"{settings.api_prefix}/contracts/{{contract_id}}")
 async def update_contract_draft(contract_id: int, body: ContractDraftInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.contracts import (
-        _contract_customer_source_person, _resolve_contract_customer,
-    )
-    from app.core.formatters import (
-        _normalize_external_contract_numbers,
-    )
-    from app.core.permissions import (
-        _ensure_record_module, _record_dict_for_identity, _require_record_owner_or_manager,
-    )
-    item = await _ensure_record_module(contract_id, "contract", identity, db)
-    await _require_record_owner_or_manager(item, identity, db)
-    if item.status not in {"草稿", "已拒绝"}:
-        raise HTTPException(status_code=409, detail="合同提交审批后不能直接编辑，请使用合同变更流程")
-    duplicate = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == body.serial_no.strip(), BusinessRecord.id != item.id))
-    if duplicate: raise HTTPException(status_code=409, detail="合同编号已存在")
-    duplicate_title = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "contract", BusinessRecord.title == body.title.strip(), BusinessRecord.id != item.id, BusinessRecord.status.not_in({"已删除", "已归档"})))
-    if duplicate_title:
-        raise HTTPException(status_code=409, detail="合同名称已存在，不能保存同名合同")
-    data = _normalize_external_contract_numbers(dict(body.data or {}))
-    customer = await _resolve_contract_customer(body.customer, data, identity, db)
-    customer_data = customer.data or {}
-    # Updates preserve the persisted GUID even when a malicious replacement is sent.
-    data = {
-        **data,
-        "contract_guid": str((item.data or {}).get("contract_guid") or uuid4()),
-        "customer_id": customer.id,
-        "customer_no": customer.serial_no,
-        "customer_manager": "、".join(customer_data.get("customer_managers") or [customer.owner]),
-        "source_person": _contract_customer_source_person(customer),
-    }
-    if float(data.get("amount") or 0) < 0: raise HTTPException(status_code=422, detail="合同金额不能小于零")
-    owner = body.owner.strip(); department = body.department.strip()
-    if identity.get("role") != "admin":
-        current_user = await db.scalar(select(User).where(User.username == identity["username"]));
-        if not current_user: raise HTTPException(status_code=401, detail="当前用户不存在")
-        department = current_user.department
-        if identity.get("role") == "user": owner = identity["username"]
-    item.serial_no = body.serial_no.strip(); item.title = body.title.strip(); item.customer = customer.title
-    item.owner = owner; item.department = department; item.description = body.description.strip(); item.data = data
-    db.add(WorkflowEvent(record_id=item.id, action="修改合同草稿", from_status=item.status, to_status=item.status, operator=identity["username"], comment="通过合同专用入口修改"))
-    await db.commit(); await db.refresh(item)
-    return await _record_dict_for_identity(item, identity, db)
+    from app.core.contract_commands import update_contract_draft_record
+    result = await update_contract_draft_record(contract_id, body, identity, db)
+    await db.commit()
+    return result
 
 
 @router.delete(f"{settings.api_prefix}/contracts/{{contract_id}}/draft", status_code=status.HTTP_204_NO_CONTENT)
@@ -1207,7 +1168,7 @@ async def list_contract_payment_applications(contract_id: int, identity: dict = 
 async def create_contract_payment_application(contract_id: int, body: ContractPaymentApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contract_payment_lifecycle import lock_contract, normalized_payment, replace_payment_details, payment_event
     from app.core.permissions import (
-        _ensure_record_module, _record_dict_for_identity, _require_contract_action, _require_record_owner_or_manager,
+        _record_dict_for_identity, _require_contract_action, _require_record_owner_or_manager,
     )
     await _require_contract_action(identity, db, "contract.payment.create", "发起付款申请")
     contract = await lock_contract(contract_id, identity, db)
@@ -1231,7 +1192,7 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
 async def review_contract_payment_application(payment_id: int, body: ContractPaymentReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contract_payment_lifecycle import locked_payment, ensure_unsettled, payment_event
     from app.core.permissions import (
-        _ensure_record_module, _record_dict_for_identity, _require_contract_action,
+        _record_dict_for_identity, _require_contract_action,
     )
     await _require_contract_action(identity, db, "contract.payment.approve", "审批付款申请")
     payment, _ = await locked_payment(payment_id, identity, db)
@@ -1251,7 +1212,7 @@ async def pay_contract_payment_application(payment_id: int, body: ContractPaymen
         _round_fee_amount,
     )
     from app.core.permissions import (
-        _ensure_record_module, _record_dict_for_identity, _require_contract_action,
+        _record_dict_for_identity, _require_contract_action,
     )
     await _require_contract_action(identity, db, "contract.payment.pay", "办理付款")
     payment, _ = await locked_payment(payment_id, identity, db)
@@ -1268,7 +1229,7 @@ async def pay_contract_payment_application(payment_id: int, body: ContractPaymen
 async def writeoff_contract_payment_application(payment_id: int, body: ContractPaymentWriteoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contract_payment_lifecycle import locked_payment, payment_event
     from app.core.permissions import (
-        _ensure_record_module, _record_dict_for_identity, _require_contract_action,
+        _record_dict_for_identity, _require_contract_action,
     )
     await _require_contract_action(identity, db, "contract.payment.writeoff", "核销付款")
     payment, _ = await locked_payment(payment_id, identity, db)

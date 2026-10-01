@@ -16,19 +16,7 @@ interface IprContactsPanelProps {
   onTechnologyContactChange: (ids: string[]) => void;
 }
 
-export function IprContactsPanel({
-  detail,
-  caseContacts,
-  contactOpen,
-  contactCustomer,
-  contactCandidates,
-  documentContactIds,
-  technologyContactIds,
-  onCloseContactSelector,
-  onSaveContacts,
-  onDocumentContactChange,
-  onTechnologyContactChange,
-}: IprContactsPanelProps) {
+export function IprContactsPanel({ caseContacts, contactOpen, contactCustomer, contactCandidates, documentContactIds, technologyContactIds, onCloseContactSelector, onSaveContacts, onDocumentContactChange, onTechnologyContactChange }: IprContactsPanelProps) {
   return (
     <>
       <Card

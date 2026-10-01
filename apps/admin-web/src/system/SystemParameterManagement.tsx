@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
-  Empty,
   Form,
   Input,
   InputNumber,
@@ -15,7 +14,6 @@ import {
 import Table from "../components/ResizableTable";
 import type { TableColumnsType } from "antd";
 import {
-  ClearOutlined,
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
@@ -382,9 +380,7 @@ export function SystemParameterManagement({
     ];
   }, [category, parameters]);
 
-  const empty = (
-    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
-  );
+
 
   return (
     <>

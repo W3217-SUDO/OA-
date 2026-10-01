@@ -1,5 +1,4 @@
 import type { Dayjs } from "dayjs";
-import type { UploadFile } from "antd";
 
 export type TaskRow = {
   id: number;

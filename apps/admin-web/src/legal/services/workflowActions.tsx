@@ -8,12 +8,12 @@ import type { Key } from "react";
 import { api } from "../../api";
 import { rememberCaseDetailTarget } from "../../caseDetailNavigation";
 import { getCaseReminderDateValidationError } from "../../caseFifthBatchParity.mjs";
-import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCasePhaseChangePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload } from "../../caseSecondBatchParity";
+import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload } from "../../caseSecondBatchParity";
 import { buildCaseHearingPayload, buildCaseUnarchiveReviewPayload, getCaseArchiveReviewValidationError, getCaseHearingValidationError, getCaseUnarchiveReviewValidationError } from "../../caseWorkflowFrontendParity.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { collectCasePartyIdentities } from "../CasePartyIdentityFields";
-import { ARCHIVE_LOCKED_STATUSES, CASE_LITIGANT_PARTY_LABELS, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE, getCompanyScheduleCourtLevels, isCompanyCaseListRoute, noCaseDetailWriteCapability } from "../constants";
-import type { AttachmentRow, CaseClueEvidenceRow, CaseClueWorkspace, CaseDetailCapabilities, CaseEventRow, CaseFileTypeOption, CaseLitigantCandidate, CaseLitigantPartyField, CaseLogKind, CaseLogRow, CasePhaseOption, CaseRow, CaseTaskKind, CaseTaskPageState, ContractRow, Profile } from "../types";
+import { CASE_LITIGANT_PARTY_LABELS, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE, getCompanyScheduleCourtLevels, isCompanyCaseListRoute, noCaseDetailWriteCapability } from "../constants";
+import type { AttachmentRow, CaseClueEvidenceRow, CaseClueWorkspace, CaseDetailCapabilities, CaseEventRow, CaseFileTypeOption, CaseLitigantCandidate, CaseLitigantPartyField, CaseLogKind, CaseLogRow, CaseRow, CaseTaskKind, CaseTaskPageState, ContractRow, Profile } from "../types";
 /** legal workflow operations; dependencies are read when each operation runs. */
 export interface CaseWorkflowDependencies {
     readonly createDefendantEditorForm: FormInstance<any>;
@@ -191,9 +191,6 @@ export interface CaseWorkflowDependencies {
     readonly caseTaskKind: CaseTaskKind;
     readonly caseTaskMaterialFiles: UploadFile<any>[];
     readonly setCaseTaskCreateCase: React.Dispatch<React.SetStateAction<CaseRow | null>>;
-    readonly setPhaseOptions: React.Dispatch<React.SetStateAction<CasePhaseOption[]>>;
-    readonly phaseForm: FormInstance<any>;
-    readonly setPhaseEditing: React.Dispatch<React.SetStateAction<CaseRow[] | null>>;
     readonly companyScheduleCourtInfo: {
         row: CaseRow;
         level: "first" | "second" | "execution" | "retrial";
@@ -203,8 +200,6 @@ export interface CaseWorkflowDependencies {
     readonly progressEditing: CaseRow | null;
     readonly progressForm: FormInstance<any>;
     readonly setProgressEditing: React.Dispatch<React.SetStateAction<CaseRow | null>>;
-    readonly phaseEditing: CaseRow[] | null;
-    readonly phaseOptions: CasePhaseOption[];
     readonly executionStatusEditing: CaseRow[] | null;
     readonly executionStatusForm: FormInstance<any>;
     readonly setExecutionStatusEditing: React.Dispatch<React.SetStateAction<CaseRow[] | null>>;
@@ -1340,34 +1335,6 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             message.error(error?.response?.data?.detail || `${taskKind}创建失败`);
         }
     };
-    const openPhaseChange = async (rows: CaseRow[]) => {
-        const { setPhaseOptions, phaseForm, setPhaseEditing } = context;
-        const selected = rows.filter(Boolean);
-        if (!selected.length)
-            return message.warning("请先选择案件");
-        const selectedCaseTypes = Array.from(new Set(selected.map((row) => String(row.data.case_type || "").trim())));
-        if (selectedCaseTypes.length > 1)
-            return message.warning("不同案件类型的阶段范围不同，请分别修改");
-        if (selected.some((row) => [...ARCHIVE_LOCKED_STATUSES, "已合并"].includes(row.status)))
-            return message.warning("归档中、已归档或已合并案件不能修改案件阶段");
-        try {
-            const { data } = await api.get("/cases/phases", { params: { case_type: selectedCaseTypes[0] || "" } });
-            // The endpoint has already applied the case-type relation. Re-filtering
-            // here can erase valid phases for historical case-type aliases.
-            const options = (Array.isArray(data?.items) ? data.items : []) as CasePhaseOption[];
-            if (!options.length)
-                return message.error("案件阶段加载失败");
-            setPhaseOptions(options);
-            const current = selected[0];
-            const currentOption = options.find((option) => Number(current.data.case_phase_id) === option.id || option.canonical_name === current.status || option.name === current.status);
-            phaseForm.resetFields();
-            phaseForm.setFieldsValue({ case_phase_id: currentOption?.id || options[0].id, comment: "" });
-            setPhaseEditing(selected);
-        }
-        catch (error: any) {
-            message.error(error?.response?.data?.detail || "案件阶段加载失败");
-        }
-    };
     const submitCompanyScheduleCourtInfo = async () => {
         const { companyScheduleCourtInfo, companyScheduleCourtInfoForm, cancelCompanyScheduleCourtInfo, load } = context;
         if (!companyScheduleCourtInfo)
@@ -1432,34 +1399,6 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             message.error(error?.response?.data?.detail || "案件进展保存失败");
         }
     };
-    const savePhaseChange = async () => {
-        const { phaseEditing, phaseForm, phaseOptions, setPhaseEditing, setSelectedCaseKeys, isCaseDetailView, viewingCounselCase, load } = context;
-        if (!phaseEditing?.length)
-            return;
-        const values = await phaseForm.validateFields();
-        const option = phaseOptions.find((item) => item.id === Number(values.case_phase_id));
-        if (!option)
-            return message.error("案件阶段不存在或已停用");
-        try {
-            const changedCases = phaseEditing;
-            const { data } = await api.post("/cases/phase-change", buildCasePhaseChangePayload(changedCases.map((row) => row.serial_no), option.id, option.name, values.comment));
-            message.success("修改成功！");
-            setPhaseEditing(null);
-            phaseForm.resetFields();
-            setSelectedCaseKeys([]);
-            const currentDetailChanged = isCaseDetailView && viewingCounselCase
-                && changedCases.some((row) => row.id === viewingCounselCase.id);
-            if (currentDetailChanged) {
-                const updatedDetail = (Array.isArray(data?.items) ? data.items : [])
-                    .find((row: CaseRow) => row.id === viewingCounselCase.id) || viewingCounselCase;
-                await openCounselDetail(updatedDetail);
-            }
-            await load();
-        }
-        catch (error: any) {
-            message.error(error?.response?.data?.detail || "修改失败！");
-        }
-    };
     const saveExecutionStatus = async () => {
         const { executionStatusEditing, executionStatusForm, setExecutionStatusEditing, setSelectedCaseKeys, load } = context;
         if (!executionStatusEditing?.length)
@@ -1512,5 +1451,5 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         if (target)
             openHearing(target);
     };
-    return { saveCreateDefendants, advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, closeCase, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselReminder, saveCaseEvent, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, ensureCaseCustomerOption, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseParty, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, openPhaseChange, submitCompanyScheduleCourtInfo, saveProgress, savePhaseChange, saveExecutionStatus, downloadCaseExport, openSelectedScheduleHearing };
+    return { saveCreateDefendants, advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, closeCase, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselReminder, saveCaseEvent, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, ensureCaseCustomerOption, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseParty, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, submitCompanyScheduleCourtInfo, saveProgress, saveExecutionStatus, downloadCaseExport, openSelectedScheduleHearing };
 }

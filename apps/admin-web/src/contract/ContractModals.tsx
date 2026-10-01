@@ -1,4 +1,4 @@
-import { CheckOutlined,CloseOutlined,PlusOutlined } from "@ant-design/icons";
+import { CheckOutlined,CloseOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import { InvoiceApplicationForm } from "./InvoiceApplicationForm";
 import { useConflictReview } from "../conflict-review/useConflictReview";
@@ -780,19 +780,7 @@ interface InvestigationRegionPickerModalProps {
   onCitiesChange: (province: string, values: string[]) => void;
 }
 
-export function InvestigationRegionPickerModal({
-  open,
-  selectedRegions,
-  expandedProvinces,
-  investigationForm,
-  onCancel,
-  onOk,
-  onSelectAll,
-  onClearAll,
-  onProvinceToggle,
-  onProvinceExpand,
-  onCitiesChange,
-}: InvestigationRegionPickerModalProps) {
+export function InvestigationRegionPickerModal({ open, selectedRegions, expandedProvinces, onCancel, onOk, onSelectAll, onClearAll, onProvinceToggle, onProvinceExpand, onCitiesChange }: InvestigationRegionPickerModalProps) {
   return (
     <Modal
       open={open}

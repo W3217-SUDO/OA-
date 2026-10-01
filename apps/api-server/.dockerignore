@@ -8,3 +8,9 @@ uploads
 .mypy_cache
 .git
 .gitignore
+tests
+scripts
+reference
+evidence
+coverage
+*.md

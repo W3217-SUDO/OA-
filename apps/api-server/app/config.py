@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,13 +19,14 @@ class Settings(BaseSettings):
     # Production releases share one attachment root so versioned worktrees do
     # not invalidate paths written by earlier releases.
     upload_root: str = ""
+    attachment_delete_reconcile_min_age_seconds: int = Field(default=60, ge=0)
     redis_url: str = "redis://redis:6379/0"
     secret_key: str = "replace-this-before-production"
     initial_admin_username: str = "admin"
     initial_admin_password: str = ""
     initial_admin_display_name: str = "管理者"
     initial_admin_department: str = "上海分所"
-    seed_demo_data: bool = True
+    seed_demo_data: bool = False
     access_token_minutes: int = 720
     # Office Online fetches documents server-to-server and therefore needs a
     # publicly trusted HTTPS origin rather than the user's authenticated OA URL.
@@ -32,8 +34,8 @@ class Settings(BaseSettings):
     # Local non-Docker development falls back to uploads/; Docker/production
     # explicitly set minio:9000, preventing unavailable MinIO from blocking uploads.
     minio_endpoint: str = ""
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin123"
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
     dify_base_url: str = ""
     dify_api_key: str = ""
     langgraph_enabled: bool = False

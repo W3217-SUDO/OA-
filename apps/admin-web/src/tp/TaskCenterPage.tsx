@@ -25,7 +25,6 @@ import type {
   CaseBatchAction,
   TaskBatchLifecycleAction,
   TaskQuery,
-  StatusTab,
 } from "./types";
 
 import {
@@ -38,7 +37,6 @@ import {
   appendSelectedUploadFiles,
   normalizeCaseContextTaskPageState,
   contains,
-  statusColors,
   taskCreationMode,
   taskCaseNos,
   taskDataValues,
@@ -49,7 +47,6 @@ import {
   formatTaskScheduleTime,
   visiblePersonName,
   visibleOptionalPersonName,
-  visibleCollaboratorNames,
 } from "./constants";
 
 import TaskList from "./TaskList";
@@ -583,16 +580,7 @@ export default function TaskCenterPage({
     });
   };
 
-  const reviewTaskException = async (row: TaskRow, approved: boolean) => {
-    try {
-      await api.post(`/tasks/${row.id}/exception-review`, { approved, comment: approved ? "同意特殊处理申请" : "不同意特殊处理申请" });
-      message.success(approved ? "任务特殊处理申请已通过" : "任务特殊处理申请已驳回");
-      setSelectedKeys([]);
-      await load();
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || "任务特殊处理审批失败");
-    }
-  };
+
 
   const openDialog = (row: TaskRow, action: DialogAction) => {
     setDialog({ row, action });
@@ -1094,11 +1082,7 @@ export default function TaskCenterPage({
   };
 
   // ─── Create task open / context from sessionStorage ────────────────────
-  const openCreateTask = () => {
-    const startAt = dayjs().second(0);
-    createForm.setFieldsValue({ owner: profile.username || "admin", priority: "普通", source: "人工", collaborators: [], case_nos: [], start_at: startAt, end_at: startAt.add(7, "day") });
-    setCreateOpen(true);
-  };
+
 
   useEffect(() => {
     const raw = window.sessionStorage.getItem("sunhold:task-create-context");

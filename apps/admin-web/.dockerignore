@@ -7,3 +7,9 @@ npm-debug.log*
 .env
 .git
 .gitignore
+tests
+test
+evidence
+coverage
+*.py
+*.md

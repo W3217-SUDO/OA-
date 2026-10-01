@@ -65,7 +65,7 @@ export function createIprFinanceActions(context: IprFinanceDependencies) {
         }
     };
     const loadAssistedFees = async (caseId: number, nextPage = context.assistedFeesPageState.page, nextPageSize = context.assistedFeesPageState.pageSize) => {
-        const { assistedFeesPageState, setAssistedFees, setCanManageAssistedFees, setAssistedFeesPageState, clearIprSectionError, setIprSectionError } = context;
+        const { setAssistedFees, setCanManageAssistedFees, setAssistedFeesPageState, clearIprSectionError, setIprSectionError } = context;
         try {
             const { data } = await api.get<IprDetailPagePayload<AssistedFee>>(`/ipr/cases/${caseId}/assisted-fees`, { params: { page: nextPage, page_size: nextPageSize } });
             setAssistedFees(data.items || []);
@@ -87,7 +87,7 @@ export function createIprFinanceActions(context: IprFinanceDependencies) {
         await Promise.all([loadAssistedFees(caseId), loadIprLogs(caseId)]);
     };
     const loadAnnualFees = async (caseId: number, nextPage = context.annualFeesPageState.page, nextPageSize = context.annualFeesPageState.pageSize, nextFeeYear = context.annualFeeYearFilter) => {
-        const { annualFeesPageState, annualFeeYearFilter, setAnnualFees, setAnnualFeesPageState, setAnnualFeesCanManage, clearIprSectionError, setIprSectionError } = context;
+        const { setAnnualFees, setAnnualFeesPageState, setAnnualFeesCanManage, clearIprSectionError, setIprSectionError } = context;
         try {
             const { data } = await api.get<AnnualFeePagePayload>(`/ipr/cases/${caseId}/annual-fees`, {
                 params: {

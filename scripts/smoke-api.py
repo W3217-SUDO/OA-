@@ -1,6 +1,6 @@
 """本地 API 端到端冒烟验收。
 
-默认连接 http://localhost:8000，创建的测试数据使用 SMOKE 前缀并在结束时清理。
+默认连接本地独立测试入口，创建的数据使用 SMOKE 前缀并在结束时清理。
 可通过 API_BASE_URL、SMOKE_USERNAME、SMOKE_PASSWORD 覆盖连接参数。
 """
 
@@ -17,7 +17,6 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 
 
@@ -254,11 +253,22 @@ def passed(name: str):
     print(f"[PASS] {name}")
 
 
+def require_testing_service():
+    """在任何写操作前确认服务加载了独立测试入口。"""
+    try:
+        health = call("GET", "/testing/health")
+    except (AssertionError, urllib.error.URLError) as exc:
+        raise RuntimeError("冒烟测试必须连接 tests.local_app:app；请先用 start-local.ps1 -Testing 启动测试服务。") from exc
+    if not isinstance(health, dict) or health.get("service") != "oa-local-testing":
+        raise RuntimeError("服务未返回独立测试入口标识，停止冒烟测试。")
+
+
 def smoke_hr_deletion_impact():
     """Focused regression check that leaves the test server data unchanged."""
     global TOKEN
     if not PASSWORD:
         raise RuntimeError("SMOKE_PASSWORD 未配置；请在本机 .env 中设置测试账号密码")
+    require_testing_service()
     call("GET", f"{BASE}/health", expected=(200,))
     TOKEN = login(USERNAME, PASSWORD)["access_token"]
     employees = call("GET", "/records?module=hr&page_size=1")["items"]
@@ -285,6 +295,7 @@ def main():
     global TOKEN
     if not PASSWORD:
         raise RuntimeError("SMOKE_PASSWORD 未配置；请在本机 .env 中设置测试账号密码")
+    require_testing_service()
     suffix = f"{int(time.time())}{uuid.uuid4().hex[:5]}"
     serial = lambda prefix: f"SMOKE-{prefix}-{suffix}"
     records: list[int] = []
@@ -495,8 +506,8 @@ def main():
         auditor_name = f"codex_tmp_auditor_{suffix}".lower()
         manager = call("POST", "/system/users", {"username": manager_name, "display_name": "范围经理", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "合伙人律师", "staff_role": "合伙人律师", "contract_approval_enabled": True}}, expected=(201,)); users.append(manager["id"])
         peer_manager = call("POST", "/system/users", {"username": peer_manager_name, "display_name": "同部门旁观经理", "department": "北京分所", "password": "SmokePass2026!", "role": "manager", "profile": {"position": "合伙人律师", "staff_role": "合伙人律师", "contract_approval_enabled": True}}, expected=(201,)); users.append(peer_manager["id"])
-        manager_hr = create_record("hr", "在职", "范围经理员工", {"username": manager_name, "position": "合伙人律师", "joined_at": str(date.today()), "contract_approval_enabled": True, "is_active": True}, department="北京分所", owner=manager_name)
-        peer_manager_hr = create_record("hr", "在职", "同部门旁观经理员工", {"username": peer_manager_name, "position": "合伙人律师", "joined_at": str(date.today()), "contract_approval_enabled": True, "is_active": True}, department="北京分所", owner=peer_manager_name)
+        create_record("hr", "在职", "范围经理员工", {"username": manager_name, "position": "合伙人律师", "joined_at": str(date.today()), "contract_approval_enabled": True, "is_active": True}, department="北京分所", owner=manager_name)
+        create_record("hr", "在职", "同部门旁观经理员工", {"username": peer_manager_name, "position": "合伙人律师", "joined_at": str(date.today()), "contract_approval_enabled": True, "is_active": True}, department="北京分所", owner=peer_manager_name)
         approver_settings_before = call("GET", "/contracts/approver-settings")["items"]
         selected_approvers_before = [item["username"] for item in approver_settings_before if item["selected"]]
         call("PUT", "/contracts/approver-settings", {"usernames": [username for username in selected_approvers_before if username != manager_name]})
@@ -669,7 +680,7 @@ def main():
         # Protected recency fields supplied during creation are ignored.
         forged_recent = call("GET", f"/customers?scope=recent_contact&customer_name={urllib.parse.quote(recent_member_record['title'])}")
         assert forged_recent["total"] == 0
-        added_directory_contact = call("POST", f"/customers/{recent_contact_only_record['id']}/contacts", {"name": "仅新增联系人", "phone": "13800000009"}, expected=(201,))
+        call("POST", f"/customers/{recent_contact_only_record['id']}/contacts", {"name": "仅新增联系人", "phone": "13800000009"}, expected=(201,))
         assert call("GET", f"/records/{recent_contact_only_record['id']}")["data"].get("last_contact_at", "") == ""
         assert call("GET", f"/customers?scope=recent_contact&customer_name={urllib.parse.quote(recent_contact_only_record['title'])}")["total"] == 0
         recent_oldest_at = (datetime.now() - timedelta(days=4)).replace(microsecond=0)
@@ -3514,7 +3525,7 @@ def main():
         )
         assert call("GET", f"/ipr/cases/{ipr_case['id']}/files")["total"] == 0
         custom_import_batch = multipart_upload(
-            "/ipr/case-files/custom-import-batches", {"test_only": "true"}, f"SMOKEA0000000001W0000000001-{suffix}.txt", b"SMOKE custom import source", expected=(201,)
+            "/ipr/case-files/custom-import-batches", {}, f"SMOKEA0000000001W0000000001-{suffix}.txt", b"SMOKE custom import source", expected=(201,)
         )
         # The suffix makes the legacy name intentionally invalid; it must stay a candidate and never attach itself.
         assert custom_import_batch["error_count"] == 1 and custom_import_batch["candidate"]["status"] == "待修正"
@@ -3524,7 +3535,7 @@ def main():
         assert custom_candidate["status"] == "待修正" and custom_candidate["attachment_id"] is None
         call("DELETE", f"/testing/ipr-case-file-custom-import-batches/{custom_import_batch['id']}", expected=(204,))
         valid_custom_batch = multipart_upload(
-            "/ipr/case-files/custom-import-batches", {"test_only": "true"}, "A0000000001W0000000001.txt", b"SMOKE custom import valid source", expected=(201,)
+            "/ipr/case-files/custom-import-batches", {}, "A0000000001W0000000001.txt", b"SMOKE custom import valid source", expected=(201,)
         )
         valid_custom_candidate = valid_custom_batch["candidate"]
         assert valid_custom_candidate["status"] == "待修正" and valid_custom_candidate["attachment_id"] is None

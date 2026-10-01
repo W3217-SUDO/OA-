@@ -32,22 +32,7 @@ interface SealActionModalProps {
   onUploadStampAttachments: (files: File[]) => void;
 }
 
-export function SealActionModal({
-  action,
-  form,
-  submitting,
-  stampAttachments,
-  stampAttachmentLoading,
-  stampAttachmentUploading,
-  stampAttachmentUploadFailed,
-  stampAttachmentTotal,
-  onOk,
-  onCancel,
-  onOpenDetail,
-  onStampAttachmentChange,
-  onLoadMoreStampAttachments,
-  onUploadStampAttachments,
-}: SealActionModalProps) {
+export function SealActionModal({ action, form, submitting, stampAttachments, stampAttachmentLoading, stampAttachmentUploading, stampAttachmentTotal, onOk, onCancel, onOpenDetail, onStampAttachmentChange, onLoadMoreStampAttachments, onUploadStampAttachments }: SealActionModalProps) {
   const actionType = action?.type || "approve";
   const conflict = useConflictReview(action?.row.id, Boolean(action) && ["approve", "stamp"].includes(actionType));
   const titleMap: Record<string, string> = {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -10,6 +11,14 @@ from .config import settings
 
 class DingTalkError(RuntimeError):
     pass
+
+
+class DingTalkRejectedError(DingTalkError):
+    """钉钉接口明确拒绝了本次工作通知。"""
+
+
+class DingTalkUnknownResultError(RuntimeError):
+    """请求已发出，但响应不足以确认工作通知是否发送成功。"""
 
 
 class DingTalkClient:
@@ -80,10 +89,23 @@ class DingTalkClient:
                     "msg": {"msgtype": "text", "text": {"content": text[:2000]}},
                 },
             )
-        payload = response.json()
-        if int(payload.get("errcode") or 0) != 0:
-            raise DingTalkError(str(payload.get("errmsg") or "钉钉工作通知发送失败"))
-        return str(payload.get("task_id") or "")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise DingTalkUnknownResultError("钉钉工作通知响应不是有效 JSON，发送结果待核实") from exc
+        if not isinstance(payload, dict) or type(payload.get("errcode")) is not int:
+            raise DingTalkUnknownResultError("钉钉工作通知响应缺少有效 errcode，发送结果待核实")
+        if payload["errcode"] != 0:
+            raise DingTalkRejectedError(str(payload.get("errmsg") or "钉钉工作通知发送失败"))
+        if not response.is_success:
+            raise DingTalkUnknownResultError("钉钉工作通知响应状态异常，发送结果待核实")
+        task_id = payload.get("task_id")
+        if isinstance(task_id, bool) or not isinstance(task_id, (int, str)):
+            raise DingTalkUnknownResultError("钉钉工作通知响应缺少有效 task_id，发送结果待核实")
+        reference = str(task_id).strip()
+        if not re.fullmatch(r"[0-9]+", reference) or int(reference) <= 0:
+            raise DingTalkUnknownResultError("钉钉工作通知响应缺少有效 task_id，发送结果待核实")
+        return reference
 
 
 dingtalk_client = DingTalkClient()

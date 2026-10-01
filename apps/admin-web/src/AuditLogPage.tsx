@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Input, Select, Space, Tag } from "antd";
+import { Button, Card, Input, Select, Tag } from "antd";
 import Table from "./components/ResizableTable";
 import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { api } from "./api";

@@ -1,4 +1,7 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from shutil import copyfile
+
+from starlette.concurrency import run_in_threadpool
 from app.core.constants import (
     ARCHIVE_REQUIRED_CATEGORIES, UPLOAD_ROOT, WORKFLOW_TRANSITIONS,
 )
@@ -361,8 +364,8 @@ async def create_official_outgoing_document(body: OfficialOutgoingCreateInput, i
             if not source_path.is_file() or UPLOAD_ROOT.resolve() not in source_path.resolve().parents:
                 raise HTTPException(status_code=409, detail=f"来源附件不存在或不可读取：{source_file.original_name}")
             target = UPLOAD_ROOT / f"{uuid4().hex}{source_path.suffix.lower()}"
-            target.write_bytes(source_path.read_bytes())
             copied_paths.append(target)
+            await run_in_threadpool(copyfile, source_path, target)
             db.add(FileAttachment(
                 invoice_record_id=source_file.invoice_record_id,
                 record_id=record.id, category="正式发文附件", original_name=source_file.original_name,
@@ -500,12 +503,19 @@ async def upload_official_outgoing_stamp_file(record_id: int, file: UploadFile =
     if len(content) > 20 * 1024 * 1024: raise HTTPException(status_code=413, detail="单个盖章文件不能超过 20MB")
     detail = await db.scalar(select(OfficialOutgoingDocument).where(OfficialOutgoingDocument.record_id == record.id))
     if not detail: raise HTTPException(status_code=409, detail="正式发文详情已失效")
-    target = UPLOAD_ROOT / f"{uuid4().hex}{suffix}"; target.write_bytes(content)
-    previous_file = await db.get(FileAttachment, detail.stamp_attachment_id) if detail.stamp_attachment_id else None
-    attachment = FileAttachment(record_id=record.id, category="正式发文盖章文件", original_name=Path(file.filename or target.name).name, stored_name=target.name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark="正式发文盖章后上传")
-    db.add(attachment); await db.flush(); previous = record.status; detail.stamp_attachment_id = attachment.id; record.status = "已盖章"
-    db.add(WorkflowEvent(record_id=record.id, action="上传正式发文盖章文件", from_status=previous, to_status="已盖章", operator=identity["username"], comment=attachment.original_name))
-    await db.commit(); await db.refresh(record); await db.refresh(detail)
+    target = UPLOAD_ROOT / f"{uuid4().hex}{suffix}"
+    try:
+        await run_in_threadpool(target.write_bytes, content)
+        previous_file = await db.get(FileAttachment, detail.stamp_attachment_id) if detail.stamp_attachment_id else None
+        attachment = FileAttachment(record_id=record.id, category="正式发文盖章文件", original_name=Path(file.filename or target.name).name, stored_name=target.name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark="正式发文盖章后上传")
+        db.add(attachment); await db.flush(); previous = record.status; detail.stamp_attachment_id = attachment.id; record.status = "已盖章"
+        db.add(WorkflowEvent(record_id=record.id, action="上传正式发文盖章文件", from_status=previous, to_status="已盖章", operator=identity["username"], comment=attachment.original_name))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await run_in_threadpool(target.unlink, missing_ok=True)
+        raise
+    await db.refresh(record); await db.refresh(detail)
     if previous_file:
         previous_path = Path(previous_file.path); await db.delete(previous_file); await db.commit()
         if previous_path.is_file() and UPLOAD_ROOT.resolve() in previous_path.resolve().parents: previous_path.unlink(missing_ok=True)
@@ -520,15 +530,28 @@ async def download_official_outgoing_documents(body: OfficialOutgoingBatchInput,
     record_ids = list(dict.fromkeys(body.record_ids)); records = [await _ensure_record_module(record_id, "official_outgoing", identity, db) for record_id in record_ids]
     if any(record.status not in {"已通过", "已盖章"} for record in records): raise HTTPException(status_code=409, detail="仅审批通过或已盖章的正式发文可以打包下载")
     attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.record_id.in_(record_ids)).order_by(FileAttachment.id))).all()
-    output = io.BytesIO(); included = 0
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for attachment in attachments:
-            path = Path(attachment.path)
-            if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents: continue
-            record = next(item for item in records if item.id == attachment.record_id)
-            archive.writestr(f"{record.serial_no}/{attachment.id}-{Path(attachment.original_name).name}", path.read_bytes()); included += 1
+    serial_by_id = {record.id: record.serial_no for record in records}
+    entries = [
+        (serial_by_id[attachment.record_id], attachment.id, attachment.original_name, attachment.path)
+        for attachment in attachments
+    ]
+
+    def build_archive() -> tuple[io.BytesIO, int]:
+        output = io.BytesIO()
+        included = 0
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for serial_no, attachment_id, original_name, stored_path in entries:
+                path = Path(stored_path)
+                if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+                    continue
+                archive.writestr(f"{serial_no}/{attachment_id}-{Path(original_name).name}", path.read_bytes())
+                included += 1
+        output.seek(0)
+        return output, included
+
+    output, included = await run_in_threadpool(build_archive)
     if not included: raise HTTPException(status_code=404, detail="所选正式发文没有可下载的附件")
-    output.seek(0); filename = f"official-outgoing-{date.today():%Y%m%d}.zip"
+    filename = f"official-outgoing-{date.today():%Y%m%d}.zip"
     return StreamingResponse(output, media_type="application/zip", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
@@ -669,7 +692,7 @@ async def upload_official_document(
         data=official_data,
     )
     try:
-        target.write_bytes(content)
+        await run_in_threadpool(target.write_bytes, content)
         db.add(record)
         await db.flush()
         attachment = FileAttachment(

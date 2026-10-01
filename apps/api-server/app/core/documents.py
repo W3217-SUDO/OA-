@@ -159,18 +159,10 @@ async def _execute_case_agent_action(
     context: dict | None = None,
 ) -> dict:
     from app.core.conflict_review import assess_conflict_review, get_conflict_review_gate
-    from app.areas.contract.router import (
-        update_contract_draft,
-    )
-    from app.areas.crm.router import (
-        patch_customer,
-    )
-    from app.areas.legal.router import (
-        create_case_reminder,
-    )
-    from app.areas.tp.router import (
-        create_task,
-    )
+    from app.core.case_reminder_commands import create_case_reminder_record
+    from app.core.contract_commands import update_contract_draft_record
+    from app.core.customer_commands import patch_customer_record
+    from app.core.task_commands import create_task_record
     from app.core.formatters import (
         _case_agent_date, _case_agent_required_text,
     )
@@ -205,7 +197,6 @@ async def _execute_case_agent_action(
             record_id=target.id, action="智能体逻辑删除", from_status=previous_status, to_status="已删除",
             operator=identity["username"], comment=str(target.data["delete_reason"]),
         ))
-        await db.commit(); await db.refresh(target)
         return {"record_id": target.id, "operation": action_type, "status": target.status, "recoverable": True}
 
     if action_type == "customer.update":
@@ -219,7 +210,7 @@ async def _execute_case_agent_action(
         if invalid:
             raise HTTPException(status_code=422, detail=f"智能体无权修改客户字段：{', '.join(invalid)}")
         description = changes.pop("description", None)
-        updated = await patch_customer(
+        updated = await patch_customer_record(
             target_id,
             CustomerPatchInput(description=description, data=changes),
             identity,
@@ -244,7 +235,7 @@ async def _execute_case_agent_action(
         if protected.intersection(data_changes):
             raise HTTPException(status_code=422, detail="智能体不能修改合同关系或审批控制字段")
         current = await _ensure_record_module(target_id, "contract", identity, db)
-        updated = await update_contract_draft(
+        updated = await update_contract_draft_record(
             target_id,
             ContractDraftInput(
                 serial_no=current.serial_no,
@@ -290,14 +281,20 @@ async def _execute_case_agent_action(
             operator=identity["username"],
             comment=f"操作：{action.get('summary', '')}；字段：{', '.join(applied)}" + ("；事实已保存，案件阶段待利益冲突核查" if stage_blocked else ""),
         ))
-        await db.commit()
-        await db.refresh(case_record)
         if stage_blocked:
-            raise HTTPException(status_code=409, detail={
-                "code": "CONFLICT_REVIEW_REQUIRED", "message": "事实已保存，案件阶段待利益冲突核查",
-                "record_id": gate["record_id"], "review_id": (gate["review"] or {}).get("id"),
-                "conflict_review": gate["review"],
-            })
+            return {
+                "record_id": case_record.id,
+                "operation": action_type,
+                "updated_fields": applied,
+                "conflict_review": (case_record.data or {}).get("conflict_review"),
+                "post_commit_conflict": {
+                    "code": "CONFLICT_REVIEW_REQUIRED",
+                    "message": "事实已保存，案件阶段待利益冲突核查",
+                    "record_id": gate["record_id"],
+                    "review_id": (gate["review"] or {}).get("id"),
+                    "conflict_review": gate["review"],
+                },
+            }
         return {"record_id": case_record.id, "operation": action_type, "updated_fields": applied, "conflict_review": (case_record.data or {}).get("conflict_review")}
 
     if action_type == "case.data.update":
@@ -334,21 +331,27 @@ async def _execute_case_agent_action(
             operator=identity["username"],
             comment=f"操作：{action.get('summary', '')}；字段：{', '.join(normalized_changes)}" + ("；事实已保存，案件阶段待利益冲突核查" if stage_blocked else ""),
         ))
-        await db.commit()
-        await db.refresh(case_record)
         if stage_blocked:
-            raise HTTPException(status_code=409, detail={
-                "code": "CONFLICT_REVIEW_REQUIRED", "message": "事实已保存，案件阶段待利益冲突核查",
-                "record_id": gate["record_id"], "review_id": (gate["review"] or {}).get("id"),
-                "conflict_review": gate["review"],
-            })
+            return {
+                "record_id": case_record.id,
+                "operation": action_type,
+                "updated_fields": normalized_changes,
+                "conflict_review": (case_record.data or {}).get("conflict_review"),
+                "post_commit_conflict": {
+                    "code": "CONFLICT_REVIEW_REQUIRED",
+                    "message": "事实已保存，案件阶段待利益冲突核查",
+                    "record_id": gate["record_id"],
+                    "review_id": (gate["review"] or {}).get("id"),
+                    "conflict_review": gate["review"],
+                },
+            }
         return {"record_id": case_record.id, "operation": action_type, "updated_fields": normalized_changes, "conflict_review": (case_record.data or {}).get("conflict_review")}
 
     if action_type == "case.task.create":
         collaborators = payload.get("collaborators") or []
         if not isinstance(collaborators, list):
             raise HTTPException(status_code=422, detail="协作人必须为人员列表")
-        task = await create_task(TaskInput(
+        task = await create_task_record(TaskInput(
             title=_case_agent_required_text(payload.get("title"), "任务名称", 255),
             owner=_case_agent_required_text(payload.get("owner"), "任务负责人", 128),
             deadline=_case_agent_date(payload.get("deadline"), "任务截止日期"),
@@ -358,15 +361,15 @@ async def _execute_case_agent_action(
             case_no=case_record.serial_no,
             description=str(payload.get("description") or "").strip(),
         ), identity, db)
-        return {"record_id": task.get("id"), "operation": action_type, "serial_no": task.get("serial_no")}
+        return {"record_id": task.id, "operation": action_type, "serial_no": task.serial_no}
 
     if action_type == "case.reminder.create":
-        reminder = await create_case_reminder(case_record.id, CaseReminderInput(
+        reminder = await create_case_reminder_record(case_record.id, CaseReminderInput(
             content=_case_agent_required_text(payload.get("content"), "提醒内容"),
             reminder_date=_case_agent_date(payload.get("reminder_date"), "提醒日期"),
             deadline=_case_agent_date(payload.get("deadline"), "截止日期"),
         ), identity, db)
-        return {"record_id": reminder.get("id"), "operation": action_type, "serial_no": reminder.get("serial_no")}
+        return {"record_id": reminder.id, "operation": action_type, "serial_no": reminder.serial_no}
 
     raise HTTPException(status_code=422, detail="该智能体操作类型不在系统白名单中")
 

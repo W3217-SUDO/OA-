@@ -5,15 +5,53 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { ContractPaymentUnitPicker } from "../contract/ContractPaymentUnitPicker";
 import { PaymentTypeCreateModal } from "../contract/ContractModals";
+import type { ContractPaymentCandidate, PaymentTypeOption } from "../contract/types";
 import { formatRequiredDate } from "../formSafety";
 import { canEditContractPayment, contractPaymentEditPayload, paymentLineKey } from "./paymentLifecycle.mjs";
+
+type ContractPaymentLine = {
+  case_fee_id?: number | null;
+  contract_object_id?: number | null;
+  amount?: number;
+  requested_amount?: number;
+  remark?: string;
+};
+
+type ContractPaymentRecord = {
+  id: number;
+  module: string;
+  serial_no: string;
+  status: string;
+  customer: string;
+  description?: string;
+  created_at?: string;
+  lines?: ContractPaymentLine[];
+  data: {
+    lines?: ContractPaymentLine[];
+    payer_name?: string;
+    remark?: string;
+    application_date?: string;
+    writeoff_status?: string;
+    paid_amount?: number | string | null;
+    payment_status?: string;
+    _source_module?: string;
+    [key: string]: unknown;
+  };
+};
+
+type ContractPaymentEditContext = {
+  payment: ContractPaymentRecord;
+  contract: { id: number; serial_no: string; title: string };
+  items: ContractPaymentCandidate[];
+  payment_types: PaymentTypeOption[];
+};
 
 export function ContractPaymentEditPage({ paymentId, onClose, onSaved }: {
   paymentId: number; onClose: () => void; onSaved: () => Promise<void>;
 }) {
   const [form] = Form.useForm();
   const [unitForm] = Form.useForm();
-  const [context, setContext] = useState<any>(null);
+  const [context, setContext] = useState<ContractPaymentEditContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -29,15 +67,15 @@ export function ContractPaymentEditPage({ paymentId, onClose, onSaved }: {
   useEffect(() => {
     let active = true;
     setLoading(true); setError(""); setContext(null);
-    void api.get(`/contract-payment-applications/${paymentId}/edit-context`).then(({ data }) => {
+    void api.get<ContractPaymentEditContext>(`/contract-payment-applications/${paymentId}/edit-context`).then(({ data }) => {
       if (!active) return;
       if (!data?.payment || Number(data.payment.id) !== paymentId || !canEditContractPayment(data.payment)) throw new Error("当前请款单状态不可编辑");
       setContext(data);
       const payment = data.payment;
       const lines = payment.data?.lines || payment.lines || [];
       setSelected(lines.map(paymentLineKey));
-      setAmounts(Object.fromEntries(lines.map((row: any) => [paymentLineKey(row), row.amount ?? row.requested_amount])));
-      setRemarks(Object.fromEntries(lines.map((row: any) => [paymentLineKey(row), row.remark || ""])));
+      setAmounts(Object.fromEntries(lines.map((row) => [paymentLineKey(row), row.amount ?? row.requested_amount ?? null])));
+      setRemarks(Object.fromEntries(lines.map((row) => [paymentLineKey(row), row.remark || ""])));
       form.resetFields();
       form.setFieldsValue({ ...payment.data, payer_name: payment.data?.payer_name || "", remark: payment.data?.remark ?? payment.description ?? "", application_date: dayjs(payment.data?.application_date || payment.created_at) });
     }).catch((failure) => {
@@ -45,7 +83,7 @@ export function ContractPaymentEditPage({ paymentId, onClose, onSaved }: {
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [paymentId, form, retry]);
-  const unit = context?.payment_types?.find((row: any) => Number(row.value) === Number(unitId));
+  const unit = context?.payment_types?.find((row) => Number(row.value) === Number(unitId));
   const save = async (submit: boolean) => {
     if (saving.current || !context || !canEditContractPayment(context.payment)) return;
     saving.current = true; setBusy(true);
@@ -53,8 +91,11 @@ export function ContractPaymentEditPage({ paymentId, onClose, onSaved }: {
       const values = await form.validateFields();
       if (!unit || !String(unit.account_bank || "").trim() || !String(unit.account || "").trim()) throw new Error("收款单位的开户行与账号必须完整");
       const payload = contractPaymentEditPayload({ ...values, application_date: formatRequiredDate(values.application_date, "申请日期") }, selected, context.items || [], amounts, remarks);
-      const { data } = await api.put(`/contract-payment-applications/${paymentId}`, payload);
-      setContext((previous: any) => ({ ...previous, payment: { ...previous.payment, ...data, data: { ...previous.payment.data, ...data?.data } } }));
+      const { data } = await api.put<ContractPaymentRecord>(`/contract-payment-applications/${paymentId}`, payload);
+      setContext((previous) => previous === null ? null : {
+        ...previous,
+        payment: { ...previous.payment, ...data, data: { ...previous.payment.data, ...data.data } },
+      });
       if (submit) {
         try { await api.post(`/contract-payment-applications/${paymentId}/submit`, { comment: "修改原请款单并重新提交" }); }
         catch (failure: any) { message.error(failure?.response?.data?.detail || "原单已保存，提交失败，可重试"); return; }
@@ -70,8 +111,11 @@ export function ContractPaymentEditPage({ paymentId, onClose, onSaved }: {
     setUnitBusy(true);
     try {
       const values = await unitForm.validateFields();
-      const { data } = await api.post(`/contracts/${context.contract.id}/payment-types`, values);
-      setContext((previous: any) => ({ ...previous, payment_types: [...previous.payment_types.filter((row: any) => row.value !== data.value), data] }));
+      const { data } = await api.post<PaymentTypeOption>(`/contracts/${context.contract.id}/payment-types`, values);
+      setContext((previous) => previous === null ? null : {
+        ...previous,
+        payment_types: [...previous.payment_types.filter((row) => row.value !== data.value), data],
+      });
       setUnitCreate(false); unitForm.resetFields(); message.success("收款单位已新增");
     } catch (failure: any) { if (!failure?.errorFields) message.error(failure?.response?.data?.detail || "收款单位新增失败"); }
     finally { setUnitBusy(false); }
@@ -98,10 +142,10 @@ export function ContractPaymentEditPage({ paymentId, onClose, onSaved }: {
         </div>
       </Form>
       <div className="finance-invoice-detail-section-title">付款信息</div>
-      <Table<any> rowKey={paymentLineKey} size="small" pagination={false} scroll={{ x: 1200 }} dataSource={context.items || []}
+      <Table<ContractPaymentCandidate> rowKey={paymentLineKey} size="small" pagination={false} scroll={{ x: 1200 }} dataSource={context.items || []}
         rowSelection={{ selectedRowKeys: selected, getCheckboxProps: () => ({ disabled: busy }), onChange: (keys) => {
           const next = keys.map(String); setSelected(next);
-          setAmounts((previous) => ({ ...previous, ...Object.fromEntries(next.map((key) => [key, previous[key] ?? context.items.find((row: any) => paymentLineKey(row) === key)?.remaining_amount ?? null])) }));
+          setAmounts((previous) => ({ ...previous, ...Object.fromEntries(next.map((key) => [key, previous[key] ?? context.items.find((row) => paymentLineKey(row) === key)?.remaining_amount ?? null])) }));
         } }} columns={[
           { title: "序号", width: 65, render: (_, _row, index) => index + 1 },
           { title: "案件类型", dataIndex: "case_type", width: 100 },

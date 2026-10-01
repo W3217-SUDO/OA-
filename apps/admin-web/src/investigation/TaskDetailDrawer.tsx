@@ -2,7 +2,7 @@ import { Drawer, Card, Form, Alert, Input, Select, DatePicker, Cascader, Button,
 import Table from "../components/ResizableTable";
 import { isLegacyInvestigationRecord } from "./constants";
 import { taskRegionLabel } from "./taskRegionDisplay";
-import type { Row, TaskRow, Contract, WarehouseCatalogItem } from "./types";
+import type { Row, TaskRow, Contract } from "./types";
 
 interface TaskDetailDrawerProps {
   open: boolean;

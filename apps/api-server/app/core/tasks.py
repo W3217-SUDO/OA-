@@ -7,13 +7,13 @@ from app.core.constants import (
     CASE_EVENT_COMPLETED_STATUS, logger,
 )
 from app.core.dependencies import (
-    AsyncSession, BusinessRecord, CaseEvent, ContractApprovalStep, Department, DingTalkError,
+    AsyncSession, BusinessRecord, CaseEvent, ContractApprovalStep, Department,
     HTTPException, HearingSchedule, IncomingPayment, IprCaseWarning, Notification, SessionLocal,
     LegacyInvestigationClue, LegacyInvestigationClueEvidence,
     SystemParameter, User, VipTask, VipTaskMessage, VipTaskNode, WorkflowEvent,
-    asyncio, date, datetime, delete, dingtalk_client,
-    func, httpx, or_, secrets, select,
-    settings, timedelta,
+    asyncio, date, datetime, delete,
+    func, or_, secrets, select,
+    timedelta,
 )
 
 
@@ -183,6 +183,35 @@ async def _task_has_vip_customer(task: BusinessRecord, db: AsyncSession) -> bool
     return False
 
 
+def _task_schedule_state(record: BusinessRecord) -> tuple[date | None, int | None, str, bool, str]:
+    data = record.data or {}
+    try:
+        # 历史任务使用 TaskEndTime/task_end_time，新任务使用 deadline，保持同一展示日期。
+        raw_deadline = data.get("deadline") or data.get("task_end_time") or data.get("TaskEndTime") or ""
+        deadline = date.fromisoformat(str(raw_deadline))
+        is_terminal = record.status in {"已拒绝", "已完成", "已验收", "待确认"}
+        terminal_at = data.get("rejected_at") if record.status == "已拒绝" else data.get("completion_submitted_at")
+        end_date = (date.fromisoformat(str(terminal_at)[:10]) if terminal_at else None) if is_terminal else date.today()
+        days_remaining = (deadline - end_date).days if end_date else None
+    except ValueError:
+        deadline = None
+        days_remaining = None
+    effective_status = "已完成" if record.status == "待确认" else record.status
+    if record.status == "处理中" and str(data.get("source") or "").strip() == "案件任务":
+        effective_status = "进行中"
+    if days_remaining is not None and days_remaining < 0 and record.status in {"待接收", "待处理", "处理中", "进行中"}:
+        effective_status = "已逾期"
+    reminder_due = days_remaining in {1, 3} or (days_remaining is not None and days_remaining < 0 and abs(days_remaining) % 3 == 0)
+    reminder_text = ""
+    if days_remaining in {1, 3}:
+        reminder_text = f"{days_remaining} 天后到期"
+    elif days_remaining is not None and days_remaining < 0:
+        reminder_text = f"已逾期 {abs(days_remaining)} 天" + ("，今日提醒" if reminder_due else "")
+    elif days_remaining == 0:
+        reminder_text = "今日到期"
+    return deadline, days_remaining, effective_status, reminder_due, reminder_text
+
+
 def _task_dict(record: BusinessRecord) -> dict:
     from app.core.system import (
         _explicit_vip_value, _record_dict,
@@ -205,33 +234,8 @@ def _task_dict(record: BusinessRecord) -> dict:
             continue
         if normalized_id > 0 and normalized_id not in case_ids:
             case_ids.append(normalized_id)
-    try:
-        # Imported legacy tasks used TaskEndTime/task_end_time; new writes use
-        # deadline. Keep one response field while preserving both sources.
-        raw_deadline = data.get("deadline") or data.get("task_end_time") or data.get("TaskEndTime") or ""
-        deadline = date.fromisoformat(str(raw_deadline))
-        is_terminal = record.status in {"已拒绝", "已完成", "已验收", "待确认"}
-        terminal_at = data.get("rejected_at") if record.status == "已拒绝" else data.get("completion_submitted_at")
-        end_date = (date.fromisoformat(str(terminal_at)[:10]) if terminal_at else None) if is_terminal else date.today()
-        days_remaining = (deadline - end_date).days if end_date else None
-    except ValueError:
-        deadline = None
-        days_remaining = None
+    deadline, days_remaining, effective_status, reminder_due, reminder_text = _task_schedule_state(record)
     workflow_status = record.status
-    # 兼容早期本地数据：旧“待确认”等同于原系统“进行中-已完成”。
-    effective_status = "已完成" if record.status == "待确认" else record.status
-    if record.status == "处理中" and str(data.get("source") or "").strip() == "案件任务":
-        effective_status = "进行中"
-    if days_remaining is not None and days_remaining < 0 and record.status in {"待接收", "待处理", "处理中", "进行中"}:
-        effective_status = "已逾期"
-    reminder_due = days_remaining in {1, 3} or (days_remaining is not None and days_remaining < 0 and abs(days_remaining) % 3 == 0)
-    reminder_text = ""
-    if days_remaining in {1, 3}:
-        reminder_text = f"{days_remaining} 天后到期"
-    elif days_remaining is not None and days_remaining < 0:
-        reminder_text = f"已逾期 {abs(days_remaining)} 天" + ("，今日提醒" if reminder_due else "")
-    elif days_remaining == 0:
-        reminder_text = "今日到期"
     return {
         **_record_dict(record), "status": effective_status, "workflow_status": workflow_status,
         "deadline": deadline, "days_remaining": days_remaining,
@@ -377,38 +381,16 @@ def _notification_dict(
 
 
 async def _dispatch_dingtalk_notifications() -> None:
-    if not settings.dingtalk_notifications_enabled or not dingtalk_client.configured:
-        return
+    from app.core.notification_delivery import (
+        dispatch_one, enqueue_dingtalk_notifications, mark_expired_claims_unknown,
+    )
+
+    await mark_expired_claims_unknown()
     async with SessionLocal() as db:
-        notices = (await db.scalars(
-            select(Notification).where(
-                Notification.is_read.is_(False),
-                Notification.recipient_deleted.is_(False),
-                Notification.dingtalk_status.in_(("pending", "failed")),
-                Notification.dingtalk_attempts < 5,
-            ).order_by(Notification.id).limit(50)
-        )).all()
-        if not notices:
-            return
-        usernames = {notice.recipient for notice in notices}
-        users = (await db.scalars(select(User).where(User.username.in_(usernames), User.is_active.is_(True)))).all()
-        users_by_username = {user.username: user for user in users}
-        for notice in notices:
-            user = users_by_username.get(notice.recipient)
-            ding_user_id = str(((user.profile if user else {}) or {}).get("dingtalk_user_id") or "").strip()
-            if not ding_user_id:
-                continue
-            try:
-                await dingtalk_client.send_work_notification(ding_user_id, notice.title, notice.content)
-                notice.dingtalk_status = "sent"
-                notice.dingtalk_sent_at = datetime.now()
-                notice.dingtalk_error = ""
-            except (DingTalkError, httpx.HTTPError, ValueError) as exc:
-                notice.dingtalk_status = "failed"
-                notice.dingtalk_attempts = int(notice.dingtalk_attempts or 0) + 1
-                notice.dingtalk_error = str(exc)[:500]
-                logger.warning("DingTalk notification %s failed: %s", notice.id, exc)
-        await db.commit()
+        await enqueue_dingtalk_notifications(db)
+    for _ in range(50):
+        if not await dispatch_one("dingtalk"):
+            break
 
 
 async def _dingtalk_notification_loop() -> None:
@@ -421,11 +403,12 @@ async def _dingtalk_notification_loop() -> None:
 
 
 async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
+    from app.core.query_batches import _scalars_in_batches
     from app.core.ipr import (
         _materialize_ipr_case_warnings,
     )
     from app.core.permissions import (
-        _record_scope_conditions, _visible_record_ids,
+        _record_scope_conditions,
     )
     username = identity["username"]; today = date.today(); candidates: list[dict] = []
     # Warning materialization belongs to the notification lifecycle so a case
@@ -438,23 +421,35 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
             raise
         can_view_ipr = False
     task_terminal_statuses = ["已完成", "待确认", "已验收", "已拒绝", "已撤回", "已停止", "已取消"]
-    all_tasks = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all())
-    tasks = [task for task in all_tasks if task.status not in task_terminal_statuses]
-    terminal_task_ids = {task.id for task in all_tasks if task.status in task_terminal_statuses}
+    tasks = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "task", BusinessRecord.owner == username,
+        or_(BusinessRecord.status.is_(None), BusinessRecord.status.not_in(task_terminal_statuses)),
+    ))).all())
     stale = (await db.scalars(select(Notification).where(Notification.recipient == username, Notification.source_type.in_(["task", "finance", "contract", "case", "ipr_warning"])))).all()
-    existing_record_ids = set((await db.scalars(select(BusinessRecord.id))).all())
     records_by_id = {
         record.id: record
-        for record in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(
-            [notice.source_id for notice in stale if notice.source_id]
-        )))).all()
+        for record in await _scalars_in_batches(
+            db, {notice.source_id for notice in stale if notice.source_id},
+            lambda batch: select(BusinessRecord).where(BusinessRecord.id.in_(batch)),
+        )
     } if stale else {}
+    existing_record_ids = set(records_by_id)
     visible_task_ids = {
-        task.id for task in all_tasks if _is_task_notification_recipient(task, username)
+        task.id for task in records_by_id.values()
+        if task.module == "task" and _is_task_notification_recipient(task, username)
     }
-    tasks = [task for task in tasks if task.owner == username]
+    terminal_task_ids = {
+        task.id for task in records_by_id.values()
+        if task.module == "task" and task.status in task_terminal_statuses
+    }
     if identity.get("role") != "admin":
-        visible_ids = await _visible_record_ids(identity, db)
+        scope_conditions = await _record_scope_conditions(identity, db)
+        visible_ids = set(await _scalars_in_batches(
+            db, existing_record_ids,
+            lambda batch: select(BusinessRecord.id).where(
+                BusinessRecord.id.in_(batch), *scope_conditions,
+            ),
+        ))
     else:
         visible_ids = existing_record_ids
     current_steps = (await db.execute(
@@ -557,7 +552,12 @@ async def _apply_task_auto_completion(db: AsyncSession) -> bool:
     """处理已完成任务的自动验收及既有仓库流转，不自动完成待接收任务。"""
     from app.core.query_batches import _scalars_in_batches
 
-    tasks = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all()
+    # 这些终止状态既不交接、也不自动验收或流转仓库；空状态沿用历史处理路径。
+    inactive_statuses = {"已拒绝", "已撤回", "已停止", "已取消"}
+    tasks = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "task",
+        or_(BusinessRecord.status.is_(None), BusinessRecord.status.not_in(inactive_statuses)),
+    ))).all()
     # 同一负责人通常拥有多条任务，批量读取避免每次刷新逐任务查询账号。
     owners = await _scalars_in_batches(
         db, {task.owner for task in tasks},
@@ -616,8 +616,11 @@ async def _apply_task_auto_completion(db: AsyncSession) -> bool:
                 if not evidence or evidence.module != "warehouse":
                     continue
                 target = "已出库" if auto_task_type.startswith("take_evidence") else "已销毁"
-                evidence.data = {**(evidence.data or {}), "evidence_status": target, "automatic_task_id": task.id}
-                changed = True
+                previous_data = evidence.data or {}
+                next_data = {**previous_data, "evidence_status": target, "automatic_task_id": task.id}
+                if next_data != previous_data:
+                    evidence.data = next_data
+                    changed = True
     if changed:
         await db.commit()
     return changed
@@ -625,9 +628,12 @@ async def _apply_task_auto_completion(db: AsyncSession) -> bool:
 
 async def _apply_task_overdue_performance(db: AsyncSession) -> bool:
     """Persist overdue facts so performance reports do not depend on a page being open."""
-    tasks = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all())
-    changed = False
     terminal = {"已完成", "待确认", "已验收", "已拒绝", "已撤回", "已停止", "已取消"}
+    tasks = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "task",
+        or_(BusinessRecord.status.is_(None), BusinessRecord.status.not_in(terminal)),
+    ))).all())
+    changed = False
     for task in tasks:
         if task.status in terminal:
             continue
@@ -654,40 +660,7 @@ async def _apply_task_overdue_performance(db: AsyncSession) -> bool:
     return changed
 
 
-async def _apply_hearing_sms_reminders(db: AsyncSession) -> bool:
-    """Create auditable 3-day/1-day hearing SMS records and send through a configured webhook."""
-    today = date.today(); changed = False
-    schedules = list((await db.scalars(select(HearingSchedule).where(HearingSchedule.status == "已排期", HearingSchedule.hearing_date.in_([today + timedelta(days=1), today + timedelta(days=3)])))).all())
-    for hearing in schedules:
-        days = (hearing.hearing_date - today).days
-        duplicate = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "sms", BusinessRecord.data["hearing_id"].as_integer() == hearing.id, BusinessRecord.data["remind_days"].as_integer() == days))
-        if duplicate: continue
-        case_record = await db.get(BusinessRecord, hearing.case_record_id)
-        if not case_record: continue
-        names = list(dict.fromkeys(value for value in [hearing.hearing_lawyer, *((case_record.data or {}).get("handling_lawyers") or []), (case_record.data or {}).get("assistant", "")] if value))
-        users = list((await db.scalars(select(User).where(User.is_active.is_(True), or_(User.username.in_(names), User.display_name.in_(names))))).all()) if names else []
-        phones = list(dict.fromkeys(str((user.profile or {}).get("phone") or "").strip() for user in users if str((user.profile or {}).get("phone") or "").strip()))
-        content = f"开庭提醒：案件 {case_record.serial_no} 将于 {hearing.hearing_date} {hearing.hearing_time} 在 {hearing.court}{(' ' + hearing.courtroom) if hearing.courtroom else ''} 开庭。"
-        sms_status = "待配置短信通道" if not settings.sms_webhook_url else "待发送"
-        if not phones: sms_status = "待补充手机号"
-        response_excerpt = ""
-        if phones and settings.sms_webhook_url:
-            try:
-                headers = {"Authorization": f"Bearer {settings.sms_webhook_token}"} if settings.sms_webhook_token else {}
-                async with httpx.AsyncClient(timeout=10) as client:
-                    response = await client.post(settings.sms_webhook_url, json={"phones": phones, "content": content, "case_no": case_record.serial_no, "hearing_id": hearing.id}, headers=headers)
-                    response.raise_for_status(); response_excerpt = response.text[:500]
-                sms_status = "已发送"
-            except Exception as exc:
-                sms_status = "发送失败"; response_excerpt = str(exc)[:500]
-        sms = BusinessRecord(module="sms", serial_no=f"DX{datetime.now():%Y%m%d%H%M%S%f}", title=f"开庭短信提醒—{case_record.serial_no}", customer=case_record.customer, status=sms_status, owner="system", department=case_record.department, description=content, data={"hearing_id": hearing.id, "case_id": case_record.id, "case_no": case_record.serial_no, "remind_days": days, "phones": phones, "recipient_users": [user.username for user in users], "provider_response": response_excerpt})
-        db.add(sms); await db.flush()
-        db.add(WorkflowEvent(record_id=sms.id, action="生成开庭短信提醒", to_status=sms_status, operator="system", comment=f"开庭前 {days} 天；收件手机号 {len(phones)} 个"))
-        for user in users:
-            db.add(Notification(source_key=f"hearing-sms-{hearing.id}-{days}-{user.username}", source_type="case", source_id=case_record.id, sender="system", recipient=user.username, notification_type="系统通知", title=f"开庭短信：{sms_status}", content=content, level="info" if sms_status == "已发送" else "warning"))
-        changed = True
-    if changed: await db.commit()
-    return changed
+from app.core.hearing_reminders import _apply_hearing_sms_reminders as _apply_hearing_sms_reminders
 
 
 def _vip_task_member(task: VipTask, identity: dict) -> bool:

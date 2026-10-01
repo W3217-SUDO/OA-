@@ -4,27 +4,7 @@ import dayjs from "dayjs";
 import { api } from "../../api";
 import { formatRequiredDate } from "../../formSafety";
 import { attachmentRecordModule } from "../constants";
-import type { Attachment, Fee, FinanceFlow, Transaction } from "../types";
-type OriginalFieldSpec = {
-    label: string;
-    key?: string;
-    control?: "date" | "money" | "multi";
-    options?: string[];
-    defaultValue?: any;
-    disabled?: boolean;
-    readOnly?: boolean;
-    pickerLabel?: string;
-};
-type OriginalRouteConfig = {
-    fields: OriginalFieldSpec[];
-    headers: string[];
-    source: "fees" | "incoming" | "invoices" | "settlements" | "generalSettlements" | "archiveSettlements" | "feeQuery" | "refundReviewFees" | "paymentPackages" | "unissuedFees";
-    selectable?: boolean;
-    clear?: boolean;
-    upload?: boolean;
-    export?: boolean;
-    note?: string;
-};
+import type { Attachment, Fee, FinanceFlow, RecordFileTypeNode, Transaction } from "../types";
 /** finance documents operations; dependencies are read when each operation runs. */
 export interface FinanceDocumentsDependencies {
     readonly setRecordFiles: React.Dispatch<React.SetStateAction<Attachment[]>>;
@@ -33,8 +13,8 @@ export interface FinanceDocumentsDependencies {
     readonly setRecordFile: React.Dispatch<React.SetStateAction<File | null>>;
     readonly setRecordUploadFiles: React.Dispatch<React.SetStateAction<File[]>>;
     readonly recordFileForm: FormInstance<any>;
-    readonly recordFileTypeTree: any[];
-    readonly setRecordFileTypeTree: React.Dispatch<React.SetStateAction<any[]>>;
+    readonly recordFileTypeTree: RecordFileTypeNode[];
+    readonly setRecordFileTypeTree: React.Dispatch<React.SetStateAction<RecordFileTypeNode[]>>;
     readonly recordFileTarget: Fee | null;
     readonly recordFile: File | null;
     readonly recordUploadFiles: File[];
@@ -47,6 +27,20 @@ export interface FinanceDocumentsDependencies {
     readonly load: () => Promise<void>;
 }
 export function createFinanceDocumentsActions(context: FinanceDocumentsDependencies) {
+    const loadMergedPaymentDocument = async (rows: Fee[]): Promise<Fee> => {
+        const documents = await Promise.all(rows.map((row) => api.get<Fee>(`/finance/payment-workflow/${row.id}/document`)));
+        const first = documents[0].data;
+        return {
+            ...first,
+            data: {
+                ...first.data,
+                _open_print: true,
+                _batch_ids: rows.map((row) => row.id),
+                amount: rows.reduce((sum, row) => sum + Number(row.data.amount || 0), 0),
+                document_groups: documents.flatMap((result) => result.data.data.document_groups),
+            },
+        };
+    };
     const openRecordFiles = async (row: FinanceFlow, category: string, targets: FinanceFlow[] = [row]) => {
         const { setRecordFiles, setRecordFileTarget, setRecordFileTargets, setRecordFile, setRecordUploadFiles, recordFileForm, recordFileTypeTree, setRecordFileTypeTree } = context;
         try {
@@ -181,5 +175,5 @@ export function createFinanceDocumentsActions(context: FinanceDocumentsDependenc
             message.error(error?.response?.data?.detail || "删除失败");
         }
     };
-    return { openRecordFiles, uploadRecordFile, deleteRecordFile, uploadVoucher, downloadVoucher, deleteVoucher };
+    return { openRecordFiles, uploadRecordFile, deleteRecordFile, uploadVoucher, downloadVoucher, deleteVoucher, loadMergedPaymentDocument };
 }

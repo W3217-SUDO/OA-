@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 import * as lifecycle from "../../src/finance/paymentLifecycle.mjs";
 import * as invoiceHelpers from "../../src/financeInvoiceHelpers.mjs";
+import * as invoiceDetails from "../../src/finance/invoiceDetails.mjs";
 import { fetchInvoiceRecord, invoiceEditValues, invoiceObjectFees, invoiceObjectRows, invoiceServiceRows } from "../../src/finance/invoiceDetails.mjs";
 
 const require = createRequire(import.meta.url);
@@ -19,12 +20,14 @@ function loadTs(path, mocks = {}) {
   return module.exports;
 }
 const constants = loadTs("./constants.ts");
+const financeErrors = loadTs("./financeErrors.ts");
 function actions(kind, api, context) {
   const notifications = [];
   const message = Object.fromEntries(["error", "warning", "info", "success"].map((key) => [key, (value) => notifications.push({ key, value })]));
   const exports = loadTs(`./services/${kind}Actions.tsx`, {
     "antd": { message, Modal: { warning() {}, info() {} } }, "../../api": { api },
     "../constants": constants, "../paymentLifecycle.mjs": lifecycle,
+    "../invoiceDetails.mjs": invoiceDetails, "../financeErrors": financeErrors,
     "../../financeInvoiceHelpers.mjs": invoiceHelpers, "../../formSafety": { formatRequiredDate: (value) => value },
   });
   return { notifications, actions: exports[kind === "payments" ? "createFinancePaymentsActions" : "createFinanceInvoicesActions"](context) };
@@ -90,7 +93,7 @@ test("CPI05 cancel and rollback actions dispatch both record sources to their ow
     let reloaded = 0;
     const context = { paymentCancelTarget: target, paymentCancelReason: "synthetic cancellation", setPaymentCancelTarget() {}, setPaymentCancelReason() {},
       paymentRollbackTarget: target, paymentRollbackComment: "synthetic rollback", setPaymentRollbackTarget() {}, setPaymentRollbackComment() {},
-      financeFeeListMeta: { page: 1, pageSize: 15 }, originalQuery: {}, financeFeeRefreshGuard: { begin: () => 1, isLatest: () => true },
+      initialView: "finance-payment-mine", financeFeeListMeta: { page: 1, pageSize: 15 }, originalQuery: {}, financeFeeRefreshGuard: { begin: () => 1, isLatest: () => true },
       setFees() {}, setFinanceFeeListMeta() {}, load: async () => { reloaded++; } };
     const client = { post: async (...args) => { calls.push(args); }, get: async (...args) => { calls.push(args); return { data: { items: [] } }; } };
     const { actions: run } = actions("payments", client, context);
@@ -138,9 +141,9 @@ test("CPI09 unified query sends one filtered page and preserves backend order/to
 test("CPI08 scoped context keeps selected fees beyond first candidate page and uses invoice_id", async () => {
   const calls = [];
   let candidates = [fees[0]], contractRows = [], customerRows = [];
-  const context = { invoiceEditTarget: { id: 99 }, invoiceForm: { getFieldValue: (name) => name === "case_fee_ids" ? [1, 3] : "Synthetic customer" },
+  const context = { invoiceEditTarget: { id: 99 }, invoiceForm: { getFieldValue: (name) => name === "case_fee_ids" ? [1, 3] : "Synthetic customer", setFieldsValue() {} },
     setInvoiceCandidateFees: (fn) => { candidates = fn(candidates); }, setContracts: (fn) => { contractRows = fn(contractRows); }, setCustomers: (fn) => { customerRows = fn(customerRows); } };
-  const { actions: run } = actions("invoices", { get: async (...args) => { calls.push(args); return { data: { items: [fees[1]], selected_items: [fees[2]], total: 112, page: 2, page_size: 50, customer_record: { id: 80 } } }; } }, context);
+  const { actions: run } = actions("invoices", { get: async (...args) => { calls.push(args); return { data: { items: [fees[1]], selected_items: [fees[2], fees[0]], total: 112, page: 2, page_size: 50, customer_record: { id: 80 } } }; } }, context);
   const result = await run.loadInvoiceReferenceData({ page: 2 });
   assert.equal(calls.length, 1); assert.equal(calls[0][0], "/finance/invoice-context"); assert.equal(calls[0][1].params.invoice_id, 99);
   assert.deepEqual(plain(candidates.map((row) => row.id)), [1, 2, 3]); assert.equal(result.total, 112);
@@ -149,17 +152,19 @@ test("CPI08 scoped context keeps selected fees beyond first candidate page and u
 test("CPI08 saved draft survives submit failure and retry patches original ID with all services/allocations", async () => {
   const calls = [];
   const originalValues = values();
-  const context = { invoiceForm: { validateFields: async () => originalValues, resetFields() {} }, invoiceFeeOptions: fees,
+  const context = { invoiceForm: { validateFields: async () => originalValues, getFieldValue: (name) => originalValues[name], setFieldsValue() {}, resetFields() {} }, invoiceFeeOptions: fees,
     cases: [], contracts: [], invoiceCandidateFees: [], fees: [], invoiceEditTarget: null,
+    setContracts() {}, setCustomers() {}, setInvoiceCandidateFees() {},
     setInvoiceEditTarget: (row) => { context.invoiceEditTarget = row; }, setInvoiceOpen() {}, load: async () => {} };
   let failSubmit = true;
   const api = {
+    get: async () => ({ data: { items: fees, selected_items: fees, customer_record: { id: 80 }, total: 3 } }),
     post: async (url, payload) => { calls.push([url, payload]); if (url.endsWith("/submit") && failSubmit) { failSubmit = false; throw new Error("mock submit failure"); } return { data: { id: 90, module: "invoice", serial_no: "KEEP-90", status: "草稿", customer: originalValues.customer, data: payload } }; },
     patch: async (url, payload) => { calls.push([url, payload]); return { data: { id: 90, data: payload } }; },
   };
-  const { actions: run } = actions("invoices", api, context);
+  const { actions: run, notifications } = actions("invoices", api, context);
   await run.createInvoice(true);
-  assert.equal(context.invoiceEditTarget.id, 90);
+  assert.equal(context.invoiceEditTarget?.id, 90, JSON.stringify(notifications));
   await run.createInvoice(true);
   assert.deepEqual(calls.map((row) => row[0]), ["/finance/invoices", "/finance/invoices/90/submit", "/finance/invoices/90", "/finance/invoices/90/submit"]);
   assert.deepEqual(plain(calls[2][1].service_items), originalValues.service_items);
@@ -169,7 +174,7 @@ test("CPI08 saved draft survives submit failure and retry patches original ID wi
 test("CPI08 rapid customer switch rejects late scope response before any shared state write", async () => {
   let token = 1, candidates = [], contracts = [], customers = [];
   const pending = new Map();
-  const context = { invoiceForm: { getFieldValue: (name) => name === "case_fee_ids" ? [] : "" }, invoiceEditTarget: null,
+  const context = { invoiceForm: { getFieldValue: (name) => name === "case_fee_ids" ? [] : "", setFieldsValue() {} }, invoiceEditTarget: null,
     setInvoiceCandidateFees: (fn) => { candidates = fn(candidates); }, setContracts: (fn) => { contracts = fn(contracts); }, setCustomers: (fn) => { customers = fn(customers); } };
   const { actions: run } = actions("invoices", { get: async (_url, { params }) => {
     assert.equal("isCurrent" in params, false);

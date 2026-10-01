@@ -5,7 +5,6 @@ import {
   Dropdown,
   Input,
   Select,
-  Space,
 } from "antd";
 import Table from "../components/ResizableTable";
 import {
@@ -61,46 +60,7 @@ interface CustomerListProps {
   onPageSizeChange: (value: number) => void;
 }
 
-export function CustomerList({
-  initialView,
-  rows,
-  total,
-  page,
-  pageSize,
-  customerPageCount,
-  customerPageNumbers,
-  jumpPage,
-  loading,
-  keyword,
-  customerType,
-  customerTypeOptions,
-  managerKeyword,
-  managerLocked,
-  managerDisplay,
-  isOriginalCustomerList,
-  isReadOnlyCustomerList,
-  selectedRowKeys,
-  listSummary,
-  profile,
-  directory,
-  originalActionItems,
-  onKeywordChange,
-  onCustomerTypeChange,
-  onManagerKeywordChange,
-  onSearch,
-  onReset,
-  onSelectedRowKeysChange,
-  onStartCreate,
-  onOpenDetail,
-  onOpenCustomerCommunication,
-  onOpenCustomerContracts,
-  onOpenCustomerCivilCases,
-  onOpenCustomerIprCases,
-  onRunOriginalAction,
-  onGoToPage,
-  onJumpPageChange,
-  onPageSizeChange,
-}: CustomerListProps) {
+export function CustomerList({ initialView, rows, total, page, pageSize, customerPageCount, customerPageNumbers, jumpPage, loading, keyword, customerType, customerTypeOptions, managerLocked, managerDisplay, isOriginalCustomerList, isReadOnlyCustomerList, selectedRowKeys, listSummary, directory, originalActionItems, onKeywordChange, onCustomerTypeChange, onManagerKeywordChange, onSearch, onReset, onSelectedRowKeysChange, onStartCreate, onOpenDetail, onOpenCustomerCommunication, onOpenCustomerContracts, onOpenCustomerCivilCases, onOpenCustomerIprCases, onRunOriginalAction, onGoToPage, onJumpPageChange, onPageSizeChange }: CustomerListProps) {
   const amount = (value?: number) => Number(value || 0).toFixed(2);
   const displayDate = (value?: string) => {
     const parsed = dayjs(value);

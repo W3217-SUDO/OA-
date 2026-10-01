@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { incomingTotals } from '../src/finance/incomingTotals.mjs';
 import { selectableFeeTypes } from '../src/feeTypeHierarchy.mjs';
@@ -12,9 +11,17 @@ test('六列汇总使用完整筛选集并按分累加，空集为零，无金�
   assert.deepEqual(Object.values(incomingTotals([{amount:null}])), Array(8).fill(null));
 });
 
-test('9.17 原目录证据：官费九项、平台其他费用四项，排除错误分组', () => {
-  const source = JSON.parse(readFileSync(process.env.OA_FEE_CATALOG_EVIDENCE, 'utf8'));
-  const catalog = source.selectable_fees.map(row => ({...row, fee_group:row.group, base_fee_type:row.base, expense_scopes:row.scopes, selectable:true, is_active:true}));
+test('目录筛选保留九项官费及四项平台费用，排除停用、父节点和错误范围', () => {
+  const officialNames = ['一审诉讼费','二审诉讼费','再审诉讼费','公证费','调解金额','判决金额','保全费','执行费','核定成本'];
+  const platformNames = ['案源介绍费','权利人分成','投资人分成','其他费用'];
+  const catalog = [
+    ...officialNames.map(name => ({name, fee_group:'official', expense_scopes:['律所'], selectable:true, is_active:true})),
+    ...platformNames.map(name => ({name, fee_group:'other', expense_scopes:['平台'], selectable:true, is_active:true})),
+    {name:'停用费用', fee_group:'official', expense_scopes:['律所'], selectable:true, is_active:false},
+    {name:'分类父节点', fee_group:'official', expense_scopes:['律所'], selectable:false, is_active:true},
+    {name:'内部费用', fee_group:'official', expense_scopes:['内部'], selectable:true, is_active:true},
+    {name:'代理费', fee_group:'agency', expense_scopes:['平台'], selectable:true, is_active:true},
+  ];
   const official = selectableFeeTypes(catalog, '律所', 'official').map(row=>row.name);
   assert.deepEqual(official.sort(), ['一审诉讼费','二审诉讼费','再审诉讼费','公证费','调解金额','判决金额','保全费','执行费','核定成本'].sort());
   assert.deepEqual(selectableFeeTypes(catalog,'平台','other').map(row=>row.name).sort(), ['案源介绍费','权利人分成','投资人分成','其他费用'].sort());

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, message } from "antd";
 import { api } from "../api";
 import { notifyPermissionsUpdated } from "../workspacePermissions";
@@ -60,13 +60,13 @@ export default function SystemCenterPage({
     { value: string; label: string }[]
   >([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
-  const [availableMenuKeys, setAvailableMenuKeys] = useState<string[]>([]),
+  const [, setAvailableMenuKeys] = useState<string[]>([]),
     [availableFieldKeys, setAvailableFieldKeys] = useState<string[]>([]);
   const [securityPolicy, setSecurityPolicy] = useState<SecurityPolicy | null>(
     null,
   );
   const [keyword, setKeyword] = useState("");
-  const [currentUsername, setCurrentUsername] = useState("");
+  const [, setCurrentUsername] = useState("");
   const [secondaryKeyword, setSecondaryKeyword] = useState("");
   const [loading, setLoading] = useState(false);
   const [parameterOpen, setParameterOpen] = useState(false);

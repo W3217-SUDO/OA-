@@ -3,8 +3,7 @@ import type { Key } from "react";
 import { Form, message, Modal } from "antd";
 import dayjs from "dayjs";
 import { api } from "../api";
-import { buildChinesePersonOptions, displayChinesePersonName, displayChinesePersonNames } from "../contractPeoplePresentation.mjs";
-import { customerStatusLabel } from "../customerStatusLabel";
+import { buildChinesePersonOptions, displayChinesePersonName } from "../contractPeoplePresentation.mjs";
 import { consumeCustomerDetailTarget, rememberCustomerDetailTarget } from "../customerDetailNavigation";
 import { rememberCustomerRelationTarget } from "../customerRelationNavigation";
 import {
@@ -26,8 +25,6 @@ import {
   getCustomerDocumentUploadError,
   getCustomerGuid,
   isCustomerDetailManageable,
-  isCustomerRegistrationAddressSafe,
-  isCustomerPostalCodeSafe,
   normalizeCustomerSummary,
   normalizeCustomerContactPage,
   normalizeSharedObjectValues,
@@ -39,16 +36,12 @@ import {
   buildCustomerManagerRequest,
   buildCustomerShareRequest,
   getCustomerMutationErrorMessage,
-  matchesDirectoryOption,
   normalizeCustomerManager,
   validateCustomerPhotoFile,
   validateCustomerUploadFile,
 } from "../customerUiBatchI14.mjs";
 import {
-  CUSTOMER_CONTACT_FORM_DEFAULTS,
   CUSTOMER_DOCUMENT_FORM_DEFAULTS,
-  canDeleteCustomerAttachment,
-  getCustomerAttachmentDate,
 } from "../customerUiBatchI15.mjs";
 import {
   normalizeCustomerAttachmentItems,
@@ -81,7 +74,6 @@ import {
 } from "./types";
 import {
   initialProfile,
-  prioritizeNewCustomerManagers,
 } from "./constants";
 
 export default function CustomerCenterPage({
@@ -207,8 +199,7 @@ export default function CustomerCenterPage({
 
   const rows = useMemo(() => {
     let list = [...allRows];
-    const mine = (x: Customer) =>
-      [profile.username, profile.display_name].includes(x.owner);
+
     if (["customer-recycle", "customer-dept-recycle", "customer-company-recycle"].includes(initialView)) {
       // Dedicated personal/department/company recycle APIs already apply scope and paging.
     }

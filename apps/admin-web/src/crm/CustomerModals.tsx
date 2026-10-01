@@ -82,50 +82,7 @@ interface CustomerModalsProps {
   onShare: () => void;
 }
 
-export function CustomerModals({
-  viewingContact,
-  onCloseViewContact,
-  contactPhotoPreview,
-  onCloseContactPhotoPreview,
-  customerDocumentPreview,
-  onCloseCustomerDocumentPreview,
-  newEditorOpen,
-  newEditorType,
-  contactForm,
-  onCloseNewEditor,
-  onAddContact,
-  editingContact,
-  contactEditForm,
-  onCloseEditContact,
-  onUpdateContact,
-  noteForm,
-  onAddNote,
-  editingNote,
-  noteEditForm,
-  onCloseEditNote,
-  onUpdateNote,
-  documentForm,
-  documentFileRef,
-  documentFile,
-  onDocumentFileChange,
-  onUploadDocument,
-  portalResult,
-  onClosePortalResult,
-  portalCustomer,
-  portalAccounts,
-  onClosePortalCustomer,
-  onOpenPortal,
-  assigning,
-  assignForm,
-  directoryOptions,
-  directory,
-  onCloseAssign,
-  onAssignCustomer,
-  sharing,
-  shareForm,
-  onCloseShare,
-  onShare,
-}: CustomerModalsProps) {
+export function CustomerModals({ viewingContact, onCloseViewContact, contactPhotoPreview, onCloseContactPhotoPreview, customerDocumentPreview, onCloseCustomerDocumentPreview, newEditorOpen, newEditorType, contactForm, onCloseNewEditor, onAddContact, editingContact, contactEditForm, onCloseEditContact, onUpdateContact, noteForm, onAddNote, editingNote, noteEditForm, onCloseEditNote, onUpdateNote, documentForm, documentFileRef, onDocumentFileChange, onUploadDocument, portalResult, onClosePortalResult, portalCustomer, portalAccounts, onClosePortalCustomer, onOpenPortal, assigning, assignForm, directoryOptions, directory, onCloseAssign, onAssignCustomer, sharing, shareForm, onCloseShare, onShare }: CustomerModalsProps) {
   const userLabels = (values: unknown) => displayChinesePersonNames(values, directory);
 
   return (

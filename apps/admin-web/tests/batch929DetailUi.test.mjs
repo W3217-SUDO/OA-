@@ -15,6 +15,8 @@ async function load(entry, api = {}) {
     builder.onResolve({ filter: /\/api$/ }, () => ({ path: 'api', namespace: 'test' }));
     builder.onResolve({ filter: /^react$/ }, () => ({ path: 'react', external: true }));
     builder.onResolve({ filter: /^antd$/ }, () => ({ path: 'antd', namespace: 'test' }));
+    builder.onResolve({ filter: /(?:^|\/)ResizableTable$/ }, () => ({ path: 'table', namespace: 'test' }));
+    builder.onLoad({ filter: /^table$/, namespace: 'test' }, () => ({ contents: 'export default "Table";' }));
     builder.onLoad({ filter: /.*/, namespace: 'test' }, ({ path }) => ({ contents: path === 'api' ? 'export const api=globalThis.__detailApi;' : `import React from 'react'; export const Alert='Alert',Button='Button',Card='Card',Checkbox='Checkbox',Descriptions='Descriptions',Divider='Divider',Drawer='Drawer',Empty='Empty',Input=Object.assign('Input',{}),Modal='Modal',Pagination='Pagination',Popconfirm='Popconfirm',Select='Select',Space='Space',Spin='Spin',Table='Table',Tabs='Tabs',Tag='Tag',Timeline='Timeline',Upload='Upload'; export const Form=Object.assign((props)=>React.createElement('Form',props),{Item:'FormItem'}); export function Collapse(props){return React.createElement('Collapse',props,props.items.map(item=>React.createElement('Section',{key:item.key,label:item.label},item.children)));}` }));
   } }] });
   const target = new Module(fileURLToPath(import.meta.url));

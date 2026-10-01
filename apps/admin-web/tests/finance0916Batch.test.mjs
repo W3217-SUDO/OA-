@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import path from 'node:path';
 import ts from 'typescript';
 const require = createRequire(import.meta.url);
 function load(relative) {
@@ -10,7 +12,14 @@ function load(relative) {
   const module={exports:{}};
   new Function('require','module','exports',compiled)(name => {
     if(name==='../api') return {api:{}};
-    if(name==='../moneyColumns') return load('../src/finance/moneyColumns.ts');
+    if (name.startsWith('.')) {
+      if (name.endsWith('.css')) return {};
+      const resolved = path.resolve(path.dirname(fileURLToPath(filename)), name);
+      const target = ['', '.ts', '.tsx', '.mjs', '.js'].map(extension => resolved + extension).find(candidate => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
+      assert.ok(target, `测试模块引用必须可解析：${name}`);
+      if (/\.tsx?$/.test(target)) return load(pathToFileURL(target));
+      return createRequire(filename)(target);
+    }
     return require(name);
   },module,module.exports);
   return module.exports;

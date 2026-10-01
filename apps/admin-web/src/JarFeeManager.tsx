@@ -15,7 +15,7 @@ import {
   message,
 } from "antd";
 import Table from "./components/ResizableTable";
-import type { TableColumnsType, UploadFile } from "antd";
+import type { TableColumnsType } from "antd";
 import {
   DeleteOutlined,
   DownloadOutlined,

@@ -321,7 +321,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         }
     };
     const loadOrdinaryCases = async (values: Record<string, any> = context.caseQuery, page = 1, pageSize = context.originalPageSize) => {
-        const { caseQuery, originalPageSize, ordinaryRequestGuard, setOrdinaryLoading, setOrdinaryLoadError, ordinaryCaseQueue, ordinaryScope, ordinaryCaseTypes, setOrdinaryCases, setOrdinaryTotal, setOrdinaryPhaseCounts, setOriginalPage, setOriginalPageSize, setSelectedCaseKeys } = context;
+        const { ordinaryRequestGuard, setOrdinaryLoading, setOrdinaryLoadError, ordinaryCaseQueue, ordinaryScope, ordinaryCaseTypes, setOrdinaryCases, setOrdinaryTotal, setOrdinaryPhaseCounts, setOriginalPage, setOriginalPageSize, setSelectedCaseKeys } = context;
         const requestId = ordinaryRequestGuard.begin();
         setOrdinaryLoading(true);
         setOrdinaryLoadError("");
@@ -356,7 +356,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         }
     };
     const loadPendingExecutionCases = async (page = 1, pageSize = context.pendingExecutionPageSize) => {
-        const { pendingExecutionPageSize, setLoading, setPendingExecutionCases, setPendingExecutionTotal, setPendingExecutionPage, setPendingExecutionPageSize, setSelectedCaseKeys } = context;
+        const { setLoading, setPendingExecutionCases, setPendingExecutionTotal, setPendingExecutionPage, setPendingExecutionPageSize, setSelectedCaseKeys } = context;
         setLoading(true);
         try {
             const { data } = await api.get("/cases/pending-execution", { params: { page, page_size: pageSize } });
@@ -377,7 +377,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         }
     };
     const loadCounselCases = async (values: Record<string, any> = context.caseQuery, page = 1, pageSize = context.counselPageSize) => {
-        const { caseQuery, counselPageSize, setLoading, counselSearchPayload, setCounselCases, setCounselTotal, setCounselPage, setCounselPageSize, setSelectedCaseKeys } = context;
+        const { setLoading, counselSearchPayload, setCounselCases, setCounselTotal, setCounselPage, setCounselPageSize, setSelectedCaseKeys } = context;
         setLoading(true);
         try {
             const { data } = await api.post("/cases/counsel/search", counselSearchPayload(values, page, pageSize));
@@ -396,28 +396,28 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         }
     };
     const loadCaseTasksPage = async (row: CaseRow, nextPage = context.caseTaskPage, nextPageSize = context.caseTaskPageSize) => {
-        const { caseTaskPage, caseTaskPageSize, applyCaseTaskPageState } = context;
+        const { applyCaseTaskPageState } = context;
         const { data } = await api.get(`/cases/${row.id}/tasks`, {
             params: { page: nextPage, page_size: nextPageSize },
         });
         return applyCaseTaskPageState(data, nextPage, nextPageSize);
     };
     const loadCounselDetailTasksPage = async (row: CaseRow, nextPage = context.counselDetailTaskPage, nextPageSize = context.counselDetailTaskPageSize) => {
-        const { counselDetailTaskPage, counselDetailTaskPageSize, applyCounselDetailTaskPageState } = context;
+        const { applyCounselDetailTaskPageState } = context;
         const { data } = await api.get(`/cases/${row.id}/tasks`, {
             params: { page: nextPage, page_size: nextPageSize, scope: "case" },
         });
         return applyCounselDetailTaskPageState(data, nextPage, nextPageSize);
     };
     const loadCounselDetailCustomerTasksPage = async (row: CaseRow, nextPage = context.counselDetailCustomerTaskPage, nextPageSize = context.counselDetailCustomerTaskPageSize) => {
-        const { counselDetailCustomerTaskPage, counselDetailCustomerTaskPageSize, applyCounselDetailCustomerTaskPageState } = context;
+        const { applyCounselDetailCustomerTaskPageState } = context;
         const { data } = await api.get(`/cases/${row.id}/tasks`, {
             params: { page: nextPage, page_size: nextPageSize, scope: "customer" },
         });
         return applyCounselDetailCustomerTaskPageState(data, nextPage, nextPageSize);
     };
     const loadCounselDetailCluesPage = async (row: CaseRow, nextPage = context.counselDetailCluePage, nextPageSize = context.counselDetailCluePageSize, keyword = context.counselDetailClueKeyword) => {
-        const { counselDetailCluePage, counselDetailCluePageSize, counselDetailClueKeyword, counselDetailClueRequestRef, setCounselDetailClueLoading, viewingCounselCase, applyCounselDetailCluePageState } = context;
+        const { counselDetailClueRequestRef, setCounselDetailClueLoading, viewingCounselCase, applyCounselDetailCluePageState } = context;
         const requestId = ++counselDetailClueRequestRef.current;
         setCounselDetailClueLoading(true);
         try {
@@ -531,7 +531,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         }
     };
     const loadCounselCaseEvents = async (targetCase = context.viewingCounselCase) => {
-        const { viewingCounselCase, setCounselCaseEvents, setCounselCaseEventCapabilities, setSelectedCounselCaseEventKeys, setCounselCaseEventsError } = context;
+        const { setCounselCaseEvents, setCounselCaseEventCapabilities, setSelectedCounselCaseEventKeys, setCounselCaseEventsError } = context;
         if (!targetCase)
             return;
         try {

@@ -24,7 +24,6 @@ import type {
   TaskFeedbackAttachment,
 } from "./types";
 import {
-  formatTaskDate,
   formatTaskDateTime,
   formatTaskScheduleTime,
   statusColors,
@@ -94,33 +93,7 @@ const renderTaskCaseLinks = (
 };
 
 export default function TaskDetail(props: TaskDetailProps) {
-  const {
-    communication,
-    history,
-    feedbackAttachments,
-    taskMaterialAttachments,
-    feedbackFiles,
-    taskMaterialFiles,
-    actionSubmitting,
-    isInitiatedTaskContext,
-    isAcceptedTaskContext,
-    profile,
-    commentForm,
-    onClose,
-    onSimpleAction,
-    onOpenHandoff,
-    onWithdraw,
-    onOpenCaseDetail,
-    onDownloadAttachment,
-    onDeleteAttachment,
-    onUploadMaterials,
-    onMaterialFilesChange,
-    onFeedbackFilesChange,
-    onAddComment,
-    onMarkHistoryUnread,
-    isTaskParticipant,
-    canWithdrawTask,
-  } = props;
+  const { communication, history, feedbackAttachments, taskMaterialAttachments, feedbackFiles, taskMaterialFiles, actionSubmitting, isInitiatedTaskContext, isAcceptedTaskContext, profile, commentForm, onClose, onSimpleAction, onOpenHandoff, onOpenCaseDetail, onDownloadAttachment, onDeleteAttachment, onUploadMaterials, onMaterialFilesChange, onFeedbackFilesChange, onAddComment, onMarkHistoryUnread, isTaskParticipant } = props;
 
   const flowIndex: Record<string, number> = {
     待接收: 0,

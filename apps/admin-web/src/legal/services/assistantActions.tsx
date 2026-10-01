@@ -24,26 +24,7 @@ export interface CaseAssistantDependencies {
     readonly setAgentScreenshots: React.Dispatch<React.SetStateAction<CaseAgentAttachment[]>>;
     readonly setAgentMaterialPickerOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setAgentSending: React.Dispatch<React.SetStateAction<boolean>>;
-    readonly stateWithAgentScreenshotPreviews: (nextState: CaseAgentState) => {
-        messages: {
-            attachments: {
-                preview_url: string | undefined;
-                id: number;
-                name: string;
-                mime_type?: string | undefined;
-            }[] | undefined;
-            id?: string | undefined;
-            role: "assistant" | "user";
-            content: string;
-            operator?: string | undefined;
-            created_at?: string | undefined;
-        }[];
-        thread_id: string;
-        pending_actions: CaseAgentAction[];
-        last_response: string;
-        updated_at?: string | undefined;
-        active_skill?: string | undefined;
-    };
+    readonly stateWithAgentScreenshotPreviews: (nextState: CaseAgentState) => CaseAgentState;
     readonly viewingCounselCase: CaseRow | null;
     readonly refreshCounselDetailAttachments: (caseId: number) => Promise<any>;
     readonly selectCounselDocCategory: (category: string) => void;

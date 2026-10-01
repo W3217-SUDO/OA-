@@ -2,18 +2,42 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 
-// Bundle actual extracted modules together so all operations share the same API mock.
-fs.mkdirSync('.split-evidence', { recursive: true });
-const output = path.resolve('.split-evidence/runtime-services.mjs');
-await build({ stdin: { contents: `export { api } from './src/api'; export { message } from 'antd'; export { createFinancePaymentsActions } from './src/finance/services/paymentsActions'; export { createCaseQueriesActions } from './src/legal/services/queriesActions'; export { createContractDocumentsActions } from './src/contract/services/documentsActions'; export { CaseEventsPanel } from './src/legal/CaseDetail/CaseEventsPanel'; export { IncomingAllocationModal } from './src/finance/IncomingAllocationModal';`, resolveDir: process.cwd(), loader: 'ts' }, outfile: output, bundle: true, platform: 'node', format: 'esm', packages: 'external', logLevel: 'silent' });
-const { api, message, createFinancePaymentsActions, createCaseQueriesActions, createContractDocumentsActions, CaseEventsPanel, IncomingAllocationModal } = await import(pathToFileURL(output).href);
+// 将真实模块打包到独立临时目录，确保所有操作共享同一个 API mock。
+const temporaryParent = fs.realpathSync(os.tmpdir());
+const outputDirectory = fs.mkdtempSync(path.join(temporaryParent, 'oa-test-split-runtime-'));
+const output = path.join(outputDirectory, 'runtime-services.mjs');
+function cleanupOutput() {
+  const resolved = fs.realpathSync(outputDirectory);
+  if (path.dirname(resolved) !== temporaryParent || !path.basename(resolved).startsWith('oa-test-split-runtime-')) {
+    throw new Error('测试临时目录不在预期位置');
+  }
+  fs.rmSync(resolved, { recursive: true });
+}
+let bundled;
+try {
+  fs.symlinkSync(path.join(process.cwd(), 'node_modules'), path.join(outputDirectory, 'node_modules'), 'junction');
+  await build({ stdin: { contents: `export { api } from './src/api'; export { message } from 'antd'; export { createFinancePaymentsActions } from './src/finance/services/paymentsActions'; export { createCaseQueriesActions } from './src/legal/services/queriesActions'; export { createContractDocumentsActions } from './src/contract/services/documentsActions'; export { CaseEventsPanel } from './src/legal/CaseDetail/CaseEventsPanel'; export { IncomingAllocationModal } from './src/finance/IncomingAllocationModal';`, resolveDir: process.cwd(), loader: 'ts' }, outfile: output, bundle: true, platform: 'node', format: 'esm', packages: 'external', logLevel: 'silent' });
+  bundled = await import(pathToFileURL(output).href);
+} catch (error) {
+  cleanupOutput();
+  throw error;
+}
+const { api, message, createFinancePaymentsActions, createCaseQueriesActions, createContractDocumentsActions, CaseEventsPanel, IncomingAllocationModal } = bundled;
 const original = { get: api.get, post: api.post, success: message.success, error: message.error, warning: message.warning };
 const feedback = [];
 for (const key of ['success', 'error', 'warning']) message[key] = (text) => feedback.push([key, text]);
-test.after(() => { Object.assign(api, { get: original.get, post: original.post }); for (const key of ['success', 'error', 'warning']) message[key] = original[key]; fs.unlinkSync(output); });
+test.after(() => {
+  try {
+    Object.assign(api, { get: original.get, post: original.post });
+    for (const key of ['success', 'error', 'warning']) message[key] = original[key];
+  } finally {
+    cleanupOutput();
+  }
+});
 
 test('finance query reads default pagination at invocation and applies response metadata', async () => {
   let pageSize = 15; const calls = [], rows = [], meta = [];

@@ -97,7 +97,7 @@ export interface IprQueriesDependencies {
 }
 export function createIprQueriesActions(context: IprQueriesDependencies) {
     const load = async (nextPage = context.page, nextPageSize = context.pageSize, nextKeyword = context.keyword, nextReminderTypeId = context.reminderTypeId) => {
-        const { page, pageSize, keyword, reminderTypeId, setLoading, kind, caseCategoryFilter, reviewView, roleView, annualFeeMonitoringFilter, setItems, setTotal, setPage, setPageSize, setPages } = context;
+        const { setLoading, kind, caseCategoryFilter, reviewView, roleView, annualFeeMonitoringFilter, setItems, setTotal, setPage, setPageSize, setPages } = context;
         setLoading(true);
         try {
             const { data } = await api.get("/ipr/cases", {
@@ -128,7 +128,7 @@ export function createIprQueriesActions(context: IprQueriesDependencies) {
         }
     };
     const loadLegacyHistory = async (nextKeyword = context.legacyHistoryKeyword) => {
-        const { legacyHistoryKeyword, setLegacyHistoryLoading, setLegacyHistoryItems, setLegacyHistoryTotal } = context;
+        const { setLegacyHistoryLoading, setLegacyHistoryItems, setLegacyHistoryTotal } = context;
         setLegacyHistoryLoading(true);
         try {
             const { data } = await api.get<{
@@ -211,7 +211,7 @@ export function createIprQueriesActions(context: IprQueriesDependencies) {
                 "诉讼费用加载失败");
     };
     const loadIprCaseEvents = async (caseId: number, nextPage = context.remindersPageState.page, nextPageSize = context.remindersPageState.pageSize) => {
-        const { remindersPageState, setIprCaseEvents, setRemindersPageState, clearIprSectionError, setIprSectionError } = context;
+        const { setIprCaseEvents, setRemindersPageState, clearIprSectionError, setIprSectionError } = context;
         try {
             const { data } = await api.get<IprDetailPagePayload<IprCaseEvent>>(`/ipr/cases/${caseId}/events`, {
                 params: { page: nextPage, page_size: nextPageSize },
@@ -230,7 +230,7 @@ export function createIprQueriesActions(context: IprQueriesDependencies) {
         }
     };
     const loadIprCaseTasks = async (caseId: number, nextPage = context.iprTasksPageState.page, nextPageSize = context.iprTasksPageState.pageSize) => {
-        const { iprTasksPageState, setIprCaseTasks, setIprTasksPageState, clearIprSectionError, setIprSectionError } = context;
+        const { setIprCaseTasks, setIprTasksPageState, clearIprSectionError, setIprSectionError } = context;
         try {
             const { data } = await api.get<IprDetailPagePayload<IprCaseTask>>(`/ipr/cases/${caseId}/tasks`, {
                 params: { page: nextPage, page_size: nextPageSize },
@@ -491,7 +491,7 @@ export function createIprQueriesActions(context: IprQueriesDependencies) {
         }
     };
     const loadWarnings = async (nextPage = context.warningPage) => {
-        const { warningPage, setWarningLoading, warningStatus, warningCaseKind, setWarnings, setWarningTotal, setWarningUnread, setWarningPage } = context;
+        const { setWarningLoading, warningStatus, warningCaseKind, setWarnings, setWarningTotal, setWarningUnread, setWarningPage } = context;
         setWarningLoading(true);
         try {
             const { data } = await api.get<{

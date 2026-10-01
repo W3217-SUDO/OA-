@@ -160,19 +160,18 @@ def ensure_legacy_indexes(connection) -> None:
 
 
 def align_legacy_indexes(connection) -> None:
-    """Remove projection-only indexes after all original indexes exist."""
+    """核验旧库清单要求的索引，保留清单外仍可能供业务使用的索引。"""
 
     if connection.dialect.name != "postgresql":
         return
     inspector = inspect(connection)
-    preparer = connection.dialect.identifier_preparer
     for table_spec in load_legacy_schema_manifest()["tables"]:
         table_name = table_spec["name"]
         expected = {index_spec["name"] for index_spec in table_spec["indexes"]}
-        for index in inspector.get_indexes(table_name):
-            name = index["name"]
-            if name not in expected:
-                connection.execute(text(f"DROP INDEX IF EXISTS {preparer.quote(name)}"))
+        actual = {index["name"] for index in inspector.get_indexes(table_name)}
+        missing = expected - actual
+        if missing:
+            raise RuntimeError(f"Missing legacy indexes on {table_name}: {sorted(missing)}")
 
 
 def align_legacy_constraints(connection) -> None:
@@ -262,12 +261,13 @@ def align_legacy_column_types(connection) -> None:
 
 
 def audit_legacy_schema(connection) -> dict:
-    """Return exact structural errors plus non-semantic column-order warnings."""
+    """Return structural errors and non-destructive column/index warnings."""
 
     inspector = inspect(connection)
     database_tables = set(inspector.get_table_names())
     errors = []
     order_warnings = []
+    index_warnings = {}
     for expected_table in LEGACY_METADATA.tables.values():
         name = expected_table.name
         if name not in database_tables:
@@ -302,17 +302,21 @@ def audit_legacy_schema(connection) -> dict:
             )
         expected_indexes = {index.name for index in expected_table.indexes}
         actual_indexes = {index["name"] for index in inspector.get_indexes(name)}
-        if actual_indexes != expected_indexes:
+        missing_indexes = expected_indexes - actual_indexes
+        if missing_indexes:
             errors.append(
                 {
                     "table": name,
                     "issue": "indexes",
-                    "missing": sorted(expected_indexes - actual_indexes),
-                    "extra": sorted(actual_indexes - expected_indexes),
+                    "missing": sorted(missing_indexes),
                 }
             )
+        extra_indexes = actual_indexes - expected_indexes
+        if extra_indexes:
+            index_warnings[name] = sorted(extra_indexes)
     return {
         "expected_tables": len(LEGACY_METADATA.tables),
         "errors": errors,
         "column_order_warnings": sorted(order_warnings),
+        "extra_index_warnings": index_warnings,
     }

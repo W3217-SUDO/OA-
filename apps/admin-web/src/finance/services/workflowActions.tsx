@@ -1,27 +1,21 @@
 import { message, Modal, Alert } from "antd";
 import Table from "../../components/ResizableTable";
 import { api } from "../../api";
-import type { FinanceFlow } from "../types";
-type OriginalFieldSpec = {
-    label: string;
-    key?: string;
-    control?: "date" | "money" | "multi";
-    options?: string[];
-    defaultValue?: any;
-    disabled?: boolean;
-    readOnly?: boolean;
-    pickerLabel?: string;
-};
-type OriginalRouteConfig = {
-    fields: OriginalFieldSpec[];
-    headers: string[];
-    source: "fees" | "incoming" | "invoices" | "settlements" | "generalSettlements" | "archiveSettlements" | "feeQuery" | "refundReviewFees" | "paymentPackages" | "unissuedFees";
-    selectable?: boolean;
-    clear?: boolean;
-    upload?: boolean;
-    export?: boolean;
-    note?: string;
-};
+import type { Fee, FinanceFlow } from "../types";
+
+export type FinanceLinkedRecord = Fee & { module: string; owner_display_name?: string };
+
+export async function loadFinanceLinkedRecord(recordId: number, signal?: AbortSignal): Promise<FinanceLinkedRecord> {
+    const { data } = await api.get<FinanceLinkedRecord>(`/records/${recordId}`, { signal });
+    return data;
+}
+
+export async function reviewFinanceFlowRequest(kind: "invoices" | "refunds", rowId: number, approved: boolean): Promise<void> {
+    await api.post(`/finance/${kind}/${rowId}/review`, {
+        approved,
+        comment: approved ? "财务审核通过" : "资料不完整，退回修改",
+    });
+}
 /** finance workflow operations; dependencies are read when each operation runs. */
 export interface FinanceWorkflowDependencies {
     readonly bankSource: string;

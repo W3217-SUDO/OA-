@@ -117,6 +117,22 @@ def _incoming_payment_legacy_summary(item: IncomingPayment) -> dict:
     }
 
 
+async def _visible_incoming_payment_statement(identity: dict, db: AsyncSession):
+    from app.core.permissions import _record_scope_conditions
+
+    statement = select(IncomingPayment)
+    if identity.get("role") in {"admin", "auditor"}:
+        return statement
+    visible_customer_titles = select(BusinessRecord.title).where(
+        BusinessRecord.module == "customer", *(await _record_scope_conditions(identity, db)),
+    )
+    return statement.where(or_(
+        IncomingPayment.operator == identity["username"],
+        IncomingPayment.claimant == identity["username"],
+        IncomingPayment.claimed_customer.in_(visible_customer_titles),
+    ))
+
+
 def _incoming_payment_dict(item: IncomingPayment, *, show_amount: bool = True, users_by_username: dict[str, User] | None = None) -> dict:
     from app.core.formatters import (
         _person_reference_display,
@@ -1248,12 +1264,12 @@ async def _invoice_list_rows(
     from app.core.system import (
         _allowed_field_keys, _record_dict,
     )
-    records = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "invoice",
-        *(await _record_scope_conditions(identity, db)),
-    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    record_conditions = [BusinessRecord.module == "invoice", *(await _record_scope_conditions(identity, db))]
     if ids is not None:
-        records = [item for item in records if item.id in ids]
+        record_conditions.append(BusinessRecord.id.in_(ids))
+    records = list((await db.scalars(select(BusinessRecord).where(
+        *record_conditions,
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     allowed_fields = await _allowed_field_keys(identity, db)
     personal_names = {str(identity.get("username", "")).strip(), str(identity.get("display_name", "")).strip()} - {""}
     user_display_names = {
@@ -2602,11 +2618,12 @@ async def _general_settlement_rows(
     from app.core.system import (
         _allowed_field_keys,
     )
-    payments = list((await db.scalars(select(IncomingPayment).order_by(
-        IncomingPayment.received_date.asc(), IncomingPayment.id.asc()
-    ))).all())
+    payment_query = select(IncomingPayment)
     if receipt_ids is not None:
-        payments = [item for item in payments if item.id in receipt_ids]
+        payment_query = payment_query.where(IncomingPayment.id.in_(receipt_ids))
+    payments = list((await db.scalars(payment_query.order_by(
+        IncomingPayment.received_date.asc(), IncomingPayment.id.asc(),
+    ))).all())
 
     allocations = [allocation for payment in payments for allocation in (payment.allocations or [])]
     case_ids = {int(row.get("case_id") or 0) for row in allocations if row.get("case_id")}
@@ -3594,7 +3611,6 @@ def _ipr_annual_fee_dict(row: IprCaseAnnualFee, reminder: IprCaseReminder | None
         "reminder_date": row.reminder_date, "reminder_id": row.reminder_id,
         "reminder": _ipr_case_reminder_dict(reminder) if reminder else None,
         "notes": row.notes, "created_by": row.created_by,
-        "created_at": row.created_at, "updated_at": row.updated_at,
     }
 
 

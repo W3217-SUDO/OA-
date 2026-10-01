@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from sqlalchemy import case
 from app.core.constants import (
     UPLOAD_ROOT, VIP_TASK_PRIORITIES, VIP_TASK_STATUSES,
 )
@@ -43,27 +44,50 @@ async def list_vip_tasks(
     page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
-    from app.core.tasks import (
-        _vip_task_member, _vip_task_response,
-    )
+    from app.core.task_query import vip_collaborator_conditions
+    from app.core.tasks import _vip_task_member, _vip_task_response
     conditions = []
+    legacy_collaborators = False
+    if status_filter:
+        conditions.append(VipTask.status == status_filter)
+    if priority:
+        conditions.append(VipTask.priority == priority)
     if identity.get("role") != "admin":
-        username = identity["username"]
-        # JSON participant membership is normalized after fetch for SQLite/PostgreSQL parity.
-        candidates = list((await db.scalars(select(VipTask).order_by(VipTask.updated_at.desc(), VipTask.id.desc()))).all())
-        tasks = [task for task in candidates if _vip_task_member(task, identity)]
-    else:
-        tasks = list((await db.scalars(select(VipTask).order_by(VipTask.updated_at.desc(), VipTask.id.desc()))).all())
+        dialect = db.get_bind().dialect.name
+        member, legacy_shape = vip_collaborator_conditions(dialect, identity["username"])
+        legacy_collaborators = bool(await db.scalar(select(func.count()).select_from(VipTask).where(
+            *conditions, legacy_shape,
+        )))
+        if not legacy_collaborators:
+            conditions.append(or_(
+                VipTask.created_by == identity["username"], VipTask.owner == identity["username"], member,
+            ))
     needle = keyword.strip().casefold()
     customer_needle = customer.strip().casefold()
-    tasks = [task for task in tasks if (
-        (not needle or needle in f"{task.serial_no} {task.title} {task.customer} {task.description}".casefold())
-        and (not customer_needle or customer_needle in task.customer.casefold())
-        and (not status_filter or task.status == status_filter)
-        and (not priority or task.priority == priority)
-    )]
-    total = len(tasks); start = (page - 1) * page_size
-    return {"items": [await _vip_task_response(task, identity, db) for task in tasks[start:start + page_size]], "total": total, "page": page, "page_size": page_size, "pages": (total + page_size - 1) // page_size if total else 0}
+    order = (VipTask.updated_at.desc(), VipTask.id.desc())
+    start = (page - 1) * page_size
+    if needle or customer_needle or legacy_collaborators:
+        # 保留现有 Unicode casefold 匹配语义，数据库只筛选可精确表达的条件。
+        candidates = (await db.execute(select(
+            VipTask.id, VipTask.serial_no, VipTask.title, VipTask.customer, VipTask.description,
+            VipTask.created_by, VipTask.owner, VipTask.collaborators,
+        ).where(*conditions).order_by(*order))).all()
+        matched_ids = [row.id for row in candidates if (
+            (not legacy_collaborators or _vip_task_member(row, identity))
+            and (not needle or needle in f"{row.serial_no} {row.title} {row.customer} {row.description}".casefold())
+            and (not customer_needle or customer_needle in row.customer.casefold())
+        )]
+        total = len(matched_ids)
+        page_ids = matched_ids[start:start + page_size]
+        if page_ids:
+            page_by_id = {task.id: task for task in (await db.scalars(select(VipTask).where(VipTask.id.in_(page_ids)))).all()}
+            tasks = [page_by_id[task_id] for task_id in page_ids]
+        else:
+            tasks = []
+    else:
+        total = int(await db.scalar(select(func.count()).select_from(VipTask).where(*conditions)) or 0)
+        tasks = list((await db.scalars(select(VipTask).where(*conditions).order_by(*order).offset(start).limit(page_size))).all())
+    return {"items": [await _vip_task_response(task, identity, db) for task in tasks], "total": total, "page": page, "page_size": page_size, "pages": (total + page_size - 1) // page_size if total else 0}
 
 
 @router.post(f"{settings.api_prefix}/vip-tasks", status_code=status.HTTP_201_CREATED)
@@ -286,17 +310,9 @@ async def list_tasks(
     from app.core.formatters import (
             _task_display_dicts,
         )
-    from app.core.investigation import (
-            _is_investigation_task,
-        )
     from app.core.permissions import (
             _require_company_task_read_scope,
         )
-    from app.core.tasks import (
-            _apply_task_auto_completion, _apply_task_overdue_performance,
-        )
-    await _apply_task_auto_completion(db)
-    await _apply_task_overdue_performance(db)
     legacy_page_map = {
         "9001001010": ("default", "initiated"), "9001002010": ("department", "initiated"),
         "9001003010": ("company", "initiated"), "9001001020": ("default", "owned"),
@@ -338,120 +354,206 @@ async def list_tasks(
             BusinessRecord.data["initiator"].as_string().in_(department_usernames),
             *department_tokens,
         ))
-    tasks = list((await db.scalars(select(BusinessRecord).where(*task_conditions).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
     if scope in {"mine", "default"}:
-        username = identity["username"]
-        tasks = [task for task in tasks if task.owner == username or (task.data or {}).get("initiator") == username or username in (task.data or {}).get("collaborators", [])]
-    elif scope == "department":
-        user = await db.scalar(select(User).where(User.username == identity["username"]))
-        if not user:
-            raise HTTPException(status_code=401, detail="current user does not exist")
-        department_usernames = set((await db.scalars(select(User.username).where(
-            User.department == user.department,
-        ))).all())
         if relation == "owned":
-            tasks = [task for task in tasks if task.owner in department_usernames]
-        elif relation == "collaborating":
-            tasks = [task for task in tasks if department_usernames.intersection((task.data or {}).get("collaborators", []))]
-        else:
-            tasks = [task for task in tasks if (task.data or {}).get("initiator") in department_usernames]
+            task_conditions.append(BusinessRecord.owner == identity["username"])
+        elif relation == "initiated":
+            task_conditions.append(BusinessRecord.data["initiator"].as_string() == identity["username"])
+    elif scope == "department":
+        if relation == "owned":
+            task_conditions.append(BusinessRecord.owner.in_(department_usernames))
+        elif relation == "initiated":
+            task_conditions.append(BusinessRecord.data["initiator"].as_string().in_(department_usernames))
+    from app.core.task_query import (
+        add_task_summary, enrich_task_filter_rows, stream_task_rows,
+        task_canonical_deadline, task_employee_names, task_filter_row,
+        task_not_investigation_condition, task_scope_visible,
+    )
+    from app.core.tasks import _task_schedule_state
+
+    dialect = db.get_bind().dialect.name
+    task_conditions.append(task_not_investigation_condition(dialect))
+    if scope != "department":
+        department_usernames = set()
     username = identity["username"]
-    if scope == "company":
-        # Company initiated/accepted views include every company task.  The
-        # collaboration view is the company-wide subset with collaborators,
-        # independent of which employee is currently signed in.
-        if relation == "collaborating":
-            tasks = [task for task in tasks if (task.data or {}).get("collaborators", [])]
-    elif scope != "department":
-        # Personal entries are always about the signed-in user, including for
-        # administrators.  Company-wide visibility requires scope=company.
-        if relation == "initiated":
-            tasks = [task for task in tasks if (task.data or {}).get("initiator") == username]
-        elif relation == "owned":
-            tasks = [task for task in tasks if task.owner == username]
-        elif relation == "collaborating":
-            tasks = [task for task in tasks if username in (task.data or {}).get("collaborators", [])]
-    tasks = [task for task in tasks if not _is_investigation_task(task)]
-    items = await _task_display_dicts(tasks, db)
-    if relation == "initiated":
-        for item in items:
-            if item.get("workflow_status") in {"待接收", "待处理"} and item.get("source") == "案件任务":
-                item["status"] = "进行中"
-    all_task_items = list(items)
 
-    def contains(value: object, needle: str) -> bool:
-        return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
-
-    if keyword:
-        key = keyword.lower()
-        items = [item for item in items if key in (
-            f"{item['serial_no']} {item['title']} {item['customer']} "
-            f"{item['owner']} {item.get('owner_display_name', '')} "
-            f"{item.get('initiator', '')} {item.get('initiator_display_name', '')}"
-        ).lower()]
-    items = [item for item in items if
-        contains(item.get("priority"), priority)
-        and contains(item.get("serial_no"), serial_no)
-        and contains(item.get("title"), title)
-        and contains(item.get("description"), description)
-        and contains(f"{item.get('initiator', '')} {item.get('initiator_display_name', '')}", initiator)
-        and contains(" ".join(item.get("case_nos") or [item.get("case_no", "")]), case_no)
-        and contains(item.get("creation_mode") if source in {"自动", "人工"} else item.get("source"), source)
-        and contains(f"{item.get('owner', '')} {item.get('owner_display_name', '')}", owner)
-        and contains(item.get("plaintiff"), plaintiff)
-        and contains(item.get("defendant"), defendant)
-    ]
-    if created_from:
-        items = [item for item in items if item.get("created_at") and item["created_at"].date() >= created_from]
-    if created_to:
-        items = [item for item in items if item.get("created_at") and item["created_at"].date() <= created_to]
-    if deadline_from:
-        items = [item for item in items if item.get("deadline") and item["deadline"] >= deadline_from]
-    if deadline_to:
-        items = [item for item in items if item.get("deadline") and item["deadline"] <= deadline_to]
-    reverse_sort = sort_order == "desc"
-    # 先按 ID 做稳定次排序，再按所选字段排序；空值始终位于末尾。
-    items.sort(key=lambda item: item["id"], reverse=reverse_sort)
-    populated = [item for item in items if item.get(sort_by) is not None and item.get(sort_by) != ""]
-    missing = [item for item in items if item.get(sort_by) is None or item.get(sort_by) == ""]
-    populated.sort(key=lambda item: item[sort_by], reverse=reverse_sort)
-    items = populated + missing
-    if reminder_only:
-        items = [item for item in items if item["reminder_due"]]
-    status_counts: dict[str, int] = {}
-    for item in items:
-        status_name = str(item.get("status") or "")
-        status_counts[status_name] = status_counts.get(status_name, 0) + 1
-    selected_statuses = {value.strip() for value in statuses.split(",") if value.strip()}
-    if selected_statuses.intersection({"处理中", "进行中"}):
-        selected_statuses.update({"处理中", "进行中"})
-    if selected_statuses:
-        items = [item for item in items if item["status"] in selected_statuses]
-    if status_filter:
-        items = [item for item in items if item["status"] == status_filter]
-    all_items = all_task_items
-    if reminder_only:
-        all_items = [item for item in all_items if item["reminder_due"]]
-    total = len(items)
-    effective_page_size = page_size
-    pages = (total + effective_page_size - 1) // effective_page_size if total else 0
-    start = (page - 1) * effective_page_size
-    items = items[start:start + effective_page_size]
-    return {
-        "items": items, "total": total, "page": page, "page_size": effective_page_size,
-        "pages": pages,
-        "status_counts": status_counts,
-        "summary": {
-            "total": len(all_items),
-            "pending": sum(1 for item in all_items if item["status"] in {"待接收", "待处理"}),
-            "processing": sum(1 for item in all_items if item["status"] in {"处理中", "进行中"}),
-            "awaiting_confirmation": sum(1 for item in all_items if item["status"] == "已完成"),
-            "due_soon": sum(1 for item in all_items if item["days_remaining"] in {0, 1} and item["status"] not in {"已完成", "已撤回"}),
-            "overdue": sum(1 for item in all_items if item["status"] == "已逾期"),
-            "reminders": sum(1 for item in all_items if item["reminder_due"]),
-        },
+    summary = {
+        "total": 0, "pending": 0, "processing": 0,
+        "awaiting_confirmation": 0, "due_soon": 0,
+        "overdue": 0, "reminders": 0,
     }
+    summary_status_counts: dict[str, int] = {}
+    summary_fields = (
+        "initiator", "collaborators", "source", "deadline",
+        "task_end_time", "TaskEndTime", "rejected_at", "completion_submitted_at",
+    )
+    async for task in stream_task_rows(
+        db, task_conditions, ("id", "status", "owner"), summary_fields,
+        ("initiator", "collaborators"),
+    ):
+        if not task_scope_visible(task, scope, relation, username, department_usernames):
+            continue
+        _, days_remaining, effective_status, reminder_due, _ = _task_schedule_state(task)
+        if relation == "initiated" and task.status in {"待接收", "待处理"} and (task.data or {}).get("source", "日常任务") == "案件任务":
+            effective_status = "进行中"
+        if reminder_only and not reminder_due:
+            continue
+        metrics = {
+            "status": effective_status, "days_remaining": days_remaining,
+            "reminder_due": reminder_due,
+        }
+        add_task_summary(summary, metrics)
+        summary_status_counts[effective_status] = summary_status_counts.get(effective_status, 0) + 1
 
+    # 仅精确 SQL 人员范围且无动态筛选的页面可直接由数据库分页。
+    sql_scope = (
+        (scope == "company" and relation != "collaborating")
+        or (scope in {"mine", "default"} and relation == "owned")
+        or (scope == "department" and relation == "owned")
+    )
+    has_filters = any((
+        keyword, priority, serial_no, title, description, initiator,
+        case_no, source, owner, plaintiff, defendant, created_from, created_to,
+        deadline_from, deadline_to, statuses, status_filter, reminder_only,
+    ))
+    sql_page = sql_scope and not has_filters and sort_by in {"created_at", "updated_at", "deadline"}
+    sql_deadline = None
+    if sql_page and sort_by == "deadline":
+        sql_deadline, canonical = task_canonical_deadline(dialect)
+        exceptional = await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+            *task_conditions, sql_deadline != "", ~canonical,
+        ))
+        sql_page = not exceptional
+
+    if sql_page:
+        total = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*task_conditions)) or 0)
+        if sort_by == "deadline":
+            empty_last = case((sql_deadline == "", 1), else_=0)
+            order_value = sql_deadline.desc() if sort_order == "desc" else sql_deadline.asc()
+            order = (empty_last, order_value, BusinessRecord.id.desc() if sort_order == "desc" else BusinessRecord.id.asc())
+        else:
+            column = getattr(BusinessRecord, sort_by)
+            order_value = column.desc().nulls_last() if sort_order == "desc" else column.asc().nulls_last()
+            order = (order_value, BusinessRecord.id.desc() if sort_order == "desc" else BusinessRecord.id.asc())
+        start = (page - 1) * page_size
+        selected_ids = list((await db.scalars(select(BusinessRecord.id).where(
+            *task_conditions,
+        ).order_by(*order).offset(start).limit(page_size))).all())
+        status_counts = summary_status_counts
+        summary["total"] = total
+    else:
+        candidate_columns = (
+            "id", "serial_no", "title", "customer", "status", "owner",
+            "description", "created_at", "updated_at",
+        )
+        candidate_data_fields = (
+            "initiator", "collaborators", "source", "case_ids", "case_record_id",
+            "case_id", "case_nos", "case_no", "deadline", "task_end_time",
+            "TaskEndTime", "rejected_at", "completion_submitted_at",
+            "priority", "creation_mode", "task_type", "auto_task_type",
+            "merged_from_case_no", "plaintiff", "defendant",
+        )
+        selected_statuses = {value.strip() for value in statuses.split(",") if value.strip()}
+        if selected_statuses.intersection({"处理中", "进行中"}):
+            selected_statuses.update({"处理中", "进行中"})
+        need_people = bool(keyword or initiator or owner)
+        need_cases = bool(case_no or plaintiff or defendant)
+        employee_names = await task_employee_names(db) if need_people else None
+        status_counts = {}
+        matched = []
+
+        def contains(value: object, needle: str) -> bool:
+            return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
+
+        async def process_batch(batch: list[dict]) -> None:
+            await enrich_task_filter_rows(batch, db, employee_names=employee_names, need_cases=need_cases)
+            for item in batch:
+                if keyword:
+                    key = keyword.lower()
+                    haystack = (
+                        f"{item['serial_no']} {item['title']} {item['customer']} "
+                        f"{item['owner']} {item.get('owner_display_name', '')} "
+                        f"{item.get('initiator', '')} {item.get('initiator_display_name', '')}"
+                    ).lower()
+                    if key not in haystack:
+                        continue
+                if not (
+                    contains(item.get("priority"), priority)
+                    and contains(item.get("serial_no"), serial_no)
+                    and contains(item.get("title"), title)
+                    and contains(item.get("description"), description)
+                    and contains(f"{item.get('initiator', '')} {item.get('initiator_display_name', '')}", initiator)
+                    and contains(" ".join(item.get("case_nos") or [item.get("case_no", "")]), case_no)
+                    and contains(item.get("creation_mode") if source in {"自动", "人工"} else item.get("source"), source)
+                    and contains(f"{item.get('owner', '')} {item.get('owner_display_name', '')}", owner)
+                    and contains(item.get("plaintiff"), plaintiff)
+                    and contains(item.get("defendant"), defendant)
+                ):
+                    continue
+                if created_from and (not item.get("created_at") or item["created_at"].date() < created_from):
+                    continue
+                if created_to and (not item.get("created_at") or item["created_at"].date() > created_to):
+                    continue
+                if deadline_from and (not item.get("deadline") or item["deadline"] < deadline_from):
+                    continue
+                if deadline_to and (not item.get("deadline") or item["deadline"] > deadline_to):
+                    continue
+                if reminder_only and not item["reminder_due"]:
+                    continue
+                status_name = str(item.get("status") or "")
+                status_counts[status_name] = status_counts.get(status_name, 0) + 1
+                if selected_statuses and item["status"] not in selected_statuses:
+                    continue
+                if status_filter and item["status"] != status_filter:
+                    continue
+                matched.append(item)
+
+        after_id = 0
+        while True:
+            task_batch = [task async for task in stream_task_rows(
+                db, task_conditions, candidate_columns, candidate_data_fields,
+                ("initiator", "collaborators", "source", "priority"),
+                after_id=after_id, limit=256,
+            )]
+            if not task_batch:
+                break
+            after_id = task_batch[-1].id
+            batch = [
+                task_filter_row(task, relation)
+                for task in task_batch
+                if task_scope_visible(task, scope, relation, username, department_usernames)
+            ]
+            await process_batch(batch)
+        reverse_sort = sort_order == "desc"
+        matched.sort(key=lambda item: item["id"], reverse=reverse_sort)
+        populated = [item for item in matched if item.get(sort_by) is not None and item.get(sort_by) != ""]
+        missing = [item for item in matched if item.get(sort_by) is None or item.get(sort_by) == ""]
+        populated.sort(key=lambda item: item[sort_by], reverse=reverse_sort)
+        matched = populated + missing
+        total = len(matched)
+        start = (page - 1) * page_size
+        selected_ids = [item["id"] for item in matched[start:start + page_size]]
+
+    if selected_ids:
+        page_by_id = {
+            item.id: item for item in (await db.scalars(select(BusinessRecord).where(
+                BusinessRecord.module == "task", BusinessRecord.id.in_(selected_ids),
+            ))).all()
+        }
+        if len(page_by_id) != len(selected_ids):
+            raise HTTPException(status_code=409, detail="任务列表在读取时发生变化，请重试")
+        items = await _task_display_dicts([page_by_id[record_id] for record_id in selected_ids], db)
+        if relation == "initiated":
+            for item in items:
+                if item.get("workflow_status") in {"待接收", "待处理"} and item.get("source") == "案件任务":
+                    item["status"] = "进行中"
+    else:
+        items = []
+    pages = (total + page_size - 1) // page_size if total else 0
+    return {
+        "items": items, "total": total, "page": page, "page_size": page_size,
+        "pages": pages, "status_counts": status_counts, "summary": summary,
+    }
 
 @router.get(f"{settings.api_prefix}/tasks/unread-messages")
 async def list_unread_task_messages(
@@ -581,90 +683,9 @@ async def list_unread_task_messages(
 
 @router.post(f"{settings.api_prefix}/tasks", status_code=status.HTTP_201_CREATED)
 async def create_task(body: TaskInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.crm import (
-        _case_customer_has_vip_marker,
-    )
-    from app.core.permissions import (
-        _case_detail_action_capabilities, _ensure_active_ipr_case_write, _ensure_record_module,
-    )
-    from app.core.tasks import (
-        _active_task_username, _add_task_message_notifications, _next_manual_task_serial, _task_dict, _validate_task_deadline,
-    )
-    _validate_task_deadline(body.deadline)
-    if body.start_at and body.end_at and body.start_at >= body.end_at:
-        raise HTTPException(status_code=422, detail="任务结束时间必须晚于开始时间")
-    if body.end_at and body.end_at.date() != body.deadline:
-        raise HTTPException(status_code=422, detail="截止日期必须与任务结束时间的日期一致")
-    requested_case_nos = [body.case_no.strip(), *(str(value).strip() for value in body.case_nos)]
-    case_nos = list(dict.fromkeys(value for value in requested_case_nos if value))
-    case_no = case_nos[0] if case_nos else ""
-    source = body.source.strip() or "日常任务"
-    if source == "客户任务":
-        raise HTTPException(status_code=403, detail="客户任务只能由客户通过客户端发布")
-    if body.case_record_id and case_nos:
-        raise HTTPException(status_code=422, detail="案件 ID 与案号列表不能同时提交")
-    if source == "案件任务" and not case_nos and not body.case_record_id:
-        raise HTTPException(status_code=422, detail="案件任务必须关联有效案件")
-    case_records: list[BusinessRecord] = []
-    if body.case_record_id:
-        case_record = await _ensure_record_module(body.case_record_id, body.case_module, identity, db)
-        if body.case_module == "case":
-            capabilities = await _case_detail_action_capabilities(case_record, identity, db)
-            if not capabilities["can_create_case_task"]:
-                raise HTTPException(status_code=403, detail=f"当前账号没有创建案件 {case_record.serial_no} 任务的权限")
-        else:
-            await _ensure_active_ipr_case_write(case_record.id, identity, db)
-        case_records.append(case_record)
-    for linked_case_no in case_nos:
-        case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == linked_case_no))
-        if not case_record:
-            raise HTTPException(status_code=404, detail=f"关联案件不存在：{linked_case_no}")
-        case_record = await _ensure_record_module(case_record.id, "case", identity, db)
-        capabilities = await _case_detail_action_capabilities(case_record, identity, db)
-        if not capabilities["can_create_case_task"]:
-            raise HTTPException(status_code=403, detail=f"当前账号没有创建案件 {linked_case_no} 任务的权限")
-        case_records.append(case_record)
-    case_record = case_records[0] if case_records else None
-    case_no = case_record.serial_no if case_record else case_no
-    serial = await _next_manual_task_serial(db)
-    user = await db.scalar(select(User).where(User.username == identity["username"]))
-    owner = await _active_task_username(body.owner, db, field_name="负责人")
-    collaborators = []
-    for value in body.collaborators:
-        collaborator = await _active_task_username(value, db, field_name="协作人")
-        if collaborator != owner and collaborator not in collaborators:
-            collaborators.append(collaborator)
-    initial_status = "待处理" if source == "案件任务" else "待接收"
-    clue_task_data = {}
-    creation_comment = f"负责人：{owner}；截止日期：{body.deadline}"
-    if body.clue_ids:
-        from app.core.case_relations import case_clues, clue_header_values
-        if len(case_records) != 1 or case_record.module != "case":
-            raise HTTPException(422, "公证书领取任务必须关联一个案件")
-        linked_clues = {item.id: item for item in await case_clues(case_record, db)}
-        selected_ids = list(dict.fromkeys(body.clue_ids))
-        if any(clue_id not in linked_clues for clue_id in selected_ids):
-            raise HTTPException(409, "所选线索不属于该案件")
-        selected_clues = [linked_clues[clue_id] for clue_id in selected_ids]
-        certificates = clue_header_values(selected_clues)["notary_no"]
-        if not certificates:
-            raise HTTPException(422, "所选线索尚未填写公证书号")
-        people = (await db.scalars(select(User).where(User.username.in_([owner, *collaborators])))).all()
-        names = {person.username: person.display_name or person.username for person in people}
-        initiator_name = user.display_name or user.username if user else identity["username"]
-        collaborator_names = "、".join(names[value] for value in collaborators) or "无"
-        creation_comment = f"{initiator_name}新建任务给负责人({names[owner]})，协作人({collaborator_names})，附言：领取公证书（{certificates}）"
-        clue_task_data = {"clue_ids": selected_ids, "clue_nos": [item.serial_no for item in selected_clues], "certificate_nos": certificates, "task_type": "公证书领取"}
-    inherited_vip = False
-    for linked_case in case_records:
-        if await _case_customer_has_vip_marker(linked_case, db):
-            inherited_vip = True
-            break
-    task = BusinessRecord(module="task", serial_no=serial, title=body.title, customer=case_record.customer if case_record else body.customer, status=initial_status, owner=owner, department=user.department if user else "上海分所", description=body.description, data={"deadline": str(body.deadline), "start_at": body.start_at.isoformat() if body.start_at else "", "end_at": body.end_at.isoformat() if body.end_at else "", "priority": body.priority, "source": source, "creation_mode": "人工", "task_type": "手动任务", "initiator": identity["username"], "collaborators": collaborators, "case_no": case_no, "case_nos": [item.serial_no for item in case_records], "case_id": case_record.id if case_record else None, "case_record_id": case_record.id if case_record else None, "case_ids": [item.id for item in case_records], "case_module": body.case_module if case_record else "", "is_vip": bool(body.is_vip or inherited_vip)})
-    task.data = {**task.data, **clue_task_data}
-    db.add(task)
-    await db.flush()
-    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="发起任务", to_status=initial_status, operator=identity["username"], comment=creation_comment), db, content="任务已分派.")
+    from app.core.task_commands import create_task_record
+    from app.core.tasks import _task_dict
+    task = await create_task_record(body, identity, db)
     await db.commit()
     await db.refresh(task)
     return _task_dict(task)

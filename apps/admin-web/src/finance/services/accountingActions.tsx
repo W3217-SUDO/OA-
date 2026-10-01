@@ -3,34 +3,24 @@ import type { FormInstance } from "antd/es/form/hooks/useForm";
 import { api } from "../../api";
 import { formatRequiredDate } from "../../formSafety";
 import { money } from "../constants";
+import type { IncomingPaymentFormValues, IncomingClaimFormValues, TransactionFormValues, ReconciliationFormValues } from "../formTypes";
 import type { AllocationCandidate, Fee, IncomingPayment, Reconciliation, Transaction } from "../types";
-type OriginalFieldSpec = {
-    label: string;
-    key?: string;
-    control?: "date" | "money" | "multi";
-    options?: string[];
-    defaultValue?: any;
-    disabled?: boolean;
-    readOnly?: boolean;
-    pickerLabel?: string;
-};
-type OriginalRouteConfig = {
-    fields: OriginalFieldSpec[];
-    headers: string[];
-    source: "fees" | "incoming" | "invoices" | "settlements" | "generalSettlements" | "archiveSettlements" | "feeQuery" | "refundReviewFees" | "paymentPackages" | "unissuedFees";
-    selectable?: boolean;
-    clear?: boolean;
-    upload?: boolean;
-    export?: boolean;
-    note?: string;
-};
+
+export async function loadIncomingPaymentDetail(paymentId: number, signal?: AbortSignal): Promise<IncomingPayment> {
+    const { data } = await api.get<IncomingPayment>(`/finance/incoming-payments/${paymentId}`, { signal });
+    return data;
+}
+
+export async function rollbackFinanceTransactionRequest(transactionId: number): Promise<void> {
+    await api.delete(`/finance/transactions/${transactionId}`);
+}
 /** finance accounting operations; dependencies are read when each operation runs. */
 export interface FinanceAccountingDependencies {
-    readonly incomingForm: FormInstance<any>;
+    readonly incomingForm: FormInstance<IncomingPaymentFormValues>;
     readonly setIncomingOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly load: () => Promise<void>;
     readonly claimTarget: IncomingPayment | null;
-    readonly claimForm: FormInstance<any>;
+    readonly claimForm: FormInstance<IncomingClaimFormValues>;
     readonly setClaimTarget: React.Dispatch<React.SetStateAction<IncomingPayment | null>>;
     readonly setAllocateTarget: React.Dispatch<React.SetStateAction<IncomingPayment | null>>;
     readonly setAllocationLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -47,11 +37,11 @@ export interface FinanceAccountingDependencies {
     readonly selectedAllocationKeys: (string | number)[];
     readonly allocationAmounts: Record<string, number>;
     readonly allocationComment: string;
-    readonly transactionForm: FormInstance<any>;
+    readonly transactionForm: FormInstance<TransactionFormValues>;
     readonly contractPayments: Fee[];
     readonly setTransactionOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly openVouchers: (row: Transaction) => void;
-    readonly reconcileForm: FormInstance<any>;
+    readonly reconcileForm: FormInstance<ReconciliationFormValues>;
     readonly setReconcileOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 export function createFinanceAccountingActions(context: FinanceAccountingDependencies) {
@@ -127,7 +117,7 @@ export function createFinanceAccountingActions(context: FinanceAccountingDepende
         const allocations = selected.map((row) => ({
             receivable_plan_id: row.receivable_plan_id,
             fee_record_id: row.fee_record_id || undefined,
-            is_refund: Boolean((row as any).is_refund),
+            is_refund: Boolean(row.is_refund),
             amount: Number(allocationAmounts[row.key] || 0),
             case_no: row.case_no || "",
             settlement_items: [{

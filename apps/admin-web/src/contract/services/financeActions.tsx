@@ -78,7 +78,7 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
         }
     };
     const createContractPaymentType = async () => {
-        const { paymentTarget, setPaymentTypeCreating, paymentTypeCreateForm, setPaymentTypes, paymentForm, setPaymentTypeCreateOpen, setPaymentTypeSearch } = context;
+        const { paymentTarget, setPaymentTypeCreating, paymentTypeCreateForm, setPaymentTypes, setPaymentTypeCreateOpen, setPaymentTypeSearch } = context;
         if (!paymentTarget)
             return;
         setPaymentTypeCreating(true);

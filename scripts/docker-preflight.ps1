@@ -32,13 +32,17 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 
 Push-Location $root
+$previousSourceCommit = $env:SOURCE_COMMIT
 try {
+    $env:SOURCE_COMMIT = (& git rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $env:SOURCE_COMMIT -notmatch '^[0-9a-f]{40}$') { throw '无法确定源码提交号。' }
     & docker compose config --quiet
     if ($LASTEXITCODE -ne 0) {
         throw 'Docker Compose configuration is invalid.'
     }
 }
 finally {
+    $env:SOURCE_COMMIT = $previousSourceCommit
     Pop-Location
 }
 

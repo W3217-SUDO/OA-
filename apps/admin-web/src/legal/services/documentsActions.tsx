@@ -6,17 +6,11 @@ import { api } from "../../api";
 import { openAttachmentOnlinePreview } from "../../attachmentOnlinePreview.mjs";
 import { getCaseAttachmentUploadValidationError, getCaseFileRenameValidationError, hasCaseFileTypeOption } from "../../caseFileFrontendParity.mjs";
 import { DEFAULT_CASE_ATTACHMENT_CATEGORY } from "../constants";
-import type { AttachmentPreview, AttachmentRow, CaseAgentAttachment, CaseAiDraftEditor, CaseDocumentFolderEditor, CaseFileTypeOption, CaseRow, CaseTaskAttachment, CaseWordEditor, CaseWordEditorBlock, ContractRow } from "../types";
+import type { AttachmentPreview, AttachmentRow, CaseAiDraftEditor, CaseDocumentFolderEditor, CaseFileTypeOption, CaseRow, CaseTaskAttachment, CaseWordEditor, CaseWordEditorBlock, ContractRow } from "../types";
 /** legal documents operations; dependencies are read when each operation runs. */
 export interface CaseDocumentsDependencies {
     readonly applyCounselDocumentFolderPayload: (payload: any) => CaseFileTypeOption[];
     readonly setCounselDetailAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;
-    readonly agentCase: CaseRow | null;
-    readonly agentScreenshots: CaseAgentAttachment[];
-    readonly setAgentScreenshotUploading: React.Dispatch<React.SetStateAction<boolean>>;
-    readonly agentScreenshotPreviewUrlsRef: React.RefObject<Map<number, string>>;
-    readonly setAgentScreenshots: React.Dispatch<React.SetStateAction<CaseAgentAttachment[]>>;
-    readonly agentScreenshotInputRef: React.RefObject<HTMLInputElement | null>;
     readonly viewingCounselCase: CaseRow | null;
     readonly generatingCaseDocumentType: string;
     readonly setCaseDocumentGenerationError: React.Dispatch<React.SetStateAction<string>>;
@@ -100,40 +94,6 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
             message.warning("文件列表已更新，目录刷新失败，请刷新页面重试");
         }
         return items;
-    };
-    const uploadCaseAgentScreenshot = async (file?: File) => {
-        const { agentCase, agentScreenshots, setAgentScreenshotUploading, agentScreenshotPreviewUrlsRef, setAgentScreenshots, agentScreenshotInputRef } = context;
-        if (!file || !agentCase)
-            return;
-        if (!["image/png", "image/jpeg", "image/webp"].includes(file.type))
-            return message.error("截图仅支持 PNG、JPG、JPEG 或 WebP");
-        if (file.size > 6 * 1024 * 1024)
-            return message.error("单张截图不能超过 6MB");
-        if (agentScreenshots.length >= 4)
-            return message.warning("单次最多分析 4 张截图");
-        const form = new FormData();
-        form.append("file", file);
-        form.append("record_id", String(agentCase.id));
-        form.append("category", "智能体截图证据");
-        form.append("remark", "由案件智能体上传，用于截图证据分析");
-        setAgentScreenshotUploading(true);
-        try {
-            const { data } = await api.post("/attachments", form);
-            const attachment = data.attachment || data;
-            const id = Number(attachment.id);
-            const previewUrl = URL.createObjectURL(file);
-            agentScreenshotPreviewUrlsRef.current.set(id, previewUrl);
-            setAgentScreenshots((current) => [...current, { id, name: String(attachment.original_name || file.name), mime_type: file.type, preview_url: previewUrl }]);
-            message.success("截图已加入当前案件空间");
-        }
-        catch (error: any) {
-            message.error(error?.response?.data?.detail || "截图上传失败");
-        }
-        finally {
-            setAgentScreenshotUploading(false);
-            if (agentScreenshotInputRef.current)
-                agentScreenshotInputRef.current.value = "";
-        }
     };
     const downloadCaseTaskAttachment = async (item: CaseTaskAttachment) => {
         try {
@@ -675,5 +635,5 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
                 caseUploadRef.current.value = "";
         }
     };
-    return { refreshCounselDocumentFolderTree, refreshCounselDetailAttachments, uploadCaseAgentScreenshot, downloadCaseTaskAttachment, generateCaseDocument, openCounselAttachmentSeal, submitCounselAttachmentSeal, uploadCounselDetailAttachment, downloadCounselDetailAttachment, unlockCounselDetailAttachment, previewCounselDetailAttachment, loadAttachmentPdfPage, moveCounselAttachments, renameCounselAttachment, openEditAiDraft, releaseCaseWordEditorLock, finishClosingCaseWordEditor, openCaseWordEditor, saveCaseWordEditor, saveAiDraft, openPromoteAiDraft, promoteAiDraft, saveCaseDocumentFolder, generateSelectedCaseDocuments, uploadCaseFile, uploadCaseInvoiceFile };
+    return { refreshCounselDocumentFolderTree, refreshCounselDetailAttachments, downloadCaseTaskAttachment, generateCaseDocument, openCounselAttachmentSeal, submitCounselAttachmentSeal, uploadCounselDetailAttachment, downloadCounselDetailAttachment, unlockCounselDetailAttachment, previewCounselDetailAttachment, loadAttachmentPdfPage, moveCounselAttachments, renameCounselAttachment, openEditAiDraft, releaseCaseWordEditorLock, finishClosingCaseWordEditor, openCaseWordEditor, saveCaseWordEditor, saveAiDraft, openPromoteAiDraft, promoteAiDraft, saveCaseDocumentFolder, generateSelectedCaseDocuments, uploadCaseFile, uploadCaseInvoiceFile };
 }

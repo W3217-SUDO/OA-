@@ -38,8 +38,8 @@ test("global search no longer ships the legacy right-side result drawer", async 
   assert.match(source, /<Input\.Search[\s\S]*onSearch=\{search\}/);
 });
 
-test("dedicated global search route has a label and requires an existing case menu grant", async () => {
+test("dedicated case search route uses the current label and navigation branch", async () => {
   const source = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
-  assert.match(source, /"case-global-search": "全局案件搜索"/);
+  assert.match(source, /"case-global-search": "案件搜索"/);
   assert.match(source, /active === "case-global-search"/);
 });

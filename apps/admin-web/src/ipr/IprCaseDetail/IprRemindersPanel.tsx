@@ -30,32 +30,7 @@ interface IprRemindersPanelProps {
   confirmIprDeletion: (kind: string, label: string, operation: () => Promise<void>) => void;
 }
 
-export function IprRemindersPanel({
-  detail,
-  iprSectionErrors,
-  iprCaseEvents,
-  remindersPageState,
-  reminderEventTypes,
-  suppressedIds,
-  iprEventOpen,
-  editingIprEvent,
-  iprEventDetail,
-  iprEventForm,
-  suppressionOpen,
-  profile,
-  onRefresh,
-  onOpenEvent,
-  onCloseEvent,
-  onSaveEvent,
-  onDeleteEvent,
-  onSetEventDetail,
-  onOpenSuppression,
-  onCloseSuppression,
-  onSaveSuppressions,
-  onSuppressedIdsChange,
-  canManageIprCaseEvent,
-  confirmIprDeletion,
-}: IprRemindersPanelProps) {
+export function IprRemindersPanel({ detail, iprSectionErrors, iprCaseEvents, remindersPageState, reminderEventTypes, suppressedIds, iprEventOpen, editingIprEvent, iprEventDetail, iprEventForm, suppressionOpen, onRefresh, onOpenEvent, onCloseEvent, onSaveEvent, onDeleteEvent, onSetEventDetail, onOpenSuppression, onCloseSuppression, onSaveSuppressions, onSuppressedIdsChange, canManageIprCaseEvent, confirmIprDeletion }: IprRemindersPanelProps) {
   const remindersPagination = {
     current: remindersPageState.page,
     pageSize: remindersPageState.pageSize,

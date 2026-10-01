@@ -17,6 +17,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.core.bank_statement_import import read_statement, cell_text
+from app.pdf_runtime import serialized_pdfium
 
 TABLES = {'.xlsx', '.xls', '.csv', '.tsv'}
 IMAGES = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tif', '.tiff', '.gif'}
@@ -112,8 +113,14 @@ def document_pages(raw, filename):
             document.close()
 
 
+@serialized_pdfium
 def _next_page(iterator):
     return next(iterator, None)
+
+
+@serialized_pdfium
+def _close_pages(iterator):
+    iterator.close()
 
 
 async def _recognize_one(raw, filename, client):
@@ -155,7 +162,7 @@ async def _recognize_one(raw, filename, client):
             except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
                 raise ValueError('识别结果无法读取，尚未导入，请重试') from exc
     finally:
-        await run_in_threadpool(pages.close)
+        await run_in_threadpool(_close_pages, pages)
     return rows
 
 

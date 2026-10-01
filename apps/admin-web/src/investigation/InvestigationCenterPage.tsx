@@ -1,39 +1,24 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Alert,
-  AutoComplete,
   Button,
   Card,
-  Cascader,
-  Checkbox,
   DatePicker,
-  Descriptions,
-  Drawer,
   Dropdown,
   Form,
   Input,
-  InputNumber,
   message,
   Modal,
-  Radio,
   Select,
   Space,
-  Steps,
   Tabs,
   Tag,
   Tooltip,
-  Typography,
 } from "antd";
 import Table from "../components/ResizableTable";
 import {
-  CheckCircleOutlined,
-  DeleteOutlined,
   DownloadOutlined,
-  FileSearchOutlined,
-  ImportOutlined,
   PaperClipOutlined,
-  PlusOutlined,
-  ReloadOutlined,
   TeamOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
@@ -44,7 +29,7 @@ import { consumeInvestigationDetailTarget } from "../investigationDetailNavigati
 import { rememberInvestigationDetailTarget } from "../investigationDetailNavigation";
 import { formatRequiredDate } from "../formSafety";
 import { INVESTIGATION_REGION_GROUPS } from "../investigationRegionOptions.mjs";
-import { intersectInvestigationTaskScopes, investigationTaskPathAllowed } from "./taskRegionScope";
+import { intersectInvestigationTaskScopes, investigationTaskPathAllowed, investigationTaskRegionOptions, investigationTaskScopeGroups } from "./taskRegionScope";
 import {
   COLLECTED_CLUE_STATUSES,
   clueCaseNo,
@@ -64,28 +49,21 @@ import type {
   Profile,
   PersonOption,
   InvestigationActions,
-  InvestigationBootstrapData,
   WarehouseCatalogItem,
   InvestigationRegionGroup,
   SubtaskLifecycleAction,
-  ModuleKey,
 } from "./types";
 import {
   moduleMeta,
   statusColors,
-  isLegacyInvestigationRecord,
   investigationListView,
   serial,
-  CLUE_INFRINGEMENT_METHOD_OPTIONS,
-  CLUE_SALES_CHANNEL_OPTIONS,
 } from "./constants";
 import { loadInvestigationBootstrap, loadInvestigationStorageOptions } from "./hooks/useInvestigationBootstrap";
 import EvidenceEditorModal from "./EvidenceEditorModal";
 import BatchCaseConversion from "./BatchCaseConversion";
 import ClueCreateDrawer from "./ClueCreateDrawer";
 import TaskDetailDrawer from "./TaskDetailDrawer";
-import ClueDetailHeader from "./ClueDetail/ClueDetailHeader";
-import ClueEvidencePanel from "./ClueDetail/ClueEvidencePanel";
 import MaterialModal from "./MaterialModal";
 import LinkedCaseModal from "./LinkedCaseModal";
 import ClueReviewModal from "./ClueReviewModal";
@@ -104,53 +82,6 @@ import ClueAuditSidePanel from "./ClueAuditSidePanel";
 import EditRecordModal from "./EditRecordModal";
 import AssignInvestigatorModal from "./AssignInvestigatorModal";
 import FeeApplicationModal from "./FeeApplicationModal";
-
-// Region and scope helpers (kept here due to .mjs dependencies)
-const investigationTaskRegionOptions = (groups: InvestigationRegionGroup[]) =>
-  groups.map(({ province, cities }) => ({
-    value: province,
-    label: province,
-    children: cities.map((city) => ({
-      value: city,
-      label: city,
-    })),
-  }));
-
-const investigationTaskScopeGroups = (data: Record<string, any>) => {
-  if (data.authorization_scope_type === "R" && Array.isArray(data.authorization_regions) && data.authorization_regions.length > 0) {
-    return (INVESTIGATION_REGION_GROUPS as InvestigationRegionGroup[]).map(group => ({
-      ...group, cities: group.cities.filter(city => data.authorization_regions.some((path: string[]) => path[0] === group.province && (path.length === 1 || path[1] === city))),
-    })).filter(group => group.cities.length > 0);
-  }
-  const scope = String(data.authorization_scope || "").trim();
-  const scopeTokens = scope
-    .split(/[\s,，、;；|/]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  const groups = INVESTIGATION_REGION_GROUPS as InvestigationRegionGroup[];
-  if (data.authorization_scope_type === "N" || ["全国", "全国范围"].includes(scope) || scopeTokens.includes("全国")) return groups;
-
-  const scopeIncludes = (value: string) =>
-    scopeTokens.includes(value) || scope.includes(value);
-
-  const scopedGroups = groups
-    .map(({ province, cities }) => {
-      const provinceSelected = scopeIncludes(province);
-      const selectedCities = provinceSelected
-        ? cities
-        : cities.filter((city) => scopeIncludes(city));
-      return { province, cities: selectedCities };
-    })
-    .filter((group) => group.cities.length > 0);
-  if (scopedGroups.length) return scopedGroups;
-
-  const inheritedProvinces = new Set(String(data.province || "").split(/[、,，;；\s]+/).filter(Boolean));
-  const inheritedCities = new Set(String(data.city || "").split(/[、,，;；\s]+/).filter(Boolean));
-  return groups.map(({ province, cities }) => ({
-    province,
-    cities: inheritedProvinces.has(province) ? cities : cities.filter((city) => inheritedCities.has(city)),
-  })).filter((group) => group.cities.length > 0);
-};
 
 const clueStatusesByRoute: Record<string, string[]> = {
   "clue-my-draft": ["草稿"],
@@ -3149,363 +3080,7 @@ export default function InvestigationCenterPage({
         total + (typeof column.width === "number" ? column.width : 160),
       0,
     ) + (isFileQuery ? 0 : 40);
-  const investigationDetailItems = investigationDetail
-    ? [
-        {
-          key: "no",
-          label: "调查编号",
-          children: investigationDetail.serial_no,
-        },
-        {
-          key: "status",
-          label: "状态",
-          children: (
-            <Tag color={statusColors[investigationDetail.status] || "blue"}>
-              {investigationDetail.status}
-            </Tag>
-          ),
-        },
-        {
-          key: "title",
-          label: "调查事项",
-          children: investigationDetail.title,
-          span: 2,
-        },
-        {
-          key: "customer",
-          label: "权利人",
-          children: investigationDetail.customer ? (
-            <Button
-              className="business-relation-link"
-              type="link"
-              onClick={() =>
-                void openLinkedCustomer(investigationDetail.customer)
-              }
-            >
-              {investigationDetail.customer}
-            </Button>
-          ) : (
-            "—"
-          ),
-        },
-        {
-          key: "right-type",
-          label: "权利类型",
-          children: investigationDetail.data.right_type || "—",
-        },
-        {
-          key: "owner",
-          label: "调查员",
-          children: projectedPersonDisplayName(
-            investigationDetail.owner_display_name,
-            investigationDetail.owner,
-          ),
-        },
-        {
-          key: "region",
-          label: "调查区域",
-          children: investigationDetail.data.region || [investigationDetail.data.province, investigationDetail.data.city, investigationDetail.data.district].filter(Boolean).join(" ") || "—",
-        },
-        {
-          key: "started-at",
-          label: "开始时间",
-          children: investigationDetail.data.started_at || investigationDetail.data.start_date || investigationDetail.data.authorized_from || "—",
-        },
-        {
-          key: "ended-at",
-          label: "结束时间",
-          children: investigationDetail.data.ended_at || investigationDetail.data.end_date || investigationDetail.data.deadline || investigationDetail.data.authorized_to || "—",
-        },
-        {
-          key: "source-owner",
-          label: "案源人",
-          children: projectedPersonDisplayName(
-            investigationDetail.data.source_owner_display_name,
-            investigationDetail.data.source_owner,
-          ),
-        },
-        {
-          key: "assigner",
-          label: "任务分配人",
-          children:
-            projectedPersonDisplayName(
-              investigationDetail.data.assigner_display_name ||
-                investigationDetail.data.assigned_by_display_name,
-              investigationDetail.data.assigner ||
-                investigationDetail.data.assigned_by,
-            ),
-        },
-        ...((investigationDetail.data.parent_task_no || investigationDetail.data.investigation_no)
-          ? [{
-              key: "parent-investigation",
-              label: "父调查编号",
-              children: <Button className="business-relation-link" type="link" onClick={() => void openLinkedInvestigation(String(investigationDetail.data.parent_task_no || investigationDetail.data.investigation_no), investigationDetail.data.parent_task_no ? "task" : "investigation")}>
-                {String(investigationDetail.data.parent_task_no || investigationDetail.data.investigation_no)}
-              </Button>,
-            }]
-          : []),
-        ...(investigationDetail.data.source_task_no
-          ? [
-              {
-                key: "source-task",
-                label: "来源调查任务",
-                children: (
-                  <Button
-                    className="business-relation-link"
-                    type="link"
-                    onClick={() =>
-                      openLinkedInvestigation(
-                        String(investigationDetail.data.source_task_no),
-                        "task",
-                      )
-                    }
-                  >
-                    {String(investigationDetail.data.source_task_no)}
-                  </Button>
-                ),
-              },
-            ]
-          : []),
-        ...(investigationDetail.data.clue_no
-          ? [
-              {
-                key: "clue",
-                label: "关联线索",
-                children: (
-                  <Button
-                    className="business-relation-link"
-                    type="link"
-                    onClick={() =>
-                      openLinkedInvestigation(
-                        String(investigationDetail.data.clue_no),
-                        "clue",
-                      )
-                    }
-                  >
-                    {String(investigationDetail.data.clue_no)}
-                  </Button>
-                ),
-              },
-            ]
-          : []),
-        ...(investigationDetail.data.case_no ||
-        investigationDetail.data.converted_case_no
-          ? [
-              {
-                key: "case",
-                label: "关联案件",
-                children: (
-                  <Button
-                    className="business-relation-link"
-                    type="link"
-                    onClick={() =>
-                      void openLinkedCase(
-                        String(
-                          investigationDetail.data.case_no ||
-                            investigationDetail.data.converted_case_no,
-                        ),
-                      )
-                    }
-                  >
-                    {String(
-                      investigationDetail.data.case_no ||
-                        investigationDetail.data.converted_case_no,
-                    )}
-                  </Button>
-                ),
-              },
-            ]
-          : []),
-        ...(investigationDetail.data.certificate_no ||
-        investigationDetail.data.notary_record_id
-          ? [
-              {
-                key: "notary",
-                label: "关联公证",
-                children: (
-                  <Button
-                    className="business-relation-link"
-                    type="link"
-                    onClick={() =>
-                      void openLinkedNotary(
-                        investigationDetail.data.notary_record_id,
-                        investigationDetail.data.certificate_no,
-                      )
-                    }
-                  >
-                    {String(
-                      investigationDetail.data.certificate_no ||
-                        `公证ID：${investigationDetail.data.notary_record_id}`,
-                    )}
-                  </Button>
-                ),
-              },
-            ]
-          : []),
-        ...(investigationDetail.module === "clue"
-          ? [
-              {
-                key: "infringement",
-                label: "侵权方式",
-                children:
-                  investigationDetail.data.infringement_method ||
-                  "—",
-              },
-              {
-                key: "sales-channel",
-                label: "销售渠道",
-                children:
-                  investigationDetail.data.sales_channel ||
-                  investigationDetail.data.platform ||
-                  "—",
-              },
-              {
-                key: "investigated-at",
-                label: "调查日期",
-                children: investigationDetail.data.investigated_at || "—",
-              },
-              {
-                key: "store-url",
-                label: "店铺链接",
-                children: investigationDetail.data.store_url ? (
-                  <a
-                    href={String(investigationDetail.data.store_url)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {String(investigationDetail.data.store_url)}
-                  </a>
-                ) : (
-                  "—"
-                ),
-              },
-              {
-                key: "shop-name",
-                label: "店铺名称",
-                children: investigationDetail.data.shop_name || investigationDetail.title || "—",
-              },
-              {
-                key: "shop-id",
-                label: "店铺Id",
-                children: investigationDetail.data.shop_id || "—",
-              },
-              {
-                key: "has-product",
-                label: "有无产品",
-                children: investigationDetail.data.has_product ? "有" : "无",
-              },
-              {
-                key: "address",
-                label: "调查地址",
-                children: investigationDetail.data.address || "—",
-              },
-              {
-                key: "platform",
-                label: "调查平台",
-                children: investigationDetail.data.platform || "—",
-              },
-              {
-                key: "product",
-                label: "侵权产品",
-                children: investigationDetail.data.product || "—",
-              },
-              {
-                key: "source",
-                label: "来源",
-                children: investigationDetail.data.source || "—",
-              },
-              {
-                key: "producer",
-                label: "生产商",
-                children:
-                  investigationDetail.data.producer ||
-                  investigationDetail.data.producers ||
-                  "—",
-              },
-              {
-                key: "indictee",
-                label: "主体信息",
-                children:
-                  (Array.isArray(investigationDetail.data.indictees)
-                    ? investigationDetail.data.indictees.map((item: any) => [item.nature, item.name, item.confirmation_method, item.identity_no, item.legal_representative, Array.isArray(item.region) ? item.region.join("/") : item.region, item.business_address || item.address].filter(Boolean).join(" / ")).join("；")
-                    : "") ||
-                  investigationDetail.data.indictee ||
-                  investigationDetail.data.subject ||
-                  "—",
-              },
-              {
-                key: "assistant",
-                label: "调查辅助",
-                children:
-                  projectedPersonDisplayName(
-                    investigationDetail.data.investigation_assistant_display_name,
-                    investigationDetail.data.investigation_assistant ||
-                      investigationDetail.data.assistant,
-                  ),
-              },
-              {
-                key: "collected-at",
-                label: "取证日期",
-                children: investigationDetail.data.collected_at || "—",
-              },
-              {
-                key: "notary-institution",
-                label: "取证机构",
-                children: investigationDetail.data.notary_institution || "—",
-              },
-              {
-                key: "certificate-no",
-                label: "公证书号",
-                children: investigationDetail.data.certificate_no || "—",
-              },
-              {
-                key: "invoice-no",
-                label: "发票号",
-                children: investigationDetail.data.invoice_no || "—",
-              },
-              {
-                key: "warehouse",
-                label: "证物存放处",
-                children:
-                  investigationDetail.data.warehouse ||
-                  investigationDetail.data.certificate_storage_location ||
-                  "—",
-              },
-              {
-                key: "evidence-status",
-                label: "证物状态",
-                children:
-                  investigationDetail.data.evidence_status ||
-                  investigationDetail.data.warehouse_status ||
-                  investigationDetail.data.storage_status ||
-                  "—",
-              },
-              {
-                key: "investigator-remark",
-                label: "调查员备注",
-                children: investigationDetail.data.investigator_remark || "—",
-              },
-              {
-                key: "review-remark",
-                label: "审批备注",
-                children: investigationDetail.data.review_comment || "—",
-              },
-              {
-                key: "customer-review-remark",
-                label: "客户审核备注",
-                children:
-                  investigationDetail.data.customer_review_comment || "—",
-              },
-            ]
-          : []),
-        {
-          key: "description",
-          label: "说明",
-          children: investigationDetail.description || "—",
-          span: 2,
-        },
-      ]
-    : [];
+
   const taskRootScopeGroups = taskAuthorizationTarget
     ? investigationTaskScopeGroups(taskAuthorizationTarget.data || {})
     : [];

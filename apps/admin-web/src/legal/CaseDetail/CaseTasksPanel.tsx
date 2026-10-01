@@ -50,13 +50,7 @@ interface CaseCustomerTasksPanelProps {
   onOpenTask: (row: TaskRow) => void;
 }
 
-export const CaseCustomerTasksPanel = ({
-  tasks,
-  pagination,
-  viewingCase,
-  casePersonDisplayName,
-  onOpenTask,
-}: CaseCustomerTasksPanelProps) => {
+export const CaseCustomerTasksPanel = ({ tasks, pagination, casePersonDisplayName, onOpenTask }: CaseCustomerTasksPanelProps) => {
   return (<div className="case-legacy-tab-panel">
     <Table rowKey="id" size="small" pagination={pagination} tableLayout="fixed" scroll={{x:1130}} dataSource={tasks} columns={[{title:"任务编号",dataIndex:"serial_no",width:175,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>onOpenTask(row)}>{value||"—"}</Button>},{title:"类型",width:100,ellipsis:true,render:(_:unknown,row:TaskRow)=>caseTaskTypeLabel(row)},{title:"任务名称",dataIndex:"title",width:230,ellipsis:true,render:(value:string,row:TaskRow)=><Button type="link" className="case-cell-link" onClick={()=>onOpenTask(row)}>{value||"—"}</Button>},{title:"截止日",dataIndex:"deadline",width:120,ellipsis:true},{title:"优先级",dataIndex:"priority",width:90,ellipsis:true},{title:"VIP",width:80,render:(_:unknown,row:TaskRow)=>row.is_vip?<Tag color="gold">VIP</Tag>:"—"},{title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},{title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},{title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},{title:"状态",dataIndex:"status",width:100,ellipsis:true}]}/>
   </div>);

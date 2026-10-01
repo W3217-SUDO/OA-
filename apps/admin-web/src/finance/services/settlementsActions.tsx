@@ -4,27 +4,11 @@ import dayjs from "dayjs";
 import { api } from "../../api";
 import type { FinanceActionGate } from "../../financeActionGate.mjs";
 import { normalizeSettlementContextRows, settlementContextPageSize, settlementContextTasksRequest } from "../constants";
-import type { Fee } from "../types";
-type OriginalFieldSpec = {
-    label: string;
-    key?: string;
-    control?: "date" | "money" | "multi";
-    options?: string[];
-    defaultValue?: any;
-    disabled?: boolean;
-    readOnly?: boolean;
-    pickerLabel?: string;
-};
-type OriginalRouteConfig = {
-    fields: OriginalFieldSpec[];
-    headers: string[];
-    source: "fees" | "incoming" | "invoices" | "settlements" | "generalSettlements" | "archiveSettlements" | "feeQuery" | "refundReviewFees" | "paymentPackages" | "unissuedFees";
-    selectable?: boolean;
-    clear?: boolean;
-    upload?: boolean;
-    export?: boolean;
-    note?: string;
-};
+import type { ArchiveSettlementRow, ArchiveSettlementTarget, Fee, SettlementContext, SettlementContextRow, SettlementTaskForm } from "../types";
+
+export async function markSettlementCommissionPaid(feeIds: number[]): Promise<void> {
+    await api.post("/finance/settlements/mark-commission-paid", { fee_ids: feeIds });
+}
 /** finance settlements operations; dependencies are read when each operation runs. */
 export interface FinanceSettlementsDependencies {
     readonly generalSettlementMeta: {
@@ -142,7 +126,7 @@ export interface FinanceSettlementsDependencies {
         assistant: any;
         submitted_by: any;
     };
-    readonly setArchiveSettlementRows: React.Dispatch<React.SetStateAction<any[]>>;
+    readonly setArchiveSettlementRows: React.Dispatch<React.SetStateAction<ArchiveSettlementRow[]>>;
     readonly setArchiveSettlementMeta: React.Dispatch<React.SetStateAction<{
         total: number;
         page: number;
@@ -174,18 +158,18 @@ export interface FinanceSettlementsDependencies {
     readonly setGeneralSettlementReapplyComment: React.Dispatch<React.SetStateAction<string>>;
     readonly selectedOriginalRows: (string | number)[];
     readonly setArchiveSettlementBusy: React.Dispatch<React.SetStateAction<boolean>>;
-    readonly archiveSettlementReviewTargets: any[];
+    readonly archiveSettlementReviewTargets: ArchiveSettlementTarget[];
     readonly archiveSettlementReviewApproved: boolean;
     readonly archiveSettlementReviewComment: string;
-    readonly setArchiveSettlementReviewTargets: React.Dispatch<React.SetStateAction<any[]>>;
+    readonly setArchiveSettlementReviewTargets: React.Dispatch<React.SetStateAction<ArchiveSettlementTarget[]>>;
     readonly setArchiveSettlementReviewComment: React.Dispatch<React.SetStateAction<string>>;
-    readonly archiveSettlementRollbackTargets: any[];
+    readonly archiveSettlementRollbackTargets: ArchiveSettlementTarget[];
     readonly archiveSettlementRollbackComment: string;
-    readonly setArchiveSettlementRollbackTargets: React.Dispatch<React.SetStateAction<any[]>>;
+    readonly setArchiveSettlementRollbackTargets: React.Dispatch<React.SetStateAction<ArchiveSettlementTarget[]>>;
     readonly setArchiveSettlementRollbackComment: React.Dispatch<React.SetStateAction<string>>;
-    readonly archiveSettlementReapplyTargets: any[];
+    readonly archiveSettlementReapplyTargets: ArchiveSettlementTarget[];
     readonly archiveSettlementReapplyComment: string;
-    readonly setArchiveSettlementReapplyTargets: React.Dispatch<React.SetStateAction<any[]>>;
+    readonly setArchiveSettlementReapplyTargets: React.Dispatch<React.SetStateAction<ArchiveSettlementTarget[]>>;
     readonly setArchiveSettlementReapplyComment: React.Dispatch<React.SetStateAction<string>>;
     readonly generalSettlementApplyTargets: (string | number)[];
     readonly generalSettlementApplyComment: string;
@@ -193,40 +177,24 @@ export interface FinanceSettlementsDependencies {
     readonly setGeneralSettlementApplyComment: React.Dispatch<React.SetStateAction<string>>;
     readonly selectedSettlementCases: () => Fee[];
     readonly setSettlementLogContent: React.Dispatch<React.SetStateAction<string>>;
-    readonly setSettlementContext: React.Dispatch<React.SetStateAction<{
-        mode: "logs" | "tasks" | "log-create" | "task-create";
-        caseRecords: Fee[];
-    } | null>>;
+    readonly setSettlementContext: React.Dispatch<React.SetStateAction<SettlementContext | null>>;
     readonly currentUser: {
         username: any;
         displayName: any;
     };
-    readonly setSettlementTaskForm: React.Dispatch<React.SetStateAction<{
-        title: string;
-        owner: string;
-        deadline: any;
-        priority: string;
-    }>>;
+    readonly setSettlementTaskForm: React.Dispatch<React.SetStateAction<SettlementTaskForm>>;
     readonly setSettlementActionLoading: React.Dispatch<React.SetStateAction<boolean>>;
-    readonly setSettlementContextRows: React.Dispatch<React.SetStateAction<any[]>>;
+    readonly setSettlementContextRows: React.Dispatch<React.SetStateAction<SettlementContextRow[]>>;
     readonly settlementLogContent: string;
-    readonly settlementContext: {
-        mode: "logs" | "tasks" | "log-create" | "task-create";
-        caseRecords: Fee[];
-    } | null;
-    readonly settlementTaskForm: {
-        title: string;
-        owner: string;
-        deadline: any;
-        priority: string;
-    };
+    readonly settlementContext: SettlementContext | null;
+    readonly settlementTaskForm: SettlementTaskForm;
     readonly settlementBatchForm: FormInstance<any>;
     readonly setSettlementBatchOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly load: () => Promise<void>;
 }
 export function createFinanceSettlementsActions(context: FinanceSettlementsDependencies) {
     const loadGeneralSettlements = async (query: Record<string, any>, page = 1, pageSize = context.generalSettlementMeta.pageSize) => {
-        const { generalSettlementMeta, isGeneralSettlementPendingRoute, generalSettlementParams, setGeneralSettlementRows, setGeneralSettlementMeta } = context;
+        const { isGeneralSettlementPendingRoute, generalSettlementParams, setGeneralSettlementRows, setGeneralSettlementMeta } = context;
         const response = await api.get(isGeneralSettlementPendingRoute
             ? "/finance/general-settlements/pending"
             : "/finance/general-settlements/applications", {
@@ -241,7 +209,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         });
     };
     const loadArchiveSettlements = async (query: Record<string, any>, page = 1, pageSize = context.archiveSettlementMeta.pageSize) => {
-        const { archiveSettlementMeta, isArchiveSettlementPaymentRoute, isArchiveSettlementPaidRoute, isArchiveSettlementRejectedRoute, archiveSettlementParams, setArchiveSettlementRows, setArchiveSettlementMeta } = context;
+        const { isArchiveSettlementPaymentRoute, isArchiveSettlementPaidRoute, isArchiveSettlementRejectedRoute, archiveSettlementParams, setArchiveSettlementRows, setArchiveSettlementMeta } = context;
         const response = await api.get(isArchiveSettlementPaymentRoute
             ? "/finance/archive-settlements/payment"
             : isArchiveSettlementPaidRoute
@@ -685,7 +653,8 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
             message.warning("请选择负责人");
             return;
         }
-        if (!form.deadline) {
+        const deadline = form.deadline;
+        if (!deadline) {
             message.warning("请选择截止日期");
             return;
         }
@@ -695,7 +664,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
             await Promise.all(linked.map((item) => api.post("/tasks", {
                 title: form.title.trim(),
                 owner: form.owner.trim(),
-                deadline: form.deadline.format("YYYY-MM-DD"),
+                deadline: deadline.format("YYYY-MM-DD"),
                 priority: form.priority,
                 source: "案件任务",
                 case_record_id: item.id,

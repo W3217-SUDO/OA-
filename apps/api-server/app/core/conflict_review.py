@@ -19,15 +19,6 @@ CLEAR_STATUSES = {"clear", "approved_false_positive", "approved_waiver"}
 TERMINAL_STATUSES = {"rejected", "stopped"}
 
 
-def can_manage_auto_review(identity: dict) -> bool:
-    """与系统配置接口的实际管理员或系统菜单授权保持一致。"""
-    actual_roles = {str(role) for role in identity.get("_actual_role_ids") or []}
-    menu_keys = {str(key) for key in identity.get("menu_keys") or []}
-    return "admin" in actual_roles or any(
-        key == "system" or key.startswith("system-") for key in menu_keys
-    )
-
-
 def now_text() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 

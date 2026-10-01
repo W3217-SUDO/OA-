@@ -135,7 +135,7 @@ test('R25 退款长文本保留全文提示、原链接动作及操作列，其�
 });
 
 test('R26 开庭排期标题实际点击跳到我的案件开庭排期', () => {
-  const page = source('../src/App.tsx');
+  const page = source('../src/Dashboard.tsx');
   const title = find(page, item => ts.isJsxAttribute(item) && item.name.getText(page) === 'title' && item.initializer?.getText(page).includes('case-mine-schedule'));
   assert.ok(title);
   const routes = [];

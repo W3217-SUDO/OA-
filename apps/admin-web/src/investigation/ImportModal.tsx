@@ -24,16 +24,7 @@ interface ImportModalProps {
   onDownloadTemplate: () => void;
 }
 
-export default function ImportModal({
-  open,
-  tab,
-  importFile,
-  importResult,
-  onOk,
-  onCancel,
-  onFileChange,
-  onDownloadTemplate,
-}: ImportModalProps) {
+export default function ImportModal({ open, tab, importResult, onOk, onCancel, onFileChange, onDownloadTemplate }: ImportModalProps) {
   return (
     <Modal
       open={open}

@@ -69,7 +69,7 @@ export const getLegacyCaseListOperationState = ({
 }): LegacyCaseListOperationState => {
   const readOnly = status === "待归档审核" || status === "已归档" || status === "已合并";
   const hasSingleSelection = selectedCount === 1;
-  const hasSelection = selectedCount === 0 ? false : selectedCount > 0;
+
   const canWrite = !readOnly && role !== "";
   return {
     canView: hasSingleSelection,

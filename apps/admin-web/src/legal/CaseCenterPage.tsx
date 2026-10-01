@@ -1,4 +1,4 @@
-import { CaseClueDetails } from "./CaseDetail/CaseClueDetails";
+import { CaseClueContextPanel } from "./CaseClueContextPanel";
 import { CaseClueSelect } from "./CaseClueSelect";
 import { useConflictReview } from "../conflict-review/useConflictReview";
 import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
@@ -22,7 +22,6 @@ Button,
 Card,
 Checkbox,
 DatePicker,
-Descriptions,
 Drawer,
 Dropdown,
 Form,
@@ -45,8 +44,7 @@ Upload
 import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import type { Key } from "react";
-import { useEffect,useMemo,useRef,useState,type ClipboardEvent } from "react";
-import { DEFAULT_AGENT_SKILL } from "../agentSkillRouting";
+import { useEffect,useMemo,useRef,useState } from "react";
 import { api } from "../api";
 import { rememberBusinessRecordDetailTarget } from "../businessRecordDetailNavigation";
 import "../case-center.css";
@@ -70,7 +68,6 @@ hasCaseFileTypeOption
 import {
 getLegacyCaseListDefaults,
 getLegacyCaseListOperationLabels,
-getLegacyCaseListOperationState,
 } from "../caseLegacyParity";
 import {
 buildLegacyCasePhaseTree,
@@ -125,12 +122,12 @@ import { createGroupedOriginalCaseColumns } from "./columns/groupedOriginalCaseC
 import { createHearingColumns } from "./columns/hearingColumns";
 import { createOriginalArchiveColumns } from "./columns/originalArchiveColumns";
 import { createSpecialColumns } from "./columns/specialColumns";
-import { useCaseAgentDrawer } from "./hooks/useCaseAgentDrawer";
-import { createCaseAssistantActions } from "./services/assistantActions";
+import { useCaseAgentWorkspace } from "./hooks/useCaseAgentWorkspace";
 import { createCaseDocumentsActions } from "./services/documentsActions";
 import { createCaseFinanceActions } from "./services/financeActions";
 import { createCaseQueriesActions } from "./services/queriesActions";
 import { createCaseWorkflowActions } from "./services/workflowActions";
+import { createCasePhaseActions, type CasePhaseChangeFormValues } from "./services/phaseActions";
 
 // ============================================================
 // Types and constants imported from modular files
@@ -138,10 +135,6 @@ import { createCaseWorkflowActions } from "./services/workflowActions";
 import type {
 AttachmentPreview,
 AttachmentRow,
-CaseAgentAttachment,
-CaseAgentDocument,
-CaseAgentState,
-CaseAgentStatus,
 CaseAiDraftEditor,
 CaseAssistedFee,
 CaseClueEvidenceRow,
@@ -181,7 +174,6 @@ WarehouseCatalogOption
 
 import {
 AGENT_CASE_DOCUMENT_FOLDERS,
-AGENT_DOCUMENT_LIMIT,
 AGENT_INVESTIGATION_DOCUMENT_FOLDERS,
 ARCHIVE_FINAL_STATUSES,
 ARCHIVE_LOCKED_STATUSES,
@@ -373,7 +365,7 @@ export default function CaseCenterPage({
   const [hearingOpen, setHearingOpen] = useState(false);
   const [archiving, setArchiving] = useState<CaseRow | null>(null);
   const [archiveType, setArchiveType] = useState<"normal" | "deficit">("normal");
-  const [archiveChecks, setArchiveChecks] = useState<Record<string, boolean>>({});
+  const [, setArchiveChecks] = useState<Record<string, boolean>>({});
   const [reviewing, setReviewing] = useState<{
     row: CaseRow;
     rows?: CaseRow[];
@@ -398,46 +390,6 @@ export default function CaseCenterPage({
   const [legacyLsHistoryCaseIds, setLegacyLsHistoryCaseIds] = useState<Record<number, number>>({});
   const [legacyLsHistoryOpen, setLegacyLsHistoryOpen] = useState(false);
   const [activeCounselDetailTab, setActiveCounselDetailTab] = useState("documents");
-  const [agentCase, setAgentCase] = useState<CaseRow | null>(null);
-  const [agentOpen, setAgentOpen] = useState(false);
-  const [agentStatus, setAgentStatus] = useState<CaseAgentStatus | null>(null);
-  const [agentState, setAgentState] = useState<CaseAgentState | null>(null);
-  const [agentLoading, setAgentLoading] = useState(false);
-  const [agentSending, setAgentSending] = useState(false);
-  const [agentDecisionLoading, setAgentDecisionLoading] = useState("");
-  const [agentInput, setAgentInput] = useState("");
-  const [agentSkillId, setAgentSkillId] = useState(DEFAULT_AGENT_SKILL);
-  const [agentScreenshots, setAgentScreenshots] = useState<CaseAgentAttachment[]>([]);
-  const [agentScreenshotUploading, setAgentScreenshotUploading] = useState(false);
-  const [agentDocuments, setAgentDocuments] = useState<CaseAgentDocument[]>([]);
-  const [agentDocumentIds, setAgentDocumentIds] = useState<number[]>([]);
-  const [agentMaterialPickerOpen, setAgentMaterialPickerOpen] = useState(false);
-  const { agentDrawerWidth, setAgentDrawerWidth, startAgentDrawerResize } = useCaseAgentDrawer();
-  const [agentHistoryExpanded, setAgentHistoryExpanded] = useState(false);
-  const agentMessagesEndRef = useRef<HTMLDivElement>(null);
-  const agentScreenshotInputRef = useRef<HTMLInputElement>(null);
-  const agentScreenshotPreviewUrlsRef = useRef(new Map<number, string>());
-  const activeCaseAgentRequestRef = useRef<AbortController | null>(null);
-  const stateWithAgentScreenshotPreviews = (nextState: CaseAgentState) => ({
-    ...nextState,
-    messages: (nextState.messages || []).map((item) => ({
-      ...item,
-      attachments: item.attachments?.map((attachment) => ({
-        ...attachment,
-        preview_url: agentScreenshotPreviewUrlsRef.current.get(attachment.id),
-      })),
-    })),
-  });
-  const clearAgentScreenshotPreviews = () => {
-    agentScreenshotPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    agentScreenshotPreviewUrlsRef.current.clear();
-  };
-  const removeAgentScreenshot = (attachment: CaseAgentAttachment) => {
-    const previewUrl = agentScreenshotPreviewUrlsRef.current.get(attachment.id);
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    agentScreenshotPreviewUrlsRef.current.delete(attachment.id);
-    setAgentScreenshots((current) => current.filter((entry) => entry.id !== attachment.id));
-  };
   const [mergingCase, setMergingCase] = useState<CaseRow | null>(null);
   const [notaryInfoCase, setNotaryInfoCase] = useState<CaseRow | null>(null);
   const [settlementAmountCase, setSettlementAmountCase] = useState<CaseRow | null>(null);
@@ -445,10 +397,10 @@ export default function CaseCenterPage({
   const [counselDetailTasks, setCounselDetailTasks] = useState<TaskRow[]>([]);
   const [counselDetailCustomerTasks, setCounselDetailCustomerTasks] = useState<TaskRow[]>([]);
   const [counselDetailFinance, setCounselDetailFinance] = useState<CaseRow[]>([]);
-  const [counselDetailAssistedFees, setCounselDetailAssistedFees] = useState<CaseAssistedFee[]>([]);
+  const [, setCounselDetailAssistedFees] = useState<CaseAssistedFee[]>([]);
   const [counselDetailAssistedFeePage, setCounselDetailAssistedFeePage] = useState(1);
   const [counselDetailAssistedFeePageSize, setCounselDetailAssistedFeePageSize] = useState(15);
-  const [counselDetailAssistedFeeTotal, setCounselDetailAssistedFeeTotal] = useState(0);
+  const [, setCounselDetailAssistedFeeTotal] = useState(0);
   const [assistedFeeEditor, setAssistedFeeEditor] = useState<CaseAssistedFee | null>(null);
   const [assistedFeeModalOpen, setAssistedFeeModalOpen] = useState(false);
   const [assistedFeeConfirming, setAssistedFeeConfirming] = useState<CaseAssistedFee | null>(null);
@@ -494,12 +446,12 @@ export default function CaseCenterPage({
   const [sealingCounselAttachment, setSealingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [movingCounselAttachmentIds, setMovingCounselAttachmentIds] = useState<number[] | null>(null);
   const [caseSealAssets, setCaseSealAssets] = useState<{ id: number; status: string; seal_type: string; name: string }[]>([]);
-  const [counselReminders, setCounselReminders] = useState<CaseReminderRow[]>([]);
-  const [counselCaseEvents, setCounselCaseEvents] = useState<CaseEventRow[]>([]);
-  const [counselCaseEventCapabilities, setCounselCaseEventCapabilities] = useState<CaseEventCapabilities>(noCaseEventCapabilities);
-  const [counselCaseEventsError, setCounselCaseEventsError] = useState("");
-  const [selectedCounselCaseEventKeys, setSelectedCounselCaseEventKeys] = useState<Key[]>([]);
-  const [caseEventOpen, setCaseEventOpen] = useState(false);
+  const [] = useState<CaseReminderRow[]>([]);
+  const [, setCounselCaseEvents] = useState<CaseEventRow[]>([]);
+  const [, setCounselCaseEventCapabilities] = useState<CaseEventCapabilities>(noCaseEventCapabilities);
+  const [, setCounselCaseEventsError] = useState("");
+  const [, setSelectedCounselCaseEventKeys] = useState<Key[]>([]);
+  const [, setCaseEventOpen] = useState(false);
   const [editingCaseEvent, setEditingCaseEvent] = useState<CaseEventRow | null>(null);
   const [caseEventSubmitting, setCaseEventSubmitting] = useState(false);
   const [counselLogs, setCounselLogs] = useState<CaseLogRow[]>([]);
@@ -523,7 +475,7 @@ export default function CaseCenterPage({
   });
   const [caseDocumentFolderEditor, setCaseDocumentFolderEditor] = useState<CaseDocumentFolderEditor | null>(null);
   const [counselUploadCategory, setCounselUploadCategory] = useState(DEFAULT_CASE_ATTACHMENT_CATEGORY);
-  const [reminderOpen, setReminderOpen] = useState(false);
+  const [, setReminderOpen] = useState(false);
   const [caseLogOpen, setCaseLogOpen] = useState(false);
   const [caseLogKind, setCaseLogKind] = useState<CaseLogKind>("case");
   const [caseLogTarget, setCaseLogTarget] = useState<CaseRow | null>(null);
@@ -601,7 +553,7 @@ export default function CaseCenterPage({
   const legacyCaseListOperationLabels = getLegacyCaseListOperationLabels();
   const [caseUploadCategory, setCaseUploadCategory] = useState(DEFAULT_CASE_ATTACHMENT_CATEGORY);
   const [caseUploadOpen, setCaseUploadOpen] = useState(false);
-  const [caseFileTypeOptions, setCaseFileTypeOptions] = useState<CaseFileTypeOption[]>([{value:DEFAULT_CASE_ATTACHMENT_CATEGORY,label:DEFAULT_CASE_ATTACHMENT_CATEGORY}]);
+  const [, setCaseFileTypeOptions] = useState<CaseFileTypeOption[]>([{value:DEFAULT_CASE_ATTACHMENT_CATEGORY,label:DEFAULT_CASE_ATTACHMENT_CATEGORY}]);
   const [caseFileTypeCatalog, setCaseFileTypeCatalog] = useState<CaseFileTypeOption[]>([{value:DEFAULT_CASE_ATTACHMENT_CATEGORY,label:DEFAULT_CASE_ATTACHMENT_CATEGORY}]);
   const [caseRelations, setCaseRelations] = useState<CaseRelationCatalog | null>(null);
   const [feeTypeCatalog, setFeeTypeCatalog] = useState<FeeTypeCatalogItem[]>([]);
@@ -619,8 +571,7 @@ export default function CaseCenterPage({
   const [createDefendantEditorForm] = Form.useForm();
   const [clueConversionForm] = Form.useForm();
   const createCustomer = Form.useWatch("customer", createForm);
-  const createContractId = Form.useWatch("contract_record_id", createForm);
-  const selectedCreateContract = useMemo(() => contracts.find((row) => row.id === createContractId), [contracts, createContractId]);
+
   const createContractOptions = useMemo(
     () => buildCaseContractOptions(contracts, contractPrefill, createCustomer),
     [contracts, contractPrefill, createCustomer],
@@ -699,7 +650,7 @@ export default function CaseCenterPage({
   const [feeInformLinkForm] = Form.useForm();  const [paymentTypeCreateForm] = Form.useForm();
   const [courtRefundForm] = Form.useForm();
   const [progressForm] = Form.useForm();
-  const [phaseForm] = Form.useForm();
+  const [phaseForm] = Form.useForm<CasePhaseChangeFormValues>();
   const [executionStatusForm] = Form.useForm();
   const [companyScheduleCourtInfoForm] = Form.useForm();
   const [counselEditForm] = Form.useForm();
@@ -747,7 +698,7 @@ export default function CaseCenterPage({
     });
     setCreateDefendantEditorOpen(true);
   };
-  const { saveCreateDefendants, advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, closeCase, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselReminder, saveCaseEvent, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, ensureCaseCustomerOption, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseParty, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, openPhaseChange, submitCompanyScheduleCourtInfo, saveProgress, savePhaseChange, saveExecutionStatus, downloadCaseExport, openSelectedScheduleHearing } = createCaseWorkflowActions({
+  const { saveCreateDefendants, advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseParty, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, submitCompanyScheduleCourtInfo, saveProgress, downloadCaseExport, openSelectedScheduleHearing } = createCaseWorkflowActions({
     get createDefendantEditorForm() { return createDefendantEditorForm; },
     get createForm() { return createForm; },
     get setCreateDefendantEditorOpen() { return setCreateDefendantEditorOpen; },
@@ -892,17 +843,12 @@ export default function CaseCenterPage({
     get caseTaskKind() { return caseTaskKind; },
     get caseTaskMaterialFiles() { return caseTaskMaterialFiles; },
     get setCaseTaskCreateCase() { return setCaseTaskCreateCase; },
-    get setPhaseOptions() { return setPhaseOptions; },
-    get phaseForm() { return phaseForm; },
-    get setPhaseEditing() { return setPhaseEditing; },
     get companyScheduleCourtInfo() { return companyScheduleCourtInfo; },
     get companyScheduleCourtInfoForm() { return companyScheduleCourtInfoForm; },
     get cancelCompanyScheduleCourtInfo() { return cancelCompanyScheduleCourtInfo; },
     get progressEditing() { return progressEditing; },
     get progressForm() { return progressForm; },
     get setProgressEditing() { return setProgressEditing; },
-    get phaseEditing() { return phaseEditing; },
-    get phaseOptions() { return phaseOptions; },
     get executionStatusEditing() { return executionStatusEditing; },
     get executionStatusForm() { return executionStatusForm; },
     get setExecutionStatusEditing() { return setExecutionStatusEditing; },
@@ -965,7 +911,7 @@ export default function CaseCenterPage({
     if (viewingCounselCase?.id === row.id) return counselDetailCapabilities;
     return caseActionCapabilities[row.id] || noCaseDetailWriteCapability;
   };
-  const { loadCaseCapabilities, loadCaseRelations, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportSpecialRecords } = createCaseQueriesActions({
+  const { loadCaseCapabilities, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportSpecialRecords } = createCaseQueriesActions({
     get setCaseActionCapabilities() { return setCaseActionCapabilities; },
     get setCaseRelations() { return setCaseRelations; },
     get setLoading() { return setLoading; },
@@ -1077,7 +1023,7 @@ export default function CaseCenterPage({
     return loadOrdinaryCases(nextQuery, 1, originalPageSize);
   };
   const startCreate = () => {
-    const operator = profile.display_name || profile.username || "管理者";
+
     setCreateStep(0);
     setCreatedCaseId(null);
     setSelectedCreateType(createRouteType);
@@ -1340,15 +1286,22 @@ export default function CaseCenterPage({
     setCounselDocumentFolderTree(tree);
     return tree;
   };
-  const { refreshCounselDocumentFolderTree, refreshCounselDetailAttachments, uploadCaseAgentScreenshot, downloadCaseTaskAttachment, generateCaseDocument, openCounselAttachmentSeal, submitCounselAttachmentSeal, uploadCounselDetailAttachment, downloadCounselDetailAttachment, unlockCounselDetailAttachment, previewCounselDetailAttachment, loadAttachmentPdfPage, moveCounselAttachments, renameCounselAttachment, openEditAiDraft, releaseCaseWordEditorLock, finishClosingCaseWordEditor, openCaseWordEditor, saveCaseWordEditor, saveAiDraft, openPromoteAiDraft, promoteAiDraft, saveCaseDocumentFolder, generateSelectedCaseDocuments, uploadCaseFile, uploadCaseInvoiceFile } = createCaseDocumentsActions({
+  const { openPhaseChange, savePhaseChange } = createCasePhaseActions({
+    phaseForm,
+    phaseEditing,
+    phaseOptions,
+    setPhaseEditing,
+    setPhaseOptions,
+    setSelectedCaseKeys,
+    isCaseDetailView,
+    viewingCounselCase,
+    openCounselDetail,
+    load,
+  });
+
+  const { refreshCounselDocumentFolderTree, refreshCounselDetailAttachments, downloadCaseTaskAttachment, generateCaseDocument, openCounselAttachmentSeal, submitCounselAttachmentSeal, uploadCounselDetailAttachment, downloadCounselDetailAttachment, unlockCounselDetailAttachment, previewCounselDetailAttachment, loadAttachmentPdfPage, moveCounselAttachments, renameCounselAttachment, openEditAiDraft, releaseCaseWordEditorLock, finishClosingCaseWordEditor, openCaseWordEditor, saveCaseWordEditor, saveAiDraft, openPromoteAiDraft, promoteAiDraft, saveCaseDocumentFolder, generateSelectedCaseDocuments, uploadCaseFile, uploadCaseInvoiceFile } = createCaseDocumentsActions({
     get applyCounselDocumentFolderPayload() { return applyCounselDocumentFolderPayload; },
     get setCounselDetailAttachments() { return setCounselDetailAttachments; },
-    get agentCase() { return agentCase; },
-    get agentScreenshots() { return agentScreenshots; },
-    get setAgentScreenshotUploading() { return setAgentScreenshotUploading; },
-    get agentScreenshotPreviewUrlsRef() { return agentScreenshotPreviewUrlsRef; },
-    get setAgentScreenshots() { return setAgentScreenshots; },
-    get agentScreenshotInputRef() { return agentScreenshotInputRef; },
     get viewingCounselCase() { return viewingCounselCase; },
     get generatingCaseDocumentType() { return generatingCaseDocumentType; },
     get setCaseDocumentGenerationError() { return setCaseDocumentGenerationError; },
@@ -1407,7 +1360,7 @@ export default function CaseCenterPage({
     get load() { return reloadCaseData; },
   });
 
-  const { loadCounselDetailAssistedFees, saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, openRelatedFee, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, openPaymentRequest, submitPaymentRequest, previewInternalPayment, submitCaseFeePayment, submitInternalPayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, refreshCaseFeeDetail, createFeeInform, loadLatestFeeInform, openFeeInformArrival, confirmFeeInformArrival, openFeeInformBill, uploadFeeInformBill, downloadFeeInformBill, openCaseReceiptFiles, unlockFeeInform, openFeeInformLinks, saveFeeInformLinks, deleteFeeInform, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions } = createCaseFinanceActions({
+  const { saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, submitPaymentRequest, previewInternalPayment, submitInternalPayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, createFeeInform, confirmFeeInformArrival, uploadFeeInformBill, openCaseReceiptFiles, saveFeeInformLinks, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions } = createCaseFinanceActions({
     get counselDetailAssistedFeePage() { return counselDetailAssistedFeePage; },
     get counselDetailAssistedFeePageSize() { return counselDetailAssistedFeePageSize; },
     get counselDetailAssistedFeeRequestRef() { return counselDetailAssistedFeeRequestRef; },
@@ -1547,101 +1500,7 @@ export default function CaseCenterPage({
       clearTimeout(casePaymentTypeSearchTimerRef.current);
   }, []);
 
-  const deleteCounselDetailAssistedFee = (row: CaseAssistedFee) => {
-    if (!viewingCounselCase) return;
-    Modal.confirm({
-      title: `删除资助费用：${row.assisted_type}`,
-      content: "删除后不可恢复，是否继续？",
-      okText: "确认删除",
-      cancelText: "取消",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await api.delete(`/cases/${viewingCounselCase.id}/assisted-fees/${row.id}`);
-          const historyResponse = await api.get(`/records/${viewingCounselCase.id}/history`);
-          setCounselDetailHistory(historyResponse.data.items || []);
-          message.success("资助费用已删除");
-          const nextPage = counselDetailAssistedFees.length === 1 && counselDetailAssistedFeePage > 1
-            ? counselDetailAssistedFeePage - 1
-            : counselDetailAssistedFeePage;
-          await loadCounselDetailAssistedFees(viewingCounselCase.id, nextPage, counselDetailAssistedFeePageSize);
-        } catch (error: any) {
-          message.error(error?.response?.data?.detail || "删除资助费用失败");
-        }
-      },
-    });
-  };
 
-  const { loadCaseAgent, sendCaseAgentMessage, decideCaseAgentAction, restoreCaseAgentAction } = createCaseAssistantActions({
-    get setAgentLoading() { return setAgentLoading; },
-    get setAgentStatus() { return setAgentStatus; },
-    get setAgentState() { return setAgentState; },
-    get setAgentDocuments() { return setAgentDocuments; },
-    get setAgentDocumentIds() { return setAgentDocumentIds; },
-    get setAgentSkillId() { return setAgentSkillId; },
-    get agentCase() { return agentCase; },
-    get agentInput() { return agentInput; },
-    get agentSkillId() { return agentSkillId; },
-    get agentScreenshots() { return agentScreenshots; },
-    get agentState() { return agentState; },
-    get agentSending() { return agentSending; },
-    get activeCaseAgentRequestRef() { return activeCaseAgentRequestRef; },
-    get agentDocumentIds() { return agentDocumentIds; },
-    get agentDocuments() { return agentDocuments; },
-    get setAgentInput() { return setAgentInput; },
-    get setAgentScreenshots() { return setAgentScreenshots; },
-    get setAgentMaterialPickerOpen() { return setAgentMaterialPickerOpen; },
-    get setAgentSending() { return setAgentSending; },
-    get stateWithAgentScreenshotPreviews() { return stateWithAgentScreenshotPreviews; },
-    get viewingCounselCase() { return viewingCounselCase; },
-    get refreshCounselDetailAttachments() { return refreshCounselDetailAttachments; },
-    get selectCounselDocCategory() { return selectCounselDocCategory; },
-    get agentDecisionLoading() { return agentDecisionLoading; },
-    get setAgentDecisionLoading() { return setAgentDecisionLoading; },
-  });
-  const openCaseAgent = (row: CaseRow) => {
-    clearAgentScreenshotPreviews();
-    setAgentCase(row);
-    setAgentOpen(true);
-    setAgentInput("");
-    setAgentScreenshots([]);
-    setAgentDocuments([]);
-    setAgentDocumentIds([]);
-    setAgentMaterialPickerOpen(false);
-    setAgentHistoryExpanded(false);
-    void loadCaseAgent(row, true);
-  };
-
-  const updateAgentDocumentSelection = (checkedKeys: Key[] | { checked: Key[]; halfChecked: Key[] }) => {
-    const keys = Array.isArray(checkedKeys) ? checkedKeys : checkedKeys.checked;
-    const selectedIds = keys.map(String).filter((key) => key.startsWith("document:")).map((key) => Number(key.slice("document:".length))).filter((id) => id > 0);
-    if (selectedIds.length > AGENT_DOCUMENT_LIMIT) message.warning(`单轮最多选择 ${AGENT_DOCUMENT_LIMIT} 份材料`);
-    setAgentDocumentIds(selectedIds.slice(0, AGENT_DOCUMENT_LIMIT));
-  };
-  const stopCaseAgentResponse = () => {
-    activeCaseAgentRequestRef.current?.abort();
-    activeCaseAgentRequestRef.current = null;
-    setAgentSending(false);
-    message.info("已停止本轮生成，可以继续补充要求");
-  };
-
-  const pasteCaseAgentScreenshot = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const itemFile = Array.from(event.clipboardData.items)
-      .find((item) => item.kind === "file" && item.type.startsWith("image/"))
-      ?.getAsFile();
-    const file = itemFile || Array.from(event.clipboardData.files).find((item) => item.type.startsWith("image/"));
-    if (!file) return;
-    event.preventDefault();
-    if (agentSkillId !== "screenshot-evidence") setAgentSkillId("screenshot-evidence");
-    void uploadCaseAgentScreenshot(file);
-  };
-
-  useEffect(() => {
-    if (!agentOpen) return;
-    requestAnimationFrame(() => agentMessagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" }));
-  }, [agentOpen, agentState?.messages.length]);
-
-  useEffect(() => () => clearAgentScreenshotPreviews(), []);
 
   const openRelatedContract = (target: { id?: number; serial_no?: unknown } | unknown) => {
     const contractId = typeof target === "object" && target ? Number((target as { id?: number }).id || 0) || undefined : undefined;
@@ -1765,65 +1624,6 @@ export default function CaseCenterPage({
       },
     });
   };
-  const renderCaseClueWorkspace = () => viewingCaseClue ? (
-    <aside className="case-clue-context-panel" aria-label="案件内线索信息" data-testid="case-clue-context-panel">
-      <div className="case-clue-context-header">
-        <strong>线索信息</strong>
-        <Button type="text" size="small" icon={<CloseOutlined />} aria-label="关闭线索信息" onClick={closeCaseClueWorkspace}>关闭</Button>
-      </div>
-      <div className="case-clue-context-body">
-        <CaseClueDetails clue={viewingCaseClue.clue} />
-        <section className="case-clue-context-section">
-          <h3>线索文件</h3>
-          <Table<AttachmentRow>
-            rowKey="id"
-            size="small"
-            loading={caseClueLoading}
-            pagination={false}
-            dataSource={viewingCaseClue.clue_files || []}
-            locale={{ emptyText: "没有查询到线索文件。" }}
-            columns={[
-              { title: "上传人", width: 110, render: (_, row) => row.uploader_display_name || row.uploader || "—" },
-              { title: "文件名称", dataIndex: "original_name" },
-              { title: "文档日期", width: 150, render: (_, row) => String(row.created_at || "").replace("T", " ").slice(0, 19) || "—" },
-              { title: "操作", width: 70, render: (_, row) => <Button type="link" onClick={() => void downloadCounselDetailAttachment(row)}>下载</Button> },
-            ]}
-          />
-        </section>
-        <section className="case-clue-context-section">
-          <h3>取证信息</h3>
-          <Table<CaseClueEvidenceRow>
-            rowKey="id"
-            size="small"
-            loading={caseClueLoading}
-            pagination={false}
-            rowSelection={{
-              type: "radio",
-              selectedRowKeys: selectedCaseClueEvidenceId ? [selectedCaseClueEvidenceId] : [],
-              onChange: (keys) => setSelectedCaseClueEvidenceId(Number(keys[0]) || null),
-            }}
-            dataSource={viewingCaseClue.evidence || []}
-            locale={{ emptyText: "没有查询到取证信息。" }}
-            scroll={{ x: 1040 }}
-            columns={[
-              { title: "公证书号", width: 170, render: (_, row) => row.data.notarization_no || row.data.certificate_no || "—" },
-              { title: "取证时间", width: 120, render: (_, row) => row.data.collected_at || "—" },
-              { title: "取证机构", width: 180, render: (_, row) => row.data.notary_institution || "—" },
-              { title: "发票号", width: 130, render: (_, row) => row.data.invoice_no || "—" },
-              { title: "仓库", width: 130, render: (_, row) => row.data.warehouse_name || row.data.warehouse || row.data.storage_location || "—" },
-              { title: "库位", width: 120, render: (_, row) => row.data.storage_location_name || row.data.location_name || row.data.storage_location || "—" },
-              { title: "状态", width: 105, render: (_, row) => row.data.storage_state || row.data.evidence_status || row.status || "—" },
-              { title: "文件", width: 70, render: (_, row) => row.files?.length || 0 },
-            ]}
-          />
-          <Space className="case-clue-context-actions">
-            <Button danger disabled={!selectedCaseClueEvidence?.can_delete} onClick={deleteCaseClueEvidence}>删除</Button>
-            <Button disabled={!selectedCaseClueEvidence?.can_edit} onClick={openCaseClueEvidenceEditor}>修改</Button>
-          </Space>
-        </section>
-      </div>
-    </aside>
-  ) : null;
   const openClueConversion = () => {
     clueConversionForm.resetFields();
     clueConversionForm.setFieldsValue({ case_type: "民事案件" });
@@ -1840,58 +1640,12 @@ export default function CaseCenterPage({
     onNavigate?.("case-company");
   };
 
-  const deleteCounselReminder = (reminder:CaseReminderRow) => {
-    if (!viewingCounselCase) return;
-    Modal.confirm({title:"删除案件提醒",content:`确认删除“${reminder.description}”吗？`,okText:"删除",okButtonProps:{danger:true},onOk:async()=>{
-      try {
-        await api.delete(`/cases/${viewingCounselCase.id}/reminders/${reminder.id}`);
-        message.success("案件提醒已删除");
-        await openCounselDetail(viewingCounselCase);
-      } catch(error:any){message.error(error?.response?.data?.detail||"案件提醒删除失败");}
-    }});
-  };
 
-  const openCaseEventEditor = (event?: CaseEventRow) => {
-    setEditingCaseEvent(event || null);
-    caseEventForm.resetFields();
-    caseEventForm.setFieldsValue({
-      event_type: event?.event_type || "",
-      content: event?.content || "",
-      event_time: event?.event_time ? dayjs(event.event_time) : dayjs(),
-      deadline: event?.deadline ? dayjs(event.deadline) : undefined,
-      reminder_enabled: Boolean(event?.reminder_enabled),
-      remind_at: event?.remind_at ? dayjs(event.remind_at) : undefined,
-      status: event?.status === "已完成" ? "已完成" : "待处理",
-    });
-    setCaseEventOpen(true);
-  };
 
-  const deleteCounselCaseEvent = (event: CaseEventRow) => {
-    if (!viewingCounselCase) return;
-    if (caseEventSubmitting) return;
-    Modal.confirm({ title: "删除案件事件", content: `确认删除“${event.event_type}”吗？`, okText: "删除", okButtonProps: { danger: true }, onOk: async () => {
-      try {
-        setCaseEventSubmitting(true);
-        await api.delete(`/cases/${viewingCounselCase.id}/events/${event.id}`);
-        message.success("案件事件已删除");
-        await loadCounselCaseEvents(viewingCounselCase);
-      } catch (error: any) { message.error(error?.response?.data?.detail || "删除案件事件失败"); } finally { setCaseEventSubmitting(false); }
-    }});
-  };
-  const deleteCounselCaseEvents = () => {
-    if (!viewingCounselCase) return;
-    if (caseEventSubmitting) return;
-    const eventIds = selectedCounselCaseEventKeys.map(Number).filter((id) => counselCaseEvents.some((event) => event.id === id && event.can_delete));
-    if (!eventIds.length) return message.warning("请选择需要删除的案件事件");
-    Modal.confirm({ title: "批量删除案件事件", content: `确认删除选中的 ${eventIds.length} 个案件事件吗？`, okText: "删除", okButtonProps: { danger: true }, onOk: async () => {
-      try {
-        setCaseEventSubmitting(true);
-        const { data } = await api.delete(`/cases/${viewingCounselCase.id}/events`, { data: { event_ids: eventIds } });
-        message.success(`已删除 ${data.deleted ?? eventIds.length} 个案件事件`);
-        await loadCounselCaseEvents(viewingCounselCase);
-      } catch (error: any) { message.error(error?.response?.data?.detail || "批量删除案件事件失败"); } finally { setCaseEventSubmitting(false); }
-    }});
-  };
+
+
+
+
   const openCounselLogCreator = (kind: CaseLogKind) => {
     if (!viewingCounselCase) return;
     setCaseLogTarget(viewingCounselCase);
@@ -2058,6 +1812,12 @@ export default function CaseCenterPage({
     setCounselUploadCategory(hasCaseFileTypeOption(category, applicableOptions) ? category : DEFAULT_CASE_ATTACHMENT_CATEGORY);
     setSelectedCounselAttachmentKeys([]);
   };
+  const { openCaseAgent, drawerProps: agentDrawerProps } = useCaseAgentWorkspace({
+    viewingCounselCase,
+    refreshCounselDetailAttachments,
+    selectCounselDocCategory,
+  });
+
   const toggleCounselDocGroup = (category: string) => {
     setExpandedCounselDocGroups((current) => ({ ...current, [category]: !current[category] }));
     selectCounselDocCategory(category);
@@ -2565,12 +2325,7 @@ export default function CaseCenterPage({
     && ["admin", "manager"].includes(profile.role || "")
     && selectedCases.length > 0 && selectedCases.length === selectedCaseKeys.length
     && selectedCases.every((row) => getCaseCapability(row).can_delete_case);
-  const legacyCaseListOperationState = getLegacyCaseListOperationState({
-    role: profile.role || "",
-    status: selectedCase?.status || "",
-    selectedCount: selectedCaseKeys.length,
-    isCompanySchedule: initialView === "case-company-schedule",
-  });
+
   const canCreateSelectedCaseFees = selectedCases.length > 0 && selectedCases.every((row) => getCaseCapability(row).can_create_finance);
   const isArchiveManager = ["admin", "manager"].includes(profile.role || "");
 
@@ -4243,7 +3998,16 @@ export default function CaseCenterPage({
               </section>
             </aside>
           </div>
-          {renderCaseClueWorkspace()}
+          <CaseClueContextPanel
+            workspace={viewingCaseClue}
+            loading={caseClueLoading}
+            selectedEvidenceId={selectedCaseClueEvidenceId}
+            onClose={closeCaseClueWorkspace}
+            onSelectEvidence={setSelectedCaseClueEvidenceId}
+            onDownloadFile={downloadCounselDetailAttachment}
+            onDeleteEvidence={deleteCaseClueEvidence}
+            onEditEvidence={openCaseClueEvidenceEditor}
+          />
         </div>}
       </Drawer>
       <Modal open={Boolean(viewingCaseLog)} title={viewingCaseLog?.kind === "refund" ? "退费日志详情" : "案件日志详情"} footer={null} onCancel={()=>setViewingCaseLog(null)} destroyOnHidden>
@@ -4260,43 +4024,7 @@ export default function CaseCenterPage({
       >
         <LegacyLsHistoryPanel />
       </Drawer>
-      <CaseAgentDrawer
-        agentOpen={agentOpen}
-        agentCase={agentCase}
-        agentDrawerWidth={agentDrawerWidth}
-        agentStatus={agentStatus}
-        agentLoading={agentLoading}
-        agentSending={agentSending}
-        agentSkillId={agentSkillId}
-        agentState={agentState}
-        agentDecisionLoading={agentDecisionLoading}
-        counselDetailCapabilities={counselDetailCapabilities}
-        agentHistoryExpanded={agentHistoryExpanded}
-        agentMaterialPickerOpen={agentMaterialPickerOpen}
-        agentDocuments={agentDocuments}
-        agentDocumentIds={agentDocumentIds}
-        agentScreenshots={agentScreenshots}
-        agentScreenshotUploading={agentScreenshotUploading}
-        agentInput={agentInput}
-        agentMessagesEndRef={agentMessagesEndRef}
-        agentScreenshotInputRef={agentScreenshotInputRef}
-        setAgentOpen={setAgentOpen}
-        startAgentDrawerResize={startAgentDrawerResize}
-        setAgentSkillId={setAgentSkillId}
-        loadCaseAgent={loadCaseAgent}
-        decideCaseAgentAction={decideCaseAgentAction}
-        restoreCaseAgentAction={restoreCaseAgentAction}
-        setAgentHistoryExpanded={setAgentHistoryExpanded}
-        sendCaseAgentMessage={sendCaseAgentMessage}
-        setAgentMaterialPickerOpen={setAgentMaterialPickerOpen}
-        setAgentDocumentIds={setAgentDocumentIds}
-        updateAgentDocumentSelection={updateAgentDocumentSelection}
-        removeAgentScreenshot={removeAgentScreenshot}
-        uploadCaseAgentScreenshot={uploadCaseAgentScreenshot}
-        setAgentInput={setAgentInput}
-        pasteCaseAgentScreenshot={pasteCaseAgentScreenshot}
-        stopCaseAgentResponse={stopCaseAgentResponse}
-      />
+      <CaseAgentDrawer {...agentDrawerProps} counselDetailCapabilities={counselDetailCapabilities} />
       <Modal
         open={Boolean(attachmentPreview)}
         title={`在线查看：${attachmentPreview?.name || ""}`}

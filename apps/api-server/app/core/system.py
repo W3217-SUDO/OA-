@@ -2,7 +2,7 @@
 import logging
 from datetime import timedelta, timezone
 from app.core.constants import (
-    CASE_EXECUTION_STATUSES, CASE_PARTY_SEPARATOR, CONTRACT_APPROVED_STATUS, DEFAULT_MENU_LABEL_BY_KEY, FIELD_KEYS,
+    CASE_EXECUTION_STATUSES, CASE_PARTY_SEPARATOR, DEFAULT_MENU_LABEL_BY_KEY, FIELD_KEYS,
     FIELD_PERMISSION_DATA_KEYS, HR_SUBRECORD_KINDS, IPR_CASE_KINDS, MENU_PARENT_BY_KEY, PARAMETER_REFERENCE_FIELDS,
     RECORD_MODULE_MENU_ROOTS, RECORD_PERSON_FIELDS_BY_MODULE, RECORD_PERSON_LIST_FIELDS_BY_MODULE, SYSTEM_CACHE_META, SYSTEM_CACHE_REGISTRY,
     SYSTEM_MENU_ROUTE_KEYS, SYSTEM_PARAMETER_CACHE, SYSTEM_PARAMETER_CATEGORIES, SYSTEM_PARAMETER_RELATION_CONFIG,
@@ -120,24 +120,6 @@ def _explicit_vip_value(value: object) -> bool:
     if isinstance(value, str):
         return value.strip().casefold() in {"1", "true", "yes", "是", "vip"}
     return isinstance(value, (int, float)) and value == 1
-
-
-def _seed_business_records() -> list[BusinessRecord]:
-    rows = [
-        ("customer", "KH20260714001", "光明乳业股份有限公司", "光明乳业股份有限公司", "正常", "朱菁芸", {"contact": "法务部", "phone": "021-12345678", "level": "重点客户"}),
-        ("customer", "KH20260714002", "萨普托乳业（中国）有限公司", "萨普托乳业（中国）有限公司", "跟进中", "朱淑旖", {"contact": "品牌保护部", "phone": "021-87654321", "level": "重点客户"}),
-        ("contract", "HT2026070018", "知识产权维权专项法律服务合同", "迈大食品（上海）有限公司", "审批中", "陈名涛", {"amount": "280000.00", "signed_at": "2026-07-08", "type": "专项服务"}),
-        ("contract", "HT2026060097", "常年法律顾问合同", "上海天路人造草坪有限公司", CONTRACT_APPROVED_STATUS, "陶勇刚", {"amount": "120000.00", "signed_at": "2026-06-20", "type": "法律顾问"}),
-        ("case", "SH191000382B", "光明乳业商标侵权纠纷", "光明乳业股份有限公司", "文书准备", "陈名涛", {"court": "上海市宝山区人民法院", "case_type": "民事案件", "opponent": "安徽鑫牛食品有限公司"}),
-        ("case", "SHMS2600387", "龙角散商标侵权纠纷", "株式会社龙角散", "一审立案受理", "陶勇刚", {"court": "杭州市余杭区人民法院", "case_type": "民事案件", "opponent": "杭州取道贸易有限公司"}),
-        ("task", "RW20260714001", "准备开庭代理词及证据目录", "上海天路人造草坪有限公司", "处理中", "陶勇刚", {"deadline": "2026-07-15", "priority": "紧急", "source": "案件任务"}),
-        ("task", "RW20260714002", "审核合同付款节点", "迈大食品（上海）有限公司", "待处理", "朱淑旖", {"deadline": "2026-07-17", "priority": "普通", "source": "合同任务"}),
-        ("clue", "XS2026070015", "线上店铺销售疑似侵权产品", "北京汇源食品饮料有限公司", "待审批", "卢愿", {"platform": "淘宝", "product": "果汁饮料", "notary": "待申请"}),
-        ("seal", "YY2026070042", "民事起诉状用印申请", "株式会社龙角散", "待审批", "陶勇刚", {"seal_type": "公章", "copies": 3, "purpose": "法院立案"}),
-        ("finance", "FY2026070093", "上海市宝山区人民法院诉讼费", "光明乳业股份有限公司", "待审批", "陈名涛", {"amount": "3500.00", "fee_type": "官方费用", "case_no": "SH191000382B"}),
-        ("document", "SW2026070031", "上海市徐汇区人民法院开庭传票", "上海益民食品一厂有限公司", "已签收", "江彤", {"direction": "收文", "received_at": "2026-07-14", "case_no": "SHMS2200026"}),
-    ]
-    return [BusinessRecord(module=m, serial_no=no, title=title, customer=customer, status=st, owner=owner, data=data) for m, no, title, customer, st, owner, data in rows]
 
 
 async def _system_audit(db: AsyncSession, identity: dict, action: str, target: str, detail: dict | None = None) -> None:
@@ -875,7 +857,6 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
         if hearing_to: conditions.append(HearingSchedule.hearing_date <= hearing_to)
         heard_case_ids = set((await db.scalars(select(HearingSchedule.case_record_id).where(*conditions))).all()) if case_ids else set()
         cases = [item for item in cases if item.id in heard_case_ids]
-    case_by_no = {item.serial_no: item for item in cases}
     customers = sorted({item.customer for item in cases if item.customer}); lawyers = sorted({str((item.data or {}).get("hearing_lawyer")) for item in cases if (item.data or {}).get("hearing_lawyer")})
     if view in {"refund", "execution-1", "execution-2", "execution-3"}:
         if view == "refund":
@@ -1045,25 +1026,39 @@ def _optional_record_id(value: object) -> int:
     return record_id if record_id > 0 else 0
 
 
-async def _business_rule_loop() -> None:
-    """本地部署时持续执行不依赖用户打开页面的期限规则。"""
+async def _run_business_rules_once() -> None:
+    """按既有顺序执行期限规则，每条规则独立提交或回滚。"""
+    from app.core.attachment_deletion import reconcile_pending_attachment_deletes
     from app.core.investigation import (
         _apply_notary_auto_conversion,
     )
     from app.core.tasks import (
-        _apply_case_automatic_task_rules, _apply_hearing_sms_reminders, _apply_task_auto_completion, _apply_task_overdue_performance,
+        _apply_case_automatic_task_rules, _apply_task_auto_completion, _apply_task_overdue_performance,
     )
+    rules = (
+        ("公证自动转案", _apply_notary_auto_conversion),
+        ("任务自动验收", _apply_task_auto_completion),
+        ("任务超期绩效", _apply_task_overdue_performance),
+        ("案件自动任务", _apply_case_automatic_task_rules),
+        ("附件暂存协调", reconcile_pending_attachment_deletes),
+    )
+    for name, rule in rules:
+        try:
+            async with SessionLocal() as db:
+                try:
+                    await rule(db)
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    raise
+        except Exception:
+            logger.exception("后台业务规则执行失败：%s", name)
+
+
+async def _business_rule_loop() -> None:
+    """本地部署时持续执行不依赖用户打开页面的期限规则。"""
     while True:
-        async with SessionLocal() as db:
-            try:
-                await _apply_notary_auto_conversion(db)
-                await _apply_task_auto_completion(db)
-                await _apply_task_overdue_performance(db)
-                await _apply_hearing_sms_reminders(db)
-                await _apply_case_automatic_task_rules(db)
-            except Exception:
-                await db.rollback()
-                logger.exception("后台业务规则执行失败")
+        await _run_business_rules_once()
         await asyncio.sleep(60)
 
 

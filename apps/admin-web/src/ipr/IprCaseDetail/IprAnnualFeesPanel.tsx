@@ -21,24 +21,7 @@ interface IprAnnualFeesPanelProps {
   confirmIprDeletion: (kind: string, label: string, operation: () => Promise<void>) => void;
 }
 
-export function IprAnnualFeesPanel({
-  detail,
-  iprSectionErrors,
-  annualFees,
-  annualFeesPageState,
-  annualFeeYearFilter,
-  annualFeesCanManage,
-  annualFeeOpen,
-  editingAnnualFee,
-  annualFeeForm,
-  onRefresh,
-  onYearFilterChange,
-  onOpenEditor,
-  onCloseEditor,
-  onSave,
-  onDelete,
-  confirmIprDeletion,
-}: IprAnnualFeesPanelProps) {
+export function IprAnnualFeesPanel({ iprSectionErrors, annualFees, annualFeesPageState, annualFeeYearFilter, annualFeesCanManage, annualFeeOpen, editingAnnualFee, annualFeeForm, onRefresh, onYearFilterChange, onOpenEditor, onCloseEditor, onSave, onDelete, confirmIprDeletion }: IprAnnualFeesPanelProps) {
   const annualFeesPagination = {
     current: annualFeesPageState.page,
     pageSize: annualFeesPageState.pageSize,

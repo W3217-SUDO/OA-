@@ -1,10 +1,11 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from calendar import monthrange
 from datetime import timezone
+from types import SimpleNamespace
 from app.core.customer_identity import validate_customer_identity as _validate_customer_identity
 from app.core.constants import (
     CASE_DEFENDANT_FIELDS, CASE_PLAINTIFF_FIELDS, CASE_THIRD_PARTY_FIELDS, CUSTOMER_CREATE_DATA_FIELDS, CUSTOMER_CREATE_STATUSES,
-    CUSTOMER_LEVELS, CUSTOMER_MODIFICATION_ACTIONS, CUSTOMER_SYSTEM_DATA_FIELDS, FIELD_PERMISSION_DATA_KEYS, UPLOAD_ROOT,
+    CUSTOMER_LEVELS, CUSTOMER_MODIFICATION_ACTIONS, CUSTOMER_SYSTEM_DATA_FIELDS, UPLOAD_ROOT,
 )
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, Depends, File, FileAttachment,
@@ -502,7 +503,8 @@ async def customer_conflicts(
     }
 
 
-@router.api_route(f"{settings.api_prefix}/customers/{{customer_id}}/shared-objects", methods=["GET", "POST"])
+@router.get(f"{settings.api_prefix}/customers/{{customer_id}}/shared-objects")
+@router.post(f"{settings.api_prefix}/customers/{{customer_id}}/shared-objects")
 async def list_customer_shared_objects(customer_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.crm import (
         _customer_guid, _customer_or_404,
@@ -667,37 +669,10 @@ async def update_customer_contact_status(customer_id: int, contact_id: str, body
 
 @router.patch(f"{settings.api_prefix}/customers/{{customer_id}}")
 async def patch_customer(customer_id: int, body: CustomerPatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.crm import (
-        _customer_event, _customer_or_404,
-    )
-    from app.core.permissions import (
-        _record_dict_for_identity, _require_record_owner_or_manager,
-    )
-    from app.core.system import (
-        _allowed_field_keys,
-    )
-    customer = await _customer_or_404(customer_id, identity, db)
-    await _require_record_owner_or_manager(customer, identity, db)
-    allowed_fields = await _allowed_field_keys(identity, db)
-    current = dict(customer.data or {})
-    accepted: dict[str, object] = {}
-    for key, value in (body.data or {}).items():
-        if key not in CUSTOMER_CREATE_DATA_FIELDS:
-            continue
-        permission = next((permission for permission, keys in FIELD_PERMISSION_DATA_KEYS.items() if key in keys), None)
-        if permission and permission not in allowed_fields:
-            continue
-        accepted[key] = value
-    next_data = {**current, **accepted}
-    if {"organization_type", "identity_no", "credit_code"} & set(accepted):
-        await _validate_customer_identity(next_data, db, exclude_id=customer.id)
-    customer.data = next_data
-    if body.description is not None:
-        customer.description = body.description.strip()
-    db.add(_customer_event(customer, "更新客户资料", identity, f"更新字段：{'、'.join(accepted) or '无可写字段'}"))
+    from app.core.customer_commands import patch_customer_record
+    result = await patch_customer_record(customer_id, body, identity, db)
     await db.commit()
-    await db.refresh(customer)
-    return await _record_dict_for_identity(customer, identity, db)
+    return result
 
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/claim")
@@ -1317,7 +1292,6 @@ async def open_customer_portal(customer_id: int, body: CustomerPortalActionInput
     ))
     if not account_user:
         raise HTTPException(status_code=422, detail="已绑定的客户联系人账号不存在或已停用，请在客户编辑中重新选择")
-    old_portal = data.get("portal_access") or {}
     activation_code = uuid4().hex
     portal = {
         "account": account, "enabled": True, "activation_code_hash": _portal_code_hash(activation_code),
@@ -1550,11 +1524,9 @@ async def list_customers(
     db: AsyncSession = Depends(get_db),
 ):
     """Original customer-list scopes with authoritative server-side filtering and paging."""
-    from app.core.cases import (
-        _is_civil_case_type,
-    )
+    from app.core.customer_readmodel import customer_summary, customer_relationship_counts, customer_person_names
     from app.core.formatters import (
-        _normalize_customer_name, _parse_customer_contact_at,
+        _parse_customer_contact_at,
     )
     from app.core.permissions import (
         _visible_record_ids,
@@ -1660,13 +1632,47 @@ async def list_customers(
         )
         if len(display_name_usernames) == 1:
             manager_search_tokens.add(display_name_usernames[0])
-    candidate_rows = list(
-        (await db.scalars(
-        select(BusinessRecord)
-        .where(*conditions)
-        .order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc())
-        )).all()
+    legacy_summary_fields = [
+        "agency_fee_due",
+        "official_fee_unreceived",
+        "total_paid_case_office_fee_amount",
+        "total_cashed_case_office_fee_amount",
+        "total_un_cashed_case_office_fee_amount",
+        "total_deficit_case_office_fee_amount",
+        "total_case_non_office_fee_amount",
+        "total_cashed_case_non_office_fee_amount",
+        "total_un_cashed_case_non_office_fee_amount",
+        "total_case_commission_fee_amount",
+        "total_cashed_case_commission_fee_amount",
+        "total_paid_case_commission_fee_amount",
+        "total_un_paid_case_commission_fee_amount",
+        "total_invoiced_amount",
+        "total_invoice_over_amount",
+        "total_un_invoiced_amount",
+    ]
+    candidate_data_fields = (
+        "customer_managers", "customer_source", "source_person", "shared_with",
+        "last_contact_at", "last_modified_by", *legacy_summary_fields,
     )
+    sql_paged = scope in {"company", "company_recycle", "public"} and not normalized_manager
+    database_total = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0) if sql_paged else None
+    candidate_statement = select(
+        BusinessRecord.id, BusinessRecord.serial_no, BusinessRecord.title,
+        BusinessRecord.owner, BusinessRecord.updated_at,
+        *(BusinessRecord.data[key] for key in candidate_data_fields),
+    ).where(*conditions).order_by(
+        BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
+    )
+    if sql_paged:
+        candidate_statement = candidate_statement.offset((page - 1) * page_size).limit(page_size)
+    candidate_values = (await db.execute(candidate_statement)).all()
+    candidate_rows = [
+        SimpleNamespace(
+            id=row[0], serial_no=row[1], title=row[2], owner=row[3], updated_at=row[4],
+            data={key: value for key, value in zip(candidate_data_fields, row[5:]) if value is not None},
+        )
+        for row in candidate_values
+    ]
 
     def exact_managers(item: BusinessRecord) -> set[str]:
         raw_managers = (item.data or {}).get("customer_managers", [])
@@ -1795,82 +1801,33 @@ async def list_customers(
             reverse=True,
         )
 
-    total = len(candidate_rows)
-    page_items = candidate_rows[(page - 1) * page_size : page * page_size]
-    allowed_fields = await _allowed_field_keys(identity, db)
-    # Contract/case totals are relationship projections, not editable customer
-    # attributes. Historical rows may still contain denormalized zeroes, so
-    # recompute the visible page from authoritative related records every time.
-    related_records = list((await db.scalars(
-        select(BusinessRecord).where(
-            BusinessRecord.module.in_(["contract", "case"]),
-        )
-    )).all())
-    customers_by_id = {item.id: item for item in page_items}
-    customers_by_no = {str(item.serial_no or "").strip(): item for item in page_items if str(item.serial_no or "").strip()}
-    customers_by_name = {_normalize_customer_name(item.title): item for item in page_items}
-    relationship_counts = {
-        item.id: {"contract_count": 0, "civil_case_count": 0}
-        for item in page_items
-    }
-    for related in related_records:
-        related_data = related.data or {}
-        linked_customer = None
+    total = database_total if sql_paged else len(candidate_rows)
+    page_items = candidate_rows if sql_paged else candidate_rows[(page - 1) * page_size : page * page_size]
+    def legacy_summary_value(item: BusinessRecord, key: str) -> float:
         try:
-            linked_customer = customers_by_id.get(
-                int(related_data.get("customer_id") or related_data.get("customer_record_id") or 0)
-            )
+            return float((item.data or {}).get(key) or 0)
         except (TypeError, ValueError):
-            linked_customer = None
-        if linked_customer is None:
-            customer_no = str(related_data.get("customer_no") or "").strip()
-            if customer_no:
-                linked_customer = customers_by_no.get(customer_no)
-        if linked_customer is None and related.customer:
-            linked_customer = customers_by_name.get(_normalize_customer_name(related.customer))
-        if linked_customer is None:
-            continue
-        if related.module == "contract":
-            if related.status in {"已归档", "Archived", "archived"}:
-                continue
-            relationship_counts[linked_customer.id]["contract_count"] += 1
-        elif _is_civil_case_type(related_data.get("case_type")):
-            relationship_counts[linked_customer.id]["civil_case_count"] += 1
+            return 0
+
+    summary = await customer_summary(db, conditions, legacy_summary_fields) if sql_paged else {
+        key: round(sum(legacy_summary_value(item, key) for item in candidate_rows), 2)
+        for key in legacy_summary_fields
+    }
+    allowed_fields = await _allowed_field_keys(identity, db)
+    if not page_items:
+        return {"items": [], "total": total, "page": page, "page_size": page_size, "summary": summary}
+    page_ids = [item.id for item in page_items]
+    page_by_id = {
+        item.id: item for item in (await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.id.in_(page_ids), BusinessRecord.module == "customer",
+        ))).all()
+    }
+    if len(page_by_id) != len(page_ids):
+        raise HTTPException(status_code=409, detail="客户列表在读取时发生变化，请重试")
+    page_items = [page_by_id[record_id] for record_id in page_ids]
+    relationship_counts = await customer_relationship_counts(db, page_items)
+    person_names = await customer_person_names(db, page_items)
     response_items = []
-    # Historical customer rows may reference disabled accounts or HR employee
-    # identifiers instead of the current username. Resolve against both
-    # directories so the UI never leaks an internal login/GUID as a name.
-    directory_users = list((await db.scalars(select(User))).all())
-    person_names: dict[str, str] = {}
-    for user in directory_users:
-        profile = user.profile or {}
-        display = str(user.display_name or "").strip()
-        if not display:
-            continue
-        aliases = {
-            str(user.username or "").strip(),
-            str(user.id),
-            str(profile.get("employee_id") or "").strip(),
-            str(profile.get("employee_no") or "").strip(),
-            str(profile.get("legacy_guid") or profile.get("person_guid") or profile.get("user_guid") or "").strip(),
-            display,
-        }
-        person_names.update({alias.casefold(): display for alias in aliases if alias})
-    hr_people = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "hr"))).all())
-    for employee in hr_people:
-        employee_data = employee.data or {}
-        display = str(employee.title or employee_data.get("display_name") or employee_data.get("name") or "").strip()
-        if not display:
-            continue
-        aliases = {
-            str(employee.id), str(employee.serial_no or "").strip(), str(employee.owner or "").strip(),
-            str(employee_data.get("username") or "").strip(), str(employee_data.get("employee_id") or "").strip(),
-            str(employee_data.get("employee_no") or "").strip(), str(employee_data.get("legacy_guid") or "").strip(),
-            str(employee_data.get("person_guid") or "").strip(), str(employee_data.get("system_user_id") or "").strip(),
-        }
-        for alias in aliases:
-            if alias:
-                person_names.setdefault(alias.casefold(), display)
 
     def person_display(value: object) -> str:
         token = str(value or "").strip()
@@ -1890,35 +1847,6 @@ async def list_customers(
             "customer_source_display_name": person_display(source_value),
         }
         response_items.append(row)
-    legacy_summary_fields = [
-        "agency_fee_due",
-        "official_fee_unreceived",
-        "total_paid_case_office_fee_amount",
-        "total_cashed_case_office_fee_amount",
-        "total_un_cashed_case_office_fee_amount",
-        "total_deficit_case_office_fee_amount",
-        "total_case_non_office_fee_amount",
-        "total_cashed_case_non_office_fee_amount",
-        "total_un_cashed_case_non_office_fee_amount",
-        "total_case_commission_fee_amount",
-        "total_cashed_case_commission_fee_amount",
-        "total_paid_case_commission_fee_amount",
-        "total_un_paid_case_commission_fee_amount",
-        "total_invoiced_amount",
-        "total_invoice_over_amount",
-        "total_un_invoiced_amount",
-    ]
-
-    def legacy_summary_value(item: BusinessRecord, key: str) -> float:
-        try:
-            return float((item.data or {}).get(key) or 0)
-        except (TypeError, ValueError):
-            return 0
-
-    summary = {
-        key: round(sum(legacy_summary_value(item, key) for item in candidate_rows), 2)
-        for key in legacy_summary_fields
-    }
     return {
         "items": response_items,
         "total": total,

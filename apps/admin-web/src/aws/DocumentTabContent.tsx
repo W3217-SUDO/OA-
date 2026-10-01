@@ -28,7 +28,6 @@ import type { Key } from "react";
 import dayjs from "dayjs";
 import type {
   Attachment,
-  HistoryEvent,
   LegacyHistoricalAttachment,
   RecordRow,
   Template,
@@ -452,7 +451,7 @@ export function ArchiveList({
       title: "案号",
       dataIndex: "serial_no",
       width: 155,
-      render: (value: string, r: RecordRow) =>
+      render: (value: string, _r: RecordRow) =>
         value ? (
           <Button type="link" onClick={() => onOpenCaseDetail(value)}>
             {value}

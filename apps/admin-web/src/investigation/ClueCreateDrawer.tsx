@@ -1,6 +1,5 @@
 import { Drawer, Form, Alert, Input, Select, Radio, DatePicker, Button, Space, Typography } from "antd";
 import { CLUE_INFRINGEMENT_METHOD_OPTIONS, CLUE_SALES_CHANNEL_OPTIONS } from "./constants";
-import type { PersonOption } from "./types";
 import InvestigationPartyEditor from "./InvestigationPartyEditor";
 
 interface ClueCreateDrawerProps {

@@ -18,22 +18,16 @@ import type {
   TaskQuery,
   TaskSort,
   StatusTab,
-  PeopleOption,
   CaseBatchAction,
   TaskBatchLifecycleAction,
-  FeeAction,
-  FeeSubtype,
 } from "./types";
 import {
   formatTaskDate,
-  formatTaskDateTime,
   formatTaskScheduleTime,
   statusColors,
   taskCaseNos,
-  taskCreationMode,
   taskEndedAt,
   taskStartedAt,
-  visibleOptionalPersonName,
   visiblePersonName,
 } from "./constants";
 
@@ -90,50 +84,7 @@ export interface TaskListProps {
 }
 
 export default function TaskList(props: TaskListProps) {
-  const {
-    isUnread,
-    isCreated,
-    tabs,
-    statusTab,
-    counts,
-    mobileFiltersOpen,
-    queryForm,
-    loading,
-    columns,
-    filteredTasks,
-    taskMeta,
-    selectedKeys,
-    hideTaskFooter,
-    actionSubmitting,
-    profile,
-    canManageInitiatedTask,
-    canManageAcceptedTask,
-    canManageCompanyCreatedTask,
-    canWithdrawTask,
-    canReviewTaskException,
-    selectedRows,
-    selected,
-    caseBatchLabels,
-    onTabChange,
-    onToggleMobileFilters,
-    onQuerySubmit,
-    onQueryReset,
-    onSelectedKeysChange,
-    onTableChange,
-    onOpenCommunication,
-    onMarkSelectedUnreadRead,
-    onConfirmTask,
-    onWithdrawTask,
-    onResendTask,
-    onRestartTask,
-    onAcceptSelected,
-    onCompleteSelected,
-    onCompleteOne,
-    onOpenHandoff,
-    onRequestException,
-    onOpenTaskBatchLifecycle,
-    onMoreAction,
-  } = props;
+  const { isUnread, tabs, statusTab, counts, mobileFiltersOpen, queryForm, loading, columns, filteredTasks, taskMeta, selectedKeys, hideTaskFooter, actionSubmitting, profile, canManageInitiatedTask, canManageAcceptedTask, canManageCompanyCreatedTask, canWithdrawTask, canReviewTaskException, selectedRows, selected, caseBatchLabels, onTabChange, onToggleMobileFilters, onQuerySubmit, onQueryReset, onSelectedKeysChange, onTableChange, onOpenCommunication, onMarkSelectedUnreadRead, onConfirmTask, onWithdrawTask, onResendTask, onRestartTask, onAcceptSelected, onCompleteSelected, onCompleteOne, onOpenHandoff, onOpenTaskBatchLifecycle, onMoreAction } = props;
 
   return (
     <Card

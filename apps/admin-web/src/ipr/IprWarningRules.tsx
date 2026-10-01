@@ -56,42 +56,7 @@ interface IprWarningRulesProps {
   onProcessWarning: () => void;
 }
 
-export function IprWarningRules({
-  isAdmin,
-  warningWorkbenchOpen,
-  warningRuleEditorOpen,
-  warningRules,
-  warnings,
-  warningLoading,
-  warningRulesLoading,
-  warningTotal,
-  warningUnread,
-  warningPage,
-  warningStatus,
-  warningCaseKind,
-  editingWarningRule,
-  processingWarning,
-  warningRuleForm,
-  warningProcessForm,
-  canManageWarningRules,
-  reminderTypeEventOptions,
-  onCloseWorkbench,
-  onNavigateMessages,
-  onGenerateWarnings,
-  onLoadWarnings,
-  onLoadWarningRules,
-  onOpenRuleEditor,
-  onCloseRuleEditor,
-  onSaveRule,
-  onDeleteRule,
-  onStatusChange,
-  onCaseKindChange,
-  onMarkRead,
-  onOpenWarningCase,
-  onOpenProcess,
-  onCloseProcess,
-  onProcessWarning,
-}: IprWarningRulesProps) {
+export function IprWarningRules({ isAdmin, warningWorkbenchOpen, warningRuleEditorOpen, warningRules, warnings, warningLoading, warningRulesLoading, warningTotal, warningUnread, warningPage, warningStatus, warningCaseKind, editingWarningRule, processingWarning, warningRuleForm, warningProcessForm, canManageWarningRules, reminderTypeEventOptions, onCloseWorkbench, onNavigateMessages, onGenerateWarnings, onLoadWarnings, onOpenRuleEditor, onCloseRuleEditor, onSaveRule, onDeleteRule, onStatusChange, onCaseKindChange, onMarkRead, onOpenWarningCase, onOpenProcess, onCloseProcess, onProcessWarning }: IprWarningRulesProps) {
   return (
     <>
       <Drawer

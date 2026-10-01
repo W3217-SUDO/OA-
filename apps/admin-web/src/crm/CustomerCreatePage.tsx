@@ -14,7 +14,7 @@ import Table from "../components/ResizableTable";
 import { displayChinesePersonName } from "../contractPeoplePresentation.mjs";
 import { ReloadOutlined } from "@ant-design/icons";
 import { matchesDirectoryOption } from "../customerUiBatchI14.mjs";
-import { CUSTOMER_DOCUMENT_FORM_DEFAULTS, canDeleteCustomerAttachment, getCustomerAttachmentDate } from "../customerUiBatchI15.mjs";
+import { canDeleteCustomerAttachment, getCustomerAttachmentDate } from "../customerUiBatchI15.mjs";
 import { customerRegistrationAddressRules, customerPostalCodeRules } from "./constants";
 import type { FormInstance } from "antd";
 import type { Attachment, Contact, Customer, DirectoryUser, Note } from "./types";

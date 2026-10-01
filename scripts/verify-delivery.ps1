@@ -3,6 +3,24 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $utf8
 $OutputEncoding = $utf8
 
+function Assert-FullSourceCommit {
+    param([Parameter(Mandatory = $true)][string]$Commit)
+    if ($Commit -cnotmatch '^[0-9a-f]{40}$') {
+        throw 'SOURCE_COMMIT 必须是完整的 40 位小写 Git 提交号。'
+    }
+}
+
+function Get-WebHealthEndpoint {
+    param([Parameter(Mandatory = $true)]$WebService)
+    $publisher = @($WebService.Publishers | Where-Object {
+        $_.TargetPort -eq 80 -and $_.Protocol -eq 'tcp' -and $_.PublishedPort
+    } | Select-Object -First 1)
+    if ($publisher.Count -ne 1) { throw 'Web 服务没有已发布的 HTTP 端口。' }
+    return "http://127.0.0.1:$($publisher[0].PublishedPort)/health"
+}
+
+if ($MyInvocation.InvocationName -eq '.') { return }
+
 $root = Split-Path -Parent $PSScriptRoot
 $expectedServices = @('minio', 'postgres', 'redis', 'api', 'web', 'worker')
 
@@ -10,8 +28,13 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw 'Docker command was not found.'
 }
 
+$previousSourceCommit = $env:SOURCE_COMMIT
 Push-Location $root
 try {
+    $sourceCommit = (& git rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0) { throw '无法确定当前源码提交号。' }
+    Assert-FullSourceCommit -Commit $sourceCommit
+    $env:SOURCE_COMMIT = $sourceCommit
     Write-Host '[1/6] Existing local verification' -ForegroundColor Cyan
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'verify-local.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Existing local verification failed.' }
@@ -29,10 +52,12 @@ try {
     }
 
     Write-Host '[3/6] API and web health endpoints' -ForegroundColor Cyan
-    foreach ($endpoint in @('http://127.0.0.1:8000/health', 'http://127.0.0.1/health')) {
-        $response = Invoke-WebRequest -UseBasicParsing -Uri $endpoint -TimeoutSec 10
-        if ($response.StatusCode -ne 200) { throw "Health endpoint did not return HTTP 200: $endpoint" }
-    }
+    & docker compose exec -T api python -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=10)' *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'API 容器内健康检查失败。' }
+    $webRow = $serviceRows | Where-Object { $_.Service -eq 'web' } | Select-Object -First 1
+    $webEndpoint = Get-WebHealthEndpoint -WebService $webRow
+    $response = Invoke-WebRequest -UseBasicParsing -Uri $webEndpoint -TimeoutSec 10
+    if ($response.StatusCode -ne 200) { throw "Web 健康检查未返回 HTTP 200：$webEndpoint" }
 
     Write-Host '[4/6] Production safety and Compose configuration' -ForegroundColor Cyan
     $productionExample = Join-Path $root '.env.production.example'
@@ -41,9 +66,8 @@ try {
     }
 
     $productionCompose = Join-Path $root 'compose.prod.yml'
-    $apiConfig = Join-Path $root 'apps\api-server\app\config.py'
-    $apiMain = Join-Path $root 'apps\api-server\app\main.py'
-    foreach ($path in @($productionCompose, $apiConfig, $apiMain)) {
+    $apiLifecycle = Join-Path $root 'apps\api-server\app\core\lifecycle.py'
+    foreach ($path in @($productionCompose, $apiLifecycle)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
             throw "Production safety source is missing: $path"
         }
@@ -51,8 +75,6 @@ try {
 
     $productionComposeText = Get-Content -LiteralPath $productionCompose -Raw -Encoding UTF8
     $productionExampleText = Get-Content -LiteralPath $productionExample -Raw -Encoding UTF8
-    $apiConfigText = Get-Content -LiteralPath $apiConfig -Raw -Encoding UTF8
-    $apiMainText = Get-Content -LiteralPath $apiMain -Raw -Encoding UTF8
 
     $productionAppEnvMatches = [regex]::Matches($productionComposeText, '(?m)^\s+APP_ENV:\s*production\s*$')
     if ($productionAppEnvMatches.Count -lt 2) {
@@ -65,27 +87,13 @@ try {
         throw 'Production Compose must force SEED_DEMO_DATA=false.'
     }
 
-    foreach ($token in @(
-        'app_env: str = "development"',
-        'seed_demo_data: bool = True'
-    )) {
-        if (-not $apiConfigText.Contains($token)) {
-            throw "Local development default was removed from API configuration: $token"
-        }
+    $python = Join-Path $root 'apps\api-server\.venv\Scripts\python.exe'
+    Push-Location (Join-Path $root 'apps\api-server')
+    try {
+        & $python -m unittest tests.test_verify_delivery_gate.DeliveryLifecycleSafetyTests.test_actual_lifecycle_guard_rejects_unsafe_production_settings
+        if ($LASTEXITCODE -ne 0) { throw '实际生产启动安全闸门验证失败。' }
     }
-
-    foreach ($token in @(
-        'if settings.app_env.strip().lower() == "production":',
-        'len(settings.secret_key) < 64',
-        '"CHANGE_ME" in settings.secret_key.upper()',
-        'settings.secret_key == "replace-this-before-production"',
-        'len(settings.initial_admin_password) < 12',
-        'settings.initial_admin_password == "20230616601"'
-    )) {
-        if (-not $apiMainText.Contains($token)) {
-            throw "Production API safety rejection is missing: $token"
-        }
-    }
+    finally { Pop-Location }
 
     foreach ($field in @(
         'INITIAL_ADMIN_USERNAME=',
@@ -135,6 +143,7 @@ try {
     }
 }
 finally {
+    $env:SOURCE_COMMIT = $previousSourceCommit
     Pop-Location
 }
 

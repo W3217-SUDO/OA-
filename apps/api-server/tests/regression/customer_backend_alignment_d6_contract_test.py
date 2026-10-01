@@ -1,0 +1,485 @@
+"""Runtime contracts for customer-center backend alignment, isolated from legal_platform.db."""
+
+import shutil
+import tempfile
+import unittest
+from datetime import datetime
+from pathlib import Path
+
+import httpx
+from fastapi import status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+
+from app.config import settings
+from app.areas.crm import router as crm_router
+from app.database import Base, get_db
+from app.main import app
+from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, JobRole, LegacyCustomer, LegacyCustomerContact, RolePermission, SystemParameter, User, WorkflowEvent
+from app.security import current_identity
+
+
+ADMIN = {"username": "customer-admin", "role": "admin", "display_name": "客户管理员", "department": "上海分所"}
+AUDITOR = {"username": "customer-auditor", "role": "auditor", "display_name": "客户审计员", "department": "上海分所"}
+USER = {"username": "customer-user", "role": "user", "display_name": "客户专员", "department": "上海分所"}
+API = settings.api_prefix
+CUSTOMER_GUID = "11111111-1111-4111-8111-111111111111"
+
+
+class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
+        tables = [
+            User.__table__, JobRole.__table__, RolePermission.__table__, BusinessRecord.__table__,
+            WorkflowEvent.__table__, FileAttachment.__table__, SystemParameter.__table__,
+            ContractApprovalStep.__table__, LegacyCustomer.__table__, LegacyCustomerContact.__table__,
+        ]
+        async with self.engine.begin() as conn:
+            await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=tables))
+
+        self.upload_root = Path(tempfile.mkdtemp(prefix="codex-customer-d6-"))
+        self.original_upload_root = crm_router.UPLOAD_ROOT
+        crm_router.UPLOAD_ROOT = self.upload_root
+        file_path = self.upload_root / "customer-contract.pdf"
+        file_path.write_bytes(b"customer-file-d6")
+
+        async with self.sessions() as db:
+            db.add(User(username="customer-auditor", display_name="客户审计员", department="上海分所", role="auditor", password_hash="test", is_active=True))
+            db.add(User(username="customer-admin", display_name="客户管理员", department="上海分所", role="admin", password_hash="test", is_active=True))
+            db.add(User(username="customer-user", display_name="客户专员", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(User(username="fan-recipient", display_name="范共享", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add_all([
+                BusinessRecord(module="hr", serial_no="HR-D6-FAN", title="范共享", status="在职", owner="fan-recipient", department="上海分所", data={"username": "fan-recipient"}),
+                BusinessRecord(module="hr", serial_no="HR-D6-USER", title="客户专员", status="在职", owner="customer-user", department="上海分所", data={"username": "customer-user"}),
+            ])
+            db.add(SystemParameter(category="customer_type", code="customer", name="客户", is_active=True))
+            customer = BusinessRecord(
+                module="customer", serial_no="KH-D6-001", title="D6 客户", customer="D6 客户",
+                status="正常", owner="customer-auditor", department="上海分所",
+                data={
+                    "customer_guid": CUSTOMER_GUID,
+                    "customer_managers": ["customer-auditor"],
+                    "shared_with": ["manager-one"], "is_shared": "是", "credit_code": "OLD-CREDIT",
+                    "phone": "021-00000000",
+                    "contacts": [
+                        {"id": "contact-1", "name": "联系人一", "phone": "13800000001", "is_valid": True, "is_primary": True},
+                        {"id": "contact-2", "name": "联系人二", "phone": "13800000002", "is_valid": True, "is_primary": False},
+                    ],
+                },
+            )
+            db.add(customer)
+            await db.flush()
+            db.add_all([
+                FileAttachment(record_id=customer.id, category="客户文件", original_name="customer-contract.pdf", stored_name="customer-contract.pdf", content_type="application/pdf", size=16, path=str(file_path), uploader="customer-admin"),
+            ])
+            await db.commit()
+            self.customer_id = customer.id
+
+        async def override_db():
+            async with self.sessions() as db:
+                yield db
+
+        app.dependency_overrides[get_db] = override_db
+        app.dependency_overrides[current_identity] = lambda: ADMIN
+        self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://customer-center.test")
+
+    async def asyncTearDown(self):
+        await self.client.aclose()
+        app.dependency_overrides.clear()
+        crm_router.UPLOAD_ROOT = self.original_upload_root
+        shutil.rmtree(self.upload_root, ignore_errors=True)
+        await self.engine.dispose()
+
+    async def test_guid_shared_objects_assignment_history_and_failed_assignment_are_atomic(self):
+        shared = await self.client.get(f"{API}/customers/{self.customer_id}/shared-objects")
+        self.assertEqual(shared.status_code, status.HTTP_200_OK)
+        self.assertEqual(shared.json()["customer_guid"], CUSTOMER_GUID)
+        self.assertEqual(shared.json()["items"], ["manager-one"])
+        shared_post = await self.client.post(f"{API}/customers/{self.customer_id}/shared-objects")
+        self.assertEqual(shared_post.status_code, status.HTTP_200_OK)
+        self.assertEqual(shared_post.json()["items"], ["manager-one"])
+
+        changed = await self.client.put(f"{API}/customers/{self.customer_id}/managers", json={"managers": ["customer-admin"], "comment": "负责人变更"})
+        self.assertEqual(changed.status_code, status.HTTP_200_OK)
+        history = await self.client.get(f"{API}/customers/{self.customer_id}/assignment-history")
+        self.assertEqual(history.status_code, status.HTTP_200_OK)
+        self.assertEqual(history.json()["items"][-1]["to_owner"], "customer-admin")
+        before_count = history.json()["total"]
+        async with self.sessions() as db:
+            before_events = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())
+        failed = await self.client.put(f"{API}/customers/{self.customer_id}/managers", json={"managers": ["missing-user"], "comment": "不应写入"})
+        self.assertEqual(failed.status_code, status.HTTP_200_OK, failed.text)
+        self.assertEqual(failed.json()["IsSuccess"], False)
+        self.assertIn("客户管理人不存在", failed.json()["Message"])
+        after_failed = await self.client.get(f"{API}/customers/{self.customer_id}/assignment-history")
+        self.assertEqual(after_failed.json()["total"], before_count)
+        async with self.sessions() as db:
+            after_events = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())
+        self.assertEqual(after_events, before_events)
+
+    async def test_empty_shared_objects_returns_frontend_placeholder(self):
+        async with self.sessions() as db:
+            customer = await db.get(BusinessRecord, self.customer_id)
+            customer.data = {**(customer.data or {}), "shared_with": [], "is_shared": "否"}
+            await db.commit()
+        response = await self.client.get(f"{API}/customers/{self.customer_id}/shared-objects")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["items"], [{}])
+        self.assertEqual(response.json()["customer_guid"], CUSTOMER_GUID)
+
+    async def test_share_accepts_unique_person_keyword_and_stores_username(self):
+        response = await self.client.post(f"{API}/customers/{self.customer_id}/share", json={"recipients": ["范"], "comment": "关键字共享"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        self.assertIn("fan-recipient", response.json()["data"]["shared_with"])
+
+    async def test_share_rejects_active_account_without_active_hr_employee(self):
+        async with self.sessions() as db:
+            db.add(User(username="account-only", display_name="仅系统账号", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(User(username="left-employee", display_name="离职员工", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(BusinessRecord(module="hr", serial_no="HR-D6-LEFT", title="离职员工", status="离职", owner="left-employee", department="上海分所", data={"username": "left-employee"}))
+            await db.commit()
+
+        for recipient in ("account-only", "left-employee"):
+            response = await self.client.post(f"{API}/customers/{self.customer_id}/share", json={"recipients": [recipient], "comment": "不应共享"})
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+            self.assertFalse(response.json()["IsSuccess"])
+            self.assertIn("启用的在职员工", response.json()["Message"])
+
+    async def test_guid_events_and_files_list_and_download(self):
+        listed = await self.client.get(f"{API}/customers/guid/{CUSTOMER_GUID}/events")
+        self.assertEqual(listed.status_code, status.HTTP_200_OK)
+        created = await self.client.post(f"{API}/customers/guid/{CUSTOMER_GUID}/events", json={"action": "客户事件", "comment": "按 Guid 新增"})
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        events = await self.client.get(f"{API}/customers/guid/{CUSTOMER_GUID}/events")
+        self.assertEqual(events.json()["items"][-1]["action"], "客户事件")
+
+        files = await self.client.get(f"{API}/customers/guid/{CUSTOMER_GUID}/files")
+        self.assertEqual(files.status_code, status.HTTP_200_OK)
+        self.assertEqual(files.json()["items"][0]["original_name"], "customer-contract.pdf")
+        download = await self.client.get(f"{API}/customers/guid/{CUSTOMER_GUID}/files/{files.json()['items'][0]['id']}/download")
+        self.assertEqual(download.status_code, status.HTTP_200_OK)
+        self.assertEqual(download.content, b"customer-file-d6")
+
+    async def test_contacts_paging_default_and_active_primary_switch(self):
+        contacts = await self.client.get(f"{API}/customers/{self.customer_id}/contacts", params={"page": 1, "page_size": 1})
+        self.assertEqual(contacts.status_code, status.HTTP_200_OK)
+        self.assertEqual((contacts.json()["total"], contacts.json()["page_size"]), (2, 1))
+        switched = await self.client.patch(f"{API}/customers/{self.customer_id}/contacts/contact-2/status", json={"is_valid": False, "is_primary": True})
+        self.assertEqual(switched.status_code, status.HTTP_200_OK)
+        self.assertTrue(switched.json()["is_primary"])
+        self.assertFalse(switched.json()["is_valid"])
+        refreshed = await self.client.get(f"{API}/customers/{self.customer_id}/contacts")
+        rows = {item["id"]: item for item in refreshed.json()["items"]}
+        self.assertFalse(rows["contact-1"]["is_primary"])
+        self.assertTrue(rows["contact-2"]["is_primary"])
+
+    async def test_empty_contact_status_patch_is_rejected_without_audit(self):
+        async with self.sessions() as db:
+            before = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())
+        for payload in ({}, {"is_primary": False}):
+            response = await self.client.patch(f"{API}/customers/{self.customer_id}/contacts/contact-1/status", json=payload)
+            self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+        async with self.sessions() as db:
+            after = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())
+        self.assertEqual(after, before)
+
+    async def test_recycle_blocks_customers_with_linked_contracts_or_cases(self):
+        async with self.sessions() as db:
+            customer = await db.get(BusinessRecord, self.customer_id)
+            db.add(BusinessRecord(
+                module="contract", serial_no="HT-D6-BLOCK", title="D6 关联合同",
+                customer=customer.title, status="审批通过", owner="customer-admin", department="上海分所",
+                data={"customer_id": customer.id, "customer_no": customer.serial_no},
+            ))
+            before_events = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())
+            await db.commit()
+
+        response = await self.client.post(f"{API}/customers/{self.customer_id}/recycle", json={"comment": "不应删除"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        self.assertEqual(response.json()["IsSuccess"], False)
+        self.assertIn("客户存在1 个合同", response.json()["Message"])
+
+        async with self.sessions() as db:
+            customer = await db.get(BusinessRecord, self.customer_id)
+            self.assertEqual(customer.status, "正常")
+            after_events = len((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all())
+        self.assertEqual(after_events, before_events)
+
+    async def test_release_accepts_migrated_and_recycled_status_but_rejects_public(self):
+        async with self.sessions() as db:
+            customer = await db.get(BusinessRecord, self.customer_id)
+            customer.status = "历史迁移状态"
+            await db.commit()
+
+        released = await self.client.post(f"{API}/customers/{self.customer_id}/release", json={"comment": "历史客户释放"})
+        self.assertEqual(released.status_code, status.HTTP_200_OK, released.text)
+        self.assertEqual(released.json()["status"], "公海")
+
+        duplicate = await self.client.post(f"{API}/customers/{self.customer_id}/release", json={"comment": "不应重复释放"})
+        self.assertEqual(duplicate.status_code, status.HTTP_200_OK, duplicate.text)
+        self.assertFalse(duplicate.json()["IsSuccess"])
+        self.assertIn("当前客户状态不能释放到公海", duplicate.json()["Message"])
+
+        async with self.sessions() as db:
+            customer = await db.get(BusinessRecord, self.customer_id)
+            customer.status = "已回收"
+            customer.owner = "customer-admin"
+            await db.commit()
+        recycled = await self.client.post(f"{API}/customers/{self.customer_id}/release", json={"comment": "回收站进入公海"})
+        self.assertEqual(recycled.status_code, status.HTTP_200_OK, recycled.text)
+        self.assertEqual(recycled.json()["status"], "公海")
+        self.assertEqual(recycled.json()["owner"], "公海")
+
+    async def test_auto_customer_serial_uses_legacy_short_sequence(self):
+        serial_prefix = f"SHKH{datetime.now():%y}"
+        async with self.sessions() as db:
+            db.add(BusinessRecord(
+                module="customer", serial_no=f"{serial_prefix}00007", title="CODEX-I11-existing",
+                customer="CODEX-I11-existing", status="潜在", owner="customer-admin",
+                department="上海分所", data={"customer_type": "客户", "level": "立案客户"},
+            ))
+            await db.commit()
+
+        response = await self.client.post(f"{API}/customers", json={
+            "title": "CODEX-I11-auto-serial",
+            "status": "潜在",
+            "owner": "customer-admin",
+            "customer_type": "客户",
+            "level": "立案客户",
+            "organization_type": "公司企业",
+            "credit_code": "91310115MA1K8D6001",
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        serial_no = response.json()["serial_no"]
+        self.assertEqual(serial_no, f"{serial_prefix}00008")
+        self.assertRegex(serial_no, r"^SHKH\d{7}$")
+        self.assertNotRegex(serial_no, r"\d{10,}")
+
+    async def test_create_customer_preserves_multiple_contact_accounts(self):
+        response = await self.client.post(f"{API}/customers", json={
+            "title": "CODEX-I84-contact-accounts",
+            "status": "潜在",
+            "owner": "customer-admin",
+            "customer_type": "客户",
+            "level": "立案客户",
+            "organization_type": "公司企业",
+            "credit_code": "91310115MA1K8D6002",
+            "contact": ["customer-auditor", "customer-user"],
+            "contact_accounts": ["customer-user", "customer-admin"],
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.text)
+        data = response.json()["data"]
+        self.assertEqual(data["contact_accounts"], ["customer-auditor", "customer-user", "customer-admin"])
+        self.assertEqual(data["contact"], "customer-auditor")
+        self.assertEqual(len(data["contact_account_display_names"]), 3)
+        self.assertNotIn("customer-user", data["contact_account_display_names"])
+
+        customer_id = response.json()["id"]
+        updated = await self.client.patch(f"{API}/customers/{customer_id}", json={
+            "data": {
+                "contact_accounts": ["customer-admin", "customer-user"],
+                "contact": "customer-admin",
+            },
+        })
+        self.assertEqual(updated.status_code, status.HTTP_200_OK, updated.text)
+        self.assertEqual(updated.json()["data"]["contact_accounts"], ["customer-admin", "customer-user"])
+        self.assertEqual(updated.json()["data"]["contact"], "customer-admin")
+        self.assertEqual(len(updated.json()["data"]["contact_account_display_names"]), 2)
+
+    async def test_customer_manager_directory_excludes_active_accounts_without_active_hr_records(self):
+        async with self.sessions() as db:
+            db.add(User(username="stale-account", display_name="残留账号", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(User(username="directory-user", display_name="directory-user", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(User(username="smoke_manager_84", display_name="范围经理", department="上海分所", role="user", password_hash="test", is_active=True))
+            db.add(BusinessRecord(
+                module="hr", serial_no="HR-D6-DIRECTORY", title="客户专员",
+                status="在职", owner="customer-user", department="上海分所",
+                data={"username": "customer-user"},
+            ))
+            db.add(BusinessRecord(
+                module="hr", serial_no="HR-D6-DIRECTORY-NAME", title="English Name",
+                status="在职", owner="directory-user", department="上海分所",
+                data={"username": "directory-user"},
+            ))
+            db.add(BusinessRecord(
+                module="hr", serial_no="HR-D6-DIRECTORY-SMOKE", title="范围经理员工",
+                status="在职", owner="smoke_manager_84", department="上海分所",
+                data={"username": "smoke_manager_84"},
+            ))
+            await db.commit()
+
+        response = await self.client.get(f"{API}/users/directory", params={"purpose": "customer_manager"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        items = {item["username"]: item for item in response.json()["items"]}
+        self.assertFalse(items["customer-admin"]["eligible_customer_person"])
+        self.assertTrue(items["customer-user"]["eligible_customer_person"])
+        self.assertEqual(items["directory-user"]["display_name"], "English Name")
+        self.assertFalse(items["stale-account"]["eligible_customer_person"])
+        self.assertNotIn("smoke_manager_84", items)
+
+    async def test_identity_field_filtering_and_workflow_audit(self):
+        app.dependency_overrides[current_identity] = lambda: AUDITOR
+        updated = await self.client.patch(f"{API}/customers/{self.customer_id}", json={"data": {"phone": "021-99999999", "credit_code": "FORBIDDEN-CREDIT"}, "description": "更新备注"})
+        self.assertEqual(updated.status_code, status.HTTP_200_OK)
+        self.assertEqual(updated.json()["data"]["phone"], "021-99999999")
+        self.assertNotEqual(updated.json()["data"].get("credit_code"), "FORBIDDEN-CREDIT")
+        async with self.sessions() as db:
+            customer = await db.get(BusinessRecord, self.customer_id)
+            self.assertNotEqual((customer.data or {}).get("credit_code"), "FORBIDDEN-CREDIT")
+            actions = {event.action for event in (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.customer_id))).all()}
+        self.assertIn("更新客户资料", actions)
+
+    async def test_generic_record_patch_response_uses_identity_field_projection(self):
+        async with self.sessions() as db:
+            db.add(RolePermission(
+                role="user",
+                display_name="Test User",
+                data_scope="本人及共享数据",
+                menu_keys=["customer", "@action:record.customer.update"],
+                field_keys=["customer.legal"],
+            ))
+            customer = BusinessRecord(
+                module="customer", serial_no="KH-D6-FIELD-PATCH", title="D6 字段投影客户", customer="D6 字段投影客户",
+                status="正常", owner=USER["username"], department=USER["department"],
+                data={
+                    "customer_guid": "22222222-2222-4222-8222-222222222222",
+                    "customer_type": "客户",
+                    "level": "立案客户",
+                    "customer_managers": [USER["username"]],
+                    "credit_code": "VISIBLE-LEGAL-CODE",
+                    "invoice_title": "HIDDEN-BILLING-TITLE",
+                    "taxpayer_id": "HIDDEN-TAXPAYER",
+                    "bank_name": "HIDDEN-BANK",
+                    "bank_account": "HIDDEN-ACCOUNT",
+                },
+            )
+            db.add(customer)
+            await db.commit()
+            record_id = customer.id
+
+        app.dependency_overrides[current_identity] = lambda: USER
+        response = await self.client.patch(f"{API}/records/{record_id}", json={"description": "通用编辑备注"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        data = response.json()["data"]
+        self.assertEqual(data.get("credit_code"), "VISIBLE-LEGAL-CODE")
+        for hidden_key in ("invoice_title", "taxpayer_id", "invoice_address", "invoice_phone", "bank_name", "bank_account"):
+            self.assertNotIn(hidden_key, data)
+
+        async with self.sessions() as db:
+            persisted = await db.get(BusinessRecord, record_id)
+            self.assertEqual((persisted.data or {}).get("invoice_title"), "HIDDEN-BILLING-TITLE")
+            actions = [
+                event.action
+                for event in (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record_id))).all()
+            ]
+        self.assertIn("编辑", actions)
+
+    async def test_customer_menu_grant_controls_page_visibility_and_operations(self):
+        async with self.sessions() as db:
+            db.add(RolePermission(
+                role="user", display_name="Test User", data_scope="本人及共享数据",
+                menu_keys=["customer-dept"], field_keys=["customer.legal"],
+            ))
+            await db.commit()
+
+        app.dependency_overrides[current_identity] = lambda: USER
+        department = await self.client.get(
+            f"{API}/customers", params={"scope": "department", "customer_type": "客户"},
+        )
+        self.assertEqual(department.status_code, status.HTTP_200_OK, department.text)
+        self.assertEqual([item["id"] for item in department.json()["items"]], [self.customer_id])
+
+        company = await self.client.get(
+            f"{API}/customers", params={"scope": "company", "customer_type": "客户"},
+        )
+        self.assertEqual(company.status_code, status.HTTP_403_FORBIDDEN, company.text)
+
+        updated = await self.client.patch(
+            f"{API}/records/{self.customer_id}", json={"description": "菜单授权用户可编辑"},
+        )
+        self.assertEqual(updated.status_code, status.HTTP_200_OK, updated.text)
+        self.assertEqual(updated.json()["description"], "菜单授权用户可编辑")
+
+    async def test_customer_list_summary_returns_full_legacy_monetary_projection(self):
+        async with self.sessions() as db:
+            first = await db.get(BusinessRecord, self.customer_id)
+            first.data = {
+                **(first.data or {}),
+                "agency_fee_due": 10.5,
+                "official_fee_unreceived": 20,
+                "total_paid_case_office_fee_amount": 30,
+                "total_cashed_case_office_fee_amount": 40,
+                "total_un_cashed_case_office_fee_amount": 50,
+                "total_deficit_case_office_fee_amount": -5,
+                "total_case_non_office_fee_amount": 60,
+                "total_cashed_case_non_office_fee_amount": 70,
+                "total_un_cashed_case_non_office_fee_amount": 80,
+                "total_case_commission_fee_amount": 90,
+                "total_cashed_case_commission_fee_amount": 100,
+                "total_paid_case_commission_fee_amount": 110,
+                "total_un_paid_case_commission_fee_amount": 120,
+                "total_invoiced_amount": 130,
+                "total_invoice_over_amount": 140,
+                "total_un_invoiced_amount": 150,
+            }
+            db.add(BusinessRecord(
+                module="customer", serial_no="KH-D6-SUMMARY-002", title="D6 摘要客户二", customer="D6 摘要客户二",
+                status="正常", owner="customer-admin", department="上海分所",
+                data={
+                    "customer_type": "客户",
+                    "customer_managers": ["customer-admin"],
+                    "agency_fee_due": 1.25,
+                    "official_fee_unreceived": 2.5,
+                    "total_paid_case_office_fee_amount": 3.75,
+                    "total_cashed_case_office_fee_amount": 4.25,
+                    "total_un_cashed_case_office_fee_amount": 5.5,
+                    "total_deficit_case_office_fee_amount": 6,
+                    "total_case_non_office_fee_amount": 7,
+                    "total_cashed_case_non_office_fee_amount": 8,
+                    "total_un_cashed_case_non_office_fee_amount": 9,
+                    "total_case_commission_fee_amount": 10,
+                    "total_cashed_case_commission_fee_amount": 11,
+                    "total_paid_case_commission_fee_amount": 12,
+                    "total_un_paid_case_commission_fee_amount": 13,
+                    "total_invoiced_amount": 14,
+                    "total_invoice_over_amount": 15,
+                    "total_un_invoiced_amount": 16,
+                },
+            ))
+            await db.commit()
+
+        response = await self.client.get(
+            f"{API}/customers",
+            params={"scope": "company", "customer_type": "客户", "page": 1, "page_size": 1},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
+        payload = response.json()
+        self.assertEqual(payload["total"], 2)
+        self.assertEqual(len(payload["items"]), 1)
+        summary = payload["summary"]
+        expected = {
+            "agency_fee_due": 11.75,
+            "official_fee_unreceived": 22.5,
+            "total_paid_case_office_fee_amount": 33.75,
+            "total_cashed_case_office_fee_amount": 44.25,
+            "total_un_cashed_case_office_fee_amount": 55.5,
+            "total_deficit_case_office_fee_amount": 1,
+            "total_case_non_office_fee_amount": 67,
+            "total_cashed_case_non_office_fee_amount": 78,
+            "total_un_cashed_case_non_office_fee_amount": 89,
+            "total_case_commission_fee_amount": 100,
+            "total_cashed_case_commission_fee_amount": 111,
+            "total_paid_case_commission_fee_amount": 122,
+            "total_un_paid_case_commission_fee_amount": 133,
+            "total_invoiced_amount": 144,
+            "total_invoice_over_amount": 155,
+            "total_un_invoiced_amount": 166,
+        }
+        self.assertEqual(set(summary), set(expected))
+        self.assertEqual(summary, expected)
+
+
+if __name__ == "__main__":
+    unittest.main()

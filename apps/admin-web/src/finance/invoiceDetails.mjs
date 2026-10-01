@@ -55,8 +55,8 @@ export function invoiceCurrentSourceFields(selectedRows, selectedIds) {
   return { external_contract_no: contracts.size === 1 ? String(selected[0]?.data?.external_contract_no || "").trim() : "" };
 }
 
-export async function fetchInvoiceRecord(client, id) {
-  const { data } = await client.get(`/finance/invoices/${id}`);
+export async function fetchInvoiceRecord(client, id, options) {
+  const { data } = await client.get(`/finance/invoices/${id}`, options);
   if (!data || data.module !== "invoice" || String(data.id) !== String(id)) throw new Error("发票详情记录不匹配");
   return data;
 }

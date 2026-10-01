@@ -20,7 +20,7 @@ const catalog = [{
 test("warehouse location options contain only active master data", () => {
   assert.deepEqual(buildWarehouseLocationOptions(catalog), [{
     value: 11,
-    label: "上海一仓（9-4）",
+    label: "上海一仓 (9-4)",
     warehouseId: 1,
     warehouseName: "上海一仓",
     locationName: "9-4",

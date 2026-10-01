@@ -144,7 +144,7 @@ export interface CaseFinanceDependencies {
 }
 export function createCaseFinanceActions(context: CaseFinanceDependencies) {
     const loadCounselDetailAssistedFees = async (caseId: number, page = context.counselDetailAssistedFeePage, pageSize = context.counselDetailAssistedFeePageSize) => {
-        const { counselDetailAssistedFeePage, counselDetailAssistedFeePageSize, counselDetailAssistedFeeRequestRef, counselDetailCaseIdRef, setCounselDetailAssistedFees, setCounselDetailAssistedFeePage, setCounselDetailAssistedFeePageSize, setCounselDetailAssistedFeeTotal } = context;
+        const { counselDetailAssistedFeeRequestRef, counselDetailCaseIdRef, setCounselDetailAssistedFees, setCounselDetailAssistedFeePage, setCounselDetailAssistedFeePageSize, setCounselDetailAssistedFeeTotal } = context;
         const requestId = ++counselDetailAssistedFeeRequestRef.current;
         try {
             const { data } = await api.get(`/cases/${caseId}/assisted-fees`, { params: { page, page_size: pageSize } });

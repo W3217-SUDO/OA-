@@ -48,14 +48,27 @@ test('initial ordinary table renders loading feedback before effects, never empt
   assert.equal(tableValue('loading', state), true);
   assert.equal(tableValue('locale', state).emptyText, '案件加载中…');
 });
-for (const source of ['specialRows', 'originalArchiveRows']) test(`${source} table preserves its independent shared-loader behavior`, () => {
-  const otherTable = tableForDataSource(source);
+test('special table uses receipt loading only for receipt mode', () => {
+  const otherTable = tableForDataSource('specialRows');
   const loading = otherTable.attributes.properties.find(attr => ts.isJsxAttribute(attr) && attr.name.getText(page) === 'loading');
   assert.ok(loading);
-  assert.equal(runExpression(loading.initializer.expression, page, { loading: false, ordinaryLoading: true, counselListMode: false }), false);
-  assert.equal(runExpression(loading.initializer.expression, page, { loading: true, ordinaryLoading: false, counselListMode: false }), true);
+  const evaluate = (specialMode, sharedLoading, receiptLoading) => runExpression(loading.initializer.expression, page, { specialMode, loading: sharedLoading, receiptList: { loading: receiptLoading } });
+  assert.equal(evaluate('receipt', false, true), true);
+  assert.equal(evaluate('receipt', true, false), false);
+  assert.equal(evaluate('stage', false, true), false);
+  assert.equal(evaluate('stage', true, false), true);
   const locale = otherTable.attributes.properties.find(attr => ts.isJsxAttribute(attr) && attr.name.getText(page) === 'locale');
   assert.equal(locale, undefined, 'ordinary-query empty/error text must not leak into other tables');
+});
+test('archive table owns its loading and error feedback independently', () => {
+  const archiveTable = tableForDataSource('originalArchiveRows');
+  const attribute = name => archiveTable.attributes.properties.find(attr => ts.isJsxAttribute(attr) && attr.name.getText(page) === name).initializer.expression;
+  const evaluate = (name, archiveList) => runExpression(attribute(name), page, { loading: true, ordinaryLoading: true, archiveList });
+  assert.equal(evaluate('loading', { loading: false, error: '' }), false);
+  assert.equal(evaluate('loading', { loading: true, error: '' }), true);
+  assert.equal(evaluate('locale', { loading: true, error: '' }).emptyText, '归档案件加载中…');
+  assert.equal(evaluate('locale', { loading: false, error: '归档查询失败' }).emptyText, '归档查询失败');
+  assert.equal(evaluate('locale', { loading: false, error: '' }).emptyText, '暂无符合条件的案件');
 });
 test('early completion of side feeds cannot clear a pending ordinary search spinner', async () => {
   const run = setup();

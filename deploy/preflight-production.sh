@@ -17,6 +17,9 @@ fail() {
 [[ -f "$BASE_COMPOSE" ]] || fail 'base Compose file is missing'
 [[ -f "$PROD_COMPOSE" ]] || fail 'production Compose file is missing'
 command -v docker >/dev/null 2>&1 || fail 'docker command is unavailable'
+SOURCE_COMMIT="${SOURCE_COMMIT:-$(git -C "$ROOT_DIR" rev-parse HEAD)}"
+[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || fail 'SOURCE_COMMIT must be a complete source commit'
+export SOURCE_COMMIT
 
 mode="$(stat -c '%a' "$ENV_FILE" 2>/dev/null)" || fail 'unable to inspect environment file permissions'
 [[ "$mode" =~ ^[0-7]{3,4}$ ]] || fail 'environment file permissions are invalid'

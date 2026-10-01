@@ -1,6 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.constants import (
-    AI_SPACE_CATEGORY, AI_SPACE_EDITABLE_SUFFIXES, CASE_COMMISSION_ROLES, CASE_CREATE_PERMISSION_BY_TYPE, CASE_DEFENDANT_FIELDS,
+    AI_SPACE_CATEGORY, AI_SPACE_EDITABLE_SUFFIXES, ARCHIVE_REQUIRED_CATEGORIES, CASE_COMMISSION_ROLES, CASE_CREATE_PERMISSION_BY_TYPE, CASE_DEFENDANT_FIELDS,
     CASE_EVENT_COMPLETED_STATUS, CASE_EVENT_OVERDUE_STATUS, CASE_EVENT_TIME_ZONE, CASE_EXECUTION_STATUSES, CASE_EXECUTION_STATUS_ALIASES,
     CASE_PENDING_EXECUTION_PHASES, CASE_PHASE_STATUS_BY_CODE, CASE_PLAINTIFF_FIELDS, CASE_THIRD_PARTY_FIELDS, DASHBOARD_CASE_QUEUES,
     DASHBOARD_SUPPLEMENT_EVIDENCE_STATUSES, DASHBOARD_SUPPLEMENT_OPINION_STATUSES, PERSON_NAME_PLACEHOLDER, WORD_DOCUMENT_CONTENT_TYPE, _CASE_HEARING_LEVELS,
@@ -101,16 +101,17 @@ def _case_fee_requires_archive_settlement(item: BusinessRecord) -> bool:
     return not is_agency_refund
 
 
-async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) -> dict[str, bool]:
-    """Calculate archive readiness from persisted business facts, never client checkboxes."""
-    from app.core.documents import (
-        _sync_case_document_readiness,
-    )
+async def _case_archive_readiness(case_record: BusinessRecord, db: AsyncSession) -> tuple[dict[str, bool], dict, list[str]]:
+    """只读取已持久化的业务事实，计算归档检查项、明细和材料类别。"""
     from app.core.formatters import (
         _record_links_to_case,
     )
     data = dict(case_record.data or {})
-    documents_complete = await _sync_case_document_readiness(case_record, db)
+    categories = set((await db.scalars(select(FileAttachment.category).where(
+        FileAttachment.record_id == case_record.id,
+        FileAttachment.category != AI_SPACE_CATEGORY,
+    ))).all())
+    documents_complete = ARCHIVE_REQUIRED_CATEGORIES.issubset(categories)
     related_rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module.in_({"finance", "invoice", "refund"})))).all()
 
     related = [item for item in related_rows if _record_links_to_case(item, case_record)]
@@ -176,13 +177,24 @@ async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) ->
         "documents_complete": documents_complete,
         "finance_complete": finance_complete,
     }
-    case_record.data = {**(case_record.data or {}), **checks, "archive_check_details": {
+    details = {
         "unsettled_fees": unsettled_fees,
         "unsettled_receivables": [
             {"id": item.id, "amount": float(item.amount), "received": float(item.received_amount or 0), "outstanding": round(max(float(item.amount) - float(item.received_amount or 0), 0), 2)}
             for item in receivables if float(item.amount) - float(item.received_amount or 0) > 0.001
         ],
-    }}
+    }
+    return checks, details, sorted(categories)
+
+
+async def _case_archive_checks(case_record: BusinessRecord, db: AsyncSession) -> dict[str, bool]:
+    """保留归档动作原有的检查结果回写行为。"""
+    checks, details, categories = await _case_archive_readiness(case_record, db)
+    case_record.data = {
+        **(case_record.data or {}), **checks,
+        "archive_material_categories": categories,
+        "archive_check_details": details,
+    }
     return checks
 
 
@@ -1330,6 +1342,9 @@ async def _query_counsel_cases(
             value(data, "plaintiff", "plaintiffs"),
             value(data, "defendant", "opponent", "defendants"),
             value(data, "court", "court_name", "first_court_name"),
+            value(data, "prosecutor", "procuratorate", "first_procuratorate_name"),
+            value(data, "administrative_agency"),
+            value(data, "counsel_contact"),
             value(data, "court_case_no", "first_court_case_no", "first_instance_no"),
             value(data, "second_court_case_no", "second_instance_no"),
             value(data, "execution_case_no", "retrial_case_no"),

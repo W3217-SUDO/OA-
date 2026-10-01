@@ -1,11 +1,14 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from html.parser import HTMLParser
+from shutil import copyfile
 from xml.etree import ElementTree
 
 import xlrd
+from starlette.concurrency import run_in_threadpool
 from app.core.constants import (
     AI_SPACE_CATEGORY, ATTACHMENT_TEXT_PREVIEW_MAX_CHARS, CASE_EVENT_TIME_ZONE, CONTRACT_PERSON_NAME_PLACEHOLDER, LEGACY_UPLOAD_ROOTS,
-    PDF_PREVIEW_MAX_FILE_BYTES, PDF_PREVIEW_MAX_PAGES, UPLOAD_ROOT, XLSX_PREVIEW_MAX_COLUMNS, XLSX_PREVIEW_MAX_ROWS_PER_SHEET,
+    PDF_PREVIEW_MAX_DIMENSION, PDF_PREVIEW_MAX_FILE_BYTES, PDF_PREVIEW_MAX_PAGES, PDF_PREVIEW_MAX_PIXELS,
+    UPLOAD_ROOT, XLSX_PREVIEW_MAX_COLUMNS, XLSX_PREVIEW_MAX_ROWS_PER_SHEET,
     XLSX_PREVIEW_MAX_SHEETS,
 )
 from app.core.dependencies import (
@@ -16,6 +19,7 @@ from app.core.dependencies import (
 from app.models_shared import (
     SealApplicationInput,
 )
+from app.pdf_runtime import serialized_pdfium
 
 
 def _attachment_storage_path(item: FileAttachment) -> Path | None:
@@ -291,6 +295,53 @@ def _open_preview_pdf(path: Path) -> object:
         raise HTTPException(status_code=422, detail="PDF 文件无法读取或已损坏") from exc
 
 
+@serialized_pdfium
+def _pdf_preview_page_count(path: Path) -> int:
+    document = _open_preview_pdf(path)
+    try:
+        return len(document)
+    finally:
+        document.close()
+
+
+@serialized_pdfium
+def _render_pdf_preview_page(path: Path, page_number: int, width: int) -> bytes:
+    document = _open_preview_pdf(path)
+    page = None
+    try:
+        page_count = len(document)
+        if page_number < 1 or page_number > page_count:
+            raise HTTPException(status_code=404, detail="PDF 页码不存在")
+        page = document[page_number - 1]
+        page_width, page_height = page.get_size()
+        if page_width <= 0 or page_height <= 0:
+            raise HTTPException(status_code=422, detail="PDF 页面尺寸无效")
+        max_scale_for_pixels = (PDF_PREVIEW_MAX_PIXELS / (page_width * page_height)) ** 0.5
+        max_scale_for_dimension = PDF_PREVIEW_MAX_DIMENSION / max(page_width, page_height)
+        requested_scale = width / page_width
+        scale = min(requested_scale, max_scale_for_pixels, max_scale_for_dimension)
+        if scale <= 0:
+            raise HTTPException(status_code=422, detail="PDF 页面无法渲染")
+        bitmap = page.render(scale=scale)
+        try:
+            image = bitmap.to_pil().convert("RGB")
+            output = io.BytesIO()
+            image.save(output, format="PNG", optimize=True)
+        finally:
+            close_bitmap = getattr(bitmap, "close", None)
+            if callable(close_bitmap):
+                close_bitmap()
+        return output.getvalue()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="PDF 页面无法渲染") from exc
+    finally:
+        if page is not None:
+            page.close()
+        document.close()
+
+
 def _pdf_preview_response_headers() -> dict[str, str]:
     return {
         "Cache-Control": "private, no-store",
@@ -317,7 +368,7 @@ async def _copy_seal_source_attachments(
         return []
     source_items = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(ids)))).all())
     if len(source_items) != len(ids):
-        raise HTTPException(status_code=404, detail="閫変腑鐨勬潵婧愭枃浠朵笉瀛樺湪")
+        raise HTTPException(status_code=404, detail="选中的来源文件不存在")
     by_id = {item.id: item for item in source_items}
     created_targets: list[Path] = []
     category = "用印文件"
@@ -325,7 +376,7 @@ async def _copy_seal_source_attachments(
         for item_id in ids:
             source = by_id[item_id]
             if not source.record_id:
-                raise HTTPException(status_code=422, detail="閫変腑鐨勬潵婧愭枃浠舵湭鍏宠仈涓氬姟璁板綍")
+                raise HTTPException(status_code=422, detail="选中的来源文件未关联业务记录")
             source_record = await _ensure_attachment_record_visible(source.record_id, identity, db)
             if source_record.module == "contract":
                 await _ensure_record_module(source_record.id, "contract", identity, db)
@@ -334,13 +385,13 @@ async def _copy_seal_source_attachments(
             elif source_record.module == "customer":
                 await _ensure_record_module(source_record.id, "customer", identity, db)
             else:
-                raise HTTPException(status_code=422, detail="鐢ㄥ嵃鐢宠鍙兘浠庡悎鍚屾垨妗堜欢澶嶅埗鏉ユ簮鏂囦欢")
+                raise HTTPException(status_code=422, detail="用印申请来源文件必须关联客户、合同或案件")
             source_path = _attachment_storage_path(source)
             if source_path is None:
-                raise HTTPException(status_code=404, detail=f"鏉ユ簮鏂囦欢 {source.original_name} 涓嶅瓨鍦?")
+                raise HTTPException(status_code=404, detail=f"来源文件 {source.original_name} 不存在")
             target = UPLOAD_ROOT / f"{uuid4().hex}{source_path.suffix.lower()}"
-            target.write_bytes(source_path.read_bytes())
             created_targets.append(target)
+            await run_in_threadpool(copyfile, source_path, target)
             db.add(FileAttachment(
                 record_id=target_record.id,
                 category=category,

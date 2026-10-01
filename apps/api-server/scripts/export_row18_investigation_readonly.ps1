@@ -1,5 +1,6 @@
 param(
-    [string]$ApiBase = "http://150.158.3.104:8089/api/v1",
+    [Parameter(Mandatory = $true)]
+    [string]$ApiBase,
     [string]$SerialNo = "RW2413300774776",
     [string]$BearerToken = $env:OA_ROW18_READONLY_TOKEN,
     [Parameter(Mandatory = $true)]

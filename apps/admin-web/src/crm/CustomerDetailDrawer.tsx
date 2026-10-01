@@ -15,7 +15,7 @@ import {
 } from "antd";
 import Table from "../components/ResizableTable";
 import { ReloadOutlined, UploadOutlined } from "@ant-design/icons";
-import { displayChinesePersonName, displayChinesePersonNames } from "../contractPeoplePresentation.mjs";
+import { displayChinesePersonName } from "../contractPeoplePresentation.mjs";
 import { CUSTOMER_CONTACT_FORM_DEFAULTS, CUSTOMER_DOCUMENT_FORM_DEFAULTS, canDeleteCustomerAttachment, getCustomerAttachmentDate } from "../customerUiBatchI15.mjs";
 import type { FormInstance } from "antd";
 import type {
@@ -77,55 +77,8 @@ interface CustomerDetailDrawerProps {
   onCreateCustomerEvent: () => void;
 }
 
-export function CustomerDetailDrawer({
-  open,
-  customer,
-  detailTab,
-  detailLoading,
-  historyError,
-  attachmentError,
-  customerEventError,
-  sharedObjectsError,
-  contactPage,
-  contactPageSize,
-  contactTotal,
-  customerEvents,
-  events,
-  attachments,
-  sharedObjects,
-  canManage,
-  directory,
-  contactForm,
-  noteForm,
-  customerEventForm,
-  documentForm,
-  documentFileRef,
-  documentFile,
-  onClose,
-  onTabChange,
-  onRefreshContacts,
-  onContactPageChange,
-  onAddContact,
-  onViewContact,
-  onEditContact,
-  onDeleteContact,
-  onSetContactPrimary,
-  onSetContactActive,
-  onSetContactInactive,
-  onUploadContactPhoto,
-  onViewContactPhoto,
-  onAddNote,
-  onDeleteNote,
-  onViewDocument,
-  onDownloadDocument,
-  onDeleteDocument,
-  onUploadDocument,
-  onDocumentFileChange,
-  onOpenContracts,
-  onNewContract,
-  onCreateCustomerEvent,
-}: CustomerDetailDrawerProps) {
-  const userLabels = (values: unknown) => displayChinesePersonNames(values, directory);
+export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading, historyError, attachmentError, customerEventError, sharedObjectsError, contactPage, contactPageSize, contactTotal, customerEvents, events, attachments, sharedObjects, canManage, directory, contactForm, noteForm, customerEventForm, documentForm, documentFileRef, onClose, onTabChange, onRefreshContacts, onContactPageChange, onAddContact, onViewContact, onEditContact, onDeleteContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onAddNote, onDeleteNote, onViewDocument, onDownloadDocument, onDeleteDocument, onUploadDocument, onDocumentFileChange, onOpenContracts, onNewContract, onCreateCustomerEvent }: CustomerDetailDrawerProps) {
+
   const userLabel = (value: string) => displayChinesePersonName(value, directory);
 
   const contactPhotoActions = (contact: Contact) => canManage ? (

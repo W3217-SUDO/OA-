@@ -1,0 +1,170 @@
+"""回归入口的独立导入与 UTF-8 输出失败路径。"""
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from tests import run_regression
+
+
+class RegressionRunnerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.path = Path(__file__)
+        self.args = argparse.Namespace(timeout=1, report=None, api_base=None, legacy_source_root=None, legacy_bundle=None)
+
+    def test_utf8_output_is_decoded_explicitly(self) -> None:
+        with patch.object(run_regression.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "成功".encode(), b"")):
+            result = run_regression.run_file(self.path, self.args)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["output"], "成功")
+
+    def test_non_utf8_output_fails_with_diagnostic(self) -> None:
+        with patch.object(run_regression.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"", b"\xff")):
+            result = run_regression.run_file(self.path, self.args)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("stderr不是 UTF-8", result["output"])
+
+    def test_timeout_decodes_partial_utf8_output(self) -> None:
+        error = subprocess.TimeoutExpired([], 1, output="部分输出".encode(), stderr=b"")
+        with patch.object(run_regression.subprocess, "run", side_effect=error):
+            result = run_regression.run_file(self.path, self.args)
+        self.assertEqual(result["exit_code"], 124)
+        self.assertIn("部分输出", result["output"])
+
+    def test_finance_fixture_importers_receive_an_isolated_database(self) -> None:
+        for name in ("finance929Regression_test.py", "invoice929ReworkApi_test.py"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory(prefix="oa-test-runner-") as directory:
+                temporary = Path(directory)
+                path = run_regression.TEST_ROOT / "regression" / name
+                environment = run_regression.test_environment(path, temporary, self.args)
+                self.assertEqual(Path(environment["OA_FINANCE_TEST_DB"]), temporary / "finance-test.db")
+                self.assertEqual(Path(environment["UPLOAD_ROOT"]), temporary / "uploads")
+                self.assertEqual(environment["APP_ENV"], "test")
+                self.assertTrue(Path(environment["UPLOAD_ROOT"]).is_dir())
+
+    def test_direct_entry_adds_application_and_repository_roots(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="oa-test-runner-") as directory:
+            testcase = Path(directory) / "test_imports.py"
+            testcase.write_text(
+                "import unittest\nfrom app.config import Settings\nfrom scripts.verify_area_split import capture\n"
+                "class EntryTest(unittest.TestCase):\n    def test_imports(self):\n        self.assertTrue(Settings and capture)\n",
+                encoding="utf-8",
+            )
+            environment = os.environ.copy()
+            environment.pop("PYTHONPATH", None)
+            result = subprocess.run(
+                [sys.executable, str(run_regression.TEST_ROOT / "_run_one.py"), str(testcase)],
+                cwd=directory, env=environment, capture_output=True, timeout=30, check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="strict"))
+
+    def test_method_exclusion_does_not_hide_other_failures(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="oa-test-runner-") as directory:
+            testcase = Path(directory) / "test_mixed.py"
+            testcase.write_text(
+                "import unittest\n"
+                "class MixedTest(unittest.TestCase):\n"
+                "    def test_permission(self):\n        self.fail('excluded permission')\n"
+                "    def test_business(self):\n        self.fail('business regression')\n",
+                encoding="utf-8",
+            )
+            environment = os.environ.copy()
+            environment["OA_TEST_EXCLUDED_METHODS"] = json.dumps(["MixedTest.test_permission"])
+            environment["PYTHONIOENCODING"] = "utf-8:strict"
+            result = subprocess.run(
+                [sys.executable, str(run_regression.TEST_ROOT / "_run_one.py"), str(testcase)],
+                cwd=directory, env=environment, capture_output=True, timeout=30, check=False,
+            )
+        output = (result.stdout + result.stderr).decode("utf-8", errors="strict")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("business regression", output)
+        self.assertNotIn("excluded permission", output)
+        self.assertIn('"excluded": ["MixedTest.test_permission"]', output)
+
+    def test_all_skipped_test_file_is_not_reported_as_passed(self) -> None:
+        for direct_entry in (False, True):
+            with self.subTest(direct_entry=direct_entry), tempfile.TemporaryDirectory(prefix="oa-test-runner-") as directory:
+                test_root = Path(directory)
+                shutil.copyfile(run_regression.TEST_ROOT / "_run_one.py", test_root / "_run_one.py")
+                testcase = test_root / "test_all_skipped.py"
+                testcase.write_text(
+                    "import unittest\n"
+                    "@unittest.skip('dependency unavailable')\n"
+                    "class SkippedTest(unittest.TestCase):\n"
+                    "    def test_work(self):\n        self.fail('must not execute')\n"
+                    + ("if __name__ == '__main__':\n    unittest.main()\n" if direct_entry else ""),
+                    encoding="utf-8",
+                )
+                args = argparse.Namespace(
+                    timeout=30, report=None, api_base=None,
+                    legacy_source_root=None, legacy_bundle=None,
+                )
+                with patch.object(run_regression, "TEST_ROOT", test_root):
+                    result = run_regression.run_file(testcase, args)
+                self.assertEqual(result["status"], "SKIP")
+                self.assertEqual(result["exit_code"], 0)
+                if not direct_entry:
+                    self.assertEqual(result["executed_methods"], 0)
+                    self.assertEqual(result["skipped_methods"], 1)
+
+    def test_permission_exclusion_keeps_business_methods_running(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="oa-test-runner-") as directory:
+            test_root = Path(directory)
+            shutil.copyfile(run_regression.TEST_ROOT / "_run_one.py", test_root / "_run_one.py")
+            testcase = test_root / "test_mixed.py"
+            testcase.write_text(
+                "import unittest\n"
+                "class MixedTest(unittest.TestCase):\n"
+                "    def test_permission(self):\n        self.fail('permission excluded')\n"
+                "    def test_business(self):\n        self.assertTrue(True)\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                timeout=30, report=None, api_base=None,
+                legacy_source_root=None, legacy_bundle=None,
+                exclude_category=["permissions"],
+            )
+            category = {"permissions": {"test_mixed.py": {
+                "MixedTest.test_permission": "权限专项暂排",
+            }}}
+            with patch.object(run_regression, "TEST_ROOT", test_root), patch.object(run_regression, "EXCLUDED_CATEGORIES", category):
+                partial = run_regression.run_file(testcase, args)
+            self.assertEqual(partial["status"], "PARTIAL")
+            self.assertEqual(partial["executed_methods"], 1)
+            self.assertEqual(partial["skipped_methods"], 0)
+            testcase.write_text(
+                "import unittest\n"
+                "class MixedTest(unittest.TestCase):\n"
+                "    def test_permission(self):\n        self.fail('permission excluded')\n",
+                encoding="utf-8",
+            )
+            with patch.object(run_regression, "TEST_ROOT", test_root), patch.object(run_regression, "EXCLUDED_CATEGORIES", category):
+                excluded = run_regression.run_file(testcase, args)
+            self.assertEqual(excluded["status"], "EXCLUDED")
+            self.assertEqual(excluded["executed_methods"], 0)
+            self.assertEqual(excluded["skipped_methods"], 0)
+
+    def test_missing_required_environment_returns_nonzero(self) -> None:
+        environment = os.environ.copy()
+        for name in ("OA_TEST_POSTGRES_URL", "OA_TEST_POSTGRES_DSN", "OA_TEST_API_BASE"):
+            environment.pop(name, None)
+        for group, filename in (
+            ("unit", "test_postgres_startup_migrations.py"),
+            ("integration", "case_create_contract_test.py"),
+        ):
+            with self.subTest(group=group):
+                completed = subprocess.run(
+                    [sys.executable, str(run_regression.TEST_ROOT / "run_regression.py"),
+                     "--group", group, "--file", filename],
+                    cwd=run_regression.API_ROOT, env=environment,
+                    capture_output=True, timeout=30, check=False,
+                )
+                self.assertEqual(completed.returncode, 1, completed.stdout.decode("utf-8", errors="strict"))
+                self.assertIn('"skipped": 1', completed.stdout.decode("utf-8", errors="strict"))

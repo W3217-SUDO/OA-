@@ -5,28 +5,38 @@ import { api } from "../../api";
 import { buildInvoiceApplicationPayload } from "../../financeInvoiceHelpers.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { legacyInvoiceUpdateFailureMessage } from "../constants";
-import { invoiceCurrentSourceFields } from "../invoiceDetails.mjs";
+import { fetchInvoiceRecord, invoiceCurrentSourceFields, invoiceEditValues } from "../invoiceDetails.mjs";
+import { financeErrorDetail, financeErrorMessageText } from "../financeErrors";
+import type { InvoiceDateFormValues, InvoiceIssueFormValues, InvoiceNumberFormValues, InvoiceVoidFormValues } from "../formTypes";
 import type { Fee, FinanceFlow } from "../types";
-type OriginalFieldSpec = {
-    label: string;
-    key?: string;
-    control?: "date" | "money" | "multi";
-    options?: string[];
-    defaultValue?: any;
-    disabled?: boolean;
-    readOnly?: boolean;
-    pickerLabel?: string;
-};
-type OriginalRouteConfig = {
-    fields: OriginalFieldSpec[];
-    headers: string[];
-    source: "fees" | "incoming" | "invoices" | "settlements" | "generalSettlements" | "archiveSettlements" | "feeQuery" | "refundReviewFees" | "paymentPackages" | "unissuedFees";
-    selectable?: boolean;
-    clear?: boolean;
-    upload?: boolean;
-    export?: boolean;
-    note?: string;
-};
+
+export interface InvoiceApplicationContext {
+    customer_record?: Fee | null;
+    items?: Fee[];
+    customer_defaults?: Record<string, unknown>;
+}
+
+export async function loadInvoiceApplicationContext(source: Fee, signal?: AbortSignal): Promise<InvoiceApplicationContext> {
+    const { data } = await api.get<InvoiceApplicationContext>("/finance/invoice-context", {
+        params: {
+            customer: source.customer,
+            customer_id: source.data?.customer_id || source.data?.customer_record_id || undefined,
+            keyword: source.serial_no,
+            page: 1,
+            page_size: 100,
+        },
+        signal,
+    });
+    return data;
+}
+
+export async function withdrawInvoiceApplication(invoiceId: number): Promise<void> {
+    await api.post(`/finance/invoices/${invoiceId}/withdraw`, { comment: "我的开票列表撤回" });
+}
+
+export async function loadInvoiceRecord(invoiceId: number, signal?: AbortSignal): Promise<FinanceFlow> {
+    return fetchInvoiceRecord(api, invoiceId, signal ? { signal } : undefined);
+}
 /** finance invoices operations; dependencies are read when each operation runs. */
 export interface FinanceInvoicesDependencies {
     readonly invoiceFeeOptions: Fee[];
@@ -179,22 +189,23 @@ export interface FinanceInvoicesDependencies {
     readonly invoices: Fee[];
     readonly setInvoiceOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setInvoiceEditTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
+    readonly setInvoiceSelectedFeeIds: React.Dispatch<React.SetStateAction<number[]>>;
     readonly load: () => Promise<void>;
     readonly issueTarget: Fee | null;
     readonly invoiceProcess: Fee | null;
-    readonly issueForm: FormInstance<any>;
+    readonly issueForm: FormInstance<InvoiceIssueFormValues>;
     readonly setIssueTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
     readonly setInvoiceProcess: React.Dispatch<React.SetStateAction<Fee | null>>;
     readonly originalQuery: Record<string, any>;
     readonly voidTarget: Fee | null;
-    readonly voidForm: FormInstance<any>;
+    readonly voidForm: FormInstance<InvoiceVoidFormValues>;
     readonly setVoidTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
     readonly invoiceNumberTarget: Fee | null;
-    readonly invoiceNumberForm: FormInstance<any>;
+    readonly invoiceNumberForm: FormInstance<InvoiceNumberFormValues>;
     readonly setInvoiceMutationLoading: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setInvoiceNumberTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
     readonly invoiceDateTarget: Fee | null;
-    readonly invoiceDateForm: FormInstance<any>;
+    readonly invoiceDateForm: FormInstance<InvoiceDateFormValues>;
     readonly setInvoiceDateTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
     readonly invoiceCancel: Fee | null;
     readonly invoiceCancelReason: string;
@@ -229,7 +240,7 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
         }
     };
     const loadInvoiceMine = async (query: Record<string, any>, page = 1, pageSize = context.invoiceMineMeta.pageSize) => {
-        const { invoiceMineMeta, invoiceMineParams, setInvoiceMineRows, setInvoiceMineMeta } = context;
+        const { invoiceMineParams, setInvoiceMineRows, setInvoiceMineMeta } = context;
         const response = await api.get("/finance/invoices", {
             params: invoiceMineParams(query, page, pageSize),
         });
@@ -243,7 +254,7 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
         });
     };
     const loadInvoiceCompany = async (query: Record<string, any>, page = 1, pageSize = context.invoiceCompanyMeta.pageSize) => {
-        const { invoiceCompanyMeta, invoiceCompanyParams, setInvoiceCompanyRows, setInvoiceCompanyMeta } = context;
+        const { invoiceCompanyParams, setInvoiceCompanyRows, setInvoiceCompanyMeta } = context;
         const response = await api.get("/finance/invoices", {
             params: invoiceCompanyParams(query, page, pageSize),
         });
@@ -257,7 +268,7 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
         });
     };
     const loadInvoiceUnissued = async (query: Record<string, any>, page = 1, pageSize = context.invoiceUnissuedMeta.pageSize) => {
-        const { invoiceUnissuedMeta, invoiceUnissuedParams, setInvoiceUnissuedRows, setInvoiceUnissuedMeta } = context;
+        const { invoiceUnissuedParams, setInvoiceUnissuedRows, setInvoiceUnissuedMeta } = context;
         const response = await api.get("/finance/case-fees/invoice-status", {
             params: invoiceUnissuedParams(query, page, pageSize),
         });
@@ -273,7 +284,7 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
         });
     };
     const loadInvoicePending = async (query: Record<string, any>, page = 1, pageSize = context.invoicePendingMeta.pageSize) => {
-        const { invoicePendingMeta, invoicePendingParams, setInvoicePendingRows, setInvoicePendingMeta } = context;
+        const { invoicePendingParams, setInvoicePendingRows, setInvoicePendingMeta } = context;
         const response = await api.get("/finance/invoices", {
             params: invoicePendingParams(query, page, pageSize),
         });
@@ -321,6 +332,30 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
         return { contractRows, customerRows, candidateRows, selectedRows, customerDefaults: data.customer_defaults,
             sourceFields, customerRecord: data.customer_record, customerMissing: data.customer_missing_or_forbidden,
             total: Number(data.total || 0), page: Number(data.page || 1), pageSize: Number(data.page_size || 50) };
+    };
+    const openInvoiceEdit = async (source: FinanceFlow) => {
+        const { invoiceDetailRequestGuard, setInvoiceEditTarget, setInvoiceSelectedFeeIds, invoiceForm, setInvoiceOpen } = context;
+        const token = invoiceDetailRequestGuard.begin();
+        try {
+            const row = await loadInvoiceRecord(source.id);
+            if (!invoiceDetailRequestGuard.isLatest(token)) return;
+            if (!["草稿", "已驳回"].includes(row.status)) { message.warning("当前发票状态不能编辑"); return; }
+            const values = invoiceEditValues(row);
+            const reference = await loadInvoiceReferenceData({
+                invoice_id: row.id, customer: row.customer,
+                selected_fee_ids: values.case_fee_ids.join(","),
+                isCurrent: () => invoiceDetailRequestGuard.isLatest(token),
+            });
+            if (!invoiceDetailRequestGuard.isLatest(token)) return;
+            setInvoiceEditTarget(row);
+            setInvoiceSelectedFeeIds(values.case_fee_ids);
+            invoiceForm.resetFields();
+            invoiceForm.setFieldsValue({ ...reference.customerDefaults, ...values, ...reference.sourceFields });
+            setInvoiceOpen(true);
+        } catch (error: unknown) {
+            if (invoiceDetailRequestGuard.isLatest(token))
+                message.error(financeErrorDetail(error) || financeErrorMessageText(error) || "发票编辑信息加载失败");
+        }
     };
     const createInvoice = async (submit = false) => {
         const { invoiceForm, cases, invoiceEditTarget, setInvoiceOpen, setInvoiceEditTarget, load } = context;
@@ -601,5 +636,5 @@ export function createFinanceInvoicesActions(context: FinanceInvoicesDependencie
             setInvoiceExportLoading(false);
         }
     };
-    return { openInvoiceDetail, loadInvoiceMine, loadInvoiceCompany, loadInvoiceUnissued, loadInvoicePending, loadInvoiceReferenceData, createInvoice, issueInvoice, rejectInvoiceIssue, voidInvoice, submitInvoiceNumberChange, submitInvoiceDateChange, submitInvoiceCancel, exportInvoiceList, exportInvoiceUnissued };
+    return { openInvoiceDetail, openInvoiceEdit, loadInvoiceMine, loadInvoiceCompany, loadInvoiceUnissued, loadInvoicePending, loadInvoiceReferenceData, createInvoice, issueInvoice, rejectInvoiceIssue, voidInvoice, submitInvoiceNumberChange, submitInvoiceDateChange, submitInvoiceCancel, exportInvoiceList, exportInvoiceUnissued };
 }

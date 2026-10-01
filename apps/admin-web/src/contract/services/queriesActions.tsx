@@ -238,7 +238,7 @@ export function createContractQueriesActions(context: ContractQueriesDependencie
         }
     };
     const reloadContractEvents = async (contract: Contract, page = 1, keyword = context.contractEventKeyword, pageSize = context.contractEventPageSize) => {
-        const { contractEventKeyword, contractEventPageSize, contractEventRequestTracker, setContractEvents, setContractEventTotal, setContractEventsError, setContractEventsLoading, setContractEventPage, setContractEventPageSize, setContractEventKeyword } = context;
+        const { contractEventRequestTracker, setContractEvents, setContractEventTotal, setContractEventsError, setContractEventsLoading, setContractEventPage, setContractEventPageSize, setContractEventKeyword } = context;
         const eventRequestId = contractEventRequestTracker.current.next();
         const eventRequest = buildContractEventsRequest(contract, { page, pageSize, keyword });
         if (!eventRequest.path) {

@@ -96,32 +96,32 @@ async def import_evidence_records(file: UploadFile = File(...), identity: dict =
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=422, detail="CSV 必须使用 UTF-8 编码") from exc
     clues = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "clue", *(await _record_scope_conditions(identity, db))))).all()
-    clue_by_no = {item.serial_no.strip().casefold(): item for item in clues}
+    clue_ids_by_no = {item.serial_no.strip().casefold(): item.id for item in clues}
     created = 0; errors: list[dict] = []
     for row_no, row in enumerate(csv.DictReader(io.StringIO(content)), 2):
         try:
-            title = (row.get("证据标题") or row.get("title") or "").strip()
-            clue_no = (row.get("关联线索编号") or row.get("clue_no") or "").strip()
-            if not title:
-                raise ValueError("证据标题为必填项")
-            clue = clue_by_no.get(clue_no.casefold()) if clue_no else None
-            if clue_no and not clue:
-                raise ValueError("关联线索编号未找到或无权访问")
-            entry = EvidenceRegistrationItem(
-                title=title,
-                owner=(row.get("负责人") or row.get("owner") or "").strip(),
-                source=(row.get("材料来源") or row.get("source") or "调查取证").strip(),
-                description=(row.get("说明") or row.get("description") or "").strip(),
-                clue_id=clue.id if clue else None,
-                notarization_no=(row.get("公证编号") or row.get("notarization_no") or "").strip(),
-                invoice_no=(row.get("发票号") or row.get("invoice_no") or "").strip(),
-                storage_location=(row.get("存放位置") or row.get("storage_location") or "").strip(),
-                storage_state=(row.get("存放状态") or row.get("storage_state") or "待整理").strip(),
-            )
-            record = await _build_evidence_record(entry, identity, db)
+            async with db.begin_nested():
+                title = (row.get("证据标题") or row.get("title") or "").strip()
+                clue_no = (row.get("关联线索编号") or row.get("clue_no") or "").strip()
+                if not title:
+                    raise ValueError("证据标题为必填项")
+                clue_id = clue_ids_by_no.get(clue_no.casefold()) if clue_no else None
+                if clue_no and not clue_id:
+                    raise ValueError("关联线索编号未找到或无权访问")
+                entry = EvidenceRegistrationItem(
+                    title=title,
+                    owner=(row.get("负责人") or row.get("owner") or "").strip(),
+                    source=(row.get("材料来源") or row.get("source") or "调查取证").strip(),
+                    description=(row.get("说明") or row.get("description") or "").strip(),
+                    clue_id=clue_id,
+                    notarization_no=(row.get("公证编号") or row.get("notarization_no") or "").strip(),
+                    invoice_no=(row.get("发票号") or row.get("invoice_no") or "").strip(),
+                    storage_location=(row.get("存放位置") or row.get("storage_location") or "").strip(),
+                    storage_state=(row.get("存放状态") or row.get("storage_state") or "待整理").strip(),
+                )
+                await _build_evidence_record(entry, identity, db)
             created += 1
         except (HTTPException, ValueError) as exc:
-            await db.rollback()
             errors.append({"row": row_no, "error": str(exc) or "证据登记失败"})
     await db.commit()
     return {"created": created, "failed": len(errors), "errors": errors}

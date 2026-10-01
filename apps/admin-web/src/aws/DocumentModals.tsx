@@ -13,7 +13,7 @@ import {
 import { UploadOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import dayjs from "dayjs";
-import type { ReceiptRow, RecordRow, SealAsset, Template, Attachment } from "./types";
+import type { RecordRow, SealAsset, Template, Attachment } from "./types";
 import { allCategories, fileSize, templateCategoryOptions } from "./constants";
 
 // ===== 收发文登记 Modal =====

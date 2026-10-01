@@ -71,7 +71,7 @@ export const buildCaseCreatePayload = (
   investigation_clue: text(draft.investigation_clue),
 });
 
-export const getCaseEditValidationError = (draft: Record<string, unknown>, requireCustomer = true) => {
+export const getCaseEditValidationError = (draft: Record<string, unknown>, _requireCustomer = true) => {
   if (!Number(draft.customer_record_id)) return "请选择可见且有效的客户.";
   if (!text(draft.case_phase)) return "请选择案件阶段.";
   if (!text(draft.cause_or_charge)) return "请输入案由或罪名.";

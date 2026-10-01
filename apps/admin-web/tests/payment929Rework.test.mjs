@@ -7,6 +7,8 @@ async function loadActualModule(relative) {
   const compiled = await build({ entryPoints: [fileURLToPath(new URL(relative, import.meta.url))],
     bundle: true, write: false, platform: "node", format: "esm", logLevel: "silent",
     plugins: [{ name: "isolated-adapters", setup(plugin) {
+      plugin.onResolve({ filter: /\.css$/ }, (args) => ({ path: args.path, namespace: "test-style" }));
+      plugin.onLoad({ filter: /.*/, namespace: "test-style" }, () => ({ contents: "", loader: "js" }));
       plugin.onResolve({ filter: /^antd$|^\.\.\/\.\.\/api$/ }, (args) => ({ path: args.path, namespace: "test-adapter" }));
       plugin.onLoad({ filter: /.*/, namespace: "test-adapter" }, (args) => ({ contents: args.path === "antd"
         ? "export const message=globalThis.__paymentReworkMessages; export const Button=()=>null; export const Dropdown=()=>null; export const Modal={}; export const Table=()=>null;"
@@ -26,7 +28,8 @@ test("实际案件请款入口使用跨入口可申请余额，零余额不打�
   const actions = createCaseFinanceActions({ counselDetailCapabilities: { can_create_finance: true },
     paymentRequestForm: { resetFields: () => {}, setFieldsValue: (value) => { values = value; } },
     setPaymentTypeSearch: () => {}, setPaymentRequestFee: (value) => { opened = value; },
-    setCasePaymentTypesLoading: () => {}, setCasePaymentTypes: () => {} });
+    setCasePaymentTypesLoading: () => {}, setCasePaymentTypes: () => {}, setCasePaymentTypesError: () => {},
+    casePaymentTypeRequestRef: { current: 0 }, casePaymentTypeFeeRef: { current: null } });
   const fee = { id: 1, status: "部分付款", data: { amount: 100, paid_amount: 30,
     payment_requested_amount: 90, payment_remaining_amount: 10, payment_type_id: 1 } };
   await actions.openPaymentRequest(fee);

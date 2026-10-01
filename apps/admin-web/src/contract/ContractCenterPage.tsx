@@ -21,27 +21,17 @@ import { readContractListPagination,saveContractListPagination } from "../contra
 import { saveContractListQuery } from "../contractListQuery";
 import { createContractMutationGate } from "../contractMutationGate.mjs";
 import {
-CONTRACT_OBJECT_DEFAULT_PAGE_SIZE,
-paginateContractObjectRows
-} from "../contractObjectListPolicy.mjs";
-import {
-contractObjectActionPolicy,
-normalizeIncomingPaymentForContract,
-normalizeInvoiceObject,
-normalizePaidObject
-} from "../contractObjectPresentation.mjs";
+CONTRACT_OBJECT_DEFAULT_PAGE_SIZE} from "../contractObjectListPolicy.mjs";
 import { buildContractPaymentNavigation } from "../contractPaymentNavigation";
 import { buildChinesePersonOptions,displayChinesePersonName,displayChinesePersonNames } from "../contractPeoplePresentation.mjs";
 import { displayContractStatus } from "../contractStatusPresentation.mjs";
 import * as contractWorkflowPolicyModule from "../contractWorkflowPolicy.mjs";
 import {
 buildContractDraftDefaults,
-buildContractEventsRequest,
 buildContractListRequestParams,
 canAccessContractView,
 contractAuditActionPolicy,
 contractListActionPolicy,
-contractListViewConfig,
 contractSecondaryActionPolicy,
 createContractEventRequestTracker,
 createContractEventSubmitGate,
@@ -207,7 +197,7 @@ export default function ContractCenterPage({
   const [objectLogTarget, setObjectLogTarget] = useState<ContractObjectRow | null>(null);
   const [viewingAttachmentsLoading, setViewingAttachmentsLoading] = useState(false);
   const [viewingAttachmentsError, setViewingAttachmentsError] = useState<string | null>(null);
-  const { attachmentPreview, setAttachmentPreview, closeAttachmentPreview } = useContractAttachmentPreview();
+  const { attachmentPreview, closeAttachmentPreview } = useContractAttachmentPreview();
   const viewingAttachmentRequest = useRef(0);
   const contractEventRequestTracker = useRef(createContractEventRequestTracker());
   const contractListRequestGuard = useRef(createContractListRequestGuard()).current;
@@ -253,7 +243,7 @@ export default function ContractCenterPage({
   const investigationRegion = Form.useWatch("region", investigationForm);
   const selectedContractPaymentTypeId = Form.useWatch("payment_type_id", paymentForm);
   const selectedContractPaymentType = paymentTypes.find((item) => item.value === Number(selectedContractPaymentTypeId));
-  const listViewConfig = contractListViewConfig(initialView);
+
   const isArchiveView = initialView === "contract-archive";
   const closeViewing = () => {
     viewingAttachmentRequest.current += 1;
@@ -288,7 +278,7 @@ export default function ContractCenterPage({
     setViewingAttachmentsLoading(false);
     setDetailActiveTab("objects");
   };
-  const { openViewing, reloadContractEvents, reloadDetailApprovals, resolveContractDetailTarget, load, loadWizardContext, refreshWizard, exportCsv, exportExcel, exportContractDetailExcel, openRelatedCustomer, openRelatedCase } = createContractQueriesActions({
+  const { openViewing, reloadContractEvents, reloadDetailApprovals, load, loadWizardContext, refreshWizard, exportCsv, exportExcel, exportContractDetailExcel, openRelatedCustomer, openRelatedCase } = createContractQueriesActions({
     get isContractDetailView() { return isContractDetailView; },
     get initialView() { return initialView; },
     get query() { return query; },
@@ -372,7 +362,7 @@ export default function ContractCenterPage({
     get setAttachmentBatchSaving() { return setAttachmentBatchSaving; },
   });
 
-  const { saveContractObject, deleteContractObject, recoverWizard, openSubmitWizardFromList, save, submitWizard, approveWizard, createSealApplication, submit, openReview, approve, saveChange, reviewChange, openChanges, createContractEvent, openInvestigation, createInvestigation, advanceInvestigationWizard, startSelectedSeal, openApproverSettings, saveApproverSettings } = createContractWorkflowActions({
+  const { saveContractObject, deleteContractObject, openSubmitWizardFromList, save, submitWizard, approveWizard, createSealApplication, submit, openReview, approve, saveChange, reviewChange, createContractEvent, openInvestigation, createInvestigation, advanceInvestigationWizard, startSelectedSeal, openApproverSettings, saveApproverSettings } = createContractWorkflowActions({
     get viewing() { return viewing; },
     get contractCapabilities() { return contractCapabilities; },
     get denyContractAction() { return denyContractAction; },
@@ -929,8 +919,7 @@ export default function ContractCenterPage({
     };
   };
 
-  const needSelected = (action: () => void) =>
-    selected ? action() : message.warning("请先选择一份合同");
+
   const selected = rows.find((row) => row.id === Number(selectedRowKeys[0]));
   const selectedActionPolicy = contractListActionPolicy(selected?.status);
   const selectedSecondaryActionPolicy = contractSecondaryActionPolicy(selected?.status);
@@ -991,24 +980,14 @@ export default function ContractCenterPage({
       canApproveCurrent: approvalCapabilities?.can_approve_current,
     }).canApprove,
   );
-  const contractObjectPolicy = contractObjectActionPolicy(viewing?.status);
-  const detailSecondaryActionPolicy = contractSecondaryActionPolicy(viewing?.status);
-  const detailContractCapabilities = contractCapabilities(viewing);
-  const presentedReceipts = detailReceipts.map((row) => {
-    const item = normalizeIncomingPaymentForContract(row, viewing || {});
-    if (!item) return null;
-    return { ...row, receipt_no: item.sequenceNo, received_date: item.receivedDate, bank_reference: item.bankReference, amount: item.amount, official_amount: item.officialAmount, agency_amount: item.agencyAmount, other_amount: item.otherAmount, payment_method: item.paymentMethod, claimant: item.claimant };
-  }).filter(Boolean);
-  const presentedInvoices = detailInvoices.map((row) => {
-    const item = normalizeInvoiceObject(row);
-    return { ...row, serial_no: item.applicationNo, status: item.status, description: item.remark, data: { ...row.data, invoice_no: item.invoiceNo, invoice_date: item.invoiceDate, amount: item.amount, official_amount: item.officialAmount, agency_amount: item.agencyAmount, other_amount: item.otherAmount, __lineThrough: item.lineThrough } };
-  });
-  const presentedPayments = detailPayments.map((row) => {
-    const item = normalizePaidObject(row);
-    return { ...row, serial_no: item.applicationNo, data: { ...row.data, applicant: item.applicant, pending_amount: item.pendingAmount, payment_date: item.paymentDate, payment_reference: item.packageNo, amount: item.paidAmount, payment_type: item.paymentType, official_amount: item.officialAmount, other_amount: item.otherAmount, __lineThrough: item.lineThrough } };
-  });
-  const viewingHasEventEndpoint = Boolean(viewing && buildContractEventsRequest(viewing, { page: contractEventPage, pageSize: contractEventPageSize, keyword: contractEventKeyword }).path);
-  const objectPageData = paginateContractObjectRows(contractObjects, objectPage, objectPageSize);
+
+
+
+
+
+
+
+
   const approvalOptions = buildChinesePersonOptions(directory, (user: DirectoryUser) => Boolean(user.can_approve_contract));
   const sealApprovalOptions = buildChinesePersonOptions(directory, (user: DirectoryUser) => Boolean(user.can_approve_seal));
 

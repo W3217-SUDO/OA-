@@ -8,7 +8,7 @@ export async function load(entry, api, messages = []) {
     name: 'isolated-api', setup(builder) {
       builder.onResolve({ filter: /\/api$/ }, () => ({ path: 'api', namespace: 'test' }));
       builder.onResolve({ filter: /^antd$/ }, () => ({ path: 'antd', namespace: 'test' }));
-      builder.onLoad({ filter: /.*/, namespace: 'test' }, ({ path }) => ({ contents: path === 'api' ? 'export const api=globalThis.__reworkApi;' : 'export const message=globalThis.__reworkMessage; export const Modal={}; export const Checkbox=()=>null; export const Space=()=>null; export const Select="select-probe";' }));
+      builder.onLoad({ filter: /.*/, namespace: 'test' }, ({ path }) => ({ contents: path === 'api' ? 'export const api=globalThis.__reworkApi;' : 'export const message=globalThis.__reworkMessage; export const Modal={}; export const Form={ Item:()=>null }; export const Input=()=>null; export const Checkbox=()=>null; export const Space=()=>null; export const Select="select-probe";' }));
     },
   }] });
   const target = new Module(fileURLToPath(import.meta.url));

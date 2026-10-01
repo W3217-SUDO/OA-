@@ -1,8 +1,9 @@
 import { Input,Modal } from "antd";
+import type { ArchiveSettlementTarget, Fee } from "./types";
 
-interface SettlementReviewModalsProps {
+export interface SettlementReviewModalsProps {
   // 普通结算申请
-  generalApplyTargets: any[];
+  generalApplyTargets: (string | number)[];
   generalApplyComment: string;
   generalApplyBusy: boolean;
   onGeneralApplyCommentChange: (value: string) => void;
@@ -10,7 +11,7 @@ interface SettlementReviewModalsProps {
   onGeneralApplyCancel: () => void;
 
   // 普通结算审核
-  generalReviewTargets: any[];
+  generalReviewTargets: Fee[];
   generalReviewApproved: boolean;
   generalReviewComment: string;
   generalReviewBusy: boolean;
@@ -19,8 +20,8 @@ interface SettlementReviewModalsProps {
   onGeneralReviewCancel: () => void;
 
   // 普通结算付款
-  generalPaymentTargets: any[];
-  generalPaymentAction: string;
+  generalPaymentTargets: Fee[];
+  generalPaymentAction: "paid" | "rollback";
   generalPaymentComment: string;
   generalPaymentBusy: boolean;
   onGeneralPaymentCommentChange: (value: string) => void;
@@ -28,7 +29,7 @@ interface SettlementReviewModalsProps {
   onGeneralPaymentCancel: () => void;
 
   // 普通结算重新申请
-  generalReapplyTargets: any[];
+  generalReapplyTargets: Fee[];
   generalReapplyComment: string;
   generalReapplyBusy: boolean;
   onGeneralReapplyCommentChange: (value: string) => void;
@@ -36,7 +37,7 @@ interface SettlementReviewModalsProps {
   onGeneralReapplyCancel: () => void;
 
   // 归档费结算审核
-  archiveReviewTargets: any[];
+  archiveReviewTargets: ArchiveSettlementTarget[];
   archiveReviewApproved: boolean;
   archiveReviewComment: string;
   archiveReviewBusy: boolean;
@@ -45,7 +46,7 @@ interface SettlementReviewModalsProps {
   onArchiveReviewCancel: () => void;
 
   // 归档费结算回滚
-  archiveRollbackTargets: any[];
+  archiveRollbackTargets: ArchiveSettlementTarget[];
   archiveRollbackComment: string;
   archiveRollbackBusy: boolean;
   isArchiveRejectedRoute: boolean;
@@ -54,7 +55,7 @@ interface SettlementReviewModalsProps {
   onArchiveRollbackCancel: () => void;
 
   // 归档费重新申请
-  archiveReapplyTargets: any[];
+  archiveReapplyTargets: ArchiveSettlementTarget[];
   archiveReapplyComment: string;
   archiveReapplyBusy: boolean;
   onArchiveReapplyCommentChange: (value: string) => void;

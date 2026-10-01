@@ -31,7 +31,6 @@ import { rememberCustomerDetailTarget } from "../customerDetailNavigation";
 import { resolveDetailRelation } from "../detailRelationResolver";
 import { consumeBusinessRecordDetailTarget } from "../businessRecordDetailNavigation";
 import {
-  canBatchDeleteSealFiles,
   canBatchStampSealRows,
   canBatchWithdrawSealRows,
   canSealAction,
@@ -52,45 +51,34 @@ import {
   selectedSealRows,
   shouldCloseSealAssetAuditAfterDelete,
   sealErrorMessage,
-  sealResponseIsFailure,
   sealAttachmentTotal,
   sealRouteStatuses,
   toSealAuditRows,
 } from "../sealWorkflowPolicy";
-import type { SealAssetAuditRow, SealAuditRow } from "../sealWorkflowPolicy";
+import type { SealAssetAuditRow } from "../sealWorkflowPolicy";
 import { formatRequiredDate } from "../formSafety";
-import RecordImportButton from "../RecordImportButton";
 import "../seal-center.css";
 
 import type {
-  AssetAuditFilters,
   AttachmentRow,
   EventRow,
   RelationRow,
-  SealActionState,
   SealAsset,
-  SealPreviewMode,
   SealRow,
   Summary,
 } from "./types";
 import {
-  SEAL_APPLICATION_FILE_CATEGORY,
   SEAL_STAMPED_FILE_CATEGORY,
   assetColors,
-  displayStatus,
-  getSealPreviewMode,
   listSealRowFileNames,
   personDisplayName,
   sealActionFailureMessage,
   sealAttachmentDeleteFailureMessage,
   sealAttachmentDownloadFailureMessage,
-  sealAttachmentLabel,
   sealAttachmentListLabel,
   sealAttachmentPreviewFailureMessage,
   sealPackageDownloadFailureMessage,
   sealStatusOptions,
-  sealTypes,
-  sealUploadExtensions,
   statusColors,
   validateSealUploadFile,
 } from "./constants";
@@ -103,45 +91,8 @@ import { SealCreateModal } from "./SealCreateModal";
 import { SealDetailDrawer } from "./SealDetailDrawer";
 import { SealFileListModal } from "./SealFileListModal";
 import { SealPreviewModal } from "./SealPreviewModal";
-
-function ensureSealSuccess<T extends { data?: unknown }>(response: T, fallback: string): T {
-  if (sealResponseIsFailure(response.data)) {
-    const failure = new Error(sealErrorMessage(response.data, fallback)) as Error & {
-      response?: { data?: unknown };
-    };
-    failure.response = { data: { detail: failure.message } };
-    throw failure;
-  }
-  return response;
-}
-async function postSeal(url: string, data?: unknown) {
-  return ensureSealSuccess(await api.post(url, data), "鐢ㄥ嵃鎿嶄綔澶辫触");
-}
-async function patchSeal(url: string, data?: unknown) {
-  return ensureSealSuccess(await api.patch(url, data), "鐢ㄥ嵃淇濆瓨澶辫触");
-}
-async function deleteSeal(url: string) {
-  return ensureSealSuccess(await api.delete(url), "鐢ㄥ嵃鍒犻櫎澶辫触");
-}
-async function postSealBlob(url: string, data: unknown, config: any) {
-  const response = await api.post(url, data, config);
-  if (typeof Blob !== "undefined" && response.data instanceof Blob && response.data.type.includes("json")) {
-    let payload: unknown;
-    try {
-      payload = JSON.parse(await response.data.text());
-    } catch {
-      payload = undefined;
-    }
-    if (sealResponseIsFailure(payload)) {
-      const failure = new Error(sealErrorMessage(payload, "鎵撳寘涓嬭浇澶辫触")) as Error & {
-        response?: { data?: unknown };
-      };
-      failure.response = { data: { detail: failure.message } };
-      throw failure;
-    }
-  }
-  return ensureSealSuccess(response, "鎵撳寘涓嬭浇澶辫触");
-}
+import { ensureSealSuccess, postSeal, patchSeal, deleteSeal, postSealBlob } from "./sealRequests";
+import { useSealSourceAttachments } from "./useSealSourceAttachments";
 export default function SealCenterPage({
   initialView,
   onNavigate,
@@ -217,7 +168,7 @@ export default function SealCenterPage({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
   const [previewText, setPreviewText] = useState("");
-  const [previewMode, setPreviewMode] = useState<"binary" | "text" | "unsupported">("binary");
+  const [previewMode] = useState<"binary" | "text" | "unsupported">("binary");
   const [previewDetail, setPreviewDetail] = useState("");
   const [previewName, setPreviewName] = useState("");
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
@@ -242,11 +193,6 @@ export default function SealCenterPage({
   const [stampAttachmentTotal, setStampAttachmentTotal] = useState(0);
   const [stampAttachmentUploading, setStampAttachmentUploading] = useState(false);
   const [stampAttachmentUploadFailed, setStampAttachmentUploadFailed] = useState(false);
-  const [sourceAttachments, setSourceAttachments] = useState<AttachmentRow[]>([]);
-  const [sourceAttachmentLoading, setSourceAttachmentLoading] = useState(false);
-  const [sourceAttachmentPage, setSourceAttachmentPage] = useState(1);
-  const [sourceAttachmentPageSize, setSourceAttachmentPageSize] = useState(sealFilePagination.defaultPageSize);
-  const [sourceAttachmentTotal, setSourceAttachmentTotal] = useState(0);
   const [action, setAction] = useState<{
     type: "approve" | "reject" | "stamp" | "archive";
     row: SealRow;
@@ -277,150 +223,23 @@ export default function SealCenterPage({
     }
     return null;
   }, [cases, contracts, isCaseSeal, isContractSeal, selectedCaseNo, selectedContractNo]);
-  useEffect(() => {
-    if (!createOpen) return;
-    if (!selectedSourceRecord) {
-      setSourceAttachments([]);
-      setSourceAttachmentPage(1);
-      setSourceAttachmentPageSize(sealFilePagination.defaultPageSize);
-      setSourceAttachmentTotal(0);
-      createForm.setFieldValue("source_attachment_ids", []);
-      return;
-    }
-    let active = true;
-    const nextPageSize = sealFilePagination.defaultPageSize;
-    setSourceAttachmentLoading(true);
-    setSourceAttachmentPage(1);
-    setSourceAttachmentPageSize(nextPageSize);
-    setSourceAttachmentTotal(0);
-    api
-      .get("/attachments", {
-        params: {
-          record_id: selectedSourceRecord.id,
-          page: 1,
-          page_size: nextPageSize,
-        },
-      })
-      .then(({ data }) => {
-        if (!active) return;
-        const items = Array.isArray(data.items) ? data.items : [];
-        setSourceAttachments(items);
-        setSourceAttachmentPage(Number(data.page) || 1);
-        setSourceAttachmentPageSize(Number(data.page_size) || nextPageSize);
-        setSourceAttachmentTotal(Number(data.total) || items.length);
-        const availableIds = new Set(items.map((item: AttachmentRow) => Number(item.id)));
-        const selectedIds = createForm.getFieldValue("source_attachment_ids");
-        if (Array.isArray(selectedIds)) {
-          const nextIds = selectedIds
-            .map((id) => Number(id))
-            .filter((id) => Number.isFinite(id) && availableIds.has(id));
-          if (nextIds.length !== selectedIds.length) {
-            createForm.setFieldValue("source_attachment_ids", nextIds);
-          }
-        }
-      })
-      .catch((error: any) => {
-        if (!active) return;
-        setSourceAttachments([]);
-        message.error(
-          error?.response?.data?.detail ||
-            sealAttachmentListFailureMessage(error?.response?.status),
-        );
-      })
-      .finally(() => {
-        if (active) setSourceAttachmentLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [createForm, createOpen, selectedSourceRecord?.id]);
-  const loadMoreSourceAttachments = async () => {
-    if (!selectedSourceRecord || sourceAttachmentLoading) return;
-    if (sourceAttachmentTotal > 0 && sourceAttachments.length >= sourceAttachmentTotal) return;
-    const nextPage = sourceAttachmentPage + 1;
-    setSourceAttachmentLoading(true);
-    try {
-      const { data } = await api.get("/attachments", {
-        params: {
-          record_id: selectedSourceRecord.id,
-          page: nextPage,
-          page_size: sourceAttachmentPageSize,
-        },
-      });
-      const items = Array.isArray(data.items) ? data.items : [];
-      setSourceAttachments((current) => {
-        const seen = new Set(current.map((item) => Number(item.id)));
-        return [
-          ...current,
-          ...items.filter((item: AttachmentRow) => !seen.has(Number(item.id))),
-        ];
-      });
-      setSourceAttachmentPage(Number(data.page) || nextPage);
-      setSourceAttachmentPageSize(Number(data.page_size) || sourceAttachmentPageSize);
-      setSourceAttachmentTotal(Number(data.total) || sourceAttachmentTotal);
-    } catch (error: any) {
-      message.error(
-        error?.response?.data?.detail ||
-          sealAttachmentListFailureMessage(error?.response?.status),
-      );
-    } finally {
-      setSourceAttachmentLoading(false);
-    }
-  };
-  const selectAllSourceAttachments = async () => {
-    if (!selectedSourceRecord || sourceAttachmentLoading) return;
-    setSourceAttachmentLoading(true);
-    try {
-      const allItems: AttachmentRow[] = [];
-      let nextPage = 1;
-      let total = 0;
-      let pageSize = sourceAttachmentPageSize || sealFilePagination.defaultPageSize;
-      while (allItems.length < total || nextPage === 1) {
-        const { data } = await api.get("/attachments", {
-          params: {
-            record_id: selectedSourceRecord.id,
-            page: nextPage,
-            page_size: pageSize,
-          },
-        });
-        const items = Array.isArray(data.items) ? data.items : [];
-        const seen = new Set(allItems.map((item) => Number(item.id)));
-        allItems.push(
-          ...items.filter(
-            (item: AttachmentRow) => !seen.has(Number(item.id)),
-          ),
-        );
-        total = Number(data.total) || allItems.length;
-        pageSize = Number(data.page_size) || pageSize;
-        const resolvedPage = Number(data.page) || nextPage;
-        if (!items.length || allItems.length >= total) break;
-        nextPage = resolvedPage + 1;
-      }
-      setSourceAttachments(allItems);
-      setSourceAttachmentPage(Math.max(1, nextPage));
-      setSourceAttachmentPageSize(pageSize);
-      setSourceAttachmentTotal(total || allItems.length);
-      createForm.setFieldValue(
-        "source_attachment_ids",
-        allItems.map((item) => item.id),
-      );
-    } catch (error: any) {
-      message.error(
-        error?.response?.data?.detail ||
-          sealAttachmentListFailureMessage(error?.response?.status),
-      );
-    } finally {
-      setSourceAttachmentLoading(false);
-    }
-  };
+  const {
+    attachments: sourceAttachments,
+    loading: sourceAttachmentLoading,
+    total: sourceAttachmentTotal,
+    reset: resetSourceAttachments,
+    loadMore: loadMoreSourceAttachments,
+    selectAll: selectAllSourceAttachments,
+  } = useSealSourceAttachments({
+    createOpen,
+    sourceRecordId: selectedSourceRecord?.id ?? null,
+    createForm,
+  });
   const handleUseTypeChange = (nextUseType: string) => {
     const nextIsContractSeal = nextUseType === "合同用印";
     const nextIsCaseSeal = nextUseType === "案件用印";
     const nextShowSourceRelationFields = nextIsContractSeal || nextIsCaseSeal;
-    setSourceAttachments([]);
-    setSourceAttachmentPage(1);
-    setSourceAttachmentPageSize(sealFilePagination.defaultPageSize);
-    setSourceAttachmentTotal(0);
+    resetSourceAttachments();
     if (!nextShowSourceRelationFields) {
       createForm.setFieldsValue({
         customer: undefined,
@@ -782,7 +601,7 @@ export default function SealCenterPage({
       const response = editingApplication
         ? await patchSeal(`/seals/applications/${editingApplication.id}`, data)
         : await postSeal("/seals/applications", data);
-      ensureSealSuccess(response, "鐢宠淇濆瓨澶辫触");
+      ensureSealSuccess(response, "申请保存失败");
       const savedApplication = response.data as SealRow;
       setEditingApplication(savedApplication);
       const queuedFilesUploaded = pendingCreateFiles.length
@@ -821,11 +640,7 @@ export default function SealCenterPage({
   const openApplication = (row?: SealRow) => {
     setEditingApplication(row || null);
     setPendingCreateFiles([]);
-    setSourceAttachments([]);
-    setSourceAttachmentLoading(false);
-    setSourceAttachmentPage(1);
-    setSourceAttachmentPageSize(sealFilePagination.defaultPageSize);
-    setSourceAttachmentTotal(0);
+    resetSourceAttachments({ clearLoading: true });
     createForm.resetFields();
     createForm.setFieldsValue(
       row
@@ -867,7 +682,7 @@ export default function SealCenterPage({
     }
     setActionSubmitting(true);
     try {
-      const response = await postSeal(`/seals/applications/${row.id}/submit`, {
+      await postSeal(`/seals/applications/${row.id}/submit`, {
         comment: "申请人确认材料无误并提交",
       });
       message.success("已提交用印审批");
@@ -1432,9 +1247,7 @@ export default function SealCenterPage({
       return false;
     }
   };
-  const uploadSealFile = async (file: File) => {
-    await uploadSealFiles([file]);
-  };
+
   const removeSealFile = async (item: AttachmentRow) => {
     if (!actionGate.tryEnter()) {
       message.info("操作正在提交，请勿重复点击");
@@ -1912,11 +1725,7 @@ export default function SealCenterPage({
     setCreateOpen(false);
     setEditingApplication(null);
     setPendingCreateFiles([]);
-    setSourceAttachments([]);
-    setSourceAttachmentPage(1);
-    setSourceAttachmentPageSize(sealFilePagination.defaultPageSize);
-    setSourceAttachmentTotal(0);
-    createForm.setFieldValue("source_attachment_ids", []);
+    resetSourceAttachments({ clearSelection: true });
   };
 
   const handleCreateSave = () => {

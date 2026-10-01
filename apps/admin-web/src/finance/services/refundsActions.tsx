@@ -4,27 +4,25 @@ import dayjs from "dayjs";
 import { api } from "../../api";
 import { normalizeRefundResponse, refreshRefundListWithFallback, refundAmountUpdateRequest, refundBatchStatusRequest, refundExportRequestParams, refundListRequest, refundLoadFailure, refundSelectedExportRequestParams, refundStatusForRoute } from "../../financeRefundHelpers.mjs";
 import { formatRequiredDate } from "../../formSafety";
-import type { Fee, FinanceFlow } from "../types";
-type OriginalFieldSpec = {
-    label: string;
-    key?: string;
-    control?: "date" | "money" | "multi";
-    options?: string[];
-    defaultValue?: any;
-    disabled?: boolean;
-    readOnly?: boolean;
-    pickerLabel?: string;
-};
-type OriginalRouteConfig = {
-    fields: OriginalFieldSpec[];
-    headers: string[];
-    source: "fees" | "incoming" | "invoices" | "settlements" | "generalSettlements" | "archiveSettlements" | "feeQuery" | "refundReviewFees" | "paymentPackages" | "unissuedFees";
-    selectable?: boolean;
-    clear?: boolean;
-    upload?: boolean;
-    export?: boolean;
-    note?: string;
-};
+import type { RefundAmountFormValues, RefundCompleteFormValues, RefundCreationFormValues } from "../formTypes";
+import type { Fee, FinanceFlow, RefundBatchFeeSubtype, RefundBatchPaymentType, RefundCaseFeeLogKind } from "../types";
+
+export async function loadRefundBatchPaymentTypes(signal?: AbortSignal): Promise<RefundBatchPaymentType[]> {
+    const { data } = await api.get<{ items?: RefundBatchPaymentType[] }>("/finance/payment-types", { signal });
+    return data.items || [];
+}
+
+export async function loadRefundBatchFeeSubTypes(feeType: string, signal?: AbortSignal): Promise<RefundBatchFeeSubtype[]> {
+    const { data } = await api.get<{ items?: RefundBatchFeeSubtype[] }>("/system/parameters/options", {
+        params: { category: "fee_type" }, signal,
+    });
+    return (data.items || []).filter((item) => item.selectable && item.base_fee_type === feeType);
+}
+
+export async function loadRefundApplicantProfile(signal?: AbortSignal): Promise<string | undefined> {
+    const { data } = await api.get<{ display_name?: string }>("/auth/me", { signal });
+    return data?.display_name;
+}
 /** finance refunds operations; dependencies are read when each operation runs. */
 export interface FinanceRefundsDependencies {
     readonly refundDetailRequestGuard: {
@@ -53,17 +51,17 @@ export interface FinanceRefundsDependencies {
     readonly setSelectedRefundRows: React.Dispatch<React.SetStateAction<number[]>>;
     readonly refunds: Fee[];
     readonly activeRefundStatus: string;
-    readonly refundForm: FormInstance<any>;
+    readonly refundForm: FormInstance<RefundCreationFormValues>;
     readonly setRefundOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly refundAmountTarget: Fee | null;
-    readonly refundAmountForm: FormInstance<any>;
+    readonly refundAmountForm: FormInstance<RefundAmountFormValues>;
     readonly setRefundMutationLoading: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setRefundAmountTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
     readonly selectedRefundRows: number[];
     readonly refundBatchStatus: string;
     readonly setRefundBatchStatusOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly refundCompleteTarget: Fee | null;
-    readonly refundCompleteForm: FormInstance<any>;
+    readonly refundCompleteForm: FormInstance<RefundCompleteFormValues>;
     readonly setRefundCompleteTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
     readonly requireRefundCaseFeeSelection: () => number[];
     readonly refundCaseFeeStatus: string;
@@ -78,9 +76,9 @@ export interface FinanceRefundsDependencies {
         pageSize: number;
         totals: Record<string, number | null>;
     };
-    readonly refundCaseFeeLogKind: "court" | "other" | "received" | null;
+    readonly refundCaseFeeLogKind: RefundCaseFeeLogKind | null;
     readonly refundCaseFeeLogContent: string;
-    readonly setRefundCaseFeeLogKind: React.Dispatch<React.SetStateAction<"court" | "other" | "received" | null>>;
+    readonly setRefundCaseFeeLogKind: React.Dispatch<React.SetStateAction<RefundCaseFeeLogKind | null>>;
     readonly setRefundCaseFeeLogContent: React.Dispatch<React.SetStateAction<string>>;
     readonly isRefundNotRequiredRoute: boolean;
     readonly refundBatchFeeForm: FormInstance<any>;
@@ -112,7 +110,7 @@ export function createFinanceRefundsActions(context: FinanceRefundsDependencies)
         }
     };
     const loadRefunds = async (page = 1, pageSize = context.refundMeta.pageSize, status = refundStatusForRoute(context.initialView, context.refundStatusFilter), preserveOnError = false, group = context.refundGroupFilter) => {
-        const { refundMeta, initialView, refundStatusFilter, refundGroupFilter, refundRequestGuard, setRefunds, setRefundMeta, setSelectedRefundRows, refunds } = context;
+        const { refundMeta, refundRequestGuard, setRefunds, setRefundMeta, setSelectedRefundRows, refunds } = context;
         const requestToken = refundRequestGuard.begin();
         try {
             const request = refundListRequest(page, pageSize, status, group);

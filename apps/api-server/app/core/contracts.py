@@ -149,7 +149,6 @@ async def _contract_customer_record_dict(
         current_step = context["current_steps"].get(record.id)
         current_approver = current_step.approver if current_step else ""
         if customer:
-            customer_data = customer.data or {}
             data["customer_id"] = customer.id
             data["customer_record_id"] = customer.id
             data["customer_no"] = customer.serial_no

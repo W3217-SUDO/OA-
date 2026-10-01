@@ -9,7 +9,7 @@ import { rememberCustomerDetailTarget } from "../../customerDetailNavigation";
 import { internalFeeExportRequestParams } from "../../financeInternalFeeHelpers.mjs";
 import { normalizeRefundResponse } from "../../financeRefundHelpers.mjs";
 import { invoiceLegacyDefaultPageSize, normalizePaymentPackageResponse, paymentPackageRequestParams } from "../constants";
-import type { ContractPaymentSourceState, Fee, FinancePersonOption, IncomingPayment, LegacyFinanceRecord, LegacyFinanceSummary, Receivable, Reconciliation, Transaction } from "../types";
+import type { ArchiveSettlementRow, ContractPaymentSourceState, Fee, FinancePersonOption, FinanceSummary, IncomingPayment, LegacyFinanceRecord, LegacyFinanceSummary, Receivable, Reconciliation, Transaction, OriginalRouteConfig } from "../types";
 
 async function loadMyInternalApplications() {
     const items: Fee[] = [];
@@ -27,26 +27,6 @@ async function loadMyInternalApplications() {
     } while (items.length < total);
     return { data: { items, total: items.length, page: 1, page_size: items.length || 15 } };
 }
-type OriginalFieldSpec = {
-    label: string;
-    key?: string;
-    control?: "date" | "money" | "multi";
-    options?: string[];
-    defaultValue?: any;
-    disabled?: boolean;
-    readOnly?: boolean;
-    pickerLabel?: string;
-};
-type OriginalRouteConfig = {
-    fields: OriginalFieldSpec[];
-    headers: string[];
-    source: "fees" | "incoming" | "invoices" | "settlements" | "generalSettlements" | "archiveSettlements" | "feeQuery" | "refundReviewFees" | "paymentPackages" | "unissuedFees";
-    selectable?: boolean;
-    clear?: boolean;
-    upload?: boolean;
-    export?: boolean;
-    note?: string;
-};
 /** finance queries operations; dependencies are read when each operation runs. */
 export interface FinanceQueriesDependencies {
     readonly onNavigate: ((route: string) => void) | undefined;
@@ -362,7 +342,7 @@ export interface FinanceQueriesDependencies {
     readonly setSelectedIncomingRows: React.Dispatch<React.SetStateAction<number[]>>;
     readonly setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
     readonly setReconciliations: React.Dispatch<React.SetStateAction<Reconciliation[]>>;
-    readonly setSummary: React.Dispatch<any>;
+    readonly setSummary: React.Dispatch<React.SetStateAction<FinanceSummary>>;
     readonly setRole: React.Dispatch<any>;
     readonly setCurrentUser: React.Dispatch<React.SetStateAction<{
         username: any;
@@ -418,7 +398,7 @@ export interface FinanceQueriesDependencies {
         pageSize: number;
         totals: Record<string, number>;
     }>>;
-    readonly setArchiveSettlementRows: React.Dispatch<React.SetStateAction<any[]>>;
+    readonly setArchiveSettlementRows: React.Dispatch<React.SetStateAction<ArchiveSettlementRow[]>>;
     readonly setArchiveSettlementMeta: React.Dispatch<React.SetStateAction<{
         total: number;
         page: number;
@@ -525,7 +505,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
         }
     };
     const loadInternalDetails = async (query: Record<string, any>, page = 1, pageSize = context.internalDetailMeta.pageSize) => {
-        const { internalDetailMeta, internalDetailParams, setInternalDetailRows, setInternalDetailMeta } = context;
+        const { internalDetailParams, setInternalDetailRows, setInternalDetailMeta } = context;
         const response = await api.get("/finance/internal-fees", {
             params: internalDetailParams(query, page, pageSize),
         });
@@ -597,7 +577,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                 api.get("/finance/incoming-payments", { params: { bank_source: receiptBankCode(initialView) } }),
                 api.get("/finance/transactions"),
                 api.get("/finance/reconciliations"),
-                api.get("/finance/summary"),
+                api.get<FinanceSummary>("/finance/summary"),
                 api.get("/auth/me"),
                 initialView === "finance-internal-settle"
                     ? api.get("/finance/settlements/pending")
@@ -855,7 +835,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
         }
     };
     const loadLegacyFinanceHistory = async (page = context.legacyFinanceMeta.page, pageSize = context.legacyFinanceMeta.pageSize) => {
-        const { legacyFinanceMeta, setLegacyFinanceLoading, legacyFinanceKind, legacyFinanceStatusCode, legacyFinanceKeyword, legacyFinanceIncludeInactive, setLegacyFinanceRows, setLegacyFinanceMeta, setLegacyFinanceSummary } = context;
+        const { setLegacyFinanceLoading, legacyFinanceKind, legacyFinanceStatusCode, legacyFinanceKeyword, legacyFinanceIncludeInactive, setLegacyFinanceRows, setLegacyFinanceMeta, setLegacyFinanceSummary } = context;
         setLegacyFinanceLoading(true);
         try {
             const [listRes, summaryRes] = await Promise.all([

@@ -9,7 +9,6 @@ import {
   Select,
   Space,
   Tabs,
-  Tag,
   Upload,
 } from "antd";
 import Table from "../components/ResizableTable";
@@ -76,54 +75,7 @@ interface CustomerDetailViewProps {
   onCreateCustomerEvent: () => void;
 }
 
-export function CustomerDetailView({
-  initialView,
-  customer,
-  directory,
-  customerTypeOptions,
-  detailTab,
-  detailLoading,
-  recordError,
-  historyError,
-  attachmentError,
-  customerEventError,
-  sharedObjectsError,
-  contactPage,
-  contactPageSize,
-  contactTotal,
-  customerEvents,
-  events,
-  attachments,
-  sharedObjects,
-  customerLicenseAttachment,
-  customerLicenseThumb,
-  canManage,
-  customerEventForm,
-  onTabChange,
-  onClose,
-  onRefreshContacts,
-  onContactPageChange,
-  onNewContact,
-  onViewContact,
-  onEditContact,
-  onDeleteContact,
-  onSetContactPrimary,
-  onSetContactActive,
-  onSetContactInactive,
-  onUploadContactPhoto,
-  onViewContactPhoto,
-  onViewDocument,
-  onDownloadDocument,
-  onDeleteDocument,
-  onDeleteNote,
-  onEditNote,
-  onNewNote,
-  onNewDocument,
-  onOpenLicenseUpload,
-  onOpenContracts,
-  onNewContract,
-  onCreateCustomerEvent,
-}: CustomerDetailViewProps) {
+export function CustomerDetailView({ initialView, customer, directory, customerTypeOptions, detailTab, detailLoading, recordError, historyError, customerEventError, sharedObjectsError, contactPage, contactPageSize, contactTotal, customerEvents, events, attachments, sharedObjects, customerLicenseAttachment, customerLicenseThumb, canManage, customerEventForm, onTabChange, onClose, onRefreshContacts, onContactPageChange, onNewContact, onViewContact, onEditContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onViewDocument, onDownloadDocument, onDeleteDocument, onDeleteNote, onEditNote, onNewNote, onNewDocument, onOpenLicenseUpload, onOpenContracts, onNewContract, onCreateCustomerEvent }: CustomerDetailViewProps) {
   const userLabels = (values: unknown) => displayChinesePersonNames(values, directory);
   const userLabel = (value: string) => displayChinesePersonName(value, directory);
 

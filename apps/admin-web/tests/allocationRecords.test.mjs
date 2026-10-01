@@ -24,7 +24,8 @@ test('分配记录整页查询、按选中项取消及错误提示', async () =>
   const result = await build({ entryPoints: [fileURLToPath(new URL('../src/finance/IncomingAllocationRecordsPage.tsx', import.meta.url))], bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', plugins: [{ name: 'isolated-ui', setup(builder) {
     builder.onResolve({ filter: /\/api$/ }, () => ({ path: 'api', namespace: 'test' }));
     builder.onResolve({ filter: /^antd$/ }, () => ({ path: 'antd', namespace: 'test' }));
-    builder.onLoad({ filter: /.*/, namespace: 'test' }, ({ path }) => ({ contents: path === 'api' ? 'export const api=globalThis.__allocationApi;' : 'export const Alert="Alert",Button="Button",Card="Card",Descriptions="Descriptions",Input="Input",InputNumber="InputNumber",Select="Select",Space="Space",Table="Table";export const message={success(){}};' }));
+    builder.onResolve({ filter: /(?:^|\/)ResizableTable$/ }, () => ({ path: 'table', namespace: 'test' }));
+    builder.onLoad({ filter: /.*/, namespace: 'test' }, ({ path }) => ({ contents: path === 'api' ? 'export const api=globalThis.__allocationApi;' : path === 'table' ? 'export default "Table";' : 'export const Alert="Alert",Button="Button",Card="Card",Descriptions="Descriptions",Input="Input",InputNumber="InputNumber",Select="Select",Space="Space",Table="Table";export const message={success(){}};' }));
   } }] });
   const target = new Module(fileURLToPath(import.meta.url));
   target.paths = Module._nodeModulePaths(fileURLToPath(new URL('.', import.meta.url)));

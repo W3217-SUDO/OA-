@@ -69,7 +69,7 @@ export const receivableDetailAmountFilters: Record<string, ReceivableDetailAmoun
   unCashedCaseNonOfficeFeeAmount: "agency-due",
 };
 export const receivablesDetailSummaryKeys = ["official_paid", "official_received", "official_unreceived", "official_loss", "agency_total", "agency_received", "agency_due"];
-export const calculateReceivablesDetailTotals = (rows: Array<{ contract_record_id: number }>, contractById: Map<number, Contract>) => {
+export const calculateReceivablesDetailTotals = (rows: Array<{ contract_record_id: number }>, _contractById: Map<number, Contract>) => {
   const totals = Object.fromEntries(receivablesDetailSummaryKeys.map((key) => [key, 0])) as Record<string, number>;
   rows.forEach((row) => {
     const detail = row as Receivable;
@@ -95,7 +95,7 @@ export const buildReceivableDetailContext = (contractNo: unknown, initialView: s
   return_view: receivableDetailReturnView(initialView),
   ...(amountFilter ? { amount_filter: amountFilter } : {}),
 });
-export const matchesReceivableDetailAmountFilter = (row: Pick<Receivable, "phase" | "fee_category" | "remaining_amount">, contract: Contract | undefined, amountFilter?: ReceivableDetailAmountFilter) => {
+export const matchesReceivableDetailAmountFilter = (row: Pick<Receivable, "phase" | "fee_category" | "remaining_amount">, _contract: Contract | undefined, amountFilter?: ReceivableDetailAmountFilter) => {
   if (!amountFilter) return true;
   const official = row.fee_category === "official";
   const remainsDue = Number(row.remaining_amount || 0) > 0;

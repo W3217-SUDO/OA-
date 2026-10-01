@@ -1,0 +1,18 @@
+[Unit]
+Description=Sunhold OA verified native package Web
+After=network-online.target sunhold-native-api@%i.service
+Requires=sunhold-native-api@%i.service
+
+[Service]
+Type=simple
+User=%i
+EnvironmentFile=/etc/sunhold/native-runtime.env
+RuntimeDirectory=sunhold-native-web-%i
+Environment=OA_NATIVE_WEB_STATE_DIR=%t/sunhold-native-web-%i
+ExecStart=/usr/bin/env python3.12 ${OA_NATIVE_TOOL} web
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

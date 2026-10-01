@@ -25,20 +25,7 @@ interface IprCaseCreateModalProps {
   onApplyDeadlineOffset: () => void;
 }
 
-export function IprCaseCreateModal({
-  open,
-  editing,
-  form,
-  customers,
-  deadlineOffsetOpen,
-  deadlineOffsetForm,
-  kind,
-  onClose,
-  onCreate,
-  onOpenDeadlineOffset,
-  onCloseDeadlineOffset,
-  onApplyDeadlineOffset,
-}: IprCaseCreateModalProps) {
+export function IprCaseCreateModal({ open, editing, form, customers, deadlineOffsetOpen, deadlineOffsetForm, onClose, onCreate, onOpenDeadlineOffset, onCloseDeadlineOffset, onApplyDeadlineOffset }: IprCaseCreateModalProps) {
   return (
     <>
       <Modal

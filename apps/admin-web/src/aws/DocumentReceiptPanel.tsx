@@ -66,28 +66,7 @@ const receiptMoreActionItems = [
   { key: "case-logs", label: "案件日志" },
 ];
 
-export function DocumentReceiptPanel({
-  tab,
-  loading,
-  receiptForm,
-  searchedReceipts,
-  selectedReceiptKeys,
-  selectedFormalReceipts,
-  receiptAttachment,
-  onSelectionChange,
-  onSearch,
-  onClearSearch,
-  onShowReceipt,
-  onPreviewReceiptFile,
-  onOpenCaseDetail,
-  onOpenUpload,
-  onDeleteSelected,
-  onOpenReceiptDateEditor,
-  onOpenCaseLinker,
-  onUpdateProcessStatus,
-  onExport,
-  onMoreAction,
-}: DocumentReceiptPanelProps) {
+export function DocumentReceiptPanel({ tab, loading, receiptForm, searchedReceipts, selectedReceiptKeys, selectedFormalReceipts, receiptAttachment, onSelectionChange, onSearch, onShowReceipt, onPreviewReceiptFile, onOpenCaseDetail, onOpenUpload, onDeleteSelected, onOpenReceiptDateEditor, onOpenCaseLinker, onUpdateProcessStatus, onExport, onMoreAction }: DocumentReceiptPanelProps) {
   const isOfficial = tab === "official";
 
   const officialColumns = [

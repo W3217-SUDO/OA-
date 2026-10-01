@@ -404,7 +404,7 @@ export default function IprCenterPage({
   const reviewView = initialView === "ipr-review";
 
   // ==================== 列表加载 ====================
-  const { load, loadLegacyHistory, loadReminderTypes, loadReminderEventTypes, loadLawsuitManagement, loadIprCaseEvents, loadIprCaseTasks, loadReminderSuppressions, loadCaseLawFirms, loadCaseCustomers, loadCaseContacts, loadIprLogs, loadIprHistory, openLinkedCaseCustomer, openLegacyIprCurrentCustomer, openDetail, exportExcel, loadWarningRules, loadWarnings, openWarningCase, openRebootCase } = createIprQueriesActions({
+  const { load, loadLegacyHistory, loadReminderTypes, loadReminderEventTypes, loadLawsuitManagement, loadIprCaseEvents, loadIprCaseTasks, loadReminderSuppressions, loadCaseLawFirms, loadCaseCustomers, loadCaseContacts, loadIprLogs, openLinkedCaseCustomer, openLegacyIprCurrentCustomer, openDetail, exportExcel, loadWarningRules, loadWarnings, openWarningCase, openRebootCase } = createIprQueriesActions({
     get page() { return page; },
     get pageSize() { return pageSize; },
     get keyword() { return keyword; },
@@ -849,7 +849,7 @@ export default function IprCenterPage({
 
   // ==================== 诉讼管理 ====================
 
-  const { createLawsuitFee, loadAssistedFees, refreshAssistedFeesAndLogs, loadAnnualFees, createAssistedFee, updateAssistedFee, confirmAssistedFee, transactAssistedFee, deleteAssistedFee, saveAnnualFee, deleteAnnualFee } = createIprFinanceActions({
+  const { createLawsuitFee, loadAssistedFees, loadAnnualFees, createAssistedFee, updateAssistedFee, confirmAssistedFee, transactAssistedFee, deleteAssistedFee, saveAnnualFee, deleteAnnualFee } = createIprFinanceActions({
     get detail() { return detail; },
     get lawsuitFeeForm() { return lawsuitFeeForm; },
     get setLawsuitFeeOpen() { return setLawsuitFeeOpen; },
@@ -1367,29 +1367,11 @@ export default function IprCenterPage({
       void loadAssistedFees(detail.id, nextPage, nextPageSize);
   };
 
-  const handleRemindersPageChange = (
-    nextPage: number,
-    nextPageSize: number
-  ) => {
-    if (detail)
-      void loadIprCaseEvents(detail.id, nextPage, nextPageSize);
-  };
 
-  const handleTasksPageChange = (
-    nextPage: number,
-    nextPageSize: number
-  ) => {
-    if (detail)
-      void loadIprCaseTasks(detail.id, nextPage, nextPageSize);
-  };
 
-  const handleAnnualFeesPageChange = (
-    nextPage: number,
-    nextPageSize: number
-  ) => {
-    if (detail)
-      void loadAnnualFees(detail.id, nextPage, nextPageSize);
-  };
+
+
+
 
   const handleReminderTypeClose = () => {
     setReminderTypeId(null);

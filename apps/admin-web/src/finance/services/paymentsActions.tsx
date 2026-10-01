@@ -5,28 +5,25 @@ import { api } from "../../api";
 import { isContractPayment, paymentActionPath, unifiedPaymentQueryParams } from "../paymentLifecycle.mjs";
 import type { FinanceActionGate } from "../../financeActionGate.mjs";
 import { formatRequiredDate } from "../../formSafety";
-import { contractPaymentQueryRequestParams, createPaymentPrintPreview, normalizePaymentPackageResponse, paymentPackageEmptySelectionMessage, paymentPackageRequestParams, paymentPackageWordExportPath, paymentPackageWriteoffPayload, paymentQueryRequestParams, paymentQueryServerPagePlan } from "../constants";
+import { createPaymentPrintPreview, normalizePaymentPackageResponse, paymentPackageEmptySelectionMessage, paymentPackageRequestParams, paymentPackageWordExportPath, paymentPackageWriteoffPayload, paymentQueryRequestParams } from "../constants";
+import type { PaymentWriteoffFormValues } from "../formTypes";
 import type { Fee, PaymentPackagePreview, PaymentPrintDocumentData, Transaction } from "../types";
-type OriginalFieldSpec = {
-    label: string;
-    key?: string;
-    control?: "date" | "money" | "multi";
-    options?: string[];
-    defaultValue?: any;
-    disabled?: boolean;
-    readOnly?: boolean;
-    pickerLabel?: string;
-};
-type OriginalRouteConfig = {
-    fields: OriginalFieldSpec[];
-    headers: string[];
-    source: "fees" | "incoming" | "invoices" | "settlements" | "generalSettlements" | "archiveSettlements" | "feeQuery" | "refundReviewFees" | "paymentPackages" | "unissuedFees";
-    selectable?: boolean;
-    clear?: boolean;
-    upload?: boolean;
-    export?: boolean;
-    note?: string;
-};
+
+export async function voidRejectedPaymentApplication(feeId: number): Promise<void> {
+    await api.post(`/finance/fees/${feeId}/void`, { comment: "已拒绝请款单作废" });
+}
+
+export async function loadPaymentPackageCandidates(target: Fee | null, signal?: AbortSignal): Promise<Fee[]> {
+    const { data } = await api.get<{ items?: Fee[] }>("/finance/payment-packages/candidates", {
+        params: target ? { package_id: target.id } : {},
+        signal,
+    });
+    return data.items || [];
+}
+
+export async function deletePaymentPackageRequest(packageId: number): Promise<void> {
+    await api.delete(`/finance/payment-packages/${packageId}`);
+}
 /** finance payments operations; dependencies are read when each operation runs. */
 export interface FinancePaymentsDependencies {
     readonly setFeeDetail: React.Dispatch<React.SetStateAction<Fee | null>>;
@@ -130,7 +127,7 @@ export interface FinancePaymentsDependencies {
     readonly setPaymentRollbackTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
     readonly setPaymentRollbackComment: React.Dispatch<React.SetStateAction<string>>;
     readonly writeoffTarget: Fee | null;
-    readonly writeoffForm: FormInstance<any>;
+    readonly writeoffForm: FormInstance<PaymentWriteoffFormValues>;
     readonly contractPayments: Fee[];
     readonly setWriteoffTarget: React.Dispatch<React.SetStateAction<Fee | null>>;
     readonly paymentStatus: (fee: Fee) => any;
@@ -228,7 +225,7 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
         }
     };
     const loadFeeQuery = async (query: Record<string, any>, page = 1, pageSize = context.feeQueryMeta.pageSize) => {
-        const { feeQueryMeta, isRefundCaseFeeRoute, feeQueryParams, setFeeQueryRows, setFeeQueryMeta } = context;
+        const { isRefundCaseFeeRoute, feeQueryParams, setFeeQueryRows, setFeeQueryMeta } = context;
         const response = await api.get(isRefundCaseFeeRoute
             ? "/finance/case-fees/refunds"
             : "/finance/fees/query", {
@@ -249,7 +246,7 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
         });
     };
     const loadPaymentPackages = async (query: Record<string, any>, page = 1, pageSize = context.paymentPackageMeta.pageSize) => {
-        const { paymentPackageMeta, initialView, setPaymentPackages, setPaymentPackageMeta } = context;
+        const { initialView, setPaymentPackages, setPaymentPackageMeta } = context;
         const response = await api.get("/finance/payment-packages", {
             params: paymentPackageRequestParams(initialView, query, page, pageSize),
         });

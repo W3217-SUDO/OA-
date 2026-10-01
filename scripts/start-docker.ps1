@@ -18,6 +18,12 @@ if (-not (Test-Path -LiteralPath $environmentFile)) {
 
 Push-Location $root
 try {
+    $sourceCommit = (& git rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-f]{40}$') {
+        throw 'Cannot determine the full source commit for the Docker build.'
+    }
+    $previousSourceCommit = $env:SOURCE_COMMIT
+    $env:SOURCE_COMMIT = $sourceCommit
     $arguments = @('compose', 'up', '-d')
     if (-not $NoBuild) {
         $arguments += '--build'
@@ -29,6 +35,7 @@ try {
     & docker compose ps
 }
 finally {
+    $env:SOURCE_COMMIT = $previousSourceCommit
     Pop-Location
 }
 

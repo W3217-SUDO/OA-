@@ -1,12 +1,12 @@
 """控制台案件区块：统计在数据库完成，明细按显示范围读取。"""
-from types import SimpleNamespace
+from datetime import datetime, time, timezone
 from sqlalchemy import String, cast
 from app.core.dependencies import BusinessRecord, HearingSchedule, select, func, or_, date, timedelta
-from app.core.constants import _CASE_HEARING_LEVELS
+from app.core.constants import _CASE_HEARING_LEVELS, CASE_EVENT_TIME_ZONE
 from app.core.cases import _dashboard_case_hearing, _dashboard_latest_case_row
 from app.core.contracts import _contract_person_values
 from app.core.crm import _dashboard_customer_for_case
-from app.core.formatters import _dashboard_case_date, _normalized_customer_name, _user_display_map
+from app.core.formatters import _normalized_customer_name, _user_display_map
 from app.core.system import _record_person_usernames
 from app.core.dashboard import dashboard_scope
 
@@ -14,7 +14,8 @@ from app.core.dashboard import dashboard_scope
 async def dashboard_cases(identity, db):
     scope, modules = await dashboard_scope(identity, db)
     conditions = [BusinessRecord.module == "case", BusinessRecord.status != "已合并", BusinessRecord.module.in_(modules), *scope]
-    current_month = date.today().replace(day=1)
+    today = datetime.now(timezone.utc).astimezone(CASE_EVENT_TIME_ZONE).date()
+    current_month = today.replace(day=1)
     month_keys = []
     for offset in range(9, -1, -1):
         year, month = current_month.year, current_month.month - offset
@@ -22,9 +23,20 @@ async def dashboard_cases(identity, db):
             year -= 1
             month += 12
         month_keys.append(f"{year:04d}-{month:02d}")
-    month_column = func.substr(cast(BusinessRecord.created_at, String), 1, 7)
+    # SQLite 保存无时区 UTC，PostgreSQL 保存 timestamptz；按既有业务时区归入自然月。
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        local_created_at = func.timezone(str(CASE_EVENT_TIME_ZONE), BusinessRecord.created_at)
+    elif dialect == "sqlite":
+        local_created_at = func.datetime(BusinessRecord.created_at, "+8 hours")
+    else:
+        raise ValueError(f"控制台月统计不支持数据库：{dialect}")
+    month_column = func.substr(cast(local_created_at, String), 1, 7)
+    first_month = datetime.combine(
+        date.fromisoformat(month_keys[0] + "-01"), time.min, tzinfo=CASE_EVENT_TIME_ZONE,
+    ).astimezone(timezone.utc)
     month_counts = dict((await db.execute(select(month_column, func.count()).where(
-        *conditions, BusinessRecord.created_at >= date.fromisoformat(month_keys[0] + "-01"),
+        *conditions, BusinessRecord.created_at >= first_month,
     ).group_by(month_column))).all())
     case_trend = [{"date": key, "value": month_counts.get(key, 0)} for key in month_keys]
     stage_groups = [("立案待分配", lambda s: s in {"新案待分配", "立案待分配"}, "#f7474c"),
@@ -47,21 +59,10 @@ async def dashboard_cases(identity, db):
                           for label, _, color in stage_groups]
     if other_count:
         civil_distribution.append({"label": "其他", "value": other_count, "color": "#c5cbd3"})
-    # 历史日期可能包含时区或无效文本，继续使用原解析器，避免 SQL 强制转换改变顺序。
-    date_rows = (await db.execute(select(
-        BusinessRecord.id, BusinessRecord.created_at,
-        BusinessRecord.data["case_register_date"].as_string(),
-        BusinessRecord.data["legacy_record"]["CaseRegisterDate"].as_string(),
-    ).where(*conditions))).all()
-    dated = [SimpleNamespace(id=row[0], created_at=row[1], data={
-        "case_register_date": row[2], "legacy_record": {"CaseRegisterDate": row[3]},
-    }) for row in date_rows]
-    latest_ids = [item.id for item in sorted(dated, key=lambda item: (_dashboard_case_date(item), item.id), reverse=True)[:13]]
-    latest_map = {item.id: item for item in (await db.scalars(select(BusinessRecord).where(
-        *conditions, BusinessRecord.id.in_(latest_ids),
-    ))).all()} if latest_ids else {}
-    latest_case_records = [latest_map[item_id] for item_id in latest_ids]
-    today = date.today()
+    # 当前发布规则按创建时间取最新案件，旧登记日期不再参与排序。
+    latest_case_records = list((await db.scalars(select(BusinessRecord).where(
+        *conditions,
+    ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()).limit(13))).all())
     cutoff = today + timedelta(days=100)
     scheduled_ids = select(HearingSchedule.case_record_id).where(
         HearingSchedule.hearing_date >= today, HearingSchedule.hearing_date <= cutoff,

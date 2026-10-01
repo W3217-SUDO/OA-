@@ -1,4 +1,4 @@
-import { Modal, Form, Input, Select, Radio, DatePicker, Cascader, Space, Button } from "antd";
+import { Modal, Form, Input, Select, Radio, DatePicker, Cascader, Space } from "antd";
 import type { Row, PersonOption, Contract } from "./types";
 import { INVESTIGATION_REGION_GROUPS } from "../investigationRegionOptions.mjs";
 import { CLUE_INFRINGEMENT_METHOD_OPTIONS, CLUE_SALES_CHANNEL_OPTIONS } from "./constants";

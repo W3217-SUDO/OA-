@@ -5,7 +5,6 @@ import type {
   Summary,
   StatusTab,
   CaseContextTaskPageState,
-  TaskSort,
 } from "./types";
 
 // ─── Constants ───────────────────────────────────────────────────────────

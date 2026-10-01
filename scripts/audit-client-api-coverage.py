@@ -15,7 +15,7 @@ FRONTEND = ROOT / "apps" / "admin-web" / "src"
 BACKEND = ROOT / "apps" / "api-server" / "app" / "main.py"
 
 CLIENT_CALL = re.compile(
-    r"api\.(get|post|put|patch|delete)\(\s*([`\"'])(/[^`\"']+)\2",
+    r"api\.(get|post|put|patch|delete)(?:<[^()]+>)?\(\s*([`\"'])(/[^`\"']+)\2",
     re.IGNORECASE,
 )
 SERVER_ROUTE = re.compile(
@@ -72,13 +72,73 @@ def included_router_calls(source: str) -> list[str]:
     return calls
 
 
-def area_route_entries(source: str) -> list[tuple[list[str], str]]:
-    """Preserve FastAPI registration order without importing the application."""
-    entries = []
-    for node in ast.parse(source).body:
+def route_path(node: ast.expr | None) -> str:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for part in node.values:
+            if isinstance(part, ast.Constant) and isinstance(part.value, str):
+                parts.append(part.value)
+            elif isinstance(part, ast.FormattedValue) and ast.unparse(part.value) == "settings.api_prefix":
+                continue
+            else:
+                raise AssertionError(f"Unsupported dynamic area route: {ast.unparse(node)}")
+        return "".join(parts)
+    raise AssertionError(f"Missing or unsupported area route: {ast.unparse(node) if node else 'None'}")
+
+
+def area_route_entries(
+    source: str, module: Path | None = None, app_root: Path | None = None,
+    visited: frozenset[Path] = frozenset(),
+) -> list[tuple[list[str], str]]:
+    """按注册顺序静态读取模块路由及其子路由。"""
+    if module in visited:
+        raise AssertionError(f"Cyclic area router include: {module}")
+    visited = visited | {module} if module else visited
+    tree = ast.parse(source)
+    prefix = ""
+    imports: dict[str, Path] = {}
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module and module and app_root:
+            if node.level:
+                target = module.parent
+                for _ in range(node.level - 1):
+                    target = target.parent
+                target = target.joinpath(*node.module.split(".")).with_suffix(".py")
+            elif node.module.startswith("app."):
+                target = app_root.joinpath(*node.module.split(".")[1:]).with_suffix(".py")
+            else:
+                continue
+            for imported in node.names:
+                if imported.name == "router":
+                    imports[imported.asname or imported.name] = target
+        if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "router" for target in node.targets):
+            call = node.value
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "APIRouter":
+                prefix_node = next((item.value for item in call.keywords if item.arg == "prefix"), None)
+                prefix = route_path(prefix_node) if prefix_node else ""
+
+    entries: list[tuple[list[str], str]] = []
+    for node in tree.body:
+        call = node.value if isinstance(node, ast.Expr) else None
+        if (
+            isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name) and call.func.value.id == "router"
+            and call.func.attr == "include_router"
+        ):
+            if not module or not app_root or len(call.args) != 1 or not isinstance(call.args[0], ast.Name):
+                raise AssertionError(f"Unsupported area router include: {ast.unparse(call)}")
+            name = call.args[0].id
+            if name not in imports:
+                raise AssertionError(f"Unresolved area subrouter: {name}")
+            child = imports[name]
+            entries.extend((methods, prefix + path) for methods, path in area_route_entries(
+                child.read_text(encoding="utf-8"), child, app_root, visited,
+            ))
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        # Python applies stacked decorators from the bottom up.
+        # 装饰器由内到外执行，顺序必须与 FastAPI 注册顺序一致。
         for decorator in reversed(node.decorator_list):
             if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
                 continue
@@ -91,25 +151,11 @@ def area_route_entries(source: str) -> list[tuple[list[str], str]]:
             path_node = decorator.args[0] if decorator.args else next(
                 (keyword.value for keyword in decorator.keywords if keyword.arg == "path"), None
             )
-            if isinstance(path_node, ast.Constant) and isinstance(path_node.value, str):
-                path = path_node.value
-            elif isinstance(path_node, ast.JoinedStr):
-                parts = []
-                for part in path_node.values:
-                    if isinstance(part, ast.Constant) and isinstance(part.value, str):
-                        parts.append(part.value)
-                    elif isinstance(part, ast.FormattedValue) and ast.unparse(part.value) == "settings.api_prefix":
-                        continue
-                    else:
-                        raise AssertionError(f"Unsupported dynamic area route: {ast.unparse(path_node)}")
-                path = "".join(parts)
-            else:
-                raise AssertionError(f"Missing or unsupported path on {node.name}")
             methods = [method]
             if method == "api_route":
                 methods_node = next((item.value for item in decorator.keywords if item.arg == "methods"), None)
                 methods = [value.lower() for value in ast.literal_eval(methods_node)] if methods_node else ["get"]
-            entries.append((methods, path))
+            entries.append((methods, prefix + route_path(path_node)))
     return entries
 
 
@@ -125,6 +171,20 @@ def sliced_router_routes(backend: Path, source: str) -> dict[str, list[str]]:
     cache = {}
     for node in tree.body:
         call = node.value if isinstance(node, ast.Expr) else None
+        if (
+            isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name) and call.func.value.id == "app"
+            and call.func.attr == "include_router" and call.args
+            and isinstance(call.args[0], ast.Name) and call.args[0].id in imports
+        ):
+            name = call.args[0].id
+            entries = area_route_entries(
+                imports[name].read_text(encoding="utf-8"), imports[name], backend.parent,
+            )
+            for methods, path in entries:
+                for method in methods:
+                    server.setdefault(method, []).append(path)
+            continue
         if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name) or call.func.id != "include_route_slice":
             continue
         if len(call.args) != 4 or ast.unparse(call.args[0]) != "app":
@@ -133,9 +193,28 @@ def sliced_router_routes(backend: Path, source: str) -> dict[str, list[str]]:
         if name not in imports:
             raise AssertionError(f"Unresolved area router: {name}")
         if name not in cache:
-            cache[name] = area_route_entries(imports[name].read_text(encoding="utf-8"))
+            cache[name] = area_route_entries(
+                imports[name].read_text(encoding="utf-8"), imports[name], backend.parent,
+            )
         entries = cache[name]
-        start, stop = (ast.literal_eval(arg) for arg in call.args[2:])
+        def slice_bound(value: ast.expr) -> int:
+            if isinstance(value, ast.Constant) and type(value.value) is int:
+                return value.value
+            if (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id == "len"
+                and len(value.args) == 1
+                and not value.keywords
+                and isinstance(value.args[0], ast.Attribute)
+                and value.args[0].attr == "routes"
+                and isinstance(value.args[0].value, ast.Name)
+                and value.args[0].value.id == name
+            ):
+                return len(entries)
+            raise AssertionError(f"Unsupported {name} route slice bound: {ast.unparse(value)}")
+
+        start, stop = (slice_bound(arg) for arg in call.args[2:])
         if not (isinstance(start, int) and isinstance(stop, int) and 0 <= start < stop <= len(entries)):
             raise AssertionError(f"Invalid {name} route slice [{start}:{stop}] of {len(entries)}")
         for methods, path in entries[start:stop]:
@@ -199,12 +278,20 @@ def main() -> None:
         used_names = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*router\b", include_call, re.IGNORECASE)
         for name in used_names:
             router_source = resolve_router_source(BACKEND, name)
+            prefix_match = re.search(r'\brouter\s*=\s*APIRouter\(\s*prefix\s*=\s*["\']([^"\']+)["\']', router_source)
+            router_prefix = prefix_match.group(1) if prefix_match else ""
             for method, _, path in ROUTER_ROUTE.findall(router_source):
-                server.setdefault(method.lower(), []).append(path.replace("{{", "{").replace("}}", "}"))
+                full_path = f"{router_prefix}{path}".replace("{{", "{").replace("}}", "}")
+                server.setdefault(method.lower(), []).append(full_path)
 
     unmatched: list[str] = []
     total = 0
-    for source_path in sorted(FRONTEND.rglob("*.tsx")):
+    source_paths = (
+        path for path in FRONTEND.rglob("*")
+        if path.suffix in {".js", ".mjs", ".ts", ".tsx"}
+        and not path.name.endswith(".d.ts")
+    )
+    for source_path in sorted(source_paths):
         source = source_path.read_text(encoding="utf-8")
         for match in CLIENT_CALL.finditer(source):
             total += 1

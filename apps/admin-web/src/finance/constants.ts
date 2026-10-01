@@ -366,8 +366,8 @@ export const paymentQueryServerPagePlan = (page: number, pageSize: number) => {
 
 export const paymentQueryPageTotal = (
   rows: ReadonlyArray<{
-    data?: Record<string, any>;
-    amount?: number | string;
+    data?: Record<string, unknown>;
+    amount?: number | string | null;
   }>,
 ) =>
   rows
@@ -376,9 +376,6 @@ export const paymentQueryPageTotal = (
       0,
     )
     .toFixed(2);
-
-export const paymentQueryFeeTypeControl = (initialView: string): "feeType" | undefined =>
-  "feeType";
 
 export const settlementContextPageSize = 100;
 

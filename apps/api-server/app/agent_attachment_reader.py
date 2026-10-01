@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pypdfium2 as pdfium
 from docx import Document
+from app.pdf_runtime import serialized_pdfium
 
 
 MAX_TEXT_CHARS = 36_000
@@ -59,18 +60,22 @@ def _read_text(path: Path) -> AttachmentReading:
 
 def _render_pdf_page(page: object, page_number: int) -> dict[str, str]:
     bitmap = page.render(scale=1.35)
-    image = bitmap.to_pil().convert("RGB")
-    buffer = io.BytesIO()
-    image.save(buffer, format="JPEG", quality=82, optimize=True)
-    return {"page": str(page_number), "mime_type": "image/jpeg", "data_url": _image_data_url(buffer.getvalue(), "image/jpeg")}
+    try:
+        image = bitmap.to_pil().convert("RGB")
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG", quality=82, optimize=True)
+        return {"page": str(page_number), "mime_type": "image/jpeg", "data_url": _image_data_url(buffer.getvalue(), "image/jpeg")}
+    finally:
+        bitmap.close()
 
 
+@serialized_pdfium
 def _read_pdf(path: Path) -> AttachmentReading:
     document = pdfium.PdfDocument(path)
-    page_count = len(document)
     text_parts: list[str] = []
     images: list[dict[str, str]] = []
     try:
+        page_count = len(document)
         for index in range(min(page_count, MAX_PDF_PAGES)):
             page = document[index]
             try:

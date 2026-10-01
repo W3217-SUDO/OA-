@@ -72,43 +72,7 @@ export interface ContractWizardContentProps {
   onNavigate?: (key: string) => void;
 }
 
-export function ContractWizardContent({
-  onDownloadAttachment,
-  onClearLinkedCustomerContext,
-  wizardStep,
-  editing,
-  wizardDraft,
-  form,
-  submitForm,
-  reviewForm,
-  sealForm,
-  attachments,
-  historyItems,
-  stepItems,
-  customerOptions,
-  approvalOptions,
-  sealApprovalOptions,
-  sealAssets,
-  currentApproval,
-  canActOnCurrentApproval,
-  contractApproverLabel,
-  contractCapabilities,
-  savingContract,
-  submittingWizard,
-  contractFile,
-  personName,
-  mode,
-  onSave,
-  onSubmitWizard,
-  onRevokeDraft,
-  onApproveWizard,
-  onRefreshWizard,
-  onCreateSealApplication,
-  onContractFileChange,
-  onUploadDraftAttachment,
-  onStartCreate,
-  onNavigate,
-}: ContractWizardContentProps) {
+export function ContractWizardContent({ onDownloadAttachment, onClearLinkedCustomerContext, wizardStep, editing, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealApprovalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, contractFile, personName, mode, onApproveWizard, onContractFileChange, onUploadDraftAttachment }: ContractWizardContentProps) {
   const conflict = useConflictReview(wizardDraft?.id, mode === "modal" && !editing && wizardStep > 0);
   const showSteps = !editing && wizardStep < CONTRACT_CREATE_STEP_TITLES.length;
   const stepClass = mode === "page" ? "contract-page-steps" : "contract-create-steps";

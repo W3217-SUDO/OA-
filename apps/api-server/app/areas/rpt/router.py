@@ -66,8 +66,9 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
         _large_screen_case_is_closed, _large_screen_case_is_excluded,
     )
     from app.core.formatters import (
-        _user_display_map,
+        _case_filing_date, _user_display_map,
     )
+    from app.core.constants import CASE_EVENT_TIME_ZONE
     from app.core.permissions import (
         _identity_role_ids, _permission_payload_for_identity, _record_scope_conditions,
     )
@@ -94,12 +95,12 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
         case_type = str((case.data or {}).get("case_type") or "未分类").strip() or "未分类"
         type_counts[case_type] = type_counts.get(case_type, 0) + 1
 
-    today = date.today()
+    today = datetime.now(timezone.utc).astimezone(CASE_EVENT_TIME_ZONE).date()
     month_keys = _large_screen_month_keys(today)
     monthly_cases = {key: 0 for key in month_keys}
     employee_counts: dict[str, int] = {}
     for case in cases:
-        created_at = case.created_at.date() if case.created_at else None
+        created_at = _case_filing_date(case)
         if created_at:
             month_key = created_at.strftime("%Y-%m")
             if month_key in monthly_cases:

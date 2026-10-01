@@ -30,8 +30,6 @@ Tabs
 import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import { useEffect,useMemo,useRef,useState } from "react";
-import { api } from "../api";
-import { consumeBusinessRecordDetailTarget } from "../businessRecordDetailNavigation";
 import {
 consumeDashboardFeeQuery,
 preserveDashboardFeeQueryContext,
@@ -42,7 +40,6 @@ caseFeeRefundStatusLabel,
 createLatestRequestGuard,
 refundStatusForRoute
 } from "../financeRefundHelpers.mjs";
-import { resolveIncomingPaymentDetailTarget } from "../incomingPaymentDetailNavigation";
 import JarFeeManager from "../JarFeeManager";
 import { ReceiptCreatePage } from "../PlatformFinancePage";
 import { createConfiguredColumns } from "./columns/configuredColumns";
@@ -57,19 +54,17 @@ import { createReconcileColumns } from "./columns/reconcileColumns";
 import { createRefundColumns } from "./columns/refundColumns";
 import { createTransactionColumns } from "./columns/transactionColumns";
 import { createRouteConfigs } from "./config/routeConfigs";
+import { originalFinanceRoutes, originalFinanceTitles } from "./config/routeMetadata";
 import {
-buildInvoiceSourceFields,
 effectivePaymentQuery,
 feeTypes,
 internalApprovalRoutes,
-invoiceFeeAvailableAmount,
 invoiceLegacyDefaultPageSize,
 invoiceLegacyErrorMessage,
 matchesContractPaymentSource,
 money,
 paymentQueryControlledPageSize,
 paymentQueryDefaultPageSize,
-paymentQueryFeeTypeControl,
 paymentQueryLegacyErrorMessage,
 paymentQueryLegacyStatusMatrix,
 paymentQueryQuickPageResult,
@@ -78,29 +73,76 @@ settlementLegacyErrorMessage,
 voucherCategory
 } from "./constants";
 import { FinanceCenterView } from "./FinanceCenterView";
+import type { FinanceOriginalRoutesViewProps } from "./FinanceOriginalRoutesView";
+import type { FinanceStandardTabsViewProps } from "./FinanceStandardTabsView";
+import type { SettlementBatchModalProps } from "./SettlementBatchModal";
+import type { IncomingRegistrationModalProps, IncomingClaimModalProps } from "./FinanceIncomingModals";
+import type { PaymentPackageWriteoffModalProps } from "./PaymentPackageEditorModal";
+import type { FeeDetailModalProps, FeeEditorModalProps } from "./FinanceFeeModals";
+import type { RefundDetailModalProps, RefundBatchStatusModalProps } from "./FinanceRefundDetailModals";
+import type { RefundBatchFeeDrawerProps } from "./RefundBatchFeeDrawer";
+import type { PaymentPackageEditorModalProps } from "./PaymentPackageEditorModal";
+import type { RecordFilesModalProps, VoucherModalProps } from "./FinanceDocumentModals";
+import type { TransactionModalProps, ReconciliationModalProps } from "./FinanceLedgerModals";
 import { RefundLogDrawer } from "./RefundLogDrawer";
 import { InvoiceDetailTables } from "./InvoiceDetailTables";
 import { ContractPaymentEditPage } from "./ContractPaymentEditPage";
-import { fetchInvoiceRecord, invoiceEditValues, invoiceObjectFees } from "./invoiceDetails.mjs";
+import { invoiceObjectFees } from "./invoiceDetails.mjs";
 import { canEditContractPayment, isContractPayment, paymentLifecycleStatus } from "./paymentLifecycle.mjs";
 import { useFinanceRuntimeContext } from "./hooks/useFinanceRuntimeContext";
-import { createFinanceAccountingActions } from "./services/accountingActions";
+import { usePaymentReversalState } from "./hooks/usePaymentReversalState";
+import { usePaymentWriteoffState } from "./hooks/usePaymentWriteoffState";
+import { useIncomingAllocationState } from "./hooks/useIncomingAllocationState";
+import { useGeneralSettlementActionState } from "./hooks/useGeneralSettlementActionState";
+import { useArchiveSettlementActionState } from "./hooks/useArchiveSettlementActionState";
+import { useInvoiceMaintenanceState } from "./hooks/useInvoiceMaintenanceState";
+import { useInvoiceLifecycleState } from "./hooks/useInvoiceLifecycleState";
+import { useRefundCreationState } from "./hooks/useRefundCreationState";
+import { useRefundMaintenanceState } from "./hooks/useRefundMaintenanceState";
+import { useRefundCaseFeeActionState } from "./hooks/useRefundCaseFeeActionState";
+import { useFinanceDocumentWorkspaceState } from "./hooks/useFinanceDocumentWorkspaceState";
+import { useFinanceIncomingState } from "./hooks/useFinanceIncomingState";
+import { useFinanceLinkedDetail, type FinanceLinkedDetailResult } from "./hooks/useFinanceLinkedDetail";
+import { useInvoiceApplicationState } from "./hooks/useInvoiceApplicationState";
+import { usePaymentPackageWorkspaceState } from "./hooks/usePaymentPackageWorkspaceState";
+import { useRefundBatchFeeState } from "./hooks/useRefundBatchFeeState";
+import { useSettlementWorkspaceState } from "./hooks/useSettlementWorkspaceState";
+import type { PaymentReversalModalsProps } from "./PaymentReversalModals";
+import type { PaymentWriteoffModalProps } from "./PaymentWriteoffModal";
+import type { IncomingAllocationModalProps } from "./IncomingAllocationModal";
+import type { SettlementReviewModalsProps } from "./SettlementReviewModals";
+import type { SettlementContextModalProps } from "./SettlementContextModal";
+import type { InvoiceMaintenanceModalsProps } from "./InvoiceMaintenanceModals";
+import type { InvoiceLifecycleModalsProps } from "./InvoiceLifecycleModals";
+import type { RefundCreationModalProps } from "./RefundCreationModal";
+import type { RefundMaintenanceModalsProps } from "./RefundMaintenanceModals";
+import type { TransactionFormValues, ReconciliationFormValues, FeeEditorFormValues } from "./formTypes";
+import type { FinanceReceiptsViewProps } from "./FinanceReceiptsView";
+import type { FinanceRefundsViewProps } from "./FinanceRefundsView";
+import type { FinanceInvoicesViewProps } from "./FinanceInvoicesView";
+import type { FinanceOriginalQueryViewProps } from "./FinanceOriginalQueryView";
+import type { RefundCaseFeeOperationMenuProps, RefundCaseFeeMarkButtonProps, RefundCaseFeeModalsProps } from "./RefundCaseFeeActions";
+import { financeErrorDetail, financeErrorMessageText } from "./financeErrors";
+import { amountQueryRange, dateQueryRange, queryArray, queryTextValue, type FinanceOriginalQuery } from "./originalQuery";
+import { createFinanceAccountingActions, rollbackFinanceTransactionRequest } from "./services/accountingActions";
 import { createFinanceDocumentsActions } from "./services/documentsActions";
-import { createFinanceInvoicesActions } from "./services/invoicesActions";
-import { createFinancePaymentsActions } from "./services/paymentsActions";
+import { createFinanceInvoicesActions, loadInvoiceRecord, withdrawInvoiceApplication } from "./services/invoicesActions";
+import { createFinancePaymentsActions, deletePaymentPackageRequest, voidRejectedPaymentApplication } from "./services/paymentsActions";
 import { createFinanceQueriesActions } from "./services/queriesActions";
 import { createFinanceRefundsActions } from "./services/refundsActions";
-import { createFinanceSettlementsActions } from "./services/settlementsActions";
-import { createFinanceWorkflowActions } from "./services/workflowActions";
+import { createFinanceSettlementsActions, markSettlementCommissionPaid } from "./services/settlementsActions";
+import { createFinanceWorkflowActions, reviewFinanceFlowRequest } from "./services/workflowActions";
 import type {
-AllocationCandidate,
-Attachment,
+ArchiveSettlementTarget,
+ArchiveSettlementRow,
 Fee,
 FinanceFlow,
 FinancePersonOption,
+FinanceSummary,
 IncomingPayment,
 LegacyFinanceRecord,
 LegacyFinanceSummary,OriginalFieldSpec,OriginalRouteConfig,PaymentPackagePreview,
+OriginalFinanceRow,
 PaymentPrintDocumentData,
 Receivable,
 Reconciliation,
@@ -142,7 +184,12 @@ export default function FinanceCenterPage({
   });
   const [contractPayments, setContractPayments] = useState<Fee[]>([]);
   const [contracts, setContracts] = useState<Fee[]>([]);
-  const [invoiceCandidateFees, setInvoiceCandidateFees] = useState<Fee[]>([]);
+  const {
+    invoiceCandidateFees, setInvoiceCandidateFees, invoiceOpen, setInvoiceOpen,
+    invoiceEditTarget, setInvoiceEditTarget, invoiceSelectedFeeIds, setInvoiceSelectedFeeIds,
+    invoiceForm, closeInvoiceApplication, openInvoiceFromFee,
+    applyInvoiceFeeSelection: applyInvoiceFeeSelectionState,
+  } = useInvoiceApplicationState(initialView, invoiceDetailRequestGuard);
   const [invoices, setInvoices] = useState<FinanceFlow[]>([]);
   const [refunds, setRefunds] = useState<FinanceFlow[]>([]);
   const [refundMeta, setRefundMeta] = useState({
@@ -252,7 +299,7 @@ export default function FinanceCenterPage({
     get cellValue() { return cellValue; },
   });
 
-  const openCaseTaskCreate = (source: any) => {
+  const openCaseTaskCreate = (source: { case_no?: unknown; customer?: unknown; data?: Record<string, unknown> }) => {
     const caseNo = String(source?.case_no || source?.data?.case_no || "").trim();
     if (!caseNo) {
       message.warning("当前费用未关联案件，无法新建案件任务");
@@ -266,7 +313,7 @@ export default function FinanceCenterPage({
     onNavigate?.("task-my-created");
   };
   const [customers, setCustomers] = useState<Fee[]>([]);
-  const [receivables, setReceivables] = useState<Receivable[]>([]);
+  const [, setReceivables] = useState<Receivable[]>([]);
   const [incoming, setIncoming] = useState<IncomingPayment[]>([]);
   const [selectedIncomingRows, setSelectedIncomingRows] = useState<number[]>([]);
   const [pendingSettlements, setPendingSettlements] = useState<Fee[]>([]);
@@ -281,27 +328,21 @@ export default function FinanceCenterPage({
     (string | number)[]
   >([]);
   const [generalSettlementBusy, setGeneralSettlementBusy] = useState(false);
-  const [generalSettlementReviewTargets, setGeneralSettlementReviewTargets] =
-    useState<Fee[]>([]);
-  const [generalSettlementReviewApproved, setGeneralSettlementReviewApproved] =
-    useState(true);
-  const [generalSettlementReviewComment, setGeneralSettlementReviewComment] =
-    useState("");
-  const [generalSettlementApplyTargets, setGeneralSettlementApplyTargets] =
-    useState<(string | number)[]>([]);
-  const [generalSettlementApplyComment, setGeneralSettlementApplyComment] =
-    useState("");
-  const [generalSettlementPaymentTargets, setGeneralSettlementPaymentTargets] =
-    useState<Fee[]>([]);
-  const [generalSettlementPaymentAction, setGeneralSettlementPaymentAction] =
-    useState<"paid" | "rollback">("paid");
-  const [generalSettlementPaymentComment, setGeneralSettlementPaymentComment] =
-    useState("");
-  const [generalSettlementReapplyTargets, setGeneralSettlementReapplyTargets] =
-    useState<Fee[]>([]);
-  const [generalSettlementReapplyComment, setGeneralSettlementReapplyComment] =
-    useState("");
-  const [archiveSettlementRows, setArchiveSettlementRows] = useState<any[]>([]);
+  const {
+    generalSettlementReviewTargets, setGeneralSettlementReviewTargets,
+    generalSettlementReviewApproved, setGeneralSettlementReviewApproved,
+    generalSettlementReviewComment, setGeneralSettlementReviewComment,
+    generalSettlementApplyTargets, setGeneralSettlementApplyTargets,
+    generalSettlementApplyComment, setGeneralSettlementApplyComment,
+    generalSettlementPaymentTargets, setGeneralSettlementPaymentTargets,
+    generalSettlementPaymentAction, setGeneralSettlementPaymentAction,
+    generalSettlementPaymentComment, setGeneralSettlementPaymentComment,
+    generalSettlementReapplyTargets, setGeneralSettlementReapplyTargets,
+    generalSettlementReapplyComment, setGeneralSettlementReapplyComment,
+    closeGeneralSettlementApply, closeGeneralSettlementReview,
+    closeGeneralSettlementPayment, closeGeneralSettlementReapply,
+  } = useGeneralSettlementActionState();
+  const [archiveSettlementRows, setArchiveSettlementRows] = useState<ArchiveSettlementRow[]>([]);
   const [archiveSettlementMeta, setArchiveSettlementMeta] = useState({
     total: 0,
     page: 1,
@@ -309,20 +350,16 @@ export default function FinanceCenterPage({
     totals: {} as Record<string, number>,
   });
   const [archiveSettlementBusy, setArchiveSettlementBusy] = useState(false);
-  const [archiveSettlementReviewTargets, setArchiveSettlementReviewTargets] =
-    useState<any[]>([]);
-  const [archiveSettlementReviewApproved, setArchiveSettlementReviewApproved] =
-    useState(true);
-  const [archiveSettlementReviewComment, setArchiveSettlementReviewComment] =
-    useState("");
-  const [archiveSettlementRollbackTargets, setArchiveSettlementRollbackTargets] =
-    useState<any[]>([]);
-  const [archiveSettlementRollbackComment, setArchiveSettlementRollbackComment] =
-    useState("");
-  const [archiveSettlementReapplyTargets, setArchiveSettlementReapplyTargets] =
-    useState<any[]>([]);
-  const [archiveSettlementReapplyComment, setArchiveSettlementReapplyComment] =
-    useState("");
+  const {
+    archiveSettlementReviewTargets, setArchiveSettlementReviewTargets,
+    archiveSettlementReviewApproved, setArchiveSettlementReviewApproved,
+    archiveSettlementReviewComment, setArchiveSettlementReviewComment,
+    archiveSettlementRollbackTargets, setArchiveSettlementRollbackTargets,
+    archiveSettlementRollbackComment, setArchiveSettlementRollbackComment,
+    archiveSettlementReapplyTargets, setArchiveSettlementReapplyTargets,
+    archiveSettlementReapplyComment, setArchiveSettlementReapplyComment,
+    closeArchiveSettlementReview, closeArchiveSettlementRollback, closeArchiveSettlementReapply,
+  } = useArchiveSettlementActionState();
   const [refundReviewFees, setRefundReviewFees] = useState<Fee[]>([]);
   const [paymentPackages, setPaymentPackages] = useState<Fee[]>([]);
   const [paymentPackageMeta, setPaymentPackageMeta] = useState({
@@ -332,7 +369,7 @@ export default function FinanceCenterPage({
   });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
-  const [summary, setSummary] = useState<any>({
+  const [summary, setSummary] = useState<FinanceSummary>({
     fees: 0,
     pending: 0,
     approved: 0,
@@ -394,10 +431,8 @@ export default function FinanceCenterPage({
     () => consumeDashboardFeeQuery(initialView),
     [initialView],
   );
-  const [originalQueryDraft, setOriginalQueryDraft] = useState<
-    Record<string, any>
-  >(dashboardFeeQuerySeed);
-  const [originalQuery, setOriginalQuery] = useState<Record<string, any>>(
+  const [originalQueryDraft, setOriginalQueryDraft] = useState<FinanceOriginalQuery>(dashboardFeeQuerySeed);
+  const [originalQuery, setOriginalQuery] = useState<FinanceOriginalQuery>(
     dashboardFeeQuerySeed,
   );
   const [feeTypeCatalog, setFeeTypeCatalog] = useState<FeeTypeCatalog>({
@@ -463,29 +498,42 @@ export default function FinanceCenterPage({
     totals: {} as Record<string, number | null>,
   });
   const [feeQueryExportLoading, setFeeQueryExportLoading] = useState(false);
-  const [refundCaseFeeStatusOpen, setRefundCaseFeeStatusOpen] = useState(false);
-  const [refundCaseFeeStatus, setRefundCaseFeeStatus] = useState("R10");
-  const [refundCaseFeeLogKind, setRefundCaseFeeLogKind] = useState<
-    "court" | "received" | "other" | null
-  >(null);
-  const [refundCaseFeeLogContent, setRefundCaseFeeLogContent] = useState("");
-  const [refundCaseFeeMutationLoading, setRefundCaseFeeMutationLoading] =
-    useState(false);
+  const {
+    refundCaseFeeStatusOpen,
+    setRefundCaseFeeStatusOpen,
+    refundCaseFeeStatus,
+    setRefundCaseFeeStatus,
+    refundCaseFeeLogKind,
+    setRefundCaseFeeLogKind,
+    refundCaseFeeLogContent,
+    setRefundCaseFeeLogContent,
+    refundCaseFeeMutationLoading,
+    setRefundCaseFeeMutationLoading,
+    openRefundCaseFeeStatus,
+    closeRefundCaseFeeStatus,
+    openRefundCaseFeeLog,
+    closeRefundCaseFeeLog,
+  } = useRefundCaseFeeActionState();
   const [invoiceExportLoading, setInvoiceExportLoading] = useState(false);
   const [invoiceDetail, setInvoiceDetail] = useState<FinanceFlow | null>(null);
   const [refundDetail, setRefundDetail] = useState<FinanceFlow | null>(null);
-  const [refundAmountTarget, setRefundAmountTarget] =
-    useState<FinanceFlow | null>(null);
+  const {
+    refundAmountTarget, setRefundAmountTarget, refundAmountForm, closeRefundAmount,
+    refundCompleteTarget, setRefundCompleteTarget, refundCompleteForm, closeRefundComplete,
+  } = useRefundMaintenanceState();
   const [refundBatchStatusOpen, setRefundBatchStatusOpen] = useState(false);
   const [refundBatchStatus, setRefundBatchStatus] = useState("待审批");
   const [refundMutationLoading, setRefundMutationLoading] = useState(false);
+  const { refundOpen, setRefundOpen, refundForm, openRefundCreation, closeRefundCreation } = useRefundCreationState();
   const [invoiceProcess, setInvoiceProcess] = useState<FinanceFlow | null>(null);
   const [contractPaymentEditId, setContractPaymentEditId] = useState<number | null>(null);
   useEffect(() => { setContractPaymentEditId(null); }, [initialView]);
   const [invoiceCancel, setInvoiceCancel] = useState<FinanceFlow | null>(null);
   const [invoiceCancelReason, setInvoiceCancelReason] = useState("");
-  const [invoiceNumberTarget, setInvoiceNumberTarget] = useState<FinanceFlow | null>(null);
-  const [invoiceDateTarget, setInvoiceDateTarget] = useState<FinanceFlow | null>(null);
+  const {
+    invoiceNumberTarget, setInvoiceNumberTarget, invoiceNumberForm, closeInvoiceNumber,
+    invoiceDateTarget, setInvoiceDateTarget, invoiceDateForm, closeInvoiceDate,
+  } = useInvoiceMaintenanceState();
   const [invoiceMutationLoading, setInvoiceMutationLoading] = useState(false);
   const [multiPickerOpen, setMultiPickerOpen] = useState<string | null>(null);
   const [multiPickerDraft, setMultiPickerDraft] = useState<
@@ -499,59 +547,49 @@ export default function FinanceCenterPage({
   const [paymentPrintPreview, setPaymentPrintPreview] =
     useState<PaymentPrintDocumentData | null>(null);
   const [paymentWordExportLoading, setPaymentWordExportLoading] = useState(false);
-  const [paymentPackagePreview, setPaymentPackagePreview] =
-    useState<PaymentPackagePreview | null>(null);
-  const [paymentPackageLoading, setPaymentPackageLoading] = useState(false);
-  const [paymentPackageDetail, setPaymentPackageDetail] = useState<Fee | null>(
-    null,
-  );
-  const [paymentPackageEditTarget, setPaymentPackageEditTarget] =
-    useState<Fee | null>(null);
-  const [paymentPackageEditorOpen, setPaymentPackageEditorOpen] = useState(false);
-  const [paymentPackageSelectedFeeIds, setPaymentPackageSelectedFeeIds] =
-    useState<number[]>([]);
-  const [paymentPackageCandidates, setPaymentPackageCandidates] = useState<Fee[]>([]);
-  const [paymentPackageWriteoffTarget, setPaymentPackageWriteoffTarget] =
-    useState<Fee | null>(null);
+  const {
+    paymentPackagePreview, setPaymentPackagePreview, paymentPackageLoading, setPaymentPackageLoading,
+    paymentPackageDetail, setPaymentPackageDetail,
+    paymentPackageEditTarget, setPaymentPackageEditTarget,
+    paymentPackageEditorOpen, setPaymentPackageEditorOpen,
+    paymentPackageSelectedFeeIds, setPaymentPackageSelectedFeeIds,
+    paymentPackageCandidates, paymentPackageWriteoffTarget, setPaymentPackageWriteoffTarget,
+    paymentPackageWriteoffForm, paymentPackageEditForm,
+    openPaymentPackageEditor, closePaymentPackageEditor, resetPaymentPackageRoute,
+  } = usePaymentPackageWorkspaceState();
   const [feeReviewTargets, setFeeReviewTargets] = useState<Fee[]>([]);
   const [feeReviewComment, setFeeReviewComment] = useState("");
   const [feeReviewLoading, setFeeReviewLoading] = useState(false);
-  const [paymentCancelTarget, setPaymentCancelTarget] = useState<Fee | null>(
-    null,
-  );
-  const [paymentCancelReason, setPaymentCancelReason] = useState("");
-  const [paymentRollbackTarget, setPaymentRollbackTarget] =
-    useState<Fee | null>(null);
-  const [paymentRollbackComment, setPaymentRollbackComment] = useState("");
-  const [settlementBatchOpen, setSettlementBatchOpen] = useState(false);
+  const {
+    paymentCancelTarget, setPaymentCancelTarget,
+    paymentCancelReason, setPaymentCancelReason,
+    paymentRollbackTarget, setPaymentRollbackTarget,
+    paymentRollbackComment, setPaymentRollbackComment,
+    openPaymentCancel, closePaymentCancel,
+    openPaymentRollback, closePaymentRollback,
+  } = usePaymentReversalState();
+  const { writeoffTarget, setWriteoffTarget, writeoffForm, closePaymentWriteoff } = usePaymentWriteoffState();
+  const {
+    settlementBatchOpen, setSettlementBatchOpen, settlementBatchForm, openSettlementBatch, closeSettlementBatch,
+    settlementContext, setSettlementContext, settlementLogContent, setSettlementLogContent,
+    settlementTaskForm, setSettlementTaskForm, settlementContextRows, setSettlementContextRows,
+    settlementActionLoading, setSettlementActionLoading,
+  } = useSettlementWorkspaceState();
   const [refundLogFeeId, setRefundLogFeeId] = useState<number | null>(null);
-  const [settlementContext, setSettlementContext] = useState<{
-    mode: "tasks" | "logs" | "log-create" | "task-create";
-    caseRecords: Fee[];
-  } | null>(null);
-  const [settlementLogContent, setSettlementLogContent] = useState("");
-  const [settlementTaskForm, setSettlementTaskForm] = useState({
-    title: "",
-    owner: "",
-    deadline: null as any,
-    priority: "普通",
-  });
-  const [settlementContextRows, setSettlementContextRows] = useState<any[]>([]);
-  const [settlementActionLoading, setSettlementActionLoading] = useState(false);
-  const [refundBatchFeeOpen, setRefundBatchFeeOpen] = useState(false);
-  const [refundBatchFeeStep, setRefundBatchFeeStep] = useState(0);
-  const [refundBatchFeeLoading, setRefundBatchFeeLoading] = useState(false);
-  const [refundBatchFeeKind, setRefundBatchFeeKind] = useState<"ordinary" | "internal">("ordinary");
-  const [refundBatchFeeBaseType, setRefundBatchFeeBaseType] = useState<string>("官方费用");
-  const [refundBatchFeeSubTypes, setRefundBatchFeeSubTypes] = useState<any[]>([]);
-  const [refundBatchPaymentTypes, setRefundBatchPaymentTypes] = useState<any[]>([]);
+  const {
+    refundBatchFeeOpen, refundBatchFeeStep, setRefundBatchFeeStep,
+    refundBatchFeeLoading, setRefundBatchFeeLoading, refundBatchFeeKind,
+    refundBatchFeeBaseType, refundBatchFeeSubTypes, refundBatchPaymentTypes,
+    refundBatchFeeForm, openRefundBatchFee: openRefundBatchFeeState,
+    closeRefundBatchFee, syncFirstRefundFeeField,
+  } = useRefundBatchFeeState();
   const [feeOpen, setFeeOpen] = useState(false);
   const [feeEditTarget, setFeeEditTarget] = useState<Fee | null>(null);
   const [feeDetail, setFeeDetail] = useState<Fee | null>(null);
   // Legacy PaymentView resolves the complete payment plus its contract,
   // customer and package before rendering. Fetch the canonical record for
   // payment-list detail actions instead of reusing a possibly truncated row.
-  const { openPaymentDetail, loadFeeQuery, loadPaymentQueryPage, loadPaymentPackages, createFee, feeAction, refreshCurrentFinanceFeeList, submitPaymentCancel, submitPaymentRollback, writeoffFee, writeoffPaymentPackage, downloadPaymentPrintWord, printPayment, submitFeeReview, previewInternalPaymentPackage, submitInternalPaymentPackage, openPaymentPackageDetail, submitPaymentPackageEditor, exportFeeQuery } = createFinancePaymentsActions({
+  const { openPaymentDetail, loadFeeQuery, loadPaymentQueryPage, loadPaymentPackages, createFee, feeAction, submitPaymentCancel, submitPaymentRollback, writeoffFee, writeoffPaymentPackage, downloadPaymentPrintWord, submitFeeReview, previewInternalPaymentPackage, submitInternalPaymentPackage, openPaymentPackageDetail, submitPaymentPackageEditor, exportFeeQuery } = createFinancePaymentsActions({
     get setCases() { return setCases; },
     get setFeeDetail() { return setFeeDetail; },
     get feeQueryMeta() { return feeQueryMeta; },
@@ -616,7 +654,7 @@ export default function FinanceCenterPage({
     get setPaymentPackageSelectedFeeIds() { return setPaymentPackageSelectedFeeIds; },
     get setFeeQueryExportLoading() { return setFeeQueryExportLoading; },
   });
-  const { openInvoiceDetail, loadInvoiceMine, loadInvoiceCompany, loadInvoiceUnissued, loadInvoicePending, loadInvoiceReferenceData, createInvoice, issueInvoice, rejectInvoiceIssue, voidInvoice, submitInvoiceNumberChange, submitInvoiceDateChange, submitInvoiceCancel, exportInvoiceList, exportInvoiceUnissued } = createFinanceInvoicesActions({
+  const { openInvoiceDetail, openInvoiceEdit, loadInvoiceMine, loadInvoiceCompany, loadInvoiceUnissued, loadInvoicePending, loadInvoiceReferenceData, createInvoice, issueInvoice, rejectInvoiceIssue, voidInvoice, submitInvoiceNumberChange, submitInvoiceDateChange, submitInvoiceCancel, exportInvoiceList, exportInvoiceUnissued } = createFinanceInvoicesActions({
     get invoiceFeeOptions() { return invoiceFeeOptions; },
     get invoiceDetailRequestGuard() { return invoiceDetailRequestGuard; },
     get setInvoiceDetail() { return setInvoiceDetail; },
@@ -648,6 +686,7 @@ export default function FinanceCenterPage({
     get invoices() { return invoices; },
     get setInvoiceOpen() { return setInvoiceOpen; },
     get setInvoiceEditTarget() { return setInvoiceEditTarget; },
+    get setInvoiceSelectedFeeIds() { return setInvoiceSelectedFeeIds; },
     get load() { return load; },
     get issueTarget() { return issueTarget; },
     get invoiceProcess() { return invoiceProcess; },
@@ -719,153 +758,73 @@ export default function FinanceCenterPage({
     get closeRefundBatchFee() { return closeRefundBatchFee; },
     get load() { return load; },
   });
-  const [invoiceOpen, setInvoiceOpen] = useState(false);
-  const [invoiceEditTarget, setInvoiceEditTarget] =
-    useState<FinanceFlow | null>(null);
-  const [invoiceSelectedFeeIds, setInvoiceSelectedFeeIds] = useState<number[]>([]);
-  const [invoiceFeeAmounts, setInvoiceFeeAmounts] = useState<Record<number, number>>({});
-  const [invoiceSourceFeeId, setInvoiceSourceFeeId] = useState<number | null>(null);
-  const [refundOpen, setRefundOpen] = useState(false);
-  const [invoiceForm] = Form.useForm();
-  const [refundForm] = Form.useForm();
-  useEffect(() => {
-    const target = consumeBusinessRecordDetailTarget(["finance", "invoice", "refund", "finance_package", "finance_settlement", "finance_archive_settlement"]);
-    if (!target) return;
-    void (async () => {
-      try {
-        const { data } = await api.get(`/records/${target.id}`);
-        if (data.module === "finance" && target.action === "create_invoice") {
-          const { data: reference } = await api.get("/finance/invoice-context", {
-            params: { customer: data.customer, customer_id: data.data?.customer_id || data.data?.customer_record_id || undefined,
-              keyword: data.serial_no, page: 1, page_size: 100 },
-          });
-          const customerRows = reference.customer_record ? [reference.customer_record] : [];
-          const candidateRows: Fee[] = reference.items || [];
-          const sourceFee = candidateRows.find((fee) => Number(fee.id) === Number(data.id));
-          setCustomers((previous) => Array.from(new Map([...previous, ...customerRows].map((row: any) => [row.id, row])).values()));
-          setInvoiceCandidateFees(candidateRows);
-          setTab("invoices");
-          if (!sourceFee) {
-            message.warning("该费用当前不可申请开票（已申请、已开票或不在可开票范围内），未打开开票申请。");
-            return;
-          }
-          invoiceForm.resetFields();
-          invoiceForm.setFieldsValue({
-            ...buildInvoiceSourceFields([sourceFee], [], customerRows),
-            ...reference.customer_defaults,
-            customer_record_id: reference.customer_record?.id,
-            case_fee_ids: [sourceFee.id],
-            case_fee_allocations: [{ fee_id: sourceFee.id, amount: invoiceFeeAvailableAmount(sourceFee) }],
-            extra_amount: 0,
-            invoice_type: "增值税普通发票",
-            invoice_content: "法律服务费",
-            delivery_method: "电子发票",
-          });
-          setInvoiceSelectedFeeIds([sourceFee.id]);
-          setInvoiceFeeAmounts({ [sourceFee.id]: invoiceFeeAvailableAmount(sourceFee) });
-          setInvoiceSourceFeeId(sourceFee.id);
-          setInvoiceOpen(true);
-          return;
-        }
-        if (data.module === "finance" && target.action === "create_refund") {
-          const profile = await api.get("/auth/me");
-          refundForm.resetFields();
-          refundForm.setFieldsValue({
-            fee_record_id: data.id,
-            case_no: data.data?.case_no || "",
-            customer: data.customer || "",
-            court: data.data?.court || data.data?.payee || "",
-            original_payment_no: data.data?.document_no || "",
-            amount: Math.abs(Number(data.data?.amount || 0)) || undefined,
-            applicant: profile.data?.display_name || data.owner_display_name || "姓名待维护",
-            reason: "诉讼费退费",
-          });
-          setTab("refunds");
-          setRefundOpen(true);
-          return;
-        }
-        if (["finance", "finance_package", "finance_settlement", "finance_archive_settlement"].includes(data.module)) {
-          setFeeDetail(data);
-        } else if (data.module === "invoice") {
-          setInvoiceDetail(await fetchInvoiceRecord(api, data.id));
-        } else if (data.module === "refund") {
-          setRefundDetail(data);
-        } else {
-          throw new Error("关联记录不是可查看的财务业务");
-        }
-      } catch (error: any) {
-        message.error(error?.response?.data?.detail || error?.message || "费用详情加载失败");
+  useFinanceLinkedDetail(initialView, (result: FinanceLinkedDetailResult) => {
+    if (result.kind === "invoice-creation") {
+      setCustomers((previous) => Array.from(new Map([...previous, ...result.customerRows].map((row) => [row.id, row])).values()));
+      setInvoiceCandidateFees(result.candidateRows);
+      setTab("invoices");
+      if (!result.sourceFee) {
+        message.warning("该费用当前不可申请开票（已申请、已开票或不在可开票范围内），未打开开票申请。");
+        return;
       }
-    })();
-  }, []);
+      openInvoiceFromFee(result.sourceFee, result.customerRows, result.customerDefaults);
+    } else if (result.kind === "refund-creation") {
+      const { record, applicantName } = result;
+      refundForm.resetFields();
+      refundForm.setFieldsValue({
+        fee_record_id: record.id,
+        case_no: record.data?.case_no || "",
+        customer: record.customer || "",
+        court: record.data?.court || record.data?.payee || "",
+        original_payment_no: record.data?.document_no || "",
+        amount: Math.abs(Number(record.data?.amount || 0)) || undefined,
+        applicant: applicantName || record.owner_display_name || "姓名待维护",
+        reason: "诉讼费退费",
+      });
+      setTab("refunds");
+      setRefundOpen(true);
+    } else if (result.kind === "fee-detail") {
+      setFeeDetail(result.record);
+    } else if (result.kind === "invoice-detail") {
+      setInvoiceDetail(result.record);
+    } else {
+      setRefundDetail(result.record);
+    }
+  });
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
-  const [incomingOpen, setIncomingOpen] = useState(false);
-  const [editingIncoming, setEditingIncoming] = useState<IncomingPayment | null>(null);
-  const [claimTarget, setClaimTarget] = useState<IncomingPayment | null>(null);
-  const [claimCustomers, setClaimCustomers] = useState<
-    { id: number; title: string; serial_no: string }[]
-  >([]);
-  const [claimCustomersLoading, setClaimCustomersLoading] = useState(false);
-  const claimCustomerSearchRequest = useRef(0);
-  const [allocateTarget, setAllocateTarget] = useState<IncomingPayment | null>(
-    null,
-  );
-  const [allocationCandidates, setAllocationCandidates] = useState<AllocationCandidate[]>([]);
-  const [allocationLoading, setAllocationLoading] = useState(false);
-  const [selectedAllocationKeys, setSelectedAllocationKeys] = useState<(string | number)[]>([]);
-  const [allocationAmounts, setAllocationAmounts] = useState<Record<string, number>>({});
-  const [allocationKeyword, setAllocationKeyword] = useState("");
-  const [allocationStage, setAllocationStage] = useState("");
-  const [allocationFeeType, setAllocationFeeType] = useState("");
-  const [allocationComment, setAllocationComment] = useState("");
-  const [allocationValidationError, setAllocationValidationError] = useState("");
-  const [incomingAllocationTarget, setIncomingAllocationTarget] =
-    useState<IncomingPayment | null>(null);
-  const [incomingDetailTarget, setIncomingDetailTarget] =
-    useState<IncomingPayment | null>(null);
-  useEffect(() => {
-    const paymentId = resolveIncomingPaymentDetailTarget(initialView);
-    if (!paymentId) return;
-    void api.get(`/finance/incoming-payments/${paymentId}`)
-      .then(({ data }) => setIncomingDetailTarget(data))
-      .catch((error: any) => message.error(error?.response?.data?.detail || "回款详情加载失败"));
-  }, [initialView]);
-  const [issueTarget, setIssueTarget] = useState<FinanceFlow | null>(null);
-  const [voidTarget, setVoidTarget] = useState<FinanceFlow | null>(null);
-  const [refundCompleteTarget, setRefundCompleteTarget] =
-    useState<FinanceFlow | null>(null);
-  const [recordFileTarget, setRecordFileTarget] = useState<FinanceFlow | null>(
-    null,
-  );
-  const [recordFileTargets, setRecordFileTargets] = useState<FinanceFlow[]>([]);
-  const [recordFiles, setRecordFiles] = useState<Attachment[]>([]);
-  const [recordFile, setRecordFile] = useState<File | null>(null);
-  const [recordUploadFiles, setRecordUploadFiles] = useState<File[]>([]);
-  const [recordFileTypeTree, setRecordFileTypeTree] = useState<any[]>([]);
-  const [voucherOpen, setVoucherOpen] = useState(false);
-  const [voucherTarget, setVoucherTarget] = useState<Transaction | null>(null);
-  const [voucherFile, setVoucherFile] = useState<File | null>(null);
-  const [writeoffTarget, setWriteoffTarget] = useState<Fee | null>(null);
+  const {
+    incomingOpen, setIncomingOpen, editingIncoming, setEditingIncoming,
+    claimTarget, setClaimTarget, claimCustomers, setClaimCustomers,
+    claimCustomersLoading, setClaimCustomersLoading, claimCustomerSearchRequest,
+    incomingAllocationTarget, setIncomingAllocationTarget, incomingDetailTarget, setIncomingDetailTarget,
+    incomingForm, claimForm,
+  } = useFinanceIncomingState(initialView);
+  const {
+    allocateTarget, setAllocateTarget,
+    allocationCandidates, setAllocationCandidates, filteredAllocationCandidates,
+    allocationLoading, setAllocationLoading,
+    selectedAllocationKeys, setSelectedAllocationKeys,
+    allocationAmounts, setAllocationAmounts,
+    allocationKeyword, setAllocationKeyword,
+    allocationStage, setAllocationStage,
+    allocationFeeType, setAllocationFeeType,
+    allocationComment, setAllocationComment,
+    allocationValidationError, setAllocationValidationError,
+    closeIncomingAllocation, clearAllocationFilters, setAllocationAmount,
+  } = useIncomingAllocationState();
+  const { issueTarget, setIssueTarget, issueForm, closeIssue, voidTarget, setVoidTarget, voidForm, closeVoid } = useInvoiceLifecycleState();
+  const {
+    recordFileTarget, setRecordFileTarget, recordFileTargets, setRecordFileTargets,
+    recordFiles, setRecordFiles, recordFile, setRecordFile,
+    recordUploadFiles, setRecordUploadFiles, recordFileTypeTree, setRecordFileTypeTree,
+    recordFileForm, voucherOpen, setVoucherOpen, voucherTarget, setVoucherTarget,
+    voucherFile, setVoucherFile, voucherForm,
+  } = useFinanceDocumentWorkspaceState();
   const bankUploadRef = useRef<HTMLInputElement>(null);
-  const [feeForm] = Form.useForm();
-  const [issueForm] = Form.useForm();
-  const [voidForm] = Form.useForm();
-  const [invoiceNumberForm] = Form.useForm();
-  const [invoiceDateForm] = Form.useForm();
-  const [refundCompleteForm] = Form.useForm();
-  const [refundAmountForm] = Form.useForm();
-  const [transactionForm] = Form.useForm();
-  const [reconcileForm] = Form.useForm();
-  const [voucherForm] = Form.useForm();
-  const [writeoffForm] = Form.useForm();
-  const [paymentPackageWriteoffForm] = Form.useForm();
-  const [paymentPackageEditForm] = Form.useForm();
-  const [recordFileForm] = Form.useForm();
-  const [incomingForm] = Form.useForm();
-  const [claimForm] = Form.useForm();
-  const [settlementBatchForm] = Form.useForm();
-  const [refundBatchFeeForm] = Form.useForm();
+  const [feeForm] = Form.useForm<FeeEditorFormValues>();
+  const [transactionForm] = Form.useForm<TransactionFormValues>();
+  const [reconcileForm] = Form.useForm<ReconciliationFormValues>();
   const watchedFeeType = Form.useWatch("fee_type", feeForm);
   const [feeTypeOverride, setFeeTypeOverride] = useState("");
   const selectedFeeType = watchedFeeType || feeTypeOverride;
@@ -921,15 +880,15 @@ export default function FinanceCenterPage({
   const isRefundNotRequiredRoute = initialView === "finance-refund-not-required";
   const activeRefundStatus = refundStatusForRoute(initialView, refundStatusFilter);
   const generalSettlementParams = (
-    query: Record<string, any>,
+    query: Record<string, unknown>,
     page = 1,
     pageSize = 10,
   ) => {
     if (!isGeneralSettlementPendingRoute) {
-      const receivedRange = query.routeField3;
-      const appliedRange = query.routeField7;
-      const reviewedRange = query.routeField11;
-      const paidRange = query.routeField13;
+      const receivedRange = dateQueryRange(query.routeField3);
+      const appliedRange = dateQueryRange(query.routeField7);
+      const reviewedRange = dateQueryRange(query.routeField11);
+      const paidRange = dateQueryRange(query.routeField13);
       return {
         customer: query.routeField0 || "",
         case_no: query.routeField1 || "",
@@ -952,7 +911,7 @@ export default function FinanceCenterPage({
         status: isGeneralSettlementPaidRoute
           ? "已付款"
           : isGeneralSettlementRejectedRoute
-            ? "已拒绝,已驳回"
+            ? "已拒绝,已退回,已驳回"
           : isGeneralSettlementPaymentRoute
             ? "待付款"
             : "待审批",
@@ -960,7 +919,7 @@ export default function FinanceCenterPage({
         page_size: pageSize,
       };
     }
-    const receivedRange = query.routeField2;
+    const receivedRange = dateQueryRange(query.routeField2);
     return {
       customer: query.routeField0 || "",
       case_no: query.routeField1 || "",
@@ -977,7 +936,7 @@ export default function FinanceCenterPage({
       page_size: pageSize,
     };
   };
-  const { loadGeneralSettlements, loadArchiveSettlements, submitGeneralSettlementReview, submitGeneralSettlementPayment, submitGeneralSettlementReapply, exportGeneralSettlement, exportPendingArchiveSettlements, submitArchiveSettlementReview, submitArchiveSettlementRollback, submitArchiveSettlementReapply, submitGeneralSettlementApply, loadSettlementContextTasks, openSettlementContext, submitSettlementLog, submitSettlementTask, generateSettlementDocument, submitSettlementBatch } = createFinanceSettlementsActions({
+  const { loadGeneralSettlements, loadArchiveSettlements, submitGeneralSettlementReview, submitGeneralSettlementPayment, submitGeneralSettlementReapply, exportGeneralSettlement, exportPendingArchiveSettlements, submitArchiveSettlementReview, submitArchiveSettlementRollback, submitArchiveSettlementReapply, submitGeneralSettlementApply, openSettlementContext, submitSettlementLog, submitSettlementTask, generateSettlementDocument, submitSettlementBatch } = createFinanceSettlementsActions({
     get generalSettlementMeta() { return generalSettlementMeta; },
     get isGeneralSettlementPendingRoute() { return isGeneralSettlementPendingRoute; },
     get generalSettlementParams() { return generalSettlementParams; },
@@ -1043,14 +1002,14 @@ export default function FinanceCenterPage({
     get load() { return load; },
   });
   const archiveSettlementParams = (
-    query: Record<string, any>,
+    query: Record<string, unknown>,
     page = 1,
     pageSize = 10,
   ) => {
-    const receivedRange = query.routeField3;
-    const settledRange = query.routeField7;
-    const archiveRange = query.routeField11;
-    const archivePaymentRange = query.routeField12;
+    const receivedRange = dateQueryRange(query.routeField3);
+    const settledRange = dateQueryRange(query.routeField7);
+    const archiveRange = dateQueryRange(query.routeField11);
+    const archivePaymentRange = dateQueryRange(query.routeField12);
     return {
       case_type:
         query.routeField0 && query.routeField0 !== "请选择"
@@ -1097,12 +1056,12 @@ export default function FinanceCenterPage({
   };
 
   const feeQueryParams = (
-    query: Record<string, any>,
+    query: Record<string, unknown>,
     page = 1,
     pageSize = feeQueryMeta.pageSize,
   ) => {
-    const refundRange = isRefundCaseFeeRoute ? query.routeField7 : query.routeField3;
-    const paidRange = isRefundCaseFeeRoute ? query.routeField3 : query.routeField7;
+    const refundRange = queryArray(isRefundCaseFeeRoute ? query.routeField7 : query.routeField3);
+    const paidRange = dateQueryRange(isRefundCaseFeeRoute ? query.routeField3 : query.routeField7);
     const listValue = (value: unknown) =>
       Array.isArray(value) ? value.join(",") : String(value || "");
     if (isRefundCaseFeeRoute) return {
@@ -1148,11 +1107,11 @@ export default function FinanceCenterPage({
   };
 
   const internalDetailParams = (
-    query: Record<string, any>,
+    query: Record<string, unknown>,
     page = 1,
     pageSize = 15,
   ) => {
-    const paidRange = query.routeField8;
+    const paidRange = dateQueryRange(query.routeField8);
     const listValue = (value: unknown) =>
       Array.isArray(value) ? value.join(",") : String(value || "");
     return {
@@ -1183,11 +1142,11 @@ export default function FinanceCenterPage({
   };
 
   const invoiceMineParams = (
-    query: Record<string, any>,
+    query: Record<string, unknown>,
     page = 1,
     pageSize = invoiceLegacyDefaultPageSize(initialView),
   ) => {
-    const invoiceRange = query.routeField6;
+    const invoiceRange = dateQueryRange(query.routeField6);
     return {
       scope: "mine",
       customer: query.routeField0 || "",
@@ -1205,11 +1164,11 @@ export default function FinanceCenterPage({
   };
 
   const invoicePendingParams = (
-    query: Record<string, any>,
+    query: Record<string, unknown>,
     page = 1,
     pageSize = invoiceLegacyDefaultPageSize(initialView),
   ) => {
-    const invoiceRange = query.routeField6;
+    const invoiceRange = dateQueryRange(query.routeField6);
     return {
       scope: "pending",
       customer: query.routeField0 || "",
@@ -1227,11 +1186,11 @@ export default function FinanceCenterPage({
     };
   };
   const invoiceCompanyParams = (
-    query: Record<string, any>,
+    query: Record<string, unknown>,
     page = 1,
     pageSize = invoiceLegacyDefaultPageSize(initialView),
   ) => {
-    const invoiceRange = query.routeField6;
+    const invoiceRange = dateQueryRange(query.routeField6);
     return {
       scope: "company",
       customer: query.routeField0 || "",
@@ -1250,14 +1209,14 @@ export default function FinanceCenterPage({
   };
 
   const invoiceUnissuedParams = (
-    query: Record<string, any>,
+    query: Record<string, unknown>,
     page = 1,
     pageSize = invoiceLegacyDefaultPageSize(initialView),
   ) => {
-    const invoiceAmount = query.routeField3;
-    const invoiceRange = query.routeField7;
-    const paidRange = query.routeField11;
-    const cashedRange = query.routeField14;
+    const invoiceAmount = queryArray(query.routeField3);
+    const invoiceRange = dateQueryRange(query.routeField7);
+    const paidRange = dateQueryRange(query.routeField11);
+    const cashedRange = dateQueryRange(query.routeField14);
     const listValue = (value: unknown) =>
       Array.isArray(value) ? value.join(",") : String(value || "");
     return {
@@ -1333,13 +1292,7 @@ export default function FinanceCenterPage({
     setOriginalQuery(defaults);
     setSelectedOriginalRows([]);
     setPaymentPrintPreview(null);
-    setPaymentPackagePreview(null);
-    setPaymentPackageDetail(null);
-    setPaymentPackageEditTarget(null);
-    setPaymentPackageEditorOpen(false);
-    setPaymentPackageSelectedFeeIds([]);
-    paymentPackageEditForm.resetFields();
-    setPaymentPackageWriteoffTarget(null);
+    resetPaymentPackageRoute();
     setPaymentPackageMeta({ total: 0, page: 1, pageSize: 15 });
     setGeneralSettlementDetails([]);
     load();
@@ -1383,20 +1336,6 @@ export default function FinanceCenterPage({
     get refreshRefundList() { return refreshRefundList; },
   });
 
-  const filteredAllocationCandidates = allocationCandidates.filter((row) => {
-    const needle = allocationKeyword.trim().toLocaleLowerCase();
-    const keywordMatched = !needle || [
-      row.case_no,
-      row.case_title,
-      row.plaintiff,
-      row.defendant,
-      row.contract_no,
-    ].some((value) => String(value || "").toLocaleLowerCase().includes(needle));
-    return keywordMatched
-      && (!allocationStage || row.case_stage === allocationStage)
-      && (!allocationFeeType || row.fee_type === allocationFeeType);
-  });
-
   const closeFeeModal = () => {
     setFeeOpen(false);
     setFeeEditTarget(null);
@@ -1406,7 +1345,7 @@ export default function FinanceCenterPage({
   const openFeeEdit = (row: Fee) => {
     const data = row.data || {};
     const commissionDetails = Array.isArray(data.commission_details)
-      ? data.commission_details.map((detail: Record<string, any>) => ({
+      ? data.commission_details.map((detail: Record<string, unknown>) => ({
           ...detail,
           employee_username: detail.employee_username || detail.username || "",
           commission_type: detail.commission_type || "员工提成",
@@ -1439,16 +1378,6 @@ export default function FinanceCenterPage({
     setFeeOpen(true);
   };
 
-  const openPaymentCancel = (row: Fee) => {
-    setPaymentCancelReason("");
-    setPaymentCancelTarget(row);
-  };
-
-  const openPaymentRollback = (row: Fee) => {
-    setPaymentRollbackComment("");
-    setPaymentRollbackTarget(row);
-  };
-
   const voidRejectedInternalFee = (row: Fee) => {
     Modal.confirm({
       title: "请款单作废",
@@ -1458,79 +1387,19 @@ export default function FinanceCenterPage({
       cancelText: "取消",
       onOk: async () => {
         try {
-          await api.post(`/finance/fees/${row.id}/void`, {
-            comment: "已拒绝请款单作废",
-          });
+          await voidRejectedPaymentApplication(row.id);
           message.success("请款单已作废");
           await load();
-        } catch (error: any) {
-          message.error(error?.response?.data?.detail || "请款单作废失败");
+        } catch (error: unknown) {
+          message.error(financeErrorDetail(error) || "请款单作废失败");
           throw error;
         }
       },
     });
   };
 
-  const applyInvoiceFeeSelection = (nextIds: number[], candidateRows = invoiceFeeOptions) => {
-    const selectedFees = candidateRows.filter((fee) => nextIds.includes(fee.id));
-    if (!selectedFees.length) {
-      setInvoiceSelectedFeeIds([]);
-      setInvoiceFeeAmounts({});
-      invoiceForm.setFieldsValue({
-        case_no: undefined,
-        case_record_id: undefined,
-        contract_record_id: undefined,
-        contract_no: undefined,
-        external_contract_no: undefined,
-        customer: undefined,
-        customer_no: undefined,
-        amount: undefined,
-        case_fee_ids: [],
-        case_fee_allocations: [],
-      });
-      return;
-    }
-    const first = buildInvoiceSourceFields([selectedFees[0]], contracts, customers);
-    const mismatched = selectedFees.some((fee) => {
-      const source = buildInvoiceSourceFields([fee], contracts, customers);
-      return source.customer !== first.customer;
-    });
-    if (mismatched) {
-      message.warning("一次申请开票只能选择同一客户下的费用。");
-      return;
-    }
-    const previous = invoiceForm.getFieldValue("case_fee_allocations") || [];
-    const allocations = selectedFees.map((fee) => ({ fee_id: fee.id, amount: previous.find((row: any) => Number(row.fee_id) === fee.id)?.amount ?? invoiceFeeAvailableAmount(fee) }));
-    setInvoiceSelectedFeeIds(nextIds);
-    setInvoiceFeeAmounts(Object.fromEntries(allocations.map((row) => [row.fee_id, row.amount])));
-    invoiceForm.setFieldsValue({
-      ...buildInvoiceSourceFields(selectedFees, contracts, customers),
-      case_fee_ids: nextIds,
-      case_fee_allocations: allocations,
-      amount: Number(allocations.reduce((sum, row) => sum + Number(row.amount || 0), 0).toFixed(2)),
-    });
-  };
-
-  const openInvoiceEdit = async (source: FinanceFlow) => {
-    const token = invoiceDetailRequestGuard.begin();
-    try {
-      const row = await fetchInvoiceRecord(api, source.id);
-      if (!invoiceDetailRequestGuard.isLatest(token)) return;
-      if (!["草稿", "已驳回"].includes(row.status)) { message.warning("当前发票状态不能编辑"); return; }
-      const values = invoiceEditValues(row);
-      const reference = await loadInvoiceReferenceData({ invoice_id: row.id, customer: row.customer, selected_fee_ids: values.case_fee_ids.join(","), isCurrent: () => invoiceDetailRequestGuard.isLatest(token) });
-      if (!invoiceDetailRequestGuard.isLatest(token)) return;
-      setInvoiceEditTarget(row);
-      setInvoiceSourceFeeId(null);
-      setInvoiceSelectedFeeIds(values.case_fee_ids);
-      setInvoiceFeeAmounts(Object.fromEntries(values.case_fee_allocations.map((item: any) => [item.fee_id, item.amount])));
-      invoiceForm.resetFields();
-      invoiceForm.setFieldsValue({ ...reference.customerDefaults, ...values, ...reference.sourceFields });
-      setInvoiceOpen(true);
-    } catch (error: any) {
-      if (invoiceDetailRequestGuard.isLatest(token)) message.error(error?.response?.data?.detail || error.message || "发票编辑信息加载失败");
-    }
-  };
+  const applyInvoiceFeeSelection = (nextIds: number[], candidateRows = invoiceFeeOptions) =>
+    applyInvoiceFeeSelectionState(nextIds, candidateRows, contracts, customers);
 
   const reviewFlow = (
     kind: "invoices" | "refunds",
@@ -1546,24 +1415,21 @@ export default function FinanceCenterPage({
       okButtonProps: { danger: !approved },
       onOk: async () => {
         try {
-          await api.post(`/finance/${kind}/${row.id}/review`, {
-            approved,
-            comment: approved ? "财务审核通过" : "资料不完整，退回修改",
-          });
+          await reviewFinanceFlowRequest(kind, row.id, approved);
           message.success(approved ? "审批已通过" : "申请已驳回");
           if (kind === "refunds") {
             await refreshRefundList();
           } else {
             await load();
           }
-        } catch (error: any) {
-          message.error(error?.response?.data?.detail || "审核失败");
+        } catch (error: unknown) {
+          message.error(financeErrorDetail(error) || "审核失败");
           throw error;
         }
       },
     });
 
-  const { openRecordFiles, uploadRecordFile, deleteRecordFile, uploadVoucher, downloadVoucher, deleteVoucher } = createFinanceDocumentsActions({
+  const { openRecordFiles, uploadRecordFile, deleteRecordFile, uploadVoucher, downloadVoucher, deleteVoucher, loadMergedPaymentDocument } = createFinanceDocumentsActions({
     get setRecordFiles() { return setRecordFiles; },
     get setRecordFileTarget() { return setRecordFileTarget; },
     get setRecordFileTargets() { return setRecordFileTargets; },
@@ -1606,15 +1472,15 @@ export default function FinanceCenterPage({
       cancelText: "取消",
       onOk: async () => {
         try {
-          await api.delete(`/finance/transactions/${row.id}`);
+          await rollbackFinanceTransactionRequest(row.id);
           if (voucherTarget?.id === row.id) {
             setVoucherOpen(false);
             setVoucherTarget(null);
           }
           message.success("财务流水已回退");
           load();
-        } catch (error: any) {
-          message.error(error?.response?.data?.detail || "财务流水回退失败");
+        } catch (error: unknown) {
+          message.error(financeErrorDetail(error) || "财务流水回退失败");
         }
       },
     });
@@ -1763,55 +1629,6 @@ export default function FinanceCenterPage({
     [invoices, initialView],
   );
 
-  const originalFinanceRoutes = [
-    "finance-receipts-icbc",
-    "finance-receipts-citic",
-    "finance-receipts-boc",
-    "finance-receipts-cmb",
-    "finance-receipts-manage",
-    "finance-receipts-claim",
-    "finance-receipts-pending",
-    "finance-receipts-allocated",
-    "finance-receipts-query",
-    "finance-payment-mine",
-    "finance-payment-audit",
-    "finance-payment-waiting",
-    "finance-payment-print",
-    "finance-payment-package-manage",
-    "finance-payment-writeoff",
-    "finance-payment-query",
-    "finance-internal-mine",
-    "finance-internal-settle",
-    "finance-internal-archive",
-    "finance-internal-audit",
-    "finance-internal-fee-audit",
-    "finance-internal-refused",
-    "finance-internal-void",
-    "finance-internal-refund-audit",
-    "finance-internal-payment",
-    "finance-internal-writeoff",
-    "finance-internal-query",
-    "finance-internal-done",
-    "finance-internal-detail",
-    "finance-internal-company",
-    "finance-invoice-mine",
-    "finance-invoice-pending",
-    "finance-invoice-company",
-    "finance-invoice-unissued",
-    "finance-invoice-company-unissued",
-    "finance-settlement-pending",
-    "finance-settlement-audit",
-    "finance-settlement-payment",
-    "finance-settlement-paid",
-    "finance-settlement-refused",
-    "finance-archive-fee-pending",
-    "finance-archive-fee-payment",
-    "finance-archive-fee-paid",
-    "finance-archive-fee-refused",
-    "finance-query",
-    "finance-fee-query",
-    "finance-refund",
-  ];
   const originalMode = originalFinanceRoutes.includes(initialView);
   const originalKind =
     initialView === "finance-internal-mine"
@@ -1819,61 +1636,11 @@ export default function FinanceCenterPage({
       : ["finance-query", "finance-fee-query", "finance-refund"].includes(initialView)
         ? "fee-query"
         : "payment";
-  const originalTitle: Record<string, string> = {
-    "finance-receipts-icbc": "工行银行到账列表",
-    "finance-receipts-citic": "中信银行到账列表",
-    "finance-receipts-boc": "中国银行到账列表",
-    "finance-receipts-cmb": "招商银行到账列表",
-    "finance-receipts-manage": "回款查询",
-    "finance-receipts-claim": "回款查询",
-    "finance-receipts-pending": "回款查询",
-    "finance-receipts-allocated": "回款查询",
-    "finance-receipts-query": "到账查询",
-    "finance-payment-mine": "我的请款单",
-    "finance-payment-audit": "请款单审批",
-    "finance-payment-waiting": "请款单列表",
-    "finance-payment-print": "请款单列表",
-    "finance-payment-package-manage": "付款打包-管理",
-    "finance-payment-writeoff": "请款单列表",
-    "finance-payment-query": "请款单列表",
-    "finance-refund-not-required": "不再办理退费案件",
-    "finance-internal-mine": "我的请款单",
-    "finance-internal-settle": "内部提成-待结算",
-    "finance-internal-archive": "内部提成-待归档",
-    "finance-internal-audit": "请款单审批",
-    "finance-internal-fee-audit": "请款单审批",
-    "finance-internal-refused": "请款单列表",
-    "finance-internal-void": "请款单列表",
-    "finance-internal-refund-audit": "请款单审批",
-    "finance-internal-payment": "待付款列表",
-    "finance-internal-writeoff": "付款单-核销",
-    "finance-internal-query": "请款单列表",
-    "finance-internal-done": "付款单-查询",
-    "finance-internal-detail": "内部费用查询",
-    "finance-internal-company": "内部费用查询",
-    "finance-invoice-mine": "我的开票",
-    "finance-invoice-pending": "待处理开票",
-    "finance-invoice-company": "公司开票",
-    "finance-invoice-unissued": "未开票",
-    "finance-invoice-company-unissued": "公司未开票",
-    "finance-settlement-pending": "待结算",
-    "finance-settlement-audit": "待审核",
-    "finance-settlement-payment": "待付款",
-    "finance-settlement-paid": "已付款",
-    "finance-settlement-refused": "已拒绝",
-    "finance-archive-fee-pending": "待归档",
-    "finance-archive-fee-payment": "待支付",
-    "finance-archive-fee-paid": "已支付",
-    "finance-archive-fee-refused": "已拒绝",
-    "finance-query": "费用查询",
-    "finance-fee-query": "费用查询",
-    "finance-refund": "退费查询",
-  };
   const displayedOriginalTitle =
     dashboardQueue === "official-fee-unpaid" ? "待缴官费" : dashboardQueue === "refund-pending" ? "待退费" :
     platformMode && initialView === "finance-payment-mine"
       ? "请款单列表"
-      : originalTitle[initialView] || "财务中心";
+      : originalFinanceTitles[initialView] || "财务中心";
   const paymentStatuses = paymentQueryLegacyStatusMatrix;
   const latestTransaction = (fee: Fee) =>
     transactions
@@ -1881,7 +1648,7 @@ export default function FinanceCenterPage({
       .sort((a, b) =>
         String(b.transaction_date).localeCompare(String(a.transaction_date)),
       )[0];
-  const linkedCaseForFee = (fee: Fee) => {
+  const linkedCaseForFee = (fee: OriginalFinanceRow) => {
     const data = fee.data || {};
     return cases.find(
       (item) =>
@@ -1962,8 +1729,9 @@ export default function FinanceCenterPage({
       const applicationDate =
         item.data.application_date || item.created_at || "";
       const deadline = item.data.deadline || item.data.due_date || "";
-      const applicationRange = originalQuery.applicationRange;
-      const paymentRange = originalQuery.paymentRange;
+      const applicationRange = dateQueryRange(originalQuery.applicationRange);
+      const paymentRange = dateQueryRange(originalQuery.paymentRange);
+      const deadlineRange = dateQueryRange(originalQuery.deadlineRange);
       return (
         (!originalQuery.status ||
           (initialView === "finance-payment-writeoff" &&
@@ -1986,9 +1754,9 @@ export default function FinanceCenterPage({
         (!paymentRange?.[0] ||
           (!dayjs(tx?.transaction_date).isBefore(paymentRange[0], "day") &&
             !dayjs(tx?.transaction_date).isAfter(paymentRange[1], "day"))) &&
-        (!originalQuery.deadlineRange?.[0] ||
-          (!dayjs(deadline).isBefore(originalQuery.deadlineRange[0], "day") &&
-            !dayjs(deadline).isAfter(originalQuery.deadlineRange[1], "day")))
+        (!deadlineRange?.[0] ||
+          (!dayjs(deadline).isBefore(deadlineRange[0], "day") &&
+            !dayjs(deadline).isAfter(deadlineRange[1], "day")))
       );
     });
     return result;
@@ -2005,20 +1773,24 @@ export default function FinanceCenterPage({
   useEffect(() => {
     if (tab === "legacy-history") void loadLegacyFinanceHistory(1, legacyFinanceMeta.pageSize);
   }, [tab, legacyFinanceKind, legacyFinanceIncludeInactive]);
-  const setOriginalField = (key: string, value: any) =>
+  const setOriginalField = (key: string, value: unknown) =>
     setOriginalQueryDraft((current) => ({ ...current, [key]: value }));
   const queryField = (
     label: string,
     key: string,
     control?: "status" | "feeType" | "date" | "money",
     disabled = false,
-  ) => (
+  ) => {
+    const value = originalQueryDraft[key];
+    const dateValue = dateQueryRange(value);
+    const amountValue = amountQueryRange(value);
+    return (
     <label className="finance-original-field" key={key}>
       <span>{label}</span>
       {control === "status" ? (
         <Select
           allowClear
-          value={originalQueryDraft[key]}
+          value={queryTextValue(value)}
           disabled={disabled || contractPaymentSource.active}
           placeholder="请选择"
           options={paymentStatuses.map((value) => ({ value, label: value }))}
@@ -2034,7 +1806,7 @@ export default function FinanceCenterPage({
       ) : control === "date" ? (
         <Space.Compact>
           <DatePicker.RangePicker
-            value={originalQueryDraft[key]}
+            value={dateValue}
             allowClear
             disabled={disabled || contractPaymentSource.active}
             onChange={(value) => setOriginalField(key, value)}
@@ -2055,10 +1827,10 @@ export default function FinanceCenterPage({
             min={0}
             precision={2}
             disabled={contractPaymentSource.active}
-            value={originalQueryDraft[key]?.[0]}
+            value={amountValue?.[0]}
             placeholder="最小金额"
             onChange={(value) =>
-              setOriginalField(key, [value, originalQueryDraft[key]?.[1]])
+              setOriginalField(key, [value, amountValue?.[1]])
             }
           />
           <Input value="-" readOnly className="finance-money-split" />
@@ -2066,22 +1838,23 @@ export default function FinanceCenterPage({
             min={0}
             precision={2}
             disabled={contractPaymentSource.active}
-            value={originalQueryDraft[key]?.[1]}
+            value={amountValue?.[1]}
             placeholder="最大金额"
             onChange={(value) =>
-              setOriginalField(key, [originalQueryDraft[key]?.[0], value])
+              setOriginalField(key, [amountValue?.[0], value])
             }
           />
         </Space.Compact>
       ) : (
         <Input
-          value={originalQueryDraft[key]}
+          value={queryTextValue(value)}
           disabled={disabled || contractPaymentSource.active}
           onChange={(event) => setOriginalField(key, event.target.value)}
         />
       )}
     </label>
-  );
+    );
+  };
   const paymentQueryFields = [
     queryField("申请日期", "applicationRange", "date"),
     queryField(
@@ -2108,7 +1881,7 @@ export default function FinanceCenterPage({
     queryField(
       "费用类型",
       "feeType",
-      paymentQueryFeeTypeControl(initialView),
+      "feeType",
     ),
     queryField("客户名称", "customer"),
   ];
@@ -2461,7 +2234,7 @@ export default function FinanceCenterPage({
       )}
     </Space>
   );
-  const archiveSettlementPendingOperation = (_: unknown, row: any) => (
+  const archiveSettlementPendingOperation = (_: unknown, row: ArchiveSettlementRow) => (
     <Space size={0} className="finance-settlement-row-actions">
       {isArchiveSettlementPaidRoute || isArchiveSettlementRejectedRoute ? (
         <Button
@@ -2926,6 +2699,8 @@ export default function FinanceCenterPage({
   const configuredField = (spec: OriginalFieldSpec, index: number) => {
     const key = spec.key || `routeField${index}`;
     const value = originalQueryDraft[key] ?? spec.defaultValue;
+    const dateValue = dateQueryRange(originalQueryDraft[key]);
+    const amountValue = amountQueryRange(originalQueryDraft[key]);
     const selectedValues = Array.isArray(value) ? value : [];
     const pendingValues = multiPickerDraft[key] ?? selectedValues;
     return (
@@ -3018,25 +2793,25 @@ export default function FinanceCenterPage({
           />
         ) : spec.control === "date" ? (
           <DatePicker.RangePicker
-            value={originalQueryDraft[key]}
+            value={dateValue}
             disabled={spec.disabled}
             onChange={(next) => setOriginalField(key, next)}
           />
         ) : spec.control === "money" ? (
           <Space.Compact>
             <InputNumber
-              value={originalQueryDraft[key]?.[0]}
+              value={amountValue?.[0]}
               placeholder="最小金额"
               onChange={(next) =>
-                setOriginalField(key, [next, originalQueryDraft[key]?.[1]])
+                setOriginalField(key, [next, amountValue?.[1]])
               }
             />
             <Input value="-" readOnly className="finance-money-split" />
             <InputNumber
-              value={originalQueryDraft[key]?.[1]}
+              value={amountValue?.[1]}
               placeholder="最大金额"
               onChange={(next) =>
-                setOriginalField(key, [originalQueryDraft[key]?.[0], next])
+                setOriginalField(key, [amountValue?.[0], next])
               }
             />
           </Space.Compact>
@@ -3100,18 +2875,16 @@ export default function FinanceCenterPage({
               cancelText: "取消",
               onOk: async () => {
                 try {
-                  await api.post(`/finance/invoices/${row.id}/withdraw`, {
-                    comment: "我的开票列表撤回",
-                  });
+                  await withdrawInvoiceApplication(row.id);
                   message.success("发票申请已撤回");
                   await loadInvoiceMine(
                     originalQuery,
                     invoiceMineMeta.page,
                     invoiceMineMeta.pageSize,
                   );
-                } catch (error: any) {
+                } catch (error: unknown) {
                   message.error(
-                    error?.response?.data?.detail || "发票申请撤回失败",
+                    financeErrorDetail(error) || "发票申请撤回失败",
                   );
                 }
               },
@@ -3126,7 +2899,7 @@ export default function FinanceCenterPage({
   const openInvoiceProcess = async (source: FinanceFlow) => {
     const token = invoiceDetailRequestGuard.begin();
     try {
-    const row = await fetchInvoiceRecord(api, source.id);
+    const row = await loadInvoiceRecord(source.id);
     if (!invoiceDetailRequestGuard.isLatest(token)) return;
     if (row.status !== "待开票") { message.warning("当前发票状态不能办理开票，请刷新列表"); return; }
     issueForm.setFieldsValue({
@@ -3141,20 +2914,20 @@ export default function FinanceCenterPage({
       comment: "",
     });
     setInvoiceProcess(row);
-    } catch (error: any) {
-      if (invoiceDetailRequestGuard.isLatest(token)) message.error(error?.response?.data?.detail || error.message || "发票处理信息加载失败");
+    } catch (error: unknown) {
+      if (invoiceDetailRequestGuard.isLatest(token)) message.error(financeErrorDetail(error) || financeErrorMessageText(error) || "发票处理信息加载失败");
     }
   };
   const openInvoiceCancel = async (source: FinanceFlow) => {
     const token = invoiceDetailRequestGuard.begin();
     try {
-      const row = await fetchInvoiceRecord(api, source.id);
+      const row = await loadInvoiceRecord(source.id);
       if (!invoiceDetailRequestGuard.isLatest(token)) return;
       if (["已撤回", "已作废"].includes(row.status)) { message.warning("当前发票状态不能作废"); return; }
       setInvoiceCancelReason("");
       setInvoiceCancel(row);
-    } catch (error: any) {
-      if (invoiceDetailRequestGuard.isLatest(token)) message.error(error?.response?.data?.detail || error.message || "发票作废信息加载失败");
+    } catch (error: unknown) {
+      if (invoiceDetailRequestGuard.isLatest(token)) message.error(financeErrorDetail(error) || financeErrorMessageText(error) || "发票作废信息加载失败");
     }
   };
   const invoicePendingOperation = (_: unknown, row: FinanceFlow) => (
@@ -3217,9 +2990,9 @@ export default function FinanceCenterPage({
       </>}
     </Space>
   );
-  const rawCellValue = (row: any, header: string) => {
+  const rawCellValue = (row: OriginalFinanceRow, header: string) => {
     const data = row.data || {};
-    const tx = row.id && row.data ? latestTransaction(row) : undefined;
+    const tx = typeof row.id === "number" && row.data ? latestTransaction(row as Fee) : undefined;
     const linkedCase = linkedCaseForFee(row);
     const linkedCaseData = linkedCase?.data || {};
     const values: Record<string, any> = {
@@ -3230,14 +3003,14 @@ export default function FinanceCenterPage({
       提成编号: row.serial_no,
       状态:
         initialView === "finance-internal-payment"
-          ? paymentStatus(row)
+          ? paymentStatus(row as Fee)
           : initialView === "finance-internal-refused" &&
-              ["已拒绝", "已退回", "已驳回"].includes(row.status)
+              ["已拒绝", "已退回", "已驳回"].includes(row.status || "")
           ? "已拒绝"
           : row.status,
       付款状态:
         initialView === "finance-internal-refund-audit"
-          ? paymentStatus(row)
+          ? paymentStatus(row as Fee)
           : isInvoiceUnissuedRoute
             ? data.payment_status || ""
           : isInternalDetailRoute
@@ -3315,7 +3088,7 @@ export default function FinanceCenterPage({
         data.archive_payment_reviewed_at ||
         data.audit_date ||
         (["已审批", "已拒绝", "已驳回", "已作废", "已付款"].includes(
-          row.status,
+          row.status || "",
         )
           ? row.updated_at
           : "") ||
@@ -3424,7 +3197,7 @@ export default function FinanceCenterPage({
     }
     return undefined;
   };
-  const cellValue = (row: any, header: string) => {
+  const cellValue = (row: OriginalFinanceRow, header: string) => {
     const value = rawCellValue(row, header);
     if (value == null || value === "") return "—";
     if (
@@ -3500,7 +3273,7 @@ export default function FinanceCenterPage({
     if (header === "进度时长") return value == null ? "—" : String(value);
     return typeof value === "number" ? money(value) : value;
   };
-  const openFinanceCustomerDetail = (row: any, header: string) => {
+  const openFinanceCustomerDetail = (row: OriginalFinanceRow, header: string) => {
     const customerNo =
       row.data?.customer_no ||
       row.data?.customer_serial_no ||
@@ -3582,7 +3355,7 @@ export default function FinanceCenterPage({
   });
   const configuredRows = useMemo(() => {
     if (!activeRouteConfig) return originalFinanceRows;
-    let rows: any[] = initialView === "finance-payment-print"
+    let rows: OriginalFinanceRow[] = initialView === "finance-payment-print"
       ? [...originalFinanceRows]
       : isFeeQueryRoute
         ? [...feeQueryRows]
@@ -3627,7 +3400,7 @@ export default function FinanceCenterPage({
     if (["finance-receipts-claim"].includes(initialView))
       rows = rows.filter((row) => row.status === "待认领");
     if (["finance-receipts-pending"].includes(initialView))
-      rows = rows.filter((row) => ["待分配", "部分分配"].includes(row.status));
+      rows = rows.filter((row) => ["待分配", "部分分配"].includes(row.status || ""));
     if (["finance-receipts-allocated"].includes(initialView))
       rows = rows.filter((row) => row.status === "已分配");
     if (initialView === "finance-invoice-mine") {
@@ -3651,10 +3424,10 @@ export default function FinanceCenterPage({
           : row.status === "待审批",
       );
     if (initialView === "finance-internal-refund-audit")
-      rows = rows.filter((row) => isInternalRefundFee(row));
+      rows = rows.filter((row) => isInternalRefundFee(row as Fee));
     if (initialView === "finance-internal-refused")
       rows = rows.filter((row) =>
-        ["已拒绝", "已退回", "已驳回"].includes(row.status),
+        ["已拒绝", "已退回", "已驳回"].includes(row.status || ""),
       );
     if (initialView === "finance-internal-void")
       rows = rows.filter((row) => row.status === "已作废");
@@ -3667,7 +3440,7 @@ export default function FinanceCenterPage({
       "finance-settlement-audit": ["待审批"],
       "finance-settlement-payment": ["待付款"],
       "finance-settlement-paid": ["已付款"],
-      "finance-settlement-refused": ["已拒绝", "已驳回"],
+      "finance-settlement-refused": ["已拒绝", "已退回", "已驳回"],
       "finance-archive-fee-pending": ["草稿", "待归档"],
       "finance-archive-fee-payment": ["已审批", "待支付", "部分付款"],
       "finance-archive-fee-paid": ["已付款", "已支付"],
@@ -3675,7 +3448,7 @@ export default function FinanceCenterPage({
     };
     if (statusByRoute[initialView])
       rows = rows.filter((row) =>
-        statusByRoute[initialView].includes(row.status),
+        statusByRoute[initialView].includes(row.status || ""),
       );
     if (isFeeQueryRoute || isGeneralSettlementRoute || isInternalDetailRoute || isInvoiceMineRoute || isInvoicePendingRoute || isInvoiceCompanyRoute || isInvoiceUnissuedRoute)
       return rows;
@@ -3795,7 +3568,7 @@ export default function FinanceCenterPage({
           fee.data.commission_details.length
             ? fee.data.commission_details
             : [{}];
-        return details.map((detail: Record<string, any>, index: number) => ({
+        return details.map((detail: Record<string, unknown>, index: number) => ({
           key: `${fee.id}-${index}`,
           case_no: detail.case_no ?? fee.data?.case_no,
           commission_type:
@@ -3860,19 +3633,7 @@ export default function FinanceCenterPage({
       }
       return;
     }
-    setFeeReviewTargets(targets);
-  };
-
-  const openPaymentPackageEditor = (row?: Fee) => {
-    const target = row || null;
-    const currentIds = target?.data?.fee_ids || [];
-    setPaymentPackageEditTarget(target);
-    setPaymentPackageEditorOpen(true);
-    setPaymentPackageSelectedFeeIds(currentIds.map((id: any) => Number(id)));
-    paymentPackageEditForm.setFieldsValue({ comment: target?.data?.comment || target?.description || "" });
-    void api.get("/finance/payment-packages/candidates", { params: target ? { package_id: target.id } : {} })
-      .then(({ data }) => setPaymentPackageCandidates(data.items || []))
-      .catch((error: any) => message.error(error?.response?.data?.detail || "付款包候选费用加载失败"));
+    setFeeReviewTargets(targets as Fee[]);
   };
 
   const deletePaymentPackage = (row: Fee) => {
@@ -3884,13 +3645,13 @@ export default function FinanceCenterPage({
       cancelText: "取消",
       onOk: async () => {
         try {
-          await api.delete(`/finance/payment-packages/${row.id}`);
+          await deletePaymentPackageRequest(row.id);
           message.success("付款包已删除，关联费用已恢复待付款");
           const nextPage = paymentPackages.length === 1 && paymentPackageMeta.page > 1
             ? paymentPackageMeta.page - 1 : paymentPackageMeta.page;
           await loadPaymentPackages(originalQuery, nextPage, paymentPackageMeta.pageSize);
-        } catch (error: any) {
-          message.error(error?.response?.data?.detail || "付款包删除失败");
+        } catch (error: unknown) {
+          message.error(financeErrorDetail(error) || "付款包删除失败");
         }
       },
     });
@@ -3929,40 +3690,40 @@ export default function FinanceCenterPage({
       );
     }
     if (isFeeQueryRoute) {
-      void loadFeeQuery(next, 1, feeQueryMeta.pageSize).catch((error: any) =>
-        message.error(error?.response?.data?.detail || "费用查询失败"),
+      void loadFeeQuery(next, 1, feeQueryMeta.pageSize).catch((error: unknown) =>
+        message.error(financeErrorDetail(error) || "费用查询失败"),
       );
     }
     if (isInternalDetailRoute) {
       void loadInternalDetails(next, 1, internalDetailMeta.pageSize).catch(
-        (error: any) =>
+        (error: unknown) =>
           message.error(
-            error?.response?.data?.detail || "内部费用明细查询失败",
+            financeErrorDetail(error) || "内部费用明细查询失败",
           ),
       );
     }
     if (isInvoiceMineRoute) {
       void loadInvoiceMine(next, 1, invoiceMineMeta.pageSize).catch(
-        (error: any) =>
-          message.error(error?.response?.data?.detail || "我的开票查询失败"),
+        (error: unknown) =>
+          message.error(financeErrorDetail(error) || "我的开票查询失败"),
       );
     }
     if (isInvoicePendingRoute) {
       void loadInvoicePending(next, 1, invoicePendingMeta.pageSize).catch(
-        (error: any) =>
-          message.error(error?.response?.data?.detail || "待处理开票查询失败"),
+        (error: unknown) =>
+          message.error(financeErrorDetail(error) || "待处理开票查询失败"),
       );
     }
     if (isInvoiceCompanyRoute) {
       void loadInvoiceCompany(next, 1, invoiceCompanyMeta.pageSize).catch(
-        (error: any) =>
-          message.error(error?.response?.data?.detail || "公司开票查询失败"),
+        (error: unknown) =>
+          message.error(financeErrorDetail(error) || "公司开票查询失败"),
       );
     }
     if (isInvoiceUnissuedRoute) {
       void loadInvoiceUnissued(next, 1, invoiceUnissuedMeta.pageSize).catch(
-        (error: any) =>
-          message.error(error?.response?.data?.detail || "未开票查询失败"),
+        (error: unknown) =>
+          message.error(financeErrorDetail(error) || "未开票查询失败"),
       );
     }
     if (isGeneralSettlementRoute) {
@@ -3970,9 +3731,9 @@ export default function FinanceCenterPage({
         next,
         1,
         generalSettlementMeta.pageSize,
-      ).catch((error: any) =>
+      ).catch((error: unknown) =>
         message.error(
-          error?.response?.data?.detail || "待结算查询失败",
+          financeErrorDetail(error) || "待结算查询失败",
         ),
       );
     }
@@ -3981,9 +3742,9 @@ export default function FinanceCenterPage({
         next,
         1,
         archiveSettlementMeta.pageSize,
-      ).catch((error: any) =>
+      ).catch((error: unknown) =>
         message.error(
-          error?.response?.data?.detail ||
+          financeErrorDetail(error) ||
             (isArchiveSettlementRejectedRoute
               ? "已拒绝查询失败"
               : isArchiveSettlementPaymentRoute
@@ -4028,8 +3789,8 @@ export default function FinanceCenterPage({
       setOriginalQueryDraft(next);
       setOriginalQuery(next);
       setSelectedOriginalRows([]);
-      void loadFeeQuery(next, 1, feeQueryMeta.pageSize).catch((error: any) =>
-        message.error(error?.response?.data?.detail || "费用查询清空失败"),
+      void loadFeeQuery(next, 1, feeQueryMeta.pageSize).catch((error: unknown) =>
+        message.error(financeErrorDetail(error) || "费用查询清空失败"),
       );
       return;
     }
@@ -4088,8 +3849,8 @@ export default function FinanceCenterPage({
       setOriginalQuery(next);
       setSelectedOriginalRows([]);
       void loadInvoiceUnissued(next, 1, invoiceUnissuedMeta.pageSize).catch(
-        (error: any) =>
-          message.error(error?.response?.data?.detail || invoiceLegacyErrorMessage),
+        (error: unknown) =>
+          message.error(financeErrorDetail(error) || invoiceLegacyErrorMessage),
       );
       return;
     }
@@ -4111,9 +3872,9 @@ export default function FinanceCenterPage({
       setOriginalQuery(next);
       setSelectedOriginalRows([]);
       void loadInternalDetails(next, 1, internalDetailMeta.pageSize).catch(
-        (error: any) =>
+        (error: unknown) =>
           message.error(
-            error?.response?.data?.detail || "内部费用明细清空失败",
+            financeErrorDetail(error) || "内部费用明细清空失败",
           ),
       );
       return;
@@ -4131,7 +3892,7 @@ export default function FinanceCenterPage({
     return ids;
   };
 
-  const openArchiveSettlementReview = (targets: any[], approved: boolean) => {
+  const openArchiveSettlementReview = (targets: ArchiveSettlementTarget[], approved: boolean) => {
     if (!targets.length) {
       Modal.info({
         title: "提示",
@@ -4145,7 +3906,7 @@ export default function FinanceCenterPage({
     setArchiveSettlementReviewTargets(targets);
   };
 
-  const openArchiveSettlementRollback = (targets: any[]) => {
+  const openArchiveSettlementRollback = (targets: ArchiveSettlementTarget[]) => {
     if (!targets.length) {
       Modal.info({
         title: "提示",
@@ -4158,7 +3919,7 @@ export default function FinanceCenterPage({
     setArchiveSettlementRollbackTargets(targets);
   };
 
-  const openArchiveSettlementReapply = (targets: any[]) => {
+  const openArchiveSettlementReapply = (targets: ArchiveSettlementTarget[]) => {
     if (!targets.length) {
       Modal.info({
         title: "提示",
@@ -4206,81 +3967,16 @@ export default function FinanceCenterPage({
       new Map((linked as Fee[]).map((row) => [row.id, row])).values(),
     );
   };
-  const selectedSettlementCase = () => {
-    const linked = selectedSettlementCases();
-    if (linked.length !== 1) {
-      if (linked.length > 1) message.warning("该操作每次只能选择一个案件");
-      return null;
-    }
-    return linked[0];
-  };
-
-  const openSettlementBatch = () => {
+  const openSelectedSettlementBatch = () => {
     const linked = selectedSettlementCases();
     if (!linked.length) return;
-    settlementBatchForm.resetFields();
-    setSettlementBatchOpen(true);
+    openSettlementBatch();
   };
 
   const openRefundBatchFee = (feeType: string) => {
     const linked = selectedSettlementCases();
     if (!linked.length) return;
-    const internal = feeType === "内部费用";
-    setRefundBatchFeeKind(internal ? "internal" : "ordinary");
-    setRefundBatchFeeBaseType(feeType);
-    if (!internal) {
-      void api.get("/finance/payment-types").then(({ data }) => {
-        setRefundBatchPaymentTypes(data.items || []);
-      }).catch((error: any) => message.error(error?.response?.data?.detail || "收款单位加载失败"));
-    }
-    void api.get("/system/parameters/options", { params: { category: "fee_type" } }).then(({ data }) => {
-      const items = (data.items || []).filter((item: any) => item.selectable && item.base_fee_type === feeType);
-      setRefundBatchFeeSubTypes(items);
-    }).catch(() => {
-      setRefundBatchFeeSubTypes([]);
-    });
-    const deadline = dayjs().add(5, "day");
-    refundBatchFeeForm.setFieldsValue({
-      handler: currentUser.username,
-      items: linked.map((item) => ({
-        case_id: item.id,
-        case_no: item.serial_no,
-        customer: item.customer,
-        contract_record_id: Number(item.data?.contract_record_id || item.data?.contract_id || 0) || undefined,
-        fee_type: feeType,
-        fee_type_id: undefined,
-        fee_type_name: "",
-        amount: undefined,
-        payment_amount: undefined,
-        payment_type_id: undefined,
-        payment_remark: "",
-        payee_username: undefined,
-        base_amount: undefined,
-        reference_commission: undefined,
-        remark: "",
-        deadline,
-      })),
-    });
-    setRefundBatchFeeStep(0);
-    setRefundBatchFeeOpen(true);
-  };
-  const closeRefundBatchFee = () => {
-    setRefundBatchFeeOpen(false);
-    setRefundBatchFeeStep(0);
-    refundBatchFeeForm.resetFields();
-  };
-  const syncFirstRefundFeeField = (field: string) => {
-    const items = refundBatchFeeForm.getFieldValue("items") || [];
-    if (items.length < 2) return;
-    const first = items[0] || {};
-    const value = first[field];
-    if (value === undefined || value === null || value === "") return;
-    refundBatchFeeForm.setFieldValue(
-      "items",
-      items.map((item: Record<string, any>, index: number) =>
-        index === 0 ? item : { ...item, [field]: value },
-      ),
-    );
+    openRefundBatchFeeState(feeType, linked, currentUser.username);
   };
 
   const runSettlementMoreAction = (key: string) => {
@@ -4297,14 +3993,12 @@ export default function FinanceCenterPage({
         onOk: async () => {
           setSettlementActionLoading(true);
           try {
-            await api.post("/finance/settlements/mark-commission-paid", {
-              fee_ids: selectedOriginalRows.map(Number),
-            });
+            await markSettlementCommissionPaid(selectedOriginalRows.map(Number));
             message.success("提成发放标识已更新");
             setSelectedOriginalRows([]);
             await load();
-          } catch (error: any) {
-            message.error(error?.response?.data?.detail || "标记提成已发失败");
+          } catch (error: unknown) {
+            message.error(financeErrorDetail(error) || "标记提成已发失败");
           } finally {
             setSettlementActionLoading(false);
           }
@@ -4326,7 +4020,7 @@ export default function FinanceCenterPage({
       const linked = selectedSettlementCases();
       if (linked.length) void openRecordFiles(linked[0], "普通附件", linked);
     }
-    if (key === "batch-modify") openSettlementBatch();
+    if (key === "batch-modify") openSelectedSettlementBatch();
     if (
       ["authorization", "law-firm-letter", "identity", "settlement"].includes(
         key,
@@ -4551,50 +4245,8 @@ export default function FinanceCenterPage({
         />
       </section>
     ) : null;
-  const invoiceReceivedReceiptId = (row: FinanceFlow | null) => {
-    const data = row?.data || {};
-    return (
-      data.receipt_id ||
-      data.received_payment_id ||
-      data.incoming_payment_id ||
-      data.receipt_record_id ||
-      data.receipt_no ||
-      data.received_payment_no ||
-      data.incoming_payment_no ||
-      ""
-    );
-  };
-  const openInvoiceReceivedDetail = (row: FinanceFlow | null) => {
-    const data = row?.data || {};
-    const receiptId = invoiceReceivedReceiptId(row);
-    if (!receiptId) {
-      message.warning("当前发票未关联到账记录");
-      return;
-    }
-    const nextQuery = {
-      routeField13: receiptId,
-      receipt_id: receiptId,
-      incoming_payment_id: receiptId,
-      receipt_no:
-        data.receipt_no ||
-        data.received_payment_no ||
-        data.incoming_payment_no ||
-        String(receiptId),
-    };
-    setOriginalQueryDraft(nextQuery);
-    setOriginalQuery(nextQuery);
-    setSelectedOriginalRows([]);
-    onNavigate?.("finance-receipts-query");
-  };
   const invoiceDisplay = invoiceProcess || invoiceCancel || invoiceDetail;
   const invoiceDetailData = invoiceDisplay?.data || {};
-  const invoiceDetailCase = invoiceDisplay
-    ? cases.find(
-        (item) =>
-          item.id === Number(invoiceDetailData.case_id || 0) ||
-          item.serial_no === invoiceDetailData.case_no,
-      )
-    : undefined;
   const invoiceDetailPage = invoiceDisplay ? (
     <section className={`finance-invoice-detail-page${invoiceProcess ? " finance-invoice-process-page" : ""}${invoiceCancel ? " finance-invoice-cancel-page" : ""}`}>
       <div className="finance-original-title">
@@ -5037,13 +4689,328 @@ export default function FinanceCenterPage({
     return <JarFeeManager onNavigate={onNavigate} />;
   }
 
-  const viewProps = {
-    // Route / view state
+  const paymentReversalModals = {
+    cancel: {
+      target: paymentCancelTarget,
+      text: paymentCancelReason,
+      onTextChange: setPaymentCancelReason,
+      onSubmit: submitPaymentCancel,
+      onClose: closePaymentCancel,
+    },
+    rollback: {
+      target: paymentRollbackTarget,
+      text: paymentRollbackComment,
+      onTextChange: setPaymentRollbackComment,
+      onSubmit: submitPaymentRollback,
+      onClose: closePaymentRollback,
+    },
+  } satisfies PaymentReversalModalsProps;
+
+  const paymentWriteoffModal = {
+    target: writeoffTarget,
+    form: writeoffForm,
+    onSubmit: writeoffFee,
+    onClose: closePaymentWriteoff,
+  } satisfies PaymentWriteoffModalProps;
+
+  const invoiceMaintenanceModals = {
+    loading: invoiceMutationLoading,
+    number: {
+      target: invoiceNumberTarget,
+      form: invoiceNumberForm,
+      onSubmit: submitInvoiceNumberChange,
+      onClose: closeInvoiceNumber,
+    },
+    date: {
+      target: invoiceDateTarget,
+      form: invoiceDateForm,
+      onSubmit: submitInvoiceDateChange,
+      onClose: closeInvoiceDate,
+    },
+  } satisfies InvoiceMaintenanceModalsProps;
+
+  const invoiceLifecycleModals = {
+    issue: { target: issueTarget, form: issueForm, onSubmit: issueInvoice, onClose: closeIssue },
+    void: { target: voidTarget, form: voidForm, onSubmit: voidInvoice, onClose: closeVoid },
+  } satisfies InvoiceLifecycleModalsProps;
+
+  const refundCreationModal = {
+    open: refundOpen,
+    form: refundForm,
+    cases,
+    onSubmit: createRefund,
+    onClose: closeRefundCreation,
+  } satisfies RefundCreationModalProps;
+
+  const refundMaintenanceModals = {
+    amount: {
+      target: refundAmountTarget,
+      form: refundAmountForm,
+      loading: refundMutationLoading,
+      onSubmit: updateRefundAmount,
+      onClose: closeRefundAmount,
+    },
+    complete: {
+      target: refundCompleteTarget,
+      form: refundCompleteForm,
+      onSubmit: completeRefund,
+      onClose: closeRefundComplete,
+    },
+  } satisfies RefundMaintenanceModalsProps;
+
+  const incomingAllocationModal = {
+    open: Boolean(allocateTarget),
+    allocateTarget,
+    allocationValidationError,
+    allocationKeyword,
+    allocationStage,
+    allocationFeeType,
+    allocationLoading,
+    allocationCandidates,
+    filteredAllocationCandidates,
+    selectedAllocationKeys,
+    allocationAmounts,
+    allocationComment,
+    onOk: allocateIncoming,
+    onCancel: closeIncomingAllocation,
+    onKeywordChange: setAllocationKeyword,
+    onStageChange: setAllocationStage,
+    onFeeTypeChange: setAllocationFeeType,
+    onClearFilters: clearAllocationFilters,
+    onSelectedKeysChange: setSelectedAllocationKeys,
+    onAmountChange: setAllocationAmount,
+    onCommentChange: setAllocationComment,
+    onOpenCaseDetail: openCaseDetail,
+  } satisfies IncomingAllocationModalProps;
+
+  const refundCaseFeeOperationMenu = {
+    requireSelection: requireRefundCaseFeeSelection,
+    getSelectedStatus: () => {
+      const firstId = selectedOriginalRows[0];
+      const firstRow = configuredRows.find((row) => row.id === firstId);
+      return firstRow?.data?.refund_status || "R10";
+    },
+    onOpenStatus: openRefundCaseFeeStatus,
+    onOpenLog: openRefundCaseFeeLog,
+  } satisfies RefundCaseFeeOperationMenuProps;
+
+  const refundCaseFeeMarkButton = {
+    loading: refundCaseFeeMutationLoading,
+    requireSelection: requireRefundCaseFeeSelection,
+    onMarkNotRequired: () => submitRefundCaseFeeStatus("R100"),
+  } satisfies RefundCaseFeeMarkButtonProps;
+
+  const refundCaseFeeModals = {
+    selectedCount: selectedOriginalRows.length,
+    loading: refundCaseFeeMutationLoading,
+    statusOpen: refundCaseFeeStatusOpen,
+    status: refundCaseFeeStatus,
+    onStatusChange: setRefundCaseFeeStatus,
+    onCloseStatus: closeRefundCaseFeeStatus,
+    onSubmitStatus: submitRefundCaseFeeStatus,
+    logKind: refundCaseFeeLogKind,
+    logContent: refundCaseFeeLogContent,
+    onLogContentChange: setRefundCaseFeeLogContent,
+    onCloseLog: closeRefundCaseFeeLog,
+    onSubmitLog: submitRefundCaseFeeLog,
+  } satisfies RefundCaseFeeModalsProps;
+
+  const settlementReviewModals = {
+    generalApplyTargets: generalSettlementApplyTargets,
+    generalApplyComment: generalSettlementApplyComment,
+    generalApplyBusy: generalSettlementBusy,
+    onGeneralApplyCommentChange: setGeneralSettlementApplyComment,
+    onGeneralApplySubmit: () => void submitGeneralSettlementApply(),
+    onGeneralApplyCancel: closeGeneralSettlementApply,
+    generalReviewTargets: generalSettlementReviewTargets,
+    generalReviewApproved: generalSettlementReviewApproved,
+    generalReviewComment: generalSettlementReviewComment,
+    generalReviewBusy: generalSettlementBusy,
+    onGeneralReviewCommentChange: setGeneralSettlementReviewComment,
+    onGeneralReviewSubmit: () => void submitGeneralSettlementReview(),
+    onGeneralReviewCancel: closeGeneralSettlementReview,
+    generalPaymentTargets: generalSettlementPaymentTargets,
+    generalPaymentAction: generalSettlementPaymentAction,
+    generalPaymentComment: generalSettlementPaymentComment,
+    generalPaymentBusy: generalSettlementBusy,
+    onGeneralPaymentCommentChange: setGeneralSettlementPaymentComment,
+    onGeneralPaymentSubmit: () => void submitGeneralSettlementPayment(),
+    onGeneralPaymentCancel: closeGeneralSettlementPayment,
+    generalReapplyTargets: generalSettlementReapplyTargets,
+    generalReapplyComment: generalSettlementReapplyComment,
+    generalReapplyBusy: generalSettlementBusy,
+    onGeneralReapplyCommentChange: setGeneralSettlementReapplyComment,
+    onGeneralReapplySubmit: () => void submitGeneralSettlementReapply(),
+    onGeneralReapplyCancel: closeGeneralSettlementReapply,
+    archiveReviewTargets: archiveSettlementReviewTargets,
+    archiveReviewApproved: archiveSettlementReviewApproved,
+    archiveReviewComment: archiveSettlementReviewComment,
+    archiveReviewBusy: archiveSettlementBusy,
+    onArchiveReviewCommentChange: setArchiveSettlementReviewComment,
+    onArchiveReviewSubmit: () => void submitArchiveSettlementReview(),
+    onArchiveReviewCancel: closeArchiveSettlementReview,
+    archiveRollbackTargets: archiveSettlementRollbackTargets,
+    archiveRollbackComment: archiveSettlementRollbackComment,
+    archiveRollbackBusy: archiveSettlementBusy,
+    isArchiveRejectedRoute: isArchiveSettlementRejectedRoute,
+    onArchiveRollbackCommentChange: setArchiveSettlementRollbackComment,
+    onArchiveRollbackSubmit: () => void submitArchiveSettlementRollback(),
+    onArchiveRollbackCancel: closeArchiveSettlementRollback,
+    archiveReapplyTargets: archiveSettlementReapplyTargets,
+    archiveReapplyComment: archiveSettlementReapplyComment,
+    archiveReapplyBusy: archiveSettlementBusy,
+    onArchiveReapplyCommentChange: setArchiveSettlementReapplyComment,
+    onArchiveReapplySubmit: () => void submitArchiveSettlementReapply(),
+    onArchiveReapplyCancel: closeArchiveSettlementReapply,
+  } satisfies SettlementReviewModalsProps;
+
+  const receiptsView = {
+    incoming, shownIncoming, columns: incomingColumns,
+    selectedRows: selectedIncomingRows, onSelectedRowsChange: setSelectedIncomingRows,
+    onOpenAllocation: setIncomingAllocationTarget,
+    canManage, form: incomingForm, onOpenRegistration: () => setIncomingOpen(true), loading,
+  } satisfies FinanceReceiptsViewProps;
+  const refundsView = {
+    initialView, isNotRequiredRoute: isRefundNotRequiredRoute,
+    activeStatus: activeRefundStatus, statusFilter: refundStatusFilter,
+    onStatusFilterChange: setRefundStatusFilter, groupFilter: refundGroupFilter,
+    onGroupFilterChange: setRefundGroupFilter, selectedRows: selectedRefundRows,
+    onSelectedRowsChange: setSelectedRefundRows, meta: refundMeta,
+    rows: refunds, columns: refundColumns, loading, load: loadRefunds,
+    exportRows: exportRefunds, onBatchStatusChange: setRefundBatchStatus,
+    onOpenBatchStatus: () => setRefundBatchStatusOpen(true),
+    onOpenCreation: () => openRefundCreation(currentUser.displayName || ""),
+    statusForRoute: refundStatusForRoute,
+  } satisfies FinanceRefundsViewProps;
+  const invoicesView = {
+    rows: shownInvoices, columns: invoiceColumns, loading, form: invoiceForm,
+    loadReference: loadInvoiceReferenceData,
+    onEditTargetChange: setInvoiceEditTarget,
+    onSelectedFeeIdsChange: setInvoiceSelectedFeeIds,
+    onOpen: () => setInvoiceOpen(true),
+  } satisfies FinanceInvoicesViewProps;
+
+  const originalQueryView = {
+    initialView, originalKind, title: displayedOriginalTitle,
+    sourceNotice: contractPaymentSourceNotice, fields: originalFields,
+    routeConfig: activeRouteConfig, contractPaymentSource, bankUploadRef,
+    onImportBankStatement: importBankStatement, onSubmit: submitConfiguredQuery,
+    onClear: clearConfiguredQuery, onRefresh: load, originalQuery,
+    paymentPackageMeta, onLoadPaymentPackages: loadPaymentPackages,
+    onOpenPaymentPackageEditor: openPaymentPackageEditor,
+  } satisfies FinanceOriginalQueryViewProps;
+
+  const settlementContextModal = {
+    context: settlementContext,
+    onClose: () => setSettlementContext(null),
+    actionLoading: settlementActionLoading,
+    onSubmitLog: submitSettlementLog,
+    onSubmitTask: submitSettlementTask,
+    logContent: settlementLogContent,
+    onLogContentChange: setSettlementLogContent,
+    taskForm: settlementTaskForm,
+    onTaskFormChange: setSettlementTaskForm,
+    financePeople,
+    rows: settlementContextRows,
+    displayPersonName: financePersonDisplayName,
+  } satisfies SettlementContextModalProps;
+
+  const onMergePrint = async () => {
+    const rows = configuredRows.filter((row) => selectedOriginalRows.includes(row.id)) as Fee[];
+    if (!rows.length) {
+      message.warning("请选择待付款申请");
+      return;
+    }
+    try {
+      setFeeDetail(await loadMergedPaymentDocument(rows));
+    } catch (error: unknown) {
+      message.error(financeErrorDetail(error) || "付款申请单加载失败");
+    }
+  };
+
+  const refundBatchFeeDrawer = {
+    open: refundBatchFeeOpen,
+    kind: refundBatchFeeKind,
+    step: refundBatchFeeStep,
+    onStepChange: setRefundBatchFeeStep,
+    form: refundBatchFeeForm,
+    baseType: refundBatchFeeBaseType,
+    subTypes: refundBatchFeeSubTypes,
+    paymentTypes: refundBatchPaymentTypes,
+    loading: refundBatchFeeLoading,
+    onClose: closeRefundBatchFee,
+    onSubmit: submitRefundBatchFee,
+    onSyncFirstField: syncFirstRefundFeeField,
+    contracts,
+    financePeople,
+  } satisfies RefundBatchFeeDrawerProps;
+
+  const paymentPackageEditor = {
+    open: paymentPackageEditorOpen,
+    target: paymentPackageEditTarget,
+    loading: paymentPackageLoading,
+    selectedFeeIds: paymentPackageSelectedFeeIds,
+    onSelectedFeeIdsChange: setPaymentPackageSelectedFeeIds,
+    form: paymentPackageEditForm,
+    candidates: paymentPackageCandidates,
+    onSubmit: submitPaymentPackageEditor,
+    onClose: closePaymentPackageEditor,
+  } satisfies PaymentPackageEditorModalProps;
+
+  const recordFilesModal = {
+    target: recordFileTarget,
+    targets: recordFileTargets,
+    files: recordFiles,
+    form: recordFileForm,
+    typeTree: recordFileTypeTree,
+    role,
+    onClose: () => { setRecordFileTarget(null); setRecordFileTargets([]); },
+    onDownload: downloadVoucher,
+    onDelete: deleteRecordFile,
+    onUpload: uploadRecordFile,
+    onUploadFilesChange: setRecordUploadFiles,
+    onFileChange: setRecordFile,
+  } satisfies RecordFilesModalProps;
+
+  const voucherModal = {
+    open: voucherOpen,
+    target: voucherTarget,
+    form: voucherForm,
+    onClose: () => setVoucherOpen(false),
+    onUpload: uploadVoucher,
+    onFileChange: setVoucherFile,
+    onDownload: downloadVoucher,
+    onDelete: deleteVoucher,
+  } satisfies VoucherModalProps;
+
+  const transactionModal = {
+    open: transactionOpen,
+    form: transactionForm,
+    fees,
+    onSubmit: createTransaction,
+    onClose: () => setTransactionOpen(false),
+  } satisfies TransactionModalProps;
+
+  const reconciliationModal = {
+    open: reconcileOpen,
+    form: reconcileForm,
+    onSubmit: createReconciliation,
+    onClose: () => setReconcileOpen(false),
+  } satisfies ReconciliationModalProps;
+
+  const onOpenReconciliation = () => {
+    reconcileForm.setFieldsValue({
+      period_type: "周对账",
+      period: [dayjs().startOf("week"), dayjs().endOf("week")],
+      discrepancy_amount: 0,
+    });
+    setReconcileOpen(true);
+  };
+
+  const originalRoutesView = {
+    originalQueryView,
     initialView,
-    originalMode,
     originalKind,
-    tab,
-    setTab,
     isInvoiceMineRoute,
     isInvoicePendingRoute,
     isInvoiceCompanyRoute,
@@ -5060,56 +5027,23 @@ export default function FinanceCenterPage({
     isFeeQueryRoute,
     isInternalDetailRoute,
     isInternalApprovalRoute,
-    isRefundNotRequiredRoute,
     isRefundCaseFeeRoute,
-    isInternalHistoryList,
     activeRouteConfig,
-    activeRefundStatus,
-
-    // Page / detail pages
-    incomingPaymentDetailPage,
-    invoiceDetailPage,
-    contractPaymentEditPage: contractPaymentEditId ? <ContractPaymentEditPage paymentId={contractPaymentEditId} onClose={() => setContractPaymentEditId(null)} onSaved={load} /> : null,
-    paymentPrintPreviewPage,
-    paymentPackagePrintPage,
-    internalPaymentDetail,
-
-    // Refs
-    bankUploadRef,
-
-    // Loading states
     loading,
     paymentPackageLoading,
     invoiceExportLoading,
     feeQueryExportLoading,
     settlementActionLoading,
-    feeReviewLoading,
     generalSettlementBusy,
     archiveSettlementBusy,
     internalDetailExportLoading,
-    refundMutationLoading,
-    refundCaseFeeMutationLoading,
-    invoiceMutationLoading,
-
-    // Summary / stats
-    summary,
     canManage,
     canApprove,
-    role,
-    currentUser,
-
-    // Original mode - display
-    displayedOriginalTitle,
-    contractPaymentSourceNotice,
-    contractPaymentSource,
-    originalFields,
     originalColumns,
     paymentOriginalColumns,
     configuredRows,
     selectedOriginalRows,
     setSelectedOriginalRows,
-
-    // Original mode - pagination metadata
     paymentQueryMeta,
     paymentQueryPageSize,
     setPaymentQueryPageSize,
@@ -5126,17 +5060,9 @@ export default function FinanceCenterPage({
     generalSettlementMeta,
     archiveSettlementMeta,
     internalDetailMeta,
-
-    // Original mode - query
     originalQuery,
-    submitConfiguredQuery,
-    clearConfiguredQuery,
     submitPaymentQueryQuickPage,
     refreshPaymentQueryPage,
-
-    // Original mode - actions / loaders
-    load,
-    importBankStatement,
     loadPaymentPackages,
     loadFeeQuery,
     loadInvoiceMine,
@@ -5161,25 +5087,7 @@ export default function FinanceCenterPage({
     openContractDetail,
     financePersonDisplayName,
     financePersonDisplayNames,
-
-    // Payment packages
-    openPaymentPackageEditor,
     previewInternalPaymentPackage,
-    paymentPackageWriteoffTarget,
-    setPaymentPackageWriteoffTarget,
-    paymentPackageWriteoffForm,
-    writeoffPaymentPackage,
-    paymentPackageEditorOpen,
-    paymentPackageEditTarget,
-    setPaymentPackageEditTarget,
-    setPaymentPackageEditorOpen,
-    paymentPackageSelectedFeeIds,
-    setPaymentPackageSelectedFeeIds,
-    paymentPackageEditForm,
-    paymentPackageCandidates,
-    submitPaymentPackageEditor,
-
-    // General settlement
     generalSettlementDetails,
     setGeneralSettlementDetails,
     openArchiveSettlementReview,
@@ -5189,290 +5097,31 @@ export default function FinanceCenterPage({
     openGeneralSettlementPayment,
     openGeneralSettlementReview,
     applyGeneralSettlementRows,
-    generalSettlementApplyTargets,
-    setGeneralSettlementApplyTargets,
-    generalSettlementApplyComment,
-    setGeneralSettlementApplyComment,
-    submitGeneralSettlementApply,
-    generalSettlementReviewTargets,
-    setGeneralSettlementReviewTargets,
-    generalSettlementReviewApproved,
-    generalSettlementReviewComment,
-    setGeneralSettlementReviewComment,
-    submitGeneralSettlementReview,
-    generalSettlementPaymentTargets,
-    setGeneralSettlementPaymentTargets,
-    generalSettlementPaymentAction,
-    generalSettlementPaymentComment,
-    setGeneralSettlementPaymentComment,
-    submitGeneralSettlementPayment,
-    generalSettlementReapplyTargets,
-    setGeneralSettlementReapplyTargets,
-    generalSettlementReapplyComment,
-    setGeneralSettlementReapplyComment,
-    submitGeneralSettlementReapply,
-    archiveSettlementReviewTargets,
-    setArchiveSettlementReviewTargets,
-    archiveSettlementReviewApproved,
-    archiveSettlementReviewComment,
-    setArchiveSettlementReviewComment,
-    submitArchiveSettlementReview,
-    archiveSettlementRollbackTargets,
-    setArchiveSettlementRollbackTargets,
-    archiveSettlementRollbackComment,
-    setArchiveSettlementRollbackComment,
-    submitArchiveSettlementRollback,
-    archiveSettlementReapplyTargets,
-    setArchiveSettlementReapplyTargets,
-    archiveSettlementReapplyComment,
-    setArchiveSettlementReapplyComment,
-    submitArchiveSettlementReapply,
+    refundCaseFeeOperationMenu,
+    refundCaseFeeMarkButton,
+  } satisfies FinanceOriginalRoutesViewProps;
 
-    // Settlement context (tasks / logs)
-    settlementContext,
-    setSettlementContext,
-    settlementContextRows,
-    settlementLogContent,
-    setSettlementLogContent,
-    settlementTaskForm,
-    setSettlementTaskForm,
-    submitSettlementLog,
-    submitSettlementTask,
-    selectedSettlementCases,
-
-    // Settlement batch modify
-    settlementBatchOpen,
-    setSettlementBatchOpen,
-    settlementBatchForm,
-    submitSettlementBatch,
-
-    // Refund case fee
-    refundCaseFeeStatusOpen,
-    setRefundCaseFeeStatusOpen,
-    refundCaseFeeStatus,
-    setRefundCaseFeeStatus,
-    submitRefundCaseFeeStatus,
-    refundCaseFeeLogKind,
-    setRefundCaseFeeLogKind,
-    refundCaseFeeLogContent,
-    setRefundCaseFeeLogContent,
-    submitRefundCaseFeeLog,
-    requireRefundCaseFeeSelection,
-
-    // Refund batch fee
-    refundBatchFeeOpen,
-    refundBatchFeeKind,
-    refundBatchFeeStep,
-    setRefundBatchFeeStep,
-    refundBatchFeeForm,
-    refundBatchFeeBaseType,
-    refundBatchFeeSubTypes,
-    refundBatchPaymentTypes,
-    refundBatchFeeLoading,
-    closeRefundBatchFee,
-    submitRefundBatchFee,
-    syncFirstRefundFeeField,
-
-    // Fee review drawer
-    feeReviewTargets,
-    setFeeReviewTargets,
-    feeReviewComment,
-    setFeeReviewComment,
-    submitFeeReview,
-    paymentReviewRows,
-    feeReviewRows,
-    reviewNumber,
-
-    // Fee detail modal
-    feeDetail,
-    setFeeDetail,
-    paymentStatus,
-    latestTransaction,
-    linkedCaseForFee,
-
-    // Incoming
-    incoming,
-    shownIncoming,
-    incomingColumns,
-    selectedIncomingRows,
-    setSelectedIncomingRows,
-    incomingOpen,
-    setIncomingOpen,
-    incomingForm,
-    createIncoming,
-    incomingAllocationTarget,
-    setIncomingAllocationTarget,
-
-    // Claim
-    claimTarget,
-    setClaimTarget,
-    claimForm,
-    claimIncoming,
-    claimCustomers,
-    claimCustomersLoading,
-    searchClaimCustomers,
-
-    // Allocation
-    allocateTarget,
-    setAllocateTarget,
-    allocateIncoming,
-    allocationCandidates,
-    filteredAllocationCandidates,
-    allocationLoading,
-    allocationKeyword,
-    setAllocationKeyword,
-    allocationStage,
-    setAllocationStage,
-    allocationFeeType,
-    setAllocationFeeType,
-    selectedAllocationKeys,
-    setSelectedAllocationKeys,
-    allocationAmounts,
-    setAllocationAmounts,
-    allocationComment,
-    setAllocationComment,
-    allocationValidationError,
-    setAllocationValidationError,
-    setAllocationCandidates,
-
-    // Writeoff
-    writeoffTarget,
-    setWriteoffTarget,
-    writeoffForm,
-    writeoffFee,
-
-    // Payment cancel / rollback
-    paymentCancelTarget,
-    setPaymentCancelTarget,
-    paymentCancelReason,
-    setPaymentCancelReason,
-    submitPaymentCancel,
-    paymentRollbackTarget,
-    setPaymentRollbackTarget,
-    paymentRollbackComment,
-    setPaymentRollbackComment,
-    submitPaymentRollback,
-
-    // Fees tab
+  const standardTabsView = {
+    receiptsView,
+    refundsView,
+    invoicesView,
+    tab,
+    setTab,
+    isRefundNotRequiredRoute,
+    loading,
+    summary,
+    canApprove,
+    currentUser,
+    load,
     shownFees,
     feeColumns,
-    fees,
-
-    // Invoices tab
-    shownInvoices,
-    invoiceColumns,
     invoices,
-    invoiceOpen,
-    setInvoiceOpen,
-    invoiceEditTarget,
-    setInvoiceEditTarget,
-    invoiceSelectedFeeIds,
-    setInvoiceSelectedFeeIds,
-    invoiceFeeAmounts,
-    setInvoiceFeeAmounts,
-    invoiceSourceFeeId,
-    setInvoiceSourceFeeId,
-    invoiceForm,
-    createInvoice,
-    invoiceFeeOptions,
-    applyInvoiceFeeSelection,
-    loadInvoiceReferenceData,
-
-    // Invoice mutation
-    invoiceNumberTarget,
-    setInvoiceNumberTarget,
-    invoiceNumberForm,
-    submitInvoiceNumberChange,
-    invoiceDateTarget,
-    setInvoiceDateTarget,
-    invoiceDateForm,
-    submitInvoiceDateChange,
-    issueTarget,
-    setIssueTarget,
-    issueForm,
-    issueInvoice,
-    voidTarget,
-    setVoidTarget,
-    voidForm,
-    voidInvoice,
-
-    // Refunds tab
-    refundColumns,
-    refunds,
-    selectedRefundRows,
-    setSelectedRefundRows,
-    refundMeta,
-    refundStatusFilter,
-    setRefundStatusFilter,
-    refundGroupFilter,
-    setRefundGroupFilter,
-    loadRefunds,
-    exportRefunds,
-    refundBatchStatus,
-    setRefundBatchStatus,
-    refundBatchStatusOpen,
-    setRefundBatchStatusOpen,
-    updateRefundBatchStatus,
-    refundOpen,
-    setRefundOpen,
-    refundForm,
-    createRefund,
-    refundDetail,
-    setRefundDetail,
-    refundAmountTarget,
-    setRefundAmountTarget,
-    refundAmountForm,
-    updateRefundAmount,
-    refundCompleteTarget,
-    setRefundCompleteTarget,
-    refundCompleteForm,
-    completeRefund,
-    refundStatusForRoute,
-
-    // Transactions tab
     transactions,
     transactionColumns,
-    transactionOpen,
-    setTransactionOpen,
-    transactionForm,
-    createTransaction,
-
-    // Voucher
-    voucherOpen,
-    setVoucherOpen,
-    voucherTarget,
-    voucherForm,
-    uploadVoucher,
-    setVoucherFile,
-    downloadVoucher,
-    deleteVoucher,
-
-    // Record files
-    recordFileTarget,
-    setRecordFileTarget,
-    recordFileTargets,
-    setRecordFileTargets,
-    recordFiles,
-    recordFileForm,
-    recordFileTypeTree,
-    uploadRecordFile,
-    setRecordUploadFiles,
-    setRecordFile,
-    deleteRecordFile,
-
-    // Fee modal
-    feeOpen,
     setFeeOpen,
-    feeEditTarget,
     setFeeEditTarget,
     feeForm,
-    feeTypeOverride,
     setFeeTypeOverride,
-    selectedFeeType,
-    createFee,
-    closeFeeModal,
-
-    // Legacy history
     legacyFinanceRows,
     legacyFinanceLoading,
     legacyFinanceMeta,
@@ -5491,20 +5140,218 @@ export default function FinanceCenterPage({
     setLegacyFinanceIncludeInactive,
     loadLegacyFinanceHistory,
     openLegacyFinanceDetail,
-
-    // Reconcile
     reconcileColumns,
     reconciliations,
-    reconcileOpen,
-    setReconcileOpen,
-    reconcileForm,
-    createReconciliation,
+    onOpenReconciliation,
+  } satisfies FinanceStandardTabsViewProps;
+
+  const settlementBatchModal = {
+    open: settlementBatchOpen,
+    loading: settlementActionLoading,
+    selectedCaseCount: selectedSettlementCases(false).length,
+    form: settlementBatchForm,
+    financePeople,
+    onSubmit: submitSettlementBatch,
+    onClose: closeSettlementBatch,
+  } satisfies SettlementBatchModalProps;
+
+  const incomingRegistrationModal = {
+    open: incomingOpen,
+    form: incomingForm,
+    customers,
+    onSubmit: createIncoming,
+    onClose: () => setIncomingOpen(false),
+  } satisfies IncomingRegistrationModalProps;
+
+  const incomingClaimModal = {
+    target: claimTarget,
+    form: claimForm,
+    customers: claimCustomers,
+    loading: claimCustomersLoading,
+    onSearch: searchClaimCustomers,
+    onSubmit: claimIncoming,
+    onClose: () => { setClaimTarget(null); claimForm.resetFields(); },
+  } satisfies IncomingClaimModalProps;
+
+  const paymentPackageWriteoffModal = {
+    target: paymentPackageWriteoffTarget,
+    form: paymentPackageWriteoffForm,
+    loading: paymentPackageLoading,
+    onSubmit: writeoffPaymentPackage,
+    onClose: () => { setPaymentPackageWriteoffTarget(null); paymentPackageWriteoffForm.resetFields(); },
+  } satisfies PaymentPackageWriteoffModalProps;
+
+  const feeDetailModal = {
+    fee: feeDetail,
+    isInternalHistoryList,
+    initialView,
+    onClose: () => setFeeDetail(null),
+    paymentStatus,
+    latestTransaction,
+    linkedCaseForFee,
+    onOpenCase: openCaseDetail,
+    onOpenContract: openContractDetail,
+    onOpenCustomer: openCustomerDetail,
+    financePersonDisplayName,
+  } satisfies FeeDetailModalProps;
+
+  const feeEditorModal = {
+    open: feeOpen,
+    target: feeEditTarget,
+    form: feeForm,
+    selectedFeeType,
+    onFeeTypeChange: setFeeTypeOverride,
+    onSubmit: createFee,
+    onClose: closeFeeModal,
+  } satisfies FeeEditorModalProps;
+
+  const refundDetailModal = {
+    refund: refundDetail,
+    onClose: () => setRefundDetail(null),
+    onOpenCase: openCaseDetail,
+    onOpenCustomer: openCustomerDetail,
+    financePersonDisplayName,
+  } satisfies RefundDetailModalProps;
+
+  const refundBatchStatusModal = {
+    open: refundBatchStatusOpen,
+    selectedCount: selectedRefundRows.length,
+    status: refundBatchStatus,
+    loading: refundMutationLoading,
+    onStatusChange: setRefundBatchStatus,
+    onSubmit: updateRefundBatchStatus,
+    onClose: () => setRefundBatchStatusOpen(false),
+  } satisfies RefundBatchStatusModalProps;
+
+  const viewProps = {
+    originalRoutesView,
+    standardTabsView,
+    settlementBatchModal,
+    incomingRegistrationModal,
+    incomingClaimModal,
+    paymentPackageWriteoffModal,
+    feeDetailModal,
+    feeEditorModal,
+    refundDetailModal,
+    refundBatchStatusModal,
+    settlementContextModal,
+    // Route / view state
+    initialView,
+    originalMode,
+    isInternalHistoryList,
+
+    // Page / detail pages
+    incomingPaymentDetailPage,
+    invoiceDetailPage,
+    contractPaymentEditPage: contractPaymentEditId ? <ContractPaymentEditPage paymentId={contractPaymentEditId} onClose={() => setContractPaymentEditId(null)} onSaved={load} /> : null,
+    paymentPrintPreviewPage,
+    paymentPackagePrintPage,
+    internalPaymentDetail,
+
+    // Refs
+
+    // Loading states
+    feeReviewLoading,
+
+    // Summary / stats
+
+    // Original mode - display
+    onMergePrint,
+
+    // Original mode - pagination metadata
+
+    // Original mode - query
+
+    // Original mode - actions / loaders
+    load,
+    openCaseDetail,
+    openContractDetail,
+
+    // Payment packages
+    paymentPackageWriteoffTarget,
+    setPaymentPackageWriteoffTarget,
+    paymentPackageEditor,
+
+    // General settlement
+    settlementReviewModals,
+
+    // Settlement context (tasks / logs)
+
+    // Settlement batch modify
+
+    // Refund case fee
+    refundCaseFeeModals,
+
+    // Refund batch fee
+    refundBatchFeeDrawer,
+
+    // Fee review drawer
+    feeReviewTargets,
+    setFeeReviewTargets,
+    feeReviewComment,
+    setFeeReviewComment,
+    submitFeeReview,
+    paymentReviewRows,
+    feeReviewRows,
+    reviewNumber,
+
+    // Fee detail modal
+    feeDetail,
+    setFeeDetail,
+
+    // Incoming
+    incomingAllocationTarget,
+    setIncomingAllocationTarget,
+
+    // Claim
+
+    // Allocation
+    incomingAllocationModal,
+
+    // Writeoff
+    paymentWriteoffModal,
+
+    // Payment cancel / rollback
+    paymentReversalModals,
+
+    // Fees tab
+
+    // Invoices tab
+    invoiceOpen,
+    invoiceEditTarget,
+    invoiceSelectedFeeIds,
+    closeInvoiceApplication,
+    invoiceForm,
+    createInvoice,
+    invoiceFeeOptions,
+    applyInvoiceFeeSelection,
+    loadInvoiceReferenceData,
+
+    // Invoice mutation
+    invoiceMaintenanceModals,
+    invoiceLifecycleModals,
+
+    // Refunds tab
+    refundCreationModal,
+    refundMaintenanceModals,
+
+    // Transactions tab
+    transactionModal,
+
+    // Voucher
+    voucherModal,
+
+    // Record files
+    recordFilesModal,
+
+    // Fee modal
+
+    // Legacy history
+
+    // Reconcile
+    reconciliationModal,
 
     // Reference data
-    financePeople,
-    customers,
-    cases,
-    contracts,
   };
 
   return (

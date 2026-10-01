@@ -3,9 +3,64 @@ from copy import deepcopy
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import String, and_, case, cast, column, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 from app.models import AgentDocument, BusinessRecord, CaseAssistedFee, CaseEvent, ContractObject, ContractPaymentLine, FileAttachment, HearingSchedule, IncomingPayment, WorkflowEvent
 from app.core.case_relations import case_clues
+
+
+def _json_array_elements(json_column, key, db):
+    """按数据库方言展开 JSON 数组，非数组字段不参与案件关联。"""
+    dialect = db.get_bind().dialect.name
+    if dialect == "sqlite":
+        path = f"$.{key}" if key else "$"
+        elements = func.json_each(json_column, path).table_valued("value")
+        return elements, func.json_type(json_column, path) == "array"
+    if dialect == "postgresql":
+        array_value = cast(json_column[key] if key else json_column, JSONB)
+        safe_array = case(
+            (func.jsonb_typeof(array_value) == "array", array_value),
+            else_=literal([], type_=JSONB),
+        )
+        elements = func.jsonb_array_elements(safe_array).table_valued(column("value", JSONB))
+        return elements, None
+    raise RuntimeError(f"案件合并不支持数据库方言：{dialect}")
+
+
+def _json_array_contains(json_column, key, value, db):
+    elements, array_guard = _json_array_elements(json_column, key, db)
+    expected = literal(value, type_=JSONB) if array_guard is None else value
+    contains = select(literal(1)).select_from(elements).where(elements.c.value == expected).exists()
+    return and_(array_guard, contains) if array_guard is not None else contains
+
+
+def _case_record_link_condition(source, db):
+    data = BusinessRecord.data
+    return or_(
+        cast(data["case_id"].as_string(), String) == str(source.id),
+        cast(data["case_record_id"].as_string(), String) == str(source.id),
+        data["case_no"].as_string() == source.serial_no,
+        _json_array_contains(data, "case_ids", source.id, db),
+        _json_array_contains(data, "case_nos", source.serial_no, db),
+    )
+
+
+def _receipt_link_condition(source, db):
+    elements, array_guard = _json_array_elements(IncomingPayment.allocations, None, db)
+    if array_guard is None:
+        matches = or_(
+            elements.c.value.op("->", return_type=JSONB)("case_no") == literal(source.serial_no, type_=JSONB),
+            elements.c.value.op("->", return_type=JSONB)("case_id") == literal(source.id, type_=JSONB),
+        )
+    else:
+        matches = or_(
+            func.json_extract(elements.c.value, "$.case_no") == source.serial_no,
+            func.json_extract(elements.c.value, "$.case_id") == source.id,
+        )
+    allocation_match = select(literal(1)).select_from(elements).where(matches).exists()
+    if array_guard is not None:
+        allocation_match = and_(array_guard, allocation_match)
+    return or_(IncomingPayment.case_no == source.serial_no, allocation_match)
 
 
 async def merge_case_relations(source, target, db):
@@ -25,6 +80,7 @@ async def merge_case_relations(source, target, db):
                      "converted_case_id": target.id, "converted_case_no": target.serial_no}
     rows = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module.in_(["task", "case_reminder", "case_log", "refund", "invoice", "contract_payment", "finance_settlement", "finance_archive_settlement", "finance_package"]),
+        _case_record_link_condition(source, db),
     ))).all()
     for row in rows:
         data = dict(row.data or {})
@@ -43,7 +99,7 @@ async def merge_case_relations(source, target, db):
             data["case_nos"] = list(dict.fromkeys(target.serial_no if value == source.serial_no else value for value in data["case_nos"]))
         data.update(merged_from_case_id=source.id, merged_from_case_no=source.serial_no)
         row.data = data
-    receipts = (await db.scalars(select(IncomingPayment))).all()
+    receipts = (await db.scalars(select(IncomingPayment).where(_receipt_link_condition(source, db)))).all()
     for receipt in receipts:
         changed = False
         allocations = deepcopy(receipt.allocations or [])

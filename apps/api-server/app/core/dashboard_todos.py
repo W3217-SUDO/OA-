@@ -1,17 +1,15 @@
 """控制台待办统计，任务生命周期与原任务中心保持一致。"""
-from app.core.dependencies import BusinessRecord, ContractApprovalStep, select, func, and_, or_, date
+from app.core.dependencies import BusinessRecord, ContractApprovalStep, select, func, and_, or_
 from sqlalchemy import case
 from app.core.cases import _case_action_granted
 from app.core.documents import _seal_authorization_context
 from app.core.investigation import _is_investigation_task
 from app.core.permissions import _record_scope_conditions
-from app.core.tasks import _apply_task_auto_completion, _apply_task_overdue_performance, _task_dict
+from app.core.tasks import _task_dict
 from app.core.dashboard import dashboard_scope, dashboard_records
 
 
 async def dashboard_todos(identity, db):
-    await _apply_task_auto_completion(db)
-    await _apply_task_overdue_performance(db)
     scope, modules = await dashboard_scope(identity, db)
     username = identity["username"]
     pending_statuses = {"待审批", "审批中", "待审核"}
@@ -50,20 +48,8 @@ async def dashboard_todos(identity, db):
         )
     ]
     def task_is_effectively_pending(item: BusinessRecord) -> bool:
-        # The task centre presents an overdue task in the processing tab even
-        # when the stored workflow state is still 待接收/待处理.
-        if _task_dict(item)["status"] not in {"待接收", "待处理"}:
-            return False
-        data = item.data or {}
-        if item.status != "待接收" or data.get("handoff_restarted"):
-            return True
-        auto_complete_at = str(data.get("handoff_auto_complete_at") or "").strip()
-        if not auto_complete_at:
-            return True
-        try:
-            return date.fromisoformat(auto_complete_at) > date.today()
-        except ValueError:
-            return True
+        # 未接收的任务不会被自动完成，计数使用任务中心相同的展示状态。
+        return _task_dict(item)["status"] in {"待接收", "待处理"}
     personal_todo_counts = {
         "待处理任务": (
             sum(item.owner == username and task_is_effectively_pending(item) for item in personal_tasks),

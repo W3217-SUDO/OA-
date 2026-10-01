@@ -91,7 +91,10 @@ services:
         condition: service_healthy
 
   web:
-    build: ./apps/admin-web
+    build:
+      context: ./apps/admin-web
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
     restart: unless-stopped
     depends_on:
       api:

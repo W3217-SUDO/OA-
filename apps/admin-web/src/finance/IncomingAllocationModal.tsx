@@ -1,11 +1,11 @@
 import { Alert,Button,Checkbox,Descriptions,Input,InputNumber,Modal,Select } from "antd";
 import Table from "../components/ResizableTable";
 import { money } from "./constants";
-import type { AllocationCandidate } from "./types";
+import type { AllocationCandidate, IncomingPayment } from "./types";
 
-interface IncomingAllocationModalProps {
+export interface IncomingAllocationModalProps {
   open: boolean;
-  allocateTarget: any;
+  allocateTarget: IncomingPayment | null;
   allocationValidationError: string;
   allocationKeyword: string;
   allocationStage: string;
