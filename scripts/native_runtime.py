@@ -262,7 +262,7 @@ http {{
   default_type application/octet-stream;
   client_body_temp_path {nginx_path(state / 'client-body')};
   proxy_temp_path {nginx_path(state / 'proxy')};
-  access_log /dev/stdout;
+  access_log syslog:server=unix:/dev/log,tag=sunhold_native_web,nohostname;
   server {{
     listen {listen}:{web_port};
     server_name _;
