@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+import os
 from html.parser import HTMLParser
 from shutil import copyfile
 from xml.etree import ElementTree
@@ -8,7 +9,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.constants import (
     AI_SPACE_CATEGORY, ATTACHMENT_TEXT_PREVIEW_MAX_CHARS, CASE_EVENT_TIME_ZONE, CONTRACT_PERSON_NAME_PLACEHOLDER, LEGACY_UPLOAD_ROOTS,
     PDF_PREVIEW_MAX_DIMENSION, PDF_PREVIEW_MAX_FILE_BYTES, PDF_PREVIEW_MAX_PAGES, PDF_PREVIEW_MAX_PIXELS,
-    UPLOAD_ROOT, XLSX_PREVIEW_MAX_COLUMNS, XLSX_PREVIEW_MAX_ROWS_PER_SHEET,
+    UPLOAD_ROOT, XLSX_PREVIEW_MAX_COLUMNS, XLSX_PREVIEW_MAX_ROWS_PER_SHEET, logger,
     XLSX_PREVIEW_MAX_SHEETS,
 )
 from app.core.dependencies import (
@@ -23,22 +24,37 @@ from app.pdf_runtime import serialized_pdfium
 
 
 def _attachment_storage_path(item: FileAttachment) -> Path | None:
-    """Resolve files whose database path may still use a legacy container root."""
-    upload_root = UPLOAD_ROOT.resolve()
-    trusted_roots = [upload_root, *(root.expanduser().resolve() for root in LEGACY_UPLOAD_ROOTS)]
-    candidates = [(Path(item.path), upload_root)]
-    for root in trusted_roots:
-        if item.stored_name:
-            candidates.append((root / Path(item.stored_name).name, root))
-        if item.path:
-            candidates.append((root / Path(item.path).name, root))
-    for candidate, trusted_root in candidates:
+    """仅从当前上传目录或可访问的历史 Docker 附件目录读取文件。"""
+    current_root = UPLOAD_ROOT.expanduser().resolve()
+    for index, configured_root in enumerate((UPLOAD_ROOT, *LEGACY_UPLOAD_ROOTS)):
+        root = configured_root.expanduser()
         try:
-            resolved = candidate.expanduser().resolve()
-        except (OSError, RuntimeError):
+            lexical_root = Path(os.path.abspath(root))
+            trusted_root = current_root if index == 0 else root.resolve()
+        except PermissionError as exc:
+            if index == 0:
+                raise
+            logger.warning("可选历史附件目录无法访问，跳过 %s：%s", root, exc)
             continue
-        if resolved.is_file() and trusted_root in resolved.parents:
-            return resolved
+        if index and trusted_root == current_root:
+            continue
+        candidates = [Path(item.path)] if index == 0 else []
+        if item.stored_name:
+            candidates.append(lexical_root / Path(item.stored_name).name)
+        if item.path:
+            candidates.append(lexical_root / Path(item.path).name)
+        for candidate in candidates:
+            expanded = candidate.expanduser()
+            if lexical_root not in Path(os.path.abspath(expanded)).parents:
+                continue
+            try:
+                resolved = expanded.resolve()
+                if trusted_root in resolved.parents and resolved.is_file():
+                    return resolved
+            except PermissionError as exc:
+                if index == 0:
+                    raise
+                logger.warning("可选历史附件文件无法访问，跳过 %s：%s", expanded, exc)
     return None
 
 
