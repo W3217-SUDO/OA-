@@ -1408,11 +1408,15 @@ def _case_has_outstanding_legacy_agency_fee(
 
 
 async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | None = None) -> int:
+    from app.core.record_projection_query import read_record_projections
+
     effective_today = today or date.today()
     task_count_before = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
         BusinessRecord.module == "task",
     )) or 0)
-    cases = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case"))).all())
+    # 索引仅保留关联字段；执行规则时才读取可修改的完整记录。
+    cases = await read_record_projections(db, [BusinessRecord.module == "case"],
+                                         ("contract_record_id", "contract_id", "contract_no"))
     # 一次读取已进入利冲流程的来源，只对这些案件及其关联合同计算门禁。
     from app.core.conflict_review_facts import text_values
     review_data = list((await db.scalars(select(BusinessRecord.data).where(BusinessRecord.module == "conflict_review"))).all())
@@ -1422,7 +1426,7 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
     for item in cases:
         data = item.data or {}
         reviewed = str(item.id) in reviewed_ids or str(data.get("contract_record_id") or data.get("contract_id")) in reviewed_ids or bool(set(text_values(data.get("contract_no"))) & reviewed_contract_numbers)
-        if reviewed and await _automatic_case_conflict_blocked(item, db):
+        if reviewed and await _automatic_case_conflict_blocked(await db.get(BusinessRecord, item.id), db):
             continue
         eligible_cases.append(item)
     cases = eligible_cases
@@ -1450,7 +1454,8 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
                 receipts_by_case_id.setdefault(allocation_case_id, []).append(receipt)
             if allocation_case_no:
                 receipts_by_case_no.setdefault(allocation_case_no, []).append(receipt)
-    for case_record in cases:
+    for case_index in cases:
+        case_record = await db.get(BusinessRecord, case_index.id)
         data = case_record.data or {}
         phase_date = _task_rule_date(data.get("phase_changed_at") or case_record.updated_at or case_record.created_at)
         if not phase_date:
@@ -1522,7 +1527,8 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
     received_by_fee = _case_fee_received_amounts(case_fees, all_payments)
     for task in tasks:
         data = task.data or {}
-        case_record = cases_by_id.get(int(data.get("case_id") or 0)) if str(data.get("case_id") or "").isdigit() else None
+        case_index = cases_by_id.get(int(data.get("case_id") or 0)) if str(data.get("case_id") or "").isdigit() else None
+        case_record = await db.get(BusinessRecord, case_index.id) if case_index else None
         task_kind = str(data.get("auto_task_type") or "")
         if case_record and task_kind == "document_preparation_stage" and case_record.status not in {"新案待分配", "文书准备"}:
             await _finish_legacy_auto_task(task, db, reason="案件已提交立案，文书准备任务自动完成")
@@ -1536,8 +1542,11 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
                 await _finish_legacy_auto_task(task, db, reason="指定代理费类型已全部到账，催收代理费任务自动完成")
 
     for source in related_records:
+        if source.module not in {"refund", "invoice", "contract", "notary"}:
+            continue
         data = source.data or {}
-        case_record = await _linked_case_for_record(source, cases_by_id, cases_by_no)
+        case_index = await _linked_case_for_record(source, cases_by_id, cases_by_no)
+        case_record = await db.get(BusinessRecord, case_index.id) if case_index else None
         lawyer, assistant = await _case_rule_people(case_record, db) if case_record else (None, None)
 
         if source.module == "refund" and case_record and assistant:
@@ -1613,9 +1622,10 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
     task_officer = await _legacy_configured_task_user(db, "TaskOfficer", "TASK_OFFICER")
     hearings = list((await db.scalars(select(HearingSchedule).where(HearingSchedule.status == "已排期"))).all())
     for hearing in hearings:
-        case_record = cases_by_id.get(hearing.case_record_id)
-        if not case_record:
+        case_index = cases_by_id.get(hearing.case_record_id)
+        if not case_index:
             continue
+        case_record = await db.get(BusinessRecord, case_index.id)
         lawyer, assistant = await _case_rule_people(case_record, db)
         handling = set(_case_person_references(case_record.data or {}, "handling_lawyer_usernames", "handling_lawyers"))
         _, hearing_user = await _resolve_case_task_username(hearing.hearing_lawyer, db)
@@ -1647,7 +1657,8 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
             ))).all())
             take_task.data = {**(take_task.data or {}), "warehouse_evidence_ids": [item.id for item in evidence_rows]}
 
-    for case_record in cases:
+    for case_index in cases:
+        case_record = await db.get(BusinessRecord, case_index.id)
         data = case_record.data or {}
         lawyer, assistant = await _case_rule_people(case_record, db)
         if data.get("notary_certificate_ready") is True or data.get("notary_prepared_at"):

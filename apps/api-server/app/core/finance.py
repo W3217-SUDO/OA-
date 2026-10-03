@@ -1083,29 +1083,13 @@ async def _validate_invoice_source_links(
 
 def _invoice_json_fee_condition(column, fee_ids: set[int]):
     """只做关联预筛选，费用归属仍由后续 ID 解析器精确判断。"""
-    from sqlalchemy import String, cast
-    if not fee_ids:
-        return false()
-    compact = func.replace(func.replace(cast(column, String), " ", ""), '"', "")
-    identifiers = "|".join(str(int(fee_id)) for fee_id in sorted(fee_ids))
-    # 共用前后缀，避免每个编号展开七条 OR LIKE 并重复处理同一 JSON。
-    pattern = (
-        rf"(fee_id:|fee_record_id:|finance_record_id:)({identifiers})"
-        rf"|\[({identifiers})(,|\])|,({identifiers})(,|\])"
-    )
-    return compact.regexp_match(pattern)
+    from app.core.json_relation_query import json_scalar_overlap
+    return json_scalar_overlap(column, {int(fee_id) for fee_id in fee_ids})
 
 
 def _invoice_json_case_condition(column, case_nos: set[str]):
-    import json
-    import re
-    from sqlalchemy import String, cast
-    if not case_nos:
-        return false()
-    variants = {value for case_no in case_nos for value in (
-        case_no, json.dumps(case_no, ensure_ascii=True)[1:-1],
-    )}
-    return cast(column, String).regexp_match("|".join(re.escape(value) for value in sorted(variants)))
+    from app.core.json_relation_query import json_scalar_overlap
+    return json_scalar_overlap(column, case_nos)
 
 
 async def _invoice_fee_details(identity: dict, db: AsyncSession, *, ids: set[int] | None = None,
@@ -1453,16 +1437,22 @@ async def _invoice_case_fee_rows(
 
     case_ids = {int((item.data or {}).get("case_id") or 0) for item in fees if (item.data or {}).get("case_id")}
     case_nos = {str((item.data or {}).get("case_no") or "") for item in fees if (item.data or {}).get("case_no")}
+    from app.core.record_projection_query import read_record_projections
+    case_fields = (
+        "case_stage", "assistant", "lawyer_assistant", "hearing_lawyer", "court_lawyer",
+        "court_case_no", "first_instance_case_no", "official_no", "certificate_no", "notary_no",
+        "court_name", "first_instance_court", "case_type", "investigator", "contract_no",
+        *CASE_PLAINTIFF_FIELDS, *CASE_DEFENDANT_FIELDS,
+    )
     cases_by_key = {}
     for column, values in ((BusinessRecord.id, case_ids), (BusinessRecord.serial_no, case_nos)):
-        matching_cases = await _scalars_in_batches(
-            db, values,
-            lambda batch: select(BusinessRecord).where(
+        values = list(values)
+        for offset in range(0, len(values), 400):
+            matching_cases = await read_record_projections(db, [
                 BusinessRecord.module.in_(("case", "ipr_case")),
-                column.in_(batch), *scope_conditions,
-            ),
-        )
-        cases_by_key.update((item.id, item) for item in matching_cases)
+                column.in_(values[offset:offset + 400]), *scope_conditions,
+            ], case_fields)
+            cases_by_key.update((item.id, item) for item in matching_cases)
     cases = list(cases_by_key.values())
     cases_by_id = {item.id: item for item in cases}
     cases_by_no = {item.serial_no: item for item in cases}

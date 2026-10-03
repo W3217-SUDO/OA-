@@ -83,11 +83,17 @@ async def _receivable_detail_projection(
         _record_scope_conditions,
     )
     from app.core.query_batches import _scalars_in_batches
+    from app.core.record_projection_query import read_record_projections
 
     if records is None:
+        conditions = await _record_scope_conditions(identity, db)
+        # 应收只使用合同、案件和费用，不读取线索、客户等无关历史快照。
         records = list((await db.scalars(select(BusinessRecord).where(
-            *(await _record_scope_conditions(identity, db)),
+            BusinessRecord.module.in_({"contract", "finance"}), *conditions,
         ))).all())
+        records.extend(await read_record_projections(db, [
+            BusinessRecord.module == "case", *conditions,
+        ], ("contract_id", "contract_record_id", "contract_no", "case_stage", "business_stage", "case_type")))
 
     contracts = [item for item in records if item.module == "contract"]
     cases = [item for item in records if item.module == "case"]

@@ -6,7 +6,7 @@ from app.core.documents import _seal_authorization_context
 from app.core.investigation import _is_investigation_task
 from app.core.permissions import _record_scope_conditions
 from app.core.tasks import _task_dict
-from app.core.dashboard import dashboard_scope, dashboard_records
+from app.core.dashboard import dashboard_scope
 
 
 async def dashboard_todos(identity, db):
@@ -18,7 +18,9 @@ async def dashboard_todos(identity, db):
         or_(BusinessRecord.owner == username,
             func.trim(BusinessRecord.data["initiator"].as_string()) == username),
     ))).all()) if "task" in modules else []
-    clues = await dashboard_records(db, scope, modules & {"clue"})
+    clue_counts = dict((await db.execute(select(BusinessRecord.status, func.count()).where(
+        BusinessRecord.module.in_(modules & {"clue"}), *scope,
+    ).group_by(BusinessRecord.status))).all())
     fee_label = func.coalesce(func.nullif(BusinessRecord.data["fee_type"].as_string(), ""),
                               BusinessRecord.data["expense_scope"].as_string(), "")
     categories = [or_(*(fee_label.contains(word) for word in ("官方", "官费", "律所"))),
@@ -61,8 +63,8 @@ async def dashboard_todos(identity, db):
         ),
         "待审批合同": (0, 0),
         "待审批线索": (
-            sum(item.status == "待审批" for item in clues),
-            sum(item.status in {"已驳回", "已拒绝"} for item in clues),
+            clue_counts.get("待审批", 0),
+            clue_counts.get("已驳回", 0) + clue_counts.get("已拒绝", 0),
         ),
         "待审批用印": (0, 0),
         "待审核归档": (0, 0),

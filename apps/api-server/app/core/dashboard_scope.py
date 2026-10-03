@@ -2,6 +2,7 @@
 from fastapi import HTTPException
 from sqlalchemy import false, or_, select
 from app.models import BusinessRecord, ContractObject, Department, User
+from app.core.record_projection_query import read_record_projections
 from app.core.permissions import (
     _case_mine_scope_condition, _configured_user_job_role_name,
     _job_role_for_name, _system_user_role_ids,
@@ -45,10 +46,10 @@ async def dashboard_identity(identity, db, *, personal_cases=False):
     if personal_cases:
         conditions.append(await _case_mine_scope_condition(identity, db))
     elif not all_cases:
-        owned_contracts = list((await db.scalars(select(BusinessRecord).where(
+        owned_contracts = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(
             BusinessRecord.module == "contract", BusinessRecord.owner == user.username,
             BusinessRecord.status.notin_(["已回收", "已删除"]),
-        ))).all())
+        ))).all()
         owned_ids = {item.id for item in owned_contracts}
         owned_nos = {item.serial_no for item in owned_contracts}
         linked_cases = select(ContractObject.case_record_id).where(ContractObject.contract_record_id.in_(owned_ids))
@@ -59,15 +60,16 @@ async def dashboard_identity(identity, db, *, personal_cases=False):
             BusinessRecord.data['contract_record_id'].as_integer().in_(owned_ids),
             BusinessRecord.data['contract_no'].as_string().in_(owned_nos),
         ))
-    cases = list((await db.scalars(select(BusinessRecord).where(*conditions))).all())
+    relation_fields = ("contract_id", "contract_record_id", "contract_no")
+    cases = await read_record_projections(db, conditions, relation_fields)
     case_ids = {item.id for item in cases}
     case_nos = {item.serial_no for item in cases}
-    fees = list((await db.scalars(select(BusinessRecord).where(
+    fees = await read_record_projections(db, [
         BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
         or_(BusinessRecord.data["case_id"].as_integer().in_(case_ids),
             BusinessRecord.data["case_record_id"].as_integer().in_(case_ids),
             BusinessRecord.data["case_no"].as_string().in_(case_nos)),
-    ))).all()) if case_ids else []
+    ], relation_fields) if case_ids else []
     contract_ids = set((await db.scalars(select(ContractObject.contract_record_id).where(
         ContractObject.case_record_id.in_(case_ids),
     ))).all()) if case_ids else set()
@@ -80,15 +82,15 @@ async def dashboard_identity(identity, db, *, personal_cases=False):
                 contract_ids.add(int(value))
         if data.get("contract_no"):
             contract_nos.add(str(data["contract_no"]))
-    contracts = list((await db.scalars(select(BusinessRecord).where(
+    contracts = (await db.scalars(select(BusinessRecord.id).where(
         BusinessRecord.module == "contract",
         or_(BusinessRecord.id.in_(contract_ids), BusinessRecord.serial_no.in_(contract_nos)),
-    ))).all()) if contract_ids or contract_nos else []
+    ))).all() if contract_ids or contract_nos else []
     return {
         **identity, "role": roles[0], "role_ids": roles, "_page_menu_capability": False,
         "_dashboard_case_ids": case_ids,
         "_dashboard_fee_ids": {item.id for item in fees},
-        "_dashboard_record_ids": {item.id for item in [*cases, *fees, *contracts]},
+        "_dashboard_record_ids": case_ids | {item.id for item in fees} | set(contracts),
     }
 
 
@@ -134,7 +136,14 @@ async def dashboard_urgent_cases(identity, db, personal_case_ids):
     ]
     if not await _can_search_all_cases_from_global_search(identity, db):
         conditions.append(BusinessRecord.id.in_(personal_case_ids))
-    return list((await db.scalars(select(BusinessRecord).where(*conditions))).all())
+    return await dashboard_queue_cases(db, conditions)
+
+
+async def dashboard_queue_cases(db, conditions):
+    return await read_record_projections(
+        db, conditions, ("case_type", "case_phase_name", "case_phase"),
+        legacy_fields=("CasePhaseName",),
+    )
 
 
 async def dashboard_receivables(identity, db):

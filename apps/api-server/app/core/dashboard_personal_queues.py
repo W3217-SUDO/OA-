@@ -1,17 +1,16 @@
 """控制台统计复用各业务页面的筛选和金额投影。"""
-from sqlalchemy import select
 from app.models import BusinessRecord
 from app.core.cases import _matches_dashboard_case_queue, _urgent_case_ids
 from app.core.finance import _fee_query_rows, _refund_case_fee_rows
-from app.core.dashboard_scope import CASE_QUEUES, QUEUE_KEYS, dashboard_identity, dashboard_receivables, dashboard_urgent_cases, personal_refund_identity
+from app.core.dashboard_scope import CASE_QUEUES, QUEUE_KEYS, dashboard_identity, dashboard_queue_cases, dashboard_receivables, dashboard_urgent_cases, personal_refund_identity
 
 
 async def personal_queues(identity, db):
     identity = await dashboard_identity(identity, db)
     refund_identity = await personal_refund_identity(identity, db)
-    cases = list((await db.scalars(select(BusinessRecord).where(
+    cases = await dashboard_queue_cases(db, [
         BusinessRecord.id.in_(identity["_dashboard_case_ids"]),
-    ))).all())
+    ])
     by_id = {case.id: case for case in cases}
     by_no = {case.serial_no: case for case in cases}
     queues = {key: {} for key in QUEUE_KEYS}
