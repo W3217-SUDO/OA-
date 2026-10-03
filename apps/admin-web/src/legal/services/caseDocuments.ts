@@ -16,7 +16,7 @@ export async function loadCaseDocuments(caseId: number) {
   let page = 1;
   let pages = 1;
   do {
-    const { data } = await api.get(`/cases/${caseId}/documents`, { params: { page, page_size: 200 } });
+    const { data } = await api.get(`/cases/${caseId}/documents`, { params: { page, page_size: 200 }, timeout: 60000 });
     items.push(...data.items);
     pages = data.pages;
     page += 1;

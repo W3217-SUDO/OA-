@@ -89,6 +89,7 @@ export interface CaseWorkflowDependencies {
     readonly setCounselDetailCustomerAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;
     readonly setCounselDetailContractAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;
     readonly setCounselDocumentsLoadError: React.Dispatch<React.SetStateAction<string>>;
+    readonly setCounselDocumentsLoading: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setCounselDocumentFolderTree: React.Dispatch<React.SetStateAction<CaseFileTypeOption[]>>;
     readonly setCounselLogs: React.Dispatch<React.SetStateAction<CaseLogRow[]>>;
     readonly setCounselDetailCapabilities: React.Dispatch<React.SetStateAction<CaseDetailCapabilities>>;
@@ -658,9 +659,29 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             setCounselDetailAttachments([]);
             setCounselDetailCustomerAttachments([]);
             setCounselDetailContractAttachments([]);
-            setActiveCounselDocCategory("");
+            setActiveCounselDocCategory("案件文档全部");
+            setCounselDocumentFolderTree([]);
             setExpandedCounselDocGroups({ "调查文档全部": true, "案件文档全部": true });
-            const [historyRes, taskRes, customerTaskRes, attachmentRes, logRes, capabilityRes, relationRes, folderRes] = await Promise.allSettled([
+            context.setCounselDocumentsLoading(true);
+            // 文档独立展示，不能等待任务、费用或日志请求全部完成。
+            void Promise.all([
+                loadCaseDocuments(row.id),
+                api.get(`/cases/${row.id}/document-folders`, { timeout: 60000 }),
+            ]).then(([attachmentRes, folderRes]) => {
+                if (clueRequestId !== counselDetailClueRequestRef.current) return;
+                if (!Array.isArray(folderRes.data?.tree)) throw new Error("案件文档目录响应无效");
+                const files: AttachmentRow[] = attachmentRes.data.items;
+                setCounselDetailAttachments(files);
+                setCounselDetailCustomerAttachments(files.filter((item) => item.source_module === "customer"));
+                setCounselDetailContractAttachments(files.filter((item) => item.source_module === "contract"));
+                setCounselDocumentFolderTree(folderRes.data.tree);
+            }).catch((error) => {
+                if (clueRequestId !== counselDetailClueRequestRef.current) return;
+                setCounselDocumentsLoadError(error?.response?.data?.detail || error?.message || "案件文档加载失败，请重试");
+            }).finally(() => {
+                if (clueRequestId === counselDetailClueRequestRef.current) context.setCounselDocumentsLoading(false);
+            });
+            const [historyRes, taskRes, customerTaskRes, logRes, capabilityRes, relationRes] = await Promise.allSettled([
                 api.get(`/records/${row.id}/history`),
                 api.get(`/cases/${row.id}/tasks`, {
                     params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "case" },
@@ -668,12 +689,11 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 api.get(`/cases/${row.id}/tasks`, {
                     params: { page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, scope: "customer" },
                 }),
-                loadCaseDocuments(row.id),
                 api.get(`/cases/${row.id}/logs`),
                 api.get(`/cases/${row.id}/action-capabilities`),
                 api.get(`/cases/${row.id}/relations`, { params: { clue_page: 1, clue_page_size: 10 } }),
-                api.get(`/cases/${row.id}/document-folders`),
             ]);
+            if (clueRequestId !== counselDetailClueRequestRef.current) return;
             setCounselDetailHistory(historyRes.status === "fulfilled" ? historyRes.value.data.items || [] : []);
             if (taskRes.status === "fulfilled") {
                 applyCounselDetailTaskPageState(taskRes.value.data, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE);
@@ -687,17 +707,6 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             else {
                 applyCounselDetailCustomerTaskPageState({ items: [], total: 0, page: CASE_TASK_DEFAULT_PAGE, page_size: CASE_TASK_DEFAULT_PAGE_SIZE, pages: 0 }, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE);
             }
-            if (attachmentRes.status === "fulfilled") {
-                const files: AttachmentRow[] = attachmentRes.value.data.items || [];
-                setCounselDetailAttachments(files);
-                setCounselDetailCustomerAttachments(files.filter((item) => item.source_module === "customer"));
-                setCounselDetailContractAttachments(files.filter((item) => item.source_module === "contract"));
-                setCounselDocumentsLoadError("");
-            }
-            else {
-                setCounselDocumentsLoadError(attachmentRes.reason?.response?.data?.detail || "案件文档加载失败，请重试");
-            }
-            setCounselDocumentFolderTree(folderRes.status === "fulfilled" && Array.isArray(folderRes.value.data?.tree) ? folderRes.value.data.tree : []);
             setCounselLogs(logRes.status === "fulfilled" ? logRes.value.data.items || [] : []);
             setCounselDetailCapabilities(capabilityRes.status === "fulfilled" ? capabilityRes.value.data || noCaseDetailWriteCapability : noCaseDetailWriteCapability);
             setCounselDetailFinance(relationRes.status === "fulfilled" ? relationRes.value.data.fees || [] : []);
@@ -709,7 +718,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             else if (relationRes.status === "rejected" && clueRequestId === counselDetailClueRequestRef.current) {
                 applyCounselDetailCluePageState({ clues: [], clue_total: 0 }, 1, 10);
             }
-            if ([historyRes, taskRes, customerTaskRes, attachmentRes, logRes, capabilityRes, relationRes, folderRes].some((result) => result.status === "rejected")) {
+            if ([historyRes, taskRes, customerTaskRes, logRes, capabilityRes, relationRes].some((result) => result.status === "rejected")) {
                 message.warning("部分案件附加信息加载失败，已打开基础详情");
             }
         }

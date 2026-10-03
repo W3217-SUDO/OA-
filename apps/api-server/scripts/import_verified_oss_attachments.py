@@ -112,6 +112,11 @@ def main(args):
             db.execute("CREATE UNIQUE INDEX ON oss_parents(id)")
             db.execute("ANALYZE oss_parents")
             file_types = {"case": {}, "ipr_case": {}}
+            case_folders = {
+                (str(row["CaseNo"]).strip().casefold(), str(row["FileTypeId"])): str(row["FileTypeName"])
+                for row in db.execute('SELECT "CaseNo","FileTypeId","FileTypeName" FROM "Legal_Case_FileType"')
+                if row["CaseNo"] and row["FileTypeName"]
+            }
             for table in ("BAS_Case_FileType", "Legal_Case_FileType", "IPR_Case_FileType"):
                 for row in db.execute(sql.SQL("SELECT to_jsonb(f) payload FROM {} f").format(sql.Identifier(table))):
                     item = row["payload"]
@@ -145,7 +150,7 @@ def main(args):
                         for row in batch:
                             prepared.append(
                                 prepare_attachment(
-                                    row, table, module, parent, active, default_category, file_types, header
+                                    row, table, module, parent, active, default_category, file_types, header, case_folders
                                 )
                             )
                             counts[table] += 1
@@ -209,7 +214,7 @@ def main(args):
             )
 
 
-def prepare_attachment(row, table, module, parent, active, default_category, file_types, header):
+def prepare_attachment(row, table, module, parent, active, default_category, file_types, header, case_folders):
     raw = row["payload"]
     check(raw is not None and str(raw[active]).upper() in {"T", "Y", "TRUE", "1"}, "旧文件不存在或已停用")
     check(row["module"] == module and row["source"] == header["source"], "附件父记录来源或模块不一致")
@@ -231,6 +236,11 @@ def prepare_attachment(row, table, module, parent, active, default_category, fil
     )
     code = str(raw.get("FileTypeId") or raw.get("CaseFileTypeId") or "")
     category = file_types[module].get(code, code or default_category) if module in file_types else default_category
+    # 普通案件页面按每案目录 ID 查询，FileTypeId 可能只是旧的“待定”占位分类。
+    if module == "case" and int(raw.get("CaseFileTypeId") or 0) > 0:
+        folder_key = (expected, str(raw["CaseFileTypeId"]))
+        check(folder_key in case_folders, "案件目录不存在或不属于原案件，禁止猜测分类")
+        category = case_folders[folder_key]
     check(len(category) <= 64, "原目录名称超出附件分类范围")
     stored = f"legacy-oss-{table}-{row['file_id']}-{row['record_id']}"
     uploaded = raw.get("UploadingTime") or raw.get("UploadTime") or raw.get("CreateTime")

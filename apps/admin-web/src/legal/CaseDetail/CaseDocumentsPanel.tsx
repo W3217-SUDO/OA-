@@ -39,6 +39,7 @@ interface CaseDocumentsPanelProps {
   uploadCounselDetailAttachment: (file?: File) => Promise<unknown>;
   filteredCounselDetailAttachments: AttachmentRow[];
   counselDocumentsLoadError: string;
+  counselDocumentsLoading: boolean;
   retryCounselDocuments: () => void;
   selectedCounselAttachmentKeys: Key[];
   setSelectedCounselAttachmentKeys: (keys: Key[]) => void;
@@ -82,6 +83,7 @@ export const CaseDocumentsPanel = ({
   uploadCounselDetailAttachment,
   filteredCounselDetailAttachments,
   counselDocumentsLoadError,
+  counselDocumentsLoading,
   retryCounselDocuments,
   selectedCounselAttachmentKeys,
   setSelectedCounselAttachmentKeys,
@@ -133,7 +135,7 @@ export const CaseDocumentsPanel = ({
       <div className="case-document-list">
       <input ref={counselDetailUploadRef} hidden type="file" onChange={event=>void uploadCounselDetailAttachment(event.target.files?.[0])}/>
       {counselDocumentsLoadError && <Alert type="error" showIcon message={counselDocumentsLoadError} action={<Button size="small" onClick={retryCounselDocuments}>重试</Button>} />}
-      <Table rowKey="id" size="small" pagination={getCaseFilePagination()} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys,getCheckboxProps:(row:AttachmentRow)=>({disabled:Boolean(row.is_related_document)})}} locale={{emptyText:counselDocumentsLoadError?<span>文档加载失败，请重试。</span>:<Space direction="vertical" size={10}><span>没有查到文档。</span>{counselDetailCapabilities.can_upload_attachment&&<Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}</Space>}} columns={[
+      <Table rowKey="id" size="small" loading={counselDocumentsLoading} pagination={getCaseFilePagination()} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys,getCheckboxProps:(row:AttachmentRow)=>({disabled:Boolean(row.is_related_document)})}} locale={{emptyText:counselDocumentsLoading?<span>正在加载文档...</span>:counselDocumentsLoadError?<span>文档加载失败，请重试。</span>:<Space direction="vertical" size={10}><span>当前目录没有文档。</span>{counselDetailCapabilities.can_upload_attachment&&<Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}</Space>}} columns={[
         {title:"序号",key:"sequence",width:70,render:(_:unknown,_row:AttachmentRow,index:number)=>index+1},
         {title:"上传人",dataIndex:"uploader_display_name",width:110,render:(_:unknown,row:AttachmentRow)=>row.uploader_display_name||row.uploader||"—"},
         {title:"文件名称",dataIndex:"original_name",width:360,ellipsis:true},
