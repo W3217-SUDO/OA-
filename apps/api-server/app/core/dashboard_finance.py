@@ -8,19 +8,20 @@ from app.core.formatters import _case_fee_display_type
 from app.core.record_projection_query import read_record_projections
 
 
-async def dashboard_unpaid_fee_rows(identity, db, cases_by_id, cases_by_no):
+async def dashboard_unpaid_fee_rows(identity, db, cases_by_id, cases_by_no, *, fees=None):
     fee_ids = identity["_dashboard_fee_ids"]
     if not fee_ids:
         return []
-    fees = await read_record_projections(db, [
-        BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
-        BusinessRecord.id.in_(fee_ids),
-    ], (
-        "amount", "paid_amount", "case_id", "case_no", "fee_type", "fee_type_name",
-        "case_fee_type_name", "expense_subtype", "writeoff_status", "payment_status",
-        "source_fee_id", "commission_type", "commission_lifecycle", "is_refund", "expense_scope",
-    ))
-    fees.sort(key=lambda item: (item.updated_at, item.id), reverse=True)
+    if fees is None:
+        fees = await read_record_projections(db, [
+            BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
+            BusinessRecord.id.in_(fee_ids),
+        ], (
+            "amount", "paid_amount", "case_id", "case_no", "fee_type", "fee_type_name",
+            "case_fee_type_name", "expense_subtype", "writeoff_status", "payment_status",
+            "source_fee_id", "commission_type", "commission_lifecycle", "is_refund", "expense_scope",
+        ))
+    fees = sorted(fees, key=lambda item: (item.updated_at, item.id), reverse=True)
     lifecycle = await _case_commission_lifecycle_statuses(fees, db)
     payments = await read_fee_payments({fee.id for fee in fees}, db)
     rows = []

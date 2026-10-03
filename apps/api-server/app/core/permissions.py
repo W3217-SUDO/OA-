@@ -551,38 +551,45 @@ def _case_personal_scope_condition(username: str):
 
 async def _case_mine_scope_condition(identity: dict, db: AsyncSession):
     """Limit the Mine list to concrete case participation, even for admins."""
+    from app.core.record_json_text_query import projected_record_condition, record_json_text_projection
+
     username = str(identity["username"]).strip()
     exact_username_token = f'"{username}"'
-    data = BusinessRecord.data
+    projection, data = record_json_text_projection(db, (
+        "source_person_username", "source_person", "business_owner", "assistant_username",
+        "investigator", "court_lawyer_username", "case_team_usernames",
+        "handling_lawyer_usernames", "legacy_participants",
+    ))
     conditions = [
         and_(
             BusinessRecord.owner == username,
-            func.coalesce(data["source_person_username"].as_string(), "") == "",
-            func.coalesce(data["source_person"].as_string(), "") == "",
-            func.coalesce(data["business_owner"].as_string(), "") == "",
-            func.coalesce(data["assistant_username"].as_string(), "") == "",
-            func.coalesce(data["investigator"].as_string(), "") == "",
-            func.coalesce(data["court_lawyer_username"].as_string(), "") == "",
-            func.coalesce(data["case_team_usernames"].as_string(), "").in_({"", "[]"}),
-            func.coalesce(data["handling_lawyer_usernames"].as_string(), "").in_({"", "[]"}),
-            func.coalesce(data["legacy_participants"].as_string(), "").in_({"", "[]"}),
+            func.coalesce(data["source_person_username"], "") == "",
+            func.coalesce(data["source_person"], "") == "",
+            func.coalesce(data["business_owner"], "") == "",
+            func.coalesce(data["assistant_username"], "") == "",
+            func.coalesce(data["investigator"], "") == "",
+            func.coalesce(data["court_lawyer_username"], "") == "",
+            func.coalesce(data["case_team_usernames"], "").in_({"", "[]"}),
+            func.coalesce(data["handling_lawyer_usernames"], "").in_({"", "[]"}),
+            func.coalesce(data["legacy_participants"], "").in_({"", "[]"}),
         ),
-        data["case_team_usernames"].as_string().contains(exact_username_token),
-        data["handling_lawyer_usernames"].as_string().contains(exact_username_token),
-        data["legacy_participants"].as_string().contains(f'"staff_name":"{username}"'),
-        func.lower(func.coalesce(data["source_person_username"].as_string(), "")) == username.lower(),
-        func.lower(func.coalesce(data["source_person"].as_string(), "")) == username.lower(),
-        func.lower(func.coalesce(data["business_owner"].as_string(), "")) == username.lower(),
-        func.lower(func.coalesce(data["assistant_username"].as_string(), "")) == username.lower(),
-        func.lower(func.coalesce(data["investigator"].as_string(), "")) == username.lower(),
-        func.lower(func.coalesce(data["court_lawyer_username"].as_string(), "")) == username.lower(),
+        data["case_team_usernames"].contains(exact_username_token),
+        data["handling_lawyer_usernames"].contains(exact_username_token),
+        data["legacy_participants"].contains(f'"staff_name":"{username}"'),
+        func.lower(func.coalesce(data["source_person_username"], "")) == username.lower(),
+        func.lower(func.coalesce(data["source_person"], "")) == username.lower(),
+        func.lower(func.coalesce(data["business_owner"], "")) == username.lower(),
+        func.lower(func.coalesce(data["assistant_username"], "")) == username.lower(),
+        func.lower(func.coalesce(data["investigator"], "")) == username.lower(),
+        func.lower(func.coalesce(data["court_lawyer_username"], "")) == username.lower(),
+    ]
+    return or_(
+        projected_record_condition(projection, or_(*conditions)),
         select(FileAttachment.id).where(
             FileAttachment.record_id == BusinessRecord.id,
             func.lower(FileAttachment.uploader) == username.lower(),
         ).exists(),
-    ]
-
-    return or_(*conditions)
+    )
 
 
 def _investigation_supervisor_condition(username: str):

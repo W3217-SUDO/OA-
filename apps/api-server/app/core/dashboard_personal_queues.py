@@ -1,19 +1,22 @@
 """控制台统计复用各业务页面的筛选和金额投影。"""
-from app.models import BusinessRecord
 from app.core.cases import _matches_dashboard_case_queue, _urgent_case_ids
 from app.core.finance import _refund_case_fee_rows
 from app.core.dashboard_finance import dashboard_unpaid_fee_rows
 from app.core.request_metrics import measure_phase
-from app.core.dashboard_scope import CASE_QUEUES, QUEUE_KEYS, dashboard_identity, dashboard_queue_cases, dashboard_receivables, dashboard_urgent_cases, personal_refund_identity
+from app.core.dashboard_scope import (
+    CASE_QUEUES, QUEUE_KEYS, dashboard_receivables, dashboard_urgent_cases,
+    load_dashboard_scope, personal_refund_identity,
+)
 
 
 async def personal_queues(identity, db):
     with measure_phase("dashboard.scope"):
-        identity = await dashboard_identity(identity, db)
-        refund_identity = await personal_refund_identity(identity, db)
-        cases = await dashboard_queue_cases(db, [
-            BusinessRecord.id.in_(identity["_dashboard_case_ids"]),
-        ])
+        with measure_phase("dashboard.scope.records"):
+            scope = await load_dashboard_scope(identity, db, include_summaries=True)
+        identity = scope.identity
+        with measure_phase("dashboard.scope.refund"):
+            refund_identity = await personal_refund_identity(identity, db)
+        cases = scope.cases
     by_id = {case.id: case for case in cases}
     by_no = {case.serial_no: case for case in cases}
     queues = {key: {} for key in QUEUE_KEYS}
@@ -27,7 +30,7 @@ async def personal_queues(identity, db):
             row["fee_id"] = fee_id
 
     with measure_phase("dashboard.urgent"):
-        urgent_cases = await dashboard_urgent_cases(identity, db, identity["_dashboard_case_ids"])
+        urgent_cases = await dashboard_urgent_cases(identity, db, identity["_dashboard_case_ids"], scope_data=scope)
         urgent_case_ids = await _urgent_case_ids(urgent_cases, db, identity["username"])
     for case in urgent_cases:
         if case.id in urgent_case_ids:
@@ -39,7 +42,7 @@ async def personal_queues(identity, db):
     for key in ("official-fee-unpaid", "refund-pending"):
         with measure_phase(f"dashboard.{key}"):
             if key == "official-fee-unpaid":
-                rows = await dashboard_unpaid_fee_rows(identity, db, by_id, by_no)
+                rows = await dashboard_unpaid_fee_rows(identity, db, by_id, by_no, fees=scope.fees)
             else:
                 rows = await _refund_case_fee_rows(refund_identity, db)
         for row in rows:
@@ -49,7 +52,7 @@ async def personal_queues(identity, db):
                 add(key, case, fee_id=row["id"] if key == "refund-pending" else None)
         del rows
     with measure_phase("dashboard.receivables"):
-        receivables = await dashboard_receivables(identity, db)
+        receivables = await dashboard_receivables(identity, db, records=[*scope.contracts, *scope.fees, *cases])
     for row in receivables:
         case = by_id.get(row.get("case_record_id"))
         if case:

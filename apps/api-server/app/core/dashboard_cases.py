@@ -9,6 +9,7 @@ from app.core.crm import _dashboard_customer_for_case
 from app.core.formatters import _normalized_customer_name, _user_display_map
 from app.core.system import _record_person_usernames
 from app.core.dashboard import dashboard_scope
+from app.core.record_json_text_query import projected_record_condition, record_json_text_projection
 
 
 async def dashboard_cases(identity, db):
@@ -71,9 +72,12 @@ async def dashboard_cases(identity, db):
     hearing_keys.extend(("hearing_date", "next_hearing_date"))
     from app.core.dashboard_scope import company_hearing_conditions
     hearing_conditions = await company_hearing_conditions(identity, db)
+    hearing_projection, hearing_data = record_json_text_projection(db, hearing_keys)
     cases = list((await db.scalars(select(BusinessRecord).where(*hearing_conditions, or_(
         BusinessRecord.id.in_(scheduled_ids),
-        *(func.coalesce(BusinessRecord.data[key].as_string(), "") != "" for key in hearing_keys),
+        projected_record_condition(hearing_projection, or_(
+            *(func.coalesce(hearing_data[key], "") != "" for key in hearing_keys),
+        )),
     )))).all())
     case_map = {item.id: item for item in cases}
     visible_case_ids = set(case_map)

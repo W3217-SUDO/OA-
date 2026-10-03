@@ -1,8 +1,11 @@
 """控制台业务入口的数据边界；不授予额外写权限。"""
+from dataclasses import dataclass
+
 from fastapi import HTTPException
 from sqlalchemy import false, or_, select
 from app.models import BusinessRecord, ContractObject, Department, User
 from app.core.record_projection_query import read_record_projections
+from app.core.finance_summary_query import FEE_SUMMARY_FIELDS
 from app.core.permissions import (
     _case_mine_scope_condition, _configured_user_job_role_name,
     _job_role_for_name, _system_user_role_ids,
@@ -16,6 +19,17 @@ CASE_QUEUES = {
     "urgent-cases": "urgent",
 }
 QUEUE_KEYS = {*CASE_QUEUES, "official-fee-unpaid", "refund-pending", "official-fee-unreceived"}
+
+
+@dataclass
+class DashboardScopeData:
+    """仅供本次请求复用的授权范围和轻量数据，不跨账号或请求缓存。"""
+
+    identity: dict
+    cases: list
+    fees: list
+    contracts: list
+    all_cases: bool
 
 
 async def company_hearing_conditions(identity, db):
@@ -36,6 +50,11 @@ async def company_hearing_conditions(identity, db):
 
 
 async def dashboard_identity(identity, db, *, personal_cases=False):
+    scope = await load_dashboard_scope(identity, db, personal_cases=personal_cases)
+    return scope.identity
+
+
+async def load_dashboard_scope(identity, db, *, personal_cases=False, include_summaries=False):
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if user is None or not user.is_active:
         raise HTTPException(401, "当前用户不存在或已停用")
@@ -61,7 +80,11 @@ async def dashboard_identity(identity, db, *, personal_cases=False):
             BusinessRecord.data['contract_no'].as_string().in_(owned_nos),
         ))
     relation_fields = ("contract_id", "contract_record_id", "contract_no")
-    cases = await read_record_projections(db, conditions, relation_fields)
+    case_fields = (*relation_fields, "case_type", "case_phase_name", "case_phase", "case_stage", "business_stage")
+    cases = await read_record_projections(
+        db, conditions, case_fields if include_summaries else relation_fields,
+        legacy_fields=("CasePhaseName",) if include_summaries else (),
+    )
     case_ids = {item.id for item in cases}
     case_nos = {item.serial_no for item in cases}
     fees = await read_record_projections(db, [
@@ -69,7 +92,7 @@ async def dashboard_identity(identity, db, *, personal_cases=False):
         or_(BusinessRecord.data["case_id"].as_integer().in_(case_ids),
             BusinessRecord.data["case_record_id"].as_integer().in_(case_ids),
             BusinessRecord.data["case_no"].as_string().in_(case_nos)),
-    ], relation_fields) if case_ids else []
+    ], FEE_SUMMARY_FIELDS if include_summaries else relation_fields) if case_ids else []
     contract_ids = set((await db.scalars(select(ContractObject.contract_record_id).where(
         ContractObject.case_record_id.in_(case_ids),
     ))).all()) if case_ids else set()
@@ -82,16 +105,27 @@ async def dashboard_identity(identity, db, *, personal_cases=False):
                 contract_ids.add(int(value))
         if data.get("contract_no"):
             contract_nos.add(str(data["contract_no"]))
-    contracts = (await db.scalars(select(BusinessRecord.id).where(
+    contract_conditions = [
         BusinessRecord.module == "contract",
         or_(BusinessRecord.id.in_(contract_ids), BusinessRecord.serial_no.in_(contract_nos)),
-    ))).all() if contract_ids or contract_nos else []
-    return {
+    ]
+    contracts = []
+    if include_summaries:
+        contracts = await read_record_projections(
+            db, contract_conditions, ("contract_body", "signed_at", "source_person"),
+        ) if contract_ids or contract_nos else []
+        visible_contract_ids = {item.id for item in contracts}
+    else:
+        visible_contract_ids = set((await db.scalars(select(BusinessRecord.id).where(
+            *contract_conditions,
+        ))).all()) if contract_ids or contract_nos else set()
+    scoped_identity = {
         **identity, "role": roles[0], "role_ids": roles, "_page_menu_capability": False,
         "_dashboard_case_ids": case_ids,
         "_dashboard_fee_ids": {item.id for item in fees},
-        "_dashboard_record_ids": case_ids | {item.id for item in fees} | set(contracts),
+        "_dashboard_record_ids": case_ids | {item.id for item in fees} | visible_contract_ids,
     }
+    return DashboardScopeData(scoped_identity, cases, fees, contracts, all_cases and not personal_cases)
 
 
 async def dashboard_request_identity(queue, expected, identity, db):
@@ -126,7 +160,7 @@ async def personal_refund_identity(scoped_identity, db):
             "_dashboard_fee_ids": fee_ids, "_dashboard_record_ids": case_ids | fee_ids}
 
 
-async def dashboard_urgent_cases(identity, db, personal_case_ids):
+async def dashboard_urgent_cases(identity, db, personal_case_ids, *, scope_data=None):
     """紧急案件沿用公司案件菜单权限，否则只取本人可见案件。"""
     from app.core.permissions import _can_search_all_cases_from_global_search
 
@@ -134,7 +168,10 @@ async def dashboard_urgent_cases(identity, db, personal_case_ids):
         BusinessRecord.module == "case",
         BusinessRecord.status.notin_(["已合并", "已删除", "已回收"]),
     ]
-    if not await _can_search_all_cases_from_global_search(identity, db):
+    can_search_all = await _can_search_all_cases_from_global_search(identity, db)
+    if scope_data is not None and (not can_search_all or scope_data.all_cases):
+        return scope_data.cases
+    if not can_search_all:
         conditions.append(BusinessRecord.id.in_(personal_case_ids))
     return await dashboard_queue_cases(db, conditions)
 
@@ -146,9 +183,9 @@ async def dashboard_queue_cases(db, conditions):
     )
 
 
-async def dashboard_receivables(identity, db):
+async def dashboard_receivables(identity, db, *, records=None):
     from app.core.projections import _receivable_detail_projection
-    rows = await _receivable_detail_projection(identity, db)
+    rows = await _receivable_detail_projection(identity, db, records=records)
     return [row for row in rows if row["fee_category"] == "official" and row["remaining_amount"] > 0]
 
 

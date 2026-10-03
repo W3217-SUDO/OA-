@@ -1,6 +1,7 @@
 """控制台待办统计，任务生命周期与原任务中心保持一致。"""
 from app.core.dependencies import BusinessRecord, ContractApprovalStep, select, func, and_, or_
-from sqlalchemy import case
+from sqlalchemy import case, true
+from app.core.record_json_text_query import record_json_text_projection
 from app.core.cases import _case_action_granted
 from app.core.documents import _seal_authorization_context
 from app.core.investigation import _is_investigation_task
@@ -21,15 +22,18 @@ async def dashboard_todos(identity, db):
     clue_counts = dict((await db.execute(select(BusinessRecord.status, func.count()).where(
         BusinessRecord.module.in_(modules & {"clue"}), *scope,
     ).group_by(BusinessRecord.status))).all())
-    fee_label = func.coalesce(func.nullif(BusinessRecord.data["fee_type"].as_string(), ""),
-                              BusinessRecord.data["expense_scope"].as_string(), "")
+    fee_projection, fee_data = record_json_text_projection(db, ("fee_type", "expense_scope"))
+    fee_label = func.coalesce(func.nullif(fee_data["fee_type"], ""), fee_data["expense_scope"], "")
     categories = [or_(*(fee_label.contains(word) for word in ("官方", "官费", "律所"))),
                   *(fee_label.contains(word) for word in ("内部", "结算", "归档", "预损"))]
     sums = []
     for condition in categories:
         sums.extend((func.sum(case((and_(condition, BusinessRecord.owner == username), 1), else_=0)),
                      func.sum(case((condition, 1), else_=0))))
-    totals = (await db.execute(select(*sums).where(
+    total_query = select(*sums).select_from(BusinessRecord)
+    if fee_projection is not None:
+        total_query = total_query.join(fee_projection, true())
+    totals = (await db.execute(total_query.where(
         BusinessRecord.module.in_(modules & {"finance", "refund"}),
         BusinessRecord.status.in_(pending_statuses), *scope,
     ))).one()
