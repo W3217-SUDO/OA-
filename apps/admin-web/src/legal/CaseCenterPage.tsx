@@ -4013,7 +4013,14 @@ export default function CaseCenterPage({
             <aside className="case-detail-side-panel">
               <section>
                 <div className="case-detail-side-title"><span>案件日志</span>{counselDetailCapabilities.can_create_log && <Space size={0}><Button type="link" size="small" icon={<PlusOutlined />} onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button type="link" size="small" onClick={()=>openCounselLogCreator("refund")}>退费日志</Button></Space>}</div>
-                {counselLogs.length?counselLogs.map((item)=><Button key={item.id} type="text" block style={{textAlign:"left",height:"auto",whiteSpace:"normal"}} onClick={()=>setViewingCaseLog(item)}>{item.created_at}　{item.content}</Button>):<p className="case-detail-empty">暂无日志</p>}
+                <div className="case-detail-log-list">
+                  {counselLogs.length ? counselLogs.map((item) => (
+                    <Button key={item.id} className="case-log-entry" type="text" block onClick={() => setViewingCaseLog(item)}>
+                      <time className="case-log-entry-time" dateTime={item.created_at}>{item.created_at}</time>
+                      <span className="case-log-entry-content">{item.content}</span>
+                    </Button>
+                  )) : <p className="case-detail-empty">暂无日志</p>}
+                </div>
               </section>
             </aside>
           </div>
@@ -4032,7 +4039,7 @@ export default function CaseCenterPage({
       <Modal open={Boolean(viewingCaseLog)} title={viewingCaseLog?.kind === "refund" ? "退费日志详情" : "案件日志详情"} footer={null} onCancel={()=>setViewingCaseLog(null)} destroyOnHidden>
         <p><b>记录时间：</b>{viewingCaseLog?.created_at || "—"}</p>
         <p><b>记录人：</b>{viewingCaseLog ? casePersonDisplayName(viewingCaseLog.operator, viewingCaseLog.operator_display_name) : "—"}</p>
-        <p style={{whiteSpace:"pre-wrap"}}><b>日志内容：</b>{viewingCaseLog?.content || "—"}</p>
+        <p className="case-log-detail-content"><b>日志内容：</b>{viewingCaseLog?.content || "—"}</p>
       </Modal>
       <Drawer
         width="min(1280px, 96vw)"
