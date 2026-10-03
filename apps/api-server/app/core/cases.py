@@ -366,13 +366,19 @@ def _case_phase_changed_days(item: BusinessRecord, *, as_of: date | None = None)
 
 async def _urgent_case_ids(cases: list[BusinessRecord], db: AsyncSession, username: str, *, as_of: date | None = None) -> set[int]:
     """返回存在逾期或未来十五天内未完成任务的案件。"""
-    from app.core.formatters import _record_links_to_case
+    from app.core.formatters import _record_case_links
+    from app.core.record_projection_query import read_record_projections
     today = as_of or date.today()
     terminal_statuses = {"已完成", "已验收", "待确认", "已停止", "已撤回", "已拒绝", "已取消", "已删除"}
-    tasks = list((await db.scalars(select(BusinessRecord).where(
+    tasks = await read_record_projections(db, [
         BusinessRecord.module == "task", BusinessRecord.owner == username,
         BusinessRecord.status.not_in(terminal_statuses),
-    ))).all())
+    ], ("source", "deadline", "task_end_time", "TaskEndTime",
+        "case_id", "case_record_id", "case_ids", "case_no", "case_nos"))
+    case_ids = {case.id for case in cases}
+    cases_by_no: dict[str, set[int]] = {}
+    for case in cases:
+        cases_by_no.setdefault(case.serial_no, set()).add(case.id)
     urgent_ids: set[int] = set()
     for task in tasks:
         task_data = task.data or {}
@@ -384,7 +390,10 @@ async def _urgent_case_ids(cases: list[BusinessRecord], db: AsyncSession, userna
         except ValueError:
             continue
         if (deadline - today).days <= 15:
-            urgent_ids.update(case.id for case in cases if _record_links_to_case(task, case))
+            linked_ids, linked_nos = _record_case_links(task)
+            urgent_ids.update(linked_ids & case_ids)
+            for case_no in linked_nos:
+                urgent_ids.update(cases_by_no.get(case_no, ()))
     return urgent_ids
 
 

@@ -86,6 +86,7 @@ async def _receivable_detail_projection(
     from app.core.query_batches import _scalars_in_batches
     from app.core.record_projection_query import read_record_projections
     from app.core.finance_summary_query import read_fee_summaries
+    from app.core.json_relation_query import scalar_in_values
 
     if records is None:
         conditions = await _record_scope_conditions(identity, db)
@@ -127,6 +128,7 @@ async def _receivable_detail_projection(
     object_ids = {item.id for item in objects}
     contract_nos = set(contracts_by_no)
     case_nos = set(cases_by_no)
+    related_conditions = []
     for key, values in (
         ("contract_object_id", object_ids),
         ("contract_id", contract_ids),
@@ -134,23 +136,22 @@ async def _receivable_detail_projection(
         ("case_id", case_ids),
         ("case_record_id", case_ids),
     ):
-        values = list(values)
-        for offset in range(0, len(values), 400):
-            batch = values[offset:offset + 400]
-            related_finances = await read_fee_summaries(db, [
-                BusinessRecord.module == "finance",
-                or_(BusinessRecord.data[key].as_integer().in_(batch),
-                    BusinessRecord.data[key].as_string().in_([str(value) for value in batch])),
-            ])
-            finances_by_id.update((item.id, item) for item in related_finances)
+        if values:
+            related_conditions.extend((
+                scalar_in_values(BusinessRecord.data[key].as_integer(), values),
+                scalar_in_values(BusinessRecord.data[key].as_string(), {str(value) for value in values}),
+            ))
     for key, values in (("contract_no", contract_nos), ("case_no", case_nos)):
-        values = list(values)
-        for offset in range(0, len(values), 400):
-            related_finances = await read_fee_summaries(db, [
-                BusinessRecord.module == "finance",
-                BusinessRecord.data[key].as_string().in_(values[offset:offset + 400]),
-            ])
-            finances_by_id.update((item.id, item) for item in related_finances)
+        if values:
+            related_conditions.append(scalar_in_values(BusinessRecord.data[key].as_string(), values))
+    if related_conditions:
+        # 初始可见费用已经读取，只补充原有关系允许访问的其它费用。
+        related_finances = await read_fee_summaries(db, [
+            BusinessRecord.module == "finance",
+            ~scalar_in_values(BusinessRecord.id, finances_by_id),
+            or_(*related_conditions),
+        ])
+        finances_by_id.update((item.id, item) for item in related_finances)
     finances = list(finances_by_id.values())
 
     finance_ids = {item.id for item in finances}

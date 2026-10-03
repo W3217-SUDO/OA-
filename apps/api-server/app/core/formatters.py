@@ -348,19 +348,24 @@ async def _task_display_dict(record: BusinessRecord, db: AsyncSession) -> dict:
     return (await _task_display_dicts([record], db))[0]
 
 
-def _record_links_to_case(record: BusinessRecord, case_record: BusinessRecord) -> bool:
-    """Prefer the persisted case id; use the case number only for legacy rows."""
+def _record_case_links(record: BusinessRecord) -> tuple[set[int], set[str]]:
+    """保留有效案件编号优先、历史案号次之的关联规则。"""
     record_data = record.data or {}
     id_values = [record_data.get("case_id"), record_data.get("case_record_id")]
     if isinstance(record_data.get("case_ids"), list):
         id_values.extend(record_data["case_ids"])
     linked_ids = {int(value) for value in id_values if str(value or "").isdigit()}
     if linked_ids:
-        return case_record.id in linked_ids
+        return linked_ids, set()
     number_values = [record_data.get("case_no")]
     if isinstance(record_data.get("case_nos"), list):
         number_values.extend(record_data["case_nos"])
-    return case_record.serial_no in {str(value or "").strip() for value in number_values}
+    return set(), {str(value or "").strip() for value in number_values}
+
+
+def _record_links_to_case(record: BusinessRecord, case_record: BusinessRecord) -> bool:
+    linked_ids, linked_nos = _record_case_links(record)
+    return case_record.id in linked_ids if linked_ids else case_record.serial_no in linked_nos
 
 
 def _dingtalk_allowed_display_names() -> set[str]:

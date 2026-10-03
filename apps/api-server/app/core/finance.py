@@ -1455,23 +1455,19 @@ async def _invoice_case_fee_rows(
     case_ids = {int((item.data or {}).get("case_id") or 0) for item in fees if (item.data or {}).get("case_id")}
     case_nos = {str((item.data or {}).get("case_no") or "") for item in fees if (item.data or {}).get("case_no")}
     from app.core.record_projection_query import read_record_projections
+    from app.core.json_relation_query import scalar_in_values
     case_fields = (
         "case_stage", "assistant", "lawyer_assistant", "hearing_lawyer", "court_lawyer",
         "court_case_no", "first_instance_case_no", "official_no", "certificate_no", "notary_no",
         "court_name", "first_instance_court", "case_type", "investigator", "contract_no",
         *CASE_PLAINTIFF_FIELDS, *CASE_DEFENDANT_FIELDS,
     )
-    cases_by_key = {}
-    for column, values in ((BusinessRecord.id, case_ids), (BusinessRecord.serial_no, case_nos)):
-        values = list(values)
-        for offset in range(0, len(values), 400):
-            matching_conditions = [
-                BusinessRecord.module.in_(("case", "ipr_case")),
-                column.in_(values[offset:offset + 400]), *scope_conditions,
-            ]
-            matching_cases = await read_record_projections(db, matching_conditions, case_fields)
-            cases_by_key.update((item.id, item) for item in matching_cases)
-    cases = list(cases_by_key.values())
+    cases = await read_record_projections(db, [
+        BusinessRecord.module.in_(("case", "ipr_case")),
+        or_(scalar_in_values(BusinessRecord.id, case_ids),
+            scalar_in_values(BusinessRecord.serial_no, case_nos)),
+        *scope_conditions,
+    ], case_fields) if case_ids or case_nos else []
     cases_by_id = {item.id: item for item in cases}
     cases_by_no = {item.serial_no: item for item in cases}
     commission_lifecycle_statuses = await _case_commission_lifecycle_statuses(fees, db)
