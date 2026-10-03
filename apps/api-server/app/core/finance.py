@@ -1389,6 +1389,7 @@ async def _invoice_case_fee_rows(
     scope_authorized_fee_ids: set[int] | None = None,
     force_amount_projection: bool = False,
     exclude_invoice_id: int | None = None,
+    summary_only: bool = False,
 ) -> list[dict]:
     from app.core.cases import (
         _case_party_values,
@@ -1403,6 +1404,7 @@ async def _invoice_case_fee_rows(
         _allowed_field_keys, _record_dict,
     )
     from app.core.query_batches import _scalars_in_batches
+    from app.core.finance_summary_query import read_fee_summaries
 
     scope_conditions = await _record_scope_conditions(identity, db)
     fee_conditions = list(scope_conditions)
@@ -1413,17 +1415,32 @@ async def _invoice_case_fee_rows(
     if scope_authorized_fee_ids is not None:
         # Keep the full authorized fee context for ambiguous legacy links and
         # invoice allocation; only the SQL retrieval is partitioned.
-        fees = await _scalars_in_batches(
-            db, scope_authorized_fee_ids,
-            lambda batch: select(BusinessRecord).where(
-                BusinessRecord.module == "finance", BusinessRecord.status != "已删除", BusinessRecord.id.in_(batch),
-            ),
-        )
+        if summary_only:
+            fees = []
+            authorized_ids = list(scope_authorized_fee_ids)
+            for offset in range(0, len(authorized_ids), 400):
+                fees.extend(await read_fee_summaries(db, [
+                    BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
+                    BusinessRecord.id.in_(authorized_ids[offset:offset + 400]),
+                ]))
+        else:
+            fees = await _scalars_in_batches(
+                db, scope_authorized_fee_ids,
+                lambda batch: select(BusinessRecord).where(
+                    BusinessRecord.module == "finance", BusinessRecord.status != "已删除", BusinessRecord.id.in_(batch),
+                ),
+            )
         fees.sort(key=lambda item: (item.updated_at, item.id), reverse=True)
     else:
-        fees = list((await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "finance", BusinessRecord.status != "已删除", *fee_conditions
-        ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+        if summary_only:
+            fees = await read_fee_summaries(db, [
+                BusinessRecord.module == "finance", BusinessRecord.status != "已删除", *fee_conditions,
+            ])
+            fees.sort(key=lambda item: (item.updated_at, item.id), reverse=True)
+        else:
+            fees = list((await db.scalars(select(BusinessRecord).where(
+                BusinessRecord.module == "finance", BusinessRecord.status != "已删除", *fee_conditions
+            ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     if not include_all_fee_types:
         fees = [
             item for item in fees
@@ -1448,10 +1465,11 @@ async def _invoice_case_fee_rows(
     for column, values in ((BusinessRecord.id, case_ids), (BusinessRecord.serial_no, case_nos)):
         values = list(values)
         for offset in range(0, len(values), 400):
-            matching_cases = await read_record_projections(db, [
+            matching_conditions = [
                 BusinessRecord.module.in_(("case", "ipr_case")),
                 column.in_(values[offset:offset + 400]), *scope_conditions,
-            ], case_fields)
+            ]
+            matching_cases = await read_record_projections(db, matching_conditions, case_fields)
             cases_by_key.update((item.id, item) for item in matching_cases)
     cases = list(cases_by_key.values())
     cases_by_id = {item.id: item for item in cases}
@@ -1489,9 +1507,15 @@ async def _invoice_case_fee_rows(
     visible_invoice_ids = set((await db.scalars(invoice_query.with_only_columns(BusinessRecord.id).where(
         *scope_conditions,
     ))).all()) if ids is not None and scope_conditions else None
-    invoices = list((await db.scalars(invoice_query.order_by(
-        BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
-    ))).all())
+    if summary_only:
+        invoices = await read_record_projections(db, [invoice_query.whereclause], (
+            "case_fee_ids", "case_fee_id", "case_no", "case_fee_allocations", "amount", "invoice_date", "invoice_no",
+        ))
+        invoices.sort(key=lambda item: (item.updated_at, item.id), reverse=True)
+    else:
+        invoices = list((await db.scalars(invoice_query.order_by(
+            BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
+        ))).all())
     invoice_by_fee: dict[int, list[tuple[BusinessRecord, float]]] = {}
     fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
     fees_by_id = {item.id: item for item in fees}
@@ -1534,7 +1558,7 @@ async def _invoice_case_fee_rows(
             if len(explicit_ids) == 1:
                 allocation_map[explicit_ids[0]] = invoice_amount
             else:
-                weights = [abs(float((next(item for item in fees if item.id == fee_id).data or {}).get("amount") or 0)) for fee_id in explicit_ids]
+                weights = [abs(float((fees_by_id[fee_id].data or {}).get("amount") or 0)) for fee_id in explicit_ids]
                 weight_total = sum(weights) or float(len(explicit_ids))
                 allocated = 0.0
                 for index, fee_id in enumerate(explicit_ids):
@@ -1609,9 +1633,15 @@ async def _invoice_case_fee_rows(
             BusinessRecord.data["case_no"].as_string().in_(case_nos),
             BusinessRecord.data["original_payment_no"].as_string().in_({str((fee.data or {}).get("document_no") or "") for fee in fees} - {""}),
         ))
-    refunds = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "refund", *refund_scope_conditions, *related_refund_conditions,
-    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    if summary_only:
+        refunds = await read_record_projections(db, [
+            BusinessRecord.module == "refund", *refund_scope_conditions, *related_refund_conditions,
+        ], ("fee_record_id", "original_payment_no", "case_no", "amount"))
+        refunds.sort(key=lambda item: (item.updated_at, item.id), reverse=True)
+    else:
+        refunds = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "refund", *refund_scope_conditions, *related_refund_conditions,
+        ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     refunds_by_fee: dict[int, list[BusinessRecord]] = {}
     official_by_case: dict[str, list[BusinessRecord]] = {}
     fee_by_document_no: dict[str, BusinessRecord] = {}
@@ -1630,7 +1660,7 @@ async def _invoice_case_fee_rows(
         except (TypeError, ValueError):
             linked_fee_id = 0
         if linked_fee_id in fee_ids:
-            linked_fee = next((fee for fee in fees if fee.id == linked_fee_id), None)
+            linked_fee = fees_by_id[linked_fee_id]
         if linked_fee is None:
             linked_fee = fee_by_document_no.get(str(refund_data.get("original_payment_no") or "").strip())
         if linked_fee is None:
@@ -1812,6 +1842,7 @@ async def _fee_query_rows(
     hearing_lawyer: str = "", assistant: str = "", case_stages: str = "",
     fee_types: str = "", ids: set[int] | None = None,
     scope_authorized_fee_ids: set[int] | None = None,
+    summary_only: bool = False,
 ) -> list[dict]:
     if "_dashboard_fee_ids" in identity:
         scope_authorized_fee_ids = identity["_dashboard_fee_ids"]
@@ -1826,6 +1857,7 @@ async def _fee_query_rows(
         paid_to=paid_to, fee_types=fee_types, payer_name="",
         cashed_from=None, cashed_to=None, ids=ids, include_all_fee_types=True,
         scope_authorized_fee_ids=scope_authorized_fee_ids,
+        summary_only=summary_only,
     )
     filtered: list[dict] = []
     for row in rows:

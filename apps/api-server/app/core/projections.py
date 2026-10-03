@@ -77,20 +77,23 @@ async def _receivable_detail_projection(
 ) -> list[dict]:
     """Project the legacy contract-object receivable detail from visible data."""
     from app.core.finance import (
-        _fee_matches_contract_object, _invoice_case_fee_rows, _receivable_fee_category, _receivable_number, _receivable_relation_id,
+        _fee_contract_record_id, _fee_matches_contract_object, _invoice_case_fee_rows,
+        _receivable_fee_category, _receivable_number, _receivable_relation_id,
     )
     from app.core.permissions import (
         _record_scope_conditions,
     )
     from app.core.query_batches import _scalars_in_batches
     from app.core.record_projection_query import read_record_projections
+    from app.core.finance_summary_query import read_fee_summaries
 
     if records is None:
         conditions = await _record_scope_conditions(identity, db)
         # 应收只使用合同、案件和费用，不读取线索、客户等无关历史快照。
-        records = list((await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module.in_({"contract", "finance"}), *conditions,
-        ))).all())
+        records = await read_record_projections(db, [
+            BusinessRecord.module == "contract", *conditions,
+        ], ("contract_body", "signed_at", "source_person"))
+        records.extend(await read_fee_summaries(db, [BusinessRecord.module == "finance", *conditions]))
         records.extend(await read_record_projections(db, [
             BusinessRecord.module == "case", *conditions,
         ], ("contract_id", "contract_record_id", "contract_no", "case_stage", "business_stage", "case_type")))
@@ -131,35 +134,41 @@ async def _receivable_detail_projection(
         ("case_id", case_ids),
         ("case_record_id", case_ids),
     ):
-        related_finances = await _scalars_in_batches(
-            db, values,
-            lambda batch: select(BusinessRecord).where(
+        values = list(values)
+        for offset in range(0, len(values), 400):
+            batch = values[offset:offset + 400]
+            related_finances = await read_fee_summaries(db, [
                 BusinessRecord.module == "finance",
                 or_(BusinessRecord.data[key].as_integer().in_(batch),
                     BusinessRecord.data[key].as_string().in_([str(value) for value in batch])),
-            ),
-        )
-        finances_by_id.update((item.id, item) for item in related_finances)
+            ])
+            finances_by_id.update((item.id, item) for item in related_finances)
     for key, values in (("contract_no", contract_nos), ("case_no", case_nos)):
-        related_finances = await _scalars_in_batches(
-            db, values,
-            lambda batch: select(BusinessRecord).where(
+        values = list(values)
+        for offset in range(0, len(values), 400):
+            related_finances = await read_fee_summaries(db, [
                 BusinessRecord.module == "finance",
-                BusinessRecord.data[key].as_string().in_(batch),
-            ),
-        )
-        finances_by_id.update((item.id, item) for item in related_finances)
+                BusinessRecord.data[key].as_string().in_(values[offset:offset + 400]),
+            ])
+            finances_by_id.update((item.id, item) for item in related_finances)
     finances = list(finances_by_id.values())
 
     finance_ids = {item.id for item in finances}
     finance_rows = await _invoice_case_fee_rows(
         identity, db, scope="company", ids=finance_ids, include_all_fee_types=True,
         scope_authorized_fee_ids=finance_ids,
-        force_amount_projection=True,
+        force_amount_projection=True, summary_only=True,
     ) if finance_ids else []
     finance_data_by_id = {
-        int(item["id"]): dict(item.get("data") or {}) for item in finance_rows
+        int(item["id"]): {key: (item.get("data") or {}).get(key)
+                          for key in ("fee_type", "paid_amount", "cashed_amount")}
+        for item in finance_rows
     }
+    del finance_rows
+    # 合同编号是原匹配函数的首个必要条件，先归组避免明细逐条扫描全部费用。
+    finances_by_contract: dict[int, list[BusinessRecord]] = {}
+    for fee in finances:
+        finances_by_contract.setdefault(_fee_contract_record_id(fee), []).append(fee)
     rows: list[dict] = []
 
     def relation(fee_data: dict) -> tuple[BusinessRecord | None, BusinessRecord | None]:
@@ -184,7 +193,8 @@ async def _receivable_detail_projection(
         if amount <= 0:
             continue
         linked_fees = [
-            fee for fee in finances if _fee_matches_contract_object(fee, item, case_record)
+            fee for fee in finances_by_contract.get(item.contract_record_id, ())
+            if _fee_matches_contract_object(fee, item, case_record)
         ]
         matched_fee_ids.update(fee.id for fee in linked_fees)
         paid = 0.0

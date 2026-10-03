@@ -32,15 +32,17 @@ async def personal_queues(identity, db):
         for key, queue in CASE_QUEUES.items():
             if queue != "urgent" and _matches_dashboard_case_queue(case, queue):
                 add(key, case)
-    for key, rows in (
-        ("official-fee-unpaid", await _fee_query_rows(identity, db, unpaid_official=True)),
-        ("refund-pending", await _refund_case_fee_rows(refund_identity, db)),
-    ):
+    for key in ("official-fee-unpaid", "refund-pending"):
+        if key == "official-fee-unpaid":
+            rows = await _fee_query_rows(identity, db, unpaid_official=True, summary_only=True)
+        else:
+            rows = await _refund_case_fee_rows(refund_identity, db)
         for row in rows:
             data = row["data"]
             case = by_id.get(data.get("case_id")) or by_no.get(data.get("case_no"))
             if case:
                 add(key, case, fee_id=row["id"] if key == "refund-pending" else None)
+        del rows
     for row in await dashboard_receivables(identity, db):
         case = by_id.get(row.get("case_record_id"))
         if case:
