@@ -1,29 +1,23 @@
 """只读业务投影：在 SQL 层选择所需字段，不加载完整历史快照。"""
-import json
 from types import SimpleNamespace
 
-from sqlalchemy import JSON, String, literal, select
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.sql.functions import FunctionElement
+from sqlalchemy import JSON, column, func, literal, select, type_coerce
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.models import BusinessRecord
 
 
-class _RecordProjectionData(FunctionElement):
-    type = JSON()
-    inherit_cache = True
-
-
-@compiles(_RecordProjectionData, "postgresql")
-def _postgresql_projection_data(element, compiler, **kwargs):
-    payload, keys = (compiler.process(clause, **kwargs) for clause in element.clauses)
-    # 原列为 JSON，只提取顶层字段，避免把未使用的历史快照递归转换为 JSONB。
-    return (
-        "(SELECT COALESCE(json_object_agg(projection_entry.key, CAST(projection_entry.value AS JSONB)), '{}'::json) "
-        f"FROM json_each(CAST({payload} AS JSON)) AS projection_entry(key, value) "
-        "WHERE projection_entry.key IN ("
-        f"SELECT jsonb_array_elements_text(CAST({keys} AS JSONB))))"
-    )
+def _postgresql_projection_data(data_fields):
+    if not data_fields:
+        return literal({}, type_=JSON)
+    # 直接声明所需字段，避免逐条展开未使用的历史快照并进行哈希连接、聚合。
+    # JSONB 字段保留原投影对选中值的类型转换；嵌套空值不能被递归删除。
+    projection = func.json_to_record(BusinessRecord.data).table_valued(
+        *(column(key, JSONB) for key in data_fields),
+    ).render_derived(with_types=True)
+    return select(type_coerce(func.row_to_json(projection.table_valued()), JSON)).select_from(
+        projection,
+    ).correlate(BusinessRecord).scalar_subquery()
 
 
 async def read_record_projections(db, conditions, data_fields, *, legacy_fields=()):
@@ -32,9 +26,9 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
     data_fields = tuple(dict.fromkeys(data_fields))
     legacy_fields = tuple(dict.fromkeys(legacy_fields))
     grouped_data = db.get_bind().dialect.name == "postgresql"
-    data_columns = (_RecordProjectionData(
-        BusinessRecord.data, literal(json.dumps(data_fields), type_=String),
-    ),) if grouped_data else tuple(BusinessRecord.data[key] for key in data_fields)
+    data_columns = (_postgresql_projection_data(data_fields),) if grouped_data else tuple(
+        BusinessRecord.data[key] for key in data_fields
+    )
     query = select(
         *(getattr(BusinessRecord, key) for key in columns),
         *data_columns,

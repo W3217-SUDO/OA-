@@ -1408,6 +1408,13 @@ def _case_has_outstanding_legacy_agency_fee(
 
 
 async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | None = None) -> int:
+    from app.core.task_personnel import automatic_task_personnel_scope
+
+    async with automatic_task_personnel_scope(db):
+        return await _scan_case_automatic_task_rules(db, today=today)
+
+
+async def _scan_case_automatic_task_rules(db: AsyncSession, *, today: date | None = None) -> int:
     from app.core.record_projection_query import read_record_projections
 
     effective_today = today or date.today()

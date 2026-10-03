@@ -6,6 +6,8 @@ from sqlalchemy import false, or_, select
 from app.models import BusinessRecord, ContractObject, Department, User
 from app.core.record_projection_query import read_record_projections
 from app.core.finance_summary_query import FEE_SUMMARY_FIELDS
+from app.core.json_relation_query import scalar_in_values
+from app.core.request_metrics import measure_phase
 from app.core.permissions import (
     _case_mine_scope_condition, _configured_user_job_role_name,
     _job_role_for_name, _system_user_role_ids,
@@ -81,18 +83,20 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         ))
     relation_fields = ("contract_id", "contract_record_id", "contract_no")
     case_fields = (*relation_fields, "case_type", "case_phase_name", "case_phase", "case_stage", "business_stage")
-    cases = await read_record_projections(
-        db, conditions, case_fields if include_summaries else relation_fields,
-        legacy_fields=("CasePhaseName",) if include_summaries else (),
-    )
+    with measure_phase("dashboard.scope.cases"):
+        cases = await read_record_projections(
+            db, conditions, case_fields if include_summaries else relation_fields,
+            legacy_fields=("CasePhaseName",) if include_summaries else (),
+        )
     case_ids = {item.id for item in cases}
     case_nos = {item.serial_no for item in cases}
-    fees = await read_record_projections(db, [
-        BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
-        or_(BusinessRecord.data["case_id"].as_integer().in_(case_ids),
-            BusinessRecord.data["case_record_id"].as_integer().in_(case_ids),
-            BusinessRecord.data["case_no"].as_string().in_(case_nos)),
-    ], FEE_SUMMARY_FIELDS if include_summaries else relation_fields) if case_ids else []
+    with measure_phase("dashboard.scope.fees"):
+        fees = await read_record_projections(db, [
+            BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
+            or_(scalar_in_values(BusinessRecord.data["case_id"].as_integer(), case_ids),
+                scalar_in_values(BusinessRecord.data["case_record_id"].as_integer(), case_ids),
+                scalar_in_values(BusinessRecord.data["case_no"].as_string(), case_nos)),
+        ], FEE_SUMMARY_FIELDS if include_summaries else relation_fields) if case_ids else []
     contract_ids = set((await db.scalars(select(ContractObject.contract_record_id).where(
         ContractObject.case_record_id.in_(case_ids),
     ))).all()) if case_ids else set()

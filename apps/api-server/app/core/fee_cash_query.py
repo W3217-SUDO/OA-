@@ -2,7 +2,7 @@
 from sqlalchemy import or_, select
 
 from app.models import BusinessRecord, FinanceTransaction, IncomingPayment
-from app.core.json_relation_query import json_scalar_overlap
+from app.core.json_relation_query import json_scalar_overlap, scalar_in_values
 from app.core.query_batches import _scalars_in_batches
 
 
@@ -46,12 +46,22 @@ def _resolve_case_fee_link_id(link: dict, fee_ids: set[int], legacy_fee_ids: dic
 
 
 async def read_fee_payments(fee_ids, db):
-    transactions = await _scalars_in_batches(
-        db, fee_ids, lambda batch: select(FinanceTransaction).where(
-            FinanceTransaction.finance_record_id.in_(batch),
+    fee_ids = set(fee_ids)
+    if not fee_ids:
+        return {}
+    if db.get_bind().dialect.name == "postgresql":
+        # 编号集合只占一个参数，避免一次首页统计为付款记录往返数十次。
+        transactions = list((await db.scalars(select(FinanceTransaction).where(
+            scalar_in_values(FinanceTransaction.finance_record_id, fee_ids),
             FinanceTransaction.transaction_type == "付款",
-        ),
-    )
+        ))).all())
+    else:
+        transactions = await _scalars_in_batches(
+            db, fee_ids, lambda batch: select(FinanceTransaction).where(
+                FinanceTransaction.finance_record_id.in_(batch),
+                FinanceTransaction.transaction_type == "付款",
+            ),
+        )
     transactions.sort(key=lambda item: (item.transaction_date, item.id), reverse=True)
     payments_by_fee = {}
     for transaction in transactions:
