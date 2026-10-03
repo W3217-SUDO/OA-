@@ -269,7 +269,7 @@ export type CaseTaskAttachment = {
 
 export type CaseTaskPageState = { items: TaskRow[]; total: number; page: number; pageSize: number; pages: number };
 
-export type AttachmentRow = {invoice_record_id?:number|null;case_no?:string;case_type?:string;fee_type?:string;fee_amount?:number;invoice_no?:string;invoice_amount?:number;invoice_date?:string;applicant?:string;applicant_display_name?:string;match_status?:string;id:number;record_id:number|null;original_name:string;category:string;document_category?:string;source_module?:string;is_related_document?:boolean;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean;is_locked?:boolean};
+export type AttachmentRow = {invoice_record_id?:number|null;case_no?:string;case_type?:string;fee_type?:string;fee_amount?:number;invoice_no?:string;invoice_amount?:number;invoice_date?:string;applicant?:string;applicant_display_name?:string;match_status?:string;id:number;record_id:number|null;original_name:string;category:string;document_category?:string;legacy_document_folder_key?:string|null;source_module?:string;is_related_document?:boolean;uploader:string;uploader_display_name?:string;created_at:string;size:number;remark?:string;content_editable?:boolean;is_locked?:boolean};
 
 export type CaseAssistedFee = {
   id: number;
@@ -298,7 +298,7 @@ export type CaseClueWorkspace = {
   evidence: CaseClueEvidenceRow[];
 };
 
-export type CaseFileTypeOption = {value:string;label:string;code?:string;parent_code?:string;disabled?:boolean;options?:CaseFileTypeOption[]};
+export type CaseFileTypeOption = {value:string;label:string;code?:string;parent_code?:string;disabled?:boolean;options?:CaseFileTypeOption[];legacy_folder_id?:number;legacy_parent_id?:number;legacy_type_id?:number;legacy_record_id?:number;legacy_unique_name?:boolean;legacy_parent_missing?:boolean;native_custom?:boolean};
 
 export type WarehouseStorageLocationOption = { id: number; name: string; is_active: boolean };
 

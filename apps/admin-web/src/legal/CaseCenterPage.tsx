@@ -3,6 +3,7 @@ import { CaseClueSelect } from "./CaseClueSelect";
 import { useConflictReview } from "../conflict-review/useConflictReview";
 import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 import { caseContractDocuments } from "./services/caseDocuments";
+import { filterLegacyCaseFolder, findCaseDocumentFolder, flattenLegacyCaseFolders, type CaseDocumentTreeItem } from "./services/legacyCaseDocumentFolders";
 import { CommissionPerson } from "./CommissionPerson";
 import {
 CloseOutlined,
@@ -1793,6 +1794,14 @@ export default function CaseCenterPage({
   const selectCounselDocCategory = (category: string) => {
     const applicableOptions = fileTypeOptionsForCase(viewingCounselCase?.data.case_type);
     setActiveCounselDocCategory(category);
+    const legacyFolder = findCaseDocumentFolder(counselDocumentFolderTree, category);
+    if (legacyFolder?.legacy_folder_id) {
+      if (hasCaseFileTypeOption(legacyFolder.label, applicableOptions) || AGENT_CASE_DOCUMENT_FOLDERS.includes(legacyFolder.label)) {
+        setCounselUploadCategory(legacyFolder.label);
+      }
+      setSelectedCounselAttachmentKeys([]);
+      return;
+    }
     if (category === "AI空间") {
       setCounselUploadCategory("AI空间");
       setSelectedCounselAttachmentKeys([]);
@@ -1821,7 +1830,7 @@ export default function CaseCenterPage({
   });
 
   const toggleCounselDocGroup = (category: string) => {
-    setExpandedCounselDocGroups((current) => ({ ...current, [category]: !current[category] }));
+    setExpandedCounselDocGroups((current) => ({ ...current, [category]: !(current[category] ?? category.startsWith("legacy-case-folder:")) }));
     selectCounselDocCategory(category);
   };
   const openCaseDocumentFolderEditor = (editor: CaseDocumentFolderEditor) => {
@@ -2555,7 +2564,12 @@ export default function CaseCenterPage({
     ...customCaseDocumentFolders,
   ]));
   const counselMoveCategoryOptions = getCaseDocumentMoveCategoryOptions(customCaseDocumentFolders);
-  const counselDocTree:Array<{label:string;category:string;type:string;parent?:string;custom?:boolean}>=[
+  const hasLegacyDocumentTree=counselDocumentFolderTree.some(option=>Boolean(option.legacy_folder_id));
+  const counselDocTree:CaseDocumentTreeItem[]=hasLegacyDocumentTree ? [
+    {label:"AI空间",category:"AI空间",type:"folder"},
+    {label:"全部案件文档",category:"案件文档全部",type:"overview"},
+    ...flattenLegacyCaseFolders(counselDocumentFolderTree,expandedCounselDocGroups),
+  ] : [
     {label:"AI空间",category:"AI空间",type:"folder"},
     {label:"客户文档",category:"客户文档",type:"folder"},
     {label:"合同文档",category:"合同文档",type:"folder"},
@@ -2574,7 +2588,9 @@ export default function CaseCenterPage({
   };
   const activeCounselDocCategories=counselDocCategoryGroups[activeCounselDocCategory]||[activeCounselDocCategory];
   const nonCaseDocumentCategories=["AI空间","客户文档","合同文档",...counselDocCategoryGroups.调查文档全部];
-  const filteredCounselDetailAttachments=activeCounselDocCategory
+  const activeLegacyFolder=findCaseDocumentFolder(counselDocumentFolderTree,activeCounselDocCategory);
+  const legacyFolderAttachments=filterLegacyCaseFolder(counselDetailAttachments,activeLegacyFolder);
+  const filteredCounselDetailAttachments=legacyFolderAttachments ?? (activeCounselDocCategory
     ? activeCounselDocCategory==="客户文档"
       ? counselDetailCustomerAttachments
       : activeCounselDocCategory==="合同文档"
@@ -2582,8 +2598,8 @@ export default function CaseCenterPage({
         : counselDetailAttachments.filter(row=>activeCounselDocCategory==="案件文档全部"
           ? !nonCaseDocumentCategories.includes(String(row.document_category||row.category||""))
           : activeCounselDocCategories.some(category=>String(row.document_category||row.category||"")===category))
-    : counselDetailAttachments;
-  const isRelatedDocumentFolder=activeCounselDocCategory==="客户文档"||activeCounselDocCategory==="合同文档";
+    : counselDetailAttachments);
+  const isRelatedDocumentFolder=activeCounselDocCategory==="客户文档"||activeCounselDocCategory==="合同文档"||activeLegacyFolder?.legacy_type_id===1||activeLegacyFolder?.legacy_type_id===2;
   const isAiSpaceFolder=activeCounselDocCategory==="AI空间";
   const activeCounselDocLabel=counselDocTree.find(item=>item.category===activeCounselDocCategory)?.label||activeCounselDocCategory;
   const firmFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope!=="平台"&&row.data.expense_scope!=="内部"&&!String(row.data.fee_type||"").includes("内部"));

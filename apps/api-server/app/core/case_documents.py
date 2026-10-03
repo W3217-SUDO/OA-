@@ -10,6 +10,7 @@ from app.core.permissions import _can_search_all_cases_from_global_search, _ensu
 from app.core.storage import _attachment_dict
 from app.core.formatters import _person_display_name, _user_display_map
 from app.core.case_document_sources import case_document_sources
+from app.core.legacy_case_document_folders import legacy_attachment_folder_keys
 
 
 def _values(data, keys):
@@ -143,6 +144,7 @@ async def case_document_page(case_id, identity, db, page, page_size):
     users = await _user_display_map({item.uploader for item in files}, db)
     names = {key: _person_display_name(user.display_name, user.username)[0] for key, user in users.items()}
     items = []
+    legacy_folder_keys = await legacy_attachment_folder_keys(files, records, db)
     for item in files:
         source = records[item.record_id]
         category = item.category
@@ -157,6 +159,7 @@ async def case_document_page(case_id, identity, db, page, page_size):
         elif source.module == "clue":
             category = "调查文档"
         items.append({**_attachment_dict(item, source, names), "document_category": category,
-                      "source_module": source.module, "is_related_document": source.id != case.id})
+                      "source_module": source.module, "is_related_document": source.id != case.id,
+                      "legacy_document_folder_key": legacy_folder_keys.get(item.id)})
     return {"items": items, "total": total, "page": page, "page_size": page_size,
             "pages": (total + page_size - 1) // page_size}

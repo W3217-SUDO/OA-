@@ -14,18 +14,11 @@ import type { Key } from "react";
 import { dispatchCaseDocumentGenerationMenuClick } from "../../caseDocumentGenerationActions.mjs";
 import { getLegacyCaseDocumentGenerationItems } from "../constants";
 import type { AttachmentRow,CaseDetailCapabilities,CaseDocumentFolderEditor,CaseRow } from "../types";
-
-interface CaseDocTreeItem {
-  label: string;
-  category: string;
-  type: string;
-  parent?: string;
-  custom?: boolean;
-}
+import type { CaseDocumentTreeItem } from "../services/legacyCaseDocumentFolders";
 
 interface CaseDocumentsPanelProps {
   viewingCase: CaseRow;
-  counselDocTree: CaseDocTreeItem[];
+  counselDocTree: CaseDocumentTreeItem[];
   expandedCounselDocGroups: Record<string, boolean>;
   activeCounselDocCategory: string;
   activeCounselDocLabel: string;
@@ -116,16 +109,17 @@ export const CaseDocumentsPanel = ({
         {counselDocTree.map((item,index)=>(
           <div className="case-doc-tree-row" key={`${item.category}-${item.type}-${index}`}>
           <button
-            className={`${item.type==="child"?"case-doc-child":"case-doc-folder"} ${item.category==="AI空间"?"case-doc-ai-space":""} ${item.type==="group"&&expandedCounselDocGroups[item.category]?"case-doc-folder-open":""} ${activeCounselDocCategory===item.category?"case-doc-active":""}`}
+            className={`${item.type==="child"?"case-doc-child":"case-doc-folder"} ${item.category==="AI空间"?"case-doc-ai-space":""} ${item.type==="group"&&(expandedCounselDocGroups[item.category] ?? item.depth !== undefined)?"case-doc-folder-open":""} ${activeCounselDocCategory===item.category?"case-doc-active":""}`}
+            style={item.depth === undefined ? undefined : {paddingLeft: 4 + item.depth * 18}}
             onClick={()=>item.type==="group"?toggleCounselDocGroup(item.category):selectCounselDocCategory(item.category)}
-            title={`查看${item.label}`}
-            aria-expanded={item.type==="group"?expandedCounselDocGroups[item.category]:undefined}
+            title={item.parentMissing ? `${item.label}：旧父目录不存在，保留在顶层` : `查看${item.label}`}
+            aria-expanded={item.type==="group"?(expandedCounselDocGroups[item.category] ?? item.depth !== undefined):undefined}
           >
-            <span className="case-doc-caret" aria-hidden="true">{item.type==="group"?(expandedCounselDocGroups[item.category]?"▾":"▸"):""}</span>
-            {item.category==="AI空间"?<RobotOutlined className="case-doc-icon"/>:item.type==="group"&&expandedCounselDocGroups[item.category]?<FolderOpenOutlined className="case-doc-icon"/>:<FolderOutlined className="case-doc-icon"/>}
+            <span className="case-doc-caret" aria-hidden="true">{item.type==="group"?((expandedCounselDocGroups[item.category] ?? item.depth !== undefined)?"▾":"▸"):""}</span>
+            {item.category==="AI空间"?<RobotOutlined className="case-doc-icon"/>:item.type==="group"&&(expandedCounselDocGroups[item.category] ?? item.depth !== undefined)?<FolderOpenOutlined className="case-doc-icon"/>:<FolderOutlined className="case-doc-icon"/>}
             <span>{item.label}</span>
           </button>
-          {counselDetailCapabilities.can_manage_document&&item.category==="案件文档全部"&&(
+          {counselDetailCapabilities.can_manage_document&&((item.category==="案件文档全部"&&item.type!=="overview")||item.legacyTypeId===7)&&(
             <Button type="text" className="case-doc-tree-action case-doc-tree-add" icon={<PlusCircleFilled/>} title="新增自定义案件文档目录" aria-label="新增自定义案件文档目录" onClick={()=>openCaseDocumentFolderEditor({mode:"create"})}/>
           )}
           {counselDetailCapabilities.can_manage_document&&item.custom&&activeCounselDocCategory===item.category&&<><Button type="text" className="case-doc-tree-action" icon={<EditOutlined/>} title={`重命名目录${item.label}`} aria-label={`重命名目录${item.label}`} onClick={()=>openCaseDocumentFolderEditor({mode:"rename",originalName:item.label})}/><Button type="text" danger className="case-doc-tree-action" icon={<CloseOutlined/>} title={`删除目录${item.label}`} aria-label={`删除目录${item.label}`} onClick={()=>deleteCaseDocumentFolder(item.label)}/></>}

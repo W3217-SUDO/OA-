@@ -1674,6 +1674,13 @@ async def _ensure_case_document_folder_name_available(
     custom_names = {value for value in _case_custom_document_folders(record) if value != ignored_name}
     if name in custom_names:
         raise HTTPException(status_code=409, detail="当前案件已存在同名目录")
+    from app.core.legacy_case_document_folders import legacy_case_folder_tree
+    legacy_nodes = list(await legacy_case_folder_tree(record, db))
+    while legacy_nodes:
+        node = legacy_nodes.pop()
+        if node["label"] == name:
+            raise HTTPException(status_code=409, detail="当前案件已存在同名旧目录")
+        legacy_nodes.extend(node.get("options") or [])
     system_name = await db.scalar(select(SystemParameter.id).where(
         SystemParameter.category == "case_file_type",
         SystemParameter.name == name,

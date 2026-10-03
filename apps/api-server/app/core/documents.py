@@ -414,6 +414,7 @@ async def _case_related_document_record(record: BusinessRecord, module: str, db:
 
 async def _case_formal_document_folder_payload(record: BusinessRecord, db: AsyncSession) -> dict:
     from app.core.case_document_sources import case_document_sources
+    from app.core.legacy_case_document_folders import append_native_case_folders, legacy_case_folder_tree
     document_sources = case_document_sources(record)
     custom_folders = list(dict.fromkeys(
         str(name).strip() for source in document_sources
@@ -478,6 +479,9 @@ async def _case_formal_document_folder_payload(record: BusinessRecord, db: Async
             {"label": name, "value": name} for name in visible_case_folders
         ]},
     ]
+    legacy_tree = await legacy_case_folder_tree(record, db)
+    if legacy_tree:
+        tree = append_native_case_folders(legacy_tree, attachment_categories, custom_folders, record.id)
     folders = [
         *(["客户文档"] if customer_record else []),
         *(["合同文档"] if contract_record else []),
