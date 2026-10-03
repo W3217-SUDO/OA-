@@ -25,6 +25,9 @@ from app.pdf_runtime import serialized_pdfium
 
 def _attachment_storage_path(item: FileAttachment) -> Path | None:
     """仅从当前上传目录或可访问的历史 Docker 附件目录读取文件。"""
+    from app.core.oss_attachments import oss_attachment_location
+    if oss_attachment_location(item) is not None:
+        return None
     current_root = UPLOAD_ROOT.expanduser().resolve()
     for index, configured_root in enumerate((UPLOAD_ROOT, *LEGACY_UPLOAD_ROOTS)):
         root = configured_root.expanduser()
@@ -66,6 +69,8 @@ def _attachment_dict(
     from app.core.crm import (
         _customer_guid,
     )
+    from app.core.oss_attachments import oss_attachment_location
+    oss_location = oss_attachment_location(item)
     uploader_display_name = (uploader_names or {}).get(str(item.uploader or "").lower(), "") or CONTRACT_PERSON_NAME_PLACEHOLDER
     return {
         "id": item.id, "record_id": item.record_id, "communication_log_id": item.communication_log_id, "finance_transaction_id": item.finance_transaction_id,
@@ -79,6 +84,9 @@ def _attachment_dict(
         "transmitted_at": item.transmitted_at, "transmitted_by": item.transmitted_by,
         "is_locked": bool(item.is_locked), "locked_at": item.locked_at, "locked_by": item.locked_by,
         "created_at": item.created_at, "download_url": f"{settings.api_prefix}/attachments/{item.id}/download",
+        "storage_backend": "oss" if oss_location else "local",
+        "oss_bucket": oss_location[0] if oss_location else None,
+        "oss_object_key": oss_location[1] if oss_location else None,
     }
 
 
@@ -218,6 +226,9 @@ async def _case_word_editor_attachment(
         raise HTTPException(status_code=422, detail="旧版 .doc 文件不支持在线编辑，请转换为 .docx 后再编辑")
     if suffix != ".docx":
         raise HTTPException(status_code=422, detail="仅支持 .docx Word 文件在线编辑")
+    from app.core.oss_attachments import oss_attachment_location
+    if oss_attachment_location(item) is not None:
+        raise HTTPException(status_code=409, detail="OSS 历史附件已关联，暂不支持直接在线编辑")
     path = _attachment_storage_path(item)
     if path is None:
         raise HTTPException(status_code=404, detail="案件 Word 文件不存在")

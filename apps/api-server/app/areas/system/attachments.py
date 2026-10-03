@@ -367,6 +367,8 @@ async def download_attachment(attachment_id: int, case_id: int | None = Query(de
         raise HTTPException(status_code=404, detail="附件不属于该案件")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+    from app.core.oss_attachments import require_oss_attachment_download
+    require_oss_attachment_download(item)
     path = _attachment_storage_path(item)
     if path is None:
         raise HTTPException(status_code=404, detail="附件文件不存在")
@@ -397,6 +399,8 @@ async def preview_attachment(attachment_id: int, case_id: int | None = Query(def
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
 
+    from app.core.oss_attachments import require_oss_attachment_download
+    require_oss_attachment_download(item)
     path = _attachment_storage_path(item)
     if path is None:
         raise HTTPException(status_code=404, detail="附件文件不存在")
@@ -473,6 +477,8 @@ async def create_office_preview_link(
         raise HTTPException(status_code=404, detail="附件不属于该案件")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+    from app.core.oss_attachments import require_oss_attachment_download
+    require_oss_attachment_download(item)
     path = _attachment_storage_path(item)
     if path is None:
         raise HTTPException(status_code=404, detail="附件文件不存在")
