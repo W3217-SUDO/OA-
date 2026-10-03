@@ -52,7 +52,7 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
     )
     from app.core.permissions import (
         _case_detail_action_capabilities, _ensure_record_module, _filter_visible_attachments, _record_dict_for_identity, _record_scope_conditions,
-        _require_record_owner_or_manager,
+        _record_dicts_for_identity, _require_record_owner_or_manager,
     )
     from app.core.storage import (
         _attachment_dict,
@@ -292,8 +292,8 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         "documents": document_payload,
         "tasks": [await _task_display_dict(item, db) for item in tasks],
         "relationships": {
-            "clues": [await _record_dict_for_identity(item, identity, db) for item in clues],
-            "investigations": [await _record_dict_for_identity(item, identity, db) for item in investigations],
+            "clues": await _record_dicts_for_identity(clues, identity, db),
+            "investigations": await _record_dicts_for_identity(investigations, identity, db),
             "edges": [
                 *([{"from": f"case:{case_record.id}", "to": f"customer:{customer.id}", "type": "belongs_to_customer"}] if customer else []),
                 *[{"from": f"case:{case_record.id}", "to": f"contract:{item.id}", "type": "covered_by_contract"} for item in contracts],

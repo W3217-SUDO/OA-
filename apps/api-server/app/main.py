@@ -490,7 +490,11 @@ from app.areas.wms.router import router as wms_router
 from app.routing import include_route_slice as include_route_slice, verify_route_coverage as verify_route_coverage
 
 
+from app.core.request_metrics import RequestMetricsMiddleware
+
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+app.add_middleware(RequestMetricsMiddleware, api_prefix=settings.api_prefix,
+                   threshold_seconds=settings.slow_request_log_seconds)
 app.include_router(feedback_router)
 app.exception_handler(RequestValidationError)(request_validation_error_handler)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost", "http://127.0.0.1"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])

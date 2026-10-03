@@ -107,7 +107,7 @@ async def list_internal_payment_packages(
     db: AsyncSession = Depends(get_db),
 ):
     from app.core.permissions import (
-        _record_dict_for_identity, _record_scope_conditions,
+        _record_dicts_for_identity, _record_scope_conditions,
     )
     legacy_status_by_page_id = {
         "5001003006": "待核销",
@@ -137,7 +137,7 @@ async def list_internal_payment_packages(
         query = query.offset((page - 1) * page_size).limit(page_size)
     items = (await db.scalars(query)).all()
     return {
-        "items": [await _record_dict_for_identity(item, identity, db) for item in items],
+        "items": await _record_dicts_for_identity(items, identity, db),
         "total": int(total),
         "page": page,
         "page_size": page_size if page_size is not None else len(items),
@@ -150,7 +150,7 @@ async def list_internal_payment_package_candidates(
     db: AsyncSession = Depends(get_db),
 ):
     from app.core.permissions import (
-        _record_dict_for_identity, _record_scope_conditions,
+        _record_dicts_for_identity, _record_scope_conditions,
     )
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有打包付款权限")
@@ -161,7 +161,7 @@ async def list_internal_payment_package_candidates(
         if (row.data or {}).get("fee_type") == "内部费用"
         and (row.status == "已审批" or (package_id is not None and row.status == "待核销" and int((row.data or {}).get("payment_package_id") or 0) == package_id))
     ]
-    return {"items": [await _record_dict_for_identity(item, identity, db) for item in items], "total": len(items)}
+    return {"items": await _record_dicts_for_identity(items, identity, db), "total": len(items)}
 
 @router.post(f"{settings.api_prefix}/finance/payment-packages/preview")
 async def preview_internal_payment_package(body: FinancePaymentPackagePreviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):

@@ -1494,7 +1494,7 @@ async def create_refund_page_case_fees(
         _contract_person_display_name,
     )
     from app.core.permissions import (
-        _case_detail_action_capabilities, _record_dict_for_identity, _record_scope_conditions,
+        _case_detail_action_capabilities, _record_dicts_for_identity, _record_scope_conditions,
     )
     case_ids = list(dict.fromkeys(item.case_id for item in body.items))
     visible_cases = list((await db.scalars(select(BusinessRecord).where(
@@ -1627,7 +1627,7 @@ async def create_refund_page_case_fees(
         raise
     for item in created:
         await db.refresh(item)
-    return {"created": len(created), "items": [await _record_dict_for_identity(item, identity, db) for item in created]}
+    return {"created": len(created), "items": await _record_dicts_for_identity(created, identity, db)}
 
 
 @router.get(f"{settings.api_prefix}/finance/payment-types")

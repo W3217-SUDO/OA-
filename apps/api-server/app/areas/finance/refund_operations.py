@@ -113,7 +113,7 @@ async def update_refund_amount(refund_id: int, body: RefundAmountUpdateInput, id
 @router.post(f"{settings.api_prefix}/finance/refunds/status")
 async def batch_refund_status(body: RefundBatchStatusInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_refund_company_record, _record_dict_for_identity, _require_record_owner_or_manager,
+        _ensure_refund_company_record, _record_dicts_for_identity, _require_record_owner_or_manager,
     )
     ids = list(dict.fromkeys(body.ids))
     if body.status not in {"待审批", "退款办理中", "已驳回"}:
@@ -132,7 +132,7 @@ async def batch_refund_status(body: RefundBatchStatusInput, identity: dict = Dep
     await db.commit()
     for item in items:
         await db.refresh(item)
-    return {"items": [await _record_dict_for_identity(item, identity, db) for item in items], "status": body.status, "count": len(items)}
+    return {"items": await _record_dicts_for_identity(items, identity, db), "status": body.status, "count": len(items)}
 
 
 @router.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/court-refund/reset")

@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from app.core.dependencies import (AsyncSession, BusinessRecord, FileAttachment, FinanceTransaction,
     WorkflowEvent, current_identity, get_db, select, settings, date, datetime, Path, uuid4)
 from app.core.constants import UPLOAD_ROOT
-from app.core.permissions import _ensure_record_visible, _record_dict_for_identity, _require_contract_action
+from app.core.permissions import _ensure_record_visible, _record_dict_for_identity, _record_dicts_for_identity, _require_contract_action
 from app.core.finance_batch_parity import is_internal_fee
 
 router = APIRouter()
@@ -39,7 +39,7 @@ async def list_workflow_payments(stage: str, identity: dict = Depends(current_id
             if package.module == 'finance_package' and (package.data or {}).get('fee_type') == '普通付款包':
                 packages[package.id] = package
         rows = [*packages.values(), *ungrouped]
-    return {'items': [await _record_dict_for_identity(row, identity, db) for row in rows], 'total': len(rows)}
+    return {'items': await _record_dicts_for_identity(rows, identity, db), 'total': len(rows)}
 
 
 @router.get(f'{settings.api_prefix}/finance/payment-workflow/{{record_id}}/document')

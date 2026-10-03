@@ -17,10 +17,10 @@ class _RecordProjectionData(FunctionElement):
 @compiles(_RecordProjectionData, "postgresql")
 def _postgresql_projection_data(element, compiler, **kwargs):
     payload, keys = (compiler.process(clause, **kwargs) for clause in element.clauses)
-    # 一次解析 JSON 后挑选字段，避免逐字段重复解析同一大块历史数据。
+    # 原列为 JSON，只提取顶层字段，避免把未使用的历史快照递归转换为 JSONB。
     return (
-        "(SELECT COALESCE(jsonb_object_agg(projection_entry.key, projection_entry.value), '{}'::jsonb) "
-        f"FROM jsonb_each(CAST({payload} AS JSONB)) AS projection_entry(key, value) "
+        "(SELECT COALESCE(json_object_agg(projection_entry.key, CAST(projection_entry.value AS JSONB)), '{}'::json) "
+        f"FROM json_each(CAST({payload} AS JSON)) AS projection_entry(key, value) "
         "WHERE projection_entry.key IN ("
         f"SELECT jsonb_array_elements_text(CAST({keys} AS JSONB))))"
     )

@@ -238,8 +238,7 @@ def _identity_role_ids(identity: dict) -> list[str]:
     return list(dict.fromkeys(role_ids)) or ["user"]
 
 
-async def _permission_payload(role: str, db: AsyncSession) -> dict:
-    permission = await db.scalar(select(RolePermission).where(RolePermission.role == role))
+def _role_permission_projection(role: str, permission: RolePermission | None) -> dict:
     config = DEFAULT_ROLE_PERMISSIONS.get(role, DEFAULT_ROLE_PERMISSIONS["user"])
     if role == "admin":
         return {
@@ -257,10 +256,20 @@ async def _permission_payload(role: str, db: AsyncSession) -> dict:
     }
 
 
+async def _permission_payload(role: str, db: AsyncSession) -> dict:
+    permission = None if role == "admin" else await db.scalar(
+        select(RolePermission).where(RolePermission.role == role),
+    )
+    return _role_permission_projection(role, permission)
+
+
 async def _permission_payload_for_roles(role_ids: list[str], db: AsyncSession) -> dict:
     if "admin" in role_ids:
         return await _permission_payload("admin", db)
-    payloads = [await _permission_payload(role, db) for role in role_ids]
+    # 同一请求的角色集合一次读取，仍按原角色顺序组合并取最小数据范围。
+    permissions = (await db.scalars(select(RolePermission).where(RolePermission.role.in_(role_ids)))).all()
+    by_role = {permission.role: permission for permission in permissions}
+    payloads = [_role_permission_projection(role, by_role.get(role)) for role in role_ids]
     menu_keys = list(dict.fromkeys(key for payload in payloads for key in payload["menu_keys"]))
     action_keys = list(dict.fromkeys(key for payload in payloads for key in payload["action_keys"]))
     field_keys = list(dict.fromkeys(key for payload in payloads for key in payload["field_keys"]))
@@ -514,6 +523,18 @@ async def _record_dict_for_identity(record: BusinessRecord, identity: dict, db: 
         await _allowed_field_keys(identity, db),
         db,
         identity=identity,
+    )
+
+
+async def _record_dicts_for_identity(records, identity: dict, db: AsyncSession) -> list[dict]:
+    """同批结果复用字段权限和人员、合同、付款上下文，顺序及单条投影保持不变。"""
+    from app.core.contracts import _contract_customer_record_dicts
+    from app.core.system import _allowed_field_keys
+
+    if not records:
+        return []
+    return await _contract_customer_record_dicts(
+        records, await _allowed_field_keys(identity, db), db, identity=identity,
     )
 
 

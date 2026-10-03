@@ -77,7 +77,7 @@ async def _receivable_detail_projection(
 ) -> list[dict]:
     """Project the legacy contract-object receivable detail from visible data."""
     from app.core.finance import (
-        _fee_contract_record_id, _fee_matches_contract_object, _invoice_case_fee_rows,
+        _fee_contract_record_id, _fee_matches_contract_object,
         _receivable_fee_category, _receivable_number, _receivable_relation_id,
     )
     from app.core.permissions import (
@@ -85,7 +85,7 @@ async def _receivable_detail_projection(
     )
     from app.core.query_batches import _scalars_in_batches
     from app.core.record_projection_query import read_record_projections
-    from app.core.finance_summary_query import read_fee_summaries
+    from app.core.finance_summary_query import read_fee_summaries, receivable_payment_projection
     from app.core.json_relation_query import scalar_in_values
 
     if records is None:
@@ -154,18 +154,7 @@ async def _receivable_detail_projection(
         finances_by_id.update((item.id, item) for item in related_finances)
     finances = list(finances_by_id.values())
 
-    finance_ids = {item.id for item in finances}
-    finance_rows = await _invoice_case_fee_rows(
-        identity, db, scope="company", ids=finance_ids, include_all_fee_types=True,
-        scope_authorized_fee_ids=finance_ids,
-        force_amount_projection=True, summary_only=True,
-    ) if finance_ids else []
-    finance_data_by_id = {
-        int(item["id"]): {key: (item.get("data") or {}).get(key)
-                          for key in ("fee_type", "paid_amount", "cashed_amount")}
-        for item in finance_rows
-    }
-    del finance_rows
+    finance_data_by_id = await receivable_payment_projection(finances, identity, db)
     # 合同编号是原匹配函数的首个必要条件，先归组避免明细逐条扫描全部费用。
     finances_by_contract: dict[int, list[BusinessRecord]] = {}
     for fee in finances:

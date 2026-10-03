@@ -280,7 +280,10 @@ async def _contract_customer_record_dicts(
     investigations_by_id = {item.id: item for item in investigations}
 
     contract_context = await _contract_customer_projection_context(records, db)
-    usernames: set[str] = set()
+    usernames = {
+        str(step.approver or "").lower()
+        for step in contract_context["current_steps"].values()
+    }
     person_keys = (
         "source_person", "customer_source", "submitted_by", "current_approver", "customer_manager",
         "reviewer", "customer_reviewer", "investigator", "investigation_assistant", "handler", "source_owner", "assigner", "assigned_by",

@@ -575,7 +575,7 @@ async def list_general_settlement_applications(
         _round_fee_amount,
     )
     from app.core.permissions import (
-        _record_dict_for_identity, _settlement_application_scope,
+        _record_dicts_for_identity, _settlement_application_scope,
     )
     for start_date, end_date, label in (
         (received_from, received_to, "回款"),
@@ -645,7 +645,7 @@ async def list_general_settlement_applications(
             continue
         filtered.append(record)
 
-    items = [await _record_dict_for_identity(record, identity, db) for record in filtered]
+    items = await _record_dicts_for_identity(filtered, identity, db)
     for item in items:
         item["data"] = {**item.get("data", {}), "customer_manager": current_managers[item["id"]]}
     amount_keys = ["receipt_amount", "allocated_amount", "remaining_amount", "assigned_official_fee", "assigned_agency_fee", "assigned_other_fee", "agency_settlement_amount", "archive_fee", "actual_settlement_amount"]

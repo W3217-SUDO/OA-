@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     app_name: str = "思法汇成法律服务机构管理系统"
     api_prefix: str = "/api/v1"
     app_env: str = "development"
+    slow_request_log_seconds: float = Field(default=2, gt=0)
     # 本机无 Docker 时默认使用 SQLite；Docker Compose 会通过环境变量覆盖为 PostgreSQL。
     # Resolve the development SQLite database from this module, not the
     # process working directory. This keeps the local web/API pair on one

@@ -193,7 +193,7 @@ async def create_case_commissions(
         _new_internal_payment_package_no, _round_fee_amount, _sync_case_commission_lifecycle,
     )
     from app.core.permissions import (
-        _record_dict_for_identity,
+        _record_dicts_for_identity,
     )
     preview = await _case_commission_preview(case_id, body.source_fee_id, identity, db)
     templates = {item["preview_key"]: item for item in preview["items"]}
@@ -273,7 +273,7 @@ async def create_case_commissions(
     return {
         "application_no": application_no,
         "application_date": applied_at[:10],
-        "items": [await _record_dict_for_identity(record, identity, db) for record in created],
+        "items": await _record_dicts_for_identity(created, identity, db),
         "payment_items": [
             {
                 "record_id": record.id,
@@ -296,7 +296,7 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
         _case_commission_personnel_changed, _case_team_payload, _recalculate_case_draft_commissions, _resolve_active_case_people,
     )
     from app.core.permissions import (
-        _record_dict_for_identity, _record_scope_conditions, _require_case_creation_completed,
+        _record_dicts_for_identity, _record_scope_conditions, _require_case_creation_completed,
     )
     if identity.get("role") not in {"admin", "manager"}:
         raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以批量修改案件")
@@ -393,7 +393,7 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
     await db.commit()
     for case in cases:
         await db.refresh(case)
-    return {"updated": len(cases), "items": [await _record_dict_for_identity(case, identity, db) for case in cases]}
+    return {"updated": len(cases), "items": await _record_dicts_for_identity(cases, identity, db)}
 
 
 from app.areas.legal.case_events import (
@@ -722,7 +722,7 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
         _case_fee_type_snapshot, _resolve_case_fee_contract, _resolve_case_fee_type_master, _round_fee_amount,
     )
     from app.core.permissions import (
-        _record_dict_for_identity, _record_scope_conditions, _require_case_action,
+        _record_dicts_for_identity, _record_scope_conditions, _require_case_action,
     )
     if len(set(body.case_ids)) != len(body.case_ids):
         raise HTTPException(status_code=422, detail="批量费用案件不能重复")
@@ -798,7 +798,7 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
     await db.commit()
     for item in created:
         await db.refresh(item)
-    return {"created": len(created), "items": [await _record_dict_for_identity(item, identity, db) for item in created]}
+    return {"created": len(created), "items": await _record_dicts_for_identity(created, identity, db)}
 
 
 @router.get(f"{settings.api_prefix}/cases/summary")
@@ -1014,7 +1014,7 @@ async def list_case_fee_contracts(
         _case_fee_contract_body,
     )
     from app.core.permissions import (
-        _case_detail_action_capabilities, _ensure_record_module, _record_dict_for_identity,
+        _case_detail_action_capabilities, _ensure_record_module, _record_dicts_for_identity,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     capabilities = await _case_detail_action_capabilities(case_record, identity, db)
@@ -1025,7 +1025,7 @@ async def list_case_fee_contracts(
         BusinessRecord.customer == case_record.customer,
     ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     contracts = [item for item in contracts if _case_fee_contract_body(item) == expense_scope]
-    return {"items": [await _record_dict_for_identity(item, identity, db) for item in contracts], "total": len(contracts)}
+    return {"items": await _record_dicts_for_identity(contracts, identity, db), "total": len(contracts)}
 
 
 @router.get(f"{settings.api_prefix}/cases/reference-options")

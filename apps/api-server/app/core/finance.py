@@ -15,6 +15,11 @@ from app.core.dependencies import (
 from app.models_shared import (
     FinanceFeeInput, FinancePaymentTypeCreateInput, InvoiceApplicationInput, IprCaseAnnualFeeMonitoringInput, JarFeeInput,
 )
+from app.core.fee_cash_query import (
+    _case_fee_link_maps as _case_fee_link_maps, _resolve_case_fee_link_id as _resolve_case_fee_link_id,
+    fee_paid_amount,
+    read_fee_payments, read_fee_receipts,
+)
 
 
 def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord, users_by_username: dict[str, User] | None = None) -> dict:
@@ -1087,11 +1092,6 @@ def _invoice_json_fee_condition(column, fee_ids: set[int]):
     return json_scalar_overlap(column, {int(fee_id) for fee_id in fee_ids})
 
 
-def _invoice_json_case_condition(column, case_nos: set[str]):
-    from app.core.json_relation_query import json_scalar_overlap
-    return json_scalar_overlap(column, case_nos)
-
-
 async def _invoice_fee_details(identity: dict, db: AsyncSession, *, ids: set[int] | None = None,
                                customer: str = "", exclude_invoice_id: int | None = None) -> list[dict]:
     from app.core.contracts import _contract_allows_finance_application
@@ -1317,49 +1317,6 @@ async def _invoice_list_rows(
     return rows
 
 
-def _case_fee_link_maps(fees: list[BusinessRecord]) -> tuple[set[int], dict[int, int]]:
-    fee_ids = {item.id for item in fees}
-    legacy_candidates: dict[int, set[int]] = {}
-    for item in fees:
-        data = item.data or {}
-        for key in ("legacy_case_fee_id", "legacy_fee_id"):
-            try:
-                legacy_id = int(data.get(key) or 0)
-            except (TypeError, ValueError):
-                legacy_id = 0
-            if legacy_id:
-                legacy_candidates.setdefault(legacy_id, set()).add(item.id)
-    return fee_ids, {
-        legacy_id: next(iter(candidate_ids))
-        for legacy_id, candidate_ids in legacy_candidates.items()
-        if len(candidate_ids) == 1
-    }
-
-
-def _resolve_case_fee_link_id(
-    link: dict,
-    fee_ids: set[int],
-    legacy_fee_ids: dict[int, int],
-) -> int:
-    for key in ("fee_record_id", "fee_id"):
-        try:
-            linked_id = int(link.get(key) or 0)
-        except (AttributeError, TypeError, ValueError):
-            linked_id = 0
-        if linked_id in fee_ids:
-            return linked_id
-        if linked_id in legacy_fee_ids:
-            return legacy_fee_ids[linked_id]
-    for key in ("legacy_case_fee_id", "legacy_fee_id"):
-        try:
-            legacy_id = int(link.get(key) or 0)
-        except (AttributeError, TypeError, ValueError):
-            legacy_id = 0
-        if legacy_id in legacy_fee_ids:
-            return legacy_fee_ids[legacy_id]
-    return 0
-
-
 async def _invoice_case_fee_rows(
     identity: dict,
     db: AsyncSession,
@@ -1513,7 +1470,7 @@ async def _invoice_case_fee_rows(
             BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
         ))).all())
     invoice_by_fee: dict[int, list[tuple[BusinessRecord, float]]] = {}
-    fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
+    fee_ids = {fee.id for fee in fees}
     fees_by_id = {item.id: item for item in fees}
     for invoice in invoices:
         if invoice.id == exclude_invoice_id:
@@ -1564,62 +1521,10 @@ async def _invoice_case_fee_rows(
         for fee_id in explicit_ids:
             invoice_by_fee.setdefault(fee_id, []).append((invoice, float(allocation_map.get(fee_id, 0))))
 
-    transactions = await _scalars_in_batches(
-        db, fee_ids,
-        lambda batch: select(FinanceTransaction).where(
-            FinanceTransaction.finance_record_id.in_(batch),
-        ),
+    payments_by_fee = await read_fee_payments(fee_ids, db)
+    receipts_by_fee = await read_fee_receipts(
+        fees, fees_by_case, unambiguous_case_nos, db, filter_related=ids is not None,
     )
-    transactions.sort(key=lambda item: (item.transaction_date, item.id), reverse=True)
-    payments_by_fee: dict[int, list[FinanceTransaction]] = {}
-    for transaction in transactions:
-        if transaction.transaction_type == "付款" and transaction.finance_record_id:
-            payments_by_fee.setdefault(transaction.finance_record_id, []).append(transaction)
-
-    incoming_conditions = []
-    if ids is not None:
-        incoming_conditions.append(or_(
-            _invoice_json_fee_condition(IncomingPayment.allocations, fee_ids | set(legacy_fee_ids)),
-            _invoice_json_case_condition(IncomingPayment.allocations, case_nos),
-        ))
-    incoming = list((await db.scalars(select(IncomingPayment).where(*incoming_conditions).order_by(
-        IncomingPayment.received_date.desc(), IncomingPayment.id.desc()
-    ))).all())
-    receipts_by_fee: dict[int, list[tuple[IncomingPayment, float]]] = {}
-    for payment in incoming:
-        for allocation in payment.allocations or []:
-            if not isinstance(allocation, dict):
-                continue
-            allocation_case_no = str(allocation.get("case_no") or "").strip()
-            linked_nested = False
-            for settlement_item in allocation.get("settlement_items") or []:
-                if not isinstance(settlement_item, dict):
-                    continue
-                nested_fee_id = _resolve_case_fee_link_id(settlement_item, fee_ids, legacy_fee_ids)
-                linked_fee = fees_by_id.get(nested_fee_id)
-                linked_case_no = str(((linked_fee.data or {}) if linked_fee else {}).get("case_no") or "").strip()
-                if nested_fee_id in fee_ids and (not allocation_case_no or allocation_case_no == linked_case_no):
-                    nested_amount = float(settlement_item.get("amount") or settlement_item.get("settlement_amount") or 0)
-                    receipts_by_fee.setdefault(nested_fee_id, []).append((payment, nested_amount))
-                    linked_nested = True
-            if linked_nested:
-                continue
-            fee_id = 0
-            fee_id = _resolve_case_fee_link_id(allocation, fee_ids, legacy_fee_ids)
-            if not fee_id:
-                try:
-                    fee_id = int(allocation.get("finance_record_id") or 0)
-                except (AttributeError, TypeError, ValueError):
-                    pass
-            if fee_id not in fee_ids:
-                legacy_case_no = str(allocation.get("case_no") or "")
-                candidates = fees_by_case.get(legacy_case_no, []) if legacy_case_no in unambiguous_case_nos else []
-                if len(candidates) == 1:
-                    fee_id = candidates[0].id
-            linked_fee = fees_by_id.get(fee_id)
-            linked_case_no = str(((linked_fee.data or {}) if linked_fee else {}).get("case_no") or "").strip()
-            if fee_id in fee_ids and (not allocation_case_no or allocation_case_no == linked_case_no):
-                receipts_by_fee.setdefault(fee_id, []).append((payment, float(allocation.get("amount") or 0)))
 
     refund_scope_conditions = [] if scope_authorized_fee_ids is not None else scope_conditions
     related_refund_conditions = []
@@ -1695,8 +1600,7 @@ async def _invoice_case_fee_rows(
         latest_invoice_data = (latest_invoice.data or {}) if latest_invoice else {}
         invoice_date = _case_fee_date(latest_invoice_data.get("invoice_date"))
         payments = payments_by_fee.get(item.id, [])
-        transaction_paid_amount = round(sum(float(tx.amount or 0) for tx in payments), 2)
-        paid_amount = max(transaction_paid_amount, round(float(data.get("paid_amount") or 0), 2))
+        paid_amount = fee_paid_amount(data, payments)
         paid_date = payments[0].transaction_date if payments else _case_fee_date(data.get("paid_date") or data.get("payment_date"))
         receipts = receipts_by_fee.get(item.id, [])
         cashed_amount = round(sum(amount for _, amount in receipts), 2)
@@ -1828,6 +1732,18 @@ async def _invoice_case_fee_rows(
     return rows
 
 
+def _matches_unpaid_official_fee(data: dict) -> bool:
+    base_type = str(data.get("base_fee_type") or "")
+    display_type = str(data.get("fee_type") or "")
+    amount_due = float(data.get("amount") or 0) - float(data.get("paid_amount") or 0)
+    return (
+        (base_type == "官方费用" or "官费" in display_type or "诉讼费" in display_type
+         or display_type in {"保全费", "执行费"})
+        and str(data.get("payment_status") or "") not in {"已付款", "已驳回", "已作废"}
+        and not amount_due <= 0
+    )
+
+
 async def _fee_query_rows(
     identity: dict, db: AsyncSession, *,
     scope: str = "company", unpaid_official: bool = False, external_only: bool = False,
@@ -1870,19 +1786,8 @@ async def _fee_query_rows(
             continue
         if payment_status and str(data.get("payment_status") or "") != payment_status:
             continue
-        if unpaid_official:
-            base_type = str(data.get("base_fee_type") or "")
-            display_type = str(data.get("fee_type") or "")
-            amount_due = float(data.get("amount") or 0) - float(data.get("paid_amount") or 0)
-            if (
-                base_type != "官方费用"
-                and "官费" not in display_type
-                and "诉讼费" not in display_type
-                and display_type not in {"保全费", "执行费"}
-            ):
-                continue
-            if str(data.get("payment_status") or "") in {"已付款", "已驳回", "已作废"} or amount_due <= 0:
-                continue
+        if unpaid_official and not _matches_unpaid_official_fee(data):
+            continue
         filtered.append(row)
     return filtered
 
@@ -2226,6 +2131,7 @@ async def _case_commission_lifecycle_statuses(
     items: list[BusinessRecord], db: AsyncSession,
 ) -> dict[int, str]:
     """Derive pending automatic commission state from settlement and archive facts."""
+    from app.core.record_projection_query import read_record_projections
     candidates = [item for item in items if _is_case_agency_fee_commission(item)]
     if not candidates:
         return {}
@@ -2234,9 +2140,9 @@ async def _case_commission_lifecycle_statuses(
         int((item.data or {}).get("source_fee_id") or 0)
         for item in candidates
     }
-    source_fees = (await db.scalars(select(BusinessRecord).where(
+    source_fees = await read_record_projections(db, [
         BusinessRecord.module == "finance", BusinessRecord.id.in_(source_fee_ids),
-    ))).all()
+    ], ("refund_fee", "fee_type"))
     refund_source_ids = {
         item.id for item in source_fees
         if (item.data or {}).get("refund_fee") is True
@@ -2247,22 +2153,20 @@ async def _case_commission_lifecycle_statuses(
         return {}
     source_fee_ids -= refund_source_ids
     paid_source_fee_ids: set[int] = set()
-    source_ids = sorted(source_fee_ids)
-    for start in range(0, len(source_ids), 50):
-        batch = set(source_ids[start:start + 50])
-        settlements = list((await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "finance_settlement",
-            BusinessRecord.status == "已付款",
-            _invoice_json_fee_condition(BusinessRecord.data, batch),
-        ))).all())
-        for settlement in settlements:
-            for detail in list((settlement.data or {}).get("allocation_details") or []):
-                try:
-                    fee_id = int(detail.get("fee_id") or 0)
-                except (AttributeError, TypeError, ValueError):
-                    continue
-                if fee_id in batch:
-                    paid_source_fee_ids.add(fee_id)
+    # 候选编号以单个集合参数传递，结算记录只扫描一次，归属仍按原明细键判断。
+    settlements = await read_record_projections(db, [
+        BusinessRecord.module == "finance_settlement",
+        BusinessRecord.status == "已付款",
+        _invoice_json_fee_condition(BusinessRecord.data, source_fee_ids),
+    ], ("allocation_details",))
+    for settlement in settlements:
+        for detail in list((settlement.data or {}).get("allocation_details") or []):
+            try:
+                fee_id = int(detail.get("fee_id") or 0)
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if fee_id in source_fee_ids:
+                paid_source_fee_ids.add(fee_id)
 
     case_ids = {
         int((item.data or {}).get("case_id") or 0)
@@ -2277,10 +2181,10 @@ async def _case_commission_lifecycle_statuses(
         case_conditions.append(BusinessRecord.id.in_(case_ids))
     if case_nos:
         case_conditions.append(BusinessRecord.serial_no.in_(case_nos))
-    cases = list((await db.scalars(select(BusinessRecord).where(
+    cases = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no, BusinessRecord.status).where(
         BusinessRecord.module == "case",
         or_(*case_conditions),
-    ))).all()) if case_conditions else []
+    ))).all() if case_conditions else []
     cases_by_id = {item.id: item for item in cases}
     cases_by_no = {item.serial_no: item for item in cases}
 
