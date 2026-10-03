@@ -806,13 +806,15 @@ async def case_summary(identity: dict = Depends(current_identity), db: AsyncSess
     from app.core.permissions import (
         _record_scope_conditions,
     )
-    cases = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db))))).all()
+    counts = dict((await db.execute(select(BusinessRecord.status, func.count()).where(
+        BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db)),
+    ).group_by(BusinessRecord.status))).all())
     return {
-        "total": len(cases),
-        "pending_assignment": sum(1 for item in cases if item.status == "新案待分配"),
-        "in_progress": sum(1 for item in cases if item.status not in {"新案待分配", "已归档"}),
-        "execution": sum(1 for item in cases if item.status == "执行"),
-        "archived": sum(1 for item in cases if item.status == "已归档"),
+        "total": sum(counts.values()),
+        "pending_assignment": counts.get("新案待分配", 0),
+        "in_progress": sum(count for status, count in counts.items() if status not in {"新案待分配", "已归档"}),
+        "execution": counts.get("执行", 0),
+        "archived": counts.get("已归档", 0),
     }
 
 
@@ -910,28 +912,26 @@ async def search_ordinary_cases(body: CounselCaseSearchInput, identity: dict = D
     from app.core.system import (
         _allowed_field_keys,
     )
-    records = await _query_counsel_cases(body, identity, db, counsel_only=False)
-    total = len(records)
-    # The legacy phase tree remains a dashboard for the current non-phase search
-    # scope. Selecting a tree node must filter the table without erasing all of
-    # the sibling counts to zero.
-    has_phase_filter = bool(body.case_statuses or (body.case_status or body.status).strip())
-    count_records = records if not has_phase_filter else await _query_counsel_cases(
-        body,
-        identity,
-        db,
-        counsel_only=False,
-        include_status_filter=False,
-    )
+    from app.core.case_search_projection import matches_case_search_status, read_case_search_page
+    from app.core.request_metrics import measure_phase
+    # 阶段树和列表共用非阶段筛选结果，不重复读取所有案件。
+    with measure_phase("cases.search"):
+        count_records = await _query_counsel_cases(
+            body, identity, db, counsel_only=False, include_status_filter=False, search_projection=True,
+        )
     phase_counts: dict[str, int] = {}
     for record in count_records:
         phase = str(record.status or "")
         phase_counts[phase] = phase_counts.get(phase, 0) + 1
-    start = (body.page - 1) * body.page_size
+    records = [record for record in count_records if matches_case_search_status(record, body)]
+    total = len(records)
     allowed_fields = await _allowed_field_keys(identity, db)
     from app.core.case_list_tasks import attach_case_list_tasks
-    items = await _contract_customer_record_dicts(records[start:start + body.page_size], allowed_fields, db, identity=identity)
-    await attach_case_list_tasks(items, identity, db)
+    with measure_phase("cases.page"):
+        page_records = await read_case_search_page(records, body.page, body.page_size, db)
+        items = await _contract_customer_record_dicts(page_records, allowed_fields, db, identity=identity)
+    with measure_phase("cases.tasks"):
+        await attach_case_list_tasks(items, identity, db)
     return {
         "items": items,
         "total": total,

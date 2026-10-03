@@ -1138,6 +1138,7 @@ async def _query_counsel_cases(
     *,
     counsel_only: bool = True,
     include_status_filter: bool = True,
+    search_projection: bool = False,
 ) -> list[BusinessRecord]:
     from app.core.crm import (
         _customer_or_404,
@@ -1148,6 +1149,7 @@ async def _query_counsel_cases(
     from app.core.permissions import (
         _can_search_all_cases_from_global_search, _case_mine_scope_condition, _record_scope_conditions,
     )
+    from app.core.case_search_projection import CASE_SEARCH_FIELDS, matches_case_search_status
     if body.dashboard_queue:
         from app.core.dashboard_scope import CASE_QUEUES, dashboard_request_identity
         identity = await dashboard_request_identity(body.dashboard_queue, CASE_QUEUES, identity, db)
@@ -1201,7 +1203,14 @@ async def _query_counsel_cases(
             BusinessRecord.customer.ilike(keyword_pattern),
             BusinessRecord.data.cast(String).ilike(keyword_pattern),
         ))
-    records = list((await db.scalars(select(BusinessRecord).where(*record_conditions))).all())
+    if search_projection:
+        from app.core.record_projection_query import read_record_projections
+        records = await read_record_projections(
+            db, record_conditions, CASE_SEARCH_FIELDS,
+            legacy_fields=("CasePhaseName",) if body.case_queue or body.dashboard_queue else (),
+        )
+    else:
+        records = list((await db.scalars(select(BusinessRecord).where(*record_conditions))).all())
     requested_types = {str(item).strip() for item in body.case_types if str(item).strip()}
     if body.case_type.strip():
         requested_types.add(body.case_type.strip())
@@ -1379,10 +1388,7 @@ async def _query_counsel_cases(
         hearing_dates = [data.get(key) for key in ("hearing_date", "first_court_hearing_date", "second_court_hearing_date", "retrial_court_hearing_date")]
         if (body.hearing_from or body.hearing_to) and not any(date_condition(candidate, body.hearing_from, body.hearing_to) for candidate in hearing_dates): continue
         if not contains(data.get("counsel_type"), body.counsel_type): continue
-        if include_status_filter and body.case_statuses:
-            allowed_statuses = {str(status or "").strip() for status in body.case_statuses if str(status or "").strip()}
-            if str(record.status or "").strip() not in allowed_statuses: continue
-        elif include_status_filter and not contains(record.status, body.case_status or body.status): continue
+        if include_status_filter and not matches_case_search_status(record, body): continue
         if not contains("、".join(data.get("handling_lawyers") or []), body.handling_lawyer): continue
         if not contains(data.get("assistant"), body.assistant): continue
         if not contains(document_names.get(record.id, ""), body.document_name): continue

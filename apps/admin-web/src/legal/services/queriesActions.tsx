@@ -258,7 +258,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             } else {
                 setWarehouseCatalog([]);
             }
-            if (hasModule("finance") || hasModule("platform-finance")) {
+            if (initialView.endsWith("-no-refund") && (hasModule("finance") || hasModule("platform-finance"))) {
                 const [financeRes, refundRes] = await Promise.all([
                     api.get("/records", { params: { module: "finance", page_size: 100 } }),
                     api.get("/records", { params: { module: "refund", page_size: 100 } }),
@@ -271,7 +271,8 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                 api.get("/cases/eligible-contracts"),
                 api.get("/hearings"),
                 api.get("/cases/summary"),
-                context.initialView === "case-files-invoice" ? (async () => {
+                // 附件状态仅供发票文件页使用，普通列表无需读取全站附件目录。
+                initialView === "case-files-invoice" ? (async () => {
                     const first = await api.get("/cases/invoice-files", { params: { page_size: 200 } });
                     const items = [...first.data.items];
                     for (let page = 2; page <= first.data.pages; page += 1) {
@@ -279,7 +280,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                         items.push(...next.data.items);
                     }
                     return { data: { items } };
-                })() : api.get("/attachments"),
+                })() : undefined,
                 api.get("/cases/reference-options"),
                 api.get("/records", { params: { module: "customer", page_size: 100 } }),
                 api.get("/records", { params: { module: "clue", page_size: 100 } }),
@@ -288,7 +289,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             setContracts(contractRes.data.items);
             setHearings(hearingRes.data.items);
             setSummary(summaryRes.data);
-            setAttachments(attachmentRes.data.items);
+            if (attachmentRes) setAttachments(attachmentRes.data.items);
             setCaseTypeOptions(referenceRes.data.case_types || []);
             setCauseOptions(referenceRes.data.causes || []);
             if ((referenceRes.data.case_file_types || []).length) {
