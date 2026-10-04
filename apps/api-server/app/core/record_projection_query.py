@@ -32,8 +32,11 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
     projection = _postgresql_record_projection(data_fields, legacy_fields, text_fields, source=source) if (
         data_fields and db.get_bind().dialect.name == "postgresql"
     ) else None
-    data_columns = tuple(projection.c[key] if projection is not None else BusinessRecord.data[key]
-                         for key in data_fields)
+    if projection is not None:
+        # 一条记录只解码一次 JSON，保留嵌套空值，不对业务对象递归删键。
+        data_columns = (func.row_to_json(projection.table_valued(), type_=JSON),)
+    else:
+        data_columns = tuple(BusinessRecord.data[key] for key in data_fields)
     legacy_data = projection.c.legacy_record if projection is not None and legacy_fields else BusinessRecord.data["legacy_record"]
     extra = await annotations({
         key: projection.c[key] if projection is not None else BusinessRecord.data[key].as_string()
@@ -61,18 +64,22 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
     result = await db.stream(query)
     records = []
     try:
-        async for values in result:
-            data_end = len(columns) + len(data_columns)
-            data = {key: value for key, value in zip(data_fields, values[len(columns):data_end])
-                    if value is not None}
-            legacy_end = data_end + len(legacy_fields)
-            legacy = {key: value for key, value in zip(legacy_fields, values[data_end:legacy_end])
-                      if value is not None}
-            if legacy:
-                data["legacy_record"] = legacy
-            # 不加入 ORM 会话，避免轻量读取覆盖完整业务数据。
-            records.append(SimpleNamespace(**dict(zip(columns, values[:len(columns)])), data=data,
-                                           **dict(zip(extra, values[legacy_end:]))))
+        # 按既有有界批量消费游标，避免每一行都切换异步调度上下文。
+        async for batch in result.partitions():
+            for values in batch:
+                data_end = len(columns) + len(data_columns)
+                projected = values[len(columns)] if projection is not None else dict(
+                    zip(data_fields, values[len(columns):data_end]),
+                )
+                data = {key: projected[key] for key in data_fields if projected.get(key) is not None}
+                legacy_end = data_end + len(legacy_fields)
+                legacy = {key: value for key, value in zip(legacy_fields, values[data_end:legacy_end])
+                          if value is not None}
+                if legacy:
+                    data["legacy_record"] = legacy
+                # 不加入 ORM 会话，避免轻量读取覆盖完整业务数据。
+                records.append(SimpleNamespace(**dict(zip(columns, values[:len(columns)])), data=data,
+                                               **dict(zip(extra, values[legacy_end:]))))
     finally:
         await result.close()
     return records

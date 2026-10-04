@@ -109,7 +109,7 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         ], FEE_SUMMARY_FIELDS if include_summaries else (*relation_fields, "case_id", "case_record_id", "case_no"),
             where_data=related_fee) if case_ids else []
     contract_ids = set((await db.scalars(select(ContractObject.contract_record_id).where(
-        ContractObject.case_record_id.in_(case_ids),
+        scalar_in_values(ContractObject.case_record_id, case_ids),
     ))).all()) if case_ids else set()
     contract_nos = set()
     for item in [*cases, *fees]:
@@ -122,7 +122,7 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
             contract_nos.add(str(data["contract_no"]))
     contract_conditions = [
         BusinessRecord.module == "contract",
-        or_(BusinessRecord.id.in_(contract_ids), BusinessRecord.serial_no.in_(contract_nos)),
+        or_(scalar_in_values(BusinessRecord.id, contract_ids), scalar_in_values(BusinessRecord.serial_no, contract_nos)),
     ]
     contracts = []
     if include_summaries:
