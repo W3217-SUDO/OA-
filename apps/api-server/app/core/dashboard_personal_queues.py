@@ -57,7 +57,9 @@ async def _personal_queues(identity, db):
                 add(key, case, fee_id=row["id"] if key == "refund-pending" else None)
         del rows
     with measure_phase("dashboard.receivables"):
-        receivables = await dashboard_receivables(identity, db, records=[*scope.contracts, *scope.fees, *cases])
+        receivables = await dashboard_receivables(
+            identity, db, records=[*scope.contracts, *scope.fees, *cases], summary_only=True,
+        )
     for row in receivables:
         case = by_id.get(row.get("case_record_id"))
         if case:

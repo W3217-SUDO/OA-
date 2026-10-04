@@ -64,19 +64,20 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
             key: projection.c[key][()] if projection is not None else BusinessRecord.data[key]
             for key in data_fields
         }))
-    query = query.where(*conditions).execution_options(yield_per=256)
+    query = query.where(*conditions).execution_options(yield_per=1024 if read_model else 256)
     result = await db.stream(query)
     records = []
+    data_keys = frozenset(data_fields)
+    data_end = len(columns) + len(data_columns)
+    legacy_end = data_end + len(legacy_fields)
     try:
         # 按既有有界批量消费游标，避免每一行都切换异步调度上下文。
         async for batch in result.partitions():
             for values in batch:
-                data_end = len(columns) + len(data_columns)
                 projected = values[len(columns)] if read_model or projection is not None else dict(
                     zip(data_fields, values[len(columns):data_end]),
                 )
-                data = {key: projected[key] for key in data_fields if projected.get(key) is not None}
-                legacy_end = data_end + len(legacy_fields)
+                data = {key: value for key, value in projected.items() if key in data_keys and value is not None}
                 legacy = {key: value for key, value in zip(legacy_fields, values[data_end:legacy_end])
                           if value is not None}
                 if legacy:

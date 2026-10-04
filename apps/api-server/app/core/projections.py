@@ -74,6 +74,7 @@ async def _contract_customer_projection_context(records: list[BusinessRecord], d
 
 async def _receivable_detail_projection(
     identity: dict, db: AsyncSession, records: list[BusinessRecord] | None = None,
+    *, summary_only: bool = False,
 ) -> list[dict]:
     """Project the legacy contract-object receivable detail from visible data."""
     from app.core.finance import (
@@ -107,12 +108,21 @@ async def _receivable_detail_projection(
     cases_by_id = {item.id: item for item in cases}
     cases_by_no = {item.serial_no: item for item in cases if item.serial_no}
 
-    objects = await _scalars_in_batches(
-        db, contracts_by_id,
-        lambda batch: select(ContractObject).where(
-            ContractObject.contract_record_id.in_(batch),
-        ),
-    ) if contracts_by_id and cases_by_id else []
+    objects = []
+    if contracts_by_id and cases_by_id:
+        if summary_only:
+            # 控制台只读匹配与金额字段，不创建完整 ORM 对象或读取备注等展示信息。
+            objects = (await db.execute(select(
+                ContractObject.id, ContractObject.contract_record_id, ContractObject.case_record_id,
+                ContractObject.fee_type, ContractObject.amount,
+            ).where(scalar_in_values(ContractObject.contract_record_id, contracts_by_id)))).all()
+        else:
+            objects = await _scalars_in_batches(
+                db, contracts_by_id,
+                lambda batch: select(ContractObject).where(
+                    ContractObject.contract_record_id.in_(batch),
+                ),
+            )
     objects = sorted(
         (item for item in objects if item.case_record_id in cases_by_id),
         key=lambda item: (item.contract_record_id, item.case_record_id, item.id),
@@ -209,6 +219,11 @@ async def _receivable_detail_projection(
         paid = min(_receivable_number(paid), amount)
         received = min(_receivable_number(received), amount)
         remaining = max(round(amount - received, 2), 0)
+        if summary_only:
+            rows.append({"id": f"object:{item.id}", "contract_no": contract.serial_no,
+                         "case_no": case_record.serial_no, "case_record_id": case_record.id,
+                         "fee_category": _receivable_fee_category(item.fee_type), "remaining_amount": remaining})
+            continue
         case_data = case_record.data or {}
         contract_data = contract.data or {}
         rows.append({
@@ -261,6 +276,12 @@ async def _receivable_detail_projection(
         remaining = max(round(amount - received, 2), 0)
         if amount <= 0:
             continue
+        if summary_only:
+            rows.append({"id": f"fee:{fee.id}", "contract_no": contract.serial_no,
+                         "case_no": case_record.serial_no if case_record else str(data.get("case_no") or ""),
+                         "case_record_id": case_record.id if case_record else None,
+                         "fee_category": fee_category, "remaining_amount": remaining})
+            continue
         case_data = case_record.data or {} if case_record else {}
         contract_data = contract.data or {} if contract else {}
         rows.append({
@@ -289,6 +310,9 @@ async def _receivable_detail_projection(
 
     if "_dashboard_case_ids" in identity:
         rows = [row for row in rows if row.get("case_record_id") in identity["_dashboard_case_ids"]]
+    if summary_only:
+        # 保留明细的遍历顺序，控制台逐案累加金额的顺序也保持一致。
+        return sorted(rows, key=lambda row: (row["contract_no"] or "~", row["case_no"] or "~", str(row["id"])))
 
     aggregates: dict[int, dict[str, float]] = {}
     for row in rows:
