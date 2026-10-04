@@ -1447,7 +1447,8 @@ async def _scan_case_automatic_task_rules(db: AsyncSession, *, today: date | Non
             if allocation_case_no:
                 receipts_by_case_no.setdefault(allocation_case_no, []).append(receipt)
     for case_index in cases:
-        case_record = await db.get(BusinessRecord, case_index.id)
+        # 显式异步加载数据库更新后失效的字段，避免属性访问触发同步查询。
+        case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.id == case_index.id))
         data = case_record.data or {}
         phase_date = _task_rule_date(data.get("phase_changed_at") or case_record.updated_at or case_record.created_at)
         if not phase_date:
