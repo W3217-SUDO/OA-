@@ -1,10 +1,11 @@
 """金额统计使用的只读费用字段，不包含完整历史业务快照。"""
 from app.core.record_projection_query import read_record_projections
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 
 from app.models import BusinessRecord
 from app.core.fee_cash_query import fee_paid_amount, read_fee_payments, read_fee_receipts
 from app.core.json_relation_query import scalar_in_values
+from app.core.finance_read_scope import unambiguous_fee_case_nos
 
 
 FEE_SUMMARY_FIELDS = (
@@ -24,8 +25,8 @@ FEE_SUMMARY_FIELDS = (
 )
 
 
-async def read_fee_summaries(db, conditions):
-    return await read_record_projections(db, conditions, FEE_SUMMARY_FIELDS)
+async def read_fee_summaries(db, conditions, *, where_data=None):
+    return await read_record_projections(db, conditions, FEE_SUMMARY_FIELDS, where_data=where_data)
 
 
 async def receivable_payment_projection(finances, identity, db):
@@ -56,11 +57,7 @@ async def receivable_payment_projection(finances, identity, db):
     unambiguous_case_nos = set(fees_by_case)
     if case_nos:
         # 与明细一致：全库同案只有一笔费用，才允许没有费用编号的旧收款归属。
-        case_no_column = BusinessRecord.data["case_no"].as_string()
-        counts = (await db.execute(select(case_no_column, func.count(BusinessRecord.id)).where(
-            BusinessRecord.module == "finance", case_no_column.in_(case_nos),
-        ).group_by(case_no_column))).all()
-        unambiguous_case_nos = {number for number, count in counts if count == 1}
+        unambiguous_case_nos = await unambiguous_fee_case_nos(case_nos, db)
     payments = await read_fee_payments({fee.id for fee in fees}, db)
     receipts = await read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, filter_related=True)
     return {

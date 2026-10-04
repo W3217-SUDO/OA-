@@ -1,14 +1,14 @@
 """只读业务投影：在 SQL 层选择所需字段，不加载完整历史快照。"""
 from types import SimpleNamespace
 
-from sqlalchemy import JSON, column, func, select, true
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON, Text, column, func, select, true
 
 from app.models import BusinessRecord
 
 
-def _postgresql_record_projection(data_fields, legacy_fields):
-    fields = [column(key, JSONB) for key in data_fields]
+def _postgresql_record_projection(data_fields, legacy_fields, text_fields=()):
+    fields = [column(key, JSON) for key in data_fields]
+    fields.extend(column(key, Text) for key in text_fields)
     if legacy_fields and "legacy_record" not in data_fields:
         fields.append(column("legacy_record", JSON))
     # 同一行只解压、解析一次原始 JSON，历史字段从已提取的对象读取。
@@ -17,24 +17,41 @@ def _postgresql_record_projection(data_fields, legacy_fields):
     ).render_derived(with_types=True).lateral()
 
 
-async def read_record_projections(db, conditions, data_fields, *, legacy_fields=()):
+async def read_record_projections(db, conditions, data_fields, *, legacy_fields=(), text_fields=(), annotations=None,
+                                  where_data=None):
     columns = ("id", "module", "serial_no", "title", "customer", "status", "owner",
                "department", "description", "created_at", "updated_at")
     data_fields = tuple(dict.fromkeys(data_fields))
     legacy_fields = tuple(dict.fromkeys(legacy_fields))
-    projection = _postgresql_record_projection(data_fields, legacy_fields) if (
+    text_fields = tuple(dict.fromkeys(text_fields))
+    if set(text_fields) & (set(data_fields) | ({"legacy_record"} if legacy_fields else set())):
+        raise ValueError("JSON 与文本投影字段不能重名")
+    projection = _postgresql_record_projection(data_fields, legacy_fields, text_fields) if (
         data_fields and db.get_bind().dialect.name == "postgresql"
     ) else None
     data_columns = tuple(projection.c[key] if projection is not None else BusinessRecord.data[key]
                          for key in data_fields)
     legacy_data = projection.c.legacy_record if projection is not None and legacy_fields else BusinessRecord.data["legacy_record"]
+    extra = await annotations({
+        key: projection.c[key] if projection is not None else BusinessRecord.data[key].as_string()
+        for key in text_fields
+    }) if annotations is not None else {}
+    if set(extra) & {*columns, "data"}:
+        raise ValueError("查询标记不能覆盖业务记录字段")
     query = select(
         *(getattr(BusinessRecord, key) for key in columns),
         *data_columns,
         *(legacy_data[key] for key in legacy_fields),
+        *(value.label(key) for key, value in extra.items()),
     ).select_from(BusinessRecord)
     if projection is not None:
         query = query.join(projection, true())
+    if where_data is not None:
+        # 空路径保留原 JSON 取键的文本、数字及空值语义，筛选不再重读整份历史 JSON。
+        query = query.where(*where_data({
+            key: projection.c[key][()] if projection is not None else BusinessRecord.data[key]
+            for key in data_fields
+        }))
     query = query.where(*conditions).execution_options(yield_per=256)
     result = await db.stream(query)
     records = []
@@ -43,12 +60,14 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
             data_end = len(columns) + len(data_columns)
             data = {key: value for key, value in zip(data_fields, values[len(columns):data_end])
                     if value is not None}
-            legacy = {key: value for key, value in zip(legacy_fields, values[data_end:])
+            legacy_end = data_end + len(legacy_fields)
+            legacy = {key: value for key, value in zip(legacy_fields, values[data_end:legacy_end])
                       if value is not None}
             if legacy:
                 data["legacy_record"] = legacy
             # 不加入 ORM 会话，避免轻量读取覆盖完整业务数据。
-            records.append(SimpleNamespace(**dict(zip(columns, values[:len(columns)])), data=data))
+            records.append(SimpleNamespace(**dict(zip(columns, values[:len(columns)])), data=data,
+                                           **dict(zip(extra, values[legacy_end:]))))
     finally:
         await result.close()
     return records

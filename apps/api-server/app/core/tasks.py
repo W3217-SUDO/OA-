@@ -813,21 +813,14 @@ async def _ensure_document_preparation_task(
         )
         return None
 
-    linked_tasks = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "task",
-        or_(
-            BusinessRecord.data["case_id"].as_integer() == case_record.id,
-            BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
-            BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
-        ),
-    ).order_by(BusinessRecord.id))).all())
-    existing = next((task for task in linked_tasks if (
+    from app.core.automatic_task_lookup import find_case_automatic_task
+    existing = await find_case_automatic_task(db, case_record, lambda task: (
         str((task.data or {}).get("auto_task_type") or "") == "document_preparation_stage"
         or (
             task.title == "文书准备阶段"
             and _task_creation_mode(task.data or {}) == "自动"
         )
-    )), None)
+    ))
     if existing:
         case_record.data = {
             **case_data,
@@ -996,18 +989,11 @@ async def _ensure_timestamp_evidence_handoff_task(
         logger.warning("case automatic task skipped: case_id=%s rule=timestamp_evidence_handoff missing=assistant", case_record.id)
         return None
 
-    linked_tasks = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "task",
-        or_(
-            BusinessRecord.data["case_id"].as_integer() == case_record.id,
-            BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
-            BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
-        ),
-    ).order_by(BusinessRecord.id))).all())
-    existing = next((task for task in linked_tasks if (
+    from app.core.automatic_task_lookup import find_case_automatic_task
+    existing = await find_case_automatic_task(db, case_record, lambda task: (
         str((task.data or {}).get("auto_task_type") or "") == "timestamp_evidence_handoff"
         or (task.title == "交接时间戳文件" and _task_creation_mode(task.data or {}) == "自动")
-    )), None)
+    ))
     if existing:
         case_record.data = {**case_data, "timestamp_evidence_handoff_task_id": existing.id}
         return existing

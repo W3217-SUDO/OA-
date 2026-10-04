@@ -1,5 +1,6 @@
 """控制台业务入口的数据边界；不授予额外写权限。"""
 from dataclasses import dataclass
+import re
 
 from fastapi import HTTPException
 from sqlalchemy import false, or_, select
@@ -9,6 +10,7 @@ from app.core.finance_summary_query import FEE_SUMMARY_FIELDS
 from app.core.json_relation_query import scalar_in_values
 from app.core.request_metrics import measure_phase
 from app.core.permissions import (
+    CASE_MINE_TEXT_FIELDS,
     _case_mine_scope_condition, _configured_user_job_role_name,
     _job_role_for_name, _system_user_role_ids,
 )
@@ -32,6 +34,7 @@ class DashboardScopeData:
     fees: list
     contracts: list
     all_cases: bool
+    personal_case_ids: set[int] | None = None
 
 
 async def company_hearing_conditions(identity, db):
@@ -83,20 +86,28 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         ))
     relation_fields = ("contract_id", "contract_record_id", "contract_no")
     case_fields = (*relation_fields, "case_type", "case_phase_name", "case_phase", "case_stage", "business_stage")
+    async def personal_annotation(data):
+        return {"dashboard_personal": await _case_mine_scope_condition(identity, db, projected_data=data)}
+
     with measure_phase("dashboard.scope.cases"):
         cases = await read_record_projections(
             db, conditions, case_fields if include_summaries else relation_fields,
             legacy_fields=("CasePhaseName",) if include_summaries else (),
+            text_fields=CASE_MINE_TEXT_FIELDS if include_summaries else (),
+            annotations=personal_annotation if include_summaries else None,
         )
     case_ids = {item.id for item in cases}
     case_nos = {item.serial_no for item in cases}
+    def related_fee(data):
+        return [or_(scalar_in_values(data["case_id"].as_integer(), case_ids),
+                    scalar_in_values(data["case_record_id"].as_integer(), case_ids),
+                    scalar_in_values(data["case_no"].as_string(), case_nos))]
+
     with measure_phase("dashboard.scope.fees"):
         fees = await read_record_projections(db, [
             BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
-            or_(scalar_in_values(BusinessRecord.data["case_id"].as_integer(), case_ids),
-                scalar_in_values(BusinessRecord.data["case_record_id"].as_integer(), case_ids),
-                scalar_in_values(BusinessRecord.data["case_no"].as_string(), case_nos)),
-        ], FEE_SUMMARY_FIELDS if include_summaries else relation_fields) if case_ids else []
+        ], FEE_SUMMARY_FIELDS if include_summaries else (*relation_fields, "case_id", "case_record_id", "case_no"),
+            where_data=related_fee) if case_ids else []
     contract_ids = set((await db.scalars(select(ContractObject.contract_record_id).where(
         ContractObject.case_record_id.in_(case_ids),
     ))).all()) if case_ids else set()
@@ -129,7 +140,8 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         "_dashboard_fee_ids": {item.id for item in fees},
         "_dashboard_record_ids": case_ids | {item.id for item in fees} | visible_contract_ids,
     }
-    return DashboardScopeData(scoped_identity, cases, fees, contracts, all_cases and not personal_cases)
+    personal_ids = {case.id for case in cases if case.dashboard_personal} if include_summaries else None
+    return DashboardScopeData(scoped_identity, cases, fees, contracts, all_cases and not personal_cases, personal_ids)
 
 
 async def dashboard_request_identity(queue, expected, identity, db):
@@ -146,20 +158,52 @@ async def dashboard_request_identity(queue, expected, identity, db):
     return scoped_identity
 
 
-async def personal_refund_identity(scoped_identity, db):
+def _possible_refund_fee(fee, case_ids, case_nos):
+    """已读字段只缩小候选编号，最终权限与类型转换仍交给原 SQL 确认。"""
+    data = fee.data or {}
+    number = data.get("case_no")
+    if isinstance(number, str):
+        if number in case_nos:
+            return True
+    elif number is not None:
+        return True
+    for key in ("case_id", "case_record_id"):
+        value = data.get(key)
+        if value is None:
+            continue
+        if type(value) is int:
+            candidate = value
+        elif isinstance(value, str) and re.fullmatch(r"[+-]?[0-9]+", value.strip()):
+            candidate = int(value)
+        else:
+            return True
+        if candidate in case_ids:
+            return True
+    return False
+
+
+async def personal_refund_identity(scoped_identity, db, *, scope_data=None):
     """从已经加载的控制台范围收窄退款范围，不重复投影合同和费用详情。"""
-    case_query = select(BusinessRecord.id).where(
-        BusinessRecord.id.in_(scoped_identity["_dashboard_case_ids"]),
-        await _case_mine_scope_condition(scoped_identity, db),
-    )
-    case_ids = set((await db.scalars(case_query)).all())
-    case_nos = select(BusinessRecord.serial_no).where(BusinessRecord.id.in_(case_ids))
+    if scope_data is not None and scope_data.personal_case_ids is not None:
+        cases = [case for case in scope_data.cases if case.id in scope_data.personal_case_ids]
+    else:
+        case_query = select(BusinessRecord.id, BusinessRecord.serial_no).where(
+            BusinessRecord.id.in_(scoped_identity["_dashboard_case_ids"]),
+            await _case_mine_scope_condition(scoped_identity, db),
+        )
+        cases = (await db.execute(case_query)).all()
+    case_ids = {case.id for case in cases}
+    case_nos = {case.serial_no for case in cases}
+    candidate_ids = scoped_identity["_dashboard_fee_ids"]
+    if scope_data is not None:
+        candidate_ids = {fee.id for fee in scope_data.fees if fee.id in candidate_ids
+                         and _possible_refund_fee(fee, case_ids, case_nos)}
     fee_ids = set((await db.scalars(select(BusinessRecord.id).where(
-        BusinessRecord.id.in_(scoped_identity["_dashboard_fee_ids"]),
+        BusinessRecord.id.in_(candidate_ids),
         or_(BusinessRecord.data["case_id"].as_integer().in_(case_ids),
             BusinessRecord.data["case_record_id"].as_integer().in_(case_ids),
             BusinessRecord.data["case_no"].as_string().in_(case_nos)),
-    ))).all()) if case_ids else set()
+    ))).all()) if case_ids and candidate_ids else set()
     return {**scoped_identity, "_dashboard_case_ids": case_ids,
             "_dashboard_fee_ids": fee_ids, "_dashboard_record_ids": case_ids | fee_ids}
 

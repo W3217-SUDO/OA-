@@ -549,17 +549,23 @@ def _case_personal_scope_condition(username: str):
     )
 
 
-async def _case_mine_scope_condition(identity: dict, db: AsyncSession):
+CASE_MINE_TEXT_FIELDS = (
+    "source_person_username", "source_person", "business_owner", "assistant_username",
+    "investigator", "court_lawyer_username", "case_team_usernames",
+    "handling_lawyer_usernames", "legacy_participants",
+)
+
+
+async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projected_data=None):
     """Limit the Mine list to concrete case participation, even for admins."""
     from app.core.record_json_text_query import projected_record_condition, record_json_text_projection
 
     username = str(identity["username"]).strip()
     exact_username_token = f'"{username}"'
-    projection, data = record_json_text_projection(db, (
-        "source_person_username", "source_person", "business_owner", "assistant_username",
-        "investigator", "court_lawyer_username", "case_team_usernames",
-        "handling_lawyer_usernames", "legacy_participants",
-    ))
+    if projected_data is None:
+        projection, data = record_json_text_projection(db, CASE_MINE_TEXT_FIELDS)
+    else:
+        projection, data = None, projected_data
     conditions = [
         and_(
             BusinessRecord.owner == username,

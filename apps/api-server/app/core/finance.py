@@ -20,6 +20,8 @@ from app.core.fee_cash_query import (
     fee_paid_amount,
     read_fee_payments, read_fee_receipts,
 )
+from app.core.fee_refund_query import fee_refund_progress, legacy_refund_progress, read_fee_refunds
+from app.core.finance_read_scope import unambiguous_fee_case_nos
 
 
 def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord, users_by_username: dict[str, User] | None = None) -> dict:
@@ -1439,12 +1441,8 @@ async def _invoice_case_fee_rows(
 
     unambiguous_case_nos = set(fees_by_case)
     if ids is not None and case_nos:
-        # A single selected row does not prove a case has only one fee.
-        case_no_column = BusinessRecord.data["case_no"].as_string()
-        counts = (await db.execute(select(case_no_column, func.count(BusinessRecord.id)).where(
-            BusinessRecord.module == "finance", case_no_column.in_(case_nos),
-        ).group_by(case_no_column))).all()
-        unambiguous_case_nos = {case_number for case_number, count in counts if count == 1}
+        # 单条可见费用不能证明全库中该案只有一笔费用。
+        unambiguous_case_nos = await unambiguous_fee_case_nos(case_nos, db)
 
     # Availability belongs to authorized fees, not to the invoice applicant's
     # visibility. Keep invoice details scoped separately from the aggregate.
@@ -1527,49 +1525,9 @@ async def _invoice_case_fee_rows(
     )
 
     refund_scope_conditions = [] if scope_authorized_fee_ids is not None else scope_conditions
-    related_refund_conditions = []
-    if ids is not None:
-        related_refund_conditions.append(or_(
-            _invoice_json_fee_condition(BusinessRecord.data, ids),
-            BusinessRecord.data["case_no"].as_string().in_(case_nos),
-            BusinessRecord.data["original_payment_no"].as_string().in_({str((fee.data or {}).get("document_no") or "") for fee in fees} - {""}),
-        ))
-    if summary_only:
-        refunds = await read_record_projections(db, [
-            BusinessRecord.module == "refund", *refund_scope_conditions, *related_refund_conditions,
-        ], ("fee_record_id", "original_payment_no", "case_no", "amount"))
-        refunds.sort(key=lambda item: (item.updated_at, item.id), reverse=True)
-    else:
-        refunds = list((await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "refund", *refund_scope_conditions, *related_refund_conditions,
-        ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
-    refunds_by_fee: dict[int, list[BusinessRecord]] = {}
-    official_by_case: dict[str, list[BusinessRecord]] = {}
-    fee_by_document_no: dict[str, BusinessRecord] = {}
-    for fee in fees:
-        fee_data = fee.data or {}
-        if str(fee_data.get("fee_type") or "") == "官方费用":
-            official_by_case.setdefault(str(fee_data.get("case_no") or ""), []).append(fee)
-        document_no = str(fee_data.get("document_no") or "").strip()
-        if document_no:
-            fee_by_document_no[document_no] = fee
-    for refund in refunds:
-        refund_data = refund.data or {}
-        linked_fee: BusinessRecord | None = None
-        try:
-            linked_fee_id = int(refund_data.get("fee_record_id") or 0)
-        except (TypeError, ValueError):
-            linked_fee_id = 0
-        if linked_fee_id in fee_ids:
-            linked_fee = fees_by_id[linked_fee_id]
-        if linked_fee is None:
-            linked_fee = fee_by_document_no.get(str(refund_data.get("original_payment_no") or "").strip())
-        if linked_fee is None:
-            candidates = official_by_case.get(str(refund_data.get("case_no") or ""), [])
-            if len(candidates) == 1:
-                linked_fee = candidates[0]
-        if linked_fee:
-            refunds_by_fee.setdefault(linked_fee.id, []).append(refund)
+    refunds_by_fee = await read_fee_refunds(
+        fees, db, scope_conditions=refund_scope_conditions, ids=ids, summary_only=summary_only,
+    )
 
     allowed_fields = await _allowed_field_keys(identity, db)
     # The receivable projection exposes only contract-level aggregates that
@@ -1608,16 +1566,7 @@ async def _invoice_case_fee_rows(
         cashed_date = latest_receipt.received_date if latest_receipt else _case_fee_date(data.get("cashed_date") or data.get("receipt_date"))
         received_payer = latest_receipt.payer_name if latest_receipt else str(data.get("received_payer_name") or data.get("payer_name") or "")
         linked_refunds = refunds_by_fee.get(item.id, [])
-        refund_requested_amount = round(sum(float((refund.data or {}).get("amount") or 0) for refund in linked_refunds if refund.status not in {"已驳回", "已作废"}), 2)
-        refunded_amount = round(sum(float((refund.data or {}).get("amount") or 0) for refund in linked_refunds if refund.status == "已退款"), 2)
-        from app.core.finance_batch_parity import official_refund_progress
-        if not linked_refunds:
-            refund_requested_amount = float(data.get("refund_requested_amount") or data.get("refund_amount") or 0)
-        refunded_amount = official_refund_progress(
-            data, refund_requested_amount,
-            max(refunded_amount, float(data.get("refunded_amount") or 0)),
-            cashed_amount if receipts else data.get("received_amount", data.get("cashed_amount", 0)),
-        )
+        refund_requested_amount, refunded_amount = fee_refund_progress(data, linked_refunds, receipts)
         fee_amount = float(data.get("amount") or 0)
         display_type = _case_fee_display_type(item)
         base_type = str(data.get("fee_type") or "")
@@ -1899,10 +1848,7 @@ async def _refund_case_fee_rows(
         item = records_by_id[int(row["id"])]
         raw_data = _legacy_case_fee_projection(item.data or {})
         data = dict(row.get("data") or {})
-        requested = max(float(data.get("refund_requested_amount") or 0), float(raw_data.get("refund_requested_amount") or raw_data.get("refund_amount") or 0))
-        refunded = max(float(data.get("refunded_amount") or 0), float(raw_data.get("refunded_amount") or 0))
-        from app.core.finance_batch_parity import official_refund_progress
-        refunded = official_refund_progress(raw_data, requested, refunded)
+        requested, refunded = legacy_refund_progress(raw_data, data)
         status_code, status_label = _refund_case_fee_status(raw_data)
         started_at = _refund_case_fee_started_at(raw_data, status_code) or str(item.created_at or "")
         try:

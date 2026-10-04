@@ -128,29 +128,34 @@ async def _receivable_detail_projection(
     object_ids = {item.id for item in objects}
     contract_nos = set(contracts_by_no)
     case_nos = set(cases_by_no)
-    related_conditions = []
-    for key, values in (
+    related_ids = (
         ("contract_object_id", object_ids),
         ("contract_id", contract_ids),
         ("contract_record_id", contract_ids),
         ("case_id", case_ids),
         ("case_record_id", case_ids),
-    ):
-        if values:
-            related_conditions.extend((
-                scalar_in_values(BusinessRecord.data[key].as_integer(), values),
-                scalar_in_values(BusinessRecord.data[key].as_string(), {str(value) for value in values}),
-            ))
-    for key, values in (("contract_no", contract_nos), ("case_no", case_nos)):
-        if values:
-            related_conditions.append(scalar_in_values(BusinessRecord.data[key].as_string(), values))
-    if related_conditions:
+    )
+    related_numbers = (("contract_no", contract_nos), ("case_no", case_nos))
+
+    def related_fee_conditions(data):
+        conditions = []
+        for key, values in related_ids:
+            if values:
+                conditions.extend((
+                    scalar_in_values(data[key].as_integer(), values),
+                    scalar_in_values(data[key].as_string(), {str(value) for value in values}),
+                ))
+        for key, values in related_numbers:
+            if values:
+                conditions.append(scalar_in_values(data[key].as_string(), values))
+        return [or_(*conditions)]
+
+    if any(values for _, values in (*related_ids, *related_numbers)):
         # 初始可见费用已经读取，只补充原有关系允许访问的其它费用。
         related_finances = await read_fee_summaries(db, [
             BusinessRecord.module == "finance",
             ~scalar_in_values(BusinessRecord.id, finances_by_id),
-            or_(*related_conditions),
-        ])
+        ], where_data=related_fee_conditions)
         finances_by_id.update((item.id, item) for item in related_finances)
     finances = list(finances_by_id.values())
 

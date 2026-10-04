@@ -4,6 +4,7 @@ from sqlalchemy import or_, select
 from app.models import BusinessRecord, FinanceTransaction, IncomingPayment
 from app.core.json_relation_query import json_scalar_overlap, scalar_in_values
 from app.core.query_batches import _scalars_in_batches
+from app.core.finance_read_scope import scoped_incoming_payments
 
 
 def _case_fee_link_maps(fees: list[BusinessRecord]) -> tuple[set[int], dict[int, int]]:
@@ -80,15 +81,17 @@ async def read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, *, fil
     fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
     fees_by_id = {item.id: item for item in fees}
     case_nos = {str((item.data or {}).get("case_no") or "") for item in fees if (item.data or {}).get("case_no")}
-    conditions = []
-    if filter_related:
-        conditions.append(or_(
-            json_scalar_overlap(IncomingPayment.allocations, fee_ids | set(legacy_fee_ids)),
-            json_scalar_overlap(IncomingPayment.allocations, case_nos),
-        ))
-    incoming = list((await db.scalars(select(IncomingPayment).where(*conditions).order_by(
-        IncomingPayment.received_date.desc(), IncomingPayment.id.desc(),
-    ))).all())
+    incoming = await scoped_incoming_payments(db)
+    if incoming is None:
+        conditions = []
+        if filter_related:
+            conditions.append(or_(
+                json_scalar_overlap(IncomingPayment.allocations, fee_ids | set(legacy_fee_ids)),
+                json_scalar_overlap(IncomingPayment.allocations, case_nos),
+            ))
+        incoming = list((await db.scalars(select(IncomingPayment).where(*conditions).order_by(
+            IncomingPayment.received_date.desc(), IncomingPayment.id.desc(),
+        ))).all())
     receipts_by_fee = {}
     for payment in incoming:
         for allocation in payment.allocations or []:

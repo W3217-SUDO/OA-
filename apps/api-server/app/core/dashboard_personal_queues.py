@@ -1,7 +1,7 @@
 """控制台统计复用各业务页面的筛选和金额投影。"""
 from app.core.cases import _matches_dashboard_case_queue, _urgent_case_ids
-from app.core.finance import _refund_case_fee_rows
-from app.core.dashboard_finance import dashboard_unpaid_fee_rows
+from app.core.dashboard_finance import dashboard_refund_fee_rows, dashboard_unpaid_fee_rows
+from app.core.finance_read_scope import finance_read_scope
 from app.core.request_metrics import measure_phase
 from app.core.dashboard_scope import (
     CASE_QUEUES, QUEUE_KEYS, dashboard_receivables, dashboard_urgent_cases,
@@ -10,12 +10,17 @@ from app.core.dashboard_scope import (
 
 
 async def personal_queues(identity, db):
+    with finance_read_scope(db):
+        return await _personal_queues(identity, db)
+
+
+async def _personal_queues(identity, db):
     with measure_phase("dashboard.scope"):
         with measure_phase("dashboard.scope.records"):
             scope = await load_dashboard_scope(identity, db, include_summaries=True)
         identity = scope.identity
         with measure_phase("dashboard.scope.refund"):
-            refund_identity = await personal_refund_identity(identity, db)
+            refund_identity = await personal_refund_identity(identity, db, scope_data=scope)
         cases = scope.cases
     by_id = {case.id: case for case in cases}
     by_no = {case.serial_no: case for case in cases}
@@ -44,7 +49,7 @@ async def personal_queues(identity, db):
             if key == "official-fee-unpaid":
                 rows = await dashboard_unpaid_fee_rows(identity, db, by_id, by_no, fees=scope.fees)
             else:
-                rows = await _refund_case_fee_rows(refund_identity, db)
+                rows = await dashboard_refund_fee_rows(refund_identity, db, cases)
         for row in rows:
             data = row["data"]
             case = by_id.get(data.get("case_id")) or by_no.get(data.get("case_no"))
