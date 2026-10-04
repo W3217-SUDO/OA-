@@ -1257,8 +1257,10 @@ async def dashboard_http(
     section: str | None = Query(default=None, pattern="^(metrics|todos|cases)$"),
 ):
     from app.core.dashboard_request import run_dashboard_read
+    from app.core.dashboard_metrics_cache import read_dashboard_metrics
 
-    return await run_dashboard_read(request, dashboard(identity, db, section))
+    calculation = read_dashboard_metrics(identity, db) if section == "metrics" else dashboard(identity, db, section)
+    return await run_dashboard_read(request, calculation)
 
 
 async def dashboard(
