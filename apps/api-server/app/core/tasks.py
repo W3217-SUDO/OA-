@@ -1094,12 +1094,9 @@ async def _materialize_legacy_case_task(
     trigger_at: date,
     trigger_source_id: str,
 ) -> BusinessRecord:
-    existing = await db.scalar(select(BusinessRecord).where(
-        BusinessRecord.module == "task",
-        BusinessRecord.data["case_id"].as_integer() == case_record.id,
-        BusinessRecord.data["auto_task_type"].as_string() == auto_task_type,
-        BusinessRecord.data["trigger_source_id"].as_string() == trigger_source_id,
-    ))
+    from app.core.automatic_task_lookup import find_automatic_task, remember_automatic_task
+
+    existing = await find_automatic_task(db, case_record.id, auto_task_type, trigger_source_id)
     if existing:
         return existing
     initiator_username = initiator.username if initiator else "system"
@@ -1125,6 +1122,7 @@ async def _materialize_legacy_case_task(
     )
     db.add(task)
     await db.flush()
+    remember_automatic_task(db, case_record.id, auto_task_type, trigger_source_id, task.id)
     message = (
         f"{initiator_name}新建任务给负责人({owner_name})，协作人({collaborator_names})，附言：\n\n"
         f"{description}"
@@ -1408,9 +1406,10 @@ def _case_has_outstanding_legacy_agency_fee(
 
 
 async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | None = None) -> int:
+    from app.core.automatic_task_lookup import automatic_task_lookup_scope
     from app.core.task_personnel import automatic_task_personnel_scope
 
-    async with automatic_task_personnel_scope(db):
+    async with automatic_task_personnel_scope(db), automatic_task_lookup_scope(db):
         return await _scan_case_automatic_task_rules(db, today=today)
 
 

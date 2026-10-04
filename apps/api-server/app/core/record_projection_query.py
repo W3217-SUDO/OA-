@@ -1,23 +1,20 @@
 """只读业务投影：在 SQL 层选择所需字段，不加载完整历史快照。"""
 from types import SimpleNamespace
 
-from sqlalchemy import JSON, column, func, literal, select, type_coerce
+from sqlalchemy import JSON, column, func, select, true
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.models import BusinessRecord
 
 
-def _postgresql_projection_data(data_fields):
-    if not data_fields:
-        return literal({}, type_=JSON)
-    # 直接声明所需字段，避免逐条展开未使用的历史快照并进行哈希连接、聚合。
-    # JSONB 字段保留原投影对选中值的类型转换；嵌套空值不能被递归删除。
-    projection = func.json_to_record(BusinessRecord.data).table_valued(
-        *(column(key, JSONB) for key in data_fields),
-    ).render_derived(with_types=True)
-    return select(type_coerce(func.row_to_json(projection.table_valued()), JSON)).select_from(
-        projection,
-    ).correlate(BusinessRecord).scalar_subquery()
+def _postgresql_record_projection(data_fields, legacy_fields):
+    fields = [column(key, JSONB) for key in data_fields]
+    if legacy_fields and "legacy_record" not in data_fields:
+        fields.append(column("legacy_record", JSON))
+    # 同一行只解压、解析一次原始 JSON，历史字段从已提取的对象读取。
+    return func.json_to_record(BusinessRecord.data).table_valued(
+        *fields,
+    ).render_derived(with_types=True).lateral()
 
 
 async def read_record_projections(db, conditions, data_fields, *, legacy_fields=()):
@@ -25,25 +22,27 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
                "department", "description", "created_at", "updated_at")
     data_fields = tuple(dict.fromkeys(data_fields))
     legacy_fields = tuple(dict.fromkeys(legacy_fields))
-    grouped_data = db.get_bind().dialect.name == "postgresql"
-    data_columns = (_postgresql_projection_data(data_fields),) if grouped_data else tuple(
-        BusinessRecord.data[key] for key in data_fields
-    )
+    projection = _postgresql_record_projection(data_fields, legacy_fields) if (
+        data_fields and db.get_bind().dialect.name == "postgresql"
+    ) else None
+    data_columns = tuple(projection.c[key] if projection is not None else BusinessRecord.data[key]
+                         for key in data_fields)
+    legacy_data = projection.c.legacy_record if projection is not None and legacy_fields else BusinessRecord.data["legacy_record"]
     query = select(
         *(getattr(BusinessRecord, key) for key in columns),
         *data_columns,
-        *(BusinessRecord.data["legacy_record"][key] for key in legacy_fields),
-    ).where(*conditions).execution_options(yield_per=256)
+        *(legacy_data[key] for key in legacy_fields),
+    ).select_from(BusinessRecord)
+    if projection is not None:
+        query = query.join(projection, true())
+    query = query.where(*conditions).execution_options(yield_per=256)
     result = await db.stream(query)
     records = []
     try:
         async for values in result:
             data_end = len(columns) + len(data_columns)
-            if grouped_data:
-                data = {key: value for key, value in (values[len(columns)] or {}).items() if value is not None}
-            else:
-                data = {key: value for key, value in zip(data_fields, values[len(columns):data_end])
-                        if value is not None}
+            data = {key: value for key, value in zip(data_fields, values[len(columns):data_end])
+                    if value is not None}
             legacy = {key: value for key, value in zip(legacy_fields, values[data_end:])
                       if value is not None}
             if legacy:

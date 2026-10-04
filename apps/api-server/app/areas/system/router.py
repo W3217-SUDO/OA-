@@ -24,7 +24,7 @@ from app.models_shared import (
     TemplateInput, TemplateUpdate, UserAgentSkillInput, UserAgentSkillUpdate, UserMessageInput,
     UserPermissionOverrideUpdate,
 )
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 router = APIRouter()
 
@@ -1250,7 +1250,17 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
     return _role_permission_dict(item)
 
 
-@router.get(f"{settings.api_prefix}/dashboard")
+@router.get(f"{settings.api_prefix}/dashboard", name="dashboard")
+async def dashboard_http(
+    request: Request,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    section: str | None = Query(default=None, pattern="^(metrics|todos|cases)$"),
+):
+    from app.core.dashboard_request import run_dashboard_read
+
+    return await run_dashboard_read(request, dashboard(identity, db, section))
+
+
 async def dashboard(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
     section: str | None = Query(default=None, pattern="^(metrics|todos|cases)$"),
