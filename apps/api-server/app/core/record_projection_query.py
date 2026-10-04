@@ -31,13 +31,17 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
     source = record_read_models.c.data if read_model else BusinessRecord.data
     projection = _postgresql_record_projection(data_fields, legacy_fields, text_fields, source=source) if (
         data_fields and db.get_bind().dialect.name == "postgresql"
+        and (not read_model or where_data is not None or annotations is not None)
     ) else None
-    if projection is not None:
+    if read_model:
+        # 查询表已是精简 JSON，直接读取，避免重新组装所有空字段和文本权限字段。
+        data_columns = (source,)
+    elif projection is not None:
         # 一条记录只解码一次 JSON，保留嵌套空值，不对业务对象递归删键。
         data_columns = (func.row_to_json(projection.table_valued(), type_=JSON),)
     else:
         data_columns = tuple(BusinessRecord.data[key] for key in data_fields)
-    legacy_data = projection.c.legacy_record if projection is not None and legacy_fields else BusinessRecord.data["legacy_record"]
+    legacy_data = projection.c.legacy_record if projection is not None and legacy_fields else source["legacy_record"]
     extra = await annotations({
         key: projection.c[key] if projection is not None else BusinessRecord.data[key].as_string()
         for key in text_fields
@@ -68,7 +72,7 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
         async for batch in result.partitions():
             for values in batch:
                 data_end = len(columns) + len(data_columns)
-                projected = values[len(columns)] if projection is not None else dict(
+                projected = values[len(columns)] if read_model or projection is not None else dict(
                     zip(data_fields, values[len(columns):data_end]),
                 )
                 data = {key: projected[key] for key in data_fields if projected.get(key) is not None}
