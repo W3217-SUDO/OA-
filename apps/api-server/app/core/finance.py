@@ -9,7 +9,7 @@ from app.core.dependencies import (
     Decimal, FileAttachment, FinanceTransaction, HTTPException, IncomingPayment,
     IprCaseAnnualFee, IprCaseAssistedFee, IprCaseReminder, IprCaseReminderSuppression, JarFeeAuditLog,
     ROUND_UP, ReceivablePlan, ReconciliationBatch, Response, SystemParameter,
-    User, WorkflowEvent, date, datetime, false,
+    User, WorkflowEvent, date, datetime,
     func, or_, select, uuid4,
 )
 from app.models_shared import (
