@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.database import Base
 from app.core.notification_schema_migration import upgrade_notification_delivery_schema
+from app.core.record_read_model_migration import upgrade_record_read_model
 from app.legacy_schema import (
     align_legacy_column_types,
     align_legacy_constraints,
@@ -25,6 +26,7 @@ _STARTUP_LOCK_ID = int.from_bytes(
 )
 SCHEMA_BOOTSTRAP_REVISION = "startup_schema_bootstrap_v1"
 NOTIFICATION_DELIVERY_REVISION = "notification_delivery_outbox_v1"
+RECORD_READ_MODEL_REVISION = "business_record_read_model_v1"
 
 
 def _apply_schema_bootstrap(connection: Connection, upgrade_schema: Callable[[Connection], None]) -> None:
@@ -43,6 +45,10 @@ def _apply_notification_delivery(connection: Connection, _upgrade_schema: Callab
     upgrade_notification_delivery_schema(connection)
 
 
+def _apply_record_read_model(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    upgrade_record_read_model(connection)
+
+
 def _run_versioned_schema_migrations(
     connection: Connection,
     upgrade_schema: Callable[[Connection], None],
@@ -52,6 +58,7 @@ def _run_versioned_schema_migrations(
     revisions = (
         (SCHEMA_BOOTSTRAP_REVISION, _apply_schema_bootstrap),
         (NOTIFICATION_DELIVERY_REVISION, _apply_notification_delivery),
+        (RECORD_READ_MODEL_REVISION, _apply_record_read_model),
     )
     for revision, migration in revisions:
         if connection.execute(

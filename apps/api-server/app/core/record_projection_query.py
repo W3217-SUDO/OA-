@@ -4,15 +4,16 @@ from types import SimpleNamespace
 from sqlalchemy import JSON, Text, column, func, select, true
 
 from app.models import BusinessRecord
+from app.core.record_read_model import record_read_models, uses_record_read_model
 
 
-def _postgresql_record_projection(data_fields, legacy_fields, text_fields=()):
+def _postgresql_record_projection(data_fields, legacy_fields, text_fields=(), *, source=None):
     fields = [column(key, JSON) for key in data_fields]
     fields.extend(column(key, Text) for key in text_fields)
     if legacy_fields and "legacy_record" not in data_fields:
         fields.append(column("legacy_record", JSON))
     # 同一行只解压、解析一次原始 JSON，历史字段从已提取的对象读取。
-    return func.json_to_record(BusinessRecord.data).table_valued(
+    return func.json_to_record(BusinessRecord.data if source is None else source).table_valued(
         *fields,
     ).render_derived(with_types=True).lateral()
 
@@ -26,7 +27,9 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
     text_fields = tuple(dict.fromkeys(text_fields))
     if set(text_fields) & (set(data_fields) | ({"legacy_record"} if legacy_fields else set())):
         raise ValueError("JSON 与文本投影字段不能重名")
-    projection = _postgresql_record_projection(data_fields, legacy_fields, text_fields) if (
+    read_model = uses_record_read_model(db, (*data_fields, *text_fields), legacy_fields)
+    source = record_read_models.c.data if read_model else BusinessRecord.data
+    projection = _postgresql_record_projection(data_fields, legacy_fields, text_fields, source=source) if (
         data_fields and db.get_bind().dialect.name == "postgresql"
     ) else None
     data_columns = tuple(projection.c[key] if projection is not None else BusinessRecord.data[key]
@@ -44,6 +47,8 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
         *(legacy_data[key] for key in legacy_fields),
         *(value.label(key) for key, value in extra.items()),
     ).select_from(BusinessRecord)
+    if read_model:
+        query = query.join(record_read_models, record_read_models.c.record_id == BusinessRecord.id)
     if projection is not None:
         query = query.join(projection, true())
     if where_data is not None:

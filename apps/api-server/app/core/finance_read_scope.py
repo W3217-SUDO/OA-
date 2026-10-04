@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from sqlalchemy import func, select
 
 from app.models import BusinessRecord, IncomingPayment
+from app.core.record_read_model import record_json_source
 
 
 @dataclass
@@ -46,7 +47,7 @@ async def unambiguous_fee_case_nos(case_nos, db):
     if not case_nos:
         return set()
     scope = _current_scope.get()
-    number = BusinessRecord.data["case_no"].as_string()
+    number = record_json_source(db, ("case_no",))["case_no"].as_string()
     query = select(number, func.count(BusinessRecord.id)).where(
         BusinessRecord.module == "finance",
     ).group_by(number)

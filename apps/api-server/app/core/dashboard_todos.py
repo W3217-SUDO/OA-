@@ -1,7 +1,7 @@
 """控制台待办统计，任务生命周期与原任务中心保持一致。"""
 from app.core.dependencies import BusinessRecord, ContractApprovalStep, select, func, and_, or_
 from sqlalchemy import case, true
-from app.core.record_json_text_query import record_json_text_projection
+from app.core.record_json_text_query import projected_record_condition, record_json_text_projection
 from app.core.cases import _case_action_granted
 from app.core.documents import _seal_authorization_context
 from app.core.investigation import _is_investigation_task
@@ -107,9 +107,12 @@ async def dashboard_todos(identity, db):
 
     archive_action_allowed = await _case_action_granted(identity, db, "case.archive.review")
     archive_scope = await _record_scope_conditions(identity, db)
-    archive_submitter = func.trim(func.coalesce(BusinessRecord.data["archive_submitter"].as_string(), ""))
-    archive_reviewer = func.trim(func.coalesce(BusinessRecord.data["archive_reviewer"].as_string(), ""))
-    archive_internal_reviewer = func.trim(func.coalesce(BusinessRecord.data["archive_internal_reviewer"].as_string(), ""))
+    archive_projection, archive_data = record_json_text_projection(db, (
+        "archive_submitter", "archive_reviewer", "archive_internal_reviewer", "archive_reject_reason",
+    ))
+    archive_submitter = func.trim(func.coalesce(archive_data["archive_submitter"], ""))
+    archive_reviewer = func.trim(func.coalesce(archive_data["archive_reviewer"], ""))
+    archive_internal_reviewer = func.trim(func.coalesce(archive_data["archive_internal_reviewer"], ""))
     archive_assigned_to_user = or_(
         archive_reviewer == username,
         archive_internal_reviewer == username,
@@ -119,17 +122,20 @@ async def dashboard_todos(identity, db):
         int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
             BusinessRecord.module == "case",
             BusinessRecord.status.in_({"待归档审核", "亏损内审", "亏损审核"}),
-            archive_assigned_to_user,
-            archive_submitter != username,
+            projected_record_condition(archive_projection, and_(
+                archive_assigned_to_user, archive_submitter != username,
+            )),
             *archive_scope,
         )) or 0) if archive_action_allowed else 0,
         int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
             BusinessRecord.module == "case",
-            archive_submitter == username,
-            or_(
-                BusinessRecord.status == "亏损归档拒绝",
-                func.trim(func.coalesce(BusinessRecord.data["archive_reject_reason"].as_string(), "")) != "",
-            ),
+            projected_record_condition(archive_projection, and_(
+                archive_submitter == username,
+                or_(
+                    BusinessRecord.status == "亏损归档拒绝",
+                    func.trim(func.coalesce(archive_data["archive_reject_reason"], "")) != "",
+                ),
+            )),
             *archive_scope,
         )) or 0),
     )

@@ -10,6 +10,7 @@ from app.core.formatters import _normalized_customer_name, _user_display_map
 from app.core.system import _record_person_usernames
 from app.core.dashboard import dashboard_scope
 from app.core.record_json_text_query import projected_record_condition, record_json_text_projection
+from app.core.record_projection_query import read_record_projections
 
 
 async def dashboard_cases(identity, db):
@@ -73,12 +74,18 @@ async def dashboard_cases(identity, db):
     from app.core.dashboard_scope import company_hearing_conditions
     hearing_conditions = await company_hearing_conditions(identity, db)
     hearing_projection, hearing_data = record_json_text_projection(db, hearing_keys)
-    cases = list((await db.scalars(select(BusinessRecord).where(*hearing_conditions, or_(
+    hearing_fields = (*hearing_keys, "hearing_time", "next_hearing_time", "hearing_lawyer",
+                      "handling_lawyers", "assistant", "court", "courtroom",
+                      "first_instance_court", "second_instance_court",
+                      *(f"{prefix}_court_{key}" for prefix, _ in _CASE_HEARING_LEVELS
+                        for key in ("name", "courtroom")))
+    # 开庭投影只依赖这些字段，历史快照不参与排期，不载入 ORM 会话。
+    cases = await read_record_projections(db, [*hearing_conditions, or_(
         BusinessRecord.id.in_(scheduled_ids),
         projected_record_condition(hearing_projection, or_(
             *(func.coalesce(hearing_data[key], "") != "" for key in hearing_keys),
         )),
-    )))).all())
+    )], hearing_fields)
     case_map = {item.id: item for item in cases}
     visible_case_ids = set(case_map)
     projected_hearings = {
