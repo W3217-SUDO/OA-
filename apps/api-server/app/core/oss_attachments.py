@@ -62,7 +62,7 @@ def oss_attachment_signed_url(item) -> str | None:
     scheme, endpoint_host = _endpoint_host()
     expires = int(time.time()) + settings.oss_signed_url_expire_seconds
     encoded_key = quote(key, safe="/~")
-    resource = f"/{bucket}/{encoded_key}"
+    resource = f"/{bucket}/{key}"
     string_to_sign = f"GET\n\n\n{expires}\n{resource}"
     signature = base64.b64encode(
         hmac.new(access_key_secret.encode("utf-8"), string_to_sign.encode("utf-8"), hashlib.sha1).digest()
