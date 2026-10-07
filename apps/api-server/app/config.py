@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     minio_access_key: str = ""
     minio_secret_key: str = ""
     oss_credentials_file: str = ""
-    oss_endpoint: str = "oss-cn-beijing.aliyuncs.com"
+    oss_endpoint: str = "oss-cn-shanghai.aliyuncs.com"
     oss_signed_url_expire_seconds: int = Field(default=600, ge=60, le=3600)
     dify_base_url: str = ""
     dify_api_key: str = ""
