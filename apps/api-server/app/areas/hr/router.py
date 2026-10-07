@@ -96,8 +96,12 @@ async def list_hr_employees(
     def visible(row: dict) -> bool:
         data = row.get("data") or {}
         active = data.get("is_active") is not False
+        company_matches = not company or any(
+            company.casefold() in str(value or "").casefold()
+            for value in (row.get("customer"), data.get("company"))
+        )
         return (
-            contains(row.get("customer"), company) and contains(row.get("department"), department)
+            company_matches and contains(row.get("department"), department)
             and contains(data.get("username") or row.get("owner"), username) and contains(row.get("title"), name)
             and contains(data.get("mobile") or data.get("phone"), mobile)
             and (not enabled or ("是" if active else "否") == enabled)
