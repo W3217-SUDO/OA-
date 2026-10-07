@@ -10,3 +10,6 @@ overrides:
   ip-address: 10.7.2
   react-dom: 18.3.1
   hono: 4.13.11
+  proxy-addr: 2.0.8
+  sharp: 0.35.5
+  '@modelcontextprotocol/sdk': 1.32.1
