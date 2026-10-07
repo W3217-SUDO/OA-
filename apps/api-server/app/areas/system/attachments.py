@@ -5,6 +5,7 @@ from app.core.storage import _xls_preview_sheets
 from app.core.constants import AI_SPACE_CATEGORY, ARCHIVE_REQUIRED_CATEGORIES, ATTACHMENT_TEXT_PREVIEW_MAX_CHARS, CASE_FORMAL_DOCUMENT_FOLDERS, FINANCE_DEFAULT_VOUCHER_CATEGORY, INVESTIGATION_MATERIAL_CATEGORIES, JAR_FEE_MODULE, PDF_PREVIEW_MAX_DIMENSION, PDF_PREVIEW_MAX_PIXELS, PDF_PREVIEW_MAX_WIDTH, PDF_PREVIEW_MIN_WIDTH, SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY, UPLOAD_ROOT, logger
 from app.core.dependencies import AsyncSession, BusinessRecord, CaseTypeFileTypeRelation, Depends, Document, File, FileAttachment, FileResponse, FinanceTransaction, Form, HTTPException, JSONResponse, Path, Query, Response, SystemParameter, UploadFile, User, WorkflowEvent, current_identity, date, datetime, func, get_db, select, settings, status, timedelta, timezone, uuid4
 from starlette.concurrency import run_in_threadpool
+from starlette.responses import RedirectResponse
 
 router = APIRouter()
 
@@ -367,8 +368,10 @@ async def download_attachment(attachment_id: int, case_id: int | None = Query(de
         raise HTTPException(status_code=404, detail="附件不属于该案件")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
-    from app.core.oss_attachments import require_oss_attachment_download
-    require_oss_attachment_download(item)
+    from app.core.oss_attachments import oss_attachment_signed_url
+    signed_url = oss_attachment_signed_url(item)
+    if signed_url:
+        return RedirectResponse(signed_url, status_code=307)
     path = _attachment_storage_path(item)
     if path is None:
         raise HTTPException(status_code=404, detail="附件文件不存在")
@@ -399,8 +402,18 @@ async def preview_attachment(attachment_id: int, case_id: int | None = Query(def
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
 
-    from app.core.oss_attachments import require_oss_attachment_download
-    require_oss_attachment_download(item)
+    from app.core.oss_attachments import oss_attachment_preview_kind, oss_attachment_signed_url
+    signed_url = oss_attachment_signed_url(item)
+    if signed_url:
+        kind = oss_attachment_preview_kind(item)
+        if kind == "unsupported":
+            return {
+                "original_name": item.original_name,
+                "content_type": str(item.content_type or "").lower(),
+                "kind": "unsupported",
+                "detail": "当前 OSS 文件格式暂不支持在线预览，请下载后查看",
+            }
+        return {"original_name": item.original_name, "content_type": str(item.content_type or "").lower(), "kind": kind}
     path = _attachment_storage_path(item)
     if path is None:
         raise HTTPException(status_code=404, detail="附件文件不存在")
@@ -477,14 +490,20 @@ async def create_office_preview_link(
         raise HTTPException(status_code=404, detail="附件不属于该案件")
     elif identity.get("role") != "admin" and item.uploader != identity["username"]:
         raise HTTPException(status_code=404, detail="附件不存在或无权访问")
-    from app.core.oss_attachments import require_oss_attachment_download
-    require_oss_attachment_download(item)
-    path = _attachment_storage_path(item)
-    if path is None:
-        raise HTTPException(status_code=404, detail="附件文件不存在")
     suffix = Path(item.original_name).suffix.lower()
     if suffix not in {".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"}:
         raise HTTPException(status_code=422, detail="该文件不是 Office 文档")
+    from app.core.oss_attachments import oss_attachment_signed_url
+    signed_url = oss_attachment_signed_url(item)
+    if signed_url:
+        return {
+            "kind": "office",
+            "source_url": signed_url,
+            "expires_in": settings.oss_signed_url_expire_seconds,
+        }
+    path = _attachment_storage_path(item)
+    if path is None:
+        raise HTTPException(status_code=404, detail="附件文件不存在")
     token = jwt.encode(
         {
             "attachment_id": item.id,
