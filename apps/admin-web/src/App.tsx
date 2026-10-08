@@ -81,14 +81,15 @@ function lazyWithVersionRecovery<T extends ComponentType<any>>(
 ) {
   return lazy(async () => {
     const marker = `sunhold:chunk-reload:${key}`;
+    const shellReloaded = new URL(window.location.href).searchParams.has("_v");
     try {
       const module = await importer();
       sessionStorage.removeItem(marker);
       return module;
     } catch (error) {
-      // A user can keep the previous shell open while a new image replaces its
-      // hashed chunks. Reload once to fetch the current no-store index page.
-      if (!sessionStorage.getItem(marker)) {
+      const previousReload = sessionStorage.getItem(marker) === "1";
+      // 只限制同一次带版本参数的重载，避免旧会话标记阻断后续正常导航。
+      if (!previousReload || !shellReloaded) {
         sessionStorage.setItem(marker, "1");
         reloadAppShell();
         return new Promise<never>(() => undefined);
