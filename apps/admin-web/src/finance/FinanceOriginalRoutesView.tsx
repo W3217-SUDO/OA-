@@ -206,10 +206,11 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
     refundCaseFeeOperationMenu,
     refundCaseFeeMarkButton,
   } = props;
-  const originalHeaders = (() => {
-    if (!activeRouteConfig) throw new Error(`缺少财务原始视图配置：${initialView}`);
-    return activeRouteConfig.headers;
-  })();
+  // 付款、审批等原始列表使用专用列定义，不经过 routeConfigs；表头应与实际列保持一致。
+  const originalHeaders = activeRouteConfig?.headers ??
+    originalColumns.map((column) =>
+      typeof column.title === "string" ? column.title : "",
+    );
   const settlementRouteRows = configuredRows as Fee[];
   return (
           <section
