@@ -1,7 +1,7 @@
 import { Alert, DatePicker, Form, Input, InputNumber, Modal, Select } from "antd";
 import type { FormInstance } from "antd";
 import Table from "../components/ResizableTable";
-import { money } from "./constants";
+import { money, paymentMethodOptions } from "./constants";
 import type { PaymentPackageEditorFormValues, PaymentPackageWriteoffFormValues } from "./formTypes";
 import type { Fee } from "./types";
 
@@ -132,7 +132,7 @@ export function PaymentPackageWriteoffModal({
             rules={[{ required: true, message: "请选择付款方式." }]}
           >
             <Select
-              options={["自动扣款", "银行卡", "现金"].map((value) => ({
+              options={paymentMethodOptions.map((value) => ({
                 label: value,
                 value,
               }))}

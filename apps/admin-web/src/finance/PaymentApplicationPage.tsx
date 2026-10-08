@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import { api } from "../api";
 import "./payment-application.css";
 import { PaymentDocument } from "./PaymentDocument";
+import { paymentMethodOptions } from "./constants";
 
 export function PaymentApplicationPage({ record, onClose, onChange, onCase, onContract }: { record: any; onClose: () => void; onChange: () => Promise<void>; onCase?: (no: string) => void; onContract?: (no: string) => void }) {
   const [row, setRow] = useState(record);
@@ -65,7 +66,7 @@ export function PaymentApplicationPage({ record, onClose, onChange, onCase, onCo
         <Form.Item label="付款打包号"><Input readOnly value={data.payment_package_no} /></Form.Item>
         <Form.Item name="amount" label="确认付款金额" rules={[{required:true}]}><InputNumber readOnly /></Form.Item>
         <Form.Item name="paid_date" label="付款日期" rules={[{required:true}]}><DatePicker /></Form.Item>
-        <Form.Item name="payment_method" label="付款方式" rules={[{required:true}]}><Select options={["自动扣款", "银行卡", "现金"].map(value => ({value,label:value}))} /></Form.Item>
+        <Form.Item name="payment_method" label="付款方式" rules={[{required:true}]}><Select options={paymentMethodOptions.map(value => ({value,label:value}))} /></Form.Item>
         <Form.Item name="invoice_no" label="付款单据号" rules={[{required:true, whitespace:true}]}><Input /></Form.Item>
         <Form.Item name="remark" label="付款备注"><Input.TextArea /></Form.Item>
         <Form.Item label="付款凭证" required><Upload beforeUpload={() => false} multiple maxCount={10} fileList={files} onChange={({fileList}) => setFiles(fileList)}><Button>选择文件</Button></Upload></Form.Item>

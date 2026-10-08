@@ -11,6 +11,12 @@
   overflow-x: auto;
 }
 
+/* Ant Design 的 sticky 横向滚动条固定在当前列表底部，长表无需回到底部拖动。 */
+.oa-resizable-table .ant-table-sticky-scroll {
+  z-index: 3;
+  background: #fff;
+}
+
 .oa-resizable-table .ant-table-thead th.oa-resizable-header::after {
   position: absolute;
   top: 0;

@@ -829,6 +829,7 @@ type SessionUser = {
   actual_role?: string;
   actual_role_ids?: string[];
   menu_keys?: string[];
+  action_keys?: string[];
   data_scope?: string;
   must_change_password?: boolean;
 };

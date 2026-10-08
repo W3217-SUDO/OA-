@@ -116,7 +116,7 @@ export function GeneralSettlementExpandedRow({
           size="small"
           pagination={false}
           dataSource={row.data?.allocation_details || []}
-          scroll={{ x: 1889 }}
+          scroll={{ x: "max-content" }}
           columns={[
             {
               title: <span className="finance-stacked-header"><span>序</span><span>号</span></span>,

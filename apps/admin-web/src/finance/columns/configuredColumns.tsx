@@ -101,11 +101,7 @@ export function createConfiguredColumns(context: {
             "finance-internal-query",
         ].includes(context.initialView) && header === "请款单号" ? (<Button type="link" onClick={() => context.setFeeDetail(row)}>
           {context.cellValue(row, header)}
-        </Button>) : [
-            "finance-internal-refused",
-            "finance-internal-void",
-            "finance-internal-query",
-        ].includes(context.initialView) && header === "案件编号" ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openCaseDetail(context.cellValue(row, header))}>{context.cellValue(row, header)}</Button> : "—") : context.initialView === "finance-internal-settle" && header === "案号" ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openCaseDetail(context.cellValue(row, header))}>{context.cellValue(row, header)}</Button> : "—") : context.isInvoiceUnissuedRoute && header === "案号" ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openCaseDetail(context.cellValue(row, header))}>{context.cellValue(row, header)}</Button> : "—") : context.isInvoiceUnissuedRoute && header === "发票查看" ? (row.data?.invoice_no ? (<Button type="link" onClick={() => {
+        </Button>) : ["案号", "案件编号"].includes(header) ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openCaseDetail(context.cellValue(row, header))}>{context.cellValue(row, header)}</Button> : "—") : context.isInvoiceUnissuedRoute && header === "发票查看" ? (row.data?.invoice_no ? (<Button type="link" onClick={() => {
                 const invoice = context.invoices.find((item) => item.id === Number(row.data?.invoice_record_id || 0));
                 if (invoice)
                     void context.openRecordFiles(invoice, "发票扫描件");
@@ -113,14 +109,19 @@ export function createConfiguredColumns(context: {
                     message.warning("关联发票记录不存在或无权访问");
             }}>
             {row.data.invoice_no}
-          </Button>) : null) : context.isInternalDetailRoute && header === "案号" ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openCaseDetail(context.cellValue(row, header))}>{context.cellValue(row, header)}</Button> : "—") : context.isArchiveSettlementActiveRoute && header === "案号" ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openCaseDetail(context.cellValue(row, header))}>{context.cellValue(row, header)}</Button> : "—") : context.isFeeQueryRoute && ["案号", "案件编号"].includes(header) ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openCaseDetail(context.cellValue(row, header))}>{context.cellValue(row, header)}</Button> : "—") : ["客户", "客户名称", "客户编号"].includes(header) ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openFinanceCustomerDetail(row, header)}>
+          </Button>) : null) : ["客户", "客户名称", "客户编号"].includes(header) ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openFinanceCustomerDetail(row, header)}>
           {context.cellValue(row, header)}
-        </Button> : "—") : ["合同号", "合同编号"].includes(header) ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openContractDetail(context.cellValue(row, header))}>{context.cellValue(row, header)}</Button> : "—") : (context.isInvoiceMineRoute || context.isInvoicePendingRoute || context.isInvoiceCompanyRoute) && header === "请票单号" ? (<Button type="link" onClick={() => context.isInvoicePendingRoute
+        </Button> : "—") : ["合同号", "合同编号"].includes(header) ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openContractDetail(context.cellValue(row, header))}>{context.cellValue(row, header)}</Button> : "—") : ["发票编号", "发票号码"].includes(header) ? (() => {
+          const value = context.cellValue(row, header);
+          const invoice = context.activeRouteConfig?.source === "invoices"
+            ? row
+            : context.invoices.find((item) => item.id === Number(row.data?.invoice_record_id || 0));
+          return value && invoice ? <Button type="link" onClick={() => void context.openInvoiceDetail(invoice)}>{value}</Button> : value;
+        })() : (context.isInvoiceMineRoute || context.isInvoicePendingRoute || context.isInvoiceCompanyRoute) && header === "请票单号" ? (<Button type="link" onClick={() => context.isInvoicePendingRoute
                 ? context.openInvoiceProcess(row)
                 : void context.openInvoiceDetail(row)}>
           {context.cellValue(row, header)}
-        </Button>) : context.initialView === "finance-internal-payment" &&
-            header === "案件编号" ? (context.cellValue(row, header) ? <Button type="link" onClick={() => context.openCaseDetail(context.cellValue(row, header))}>{context.cellValue(row, header)}</Button> : "—") : context.activeRouteConfig?.source === "paymentPackages" &&
+        </Button>) : context.activeRouteConfig?.source === "paymentPackages" &&
             header === "付款包号码" ? (<Button type="link" onClick={() => void context.openPaymentPackageDetail(row)}>
           {context.cellValue(row, header)}
         </Button>) : (context.cellValue(row, header)),

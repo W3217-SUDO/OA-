@@ -1,6 +1,8 @@
 """Shared classifications and application projection for the 9.15 batch."""
 from collections import OrderedDict
 
+from app.core.constants import NON_ALLOCATABLE_THIRD_PARTY_FEE_SUBTYPES
+
 
 def official_refund_progress(data: dict, requested: float, refunded: float, received=None) -> float:
     """Read-model progress: a fee's receipts cover its refund, without double counting."""
@@ -27,6 +29,27 @@ def is_internal_commission(data: dict) -> bool:
         return True
     source_fee_id = str(data.get('source_fee_id') or '').strip()
     return source_fee_id.isdigit() and int(source_fee_id) > 0
+
+
+def is_explicit_internal_commission(data: dict) -> bool:
+    """内部审核分类只接受提成类型或生命周期等真实分类字段。"""
+    return is_internal_fee(data) and bool(
+        str(data.get("commission_type") or "").strip()
+        or str(data.get("commission_lifecycle") or "").strip()
+    )
+
+
+def is_non_allocatable_third_party_fee(data: dict | None = None, label: str = "") -> bool:
+    """判断五类第三方费用，候选和写入接口必须共同使用。"""
+    payload = data or {}
+    values = {
+        str(label or "").strip(),
+        str(payload.get("expense_subtype") or "").strip(),
+        str(payload.get("fee_type_name") or "").strip(),
+        str(payload.get("fee_type") or "").strip(),
+        str(payload.get("title") or "").strip(),
+    }
+    return bool(values.intersection(NON_ALLOCATABLE_THIRD_PARTY_FEE_SUBTYPES))
 
 
 def group_commission_applications(rows: list[dict]) -> list[dict]:

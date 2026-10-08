@@ -220,6 +220,7 @@
   background: #149ec5;
 }
 .finance-original-table-wrap {
+  min-width: 0;
   padding: 9px 10px 0;
 }
 .finance-original-table-wrap .ant-table {
@@ -257,6 +258,16 @@
 }
 .finance-original-table-wrap .ant-table-row-selected > td {
   background: #e6f7f2 !important;
+}
+
+/* 结算页收窄左侧导航，给展开的案件分配明细留出稳定的可视宽度。 */
+@media (min-width: 992px) {
+  .app-body:has(.finance-original-panel) > .sidebar.ant-layout-sider:not(.ant-layout-sider-collapsed) {
+    width: 220px !important;
+    min-width: 220px !important;
+    max-width: 220px !important;
+    flex: 0 0 220px !important;
+  }
 }
 .finance-original-table-wrap .ant-btn-link {
   height: auto;
@@ -654,7 +665,11 @@
   color: #18bc9c;
 }
 .finance-settlement-detail-table {
+  min-width: 0;
   padding: 0;
+}
+.finance-settlement-detail-table .ant-table {
+  min-width: max-content;
 }
 .finance-settlement-detail-table .ant-table-container {
   border-top: 0 !important;

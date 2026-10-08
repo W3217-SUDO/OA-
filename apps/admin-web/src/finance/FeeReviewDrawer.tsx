@@ -12,6 +12,8 @@ interface FeeReviewDrawerProps {
   onClose: () => void;
   onCommentChange: (value: string) => void;
   onSubmit: (approved: boolean) => void;
+  canApprove?: boolean;
+  canReject?: boolean;
   onOpenCaseDetail: (caseNo: unknown) => void;
 }
 
@@ -26,6 +28,8 @@ export function FeeReviewDrawer({
   onClose,
   onCommentChange,
   onSubmit,
+  canApprove = true,
+  canReject = true,
   onOpenCaseDetail,
 }: FeeReviewDrawerProps) {
   const isPaymentAudit = initialView === "finance-payment-audit";
@@ -189,20 +193,20 @@ export function FeeReviewDrawer({
         rows={2}
       />
       <Space className="finance-review-actions">
-        <Button
+        {canApprove && <Button
           type="primary"
           loading={reviewLoading}
           onClick={() => onSubmit(true)}
         >
           同意
-        </Button>
-        <Button
+        </Button>}
+        {canReject && <Button
           danger
           loading={reviewLoading}
           onClick={() => onSubmit(false)}
         >
           拒绝
-        </Button>
+        </Button>}
       </Space>
       <Table
         rowKey="key"

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from app.core.dependencies import (AsyncSession, BusinessRecord, FileAttachment, FinanceTransaction,
     WorkflowEvent, current_identity, get_db, select, settings, date, datetime, Path, uuid4)
-from app.core.constants import UPLOAD_ROOT
+from app.core.constants import PAYMENT_METHOD_OPTIONS, UPLOAD_ROOT
 from app.core.permissions import _ensure_record_visible, _record_dict_for_identity, _record_dicts_for_identity, _require_contract_action
 from app.core.finance_batch_parity import is_internal_fee
 
@@ -127,7 +127,7 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
         await _require_contract_action(identity, db, 'contract.payment.writeoff', '核销付款')
     if row.status != '待核销' or data.get('writeoff_status') == '已核销':
         raise HTTPException(409, '仅待核销付款申请可以核销')
-    if not invoice_no.strip() or payment_method not in {'自动扣款', '银行卡', '现金'}:
+    if not invoice_no.strip() or payment_method not in PAYMENT_METHOD_OPTIONS:
         raise HTTPException(422, '请填写付款方式和付款单据号')
     from math import isfinite
     if not isfinite(amount) or amount <= 0 or abs(round(amount, 2) - round(float(data.get('amount') or 0), 2)) > .001:

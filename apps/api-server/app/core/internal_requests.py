@@ -7,7 +7,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BusinessRecord, FinanceTransaction, WorkflowEvent
-from app.core.finance_batch_parity import group_commission_applications, is_internal_commission, is_internal_fee
+from app.core.constants import INTERNAL_REVIEW_APPROVE_ACTION, INTERNAL_REVIEW_REJECT_ACTION
+from app.core.finance_batch_parity import group_commission_applications, is_explicit_internal_commission, is_internal_fee
 
 
 def external_finance_condition():
@@ -47,7 +48,7 @@ async def refund_commission_ids(items: list[BusinessRecord], db: AsyncSession) -
     return {
         item.id for item in items
         if is_internal_fee(item.data or {})
-        and is_internal_commission(item.data or {})
+        and is_explicit_internal_commission(item.data or {})
         and _is_refund_commission({"data": item.data or {}}, sources)
     }
 
@@ -115,9 +116,9 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
     selected = []
     for row in rows:
         data = row.get("data") or {}
-        commission = is_internal_commission(data)
+        commission = is_explicit_internal_commission(data)
         refund = commission and _is_refund_commission(row, sources)
-        if kind == "refund" and refund and row["status"] in {"待结算", "待归档", "待审批"}:
+        if kind == "refund" and refund and row["status"] in {"待到账", "待分配", "待结算", "待归档", "待审批"}:
             selected.append({**row, "status": "待审批", "data": {**data, "is_refund": True}})
         elif row["status"] == "待审批" and (
             (kind == "commission" and commission and not refund)
@@ -159,7 +160,7 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
     full = [projected[item.id] for item in members]
     refund_ids = await refund_commission_ids(members, db)
     for row in full:
-        if row["id"] in refund_ids and row["status"] in {"待结算", "待归档", "待审批"}:
+        if row["id"] in refund_ids and row["status"] in {"待到账", "待分配", "待结算", "待归档", "待审批"}:
             row["status"] = "待审批"
             row["data"] = {**(row.get("data") or {}), "is_refund": True}
     return group_commission_applications(full)
@@ -173,8 +174,14 @@ async def review_internal_applications(
     from app.core.finance import _case_commission_lifecycle_statuses, _review_finance_fee_records
     from app.core.permissions import _record_scope_conditions
 
-    if identity.get("role") not in {"admin", "manager", "auditor"}:
-        raise HTTPException(403, "当前角色没有内部请款审批权限")
+    from app.core.permissions import _permission_payload_for_identity
+    permission = await _permission_payload_for_identity(identity, db)
+    required_action = INTERNAL_REVIEW_APPROVE_ACTION if approved else INTERNAL_REVIEW_REJECT_ACTION
+    action_keys = set(permission.get("action_keys") or [])
+    if "*" not in action_keys and required_action not in action_keys:
+        raise HTTPException(403, "当前角色没有内部费用审批动作权限")
+    if not approved and not comment.strip():
+        raise HTTPException(422, "拒绝审批必须填写理由")
     unique_ids = list(dict.fromkeys(fee_ids))
     anchors = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(unique_ids), BusinessRecord.module == "finance",
@@ -187,11 +194,11 @@ async def review_internal_applications(
     lifecycle_statuses = await _case_commission_lifecycle_statuses(members, db)
     for item in members:
         data = item.data or {}
-        commission = is_internal_commission(data)
+        commission = is_explicit_internal_commission(data)
         member_kind = "refund" if item.id in refund_ids else "commission" if commission else "other"
         if not is_internal_fee(data) or member_kind != kind:
             raise HTTPException(409, "请款单含其他审批类别，不能部分审批")
-        allowed = {"待审批", "待结算", "待归档"} if kind == "refund" else {"待审批"}
+        allowed = {"待审批", "待到账", "待分配", "待结算", "待归档"} if kind == "refund" else {"待审批"}
         effective_status = lifecycle_statuses.get(item.id, item.status)
         if effective_status not in allowed:
             raise HTTPException(409, "请款单含非待审批费用，不能部分审批")
@@ -261,9 +268,9 @@ async def change_internal_application(
     if not comment.strip():
         raise HTTPException(422, "请输入操作原因")
     allowed = (
-        {"草稿", "待结算", "待归档", "待审批"}
+        {"草稿", "待到账", "待分配", "待结算", "待归档", "待审批"}
         if action == "withdraw" else
-        {"待结算", "待归档", "待审批", "已审批", "待付款"}
+        {"待到账", "待分配", "待结算", "待归档", "待审批", "已审批", "待付款"}
     )
     invalid = [item.serial_no for item in candidates if item.status not in allowed]
     if invalid:
@@ -335,7 +342,7 @@ async def submit_internal_application(
         raise HTTPException(409, "请款单包含不可提交的费用：" + "、".join(invalid))
     refund_ids = await refund_commission_ids(candidates, db)
     kinds = {"refund" if item.id in refund_ids else
-             "commission" if is_internal_commission(item.data or {}) else "other"
+             "commission" if is_explicit_internal_commission(item.data or {}) else "other"
              for item in candidates}
     if len(kinds) != 1:
         raise HTTPException(409, "请款单包含不同费用类别，不能混合提交")

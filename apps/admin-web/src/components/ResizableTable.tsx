@@ -128,7 +128,8 @@ function ResizableTable<RecordType extends object>({ columns, className, ...prop
   const scroll = Object.keys(widths).length && typeof props.scroll?.x === "number"
     ? { ...props.scroll, x: "max-content" as const }
     : props.scroll;
-  return <AntTable<RecordType> {...props} scroll={scroll} className={[className, "oa-resizable-table"].filter(Boolean).join(" ")} columns={resizedColumns} />;
+  const sticky = props.sticky ?? (scroll?.x !== undefined ? { offsetScroll: 0 } : undefined);
+  return <AntTable<RecordType> {...props} scroll={scroll} sticky={sticky} className={[className, "oa-resizable-table"].filter(Boolean).join(" ")} columns={resizedColumns} />;
 }
 
 const Table = Object.assign(ResizableTable, {

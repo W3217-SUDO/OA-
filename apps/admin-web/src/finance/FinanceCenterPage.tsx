@@ -57,6 +57,8 @@ import { createRouteConfigs } from "./config/routeConfigs";
 import { originalFinanceRoutes, originalFinanceTitles } from "./config/routeMetadata";
 import {
 effectivePaymentQuery,
+internalReviewApproveAction,
+internalReviewRejectAction,
 feeTypes,
 internalApprovalRoutes,
 invoiceLegacyDefaultPageSize,
@@ -1487,6 +1489,9 @@ export default function FinanceCenterPage({
   };
 
   const canApprove = ["admin", "manager", "auditor"].includes(role);
+  const actionKeys = new Set(sessionUser.action_keys || []);
+  const internalReviewCanApprove = role === "admin" || actionKeys.has("*") || actionKeys.has(internalReviewApproveAction);
+  const internalReviewCanReject = role === "admin" || actionKeys.has("*") || actionKeys.has(internalReviewRejectAction);
   const canManage = ["admin", "manager"].includes(role);
   const canWithdrawFinanceFee = (row: Fee) =>
     (row.module === "finance" || isContractPayment(row)) &&
@@ -2028,7 +2033,7 @@ export default function FinanceCenterPage({
       </Space>
     ) : ["finance-internal-audit", "finance-internal-fee-audit", "finance-internal-refund-audit"].includes(initialView) ? (
       <Space size={0}>
-        {canApprove && row.status === "待审批" && (
+        {internalReviewCanApprove && row.status === "待审批" && (
           <Button type="link" onClick={() => setFeeReviewTargets([row])}>
             审批
           </Button>
@@ -2066,7 +2071,7 @@ export default function FinanceCenterPage({
           提交
         </Button>
       )}
-      {canApprove && row.status === "待审批" && (
+      {(isInternalApprovalRoute ? internalReviewCanApprove : canApprove) && row.status === "待审批" && (
         <Button
           type="link"
           onClick={() =>
@@ -5294,6 +5299,8 @@ export default function FinanceCenterPage({
     paymentReviewRows,
     feeReviewRows,
     reviewNumber,
+    internalReviewCanApprove,
+    internalReviewCanReject,
 
     // Fee detail modal
     feeDetail,

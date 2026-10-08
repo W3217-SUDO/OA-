@@ -829,6 +829,9 @@ JOB_ROLE_ACTION_KEY_GRANTS: dict[str, tuple[str, ...]] = {
 
 CASE_ACTIONS_EXPLICIT_MARKER = "config:case-actions-explicit"
 
+INTERNAL_REVIEW_APPROVE_ACTION = "finance.internal.review.approve"
+INTERNAL_REVIEW_REJECT_ACTION = "finance.internal.review.reject"
+
 
 SYSTEM_ACTION_OPERATION_LABELS = {
     "query": "查询", "create": "新增", "update": "编辑", "delete": "删除",
@@ -868,6 +871,8 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
         )
     definitions.extend([
         {"code": "conflict.review.approve", "menu_key": "customer-conflict", "label": "利益冲突审批"},
+        {"code": INTERNAL_REVIEW_APPROVE_ACTION, "menu_key": "finance-internal-audit", "label": "内部费用审批通过"},
+        {"code": INTERNAL_REVIEW_REJECT_ACTION, "menu_key": "finance-internal-audit", "label": "内部费用审批拒绝"},
         *({"code": code, "menu_key": "case-mine", "label": label} for code, label in (
             ("case.detail.update", "修改案件基本信息"), ("case.court.update", "修改案件法院信息"),
             ("case.notary.update", "修改案件公证信息"), ("case.litigants.update", "修改案件当事人"),
@@ -1110,6 +1115,13 @@ _LEGACY_CASE_TASK_HISTORY_ENTITIES = {
 
 
 FINANCE_FEE_TYPES = {"官方费用", "代理费", "其他费用", "内部费用", "结算费用", "预损费用", "归档费用"}
+
+# 付款核销可选方式必须由服务端与前端使用同一组业务值。
+PAYMENT_METHOD_OPTIONS = ("自动扣款", "银行卡", "现金", "微信", "支付宝", "链接", "小程序")
+
+# 这些案件费用属于第三方费用，不能作为普通回款分配对象。
+NON_ALLOCATABLE_THIRD_PARTY_FEE_SUBTYPES = ("公告费", "公证服务费", "担保费", "鉴定费", "检索费")
+
 
 
 EXPENSE_SUBTYPE_FEE_TYPE = {

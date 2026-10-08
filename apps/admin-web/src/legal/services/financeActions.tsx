@@ -875,9 +875,14 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
     const openCaseReceiptFiles = async (row: CaseRow) => {
         try {
             const receipts = caseReceiptFiles(row.data);
-            const [attachmentsResponse, informsResponse] = await Promise.all([
+            const [attachmentsResponse, invoiceFileResponse, informsResponse, invoiceAttachmentsResponse, transactionsResponse] = await Promise.all([
                 api.get("/attachments", { params: { record_id: row.id, category: "案件票据文件", page_size: 200 } }),
+                api.get("/attachments", { params: { record_id: row.id, category: "案件发票文件", page_size: 200 } }),
                 api.get(`/finance/fees/${row.id}/informs`),
+                Number(row.data.invoice_record_id || 0) > 0
+                    ? api.get("/attachments", { params: { record_id: Number(row.data.invoice_record_id), page_size: 200 } })
+                    : Promise.resolve({ data: { items: [] } }),
+                api.get("/finance/transactions", { params: { finance_record_id: row.id, page_size: 200 } }),
             ]);
             const attachments = new Map((attachmentsResponse.data?.items || []).map((item: any) => [Number(item.id), item]));
             const rows = receipts.flatMap((receipt, index) => {
@@ -892,6 +897,41 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                     path: `/attachments/${receipt.attachmentId}/download`,
                 }];
             });
+            for (const item of invoiceFileResponse.data?.items || []) {
+                if (!item?.id) continue;
+                rows.push({
+                    key: `case-invoice-attachment-${item.id}`,
+                    source: "发票文件",
+                    billNo: "",
+                    billDate: String(item.document_date || "").slice(0, 10),
+                    filename: String(item.original_name || "发票文件"),
+                    path: `/attachments/${item.id}/download`,
+                });
+            }
+            for (const item of invoiceAttachmentsResponse.data?.items || []) {
+                if (!item?.id || !["付款凭证", "案件发票文件"].includes(String(item.category || ""))) continue;
+                rows.push({
+                    key: `invoice-attachment-${item.id}`,
+                    source: item.category === "付款凭证" ? "缴费凭证" : "发票文件",
+                    billNo: "",
+                    billDate: String(item.document_date || "").slice(0, 10),
+                    filename: String(item.original_name || "缴费凭证"),
+                    path: `/attachments/${item.id}/download`,
+                });
+            }
+            for (const transaction of transactionsResponse.data?.items || []) {
+                for (const voucher of transaction.vouchers || []) {
+                    if (!voucher?.id) continue;
+                    rows.push({
+                        key: `transaction-voucher-${voucher.id}`,
+                        source: "缴费凭证",
+                        billNo: String(transaction.voucher_no || ""),
+                        billDate: String(transaction.transaction_date || "").slice(0, 10),
+                        filename: String(voucher.original_name || "缴费凭证"),
+                        path: `/attachments/${voucher.id}/download`,
+                    });
+                }
+            }
             for (const inform of informsResponse.data?.items || []) {
                 if (!inform.receipt_attachment?.id) continue;
                 rows.push({

@@ -17,6 +17,18 @@ from app.core.incoming_settlement import (_active_settlements_by_receipt, _rever
 router = APIRouter()
 
 
+def _record_relation_id(data: dict, *keys: str) -> int:
+    """读取记录关联编号；历史脏值不能让分配请求因转换异常失败。"""
+    for key in keys:
+        try:
+            value = int(data.get(key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value:
+            return value
+    return 0
+
+
 @router.get(f"{settings.api_prefix}/finance/incoming-payments")
 async def list_incoming_payments(payment_status: str = "", keyword: str = "", bank_source: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contracts import (
@@ -394,6 +406,7 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
     from app.core.finance import (
         _round_fee_amount,
     )
+    from app.core.finance_batch_parity import is_internal_fee, is_non_allocatable_third_party_fee
     from app.core.formatters import (
         _record_belongs_to_customer,
     )
@@ -455,6 +468,8 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
     for plan in plans:
         if case_fees_only:
             continue
+        if is_non_allocatable_third_party_fee(label=plan.phase):
+            continue
         contract = contracts_by_id[plan.contract_record_id]
         remaining = _round_fee_amount(plan.amount - plan.received_amount)
         linked_cases = cases_by_contract.get(contract.id)
@@ -498,8 +513,9 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
     for fee_record in fees:
         fee_data = fee_record.data or {}
-        from app.core.finance_batch_parity import is_internal_fee
         if is_internal_fee(fee_data):
+            continue
+        if is_non_allocatable_third_party_fee(fee_data, label=_case_fee_display_type(fee_record)):
             continue
         if case_fees_only and fee_data.get("expense_scope") not in {"律所", "平台"}:
             continue
@@ -588,6 +604,7 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
     from app.core.permissions import (
         _ensure_record_module, _record_scope_conditions,
     )
+    from app.core.finance_batch_parity import is_internal_fee, is_non_allocatable_third_party_fee
     from app.core.system import (
         _allowed_field_keys,
     )
@@ -614,7 +631,10 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
                 raise HTTPException(status_code=422, detail="结算费用明细金额之和必须等于本次分配金额")
         plan = await db.get(ReceivablePlan, entry.receivable_plan_id) if entry.receivable_plan_id else None
         fee_record = await _ensure_record_module(entry.fee_record_id, "finance", identity, db) if entry.fee_record_id else None
-        from app.core.finance_batch_parity import is_internal_fee
+        if plan and is_non_allocatable_third_party_fee(label=plan.phase):
+            raise HTTPException(status_code=422, detail="公告费、公证服务费、担保费、鉴定费、检索费不能分配回款")
+        if fee_record and is_non_allocatable_third_party_fee(fee_record.data or {}, label=_case_fee_display_type(fee_record)):
+            raise HTTPException(status_code=422, detail="公告费、公证服务费、担保费、鉴定费、检索费不能分配回款")
         if body.case_fees_only:
             if not fee_record or (fee_record.data or {}).get("expense_scope") not in {"律所", "平台"}:
                 raise HTTPException(422, "只能分配案件中的律所或平台费用")
@@ -674,18 +694,28 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
             db.add(plan); await db.flush()
         if not _record_belongs_to_customer(contract, claimed_customer_record, item.claimed_customer): raise HTTPException(status_code=409, detail=f"应收项目 {phase} 的客户与到账认领客户不一致")
         case_record = None
-        if entry.case_no.strip():
-            case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == entry.case_no.strip(), *(await _record_scope_conditions(identity, db))))
-            case_data = case_record.data or {} if case_record else {}
+        requested_case_no = entry.case_no.strip()
+        fee_data = fee_record.data or {} if fee_record else {}
+        linked_fee_case_id = _record_relation_id(fee_data, "case_id", "case_record_id")
+        linked_fee_case_no = str(fee_data.get("case_no") or "").strip()
+        if requested_case_no:
+            case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == requested_case_no, *(await _record_scope_conditions(identity, db))))
+        elif linked_fee_case_id or linked_fee_case_no:
+            by_id = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.id == linked_fee_case_id, *(await _record_scope_conditions(identity, db)))) if linked_fee_case_id else None
+            by_no = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == linked_fee_case_no, *(await _record_scope_conditions(identity, db)))) if linked_fee_case_no else None
+            if by_id and by_no and by_id.id != by_no.id:
+                raise HTTPException(status_code=409, detail=f"费用 {fee_record.serial_no if fee_record else entry.fee_record_id} 的案件编号与案件记录不一致")
+            case_record = by_id or by_no
+        if case_record:
+            case_data = case_record.data or {}
             linked_contract_id = int(case_data.get("contract_id") or case_data.get("contract_record_id") or 0)
             linked_contract_no = str(case_data.get("contract_no") or "").strip()
             case_contract_matches = linked_contract_id == contract.id or (
                 not linked_contract_id and linked_contract_no == contract.serial_no
             )
-            fee_data = fee_record.data or {} if fee_record else {}
-            fee_case_id = int(fee_data.get("case_id") or fee_data.get("case_record_id") or 0)
-            fee_case_no = str(fee_data.get("case_no") or "").strip()
-            fee_contract_id = int(fee_data.get("contract_id") or fee_data.get("contract_record_id") or 0)
+            fee_case_id = linked_fee_case_id
+            fee_case_no = linked_fee_case_no
+            fee_contract_id = _record_relation_id(fee_data, "contract_id", "contract_record_id")
             fee_contract_no = str(fee_data.get("contract_no") or "").strip()
             fee_relation_matches = bool(
                 case_record
@@ -693,11 +723,11 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
                 and (fee_contract_id == contract.id or (not fee_contract_id and fee_contract_no == contract.serial_no))
             )
             if not case_record or not (case_contract_matches or fee_relation_matches):
-                raise HTTPException(status_code=409, detail=f"案件 {entry.case_no} 与当前应收项目的合同缺少有效关联")
+                raise HTTPException(status_code=409, detail=f"案件 {requested_case_no or fee_case_no} 与当前应收项目的合同缺少有效关联")
             if not _record_belongs_to_customer(case_record, claimed_customer_record, item.claimed_customer):
-                raise HTTPException(status_code=409, detail=f"案件 {entry.case_no} 的客户与到账认领客户不一致")
+                raise HTTPException(status_code=409, detail=f"案件 {requested_case_no or fee_case_no} 的客户与到账认领客户不一致")
             if not _case_is_for_allocation_customer(case_record, claimed_customer_record, item.claimed_customer):
-                raise HTTPException(status_code=409, detail=f"案件 {entry.case_no} 的诉讼当事人与到账认领客户不一致")
+                raise HTTPException(status_code=409, detail=f"案件 {requested_case_no or fee_case_no} 的诉讼当事人与到账认领客户不一致")
         canonical_settlement_items: list[dict] = []
         for settlement in entry.settlement_items:
             settlement_fee = fee_record
@@ -706,16 +736,34 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
             else:
                 settlement_fee = await _ensure_record_module(settlement.fee_record_id, "finance", identity, db)
                 fee_data = settlement_fee.data or {}
+                if is_non_allocatable_third_party_fee(fee_data, label=_case_fee_display_type(settlement_fee)):
+                    raise HTTPException(status_code=422, detail="公告费、公证服务费、担保费、鉴定费、检索费不能分配回款")
                 if not _record_belongs_to_customer(settlement_fee, claimed_customer_record, item.claimed_customer):
                     raise HTTPException(status_code=409, detail=f"费用 {settlement_fee.serial_no} 的客户与到账认领客户不一致")
-                if case_record and int(fee_data.get("case_id") or 0) not in {0, case_record.id} and str(fee_data.get("case_no") or "") != case_record.serial_no:
+                if case_record and _record_relation_id(fee_data, "case_id", "case_record_id") not in {0, case_record.id} and str(fee_data.get("case_no") or "") != case_record.serial_no:
                     raise HTTPException(status_code=409, detail=f"费用 {settlement_fee.serial_no} 不属于案件 {case_record.serial_no}")
+            if settlement_fee and is_non_allocatable_third_party_fee(settlement_fee.data or {}, label=_case_fee_display_type(settlement_fee)):
+                raise HTTPException(status_code=422, detail="公告费、公证服务费、担保费、鉴定费、检索费不能分配回款")
             fee_type = _case_fee_display_type(settlement_fee) if settlement_fee else settlement.fee_type
+            settlement_case = case_record
+            if settlement_fee:
+                settlement_data = settlement_fee.data or {}
+                settlement_case_id = _record_relation_id(settlement_data, "case_id", "case_record_id")
+                settlement_case_no = str(settlement_data.get("case_no") or "").strip()
+                settlement_by_id = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.id == settlement_case_id, *(await _record_scope_conditions(identity, db)))) if settlement_case_id else None
+                settlement_by_no = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == settlement_case_no, *(await _record_scope_conditions(identity, db)))) if settlement_case_no else None
+                if settlement_by_id and settlement_by_no and settlement_by_id.id != settlement_by_no.id:
+                    raise HTTPException(status_code=409, detail=f"费用 {settlement_fee.serial_no} 的案件编号与案件记录不一致")
+                settlement_case = settlement_by_id or settlement_by_no or case_record
+            if settlement_case and not _record_belongs_to_customer(settlement_case, claimed_customer_record, item.claimed_customer):
+                raise HTTPException(status_code=409, detail=f"案件 {settlement_case.serial_no} 的客户与到账认领客户不一致")
             settlement_amount, archive_fee = _settlement_amounts_for_fee(
-                settlement_fee, fee_type, _round_fee_amount(settlement.amount), case_record,
+                settlement_fee, fee_type, _round_fee_amount(settlement.amount), settlement_case,
             )
             canonical_settlement_items.append({
                 "fee_record_id": settlement_fee.id if settlement_fee else None,
+                "case_id": settlement_case.id if settlement_case else None,
+                "case_no": settlement_case.serial_no if settlement_case else "",
                 "fee_type": fee_type,
                 "amount": _round_fee_amount(settlement.amount),
                 "settlement_amount": settlement_amount,

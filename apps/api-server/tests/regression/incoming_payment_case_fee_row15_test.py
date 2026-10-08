@@ -159,6 +159,42 @@ class IncomingPaymentCaseFeeRow15Test(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(rows[0]["data"]["actual_settlement_amount"], 63.36)
             self.assertEqual(rows[0]["data"]["allocation_details"][0]["fee_id"], self.fee_id)
 
+    async def test_allocation_projects_case_from_fee_when_case_no_is_omitted(self) -> None:
+        allocation = await self.client.post(f"{API}/finance/incoming-payments/{self.payment_id}/allocate", json={"allocations": [{
+            "receivable_plan_id": None,
+            "fee_record_id": self.fee_id,
+            "amount": 88.0,
+            "case_no": "",
+            "payment_method": "bank",
+            "settlement_items": [{"fee_record_id": self.fee_id, "fee_type": "agency", "amount": 88.0}],
+        }]})
+        self.assertEqual(allocation.status_code, 200, allocation.text)
+        allocation_row = allocation.json()["allocations"][0]
+        self.assertEqual(allocation_row["case_id"], self.case_id)
+        self.assertEqual(allocation_row["case_no"], self.case_no)
+        settlement = allocation_row["settlement_items"][0]
+        self.assertEqual(settlement["case_id"], self.case_id)
+        self.assertEqual(settlement["case_no"], self.case_no)
+
+    async def test_settlement_details_recover_case_from_authoritative_fee_link(self) -> None:
+        allocation = await self.allocate()
+        self.assertEqual(allocation.status_code, 200, allocation.text)
+        async with self.sessions() as db:
+            payment = await db.get(IncomingPayment, self.payment_id)
+            payment.allocations = [{
+                **payment.allocations[0],
+                "case_id": None,
+                "case_no": "",
+            }]
+            await db.commit()
+
+        response = await self.client.get(f"{API}/finance/incoming-payments/{self.payment_id}")
+        self.assertEqual(response.status_code, 200, response.text)
+        details = response.json()["allocation_details"]
+        self.assertEqual(len(details), 1)
+        self.assertEqual(details[0]["case_id"], self.case_id)
+        self.assertEqual(details[0]["case_no"], self.case_no)
+
     async def test_other_fee_is_not_counted_as_general_settlement_payable(self) -> None:
         async with self.sessions() as db:
             fee = await db.get(BusinessRecord, self.fee_id)

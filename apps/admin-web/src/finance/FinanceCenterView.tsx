@@ -130,6 +130,8 @@ export interface FinanceCenterViewProps {
   paymentReviewRows: any[];
   feeReviewRows: any[];
   reviewNumber: (value: unknown) => React.ReactNode;
+  internalReviewCanApprove?: boolean;
+  internalReviewCanReject?: boolean;
 
 }
 
@@ -198,7 +200,10 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
     paymentReviewRows,
     feeReviewRows,
     reviewNumber,
+    internalReviewCanApprove = true,
+    internalReviewCanReject = true,
   } = props;
+  const isInternalReview = initialView.startsWith("finance-internal-") && initialView.includes("audit");
 
   if (paymentPackageWriteoffTarget) {
     return <PaymentApplicationPage key={paymentPackageWriteoffTarget.id} record={paymentPackageWriteoffTarget} onClose={() => setPaymentPackageWriteoffTarget(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
@@ -240,6 +245,8 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
         }}
         onCommentChange={setFeeReviewComment}
         onSubmit={(approved) => void submitFeeReview(approved)}
+        canApprove={isInternalReview ? internalReviewCanApprove : true}
+        canReject={isInternalReview ? internalReviewCanReject : true}
         onOpenCaseDetail={openCaseDetail}
       />
       <RefundBatchFeeDrawer {...refundBatchFeeDrawer} />

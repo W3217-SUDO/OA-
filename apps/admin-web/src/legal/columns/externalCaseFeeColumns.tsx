@@ -1,5 +1,6 @@
 import { Button, Space } from "antd";
 import { caseFeeRefundLabel } from "../../caseFeeLegacyProjection.mjs";
+import { LEGACY_THIRD_PARTY_FEE_SUBTYPES } from "../../caseRelationConsumption.mjs";
 import { caseReceiptFiles } from "../caseReceiptFiles";
 import type { CaseRow } from "../types";
 export function createExternalCaseFeeColumns(context: {
@@ -10,6 +11,7 @@ export function createExternalCaseFeeColumns(context: {
     readonly openRelatedInvoice: (fee: CaseRow) => void;
     readonly openCaseReceiptFiles: (fee: CaseRow) => void;
 }) {
+    const isNonAllocatableThirdParty = (row: CaseRow) => LEGACY_THIRD_PARTY_FEE_SUBTYPES.includes(String(row.data.expense_subtype || row.data.fee_type || row.title || "").trim());
     return [
         { title: "合同编号", width: 150, render: (_: unknown, row: CaseRow) => {
                 const contractNo = row.data.contract_no || context.viewingCounselCase?.data.contract_no;
@@ -21,9 +23,11 @@ export function createExternalCaseFeeColumns(context: {
         { title: "退费", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => caseFeeRefundLabel(row.data) },
         { title: "提交人", width: 120, render: (_: unknown, row: CaseRow) => row.data.submitter_display_name || row.data.submitted_by_display_name || row.data.handler_display_name || row.owner_display_name || context.casePersonDisplayName(row.owner) },
         { title: "提交日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.submitted_at || row.created_at || row.data.created_at || "").slice(0, 10) || "—" },
+        { title: "核销日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.paid_date || row.data.payment_date || row.data.written_off_at || "").slice(0, 10) || "—" },
         { title: "通知日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.inform_date || row.data.notice_date || "").slice(0, 10) || "—" },
         { title: "回款日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.received_at || row.data.cashed_date || "").slice(0, 10) || "—" },
         { title: "回款金额", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => {
+                if (isNonAllocatableThirdParty(row)) return "/";
                 const value = row.data.received_amount ?? row.data.cashed_amount;
                 return Number(value || 0) !== 0 ? <Button type="link" className="case-cell-link" onClick={() => context.openRelatedIncomingPayment(row)}>{value}</Button> : value ?? "/";
             } },
@@ -45,6 +49,12 @@ export function createExternalCaseFeeColumns(context: {
                         ? <Button key={`${receipt.attachmentId}-${index}`} type="link" className="case-cell-link" onClick={() => context.openCaseReceiptFiles(row)}>{receipt.billNo || `文件${index + 1}`}</Button>
                         : <span key={`missing-${index}`}>{receipt.billNo || `文件${index + 1}`}（附件缺失）</span>)}
                 </Space>;
+            } },
+        { title: "缴费凭证", width: 130, render: (_: unknown, row: CaseRow) => {
+                const receipts = caseReceiptFiles(row.data);
+                const hasWriteoffRecord = Number(row.data.invoice_record_id || 0) > 0;
+                if (!receipts.length && !hasWriteoffRecord) return "—";
+                return <Button type="link" className="case-cell-link" onClick={() => context.openCaseReceiptFiles(row)}>查看凭证</Button>;
             } },
         { title: "申请付款金额", width: 130, align: "right" as const, render: (_: unknown, row: CaseRow) => row.data.payment_requested_amount ?? 0 },
     ];

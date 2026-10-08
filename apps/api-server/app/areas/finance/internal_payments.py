@@ -2,6 +2,7 @@
 from fastapi import APIRouter
 from app.core.dependencies import AsyncSession, BusinessRecord, Depends, HTTPException, Query, Response, User, WorkflowEvent, current_identity, date, datetime, delete, func, get_db, quote, select, settings, status
 from app.models_shared import FinancePaymentPackageCreateInput, FinancePaymentPackagePreviewInput, FinancePaymentPackageUpdateInput, FinancePaymentPackageWriteoffInput, FinanceSettlementMarkInput
+from app.core.constants import PAYMENT_METHOD_OPTIONS
 
 router = APIRouter()
 
@@ -330,7 +331,7 @@ async def writeoff_internal_payment_package(package_id: int, body: FinancePaymen
     package = await _ensure_record_module(package_id, "finance_package", identity, db)
     if package.status != "待核销":
         raise HTTPException(status_code=409, detail="仅待核销付款包可以核销")
-    if body.payment_method not in {"自动扣款", "银行卡", "现金"}:
+    if body.payment_method not in PAYMENT_METHOD_OPTIONS:
         raise HTTPException(status_code=422, detail="付款方式无效")
     if not body.invoice_no.strip():
         raise HTTPException(status_code=422, detail="请输入付款单据号.")

@@ -1,4 +1,5 @@
 import { Alert,Button,Checkbox,Descriptions,Input,InputNumber,Modal,Select } from "antd";
+import { LEGACY_THIRD_PARTY_FEE_SUBTYPES } from "../caseRelationConsumption.mjs";
 import Table from "../components/ResizableTable";
 import { money } from "./constants";
 import type { AllocationCandidate, IncomingPayment } from "./types";
@@ -52,6 +53,7 @@ export function IncomingAllocationModal({
   onCommentChange,
   onOpenCaseDetail,
 }: IncomingAllocationModalProps) {
+  const isNonAllocatableThirdParty = (row: AllocationCandidate) => LEGACY_THIRD_PARTY_FEE_SUBTYPES.includes(String(row.fee_type || "").trim());
   const stageOptions = Array.from(
     new Set(allocationCandidates.map((row) => row.case_stage))
   )
@@ -84,8 +86,8 @@ export function IncomingAllocationModal({
     { title: "提交日期", dataIndex: "submission_date", width: 100 },
     { title: "费用类型", dataIndex: "fee_type", width: 125 },
     { title: "总额", dataIndex: "total_amount", width: 90, render: money },
-    { title: "已回", dataIndex: "received_amount", width: 90, render: money },
-    { title: "待回", dataIndex: "remaining_amount", width: 90, render: money },
+    { title: "已回", dataIndex: "received_amount", width: 90, render: (_: unknown, row: AllocationCandidate) => isNonAllocatableThirdParty(row) ? "/" : money(row.received_amount) },
+    { title: "待回", dataIndex: "remaining_amount", width: 90, render: (_: unknown, row: AllocationCandidate) => isNonAllocatableThirdParty(row) ? "/" : money(row.remaining_amount) },
     {
       title: "本次回款",
       key: "allocation_amount",
@@ -96,6 +98,7 @@ export function IncomingAllocationModal({
           min={0.01}
           max={row.remaining_amount}
           precision={2}
+          disabled={isNonAllocatableThirdParty(row)}
           value={allocationAmounts[row.key]}
           onChange={(value) => {
             onAmountChange(row.key, Number(value || 0));
@@ -113,6 +116,7 @@ export function IncomingAllocationModal({
       align: "center" as const,
       render: (_: unknown, row: AllocationCandidate) => (
         <Checkbox
+          disabled={isNonAllocatableThirdParty(row)}
           checked={
             selectedAllocationKeys.includes(row.key) &&
             Number(allocationAmounts[row.key]) === Number(row.remaining_amount)
@@ -234,6 +238,7 @@ export function IncomingAllocationModal({
           rowSelection={{
             selectedRowKeys: selectedAllocationKeys,
             preserveSelectedRowKeys: true,
+            getCheckboxProps: (row) => ({ disabled: isNonAllocatableThirdParty(row) }),
             onChange: (keys) => onSelectedKeysChange(keys.map((key) => String(key))),
           }}
           columns={columns}

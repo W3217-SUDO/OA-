@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.config import settings
+from app.core.finance import _invoice_case_fee_rows
 from app.database import Base, get_db
 from app.main import app
 from app.models import BusinessRecord, IncomingPayment, User
@@ -162,6 +163,27 @@ class CaseFeeReceiptProjectionRow30Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fee["data"]["received_amount"], 8400)
         self.assertEqual(fee["data"]["received_at"], "2026-08-28")
         self.assertEqual(fee["data"]["incoming_payments"][0]["receipt_no"], "ROW30-RECEIPT")
+
+    async def test_invoice_case_fee_projection_keeps_authoritative_receipt_files(self) -> None:
+        receipt_files = [{
+            "attachment_id": 731,
+            "bill_no": "ROW19-BILL-001",
+            "bill_date": "2026-09-30",
+            "original_name": "ROW19-voucher.pdf",
+        }]
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            fee.data = {**fee.data, "receipt_files": receipt_files}
+            rows = await _invoice_case_fee_rows(
+                ADMIN,
+                db,
+                scope="company",
+                ids={self.fee_id},
+                invoice_status="",
+                fee_types="",
+            )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["data"]["receipt_files"], receipt_files)
 
 
 if __name__ == "__main__":

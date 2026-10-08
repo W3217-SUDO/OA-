@@ -10,6 +10,19 @@ export const feeTypes = [
   "归档费用",
 ];
 
+export const paymentMethodOptions = [
+  "自动扣款",
+  "银行卡",
+  "现金",
+  "微信",
+  "支付宝",
+  "链接",
+  "小程序",
+] as const;
+
+export const internalReviewApproveAction = "finance.internal.review.approve";
+export const internalReviewRejectAction = "finance.internal.review.reject";
+
 export const internalApprovalRoutes = [
   "finance-payment-audit",
   "finance-internal-archive",

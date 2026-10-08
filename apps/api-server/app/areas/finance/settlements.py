@@ -882,9 +882,8 @@ async def export_general_settlements(
     kind: str = Query("settlement", pattern="^(settlement|receipt|case)$"), ids: str = "", application_ids: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
-    from app.core.finance import (
-        _general_settlement_rows,
-    )
+    from app.core.finance import _general_settlement_rows
+    from app.areas.finance.settlement_export_templates import render_general_settlement_export
     from app.core.permissions import (
         _settlement_application_scope,
     )
@@ -917,30 +916,9 @@ async def export_general_settlements(
             raise HTTPException(status_code=409, detail="部分回款已申请结算、尚未分配或无权导出")
     if not rows:
         raise HTTPException(status_code=422, detail="没有可导出的待结算记录")
-    def cell(value: object, *, number: bool = False) -> str:
-        value_text = f"{float(value or 0):.2f}" if number else str(value or "")
-        return f'<Cell><Data ss:Type="{"Number" if number else "String"}">{xml_escape(value_text)}</Data></Cell>'
-    if kind == "receipt":
-        headers = ["回款编号", "客户名称", "回款单位", "回款日期", "回款金额", "已分金额", "未分金额", "回款方式", "银行备注"]
-        values = [[row["serial_no"], row["customer"], row["data"].get("payer_name"), row["data"].get("received_date"), row["data"].get("receipt_amount"), row["data"].get("allocated_amount"), row["data"].get("remaining_amount"), row["data"].get("payment_method"), row["data"].get("bank_remark")] for row in rows]
-        numeric = {4, 5, 6}
-        sheet_name = "到账清单"
-    elif kind == "case":
-        headers = ["回款编号", "案号", "阶段", "费用类型", "本笔分配金额", "本笔结算金额", "本笔归档费", "客户", "经办律师", "律师助理", "合同号"]
-        values = [[row["serial_no"], detail.get("case_no"), detail.get("case_stage"), detail.get("fee_type"), detail.get("current_amount"), detail.get("settlement_amount"), detail.get("archive_fee"), detail.get("customer"), detail.get("handling_lawyer"), detail.get("assistant"), detail.get("contract_no")] for row in rows for detail in row["data"].get("allocation_details", [])]
-        numeric = {4, 5, 6}
-        sheet_name = "案件清单"
-    else:
-        headers = ["回款编号", "客户名称", "客户管理人", "回款单位", "回款日期", "回款金额", "已分金额", "未分金额", "已分官费", "已分代理费", "已分其他费用", "代理费结算金额", "扣归档费", "实际结算金额"]
-        values = [[row["serial_no"], row["customer"], row["data"].get("customer_manager"), row["data"].get("payer_name"), row["data"].get("received_date"), row["data"].get("receipt_amount"), row["data"].get("allocated_amount"), row["data"].get("remaining_amount"), row["data"].get("assigned_official_fee"), row["data"].get("assigned_agency_fee"), row["data"].get("assigned_other_fee"), row["data"].get("agency_settlement_amount"), row["data"].get("archive_fee"), row["data"].get("actual_settlement_amount")] for row in rows]
-        numeric = set(range(5, 14))
-        sheet_name = "结算清单"
-    sheet_rows = ["<Row>" + "".join(cell(value) for value in headers) + "</Row>"]
-    sheet_rows.extend("<Row>" + "".join(cell(value, number=index in numeric) for index, value in enumerate(row)) + "</Row>" for row in values)
-    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="' + sheet_name + '"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
-    filename = f"{sheet_name}-{date.today()}.xls"
+    workbook, filename, _sheet_name = render_general_settlement_export(kind, rows, date.today())
     disposition = f"attachment; filename=settlement-export.xls; filename*=UTF-8''{quote(filename)}"
-    return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+    return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
 
 
 @router.delete(f"{settings.api_prefix}/finance/general-settlements/applications/{{application_id}}", status_code=status.HTTP_204_NO_CONTENT)
