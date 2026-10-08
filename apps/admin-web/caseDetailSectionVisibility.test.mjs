@@ -11,7 +11,7 @@ test("empty placeholders do not expose court or archive sections", () => {
       execution_court_name: null,
       archive_type: "-",
     }),
-    { firstCourt: false, secondCourt: false, executionCourt: false, court: false, archive: false },
+    { firstCourt: false, secondCourt: false, executionCourt: false, retrialCourt: false, court: false, archive: false },
   );
 });
 
@@ -20,6 +20,7 @@ test("court stages become visible independently", () => {
     firstCourt: true,
     secondCourt: false,
     executionCourt: false,
+    retrialCourt: false,
     court: true,
     archive: false,
   });
@@ -27,6 +28,7 @@ test("court stages become visible independently", () => {
     firstCourt: false,
     secondCourt: true,
     executionCourt: false,
+    retrialCourt: false,
     court: true,
     archive: false,
   });
@@ -34,6 +36,18 @@ test("court stages become visible independently", () => {
     firstCourt: false,
     secondCourt: false,
     executionCourt: true,
+    retrialCourt: false,
+    court: true,
+    archive: false,
+  });
+});
+
+test("retrial court data exposes the court section", () => {
+  assert.deepEqual(getCaseDetailSectionVisibility({ retrial_court_name: "上海市高级人民法院" }), {
+    firstCourt: false,
+    secondCourt: false,
+    executionCourt: false,
+    retrialCourt: true,
     court: true,
     archive: false,
   });
