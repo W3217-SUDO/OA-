@@ -545,6 +545,18 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             case = await db.get(BusinessRecord, self.case_id)
             case.status = "已归档"
+            source = await db.get(BusinessRecord, self.normal_source_id)
+            source.data = {
+                **(source.data or {}), "received_amount": 100, "cashed_amount": 100,
+                "received_at": "2026-09-29", "cashed_date": "2026-09-29",
+            }
+            db.add(IncomingPayment(
+                receipt_no="T930-HISTORY-RECEIPT", received_date=date(2026, 9, 29),
+                amount=100, payer_name="测试客户", bank_reference="T930-HISTORY-BANK",
+                status="已分配", claimed_customer="测试客户", claimant="finance-applicant",
+                operator="finance-applicant", allocated_amount=100,
+                allocations=[{"fee_record_id": self.normal_source_id, "case_no": "T930-CASE", "amount": 100}],
+            ))
             db.add(BusinessRecord(
                 module="finance_settlement", serial_no="T930-SETTLED", title="一般结算",
                 customer="测试客户", status="已付款", owner="finance-applicant",
@@ -554,6 +566,7 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
             for suffix in ("A", "B"):
                 item = self._record(f"T930-HISTORY-{suffix}", "历史提成", "待归档", {
                     "fee_type": "内部费用", "expense_scope": "内部", "amount": 3,
+                    "commission_type": "案源提成",
                     **({"commission_lifecycle": "case_agency_fee"} if suffix == "A" else {}),
                     "source_fee_id": self.normal_source_id,
                     "payment_application_no": "T930-HISTORY", "applicant": "finance-applicant",
