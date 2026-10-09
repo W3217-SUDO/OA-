@@ -433,7 +433,10 @@ export default function AgentCenterPage() {
   return <div className="agent-center-page" data-testid="agent-center-page">
     <header className="agent-center-header">
       <div><h2>案件智能体中心</h2><span>案件业务空间</span></div>
-      <Space wrap><Tag>客户</Tag><Tag>合同</Tag><Tag>案件</Tag><Tag>线索</Tag><Tag>调查</Tag><Tag>财务</Tag></Space>
+      <Space wrap>
+        <Button size="small" onClick={() => { window.location.href = "?page=agent-center"; }}>个人智能体</Button>
+        <Tag>客户</Tag><Tag>合同</Tag><Tag>案件</Tag><Tag>线索</Tag><Tag>调查</Tag><Tag>财务</Tag>
+      </Space>
     </header>
     <Modal open={skillManagerOpen} title="我的技能" width={760} footer={null} onCancel={() => { setSkillManagerOpen(false); resetSkillEditor(); }}>
       <div className="agent-skill-manager" data-testid="agent-skill-manager">

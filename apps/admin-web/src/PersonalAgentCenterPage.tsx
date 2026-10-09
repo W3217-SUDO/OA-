@@ -127,6 +127,7 @@ export default function PersonalAgentCenterPage() {
         <div><h2>个人智能体中心</h2><span>你的 OA 办公空间</span></div>
       </div>
       <Space wrap>
+        <Button size="small" onClick={() => { window.location.href = "?page=case-agent-center"; }}>案件智能体</Button>
         <Tag color={status?.ready ? "success" : "error"}>{status?.ready ? "服务已连接" : "模型未就绪"}</Tag>
         <Tag>{status?.model || "未配置模型"}</Tag>
         <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
