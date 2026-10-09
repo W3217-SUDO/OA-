@@ -230,7 +230,8 @@ def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: d
         f"当前 OA 摘要：\n{context_text}"
     )
     messages: list[dict[str, str]] = [{"role": "system", "content": system}]
-    for item in (state.get("messages") or [])[-12:]:
+    # 当前轮消息已经由 generate_response 写入会话；这里只取历史消息，避免模型收到两遍同一问题。
+    for item in (state.get("messages") or [])[-13:-1]:
         role = str(item.get("role") or "")
         content = str(item.get("content") or "").strip()
         if role in {"user", "assistant"} and content:
