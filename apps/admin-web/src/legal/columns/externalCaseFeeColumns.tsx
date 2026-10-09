@@ -1,6 +1,5 @@
 import { Button, Space } from "antd";
 import { caseFeeRefundLabel } from "../../caseFeeLegacyProjection.mjs";
-import { LEGACY_THIRD_PARTY_FEE_SUBTYPES } from "../../caseRelationConsumption.mjs";
 import { caseReceiptFiles } from "../caseReceiptFiles";
 import type { CaseRow } from "../types";
 export function createExternalCaseFeeColumns(context: {
@@ -11,7 +10,6 @@ export function createExternalCaseFeeColumns(context: {
     readonly openRelatedInvoice: (fee: CaseRow) => void;
     readonly openCaseReceiptFiles: (fee: CaseRow) => void;
 }) {
-    const isNonAllocatableThirdParty = (row: CaseRow) => LEGACY_THIRD_PARTY_FEE_SUBTYPES.includes(String(row.data.expense_subtype || row.data.fee_type || row.title || "").trim());
     return [
         { title: "合同编号", width: 150, render: (_: unknown, row: CaseRow) => {
                 const contractNo = row.data.contract_no || context.viewingCounselCase?.data.contract_no;
@@ -27,9 +25,8 @@ export function createExternalCaseFeeColumns(context: {
         { title: "通知日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.inform_date || row.data.notice_date || "").slice(0, 10) || "—" },
         { title: "回款日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.received_at || row.data.cashed_date || "").slice(0, 10) || "—" },
         { title: "回款金额", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => {
-                if (isNonAllocatableThirdParty(row)) return "/";
                 const value = row.data.received_amount ?? row.data.cashed_amount;
-                return Number(value || 0) !== 0 ? <Button type="link" className="case-cell-link" onClick={() => context.openRelatedIncomingPayment(row)}>{value}</Button> : value ?? "/";
+                return Number(value || 0) !== 0 ? <Button type="link" className="case-cell-link" onClick={() => context.openRelatedIncomingPayment(row)}>{value}</Button> : value ?? 0;
             } },
         { title: "开票日期", width: 160, render: (_: unknown, row: CaseRow) => {
                 const receipts = caseReceiptFiles(row.data);

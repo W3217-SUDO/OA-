@@ -63,7 +63,7 @@ export const CaseFeesPanel = ({
   if (scope === "firm") {
     return (
       <div className="case-legacy-tab-panel">
-        <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={feeRows} locale={{emptyText:renderCaseFeeEmptyState?.("律所")}} rowSelection={{selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys}} columns={externalCaseFeeColumns}/>
+        <Table rowKey="id" size="small" tableLayout="fixed" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:"max-content"}} dataSource={feeRows} locale={{emptyText:renderCaseFeeEmptyState?.("律所")}} rowSelection={{selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys}} columns={externalCaseFeeColumns}/>
         {feeRows.length>0&&<Space className="case-legacy-bottom-actions">
           {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择费用)"}],onClick:({key})=>key === "commission" ? void openCaseCommission?.() : openCaseFeeBySubtype?.("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
           {hasExternalOperations&&<Dropdown trigger={["click"]} menu={{items:[
@@ -86,7 +86,7 @@ export const CaseFeesPanel = ({
   if (scope === "platform") {
     return (
       <div className="case-legacy-tab-panel">
-        <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1250}} dataSource={feeRows} locale={{emptyText:renderCaseFeeEmptyState?.("平台")}} rowSelection={{selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys}} columns={externalCaseFeeColumns}/>
+        <Table rowKey="id" size="small" tableLayout="fixed" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:"max-content"}} dataSource={feeRows} locale={{emptyText:renderCaseFeeEmptyState?.("平台")}} rowSelection={{selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys}} columns={externalCaseFeeColumns}/>
         {feeRows.length>0&&<Space className="case-legacy-bottom-actions">
           {counselDetailCapabilities.can_create_finance&&<Button title="传统模式：新增平台代理费" onClick={()=>openCaseFeeBySubtype?.("平台",PLATFORM_AGENCY_FEE_SUBTYPE)}>传统模式</Button>}
           {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"}],onClick:({key})=>openCaseFeeBySubtype?.("平台",key)}}><Button>新增案件费用</Button></Dropdown>}
