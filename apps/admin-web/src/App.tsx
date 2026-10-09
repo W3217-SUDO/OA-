@@ -440,6 +440,7 @@ const menuItems: NavItem[] = [
       { key: "finance-settlement", label: "结算管理" },
       { key: "finance-archive-fee", label: "归档费结算" },
       { key: "finance-fee-query", label: "费用查询" },
+      { key: "finance-legacy-history", label: "历史财务账本" },
     ],
   },
   {
@@ -453,6 +454,7 @@ const menuItems: NavItem[] = [
       { key: "platform-finance-settlement", label: "结算管理" },
       { key: "platform-finance-archive-fee", label: "归档费结算" },
       { key: "platform-finance-fee-query", label: "费用查询" },
+      { key: "platform-finance-legacy-history", label: "历史财务账本" },
     ],
   },
   {
@@ -799,6 +801,7 @@ function financeRouteFromPlatform(route: string): string {
     "platform-finance-settlement": "finance-settlement-pending",
     "platform-finance-archive-fee": "finance-archive-fee-pending",
     "platform-finance-fee-query": "finance-fee-query",
+    "platform-finance-legacy-history": "finance-legacy-history",
   };
   if (roots[route]) return roots[route];
   return route

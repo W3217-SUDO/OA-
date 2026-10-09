@@ -44,6 +44,9 @@ const KIND_LABELS: Record<LegacyFinanceRecord["record_kind"], string> = {
   invoice: "历史开票",
   ap_packing: "历史付款打包",
   case_fee: "历史案件应收费用",
+  internal_fee: "历史内部费用",
+  internal_payment: "历史内部请款",
+  internal_packing: "历史内部付款打包",
 };
 
 const mappingLabel = (value?: string) => {
@@ -221,6 +224,9 @@ export function LegacyHistoryPanel({
             "invoice",
             "ap_packing",
             "case_fee",
+            "internal_fee",
+            "internal_payment",
+            "internal_packing",
           ] as LegacyFinanceRecord["record_kind"][]
         ).map((kindKey) => {
           const item = summaryByKind(kindKey);
@@ -278,6 +284,9 @@ export function LegacyHistoryPanel({
               "invoice",
               "ap_packing",
               "case_fee",
+              "internal_fee",
+              "internal_payment",
+              "internal_packing",
             ] as LegacyFinanceRecord["record_kind"][]
           ).map((kindKey) => ({
             value: kindKey,

@@ -42,7 +42,15 @@ export type LegacyFinanceRecord = {
   id: number;
   source_table: string;
   legacy_id: string;
-  record_kind: "ap_payment" | "ar_payment" | "invoice" | "ap_packing" | "case_fee";
+  record_kind:
+    | "ap_payment"
+    | "ar_payment"
+    | "invoice"
+    | "ap_packing"
+    | "case_fee"
+    | "internal_fee"
+    | "internal_payment"
+    | "internal_packing";
   status_code: string;
   status_label: string;
   is_active: boolean;
