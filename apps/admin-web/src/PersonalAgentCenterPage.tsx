@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Card, Empty, Input, List, Modal, Space, Spin, Tag, message } from "antd";
-import { CheckOutlined, CloseOutlined, FileTextOutlined, IdcardOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
+import { Alert, Button, Card, Empty, Input, List, Space, Spin, Tag, message } from "antd";
+import { CheckOutlined, CloseOutlined, IdcardOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
 import { api } from "./api";
 import "./personal-agent-center.css";
 
 type MessageItem = { role: "user" | "assistant"; content: string; created_at?: string };
 type PendingAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; status: "pending" | "approved" | "rejected" };
-type AgentState = { messages: MessageItem[]; pending_actions: PendingAction[]; identity_file?: string };
-type AgentStatus = { ready: boolean; model: string; model_provider?: string; write_requires_confirmation: boolean; identity: { display_name?: string; department?: string; role?: string; position?: string; data_scope?: string } };
+type AgentState = { messages: MessageItem[]; pending_actions: PendingAction[] };
+type AgentStatus = { ready: boolean; model: string; model_provider?: string; write_requires_confirmation: boolean; identity: { display_name?: string; department?: string; role?: string; position?: string } };
 
 const actionLabel = (item: PendingAction) => item.type === "create_task" ? "新建任务" : item.type === "approve_contract" ? "合同审批" : item.summary;
 
@@ -17,8 +17,6 @@ export default function PersonalAgentCenterPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [identityOpen, setIdentityOpen] = useState(false);
-  const [identityContent, setIdentityContent] = useState("");
   const requestRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -32,7 +30,7 @@ export default function PersonalAgentCenterPage() {
       setStatus(statusResponse.data);
       setState(stateResponse.data);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "个人智能体中心加载失败");
+      message.error(error?.response?.data?.detail || "智能体中心加载失败");
     } finally {
       setLoading(false);
     }
@@ -41,16 +39,6 @@ export default function PersonalAgentCenterPage() {
   useEffect(() => { void load(); }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [state.messages.length, sending]);
   useEffect(() => () => requestRef.current?.abort(), []);
-
-  const openIdentity = async () => {
-    try {
-      const { data } = await api.get("/personal-agent/identity.md");
-      setIdentityContent(data.content || "");
-      setIdentityOpen(true);
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || "身份文件读取失败");
-    }
-  };
 
   const decide = async (action: PendingAction, decision: "approved" | "rejected") => {
     try {
@@ -124,7 +112,7 @@ export default function PersonalAgentCenterPage() {
     <header className="personal-agent-header">
       <div className="personal-agent-title">
         <div className="personal-agent-icon"><RobotOutlined /></div>
-        <div><h2>个人智能体中心</h2><span>你的 OA 办公空间</span></div>
+        <div><h2>智能体中心</h2><span>你的 OA 办公空间</span></div>
       </div>
       <Space wrap>
         <Button size="small" onClick={() => { window.location.href = "?page=case-agent-center"; }}>案件智能体</Button>
@@ -140,8 +128,6 @@ export default function PersonalAgentCenterPage() {
           <div className="identity-heading"><IdcardOutlined /><span>我的身份</span></div>
           <strong>{status?.identity?.display_name || "当前用户"}</strong>
           <div className="identity-line">{status?.identity?.department || "—"} · {status?.identity?.position || status?.identity?.role || "—"}</div>
-          <div className="identity-scope"><span>数据范围</span><b>{status?.identity?.data_scope || "按权限实时判断"}</b></div>
-          <Button block icon={<FileTextOutlined />} onClick={() => void openIdentity()}>查看 IDENTITY.md</Button>
         </Card>
         <div className="personal-agent-shortcuts">
           <span>快捷办公</span>
@@ -177,8 +163,5 @@ export default function PersonalAgentCenterPage() {
         </div>
       </section>
     </div>
-    <Modal title="IDENTITY.md · 当前账号身份文件" open={identityOpen} onCancel={() => setIdentityOpen(false)} footer={null} width={720}>
-      <Input.TextArea value={identityContent} readOnly autoSize={{ minRows: 16, maxRows: 28 }} />
-    </Modal>
   </div>;
 }
