@@ -1476,6 +1476,26 @@
 .finance-original-invoice-company .ant-table-cell .ant-space {
   flex-wrap: nowrap;
 }
+.finance-original-invoice-mine .finance-original-table-wrap .ant-table-content > table,
+.finance-original-invoice-pending .finance-original-table-wrap .ant-table-content > table,
+.finance-original-invoice-company .finance-original-table-wrap .ant-table-content > table {
+  table-layout: fixed;
+}
+.finance-original-invoice-mine .finance-original-table-wrap .ant-table-tbody > tr > td:nth-child(n + 3):not(:last-child),
+.finance-original-invoice-pending .finance-original-table-wrap .ant-table-tbody > tr > td:nth-child(n + 3):not(:last-child),
+.finance-original-invoice-company .finance-original-table-wrap .ant-table-tbody > tr > td:nth-child(n + 3):not(:last-child) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.finance-original-invoice-mine .finance-original-table-wrap .ant-table-tbody > tr > td:nth-child(n + 3):not(:last-child) > .ant-btn-link,
+.finance-original-invoice-pending .finance-original-table-wrap .ant-table-tbody > tr > td:nth-child(n + 3):not(:last-child) > .ant-btn-link,
+.finance-original-invoice-company .finance-original-table-wrap .ant-table-tbody > tr > td:nth-child(n + 3):not(:last-child) > .ant-btn-link {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .finance-original-invoice-unissued {
   position: relative;
   margin: 0 8px;
