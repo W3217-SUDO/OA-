@@ -25,8 +25,14 @@ export function createExternalCaseFeeColumns(context: {
         { title: "通知日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.inform_date || row.data.notice_date || "").slice(0, 10) || "—" },
         { title: "回款日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.received_at || row.data.cashed_date || "").slice(0, 10) || "—" },
         { title: "回款金额", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => {
-                const value = row.data.received_amount ?? row.data.cashed_amount;
-                return Number(value || 0) !== 0 ? <Button type="link" className="case-cell-link" onClick={() => context.openRelatedIncomingPayment(row)}>{value}</Button> : value ?? 0;
+                const rawValue = row.data.received_amount ?? row.data.cashed_amount;
+                const normalizedValue = String(rawValue ?? "").trim();
+                const value = normalizedValue && normalizedValue !== "/" && normalizedValue !== "\\"
+                    ? Number(normalizedValue)
+                    : 0;
+                return Number.isFinite(value) && value !== 0
+                    ? <Button type="link" className="case-cell-link" onClick={() => context.openRelatedIncomingPayment(row)}>{value}</Button>
+                    : 0;
             } },
         { title: "开票日期", width: 160, render: (_: unknown, row: CaseRow) => {
                 const receipts = caseReceiptFiles(row.data);
