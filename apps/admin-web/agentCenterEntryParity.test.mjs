@@ -9,9 +9,10 @@ const messageContentSource = readFileSync(new URL("./src/AgentMessageContent.tsx
 const skillSource = readFileSync(new URL("./src/agentSkillRouting.ts", import.meta.url), "utf8");
 
 test("global agent center is a first-level routed workspace", () => {
-  assert.match(appSource, /lazyWithVersionRecovery\("agent-center"/);
+  assert.match(appSource, /lazyWithVersionRecovery\("personal-agent-center"/);
+  assert.match(appSource, /lazyWithVersionRecovery\("case-agent-center"/);
   assert.match(appSource, /key:\s*"agent-center"[\s\S]*?label:\s*"智能体中心"/);
-  assert.match(appSource, /route === "agent-center"[\s\S]*?<AgentCenterPage/);
+  assert.match(appSource, /route === "agent-center"[\s\S]*?<PersonalAgentCenterPage[\s\S]*?route === "case-agent-center"[\s\S]*?<CaseAgentCenterPage/);
   assert.match(appSource, /name === "robot"[\s\S]*?<RobotOutlined/);
 });
 

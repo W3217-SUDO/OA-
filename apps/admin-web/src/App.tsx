@@ -200,7 +200,7 @@ const menuItems: NavItem[] = [
   {
     key: "agent-center",
     icon: <RobotOutlined />,
-    label: "个人智能体中心",
+    label: "智能体中心",
   },
   {
     key: "seal",
@@ -657,7 +657,7 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
       children: investigationChildren,
     };
   }) : built;
-  return normalized.map((item) => item.key === "agent-center" ? { ...item, label: "个人智能体中心" } : item);
+  return normalized.map((item) => item.key === "agent-center" ? { ...item, label: "智能体中心" } : item);
 }
 
 function flattenMenu(items: NavItem[]): NavItem[] {
@@ -884,7 +884,7 @@ const routePageLabels: Record<string, string> = {
   "system-audit": "操作日志",
   "contract-approver-settings": "审批关系",
   "documents-agent": "AI 智能文档",
-  "agent-center": "个人智能体中心",
+  "agent-center": "智能体中心",
   "case-agent-center": "案件智能体中心",
   "notary-import-info": "公证信息导入",
   "notary-import-storage": "取证信息文件导入",
@@ -1889,7 +1889,7 @@ export default function App() {
           onClick={() => navigate("agent-center")}
         >
           <RobotOutlined />
-          <span>个人智能体</span>
+          <span>智能体</span>
         </button>
         <button
           type="button"
