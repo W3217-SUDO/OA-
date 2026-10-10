@@ -2,16 +2,24 @@ import { useEffect, useState } from "react";
 import { Alert, Collapse, message } from "antd";
 import { api } from "../api";
 import { LegacyHistoryPanel } from "./LegacyHistoryPanel";
+import { LegacyPaymentHistorySection } from "./LegacyPaymentHistorySection";
+import type { LegacyPaymentView } from "./useLegacyPaymentHistory";
 import type { LegacyFinanceRecord, LegacyFinanceSummary } from "./types";
 
 type LegacyKind = LegacyFinanceRecord["record_kind"];
 
+const paymentViews: Record<string, LegacyPaymentView> = {
+  "finance-payment-mine": "mine",
+  "finance-payment-audit": "audit",
+  "finance-payment-waiting": "waiting",
+  "finance-payment-print": "print",
+  "finance-payment-package-manage": "package",
+  "finance-payment-writeoff": "writeoff",
+  "finance-payment-query": "query",
+};
+
 function routeHistoryKinds(route: string): LegacyKind[] {
   if (route.startsWith("finance-receipts-")) return ["ar_payment"];
-  if (route === "finance-payment-package-manage" || route === "finance-payment-writeoff") {
-    return ["ap_packing", "ap_payment"];
-  }
-  if (route.startsWith("finance-payment-")) return ["ap_payment", "ap_packing"];
   if (route.startsWith("finance-invoice-")) return ["invoice"];
   if (route === "finance-internal-detail" || route === "finance-internal-company") {
     return ["internal_fee", "internal_payment", "internal_packing"];
@@ -43,6 +51,13 @@ const emptySummary: LegacyFinanceSummary = {
 };
 
 export function LegacyFinanceRouteSection({ route }: { route: string }) {
+  const paymentView = paymentViews[route];
+  return paymentView
+    ? <LegacyPaymentHistorySection view={paymentView} />
+    : <GenericLegacyFinanceRouteSection route={route} />;
+}
+
+function GenericLegacyFinanceRouteSection({ route }: { route: string }) {
   const kinds = routeHistoryKinds(route);
   const [kind, setKind] = useState<LegacyKind | "">(kinds[0] || "");
   const [rows, setRows] = useState<LegacyFinanceRecord[]>([]);
