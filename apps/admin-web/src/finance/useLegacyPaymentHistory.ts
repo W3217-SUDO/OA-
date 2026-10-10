@@ -69,7 +69,7 @@ export const paymentHistoryViews: Record<LegacyPaymentView, {
   audit: {
     title: "历史待审批请款单",
     description: "仅显示旧系统中由当前用户待审批的请款单。",
-    statusCodes: ["1"],
+    statusCodes: ["1", "2"],
     emptyText: "旧库中没有由当前用户待审批的请款单。",
   },
   waiting: {
