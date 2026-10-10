@@ -3260,7 +3260,7 @@ async def archive_case(case_id: int, body: ArchiveCheckInput, identity: dict = D
     archive_type = body.archive_type if body.archive_type in {"normal", "deficit"} else "normal"
     if body.submit and archive_type == "deficit" and not body.comment.strip():
         raise HTTPException(status_code=422, detail="亏损归档必须填写亏损原因")
-    details = {"archive_no": body.archive_no.strip(), "paper_archive_location": body.paper_archive_location.strip(), "paper_volume_count": body.paper_volume_count, "archive_type": archive_type}
+    details = {"archive_no": body.archive_no.strip(), "archived_file_no": body.archive_no.strip(), "paper_archive_location": body.paper_archive_location.strip(), "paper_volume_count": body.paper_volume_count, "archive_type": archive_type}
     case_record.data = {**(case_record.data or {}), **checks, **details}
     if body.submit and archive_type == "normal" and not checks["fees_settled"]:
         details = ((case_record.data or {}).get("archive_check_details") or {}).get("unsettled_fees") or []
@@ -3322,6 +3322,7 @@ async def review_case_archive(case_id: int, body: ArchiveReviewInput, identity: 
 
 async def _apply_case_archive_review(case_id: int, body: ArchiveReviewInput, identity: dict, db: AsyncSession):
     """Apply one review inside the caller's transaction; never commit here."""
+    from app.core.case_archive_numbering import allocate_archive_file_no
     from app.core.cases import (
         _case_archive_checks,
     )
@@ -3389,9 +3390,10 @@ async def _apply_case_archive_review(case_id: int, body: ArchiveReviewInput, ide
     elif body.approved:
         case_record.status = "亏损归档" if archive_type == "deficit" else "已归档"
         archived_at = datetime.now()
-        archive_no = body.archive_no.strip() or str(data.get("archive_no") or "").strip()
-        if archive_type != "deficit" and not archive_no:
-            raise HTTPException(status_code=422, detail="请填写归档号")
+        archive_no = body.archive_no.strip() or str(data.get("archive_no") or data.get("archived_file_no") or "").strip()
+        file_no = await allocate_archive_file_no(
+            case_record, db, year=archived_at.year, operator=identity["username"],
+        )
         case_record.data = {
             **data,
             "case_phase": "亏损归档" if archive_type == "deficit" else data.get("case_phase", "已归档"),
@@ -3401,6 +3403,8 @@ async def _apply_case_archive_review(case_id: int, body: ArchiveReviewInput, ide
             "archived_at": archived_at.isoformat(timespec="seconds"),
             "archive_reviewed_at": archived_at.isoformat(timespec="seconds"),
             "archive_no": archive_no,
+            "archived_file_no": archive_no,
+            "file_no": file_no,
             "archive_reviewer": identity["username"],
             "archive_review_comment": body.comment.strip(),
             "archive_reject_reason": "",
