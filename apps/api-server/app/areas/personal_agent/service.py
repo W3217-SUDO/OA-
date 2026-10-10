@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from uuid import uuid4
 
-import httpx
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,13 +21,15 @@ from app.core.dashboard_todos import dashboard_todos
 from app.core.permissions import _agent_skill_for_identity, _record_scope_conditions, _require_record_module_menu, _user_permission_payload
 from app.core.system import _record_module_menu_allowed
 from app.core.tasks import _task_dict
+from app.core.request_metrics import measure_phase
 from app.data_models.contracts import ContractApprovalStep
 from app.data_models.identity import User
 from app.data_models.records import BusinessRecord
 from app.security import user_role_ids
-from app.agent_mcp.model_tools import MAX_TOOL_ROUNDS, MODEL_TOOLS, ModelToolSession, request_completion
+from app.agent_mcp.model_tools import ModelToolSession
 from app.case_agent import RESPONSE_STYLE_RULES
 from app.areas.personal_agent.materials import material_message, prepare_materials
+from app.areas.personal_agent.response_runtime import ProgressCallback, ResponseMode, request_model
 
 
 _WRITE_MARKER = re.compile(r"<personal_action>\s*(\{.*?\})\s*</personal_action>", re.S)
@@ -228,6 +229,8 @@ def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: d
     system = (
         "你是律所公司的办公智能体，服务当前登录员工，不预设他是律师。律所包含律师、助理、财务、行政、调查、管理等岗位，工作范围只依据系统身份与有效角色权限。不能共享或引用其他用户的聊天记录。"
         "你可以依据系统提供的、已经按权限裁剪的实时摘要和 OA 查询工具回答审批、任务、案件和日常办公问题。"
+        "当前摘要足以回答时直接回答，不要为已有数据重复搜索或调用工具；只有摘要不足或用户要求办理操作时才使用工具。"
+        "遵守用户指定的条数和篇幅，先给重点，不复述历史长回答。"
         "不要猜测没有出现在摘要里的业务事实，不要声称已经写入系统。"
         "办理操作先调用 oa_search_tools 查真实接口和 inputSchema，再用 oa_call_tool 按 schema 调用。"
         "查询可直接取得当前账号有权查看的数据，写操作只生成待确认请求。不得猜工具名称、字段或账号。"
@@ -295,53 +298,25 @@ def _action_from_model(action: dict[str, Any], identity: dict[str, Any], context
     return {"id": str(uuid4()), "type": action_type, "payload": safe_payload, "summary": "新建任务" if action_type == "create_task" else "审批合同", "status": "pending", "requested_by": identity["username"], "created_at": _now()}
 
 
-async def _request_model(
-    messages: list[dict[str, Any]],
-    on_delta: Callable[[str], Awaitable[None]],
-    *,
-    tools: ModelToolSession,
-) -> str:
-    if not (settings.langgraph_api_base_url and settings.langgraph_api_key and settings.langgraph_model):
-        raise HTTPException(status_code=503, detail="个人智能体模型未配置")
-    try:
-        async with asyncio.timeout(180), httpx.AsyncClient(timeout=90, trust_env=False) as client:
-            for _ in range(MAX_TOOL_ROUNDS):
-                result = await request_completion(
-                    client, f"{settings.langgraph_api_base_url.rstrip('/')}/chat/completions",
-                    {"Authorization": f"Bearer {settings.langgraph_api_key}"},
-                    {"model": settings.langgraph_model, "messages": messages, "temperature": 0.2, "tools": MODEL_TOOLS},
-                    stream=True,
-                    on_delta=on_delta,
-                )
-                calls = result.get("tool_calls") or []
-                if calls:
-                    messages.append({**result, "role": "assistant"})
-                    messages.extend(await tools.execute_calls(calls))
-                    continue
-                content = str(result.get("content") or "").strip()
-                if not content:
-                    raise RuntimeError("model_empty_response")
-                return content
-            raise RuntimeError("oa_tool_round_limit_exceeded")
-    except TimeoutError as exc:
-        raise HTTPException(status_code=504, detail="个人智能体本轮处理超时，未取得完成结果") from exc
-    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError, RuntimeError) as exc:
-        raise HTTPException(status_code=502, detail=f"个人智能体本轮处理失败：{exc}") from exc
-
-
-async def generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, skill_id: str = "general-office", attachment_ids: list[int] | None = None, case_id: int | None = None, document_ids: list[int] | None = None) -> dict[str, Any]:
+async def generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, skill_id: str = "general-office", attachment_ids: list[int] | None = None, case_id: int | None = None, document_ids: list[int] | None = None, response_mode: ResponseMode = "fast", on_progress: ProgressCallback | None = None) -> dict[str, Any]:
     username = identity["username"]
     skill = await _agent_skill_for_identity(skill_id, identity, db)
-    materials = await prepare_materials(identity, db, attachment_ids or [], case_id, document_ids or [])
+    if on_progress:
+        await on_progress("正在读取本轮材料…" if attachment_ids or document_ids or case_id else "正在准备问题…")
+    with measure_phase("personal_agent.materials"):
+        materials = await prepare_materials(identity, db, attachment_ids or [], case_id, document_ids or [])
     state = _read_state(username)
     metadata = {"skill_id": skill.id, "skill_name": skill.name, "case_id": case_id, "case_no": (materials["case"] or {}).get("case", {}).get("serial_no", ""), "attachments": [{"id": item["id"], "name": item["name"], "case_id": case_id if item["id"] in (document_ids or []) else None} for item in materials["readings"]]}
     user_message = {"role": "user", "content": text, "created_at": _now(), **metadata}
     state["messages"].append(user_message)
     state["messages"] = state["messages"][-100:]
     await _save_state(username, state)
-    context = await build_context(identity, db)
+    if on_progress:
+        await on_progress("正在获取当前待办…")
+    with measure_phase("personal_agent.context"):
+        context = await build_context(identity, db)
     tools = ModelToolSession()
-    raw = await _request_model(_prompt_messages(identity, state, context, text, skill, materials), on_delta, tools=tools)
+    raw = await request_model(_prompt_messages(identity, state, context, text, skill, materials), on_delta, tools=tools, response_mode=response_mode, on_progress=on_progress)
     response, model_action = _extract_action(raw)
     state["structured_results"] = tools.structured_results
     for prepared in tools.pending_actions:

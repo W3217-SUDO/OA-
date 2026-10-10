@@ -7,6 +7,7 @@ type Props = {
   item: WorkspaceMessage;
   generating: boolean;
   readingMaterials: boolean;
+  progress: string;
   saved: boolean;
   busy: boolean;
   onCopy: (content: string) => void;
@@ -14,7 +15,7 @@ type Props = {
   onSave: () => void;
 };
 
-export function ConversationMessage({ item, generating, readingMaterials, saved, busy, onCopy, onPreview, onSave }: Props) {
+export function ConversationMessage({ item, generating, readingMaterials, progress, saved, busy, onCopy, onPreview, onSave }: Props) {
   const assistant = item.role === "assistant";
   return <article className={`personal-message ${item.role}${item.failed ? " failed" : ""}`}>
     <div className="workspace-message-avatar" aria-hidden="true">{assistant ? <RobotOutlined /> : "我"}</div>
@@ -26,7 +27,7 @@ export function ConversationMessage({ item, generating, readingMaterials, saved,
       </div>
       <div className="workspace-message-surface">
         <div className="workspace-message-body">
-          {assistant ? item.content ? <AgentMessageContent content={item.content} /> : <span className="workspace-thinking">{generating ? readingMaterials ? "正在读取材料并处理问题…" : "正在处理…" : "未收到回答"}</span> : <div className="workspace-user-content">{item.content}</div>}
+          {assistant ? item.content ? <AgentMessageContent content={item.content} /> : <span className="workspace-thinking" role="status">{generating ? progress || (readingMaterials ? "正在读取材料并处理问题…" : "正在处理…") : "未收到回答"}</span> : <div className="workspace-user-content">{item.content}</div>}
         </div>
         {!!item.attachments?.length && <div className="workspace-message-files">
           {item.attachments.map((file) => <button key={file.id} onClick={() => onPreview(file)}><PaperClipOutlined />{file.name}</button>)}

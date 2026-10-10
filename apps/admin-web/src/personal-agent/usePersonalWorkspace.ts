@@ -4,7 +4,7 @@ import { api } from "../api";
 import { DEFAULT_AGENT_SKILL } from "../agentSkillRouting";
 import { aiWordDocumentName, isAiWordGenerationRequest, isUsableAiDocumentContent } from "../legal/constants";
 import { confirmCaseAgentDocument } from "../legal/services/agentDocumentConfirmation";
-import { errorText, type Material, type PendingAction, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
+import { errorText, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
 
 const SUPPORTED_FILE = /\.(pdf|docx|xlsx|txt|png|jpe?g)$/i;
 export const MATERIAL_ACCEPT = ".pdf,.docx,.xlsx,.txt,.png,.jpg,.jpeg";
@@ -18,6 +18,8 @@ export function usePersonalWorkspace() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [sending, setSending] = useState(false);
+  const [responseMode, setResponseMode] = useState<ResponseMode>("fast");
+  const [progress, setProgress] = useState("");
   const [uploading, setUploading] = useState(false);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [selectedCase, setSelectedCase] = useState<WorkspaceCase | null>(null);
@@ -78,6 +80,7 @@ export function usePersonalWorkspace() {
     const controller = new AbortController();
     requestRef.current = controller;
     setSending(true);
+    setProgress("正在连接办公助手…");
     setInput("");
     const assistantIndex = state.messages.length + 1;
     const metadata = { skill_name: skill.name, case_id: selectedCase?.id, case_no: selectedCase?.serial_no };
@@ -85,7 +88,7 @@ export function usePersonalWorkspace() {
     try {
       const response = await fetch("/api/v1/personal-agent/messages", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("access_token") || ""}` },
-        body: JSON.stringify({ content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: selectedCase?.id, document_ids: caseMaterials.map((item) => item.id) }), signal: controller.signal,
+        body: JSON.stringify({ content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: selectedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast" }), signal: controller.signal,
       });
       if (!response.ok || !response.body) {
         const detail = await response.text();
@@ -104,7 +107,8 @@ export function usePersonalWorkspace() {
           const line = block.split("\n").find((item) => item.startsWith("data:"));
           if (!line) continue;
           const event = JSON.parse(line.slice(5).trim()) as { type: string; content?: string; detail?: string; state?: WorkspaceState };
-          if (event.type === "delta") {
+          if (event.type === "progress") { setProgress(event.content || ""); }
+          else if (event.type === "delta") {
             setState((current) => ({ ...current, messages: current.messages.map((item, index) => index === assistantIndex ? { ...item, content: item.content + (event.content || "") } : item) }));
           } else if (event.type === "state" && event.state) { completed = true; finalState = event.state; setState(event.state); }
           else if (event.type === "error") throw new Error(event.detail || "智能体处理失败");
@@ -127,7 +131,7 @@ export function usePersonalWorkspace() {
       const stopped = (error as Error).name === "AbortError";
       setState((current) => ({ ...current, messages: current.messages.map((item, index) => index === assistantIndex ? { ...item, failed: !stopped, content: stopped ? item.content || "已停止生成" : errorText(error, "智能体处理失败") } : item) }));
       if (!stopped) setInput(content);
-    } finally { requestRef.current = null; setSending(false); }
+    } finally { requestRef.current = null; setSending(false); setProgress(""); }
   };
 
   const decide = async (action: PendingAction, decision: "approved" | "rejected") => {
@@ -150,5 +154,5 @@ export function usePersonalWorkspace() {
     confirmCaseAgentDocument({ caseId: item.case_id, serialNo: item.case_no || "", name, content: item.content, onSaved: async () => { setSavedDocuments((current) => ({ ...current, [index]: name })); } });
   };
 
-  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, upload, uploading, materials, setMaterials, selectedCase, chooseCase, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, stop: () => requestRef.current?.abort(), refreshSkills, saveWord, savedDocuments };
+  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, responseMode, setResponseMode, progress, upload, uploading, materials, setMaterials, selectedCase, chooseCase, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, stop: () => requestRef.current?.abort(), refreshSkills, saveWord, savedDocuments };
 }

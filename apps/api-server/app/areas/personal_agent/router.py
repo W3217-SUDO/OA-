@@ -14,6 +14,7 @@ from app.database import get_db
 from app.security import current_identity
 from app.areas.personal_agent.service import build_context, decide_action, generate_response, personal_identity, personal_state
 from app.areas.personal_agent.workspace import workspace_commands
+from app.areas.personal_agent.response_runtime import ResponseMode, supports_response_modes
 
 
 router = APIRouter()
@@ -25,6 +26,7 @@ class PersonalMessageInput(BaseModel):
     attachment_ids: list[int] = Field(default_factory=list, max_length=12)
     case_id: int | None = Field(default=None, ge=1)
     document_ids: list[int] = Field(default_factory=list, max_length=12)
+    response_mode: ResponseMode = "fast"
 
 
 class PersonalActionDecisionInput(BaseModel):
@@ -40,6 +42,7 @@ async def personal_agent_status(identity: dict = Depends(current_identity), db: 
         "model": settings.langgraph_model,
         "model_provider": settings.langgraph_model_provider,
         "runtime": "personal-agent",
+        "supports_response_modes": supports_response_modes(),
         "write_requires_confirmation": True,
         "identity": {key: value for key, value in safe_identity.items() if not key.startswith("_")},
         "commands": workspace_commands(safe_identity),
@@ -76,9 +79,12 @@ async def personal_agent_message(body: PersonalMessageInput, identity: dict = De
     async def on_delta(content: str) -> None:
         await queue.put({"type": "delta", "content": content})
 
+    async def on_progress(content: str) -> None:
+        await queue.put({"type": "progress", "content": content})
+
     async def run() -> None:
         try:
-            result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta, skill_id=body.skill_id, attachment_ids=body.attachment_ids, case_id=body.case_id, document_ids=body.document_ids), timeout=180)
+            result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta, skill_id=body.skill_id, attachment_ids=body.attachment_ids, case_id=body.case_id, document_ids=body.document_ids, response_mode=body.response_mode, on_progress=on_progress), timeout=180)
             await queue.put({"type": "state", "state": result["state"]})
         except TimeoutError:
             await queue.put({"type": "error", "detail": "个人智能体本轮处理超时，请查看待确认请求后继续"})
