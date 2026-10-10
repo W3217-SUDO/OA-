@@ -8,7 +8,8 @@ from fastapi.routing import APIRoute
 from PIL import Image
 
 from app.agent_attachment_reader import read_attachment
-from app.case_agent import DOCUMENT_READING_RULES
+from app.agent_mcp.model_tools import request_completion
+from app.case_agent import DOCUMENT_READING_RULES, CaseAgentRuntime
 from app.config import settings
 from app.main import app
 
@@ -67,11 +68,17 @@ class AgentAttachmentReaderContractTest(unittest.TestCase):
 
     def test_selected_documents_and_streaming_are_permission_scoped(self):
         source = self.message_endpoint_source()
-        runtime_source = (Path(__file__).resolve().parents[2] / "app" / "case_agent.py").read_text(encoding="utf-8")
+        runtime_source = inspect.getsource(CaseAgentRuntime._request_model)
+        completion_source = inspect.getsource(request_completion)
         self.assertIn("body.document_ids is None", source)
         self.assertIn("item not in allowed_document_ids", source)
         self.assertIn("case_agent_runtime.invoke_stream", source)
-        self.assertIn('choices = payload.get("choices") or []', runtime_source)
+        self.assertIn("from .agent_mcp.model_tools import", runtime_source)
+        self.assertIn("result = await request_completion(", runtime_source)
+        self.assertEqual(request_completion.__module__, "app.agent_mcp.model_tools")
+        self.assertIn('choices = event.get("choices") or []', completion_source)
+        self.assertIn('json={**payload, "stream": True}', completion_source)
+        self.assertIn("await on_delta(visible[emitted:])", completion_source)
 
 
 if __name__ == "__main__":
