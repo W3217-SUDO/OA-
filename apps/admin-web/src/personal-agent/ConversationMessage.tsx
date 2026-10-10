@@ -18,7 +18,7 @@ type Props = {
 export function ConversationMessage({ item, generating, readingMaterials, progress, saved, busy, onCopy, onPreview, onSave }: Props) {
   const assistant = item.role === "assistant";
   return <article className={`personal-message ${item.role}${item.failed ? " failed" : ""}`}>
-    <div className="workspace-message-avatar" aria-hidden="true">{assistant ? <RobotOutlined /> : "我"}</div>
+    {assistant && <div className="workspace-message-avatar" aria-hidden="true"><RobotOutlined /></div>}
     <div className="workspace-message-main">
       <div className="workspace-message-heading">
         <span>{assistant ? "办公助手" : "我"}</span>
