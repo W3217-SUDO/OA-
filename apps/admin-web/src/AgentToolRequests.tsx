@@ -23,7 +23,7 @@ const requestAction = (request: ToolRequest) => ({
   payload: { request_id: request.request_id }, preview: request.preview,
 });
 
-export function AgentToolRequests() {
+export function AgentToolRequests({ buttonLabel = "MCP 待确认", titlePrefix = "MCP" }: { buttonLabel?: string; titlePrefix?: string } = {}) {
   const [open, setOpen] = useState(false);
   const [requests, setRequests] = useState<RequestPage | null>(null);
   const [active, setActive] = useState<ToolRequest | null>(null);
@@ -87,8 +87,8 @@ export function AgentToolRequests() {
   };
 
   return <>
-    <Button size="small" icon={<CheckOutlined />} onClick={() => { setOpen(true); setActive(null); void loadRequests(); }}>MCP 待确认</Button>
-    <Modal open={open} title={active ? "MCP 操作确认" : "MCP 待确认操作"} width={760} onCancel={close} maskClosable={!deciding}
+    <Button size="small" icon={<CheckOutlined />} onClick={() => { setOpen(true); setActive(null); void loadRequests(); }}>{buttonLabel}</Button>
+    <Modal open={open} title={active ? `${titlePrefix}操作确认` : titlePrefix === "MCP" ? "MCP 待确认操作" : `${titlePrefix}操作记录`} width={760} onCancel={close} maskClosable={!deciding}
       footer={active ? <Space wrap>
         <Button icon={<ArrowLeftOutlined />} disabled={deciding} onClick={() => { setActive(null); void loadRequests(); }}>返回列表</Button>
         {active.status === "pending" && <>

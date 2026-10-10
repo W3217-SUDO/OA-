@@ -9,9 +9,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.constants import logger
 from app.database import get_db
 from app.security import current_identity
 from app.areas.personal_agent.service import decide_action, generate_response, personal_identity, personal_state
+from app.areas.personal_agent.workspace import workspace_commands
 
 
 router = APIRouter()
@@ -19,6 +21,10 @@ router = APIRouter()
 
 class PersonalMessageInput(BaseModel):
     content: str = Field(min_length=1, max_length=8000)
+    skill_id: str = Field(default="general-office", max_length=120)
+    attachment_ids: list[int] = Field(default_factory=list, max_length=12)
+    case_id: int | None = Field(default=None, ge=1)
+    document_ids: list[int] = Field(default_factory=list, max_length=12)
 
 
 class PersonalActionDecisionInput(BaseModel):
@@ -36,6 +42,7 @@ async def personal_agent_status(identity: dict = Depends(current_identity), db: 
         "runtime": "personal-agent",
         "write_requires_confirmation": True,
         "identity": {key: value for key, value in safe_identity.items() if not key.startswith("_")},
+        "commands": workspace_commands(safe_identity),
     }
 
 
@@ -61,13 +68,14 @@ async def personal_agent_message(body: PersonalMessageInput, identity: dict = De
 
     async def run() -> None:
         try:
-            result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta), timeout=180)
+            result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta, skill_id=body.skill_id, attachment_ids=body.attachment_ids, case_id=body.case_id, document_ids=body.document_ids), timeout=180)
             await queue.put({"type": "state", "state": result["state"]})
         except TimeoutError:
             await queue.put({"type": "error", "detail": "个人智能体本轮处理超时，请查看待确认请求后继续"})
         except HTTPException as exc:
             await queue.put({"type": "error", "detail": str(exc.detail)})
         except Exception:
+            logger.exception("个人智能体生成失败，用户=%s", safe_identity["username"])
             await queue.put({"type": "error", "detail": "个人智能体处理失败，请稍后重试"})
         finally:
             await queue.put({"type": "done"})
