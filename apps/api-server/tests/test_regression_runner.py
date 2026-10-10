@@ -259,3 +259,7 @@ class RegressionRunnerTests(unittest.TestCase):
             result = run_regression.run_file(self.path, self.args)
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("缺少真实的正数方法执行计数", result["output"])
+
+
+if __name__ == "__main__":
+    unittest.main()
