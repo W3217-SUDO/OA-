@@ -3,6 +3,9 @@ import { Button, Empty, Form, Image, Input, List, message, Modal, Select, Space,
 import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, DeleteOutlined, EditOutlined, FolderOpenOutlined, FolderOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined, UploadOutlined } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
 import { AgentMessageContent } from "./AgentMessageContent";
+import { AgentOperationPreview, agentOperationError, hasAgentOperationPreview, type AgentActionPreview } from "./AgentOperationPreview";
+import { AgentToolRequests } from "./AgentToolRequests";
+import { AgentToolResult } from "./AgentToolResult";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import { AGENT_DOCUMENT_LIMIT, buildAgentDocumentTree } from "./legal/constants";
 import type { CaseAgentDocument } from "./legal/types";
@@ -11,9 +14,8 @@ import "./agent-center.css";
 type CaseOption = { id: number; serial_no: string; title: string; customer: string; status: string };
 type AgentAttachment = { id: number; name: string; mime_type?: string; preview_url?: string };
 type AgentMessage = { id?: string; role: "user" | "assistant"; content: string; created_at?: string; attachments?: AgentAttachment[] };
-type AgentActionPreview = { target?: string; changes?: { field: string; before: unknown; after: unknown }[]; create?: Record<string, unknown> };
-type AgentAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; preview?: AgentActionPreview; status: "pending" | "approved" | "rejected" };
-type AgentState = { messages: AgentMessage[]; pending_actions: AgentAction[]; active_skill?: string };
+type AgentAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; preview?: AgentActionPreview; execution_result?: unknown; status: "pending" | "approved" | "rejected" };
+type AgentState = { messages: AgentMessage[]; pending_actions: AgentAction[]; active_skill?: string; structured_results?: unknown[] };
 type AgentStatus = { ready: boolean; model: string; checkpoint_backend: string; write_requires_approval: boolean; skills?: AgentSkill[] };
 type CustomAgentSkill = AgentSkill & { custom?: boolean; enabled?: boolean; instruction?: string };
 type WorkflowPhase = { code: string; name: string; state: "completed" | "current" | "pending"; target_days?: number | null };
@@ -30,24 +32,6 @@ const PHASE_SHORT_NAMES: Record<string, string> = {
   enforcement: "执行",
   archive: "归档",
 };
-const ACTION_TYPE_NAMES: Record<string, string> = {
-  "case.update": "修改案件字段",
-  "case.data.update": "修改案件信息",
-  "case.task.create": "新建案件任务",
-  "case.reminder.create": "新建期限提醒",
-  "customer.update": "修改客户资料",
-  "contract.update": "修改合同资料",
-};
-const ACTION_FIELD_NAMES: Record<string, string> = {
-  title: "名称", customer: "客户", status: "状态", description: "说明",
-  court: "法院", first_instance_court: "一审法院", first_instance_case_no: "一审案号",
-  second_instance_court: "二审法院", second_instance_case_no: "二审案号",
-  cause_or_charge: "案由", case_stage: "案件阶段", filing_date: "立案日期",
-  acceptance_date: "受理日期", judgment_date: "判决日期", effective_date: "生效日期",
-  archive_no: "档案号", paper_archive_location: "纸质档案位置", client_position: "客户诉讼地位",
-  owner: "负责人", deadline: "截止日期", reminder_date: "提醒日期", priority: "优先级", content: "提醒内容",
-};
-const actionValue = (value: unknown) => value === null || value === undefined || value === "" ? "—" : typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
 export default function AgentCenterPage() {
   const [cases, setCases] = useState<CaseOption[]>([]);
   const [selected, setSelected] = useState<CaseOption | null>(null);
@@ -336,11 +320,11 @@ export default function AgentCenterPage() {
     const generation = loadGenerationRef.current;
     setDecisionLoading(action.id);
     try {
-      const { data } = await api.post(`/case-spaces/${selected.id}/agent/actions/${action.id}/decision`, { decision, comment: "智能体中心人工审批" });
+      const { data } = await api.post(`/case-spaces/${selected.id}/agent/actions/${action.id}/decision`, { decision, comment: "智能体中心人工审批" }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
       if (selectedIdRef.current === caseId && generation === loadGenerationRef.current) setState(data);
       message.success(decision === "approved" ? "操作已批准并写入系统" : "操作已驳回，系统数据未修改");
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "审批失败");
+      message.error(agentOperationError(error, "审批失败"));
     } finally {
       setDecisionLoading("");
     }
@@ -438,6 +422,7 @@ export default function AgentCenterPage() {
         <Tag>客户</Tag><Tag>合同</Tag><Tag>案件</Tag><Tag>线索</Tag><Tag>调查</Tag><Tag>财务</Tag>
       </Space>
     </header>
+    <div style={{ padding: "6px 14px", borderBottom: "1px solid #dce2e8", background: "#fff" }}><AgentToolRequests /></div>
     <Modal open={skillManagerOpen} title="我的技能" width={760} footer={null} onCancel={() => { setSkillManagerOpen(false); resetSkillEditor(); }}>
       <div className="agent-skill-manager" data-testid="agent-skill-manager">
         <div className="agent-skill-list">
@@ -507,20 +492,10 @@ export default function AgentCenterPage() {
             width={680}
             footer={activeAction ? [
               <Button key="reject" danger icon={<CloseOutlined />} disabled={Boolean(decisionLoading)} onClick={() => void decide(activeAction, "rejected")}>驳回，不修改</Button>,
-              <Button key="approve" type="primary" loading={decisionLoading === activeAction.id} onClick={() => void decide(activeAction, "approved")}>批准并执行</Button>,
+              <Button key="approve" type="primary" disabled={Boolean(decisionLoading) || !hasAgentOperationPreview(activeAction)} loading={decisionLoading === activeAction.id} onClick={() => void decide(activeAction, "approved")}>批准并执行</Button>,
             ] : null}
           >
-            {activeAction ? <div className="agent-action-approval" data-testid="agent-action-approval">
-              <div className="agent-action-summary"><Tag color="processing">{ACTION_TYPE_NAMES[activeAction.type] || activeAction.type}</Tag><strong>{activeAction.summary}</strong><small>目标：{activeAction.preview?.target || selected.serial_no}</small></div>
-              <div className="agent-action-warning">操作权限继承当前账号原有业务权限。批准后将立即写入系统并记录操作日志；驳回不会修改任何数据。</div>
-              {activeAction.preview?.changes?.length ? <div className="agent-action-changes">
-                <div className="agent-action-change-head"><span>字段</span><span>修改前</span><span>修改后</span></div>
-                {activeAction.preview.changes.map((change) => <div key={change.field}><strong>{ACTION_FIELD_NAMES[change.field] || change.field}</strong><span>{actionValue(change.before)}</span><span>{actionValue(change.after)}</span></div>)}
-              </div> : null}
-              {activeAction.preview?.create ? <div className="agent-action-create">
-                {Object.entries(activeAction.preview.create).map(([field, value]) => <div key={field}><strong>{ACTION_FIELD_NAMES[field] || field}</strong><span>{actionValue(value)}</span></div>)}
-              </div> : null}
-            </div> : null}
+            {activeAction ? <div style={{ maxHeight: "60dvh", overflowY: "auto" }}><AgentOperationPreview action={activeAction} target={selected.serial_no} /></div> : null}
           </Modal>
           <div className="agent-global-messages" ref={messagesContainerRef} onScroll={(event) => {
             const container = event.currentTarget;
@@ -529,6 +504,7 @@ export default function AgentCenterPage() {
             {!agentLoading && !state?.messages?.length && <div className="agent-global-empty"><RobotOutlined /><strong>开始分析当前业务空间</strong><span>回答会综合关联的客户、合同、案件、线索、调查和财务数据。</span></div>}
             {state?.messages?.map((item, index) => <div key={item.id || index} className={`agent-global-message agent-global-message-${item.role}`}><small>{item.role === "user" ? "我" : "智能体"}</small><div>{item.attachments?.length ? <div className="agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><Image src={attachment.preview_url} alt={attachment.name} preview /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.role === "assistant" ? <AgentMessageContent content={item.content} /> : item.content}</div></div>)}
             {(agentLoading || sending) && <div className="agent-global-loading"><RobotOutlined /> {sending ? "正在分析关联业务数据..." : "正在加载会话..."}</div>}
+            <AgentToolResult result={[state?.structured_results, ...(state?.pending_actions || []).filter((item) => item.status === "approved").map((item) => item.execution_result)]} />
             <div ref={messagesEndRef} />
           </div>
           {!state?.messages?.length && status?.ready && <div className="agent-global-suggestions">{(selectedSkill?.quick_prompts?.length ? selectedSkill.quick_prompts : ["概括业务空间现状", "检查期限与任务风险"]).map((text) => <Button key={text} size="small" onClick={() => void send(text)}>{text}</Button>)}</div>}

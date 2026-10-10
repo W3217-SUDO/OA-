@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Card, Empty, Input, List, Space, Spin, Tag, message } from "antd";
+import { Alert, Button, Card, Empty, Input, List, Modal, Space, Spin, Tag, message } from "antd";
 import { CheckOutlined, CloseOutlined, IdcardOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
 import { api } from "./api";
+import { AgentOperationPreview, agentOperationError, agentOperationName, hasAgentOperationPreview, type AgentActionPreview } from "./AgentOperationPreview";
+import { AgentToolRequests } from "./AgentToolRequests";
+import { AgentToolResult } from "./AgentToolResult";
 import "./personal-agent-center.css";
 
 type MessageItem = { role: "user" | "assistant"; content: string; created_at?: string };
-type PendingAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; status: "pending" | "approved" | "rejected" };
-type AgentState = { messages: MessageItem[]; pending_actions: PendingAction[] };
+type PendingAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; preview?: AgentActionPreview; status: "pending" | "approved" | "rejected" };
+type AgentState = { messages: MessageItem[]; pending_actions: PendingAction[]; structured_results?: unknown[] };
 type AgentStatus = { ready: boolean; model: string; model_provider?: string; write_requires_confirmation: boolean; identity: { display_name?: string; department?: string; role?: string; position?: string } };
-
-const actionLabel = (item: PendingAction) => item.type === "create_task" ? "新建任务" : item.type === "approve_contract" ? "合同审批" : item.summary;
 
 export default function PersonalAgentCenterPage() {
   const [status, setStatus] = useState<AgentStatus | null>(null);
@@ -17,6 +18,10 @@ export default function PersonalAgentCenterPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [activeAction, setActiveAction] = useState<PendingAction | null>(null);
+  const [decisionLoading, setDecisionLoading] = useState(false);
+  const [decisionResult, setDecisionResult] = useState<unknown>();
+  const decisionRef = useRef(false);
   const requestRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -41,13 +46,22 @@ export default function PersonalAgentCenterPage() {
   useEffect(() => () => requestRef.current?.abort(), []);
 
   const decide = async (action: PendingAction, decision: "approved" | "rejected") => {
+    if (decisionRef.current) return;
+    decisionRef.current = true;
+    setDecisionLoading(true);
     try {
-      const { data } = await api.post(`/personal-agent/actions/${action.id}/decision`, { decision });
-      setState(data.state || state);
+      const { data } = await api.post(`/personal-agent/actions/${action.id}/decision`, { decision }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
+      setState(data.state);
+      setDecisionResult(data.result);
+      setActiveAction(null);
       message.success(decision === "approved" ? "操作已完成" : "已取消操作");
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "操作未完成，系统数据未改变");
+      message.error(agentOperationError(error, "操作未完成，请刷新查看执行状态"));
+      setActiveAction(null);
       void load();
+    } finally {
+      decisionRef.current = false;
+      setDecisionLoading(false);
     }
   };
 
@@ -121,6 +135,7 @@ export default function PersonalAgentCenterPage() {
         <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
       </Space>
     </header>
+    <div style={{ padding: "6px 14px", borderBottom: "1px solid #dfe5ea", background: "#fff" }}><AgentToolRequests /></div>
     {!status?.ready && <Alert className="personal-agent-alert" type="warning" showIcon message="个人智能体暂未就绪" description="请检查当前 OA 配置的大模型服务。" />}
     <div className="personal-agent-layout">
       <aside className="personal-agent-sidebar">
@@ -145,14 +160,14 @@ export default function PersonalAgentCenterPage() {
             <div className="message-role">{item.role === "user" ? "我" : "个人智能体"}</div>
             <div className="message-bubble">{item.content || (sending && index === state.messages.length - 1 ? "正在思考..." : "")}</div>
           </div>)}
+          <AgentToolResult result={[state.structured_results, decisionResult]} />
           <div ref={bottomRef} />
         </div>
-        {!!state.pending_actions.length && <div className="pending-actions">
+        {!!state.pending_actions.filter((item) => item.status === "pending").length && <div className="pending-actions">
           <div className="pending-title">待确认操作</div>
-          <List size="small" dataSource={state.pending_actions} renderItem={(item) => <List.Item actions={[
-            <Button key="approve" type="primary" size="small" icon={<CheckOutlined />} onClick={() => void decide(item, "approved")}>确认</Button>,
-            <Button key="reject" size="small" icon={<CloseOutlined />} onClick={() => void decide(item, "rejected")}>取消</Button>,
-          ]}><List.Item.Meta title={actionLabel(item)} description={item.summary} /></List.Item>} />
+          <List size="small" dataSource={state.pending_actions.filter((item) => item.status === "pending")} renderItem={(item) => <List.Item actions={[
+            <Button key="approve" type="primary" size="small" icon={<CheckOutlined />} disabled={decisionLoading} onClick={() => setActiveAction(item)}>查看并确认</Button>,
+          ]}><List.Item.Meta title={agentOperationName(item)} description={item.summary} /></List.Item>} />
         </div>}
         <div className="personal-agent-composer">
           <Input.TextArea value={input} onChange={(event) => setInput(event.target.value)} onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); void send(); } }} autoSize={{ minRows: 2, maxRows: 6 }} placeholder="告诉智能体你要完成的 OA 工作" disabled={sending} />
@@ -163,5 +178,11 @@ export default function PersonalAgentCenterPage() {
         </div>
       </section>
     </div>
+    <Modal open={Boolean(activeAction)} title="智能体操作确认" width={760} maskClosable={!decisionLoading} onCancel={() => { if (!decisionLoading) setActiveAction(null); }} footer={activeAction ? [
+      <Button key="reject" icon={<CloseOutlined />} disabled={decisionLoading} onClick={() => void decide(activeAction, "rejected")}>取消操作</Button>,
+      <Button key="approve" type="primary" icon={<CheckOutlined />} loading={decisionLoading} disabled={decisionLoading || !hasAgentOperationPreview(activeAction)} onClick={() => void decide(activeAction, "approved")}>确认并执行</Button>,
+    ] : null}>
+      {activeAction && <div style={{ maxHeight: "60dvh", overflowY: "auto" }}><AgentOperationPreview action={activeAction} /></div>}
+    </Modal>
   </div>;
 }

@@ -134,6 +134,9 @@ export type CaseAgentAction = {
   id: string;
   type: string;
   summary: string;
+  payload?: Record<string, unknown>;
+  preview?: import("../AgentOperationPreview").AgentActionPreview;
+  execution_result?: unknown;
   status: "pending" | "approved" | "rejected" | "restored";
   requested_by?: string;
   requested_at?: string;
@@ -146,6 +149,7 @@ export type CaseAgentState = {
   thread_id: string;
   messages: CaseAgentMessage[];
   pending_actions: CaseAgentAction[];
+  structured_results?: unknown[];
   last_response: string;
   updated_at?: string;
   active_skill?: string;

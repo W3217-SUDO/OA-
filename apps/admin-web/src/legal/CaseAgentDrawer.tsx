@@ -8,7 +8,10 @@ RobotOutlined,
 SendOutlined,
 StopOutlined,
 } from "@ant-design/icons";
-import { Alert,Button,Drawer,Image,Input,message,Select,Space,Tag,Tree } from "antd";
+import { Alert,Button,Drawer,Image,Input,message,Modal,Select,Space,Tag,Tree } from "antd";
+import { useEffect, useState } from "react";
+import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
+import { AgentToolResult } from "../AgentToolResult";
 import type { ClipboardEvent,Key,PointerEvent as ReactPointerEvent } from "react";
 import {
 AGENT_DOCUMENT_LIMIT,
@@ -103,6 +106,14 @@ export const CaseAgentDrawer = ({
   stopCaseAgentResponse,
   agentMessagesEndRef,
 }: CaseAgentDrawerProps) => {
+  const [activeAction, setActiveAction] = useState<CaseAgentAction | null>(null);
+  useEffect(() => { setActiveAction(null); }, [agentCase?.id, agentOpen]);
+  const decideActiveAction = async (decision: "approved" | "rejected") => {
+    if (!activeAction || agentDecisionLoading) return;
+    await decideCaseAgentAction(activeAction, decision);
+    setActiveAction(null);
+  };
+  const actionDisabled = (action: CaseAgentAction) => Boolean(agentDecisionLoading) || (action.type !== "mcp.call" && !counselDetailCapabilities.can_write);
   return (
     <Drawer
       className="case-agent-drawer"
@@ -135,21 +146,26 @@ export const CaseAgentDrawer = ({
         {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 LangGraph 服务配置后重试。" />}
         {agentState?.pending_actions?.length ? <section className="case-agent-actions">
           <div className="case-agent-section-title">待审批操作</div>
-          <Alert type="info" showIcon title="批准后才会执行写入；删除操作仅做可恢复的逻辑删除。" />
+          <Alert type="info" showIcon title="写入须人工确认后执行，原业务权限与审批规则不变。" />
           {[...agentState.pending_actions].reverse().map((action) => <div className="case-agent-action" key={action.id}>
             <div>
               <strong>{action.summary}</strong>
-              <span>{action.type}</span>
+              <span>{agentOperationName(action)}</span>
             </div>
             {action.status === "pending" ? <Space>
-              <Button size="small" type="primary" disabled={!counselDetailCapabilities.can_write} loading={agentDecisionLoading === action.id} onClick={() => void decideCaseAgentAction(action, "approved")}>批准</Button>
-              <Button size="small" danger icon={<CloseOutlined />} disabled={!counselDetailCapabilities.can_write} onClick={() => void decideCaseAgentAction(action, "rejected")}>驳回</Button>
+              <Button size="small" type="primary" disabled={actionDisabled(action)} loading={agentDecisionLoading === action.id} onClick={() => setActiveAction(action)}>查看并确认</Button>
             </Space> : <Space>
               <Tag color={action.status === "approved" ? "success" : action.status === "restored" ? "blue" : "error"}>{action.status === "approved" ? "已批准" : action.status === "restored" ? "已恢复" : "已驳回"}</Tag>
               {action.status === "approved" && action.type.endsWith(".delete") && <Button size="small" loading={agentDecisionLoading === action.id} onClick={() => void restoreCaseAgentAction(action)}>恢复</Button>}
             </Space>}
           </div>)}
         </section> : null}
+        <Modal open={Boolean(activeAction)} title="案件智能体操作确认" width={760} maskClosable={!agentDecisionLoading} onCancel={() => { if (!agentDecisionLoading) setActiveAction(null); }} footer={activeAction ? [
+          <Button key="reject" danger icon={<CloseOutlined />} disabled={actionDisabled(activeAction)} onClick={() => void decideActiveAction("rejected")}>驳回，不修改</Button>,
+          <Button key="approve" type="primary" disabled={actionDisabled(activeAction) || !hasAgentOperationPreview(activeAction)} loading={agentDecisionLoading === activeAction.id} onClick={() => void decideActiveAction("approved")}>批准并执行</Button>,
+        ] : null}>
+          {activeAction && <div style={{ maxHeight: "60dvh", overflowY: "auto" }}><AgentOperationPreview action={activeAction} target={agentCase?.serial_no} /></div>}
+        </Modal>
         <div className="case-agent-messages" aria-live="polite">
           {!agentLoading && !agentState?.messages?.length && <div className="case-agent-empty">
             <RobotOutlined />
@@ -162,6 +178,7 @@ export const CaseAgentDrawer = ({
             <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><Image src={attachment.preview_url} alt={attachment.name} preview /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div>
           </div>)}
           {(agentLoading || agentSending) && <div className="case-agent-thinking"><RobotOutlined /> {agentSending ? "正在分析案件空间..." : "正在载入会话..."}</div>}
+          <AgentToolResult result={[agentState?.structured_results, ...(agentState?.pending_actions || []).filter((item) => item.status === "approved").map((item) => item.execution_result)]} />
           <div ref={agentMessagesEndRef} />
         </div>
         {!agentLoading && !agentState?.messages?.length && agentStatus?.ready && <div className="case-agent-suggestions">

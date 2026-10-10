@@ -1,6 +1,8 @@
-import { message } from "antd";
+import { message, Modal } from "antd";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "../../agentSkillRouting";
 import { api } from "../../api";
+import { AgentOperationPreview, agentOperationError } from "../../AgentOperationPreview";
+import { confirmCaseAgentDocument } from "./agentDocumentConfirmation";
 import { AGENT_DOCUMENT_LIMIT, aiWordDocumentName, isAiWordGenerationRequest, isExistingAnswerWordConversionRequest, isUsableAiDocumentContent } from "../constants";
 import type { CaseAgentAction, CaseAgentAttachment, CaseAgentDocument, CaseAgentState, CaseAgentStatus, CaseRow } from "../types";
 /** legal assistant operations; dependencies are read when each operation runs. */
@@ -104,7 +106,7 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
         }
     };
     const sendCaseAgentMessage = async (preset?: string) => {
-        const { agentCase, agentInput, agentSkillId, agentScreenshots, agentState, setAgentSkillId, agentSending, activeCaseAgentRequestRef, agentDocumentIds, agentDocuments, setAgentState, setAgentInput, setAgentScreenshots, setAgentDocumentIds, setAgentMaterialPickerOpen, setAgentSending, stateWithAgentScreenshotPreviews, viewingCounselCase, refreshCounselDetailAttachments, selectCounselDocCategory } = context;
+        const { agentCase, agentInput, agentSkillId, agentScreenshots, agentState, setAgentSkillId, agentSending, activeCaseAgentRequestRef, agentDocumentIds, agentDocuments, setAgentState, setAgentInput, setAgentScreenshots, setAgentDocumentIds, setAgentMaterialPickerOpen, setAgentSending, stateWithAgentScreenshotPreviews, refreshCounselDetailAttachments, selectCounselDocCategory } = context;
         if (!agentCase)
             return;
         const content = String(preset ?? agentInput).trim() || (agentSkillId === "screenshot-evidence" && agentScreenshots.length ? "请分析上传的截图证据" : "");
@@ -193,31 +195,32 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             }
             if (streamedContent.trim() && isAiWordGenerationRequest(content)) {
                 const name = aiWordDocumentName(content, streamedContent);
-                await api.post(`/cases/${agentCase.id}/ai-space/files`, { name, content: streamedContent });
-                message.success(`Word 文档已生成到 AI 空间：${name}`);
-                if (viewingCounselCase?.id === agentCase.id) {
-                    await refreshCounselDetailAttachments(agentCase.id);
-                    selectCounselDocCategory("AI空间");
-                }
+                confirmCaseAgentDocument({ caseId: agentCase.id, serialNo: agentCase.serial_no, name, content: streamedContent, onSaved: async () => {
+                    if (context.viewingCounselCase?.id === agentCase.id) {
+                        await refreshCounselDetailAttachments(agentCase.id);
+                        selectCounselDocCategory("AI空间");
+                    }
+                } });
             }
         }
         catch (error: any) {
             if (!controller.signal.aborted) {
                 if (previousAssistantDocument) {
                     const name = aiWordDocumentName(content, previousAssistantDocument);
-                    await api.post(`/cases/${agentCase.id}/ai-space/files`, { name, content: previousAssistantDocument });
-                    setAgentState((current) => current ? {
-                        ...current,
-                        messages: [
-                            ...current.messages.filter((item) => !String(item.id || "").startsWith("stream-")),
-                            { id: `document-${Date.now()}`, role: "assistant", content: `Word 文档已生成到 AI 空间：${name}` },
-                        ],
-                    } : current);
-                    if (viewingCounselCase?.id === agentCase.id) {
-                        await refreshCounselDetailAttachments(agentCase.id);
-                        selectCounselDocCategory("AI空间");
-                    }
-                    message.success(`Word 文档已生成到 AI 空间：${name}`);
+                    message.warning("本轮生成未完成，可确认将已有回答保存为 Word 文档");
+                    confirmCaseAgentDocument({ caseId: agentCase.id, serialNo: agentCase.serial_no, name, content: previousAssistantDocument, onSaved: async () => {
+                        setAgentState((current) => current ? {
+                            ...current,
+                            messages: [
+                                ...current.messages.filter((item) => !String(item.id || "").startsWith("stream-")),
+                                { id: `document-${Date.now()}`, role: "assistant", content: `Word 文档已保存到 AI 空间：${name}` },
+                            ],
+                        } : current);
+                        if (context.viewingCounselCase?.id === agentCase.id) {
+                            await refreshCounselDetailAttachments(agentCase.id);
+                            selectCounselDocCategory("AI空间");
+                        }
+                    } });
                     return;
                 }
                 const rawDetail = error?.response?.data?.detail || error?.message || "案件智能体响应失败";
@@ -250,12 +253,12 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/actions/${action.id}/decision`, {
                 decision,
                 comment: decision === "approved" ? "在案件智能体面板批准" : "在案件智能体面板驳回",
-            });
+            }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
             setAgentState(data);
             message.success(decision === "approved" ? "已记录批准决定" : "已记录驳回决定");
         }
         catch (error: any) {
-            message.error(error?.response?.data?.detail || "审批操作失败");
+            message.error(agentOperationError(error, "审批操作失败"));
         }
         finally {
             setAgentDecisionLoading("");
@@ -264,19 +267,31 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
     const restoreCaseAgentAction = async (action: CaseAgentAction) => {
         const { agentCase, agentDecisionLoading, setAgentDecisionLoading, setAgentState } = context;
         if (!agentCase || agentDecisionLoading) return;
-        setAgentDecisionLoading(action.id);
-        try {
-            await api.post(`/case-spaces/${agentCase.id}/agent/actions/${action.id}/restore`);
-            setAgentState((current) => current ? {
-                ...current,
-                pending_actions: current.pending_actions.map((item) => item.id === action.id ? { ...item, status: "restored" } : item),
-            } : current);
-            message.success("已恢复逻辑删除的数据");
-        } catch (error: any) {
-            message.error(error?.response?.data?.detail || "恢复操作失败");
-        } finally {
-            setAgentDecisionLoading("");
-        }
+        const path = `/case-spaces/${agentCase.id}/agent/actions/${action.id}/restore`;
+        Modal.confirm({
+            title: "恢复智能体删除的记录",
+            okText: "确认恢复",
+            cancelText: "暂不恢复",
+            content: <AgentOperationPreview action={{ id: action.id, type: "case.restore", summary: `恢复操作：${action.summary}`, preview: {
+                operation_name: "恢复逻辑删除记录", target: agentCase.serial_no, method: "POST", path, params: { body: {} },
+            } }} />,
+            onOk: async () => {
+                setAgentDecisionLoading(action.id);
+                try {
+                    await api.post(path, undefined, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
+                    setAgentState((current) => current ? {
+                        ...current,
+                        pending_actions: current.pending_actions.map((item) => item.id === action.id ? { ...item, status: "restored" } : item),
+                    } : current);
+                    message.success("已恢复逻辑删除的数据");
+                } catch (error: unknown) {
+                    message.error(agentOperationError(error, "恢复操作失败"));
+                    throw error;
+                } finally {
+                    setAgentDecisionLoading("");
+                }
+            },
+        });
     };
     return { loadCaseAgent, loadCaseAgentDocuments, sendCaseAgentMessage, decideCaseAgentAction, restoreCaseAgentAction };
 }
