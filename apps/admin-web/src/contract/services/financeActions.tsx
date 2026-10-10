@@ -85,15 +85,20 @@ export function createContractFinanceActions(context: ContractFinanceDependencie
         try {
             const values = await paymentTypeCreateForm.validateFields();
             const { data } = await api.post(`/contracts/${paymentTarget.id}/payment-types`, values);
-            setPaymentTypes((items) => [...items.filter((item) => item.value !== data.value), data]);
+            // 修复：移除错误的过滤逻辑，正确添加新的付款类型
+            setPaymentTypes((items) => [...items, data]);
             setPaymentTypeCreateOpen(false);
             paymentTypeCreateForm.resetFields();
             setPaymentTypeSearch("");
             message.success("付款单位已新增并保存到系统参数-付款类型");
         }
         catch (error: any) {
-            if (!error?.errorFields)
-                message.error(error?.response?.data?.detail || "付款单位新增失败");
+            if (error?.errorFields) {
+                const errMsg = error?.response?.data?.detail || "表单验证失败";
+                message.error(errMsg);
+            } else {
+                message.error(error?.response?.data?.detail || "付款单位新增失败，请检查后端接口或联系管理员");
+            }
         }
         finally {
             setPaymentTypeCreating(false);
