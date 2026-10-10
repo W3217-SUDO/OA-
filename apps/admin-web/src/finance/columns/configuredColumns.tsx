@@ -71,6 +71,9 @@ export function createConfiguredColumns(context: {
                                         ? 280
                                         : 145
                                     : Math.max(90, Math.min(190, header.length * 17 + 45)),
+        ...(context.initialView === "finance-fee-query" && header === "费用类型"
+            ? { width: 150, ellipsis: true }
+            : {}),
         fixed: header === "操作" &&
             ![
                 "finance-internal-refused",

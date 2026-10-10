@@ -16,7 +16,8 @@ export function createFeeQueryOriginalColumns(context: {
         { title: "费用编号", ...moneyColumnStyle("费用编号"), dataIndex: "serial_no", width: 165 },
         {
             title: "费用类型", ...moneyColumnStyle("费用类型"),
-            width: 100,
+            width: 150,
+            ellipsis: true,
             render: (_: unknown, row: Fee) => row.data.fee_type || "—",
         },
         {
@@ -75,7 +76,8 @@ export function createFeeQueryOriginalColumns(context: {
         },
         {
             title: "收款单位", ...moneyColumnStyle("收款单位"),
-            width: 180,
+            width: 220,
+            ellipsis: true,
             render: (_: unknown, row: Fee) => row.data.payee || context.latestTransaction(row)?.counterparty || "—",
         },
         {

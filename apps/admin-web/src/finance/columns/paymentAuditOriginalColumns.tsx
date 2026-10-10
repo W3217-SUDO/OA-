@@ -20,12 +20,14 @@ export function createPaymentAuditOriginalColumns(context: {
         },
         {
             title: "类型", ...moneyColumnStyle("类型"),
-            width: 95,
+            width: 150,
+            ellipsis: true,
             render: (_: unknown, row: Fee) => row.data.fee_type || "—",
         },
         {
             title: "收款单位", ...moneyColumnStyle("收款单位"),
-            width: 180,
+            width: 220,
+            ellipsis: true,
             render: (_: unknown, row: Fee) => row.data.payee || "—",
         },
         {
