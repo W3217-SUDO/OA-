@@ -7,11 +7,12 @@ import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
-from sqlalchemy import select
-from app.database import SessionLocal
+from sqlalchemy import MetaData, Table, select, text
+from app.database import SessionLocal, engine
 from app.models import SystemParameter
 
 ACTOR = "legacy_system_parameter_migration"
+CATEGORIES = ("fee_type", "cause", "payment_type")
 FEE_GROUP_NAMES = {1: "官费", 2: "代理费", 3: "其他费用", 4: "内部提成", 5: "第三方费用", 6: "平台费用"}
 FEE_GROUP_BASES = {1: "官方费用", 2: "代理费", 3: "其他费用", 4: "内部费用", 5: "其他费用", 6: "其他费用"}
 
@@ -40,7 +41,7 @@ def field(row: dict[str, Any], *names: str, default: Any = None) -> Any:
         if name in row and row[name] is not None:
             return row[name]
     return default
-def read_source(server: str, database: str, driver: str) -> dict[str, list[dict[str, Any]]]:
+def read_source(server: str, database: str, driver: str, *, category: str | None = None) -> dict[str, list[dict[str, Any]]]:
     try:
         import pyodbc
     except ImportError as exc:
@@ -49,16 +50,30 @@ def read_source(server: str, database: str, driver: str) -> dict[str, list[dict[
     queries = {
         "fee_type": "SELECT * FROM dbo.BAS_Case_FeeType WHERE CaseTypeId > 0 ORDER BY FeeTypeId",
         "cause": "SELECT CauseId,CauseName,ParentCauseId FROM dbo.BAS_Causes ORDER BY CauseId",
-        "payment_type": "SELECT PaymentTypeId,CaseFeeTypeId,PaymentTypeName,OrganizationName,Account,AccountBank,Remark,IsActived FROM dbo.FAM_AP_PaymentType ORDER BY PaymentTypeId",
+        "payment_type": "SELECT * FROM dbo.FAM_AP_PaymentType ORDER BY PaymentTypeId",
     }
-    result: dict[str, list[dict[str, Any]]] = {}
+    result: dict[str, list[dict[str, Any]]] = {key: [] for key in CATEGORIES}
     with pyodbc.connect(connection_string, autocommit=True) as connection:
-        for category, query in queries.items():
+        for key, query in queries.items():
+            if category is not None and key != category:
+                continue
             cursor = connection.cursor()
             cursor.execute(query)
             columns = [column[0] for column in cursor.description]
-            result[category] = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            result[key] = [dict(zip(columns, row)) for row in cursor.fetchall()]
     return result
+
+async def read_target_payment_types() -> dict[str, list[dict[str, Any]]]:
+    # 只读目标库已有旧表，不创建表、不写入旧数据。
+    async with engine.connect() as connection:
+        if connection.dialect.name != "postgresql":
+            raise RuntimeError("目标旧表读取仅支持 PostgreSQL")
+        await connection.execute(text("SET TRANSACTION READ ONLY"))
+        table = await connection.run_sync(
+            lambda sync_connection: Table("FAM_AP_PaymentType", MetaData(), autoload_with=sync_connection)
+        )
+        rows = (await connection.execute(select(table).order_by(table.c.PaymentTypeId))).mappings().all()
+        return {"fee_type": [], "cause": [], "payment_type": [dict(row) for row in rows]}
 
 def normalize(source: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
@@ -90,7 +105,27 @@ def normalize(source: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
         result.append({"category": "cause", "code": f"LEGACY-CAUSE-{legacy_id}", "name": clean(field(row, "CauseName", "name", "案由名称")), "is_active": True, "sort_order": legacy_id, "extra": {"legacy_id": legacy_id, "parent_code": f"LEGACY-CAUSE-{parent_id}" if parent_id > 0 else ""}})
     for row in source["payment_type"]:
         legacy_id = int(field(row, "PaymentTypeId", "payment_type_id", "付款类型ID"))
-        result.append({"category": "payment_type", "code": f"LEGACY-PAYMENT-{legacy_id}", "name": clean(field(row, "OrganizationName", "organization_name", "收款单位")) or clean(field(row, "PaymentTypeName", "payment_type_name", "付款类型")), "is_active": enabled(field(row, "IsActived", "is_active", "启用", default=True)), "sort_order": legacy_id, "extra": {"legacy_id": legacy_id, "fee_type_legacy_id": field(row, "CaseFeeTypeId", "fee_type_id"), "nature": clean(field(row, "PaymentTypeName", "payment_type_name", "付款类型")), "payee": clean(field(row, "OrganizationName", "organization_name", "收款单位")), "account": clean(field(row, "Account", "account", "账号")), "account_bank": clean(field(row, "AccountBank", "account_bank", "开户行")), "remark": clean(field(row, "Remark", "remark", "备注"))}})
+        fee_type_id = int(field(row, "CaseFeeTypeId", "fee_type_id"))
+        # 旧页面按费用类型枚举筛选；未定义的 0 在旧系统原样显示为“0”。
+        nature = FEE_GROUP_NAMES[fee_type_id] if fee_type_id in FEE_GROUP_NAMES else str(fee_type_id)
+        result.append({
+            "category": "payment_type", "code": f"LEGACY-PAYMENT-{legacy_id}",
+            "name": clean(field(row, "OrganizationName", "organization_name", "收款单位")) or clean(field(row, "PaymentTypeName", "payment_type_name", "付款类型")),
+            "is_active": enabled(field(row, "IsActived", "is_active", "启用", default=True)),
+            "sort_order": legacy_id,
+            "extra": {
+                "legacy_id": legacy_id, "fee_type_legacy_id": fee_type_id,
+                "nature": nature,
+                "legacy_payment_type_name": field(row, "PaymentTypeName", "payment_type_name", "付款类型"),
+                "payee": clean(field(row, "OrganizationName", "organization_name", "收款单位")),
+                "account": clean(field(row, "Account", "account", "账号")),
+                "account_bank": clean(field(row, "AccountBank", "account_bank", "开户行")),
+                "remark": clean(field(row, "Remark", "remark", "备注")),
+            },
+        })
+        result[-1].update(source_audit(row))
+        if row.get("CreateTime") or row.get("ChangeTime"):
+            result[-1]["extra"]["legacy_audit_utc"] = True
     rows = [row for row in result if row["name"]]
     audit(rows)
     return rows
@@ -106,8 +141,9 @@ def audit(rows: list[dict[str, Any]]) -> None:
         if orphaned:
             raise RuntimeError(f"{category} 存在孤立父节点：{orphaned[:10]}")
 
-async def migrate(rows: list[dict[str, Any]], apply: bool) -> dict[str, dict[str, int]]:
-    stats = {category: {"source": 0, "created": 0, "updated": 0, "deleted": 0} for category in ("fee_type", "cause", "payment_type")}
+async def migrate(rows: list[dict[str, Any]], apply: bool, *, category: str | None = None) -> dict[str, dict[str, int]]:
+    categories = (category,) if category is not None else CATEGORIES
+    stats = {key: {"source": 0, "created": 0, "updated": 0, "deleted": 0} for key in categories}
     async with SessionLocal() as db:
         existing = list((await db.scalars(select(SystemParameter).where(SystemParameter.category.in_(stats)))).all())
         by_key = {(item.category, item.code): item for item in existing}
@@ -145,26 +181,39 @@ async def migrate(rows: list[dict[str, Any]], apply: bool) -> dict[str, dict[str
             await db.rollback()
     return stats
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--server", default=".")
-    parser.add_argument("--database", default="PRD_CRM_GD_20200211")
-    parser.add_argument("--driver", default="SQL Server")
-    parser.add_argument("--source-json", type=Path)
-    parser.add_argument("--export-json", type=Path)
-    parser.add_argument("--apply", action="store_true")
-    args = parser.parse_args()
+async def run(args: argparse.Namespace) -> int:
     if args.source_json:
         rows = json.loads(args.source_json.read_text(encoding="utf-8"))
+    elif args.target_legacy_source:
+        rows = normalize(await read_target_payment_types())
     else:
-        rows = normalize(read_source(args.server, args.database, args.driver))
+        rows = normalize(read_source(args.server, args.database, args.driver, category=args.category))
+    if args.category is not None:
+        rows = [row for row in rows if row["category"] == args.category]
+    audit(rows)
     if args.export_json:
         args.export_json.parent.mkdir(parents=True, exist_ok=True)
         args.export_json.write_text(json.dumps(rows, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         print(json.dumps({"exported": len(rows), "path": str(args.export_json)}, ensure_ascii=False))
         return 0
-    print(json.dumps(asyncio.run(migrate(rows, args.apply)), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(await migrate(rows, args.apply, category=args.category), ensure_ascii=False, sort_keys=True))
     return 0
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", default=".")
+    parser.add_argument("--database", default="PRD_CRM_GD_20200211")
+    parser.add_argument("--driver", default="SQL Server")
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--source-json", type=Path)
+    source.add_argument("--target-legacy-source", action="store_true", help="从目标 PostgreSQL 的旧付款单位表读取")
+    parser.add_argument("--category", choices=CATEGORIES, help="仅迁移指定类别，缺省保留全部类别")
+    parser.add_argument("--export-json", type=Path)
+    parser.add_argument("--apply", action="store_true")
+    args = parser.parse_args()
+    if args.target_legacy_source and args.category != "payment_type":
+        parser.error("--target-legacy-source 必须同时指定 --category payment_type")
+    return asyncio.run(run(args))
 
 if __name__ == "__main__":
     raise SystemExit(main())
