@@ -74,6 +74,7 @@ import {
   CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY,
 } from "./contractCreateContext";
 import { clearDashboardFeeQuery } from "./dashboardFeeNavigation.mjs";
+import { resolveSiteBrand } from "./siteBranding";
 
 function reloadAppShell() {
   const url = new URL(window.location.href);
@@ -978,12 +979,26 @@ function readStoredUser(): SessionUser | null {
 }
 
 function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
+  const siteBrand = resolveSiteBrand(window.location.hostname);
   const [loading, setLoading] = useState(false);
   const [dingtalkEnabled, setDingtalkEnabled] = useState(false);
   const [dingtalkAuthCode, setDingtalkAuthCode] = useState("");
   const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
   const [pendingUser, setPendingUser] = useState<SessionUser | null>(null);
   const [passwordForm] = Form.useForm();
+  useEffect(() => {
+    if (siteBrand.code !== "huzhi") return;
+    document.title = siteBrand.documentTitle;
+    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (favicon) {
+      favicon.href = siteBrand.icon;
+      favicon.type = "image/svg+xml";
+    }
+    const touchIcon = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
+    if (touchIcon) touchIcon.href = siteBrand.icon;
+    const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+    if (manifest) manifest.href = siteBrand.manifest;
+  }, [siteBrand]);
   useEffect(() => {
     const rememberInstallPrompt = (event: Event) => {
       event.preventDefault();
@@ -1081,14 +1096,14 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
     setInstallPrompt(null);
   };
   return (
-    <div className="login-page">
+    <div className={`login-page${siteBrand.code === "huzhi" ? " login-page-huzhi" : ""}`}>
       <div className="login-brand">
-        <b>Sunhold</b>
-        <span>法律服务机构管理系统</span>
+        {siteBrand.logo ? <img src={siteBrand.logo} alt={siteBrand.name} /> : <b>{siteBrand.name}</b>}
+        <span>{siteBrand.subtitle}</span>
       </div>
       <Card className="login-card">
         <h2>系统登录</h2>
-        <p>欢迎进入思法汇成协作平台</p>
+        <p>{siteBrand.welcome}</p>
         {dingtalkAuthCode && <Alert type="info" showIcon title="首次钉钉登录" description="输入一次现有 OA 账号和密码完成绑定；以后从钉钉工作台打开将直接登录。" style={{marginBottom:16}} />}
         <Form
           onFinish={submit}
@@ -1371,7 +1386,9 @@ export default function App() {
   }, [loggedIn]);
   useEffect(() => {
     if (!loggedIn) return;
-    document.title = resolveWorkspacePageLabel(active, effectiveMenuItems);
+    const pageTitle = resolveWorkspacePageLabel(active, effectiveMenuItems);
+    const siteBrand = resolveSiteBrand(window.location.hostname);
+    document.title = siteBrand.code === "huzhi" ? `${pageTitle} · ${siteBrand.name}` : pageTitle;
   }, [active, effectiveMenuItems, loggedIn]);
   const navigate = (route: string) => {
     const normalizedRoute = resolveGrantedMenuRoute(normalizeWorkspaceRoute(route), effectiveMenuItems, grantedMenuKeys, permissionAdministrator);

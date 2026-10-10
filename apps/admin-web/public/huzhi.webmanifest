@@ -1,0 +1,18 @@
+{
+  "name": "上海沪知律师事务所 OA 系统",
+  "short_name": "沪知 OA",
+  "description": "上海沪知律师事务所协作平台",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#006c42",
+  "icons": [
+    {
+      "src": "/huzhi-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

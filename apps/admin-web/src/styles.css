@@ -588,6 +588,39 @@ body {
   font-size: 16px;
   letter-spacing: 3px;
 }
+.login-page-huzhi .login-brand {
+  width: min(340px, calc(100vw - 32px));
+  padding: 8px 18px 12px;
+  margin-top: auto;
+  margin-bottom: 16px;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 47, 31, 0.18);
+}
+.login-page-huzhi .login-brand img {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto 2px;
+}
+.login-page-huzhi .login-brand span {
+  display: block;
+  color: #25664b;
+  font-size: 13px;
+  letter-spacing: 2px;
+}
+.login-page-huzhi .login-card {
+  width: min(380px, calc(100vw - 32px));
+  margin-bottom: auto;
+}
+.login-page-huzhi {
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  justify-content: flex-start;
+  padding: 24px 16px;
+}
 .login-card {
   width: 380px;
   border-radius: 3px;
