@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import test from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import vm from "node:vm";
+import { AxiosError } from "axios";
 import React from "react";
 import { act, create } from "react-test-renderer";
 import ts from "typescript";
@@ -12,17 +14,43 @@ const require = createRequire(import.meta.url);
 const sourceRoot = new URL("../../src/legal/", import.meta.url);
 
 function loadModule(name, dependencies, globals = {}) {
-  const source = fs.readFileSync(new URL(name, sourceRoot), "utf8");
-  const output = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
-  }).outputText;
-  const module = { exports: {} };
-  vm.runInNewContext(output, {
-    module, exports: module.exports,
-    require: (specifier) => specifier in dependencies ? dependencies[specifier] : require(specifier),
-    AbortController, TextDecoder, Uint8Array, ...globals,
-  }, { filename: name });
-  return module.exports;
+  const entry = fileURLToPath(new URL(name, sourceRoot));
+  const compilerOptions = { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true };
+  const modules = new Map();
+  const overrides = new Map();
+  const resolveLocal = (specifier, filename) => {
+    const resolved = ts.resolveModuleName(specifier, filename, compilerOptions, ts.sys).resolvedModule;
+    if (!resolved) throw new Error(`无法解析测试依赖：${specifier}，导入文件：${filename}`);
+    return resolved.resolvedFileName;
+  };
+  // 相对依赖按导入文件解析，已有注入只作用于对应模块，其他依赖加载真实源码。
+  for (const [specifier, dependency] of Object.entries(dependencies)) {
+    if (specifier.startsWith(".")) overrides.set(resolveLocal(specifier, entry), dependency);
+  }
+  const loadSource = (filename) => {
+    if (modules.has(filename)) return modules.get(filename).exports;
+    const source = fs.readFileSync(filename, "utf8");
+    const output = ts.transpileModule(source, { compilerOptions, fileName: filename }).outputText;
+    const module = { exports: {} };
+    modules.set(filename, module);
+    const localRequire = createRequire(filename);
+    vm.runInNewContext(output, {
+      module, exports: module.exports,
+      require: (specifier) => {
+        if (!specifier.startsWith(".")) return Object.hasOwn(dependencies, specifier) ? dependencies[specifier] : localRequire(specifier);
+        if (specifier.endsWith(".css")) {
+          // Node 行为测试不执行样式，但必须确认真实样式文件存在。
+          fs.accessSync(new URL(specifier, pathToFileURL(filename)));
+          return {};
+        }
+        const resolved = resolveLocal(specifier, filename);
+        return overrides.has(resolved) ? overrides.get(resolved) : loadSource(resolved);
+      },
+      Error, AbortController, TextDecoder, Uint8Array, ...globals,
+    }, { filename });
+    return module.exports;
+  };
+  return loadSource(entry);
 }
 
 test("agent service streams an answer, records an approval, and exposes upstream failures", async () => {
@@ -37,13 +65,13 @@ test("agent service streams an answer, records an approval, and exposes upstream
     const chunks = [new TextEncoder().encode('{"type":"delta","content":"第一段"}\n{"type":"delta","content":"第二段"}\n')];
     return { ok: true, body: { getReader: () => ({ read: async () => chunks.length ? { done: false, value: chunks.shift() } : { done: true } }) } };
   };
-  const api = { post: async (path, payload) => {
-    requests.push({ path, payload });
-    if (failApproval) throw { response: { data: { detail: "审批被拒绝" } } };
+  const api = { post: async (path, payload, options) => {
+    requests.push({ path, payload, options });
+    if (failApproval) throw new AxiosError("审批被拒绝", undefined, undefined, undefined, { data: { detail: "审批被拒绝" } });
     return { data: { messages: [], pending_actions: [{ id: "a1", status: "approved" }] } };
   } };
   const { createCaseAssistantActions } = loadModule("services/assistantActions.tsx", {
-    antd: { message: messages },
+    antd: { ...require("antd"), message: messages },
     "../../agentSkillRouting": { DEFAULT_AGENT_SKILL: "qa", encodeAgentSkillMessage: (_skill, value) => value },
     "../../api": { api },
     "../constants": {
@@ -81,11 +109,13 @@ test("agent service streams an answer, records an approval, and exposes upstream
   await actions.decideCaseAgentAction({ id: "a1" }, "approved");
   assert.equal(requests.at(-1).path, "/case-spaces/8/agent/actions/a1/decision");
   assert.equal(requests.at(-1).payload.decision, "approved");
+  assert.equal(requests.at(-1).options.headers["X-OA-Agent-Confirmation"], "frontend");
   assert.equal(state.pending_actions[0].status, "approved");
   assert.equal(decisionLoading, "");
 
   failApproval = true;
   await actions.decideCaseAgentAction({ id: "a1" }, "rejected");
+  assert.equal(requests.at(-1).payload.decision, "rejected");
   assert.equal(notices.at(-1)[1], "审批被拒绝");
   assert.equal(decisionLoading, "");
 
@@ -94,6 +124,40 @@ test("agent service streams an answer, records an approval, and exposes upstream
   assert.match(state.messages.at(-1).content, /模型本轮生成失败/);
   assert.equal(notices.at(-1)[0], "error");
   assert.equal(sending, false);
+});
+
+test("real approval preview loads the shared table and preserves original values and confirmation guards", () => {
+  const { AgentOperationPreview, agentOperationError, hasAgentOperationPreview } = loadModule("../AgentOperationPreview.tsx", {});
+  const action = {
+    id: "a1", type: "case.update", summary: "修改经办律师",
+    preview: { changes: [{ field: "handling_lawyers", before: "原律师", before_read: true, after: "新律师" }] },
+  };
+  const preview = AgentOperationPreview({ action });
+  const table = React.Children.toArray(preview.props.children).find((child) => child.type?.name === "ResizableTable");
+  assert.ok(table, "预览必须加载真实的统一列宽组件");
+  assert.equal(table.props.rowKey, "field");
+  assert.equal(table.props.pagination, false);
+  assert.equal(table.props.scroll.x, 480);
+  assert.equal(table.props.dataSource, action.preview.changes);
+  assert.equal(table.props.columns[0].render("handling_lawyers"), "经办律师 (handling_lawyers)");
+  const before = table.props.columns[1].render;
+  const after = table.props.columns[2].render;
+  assert.equal(before("原律师", { before_read: true }).props.children, "原律师");
+  assert.equal(before("原律师", { before_read: false }).props.children, "未读取");
+  assert.equal(before(undefined, { before_read: true }).props.children, "未读取");
+  assert.equal(before(null, { before_read: true }).props.children, "空值 (null)");
+  assert.equal(after("新律师").props.children, "新律师");
+  assert.equal(after("").props.children, "空字符串");
+  const created = AgentOperationPreview({ action: { ...action, preview: { ...action.preview, create: { title: "新建任务" } } } });
+  assert.equal(React.Children.toArray(created.props.children).some((child) => child.type === table.type), false);
+  const mcp = { id: "r1", type: "mcp.call", summary: "修改案件", payload: { request_id: "r1" }, preview: {
+    operation_name: "修改案件字段", method: "PATCH", path: "/cases/8", params: { body: { title: "新名称" } }, requires_confirmation: true,
+  } };
+  assert.equal(hasAgentOperationPreview(mcp), true);
+  assert.equal(hasAgentOperationPreview({ ...mcp, preview: { ...mcp.preview, requires_confirmation: false } }), false);
+  assert.equal(hasAgentOperationPreview({ ...mcp, payload: {} }), false);
+  assert.equal(agentOperationError(new AxiosError("request failed", undefined, undefined, undefined, { data: { detail: "权限不足" } }), "操作失败"), "权限不足");
+  assert.equal(agentOperationError(new Error("网络中断"), "操作失败"), "网络中断");
 });
 
 test("agent workspace releases screenshot URLs on removal and unmount, and reports upload failures", async () => {

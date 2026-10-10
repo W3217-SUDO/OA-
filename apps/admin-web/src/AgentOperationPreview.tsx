@@ -1,5 +1,6 @@
-import { Alert, Descriptions, Table, Tag } from "antd";
+import { Alert, Descriptions, Tag } from "antd";
 import { isAxiosError } from "axios";
+import Table from "./components/ResizableTable";
 import "./agent-center.css";
 
 export type AgentActionPreview = {
