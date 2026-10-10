@@ -1,11 +1,12 @@
 import type { UploadFile } from "antd";
-import { Button, message, Modal } from "antd";
+import { Button, message, Modal, Space } from "antd";
 import Table from "../../components/ResizableTable";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import type { MessageType } from "antd/es/message/interface";
 import dayjs from "dayjs";
 import type { Key } from "react";
 import { api } from "../../api";
+import { openAttachmentOnlinePreview } from "../../attachmentOnlinePreview.mjs";
 import { rememberBusinessRecordDetailTarget } from "../../businessRecordDetailNavigation";
 import { buildCaseFeeContractOptions, defaultCaseFeeContractId } from "../../caseFeeContractOptions.mjs";
 import { resolveCaseFeeInvoiceEligibility } from "../../caseFeeInvoiceEligibility.mjs";
@@ -890,6 +891,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 if (!attachment) return [];
                 return [{
                     key: `receipt-${receipt.attachmentId}-${index}`,
+                    attachmentId: receipt.attachmentId,
                     source: "案件票据",
                     billNo: receipt.billNo,
                     billDate: receipt.billDate,
@@ -901,6 +903,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 if (!item?.id) continue;
                 rows.push({
                     key: `case-invoice-attachment-${item.id}`,
+                    attachmentId: Number(item.id),
                     source: "发票文件",
                     billNo: "",
                     billDate: String(item.document_date || "").slice(0, 10),
@@ -912,6 +915,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 if (!item?.id || !["付款凭证", "案件发票文件"].includes(String(item.category || ""))) continue;
                 rows.push({
                     key: `invoice-attachment-${item.id}`,
+                    attachmentId: Number(item.id),
                     source: item.category === "付款凭证" ? "缴费凭证" : "发票文件",
                     billNo: "",
                     billDate: String(item.document_date || "").slice(0, 10),
@@ -924,6 +928,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                     if (!voucher?.id) continue;
                     rows.push({
                         key: `transaction-voucher-${voucher.id}`,
+                        attachmentId: Number(voucher.id),
                         source: "缴费凭证",
                         billNo: String(transaction.voucher_no || ""),
                         billDate: String(transaction.transaction_date || "").slice(0, 10),
@@ -936,6 +941,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 if (!inform.receipt_attachment?.id) continue;
                 rows.push({
                     key: `inform-${inform.id}`,
+                    attachmentId: Number(inform.receipt_attachment.id),
                     source: "费用通知票据",
                     billNo: String(inform.data?.bill_no || ""),
                     billDate: String(inform.data?.bill_date || "").slice(0, 10),
@@ -951,12 +957,15 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 title: `票据文件：${row.serial_no}`,
                 width: 760,
                 okText: "关闭",
-                content: <Table size="small" rowKey="key" pagination={false} scroll={{ x: 620 }} dataSource={rows} columns={[
+                content: <Table size="small" rowKey="key" pagination={false} scroll={{ x: 700 }} dataSource={rows} columns={[
                     { title: "来源", dataIndex: "source", width: 110 },
                     { title: "票据号", dataIndex: "billNo", width: 150, render: (value: string) => value || "—" },
                     { title: "日期", dataIndex: "billDate", width: 110, render: (value: string) => value || "—" },
                     { title: "文件", dataIndex: "filename", ellipsis: true },
-                    { title: "操作", width: 80, render: (_: unknown, item: { path: string; filename: string }) => <Button type="link" onClick={() => void downloadBillFile(item.path, item.filename).catch((error: any) => message.error(error?.response?.data?.detail || "下载票据失败"))}>下载</Button> },
+                    { title: "操作", width: 140, render: (_: unknown, item: { attachmentId: number; path: string; filename: string }) => <Space size={0}>
+                        <Button type="link" onClick={() => void openAttachmentOnlinePreview(api, { id: item.attachmentId, original_name: item.filename }).catch((error: any) => message.error(error?.response?.data?.detail || error?.message || "查看票据失败"))}>查看</Button>
+                        <Button type="link" onClick={() => void downloadBillFile(item.path, item.filename).catch((error: any) => message.error(error?.response?.data?.detail || "下载票据失败"))}>下载</Button>
+                    </Space> },
                 ]} />,
             });
         }
@@ -971,7 +980,10 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             Modal.info({ title: `发票文件：${row.serial_no}`, width: 700, okText: "关闭",
                 content: <Table size="small" rowKey="id" dataSource={data.items} pagination={{ pageSize: 10 }} columns={[
                     { title: "文件名", dataIndex: "original_name" }, { title: "导入说明", dataIndex: "remark" },
-                    { title: "操作", render: (_: unknown, item: { id: number; original_name: string }) => <Button type="link" onClick={() => void downloadBillFile(`/attachments/${item.id}/download`, item.original_name).catch((error: any) => message.error(error?.response?.data?.detail || "下载发票文件失败"))}>下载</Button> },
+                    { title: "操作", width: 140, render: (_: unknown, item: { id: number; original_name: string }) => <Space size={0}>
+                        <Button type="link" onClick={() => void openAttachmentOnlinePreview(api, item).catch((error: any) => message.error(error?.response?.data?.detail || error?.message || "查看发票文件失败"))}>查看</Button>
+                        <Button type="link" onClick={() => void downloadBillFile(`/attachments/${item.id}/download`, item.original_name).catch((error: any) => message.error(error?.response?.data?.detail || "下载发票文件失败"))}>下载</Button>
+                    </Space> },
                 ]} />,
             });
         } catch (error: any) { message.error(error?.response?.data?.detail || "查看发票文件失败"); }
