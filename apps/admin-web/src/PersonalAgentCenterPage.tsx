@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Alert, Button, Drawer, Input, Modal, Select, Skeleton, Space, Tag, Tooltip, message } from "antd";
-import { AppstoreAddOutlined, ArrowDownOutlined, ArrowUpOutlined, AuditOutlined, CheckOutlined, CloseOutlined, CopyOutlined, FileTextOutlined, FileWordOutlined, FolderOpenOutlined, LockOutlined, MenuOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, ScheduleOutlined, StopOutlined, TeamOutlined, WalletOutlined } from "@ant-design/icons";
+import { Alert, Button, Input, Modal, Segmented, Select, Skeleton, Space, Tag, Tooltip, message } from "antd";
+import { AppstoreAddOutlined, ArrowDownOutlined, ArrowUpOutlined, AuditOutlined, CheckOutlined, CloseOutlined, CopyOutlined, FileTextOutlined, FileWordOutlined, FolderOpenOutlined, LockOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, ScheduleOutlined, StopOutlined, TeamOutlined, WalletOutlined } from "@ant-design/icons";
 import { AgentMessageContent } from "./AgentMessageContent";
 import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "./AgentOperationPreview";
 import { AgentToolRequests } from "./AgentToolRequests";
@@ -8,6 +8,7 @@ import { AgentToolResult } from "./AgentToolResult";
 import { CaseMaterialsPicker } from "./personal-agent/CaseMaterialsPicker";
 import { SkillManager } from "./personal-agent/SkillManager";
 import { MaterialPreview } from "./personal-agent/MaterialPreview";
+import { WorkPanel } from "./personal-agent/WorkPanel";
 import { MATERIAL_ACCEPT, usePersonalWorkspace } from "./personal-agent/usePersonalWorkspace";
 import { errorText, type Material, type PendingAction, type WorkspaceCommand } from "./personal-agent/types";
 import "./personal-agent-center.css";
@@ -15,10 +16,11 @@ import "./personal-agent-center.css";
 const commandIcons: Record<string, ReactNode> = { today: <ScheduleOutlined />, task: <CheckOutlined />, approval: <AuditOutlined />, case: <FolderOpenOutlined />, finance: <WalletOutlined />, seal: <FileTextOutlined />, customer: <TeamOutlined /> };
 const formatTime = (value?: string) => value ? new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "";
 
-export default function PersonalAgentCenterPage() {
+export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (route: string) => void }) {
   const workspace = usePersonalWorkspace();
   const { status, state, skills, skillId, input, loading, sending, uploading, selectedCase } = workspace;
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [view, setView] = useState<"workspace" | "chat">("workspace");
+  const [refreshToken, setRefreshToken] = useState(0);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<"case" | "materials" | null>(null);
   const [follow, setFollow] = useState(true);
@@ -30,8 +32,10 @@ export default function PersonalAgentCenterPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const canUseCases = status?.commands.some((item) => item.id === "cases");
   const busy = loading || sending || uploading || !!workspace.decisionId;
-  useEffect(() => { if (follow) bottomRef.current?.scrollIntoView({ block: "end" }); }, [state.messages, follow]);
-  const prepare = (command: WorkspaceCommand) => { workspace.setSkillId(command.skill_id); workspace.setInput(command.prompt); setSidebarOpen(false); };
+  useEffect(() => { if (follow) bottomRef.current?.scrollIntoView({ block: "end" }); }, [state.messages, follow, view]);
+  const showAssistant = () => { if (window.matchMedia("(max-width: 1100px)").matches) setView("chat"); };
+  const prepare = (command: WorkspaceCommand) => { workspace.setSkillId(command.skill_id); workspace.setInput(command.prompt); showAssistant(); };
+  const draft = () => { workspace.setSkillId("general-office"); workspace.setInput("根据我提供的材料起草一份办公文档，缺失信息标为待补充"); showAssistant(); };
   const copy = (value: string) => {
     // 现有 OA 使用 HTTP，采用允许用户点击触发的浏览器复制命令。
     const selection = document.createElement("textarea");
@@ -49,33 +53,22 @@ export default function PersonalAgentCenterPage() {
     try { await workspace.refreshSkills(); }
     catch (error) { message.error(errorText(error, "技能加载失败")); }
   };
-  const sidebar = <>
-    <div className="workspace-user"><div className="workspace-user-avatar"><TeamOutlined /></div><div><strong>{status?.identity.display_name || "当前用户"}</strong><span>{[status?.identity.department, status?.identity.permission_role || status?.identity.staff_role || status?.identity.position || status?.identity.role].filter(Boolean).join(" · ")}</span></div></div>
-    <div className="workspace-nav-label">我的工作</div>
-    <nav className="workspace-work-nav">{status?.commands.map((command) => <button key={command.id} disabled={busy} onClick={() => prepare(command)}>{commandIcons[command.icon]}<span>{command.label}</span></button>)}</nav>
-    <div className="workspace-nav-label workspace-tools-label">办公工具</div>
-    <nav className="workspace-work-nav">
-      <button disabled={busy} onClick={() => { workspace.setSkillId("pdf-review"); setSidebarOpen(false); fileRef.current?.click(); }}><PaperClipOutlined /><span>材料审阅</span></button>
-      <button disabled={busy} onClick={() => { workspace.setSkillId("general-office"); workspace.setInput("根据我提供的材料起草一份办公文档，缺失信息标为待补充"); setSidebarOpen(false); }}><FileWordOutlined /><span>文档起草</span></button>
-      <button disabled={busy} onClick={() => void openSkills()}><AppstoreAddOutlined /><span>我的技能</span><small>{skills.filter((item) => item.custom).length || ""}</small></button>
-    </nav>
-    <div className="workspace-private-label"><LockOutlined /> 私人办公会话</div>
-  </>;
   return <div className="personal-agent-page" data-testid="personal-agent-center-page">
     <header className="personal-agent-header">
-      <div className="personal-agent-title"><Button className="workspace-mobile-menu" type="text" icon={<MenuOutlined />} aria-label="打开工作菜单" onClick={() => setSidebarOpen(true)} /><RobotOutlined /><h2>智能体中心</h2><span>律所工作台</span></div>
+      <div className="personal-agent-title"><RobotOutlined /><h2>智能体中心</h2><span>律所工作台</span></div>
       <Space size={6}>
+        <Segmented aria-label="切换工作视图" value={view} options={[{ value: "workspace", label: "工作台" }, { value: "chat", label: "对话" }]} onChange={(value) => setView(value as "workspace" | "chat")} />
         <Tooltip title={status?.ready ? `当前模型：${status.model}` : "模型服务未就绪"}><span className={`workspace-service ${status?.ready ? "ready" : ""}`}><i />{status?.ready ? "已连接" : loading ? "连接中" : "未就绪"}</span></Tooltip>
-        {canUseCases && <Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} onClick={() => { window.location.href = "?page=case-agent-center"; }}>案件智能体</Button>}
-        <Tooltip title="刷新会话"><Button type="text" icon={<ReloadOutlined />} aria-label="刷新会话" disabled={busy} onClick={() => void workspace.load()} /></Tooltip>
+        {canUseCases && <Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} onClick={() => onNavigate("case-agent-center")}>案件智能体</Button>}
+        <Tooltip title="刷新工作台与会话"><Button type="text" icon={<ReloadOutlined />} aria-label="刷新工作台与会话" disabled={busy} onClick={() => { setRefreshToken((value) => value + 1); void workspace.load(); }} /></Tooltip>
       </Space>
     </header>
     {workspace.loadError && <Alert type="error" showIcon title={workspace.loadError} />}
     {!loading && !workspace.loadError && !status?.ready && <Alert type="warning" showIcon title="模型服务未就绪，请检查系统模型配置" />}
-    <div className="personal-agent-layout">
-      <aside className="personal-agent-sidebar">{loading ? <Skeleton active paragraph={{ rows: 5 }} /> : sidebar}</aside>
+    <div className="personal-agent-layout" data-view={view}>
+      <WorkPanel status={status} skills={skills} busy={busy} refreshToken={refreshToken} decisionResult={workspace.decisionResult} onNavigate={onNavigate} onPrepare={prepare} onSkill={(skill) => { workspace.setSkillId(skill.id); if (skill.quick_prompts?.[0]) workspace.setInput(skill.quick_prompts[0]); showAssistant(); }} onUpload={() => { showAssistant(); fileRef.current?.click(); }} onSkills={() => void openSkills()} onDraft={draft} />
       <main className="personal-agent-chat">
-        <div className="workspace-thread-heading"><span><LockOutlined /> 办公对话</span><Space>{selectedCase && <span className="workspace-current-case"><FolderOpenOutlined /> {selectedCase.serial_no}</span>}<AgentToolRequests buttonLabel="操作记录" titlePrefix="智能体" /></Space></div>
+        <div className="workspace-thread-heading"><span><RobotOutlined /> 办公助手<LockOutlined /></span><Space>{selectedCase && <span className="workspace-current-case"><FolderOpenOutlined /> {selectedCase.serial_no}</span>}<AgentToolRequests buttonLabel="操作记录" titlePrefix="智能体" /></Space></div>
         <div ref={scrollRef} className="personal-agent-messages" onScroll={() => { const element = scrollRef.current; if (element) setFollow(element.scrollHeight - element.scrollTop - element.clientHeight < 100); }}>
           <div className="workspace-thread">
             {loading ? <Skeleton active paragraph={{ rows: 4 }} /> : !state.messages.length && <div className="workspace-empty"><div className="workspace-empty-symbol"><RobotOutlined /></div><h3>开始今天的工作</h3><div className="workspace-start-actions">{status?.commands.slice(0, 4).map((command) => <button key={command.id} onClick={() => prepare(command)}>{commandIcons[command.icon]}<span>{command.label}</span><ArrowUpOutlined /></button>)}</div></div>}
@@ -109,7 +102,6 @@ export default function PersonalAgentCenterPage() {
         </div>
       </main>
     </div>
-    <Drawer title="律所工作台" open={sidebarOpen} onClose={() => setSidebarOpen(false)} placement="left" size={280}><div className="workspace-drawer-sidebar">{sidebar}</div></Drawer>
     <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} skills={skills} refresh={workspace.refreshSkills} onSelect={workspace.setSkillId} />
     <Modal open={!!activeAction} title="智能体操作确认" width={760} maskClosable={!workspace.decisionId} onCancel={() => { if (!workspace.decisionId) setActiveAction(null); }} footer={activeAction && <Space><Button icon={<CloseOutlined />} disabled={!!workspace.decisionId} onClick={async () => { if (await workspace.decide(activeAction, "rejected")) setActiveAction(null); }}>取消操作</Button><Button type="primary" icon={<CheckOutlined />} loading={!!workspace.decisionId} disabled={!!workspace.decisionId || !hasAgentOperationPreview(activeAction)} onClick={async () => { if (await workspace.decide(activeAction, "approved")) setActiveAction(null); }}>确认并执行</Button></Space>}>
       {activeAction && <div style={{ maxHeight: "60dvh", overflowY: "auto" }}><AgentOperationPreview action={activeAction} /></div>}

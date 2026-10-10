@@ -1479,7 +1479,7 @@ export default function App() {
     ) : route === "dashboard" ? (
       <Dashboard onNavigate={navigate} />
     ) : route === "agent-center" ? (
-      <PersonalAgentCenterPage />
+      <PersonalAgentCenterPage onNavigate={navigate} />
     ) : route === "case-agent-center" ? (
       <CaseAgentCenterPage />
     ) : route === FEEDBACK_ROUTE ? (

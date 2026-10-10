@@ -12,7 +12,7 @@ from app.config import settings
 from app.core.constants import logger
 from app.database import get_db
 from app.security import current_identity
-from app.areas.personal_agent.service import decide_action, generate_response, personal_identity, personal_state
+from app.areas.personal_agent.service import build_context, decide_action, generate_response, personal_identity, personal_state
 from app.areas.personal_agent.workspace import workspace_commands
 
 
@@ -49,6 +49,16 @@ async def personal_agent_status(identity: dict = Depends(current_identity), db: 
 @router.get(f"{settings.api_prefix}/personal-agent/state")
 async def personal_agent_state(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     return await personal_state(await personal_identity(identity, db), db)
+
+
+@router.get(f"{settings.api_prefix}/personal-agent/workspace")
+async def personal_agent_workspace(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    safe_identity = await personal_identity(identity, db)
+    context = await build_context(safe_identity, db)
+    # 工作台与对话共用权限裁剪后的真实业务摘要，不返回内部身份文件。
+    return {key: context[key] for key in (
+        "todos", "my_tasks", "pending_contract_approvals", "pending_other_approvals", "visible_cases",
+    )}
 
 
 @router.get(f"{settings.api_prefix}/personal-agent/identity.md")

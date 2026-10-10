@@ -7,23 +7,10 @@
 .workspace-service { display: flex; align-items: center; gap: 5px; color: var(--workspace-muted); font-size: 11px; white-space: nowrap; }
 .workspace-service i { width: 6px; height: 6px; background: #cc9a33; border-radius: 50%; }
 .workspace-service.ready i { background: #00996a; }
-.personal-agent-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 0; flex: 1; }
-.personal-agent-sidebar { display: flex; flex-direction: column; background: #f7f8f9; border-right: 1px solid var(--workspace-line); padding: 24px 14px 14px; overflow: auto; }
-.workspace-user { display: flex; gap: 10px; align-items: center; padding: 0 8px 26px; }
-.workspace-user-avatar { width: 34px; height: 34px; flex-shrink: 0; display: grid; place-items: center; background: #e8eeef; color: #55717a; border-radius: 6px; font-size: 17px; }
-.workspace-user > div:last-child { min-width: 0; }
-.workspace-user strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
-.workspace-user span { display: block; margin-top: 3px; font-size: 11px; line-height: 1.7; color: #7b868e; overflow-wrap: anywhere; }
-.workspace-nav-label { margin: 0 10px 9px; color: #8a949a; font-size: 11px; }
-.workspace-tools-label { margin-top: 28px; }
-.workspace-work-nav { display: grid; gap: 4px; }
-.workspace-work-nav button { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 38px; border: 0; border-radius: 5px; background: transparent; padding: 9px 11px; color: #53616a; text-align: left; cursor: pointer; font-size: 13px; }
-.workspace-work-nav button > .anticon { font-size: 16px; color: #7a8992; }
-.workspace-work-nav button:hover { background: #eaf0ee; color: #007b56; }
-.workspace-work-nav button:disabled { cursor: default; opacity: .5; }
-.workspace-work-nav small { margin-left: auto; color: #8a949a; }
-.workspace-private-label { margin: auto 10px 0; padding-top: 30px; font-size: 11px; color: #8b959c; display: flex; gap: 7px; align-items: center; }
-.personal-agent-chat { display: flex; flex-direction: column; position: relative; min-width: 0; min-height: 0; }
+.personal-agent-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 38%); min-height: 0; flex: 1; }
+.personal-agent-layout[data-view="chat"] { grid-template-columns: minmax(0, 1fr); }
+.personal-agent-layout[data-view="chat"] .law-work-panel { display: none; }
+.personal-agent-chat { display: flex; flex-direction: column; position: relative; min-width: 0; min-height: 0; border-left: 1px solid var(--workspace-line); }
 .workspace-thread-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 28px; font-size: 12px; color: #879198; flex-shrink: 0; }
 .workspace-thread-heading > span { display: flex; gap: 7px; align-items: center; }
 .workspace-current-case { font-family: Consolas, monospace; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -83,8 +70,6 @@
 .workspace-file-chip { display: flex; align-items: center; gap: 5px; background: #f6f7fa; border: 1px solid #e6e7ef; padding: 3px 3px 3px 8px; border-radius: 4px; max-width: min(260px, 100%); color: #6e7b95; font-size: 11px; }
 .workspace-file-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .workspace-file-chip .ant-btn { height: 22px; width: 22px; flex-shrink: 0; padding: 0; color: #8b96a8; }
-.workspace-mobile-menu.ant-btn { display: none; }
-.workspace-drawer-sidebar { display: flex; flex-direction: column; min-height: 80dvh; }
 .workspace-skill-manager { display: grid; gap: 24px; }
 .workspace-skill-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .workspace-skill-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; gap: 12px; border-bottom: 1px solid #e9edef; }
@@ -99,20 +84,25 @@
 .workspace-case-option b, .workspace-case-option span { display: block; overflow-wrap: anywhere; }
 .workspace-case-option b { color: #395453; font-size: 13px; }
 .workspace-case-option span { color: #879296; font-size: 12px; margin-top: 4px; }
-.workspace-work-nav button:focus-visible, .workspace-start-actions button:focus-visible, .workspace-case-option:focus-visible { outline: 2px solid #00996a; outline-offset: 2px; }
-@media (max-width: 1100px) { .personal-agent-layout { grid-template-columns: 190px minmax(0, 1fr); } .personal-agent-title > span:last-child { display: none; } .personal-agent-messages { padding-inline: 20px; } .personal-agent-composer-wrap { padding-inline: 20px; } }
+.workspace-start-actions button:focus-visible, .workspace-case-option:focus-visible { outline: 2px solid #00996a; outline-offset: 2px; }
+.personal-agent-layout[data-view="workspace"] .workspace-thread-heading { background: #fbfcfd; border-bottom: 1px solid #edf0f2; padding: 15px 18px; }
+.personal-agent-layout[data-view="workspace"] .personal-agent-messages { padding-inline: 18px; }
+.personal-agent-layout[data-view="workspace"] .personal-agent-composer-wrap { padding: 10px 14px 14px; }
+.personal-agent-layout[data-view="workspace"] .workspace-empty { padding-top: 28px; }
+.personal-agent-layout[data-view="workspace"] .workspace-empty h3 { font-size: 17px; }
+.personal-agent-layout[data-view="workspace"] .workspace-start-actions button { padding: 9px; gap: 7px; font-size: 12px; min-height: 48px; }
+@media (max-width: 1100px) { .personal-agent-layout { grid-template-columns: minmax(0, 1fr); } .personal-agent-layout[data-view="workspace"] .personal-agent-chat { display: none; } .personal-agent-title > span:last-child { display: none; } .personal-agent-messages { padding-inline: 20px; } .personal-agent-composer-wrap { padding-inline: 20px; } }
 @media (max-width: 760px) {
   .personal-agent-page { position: fixed; z-index: 2; top: 56px; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); left: 0; height: auto; min-height: 0; }
   .personal-agent-header { min-height: 48px; padding: 7px 10px; gap: 4px; }
   .personal-agent-title { gap: 7px; }
   .personal-agent-title h2 { font-size: 15px; }
   .personal-agent-title > .anticon { display: none; }
-  .workspace-mobile-menu.ant-btn { display: inline-flex; }
-  .workspace-service { font-size: 10px; }
+  .workspace-service { display: none; }
+  .personal-agent-header .ant-segmented { font-size: 12px; }
   .workspace-case-link.ant-btn { width: 28px; padding-inline: 0; }
   .workspace-case-link.ant-btn > span:not(.anticon) { display: none; }
-  .personal-agent-layout { display: flex; }
-  .personal-agent-sidebar { display: none; }
+  .personal-agent-layout { display: grid; }
   .personal-agent-chat { flex: 1; }
   .workspace-thread-heading { padding: 10px 15px; font-size: 11px; }
   .personal-agent-messages { padding: 8px 15px 12px; }
