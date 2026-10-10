@@ -349,6 +349,7 @@ class CaseAgentRuntime:
         self.error = ""
         self._checkpoint_context: AbstractAsyncContextManager[Any] | None = None
         self._semaphore = asyncio.Semaphore(self.max_concurrency)
+        self._model_stream_supported: bool | None = None
 
     async def start(self) -> None:
         if not self.enabled or self.graph is not None:
@@ -477,13 +478,17 @@ class CaseAgentRuntime:
                     if chunk_callback:
                         chunk_callback(content)
 
+                def on_stream_support(supported: bool) -> None:
+                    self._model_stream_supported = supported
+
                 for _ in range(MAX_TOOL_ROUNDS):
                     result = await request_completion(
                         client, f"{self.api_base_url}/chat/completions",
                         {"Authorization": f"Bearer {self.api_key}"},
                         {"model": self.model, "messages": prompt_messages, "temperature": 0.2, "tools": MODEL_TOOLS},
-                        stream=bool(chunk_callback),
+                        stream=bool(chunk_callback) and self._model_stream_supported is not False,
                         on_delta=on_delta if chunk_callback else None,
+                        on_stream_support=on_stream_support,
                     )
                     calls = result.get("tool_calls") or []
                     if calls:

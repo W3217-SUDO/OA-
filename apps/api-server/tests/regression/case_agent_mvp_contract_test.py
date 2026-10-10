@@ -1,9 +1,11 @@
 """MVP contract tests for the LangGraph-backed case agent."""
 
+import json
 import unittest
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, patch
 
+import httpx
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -11,6 +13,8 @@ from sqlalchemy.pool import StaticPool
 
 import app.areas.legal.case_space as case_space_module
 import app.main as main_module
+from app.agent_mcp.auth import AuthContext, _auth_context
+from app.agent_mcp.model_tools import MODEL_TOOLS, request_completion
 from app.case_agent import RESPONSE_STYLE_RULES, CaseAgentRuntime, _MODEL_CHUNK_CALLBACK, _checkpoint_url, _extract_proposed_action
 from app.agent_skills import AgentSkill
 from app.database import Base
@@ -187,6 +191,7 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
         class FakeClient:
             post_payloads = []
+            stream_payloads = []
 
             def __init__(self, *_args, **_kwargs):
                 pass
@@ -197,7 +202,8 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
             async def __aexit__(self, *_args):
                 return None
 
-            def stream(self, *_args, **_kwargs):
+            def stream(self, *_args, **kwargs):
+                self.stream_payloads.append(kwargs["json"])
                 return FakeResponse(400)
 
             async def post(self, *_args, **kwargs):
@@ -215,14 +221,177 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
                     {"case": {"id": 9}},
                     [{"role": "user", "content": "帮我生成一个起诉状模板"}],
                 )
+                first_chunks = "".join(chunks)
+                chunks.clear()
+                second_content, second_action = await self.runtime._request_model(
+                    {"case": {"id": 9}},
+                    [{"role": "user", "content": "帮我再生成一个起诉状模板"}],
+                )
         finally:
             _MODEL_CHUNK_CALLBACK.reset(token)
 
         self.assertEqual(content, "民事起诉状完整正文")
         self.assertIsNone(action)
-        self.assertEqual("".join(chunks), content)
+        self.assertEqual(first_chunks, content)
+        self.assertEqual(second_content, content)
+        self.assertIsNone(second_action)
+        self.assertEqual("".join(chunks), second_content)
+        self.assertEqual(len(FakeClient.stream_payloads), 1)
+        self.assertEqual(len(FakeClient.post_payloads), 2)
         self.assertFalse(FakeClient.post_payloads[0]["stream"])
-        self.assertFalse(self.runtime._model_stream_supported)
+        self.assertFalse(FakeClient.post_payloads[1]["stream"])
+        self.assertEqual(FakeClient.stream_payloads[0]["tools"], MODEL_TOOLS)
+        self.assertEqual(FakeClient.post_payloads[1]["tools"], MODEL_TOOLS)
+        self.assertIs(self.runtime._model_stream_supported, False)
+
+    async def test_stream_protocol_rejection_retries_once_with_unchanged_tools(self):
+        payload = {"model": "gpt-test", "messages": [{"role": "user", "content": "query"}], "tools": MODEL_TOOLS}
+        message = {
+            "role": "assistant",
+            "content": "可见正文<proposed_action>{\"type\":\"case.update\"}</proposed_action>",
+            "reasoning_content": "private reasoning",
+            "tool_calls": [{"id": "call-1", "type": "function", "function": {"name": "oa_search_tools", "arguments": "{}"}}],
+        }
+        for status in (400, 404, 405, 415, 422, 501):
+            with self.subTest(status=status):
+                requests = []
+                closed = []
+                chunks = []
+                stream_support = []
+
+                class RejectedStream(httpx.AsyncByteStream):
+                    async def __aiter__(self):
+                        yield b"stream unsupported"
+
+                    async def aclose(self):
+                        closed.append(True)
+
+                def respond(request):
+                    requests.append(json.loads(request.content))
+                    if len(requests) == 1:
+                        return httpx.Response(status, stream=RejectedStream())
+                    self.assertEqual(closed, [True])
+                    return httpx.Response(200, json={"choices": [{"message": message, "finish_reason": "tool_calls"}]})
+
+                async def on_delta(content):
+                    chunks.append(content)
+
+                async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+                    result = await request_completion(client, "https://model.example/v1/chat/completions", {}, payload, stream=True, on_delta=on_delta, on_stream_support=stream_support.append)
+                self.assertEqual(requests, [{**payload, "stream": True}, {**payload, "stream": False}])
+                self.assertEqual(result, message)
+                self.assertEqual("".join(chunks), "可见正文")
+                self.assertEqual(stream_support, [False])
+
+    async def test_non_stream_retry_does_not_hide_genuine_http_error(self):
+        requests = []
+        on_delta = AsyncMock()
+        stream_support = []
+
+        def respond(request):
+            requests.append(json.loads(request.content))
+            return httpx.Response(400, json={"error": {"message": "invalid tools schema"}})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            with self.assertRaisesRegex(RuntimeError, "^model_http_400$"):
+                await request_completion(client, "https://model.example/v1/chat/completions", {}, {"tools": MODEL_TOOLS}, stream=True, on_delta=on_delta, on_stream_support=stream_support.append)
+        self.assertEqual([item["stream"] for item in requests], [True, False])
+        self.assertEqual(stream_support, [False])
+        on_delta.assert_not_awaited()
+
+    async def test_successful_stream_preserves_tool_fragments_and_visible_content(self):
+        chunks = []
+        requests = []
+        stream_support = []
+        events = [
+            {"choices": [{"delta": {
+                "content": "可见正文<proposed_", "reasoning_content": "private ",
+                "tool_calls": [{"index": 0, "id": "call-", "function": {"name": "oa_", "arguments": '{"query":'}}],
+            }}]},
+            {"choices": [{"delta": {
+                "content": "action>{}</proposed_action>", "reasoning_content": "reasoning",
+                "tool_calls": [{"index": 0, "id": "1", "function": {"name": "search_tools", "arguments": '"案件"}'}}],
+            }, "finish_reason": "tool_calls"}]},
+        ]
+
+        def respond(request):
+            requests.append(json.loads(request.content))
+            return httpx.Response(200, text="".join(f"data: {json.dumps(event)}\n\n" for event in events))
+
+        async def on_delta(content):
+            chunks.append(content)
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            result = await request_completion(client, "https://model.example/v1/chat/completions", {}, {"tools": MODEL_TOOLS}, stream=True, on_delta=on_delta, on_stream_support=stream_support.append)
+        self.assertEqual(requests, [{"tools": MODEL_TOOLS, "stream": True}])
+        self.assertEqual(stream_support, [True])
+        self.assertEqual("".join(chunks), "可见正文")
+        self.assertEqual(result, {
+            "role": "assistant", "content": "可见正文<proposed_action>{}</proposed_action>",
+            "reasoning_content": "private reasoning",
+            "tool_calls": [{"id": "call-1", "type": "function", "function": {"name": "oa_search_tools", "arguments": '{"query":"案件"}'}}],
+        })
+
+    async def test_stream_auth_rate_limit_and_server_errors_are_not_retried(self):
+        for status in (401, 403, 429, 500, 502, 503):
+            with self.subTest(status=status):
+                requests = []
+                stream_support = []
+
+                def respond(request):
+                    requests.append(json.loads(request.content))
+                    return httpx.Response(status, json={"error": "request failed"})
+
+                async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+                    with self.assertRaisesRegex(RuntimeError, f"^model_http_{status}$"):
+                        await request_completion(client, "https://model.example/v1/chat/completions", {}, {}, stream=True, on_stream_support=stream_support.append)
+                self.assertEqual(requests, [{"stream": True}])
+                self.assertEqual(stream_support, [])
+
+    async def test_failed_or_incomplete_stream_is_not_retried(self):
+        for event, error in (
+            ({"error": {"message": "provider failure"}}, "model_stream_error"),
+            ({"choices": [{"delta": {"content": "partial"}}]}, "model_stream_incomplete"),
+            ({"choices": [{"delta": {}, "finish_reason": "length"}]}, "model_response_incomplete"),
+            ({"choices": [{"delta": {}, "finish_reason": "content_filter"}]}, "model_response_incomplete"),
+        ):
+            with self.subTest(error=error):
+                requests = []
+                stream_support = []
+
+                def respond(request):
+                    requests.append(json.loads(request.content))
+                    return httpx.Response(200, text=f"data: {json.dumps(event)}\n\n")
+
+                async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+                    with self.assertRaisesRegex(RuntimeError, f"^{error}$"):
+                        await request_completion(client, "https://model.example/v1/chat/completions", {}, {}, stream=True, on_stream_support=stream_support.append)
+                self.assertEqual(requests, [{"stream": True}])
+                self.assertEqual(stream_support, [])
+
+    async def test_non_stream_emission_hides_personal_action_and_rejects_truncation(self):
+        chunks = []
+
+        async def on_delta(content):
+            chunks.append(content)
+
+        message = {"role": "assistant", "content": "可见正文<personal_action>{}</personal_action>"}
+        for reason in ("stop", "length", "content_filter"):
+            with self.subTest(reason=reason):
+                chunks.clear()
+
+                def respond(_request):
+                    return httpx.Response(200, json={"choices": [{"message": message, "finish_reason": reason}]})
+
+                async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+                    if reason == "stop":
+                        result = await request_completion(client, "https://model.example/v1/chat/completions", {}, {}, stream=False, on_delta=on_delta)
+                        self.assertEqual(result, message)
+                        self.assertEqual("".join(chunks), "可见正文")
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "^model_response_incomplete$"):
+                            await request_completion(client, "https://model.example/v1/chat/completions", {}, {}, stream=False, on_delta=on_delta)
+                        self.assertEqual(chunks, [])
 
     async def test_user_skill_override_reaches_model_without_changing_case_scope(self):
         self.runtime.api_base_url = "https://model.example/v1"
@@ -332,6 +501,25 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
         await self.runtime.stop()
         await self.engine.dispose()
 
+    async def _decide_action(self, case_id, action_id, body, identity, db, *, confirmation="frontend", origin="http://localhost"):
+        # 直接调用路由时补齐前端请求上下文，仍执行真实确认门禁和业务权限校验。
+        context = AuthContext(main_module.app, "test-only", {
+            "type": "http", "method": "POST",
+            "path": f"{main_module.settings.api_prefix}/case-spaces/{case_id}/agent/actions/{action_id}/decision",
+            "headers": [
+                (b"origin", origin.encode("ascii")),
+                (b"x-oa-agent-confirmation", confirmation.encode("ascii")),
+            ],
+        })
+        token = _auth_context.set(context)
+        try:
+            return await decide_case_agent_action(case_id, action_id, body, identity, db)
+        finally:
+            context.active = False
+            context.bearer = ""
+            context.scope.clear()
+            _auth_context.reset(token)
+
     async def _seed(self, db: AsyncSession) -> BusinessRecord:
         db.add_all([
             User(username="lawyer", display_name="范文玲", department="上海", password_hash="x", role="admin"),
@@ -403,10 +591,21 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             state = await case_agent_state(case.id, identity, db)
             self.assertEqual(state["thread_id"], case_space_module.case_agent_runtime.thread_id(case.id, identity["username"]))
             self.assertEqual(state["shared_space_id"], f"case:{case.id}")
-            result = await decide_case_agent_action(
+            action_id = result["pending_actions"][0]["id"]
+            decision = CaseAgentDecisionInput(decision="rejected", comment="测试不落库")
+            with self.assertRaises(HTTPException) as missing_request:
+                await decide_case_agent_action(case.id, action_id, decision, identity, db)
+            self.assertEqual(missing_request.exception.status_code, 401)
+            for headers in ({"confirmation": ""}, {"origin": "https://untrusted.example"}):
+                with self.assertRaises(HTTPException) as invalid_confirmation:
+                    await self._decide_action(case.id, action_id, decision, identity, db, **headers)
+                self.assertEqual(invalid_confirmation.exception.status_code, 403)
+            self.assertEqual((await self.runtime.get_state(case.id, identity["username"]))["pending_actions"][0]["status"], "pending")
+            self.assertEqual(list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "agent_action"))).all()), [])
+            result = await self._decide_action(
                 case.id,
-                result["pending_actions"][0]["id"],
-                CaseAgentDecisionInput(decision="rejected", comment="测试不落库"),
+                action_id,
+                decision,
                 identity,
                 db,
             )
@@ -434,7 +633,7 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             action = result["pending_actions"][0]
             self.assertEqual(action["preview"]["changes"][0]["before"], "")
             self.assertEqual(action["preview"]["changes"][0]["after"], "已完成客户沟通")
-            decided = await decide_case_agent_action(
+            decided = await self._decide_action(
                 case.id,
                 action["id"],
                 CaseAgentDecisionInput(decision="approved", comment="同意执行"),
@@ -469,7 +668,7 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             )
             action = result["pending_actions"][-1]
             self.assertEqual(action["preview"]["target"], customer.serial_no)
-            await decide_case_agent_action(case.id, action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
+            await self._decide_action(case.id, action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
             updated = await db.get(BusinessRecord, customer.id)
             self.assertEqual(updated.description, "智能体审批后的客户说明")
 
@@ -493,7 +692,7 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             )
             action = result["pending_actions"][-1]
             self.assertEqual(action["preview"]["target"], contract.serial_no)
-            await decide_case_agent_action(case.id, action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
+            await self._decide_action(case.id, action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
             updated = await db.get(BusinessRecord, contract.id)
             self.assertEqual(updated.description, "智能体审批后的合同说明")
 
@@ -523,7 +722,7 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             )
             action = result["pending_actions"][-1]
             with self.assertRaises(HTTPException) as raised:
-                await decide_case_agent_action(case.id, action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
+                await self._decide_action(case.id, action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
             self.assertEqual(raised.exception.status_code, 404)
             unchanged = await db.get(BusinessRecord, outsider.id)
             self.assertEqual(unchanged.description, "不可修改")
@@ -553,7 +752,7 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(assistant_state["shared_space_id"], result["shared_space_id"])
             self.assertNotEqual(assistant_state["thread_id"], result["thread_id"])
             with self.assertRaises(HTTPException) as raised:
-                await decide_case_agent_action(
+                await self._decide_action(
                     case.id,
                     action["id"],
                     CaseAgentDecisionInput(decision="approved"),
@@ -583,7 +782,7 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
                 db,
             )
             task_action = task_result["pending_actions"][-1]
-            await decide_case_agent_action(case.id, task_action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
+            await self._decide_action(case.id, task_action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
             tasks = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "task"))).all())
             self.assertTrue(any((item.data or {}).get("case_record_id") == case.id for item in tasks))
 
@@ -601,7 +800,7 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
                 db,
             )
             reminder_action = reminder_result["pending_actions"][-1]
-            await decide_case_agent_action(case.id, reminder_action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
+            await self._decide_action(case.id, reminder_action["id"], CaseAgentDecisionInput(decision="approved"), identity, db)
             reminders = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case_reminder"))).all())
             self.assertTrue(any((item.data or {}).get("case_id") == case.id for item in reminders))
 

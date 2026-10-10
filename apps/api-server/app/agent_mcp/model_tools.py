@@ -171,6 +171,28 @@ class ModelToolSession:
         return results
 
 
+async def _request_non_stream_completion(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict[str, str],
+    payload: dict[str, Any],
+    on_delta: Callable[[str], Awaitable[None]] | None,
+) -> dict[str, Any]:
+    response = await client.post(url, headers=headers, json={**payload, "stream": False})
+    if response.is_error:
+        raise RuntimeError(f"model_http_{response.status_code}")
+    result = response.json()["choices"][0]
+    if result.get("finish_reason") in {"length", "content_filter"}:
+        raise RuntimeError("model_response_incomplete")
+    message = result["message"]
+    if on_delta:
+        visible = _visible_content(str(message.get("content") or ""))
+        for offset in range(0, len(visible), 24):
+            await on_delta(visible[offset:offset + 24])
+            await asyncio.sleep(0)
+    return message
+
+
 async def request_completion(
     client: httpx.AsyncClient,
     url: str,
@@ -179,15 +201,10 @@ async def request_completion(
     *,
     stream: bool,
     on_delta: Callable[[str], Awaitable[None]] | None = None,
+    on_stream_support: Callable[[bool], None] | None = None,
 ) -> dict[str, Any]:
     if not stream:
-        response = await client.post(url, headers=headers, json={**payload, "stream": False})
-        if response.is_error:
-            raise RuntimeError(f"model_http_{response.status_code}")
-        result = response.json()["choices"][0]
-        if result.get("finish_reason") in {"length", "content_filter"}:
-            raise RuntimeError("model_response_incomplete")
-        return result["message"]
+        return await _request_non_stream_completion(client, url, headers, payload, on_delta)
     parts: list[str] = []
     reasoning_parts: list[str] = []
     calls: dict[int, dict[str, Any]] = {}
@@ -195,49 +212,58 @@ async def request_completion(
     emitted = 0
     async with client.stream("POST", url, headers=headers, json={**payload, "stream": True}) as response:
         if response.is_error:
-            raise RuntimeError(f"model_http_{response.status_code}")
-        async for line in response.aiter_lines():
-            if not line.startswith("data:"):
-                continue
-            raw = line[5:].strip()
-            if raw == "[DONE]":
-                finished = True
-                break
-            if not raw:
-                continue
-            event = json.loads(raw)
-            if event.get("error"):
-                raise RuntimeError("model_stream_error")
-            choices = event.get("choices") or []
-            if not choices:
-                continue
-            choice = choices[0]
-            delta = choice.get("delta") or {}
-            if delta.get("reasoning_content"):
-                reasoning_parts.append(str(delta["reasoning_content"]))
-            if delta.get("content"):
-                parts.append(str(delta["content"]))
-                if on_delta:
-                    visible = _visible_content("".join(parts))
-                    if len(visible) > emitted:
-                        await on_delta(visible[emitted:])
-                        emitted = len(visible)
-            for fragment in delta.get("tool_calls") or []:
-                index = fragment["index"]
-                call = calls.setdefault(index, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
-                if fragment.get("id"):
-                    call["id"] += fragment["id"]
-                function = fragment.get("function") or {}
-                call["function"]["name"] += str(function.get("name") or "")
-                call["function"]["arguments"] += str(function.get("arguments") or "")
-            reason = choice.get("finish_reason")
-            if reason in {"length", "content_filter"}:
-                raise RuntimeError("model_response_incomplete")
-            if reason is not None:
-                finished = True
-                break
+            if response.status_code not in {400, 404, 405, 415, 422, 501}:
+                raise RuntimeError(f"model_http_{response.status_code}")
+            if on_stream_support:
+                on_stream_support(False)
+        else:
+            async for line in response.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                raw = line[5:].strip()
+                if raw == "[DONE]":
+                    finished = True
+                    break
+                if not raw:
+                    continue
+                event = json.loads(raw)
+                if event.get("error"):
+                    raise RuntimeError("model_stream_error")
+                choices = event.get("choices") or []
+                if not choices:
+                    continue
+                choice = choices[0]
+                delta = choice.get("delta") or {}
+                if delta.get("reasoning_content"):
+                    reasoning_parts.append(str(delta["reasoning_content"]))
+                if delta.get("content"):
+                    parts.append(str(delta["content"]))
+                    if on_delta:
+                        visible = _visible_content("".join(parts))
+                        if len(visible) > emitted:
+                            await on_delta(visible[emitted:])
+                            emitted = len(visible)
+                for fragment in delta.get("tool_calls") or []:
+                    index = fragment["index"]
+                    call = calls.setdefault(index, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                    if fragment.get("id"):
+                        call["id"] += fragment["id"]
+                    function = fragment.get("function") or {}
+                    call["function"]["name"] += str(function.get("name") or "")
+                    call["function"]["arguments"] += str(function.get("arguments") or "")
+                reason = choice.get("finish_reason")
+                if reason in {"length", "content_filter"}:
+                    raise RuntimeError("model_response_incomplete")
+                if reason is not None:
+                    finished = True
+                    break
+    if response.is_error:
+        # 保留已有 provider 的非流式协议兼容；真实请求错误仍由第二次响应明确抛出。
+        return await _request_non_stream_completion(client, url, headers, payload, on_delta)
     if not finished:
         raise RuntimeError("model_stream_incomplete")
+    if on_stream_support:
+        on_stream_support(True)
     result: dict[str, Any] = {"role": "assistant", "content": "".join(parts)}
     if reasoning_parts:
         result["reasoning_content"] = "".join(reasoning_parts)

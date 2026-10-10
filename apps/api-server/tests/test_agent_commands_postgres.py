@@ -13,9 +13,12 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import app.areas.legal.case_space as legal_router
+from app.agent_mcp.auth import AuthContext, _auth_context
 from app.case_agent import CaseAgentRuntime
+from app.config import settings
 from app.core import documents
 from app.database import Base
+from app.main import app
 from app.models import BusinessRecord, Notification, User, WorkflowEvent
 from app.models_shared import (
     CaseAgentDecisionInput,
@@ -58,6 +61,25 @@ class AgentCommandsPostgresTests(unittest.IsolatedAsyncioTestCase):
         async with self.admin_engine.begin() as connection:
             await connection.execute(text(f"DROP SCHEMA {self.schema} CASCADE"))
         await self.admin_engine.dispose()
+
+    async def _decide_action(self, case_id, action_id, body, identity, db):
+        # 保留 PostgreSQL 事务断言，仅补齐真实前端确认入口要求的请求上下文。
+        context = AuthContext(app, "test-only", {
+            "type": "http", "method": "POST",
+            "path": f"{settings.api_prefix}/case-spaces/{case_id}/agent/actions/{action_id}/decision",
+            "headers": [
+                (b"origin", b"http://localhost"),
+                (b"x-oa-agent-confirmation", b"frontend"),
+            ],
+        })
+        token = _auth_context.set(context)
+        try:
+            return await legal_router.decide_case_agent_action(case_id, action_id, body, identity, db)
+        finally:
+            context.active = False
+            context.bearer = ""
+            context.scope.clear()
+            _auth_context.reset(token)
 
     async def _seed(self, db):
         db.add_all(
@@ -207,7 +229,7 @@ class AgentCommandsPostgresTests(unittest.IsolatedAsyncioTestCase):
                     "changes": {"description": "客户已更新"},
                 },
             )
-            await legal_router.decide_case_agent_action(
+            await self._decide_action(
                 case.id,
                 action_id,
                 CaseAgentDecisionInput(decision="approved"),
@@ -223,7 +245,7 @@ class AgentCommandsPostgresTests(unittest.IsolatedAsyncioTestCase):
                     "changes": {"description": "合同已更新"},
                 },
             )
-            await legal_router.decide_case_agent_action(
+            await self._decide_action(
                 case.id,
                 action_id,
                 CaseAgentDecisionInput(decision="approved"),
@@ -240,7 +262,7 @@ class AgentCommandsPostgresTests(unittest.IsolatedAsyncioTestCase):
                 },
             )
             with self.assertRaises(HTTPException) as raised:
-                await legal_router.decide_case_agent_action(
+                await self._decide_action(
                     case.id,
                     action_id,
                     CaseAgentDecisionInput(decision="approved"),
@@ -302,7 +324,7 @@ class AgentCommandsPostgresTests(unittest.IsolatedAsyncioTestCase):
                 fail_after_notification,
             ):
                 with self.assertRaises(HTTPException) as raised:
-                    await legal_router.decide_case_agent_action(
+                    await self._decide_action(
                         case.id,
                         action_id,
                         CaseAgentDecisionInput(decision="approved"),
@@ -350,7 +372,7 @@ class AgentCommandsPostgresTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(failed.status, "执行失败")
 
         async with self.sessions() as db:
-            await legal_router.decide_case_agent_action(
+            await self._decide_action(
                 case.id,
                 action_id,
                 CaseAgentDecisionInput(decision="approved"),
@@ -424,7 +446,7 @@ class AgentCommandsPostgresTests(unittest.IsolatedAsyncioTestCase):
         async def approve():
             async with self.sessions() as db:
                 try:
-                    return await legal_router.decide_case_agent_action(
+                    return await self._decide_action(
                         case_id,
                         action_id,
                         CaseAgentDecisionInput(decision="approved"),
@@ -492,7 +514,7 @@ class AgentCommandsPostgresTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ):
                 with self.assertRaises(HTTPException) as raised:
-                    await legal_router.decide_case_agent_action(
+                    await self._decide_action(
                         case.id,
                         action_id,
                         CaseAgentDecisionInput(decision="approved"),
