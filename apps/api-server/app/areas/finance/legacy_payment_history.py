@@ -99,14 +99,6 @@ async def list_legacy_payment_history(
         LegacyFinanceRecord.source_table == "FAM_AP_Payment",
         LegacyFinanceRecord.is_active.is_(True),
     ]
-    count_rows = (await db.execute(
-        select(LegacyFinanceRecord.status_code, func.count())
-        .where(*scope)
-        .group_by(LegacyFinanceRecord.status_code)
-    )).all()
-    status_counts = {code: 0 for code in PAYMENT_STATUS_LABELS}
-    status_counts.update({str(code): int(count) for code, count in count_rows})
-
     conditions = list(scope)
     if view == "mine":
         conditions.append(LegacyFinanceRecord.source_payload["Applicant"].as_string() == identity["username"])
@@ -126,8 +118,6 @@ async def list_legacy_payment_history(
     elif view in VIEW_STATUS_CODES:
         conditions.append(LegacyFinanceRecord.status_code.in_(VIEW_STATUS_CODES[view]))
 
-    if status_code:
-        conditions.append(LegacyFinanceRecord.status_code == status_code)
     if keyword.strip():
         needle = f"%{keyword.strip()}%"
         conditions.append(or_(
@@ -144,6 +134,16 @@ async def list_legacy_payment_history(
                 )
             ),
         ))
+
+    count_rows = (await db.execute(
+        select(LegacyFinanceRecord.status_code, func.count())
+        .where(*conditions)
+        .group_by(LegacyFinanceRecord.status_code)
+    )).all()
+    status_counts = {code: 0 for code in PAYMENT_STATUS_LABELS}
+    status_counts.update({str(code): int(count) for code, count in count_rows})
+    if status_code:
+        conditions.append(LegacyFinanceRecord.status_code == status_code)
 
     total = int(await db.scalar(
         select(func.count()).select_from(LegacyFinanceRecord).where(*conditions)
