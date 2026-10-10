@@ -1704,7 +1704,7 @@ export default function CaseCenterPage({
     if (key === "move") {
       if (!selected.length) return message.warning("请先选择需要更改目录的文件");
       if (selected.some((item) => item.record_id !== viewingCounselCase?.id)) return message.warning("客户文档和合同文档不能移动到案件文档目录");
-      caseAttachmentMoveForm.setFieldsValue({ category: activeCounselDocCategory === "案件文档全部" ? undefined : activeCounselDocCategory });
+      caseAttachmentMoveForm.setFieldsValue({ category: ["全部案件文档","案件文档全部"].includes(activeCounselDocCategory) ? undefined : activeCounselDocCategory });
       setMovingCounselAttachmentIds(selected.map((item) => item.id));
     }
   };
@@ -2576,10 +2576,11 @@ export default function CaseCenterPage({
   const hasLegacyDocumentTree=counselDocumentFolderTree.some(option=>Boolean(option.legacy_folder_id));
   const counselDocTree:CaseDocumentTreeItem[]=hasLegacyDocumentTree ? [
     {label:"AI空间",category:"AI空间",type:"folder"},
-    {label:"全部案件文档",category:"案件文档全部",type:"overview"},
+    {label:"全部案件文档",category:"全部案件文档",type:"overview"},
     ...flattenLegacyCaseFolders(counselDocumentFolderTree,expandedCounselDocGroups),
   ] : [
     {label:"AI空间",category:"AI空间",type:"folder"},
+    {label:"全部案件文档",category:"全部案件文档",type:"overview"},
     {label:"客户文档",category:"客户文档",type:"folder"},
     {label:"合同文档",category:"合同文档",type:"folder"},
     {label:"调查文档",category:"调查文档全部",type:"group"},
@@ -2599,7 +2600,9 @@ export default function CaseCenterPage({
   const nonCaseDocumentCategories=["AI空间","客户文档","合同文档",...counselDocCategoryGroups.调查文档全部];
   const activeLegacyFolder=findCaseDocumentFolder(counselDocumentFolderTree,activeCounselDocCategory);
   const legacyFolderAttachments=filterLegacyCaseFolder(counselDetailAttachments,activeLegacyFolder);
-  const filteredCounselDetailAttachments=legacyFolderAttachments ?? (activeCounselDocCategory
+  const filteredCounselDetailAttachments=activeCounselDocCategory==="全部案件文档"
+    ? counselDetailAttachments.filter(row=>row.category!=="AI空间"&&row.document_category!=="AI空间")
+    : legacyFolderAttachments ?? (activeCounselDocCategory
     ? activeCounselDocCategory==="客户文档"
       ? counselDetailCustomerAttachments
       : activeCounselDocCategory==="合同文档"

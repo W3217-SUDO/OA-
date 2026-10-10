@@ -656,7 +656,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             setCounselDetailAttachments([]);
             setCounselDetailCustomerAttachments([]);
             setCounselDetailContractAttachments([]);
-            setActiveCounselDocCategory("案件文档全部");
+            setActiveCounselDocCategory("全部案件文档");
             setCounselDocumentFolderTree([]);
             setExpandedCounselDocGroups({ "调查文档全部": true, "案件文档全部": true });
             context.setCounselDocumentsLoading(true);
