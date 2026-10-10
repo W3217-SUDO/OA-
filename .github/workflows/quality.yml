@@ -70,6 +70,11 @@ jobs:
               for name in ('oa_test_enterprise_reliability', 'oa_test_enterprise_outbox', 'oa_test_enterprise_commands', 'oa_test_enterprise_boundaries'):
                   db.execute(psycopg.sql.SQL('CREATE DATABASE {}').format(psycopg.sql.Identifier(name)))
           PY
+      - name: Check regression runner
+        working-directory: apps/api-server
+        run: |
+          python -m unittest tests.test_regression_runner
+
       - name: Run quality gate
         run: python scripts/quality_gate.py --report-dir "$RUNNER_TEMP/oa-quality" --jobs 2
       - name: Build production images
