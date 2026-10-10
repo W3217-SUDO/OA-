@@ -237,6 +237,72 @@ class NativeRuntimeTest(unittest.TestCase):
 class SourceQualityGateTest(unittest.TestCase):
     """发布前源码门禁不能被构建、旧报告或不同提交替代。"""
 
+    def source_evidence(self, report_dir: Path) -> tuple[dict, dict]:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        pending = [{"file": "test_postgres_startup_migrations.py", "status": "DEFERRED", "passed": False}]
+        backend = {"execution_profile": "source", "total": 1, "passed": 1, "partial": 0,
+                   "failed": 0, "skipped": 0, "excluded": [], "failures": [], "skips": [],
+                   "deferred": pending, "pending_full": [], "results": [
+                       {"file": "test_local.py", "status": "PASS", "exit_code": 0, "executed_methods": 1, "skipped_methods": 0},
+                   ]}
+        report = {"profile": "source", "passed": True, "source_commit": "a" * 40,
+                  "backend_scope": quality_gate.SOURCE_BACKEND_SCOPE,
+                  "pending_ci": ["完整 regression", "PostgreSQL 专用回归与集成"], "backend_pending_ci": pending, "steps": []}
+        for name in quality_gate.SOURCE_STEPS:
+            log = report_dir / f"{name}.log"
+            log.write_text("successful isolated fixture\n", encoding="utf-8")
+            report["steps"].append({"name": name, "exit_code": 0, "seconds": 0.1, "log": str(log)})
+        (report_dir / "quality-gate.json").write_text(json.dumps(report), encoding="utf-8")
+        (report_dir / "backend-regression.json").write_text(json.dumps(backend), encoding="utf-8")
+        return report, backend
+
+    def test_receipt_rejects_zero_execution_and_incomplete_file_results(self):
+        with tempfile.TemporaryDirectory(prefix="oa-test-receipt-counts-") as temporary:
+            report_dir = Path(temporary).resolve()
+            _, backend = self.source_evidence(report_dir)
+            quality_gate.validate_source_backend({**backend, "passed": 0, "partial": 1,
+                                                  "results": [{**backend["results"][0], "status": "PARTIAL"}]})
+            invalid = [
+                [], None,
+                {**backend, "passed": 0}, {**backend, "results": []},
+                {**backend, "results": [{**backend["results"][0], "executed_methods": 0}]},
+                {**backend, "results": [{"file": "test_local.py", "status": "PASS", "exit_code": 0}]},
+                {**backend, "passed": 0, "results": [{**backend["results"][0], "status": "EXCLUDED", "executed_methods": 0}]},
+            ]
+            for report in invalid:
+                with self.subTest(report=report):
+                    (report_dir / "backend-regression.json").write_text(json.dumps(report), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "后端"):
+                        quality_gate.receipt_evidence(report_dir, "a" * 40)
+
+    def test_cached_report_retains_original_steps_and_pending_scope(self):
+        with tempfile.TemporaryDirectory(prefix="oa-test-cache-scope-") as temporary:
+            root = Path(temporary).resolve()
+            original = root / "original"
+            report, _ = self.source_evidence(original)
+            fingerprint = {"commit": "a" * 40}
+            receipt = root / "git/source-receipt.json"
+            quality_gate.write_source_receipt(receipt, fingerprint, original)
+            evidence = quality_gate.receipt_evidence(original, "a" * 40)
+            requested = root / "requested"
+            with (
+                patch.object(sys, "argv", ["quality_gate.py", "--profile", "source", "--push-commit", "a" * 40, "--report-dir", str(requested)]),
+                patch.object(quality_gate.shutil, "which", return_value="node"),
+                patch.object(quality_gate.subprocess, "check_output", side_effect=lambda command, **_kwargs: "v22.20.0" if command[-1] == "--version" else str(receipt)),
+                patch.object(quality_gate, "source_fingerprint", return_value=fingerprint),
+                patch.object(quality_gate, "assert_push_source"),
+                patch.object(quality_gate, "inspect_production_sources") as inspect,
+                patch.object(quality_gate.subprocess, "run") as execute,
+            ):
+                self.assertEqual(quality_gate.main(), 0)
+            reused = json.loads((requested / "quality-gate.json").read_text(encoding="utf-8"))
+            for key in ("profile", "steps", "backend_scope", "pending_ci", "backend_pending_ci", "source_commit"):
+                self.assertEqual(reused[key], report[key])
+            self.assertEqual(reused["reused_report"], str(original))
+            self.assertEqual(quality_gate.receipt_evidence(original, "a" * 40), evidence)
+            inspect.assert_not_called()
+            execute.assert_not_called()
+
     def invoke_gate(self, profile: str, failed_output: str = "") -> tuple[int, dict, list[str], str]:
         with tempfile.TemporaryDirectory(prefix="oa-test-source-gate-") as temporary:
             report = Path(temporary)
@@ -256,7 +322,12 @@ class SourceQualityGateTest(unittest.TestCase):
                 if "tests/run_regression.py" in command:
                     (report / "backend-regression.json").write_text(json.dumps({
                         "execution_profile": "source", "total": 1, "passed": 1, "partial": 0,
+                        "scope": {"groups": ["unit", "structural"], "regression_files": [
+                            "case_agent_mvp_contract_test.py", "deepseek_harness_runtime_test.py",
+                            "case_word_editor_contract_test.py", "case_word_editor_independent_test.py",
+                        ]},
                         "failed": 0, "skipped": 0, "excluded": [], "failures": [], "skips": [],
+                        "results": [{"file": "test_local.py", "status": "PASS", "exit_code": 0, "executed_methods": 1, "skipped_methods": 0}],
                         "deferred": [{"file": "test_agent_commands_postgres.py", "status": "DEFERRED", "passed": False}],
                         "pending_full": [{"file": "test_domain_route_storage.py", "status": "NOT_PASSED", "skipped_methods": 9}],
                     }), encoding="utf-8")
@@ -278,7 +349,7 @@ class SourceQualityGateTest(unittest.TestCase):
             summary = json.loads((report / "quality-gate.json").read_text(encoding="utf-8"))
             return result, summary, commands, errors.getvalue()
 
-    def test_source_runs_all_units_without_building_or_packaging(self):
+    def test_source_runs_all_frontend_units_and_fixed_backend_scope_without_building(self):
         result, summary, commands, _ = self.invoke_gate("source")
         self.assertEqual(result, 0)
         self.assertTrue(summary["passed"])
@@ -288,6 +359,9 @@ class SourceQualityGateTest(unittest.TestCase):
         self.assertEqual(commands[2][1:], ["tests/run-unit.mjs"])
         self.assertEqual(commands[-1][1:9], ["tests/run_regression.py", "--group", "unit", "--group", "regression", "--group", "structural", "--exclude-category"])
         self.assertEqual(commands[-1][-2:], ["--execution-profile", "source"])
+        self.assertEqual(summary["backend_scope"]["groups"], ["unit", "structural"])
+        self.assertEqual(len(summary["backend_scope"]["regression_files"]), 4)
+        self.assertIn("完整 regression", summary["pending_ci"])
         self.assertEqual([item["status"] for item in summary["backend_pending_ci"]], ["DEFERRED", "NOT_PASSED"])
         self.assertIn("PostgreSQL 专用回归与集成", summary["pending_ci"])
 
@@ -333,7 +407,9 @@ class SourceQualityGateTest(unittest.TestCase):
             backend_report = report_dir / "backend-regression.json"
             backend = {"execution_profile": "source", "total": 1, "passed": 1, "partial": 0,
                        "failed": 0, "skipped": 0, "excluded": [], "failures": [], "skips": [],
-                       "deferred": [], "pending_full": []}
+                       "deferred": [], "pending_full": [], "results": [
+                           {"file": "test_local.py", "status": "PASS", "exit_code": 0, "executed_methods": 1, "skipped_methods": 0},
+                       ]}
             backend_report.write_text(json.dumps(backend), encoding="utf-8")
             self.assertIsNone(quality_gate.reusable_source_receipt(receipt, fingerprint))
             quality_gate.write_source_receipt(receipt, fingerprint, report_dir)
@@ -380,6 +456,7 @@ class SourceQualityGateTest(unittest.TestCase):
     def test_fingerprint_binds_parameters_environment_and_dependency_files(self):
         with tempfile.TemporaryDirectory(prefix="oa-test-gate-fingerprint-") as temporary:
             root = Path(temporary).resolve()
+            subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
             api, web = root / "api", root / "web"
             files = (api / "requirements.lock", root / "requirements-dev.lock", web / "package.json",
                      web / "package-lock.json", web / "node_modules/.package-lock.json")
@@ -393,6 +470,17 @@ class SourceQualityGateTest(unittest.TestCase):
                 self.assertEqual(fingerprint, json.loads(json.dumps(fingerprint)))
                 self.assertNotEqual(fingerprint, quality_gate.source_fingerprint("a" * 40, "node", "v22.20.0", 1))
                 with patch.dict(os.environ, {"OA_GATE_PARAMETER": "changed"}):
+                    self.assertNotEqual(fingerprint, quality_gate.source_fingerprint("a" * 40, "node", "v22.20.0", 2))
+                config = root / "global.gitconfig"
+                config.write_text("[core]\n    hooksPath = first-hooks\n", encoding="utf-8")
+                with patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(config)}):
+                    changed = quality_gate.source_fingerprint("a" * 40, "node", "v22.20.0", 2)
+                    self.assertNotEqual(fingerprint, changed)
+                    config.write_text("[core]\n    hooksPath = second-hooks\n", encoding="utf-8")
+                    self.assertNotEqual(changed, quality_gate.source_fingerprint("a" * 40, "node", "v22.20.0", 2))
+                    self.assertNotIn("first-hooks", json.dumps(changed))
+                    self.assertNotIn(str(config), json.dumps(changed))
+                with patch.dict(os.environ, {"GIT_UNKNOWN_QUALITY_SETTING": "changed"}):
                     self.assertNotEqual(fingerprint, quality_gate.source_fingerprint("a" * 40, "node", "v22.20.0", 2))
                 files[-1].write_text("changed installed dependency lock\n", encoding="utf-8")
                 self.assertNotEqual(fingerprint, quality_gate.source_fingerprint("a" * 40, "node", "v22.20.0", 2))

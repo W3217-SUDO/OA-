@@ -22,6 +22,17 @@ API = ROOT / "apps/api-server"
 WEB = ROOT / "apps/admin-web"
 SOURCE_STEPS = ("backend-static", "quality-tools", "frontend-unit", "client-api-contract", "menu-route-coverage", "backend-regression")
 SOURCE_RECEIPT_MAX_AGE_SECONDS = 2 * 60 * 60
+SOURCE_BACKEND_SCOPE = "unit + structural + four fixed regression files"
+
+
+def source_git_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    local_variables = subprocess.check_output(
+        ["git", "rev-parse", "--local-env-vars"], cwd=ROOT, text=True, encoding="utf-8",
+    ).splitlines()
+    for name in local_variables:
+        environment.pop(name, None)
+    return environment
 
 
 def source_fingerprint(commit: str, node: str, node_version: str, jobs: int) -> dict:
@@ -34,15 +45,47 @@ def source_fingerprint(commit: str, node: str, node_version: str, jobs: int) -> 
     installed = sorted((item.metadata["Name"], item.version) for item in distributions())
     overridden = {"APP_ENV", "DATABASE_URL", "UPLOAD_ROOT", "SEED_DEMO_DATA", "PYTHONIOENCODING", "PYTHONDONTWRITEBYTECODE", "PYTHONPATH"}
     volatile = {"PWD", "OLDPWD", "SHLVL", "_", "OA_ROUTE_EFFECTS_POSTGRES_URL", "OA_TEST_API_BASE"}
-    environment = sorted((name, value) for name, value in os.environ.items()
-                         if name not in overridden | volatile and not name.startswith("GIT_") and "TEST_POSTGRES" not in name)
+    inherited = source_git_environment()
+    environment = sorted((name, value) for name, value in inherited.items()
+                         if name not in overridden | volatile and "TEST_POSTGRES" not in name)
+    configuration = subprocess.check_output(
+        ["git", "config", "--null", "--list", "--show-origin", "--show-scope"], cwd=ROOT, env=inherited,
+    )
     return {
         "commit": commit, "python": sys.version, "python_executable": str(Path(sys.executable).resolve()),
         "node": node_version, "node_executable": node, "locks": locks,
         "python_dependencies": hashlib.sha256(json.dumps(installed).encode("utf-8")).hexdigest(),
-        "parameters": {"profile": "source", "execution_profile": "source", "jobs": jobs, "steps": list(SOURCE_STEPS), "exclude_category": "permissions"},
+        "parameters": {"profile": "source", "execution_profile": "source", "backend_scope": SOURCE_BACKEND_SCOPE,
+                       "jobs": jobs, "steps": list(SOURCE_STEPS), "exclude_category": "permissions"},
         "environment": hashlib.sha256(json.dumps(environment).encode("utf-8")).hexdigest(),
+        "git_configuration": hashlib.sha256(configuration).hexdigest(),
     }
+
+
+def validate_source_backend(backend: dict) -> None:
+    """文件通过数和真实方法执行证据必须相互吻合，纯排除文件不算执行。"""
+    if not isinstance(backend, dict):
+        raise ValueError("回执后端报告必须是完整对象")
+    counts = ("total", "passed", "partial", "failed", "skipped")
+    if (backend.get("execution_profile") != "source"
+            or any(type(backend.get(name)) is not int or backend[name] < 0 for name in counts)
+            or backend["total"] < 1 or backend["passed"] + backend["partial"] != backend["total"]
+            or backend["failed"] or backend["skipped"]):
+        raise ValueError("回执后端报告没有覆盖全部实际执行文件")
+    results = backend.get("results")
+    if not isinstance(results, list) or len(results) != backend["total"]:
+        raise ValueError("回执后端报告缺少完整逐文件执行结果")
+    for item in results:
+        if (not isinstance(item, dict) or not isinstance(item.get("file"), str) or not item["file"]
+                or item.get("status") not in {"PASS", "PARTIAL"}
+                or type(item.get("exit_code")) is not int or item["exit_code"] != 0
+                or type(item.get("executed_methods")) is not int or item["executed_methods"] < 1
+                or type(item.get("skipped_methods")) is not int or item["skipped_methods"] < 0):
+            raise ValueError("回执后端结果没有真实的正数方法执行计数")
+    if (len({item["file"] for item in results}) != backend["total"]
+            or sum(item["status"] == "PASS" for item in results) != backend["passed"]
+            or sum(item["status"] == "PARTIAL" for item in results) != backend["partial"]):
+        raise ValueError("回执后端逐文件结果与汇总计数不一致")
 
 
 def receipt_evidence(report_dir: Path, commit: str) -> dict[str, str]:
@@ -60,9 +103,7 @@ def receipt_evidence(report_dir: Path, commit: str) -> dict[str, str]:
         if Path(step["log"]).resolve() != (report_dir / f"{step['name']}.log").resolve():
             raise ValueError("回执日志不属于该检查报告")
     backend = json.loads((report_dir / "backend-regression.json").read_text(encoding="utf-8"))
-    if (backend.get("execution_profile") != "source" or type(backend.get("total")) is not int or backend["total"] < 1
-            or any(type(backend.get(name)) is not int or backend[name] != 0 for name in ("failed", "skipped"))):
-        raise ValueError("回执后端报告不是实际成功的 source 回归")
+    validate_source_backend(backend)
     names = ("quality-gate.json", "backend-regression.json", *(f"{name}.log" for name in SOURCE_STEPS))
     evidence = {}
     for name in names:
@@ -250,14 +291,15 @@ def main() -> int:
             cached_report = None if args.refresh_receipt else reusable_source_receipt(receipt_path, fingerprint)
             if cached_report:
                 assert_push_source(args.push_commit)
-                summary.update(passed=True, reused_report=str(cached_report))
+                summary.update(json.loads((cached_report / "quality-gate.json").read_text(encoding="utf-8")))
+                summary["reused_report"] = str(cached_report)
                 save()
                 print(f"复用完整 source 检查回执：{args.push_commit}；原始报告：{cached_report}", flush=True)
                 return 0
             receipt_path.unlink(missing_ok=True)
         inspect_production_sources()
         with tempfile.TemporaryDirectory(prefix="oa-test-quality-gate-") as temporary:
-            environment = os.environ.copy()
+            environment = source_git_environment() if args.profile == "source" else os.environ.copy()
             environment.update(
                 APP_ENV="testing", DATABASE_URL="sqlite+aiosqlite:///:memory:",
                 UPLOAD_ROOT=temporary, SEED_DEMO_DATA="false", PYTHONIOENCODING="utf-8",
@@ -268,13 +310,9 @@ def main() -> int:
                 for name in tuple(environment):
                     if "TEST_POSTGRES" in name or name in {"OA_ROUTE_EFFECTS_POSTGRES_URL", "OA_TEST_API_BASE"}:
                         environment.pop(name)
-                git_environment = subprocess.check_output(
-                    ["git", "rev-parse", "--local-env-vars"], cwd=ROOT, text=True, encoding="utf-8",
-                ).splitlines()
-                for name in git_environment:
-                    environment.pop(name, None)
-                summary["pending_ci"] = ["PostgreSQL 专用回归与集成", "依赖安全审计", "生产构建与运行包检查"]
-                print("source 仅执行隔离源码回归；PostgreSQL 专用回归与集成待 CI full 验证。", flush=True)
+                summary["backend_scope"] = SOURCE_BACKEND_SCOPE
+                summary["pending_ci"] = ["完整 regression", "PostgreSQL 专用回归与集成", "依赖安全审计", "生产构建与运行包检查", "Linux 依赖镜像"]
+                print("source 仅执行 unit、structural 与固定四项回归；完整 regression、PG 及依赖镜像待 CI full。", flush=True)
             environment["PATH"] = str(Path(args.node).resolve().parent) + os.pathsep + environment.get("PATH", "")
             run("backend-static", [sys.executable, "-m", "ruff", "check", str(API / "app")], ROOT, environment)
             run("quality-tools", [sys.executable, "-m", "unittest", "discover", "-s", "tests/quality", "-p", "test_*.py"], ROOT, environment)
@@ -285,8 +323,10 @@ def main() -> int:
             if args.profile == "source":
                 run("backend-regression", [*regression_command, "--execution-profile", "source"], API, environment)
                 backend_report = json.loads((report_dir / "backend-regression.json").read_text(encoding="utf-8"))
+                validate_source_backend(backend_report)
+                summary["backend_scope"] = backend_report["scope"]
                 summary["backend_pending_ci"] = backend_report["deferred"] + backend_report["pending_full"]
-                print("后端待 CI full 的具体名单：" + json.dumps(summary["backend_pending_ci"], ensure_ascii=False), flush=True)
+                print(f"后端待 CI full：{len(summary['backend_pending_ci'])} 项未通过；具体名单见 backend-regression.json。", flush=True)
             if args.profile != "source":
                 run("frontend-build", [args.node, "scripts/build-production.mjs"], WEB, environment)
             if args.profile == "full":

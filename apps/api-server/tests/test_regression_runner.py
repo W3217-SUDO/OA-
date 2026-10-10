@@ -171,22 +171,29 @@ class RegressionRunnerTests(unittest.TestCase):
                 self.assertEqual(completed.returncode, 1, completed.stdout.decode("utf-8", errors="strict"))
                 self.assertIn('"skipped": 1', completed.stdout.decode("utf-8", errors="strict"))
 
-    def test_source_defers_only_declared_pg_files_and_retains_mixed_files(self) -> None:
+    def test_source_keeps_units_structural_and_four_fixed_regressions(self) -> None:
         full = run_regression.selected_files(["unit", "regression", "structural"], [])
         local, deferred = run_regression.source_selection(full)
-        self.assertEqual({item["file"] for item in deferred}, {
+        self.assertEqual({item["file"] for item in deferred if "requires_env" in item}, {
             "test_agent_commands_postgres.py", "test_postgres_startup_migrations.py",
         })
-        self.assertEqual(len(local), len(full) - 2)
-        self.assertTrue(all(item["status"] == "DEFERRED" and item["passed"] is False and item["requires_env"] for item in deferred))
+        self.assertEqual(len(local) + len(deferred), len(full))
+        self.assertTrue(all(item["status"] == "DEFERRED" and item["passed"] is False for item in deferred))
+        self.assertEqual({path.name for path in local if path.parent.name == "regression"}, {
+            "case_agent_mvp_contract_test.py", "case_word_editor_contract_test.py",
+            "case_word_editor_independent_test.py", "deepseek_harness_runtime_test.py",
+        })
+        self.assertEqual(set(full), set(local) | {run_regression.TEST_ROOT / item["file"] for item in deferred})
+        self.assertTrue(set(run_regression.selected_files(["structural"], [])).issubset(local))
         self.assertTrue({
             "test_archive_readonly_and_evidence_import.py", "test_business_rule_scheduler.py",
             "test_customer_task_query_bounds.py", "test_dashboard_business_dates.py",
             "test_domain_route_storage.py", "test_file_io_offloading.py",
             "test_finance_incoming_query.py", "test_finance_selected_query.py",
             "test_task_company_projection.py", "test_task_query_pushdown.py",
-            "test_notification_outbox.py", "ipr_custom_import_batch_contract_test.py",
+            "test_notification_outbox.py",
         }.issubset({path.name for path in local}))
+        self.assertIn("regression/ipr_custom_import_batch_contract_test.py", {item["file"] for item in deferred})
 
     def test_source_with_only_deferred_files_is_not_successful(self) -> None:
         environment = os.environ.copy()
@@ -217,7 +224,8 @@ class RegressionRunnerTests(unittest.TestCase):
             with self.subTest(status=status), tempfile.TemporaryDirectory(prefix="oa-test-source-selection-") as directory:
                 report = Path(directory) / "backend.json"
                 output = io.StringIO()
-                result = {"file": self.path.name, "status": status, "skipped_methods": 1, "exit_code": 1 if status == "FAIL" else 0}
+                result = {"file": self.path.name, "status": status, "executed_methods": 1 if status == "PASS" else 0,
+                          "skipped_methods": 1, "exit_code": 1 if status == "FAIL" else 0}
                 with (
                     patch.object(sys, "argv", ["run_regression.py", "--execution-profile", "source", "--report", str(report)]),
                     patch.object(run_regression, "selected_files", return_value=files),
@@ -230,6 +238,7 @@ class RegressionRunnerTests(unittest.TestCase):
                 self.assertEqual(execute.call_count, 1)
                 summary = json.loads(report.read_text(encoding="utf-8"))
                 self.assertEqual(summary["total"], 1)
+                self.assertEqual(summary["results"], [result])
                 self.assertEqual(summary["deferred"][0]["file"], "test_agent_commands_postgres.py")
                 self.assertEqual(summary["pending_full"][0]["status"], "NOT_PASSED")
                 self.assertEqual(summary["pending_full"][0]["skipped_methods"], 1)
@@ -242,3 +251,11 @@ class RegressionRunnerTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertEqual(result["executed_methods"], 2)
         self.assertEqual(result["skipped_methods"], 1)
+
+    def test_source_missing_count_fails_without_changing_full(self) -> None:
+        with patch.object(run_regression.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"no unittest summary", b"")):
+            self.assertEqual(run_regression.run_file(self.path, self.args)["status"], "PASS")
+            self.args.execution_profile = "source"
+            result = run_regression.run_file(self.path, self.args)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("缺少真实的正数方法执行计数", result["output"])

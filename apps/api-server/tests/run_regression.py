@@ -27,6 +27,10 @@ INTEGRATION_REQUIREMENTS = SUITE_REQUIREMENTS["integration_requirements"]
 UNIT_REQUIREMENTS = SUITE_REQUIREMENTS["unit_requirements"]
 EXCLUDED_CATEGORIES = SUITE_REQUIREMENTS["excluded_categories"]
 SOURCE_DEFERRED_FILES = SUITE_REQUIREMENTS["source_deferred_files"]
+SOURCE_REGRESSION_FILES = (
+    "case_agent_mvp_contract_test.py", "case_word_editor_contract_test.py",
+    "case_word_editor_independent_test.py", "deepseek_harness_runtime_test.py",
+)
 
 
 def selected_files(groups: list[str], patterns: list[str]) -> list[Path]:
@@ -42,13 +46,16 @@ def selected_files(groups: list[str], patterns: list[str]) -> list[Path]:
 
 
 def source_selection(files: list[Path]) -> tuple[list[Path], list[dict]]:
-    """只在执行前分出声明的纯 PG 文件，不按执行失败结果排除用例。"""
+    """本地执行 unit、structural 与固定四项回归，其余明确交 CI full。"""
     local, deferred = [], []
     for path in files:
         relative = path.relative_to(TEST_ROOT).as_posix()
         if relative in SOURCE_DEFERRED_FILES:
             deferred.append({"file": relative, "status": "DEFERRED", "passed": False,
                              "requires_env": SOURCE_DEFERRED_FILES[relative]})
+        elif path.parent == TEST_ROOT / "regression" and path.name not in SOURCE_REGRESSION_FILES:
+            deferred.append({"file": relative, "status": "DEFERRED", "passed": False,
+                             "reason": "完整 regression 待 GitHub CI full 验证"})
         else:
             local.append(path)
     return local, deferred
@@ -199,6 +206,10 @@ def run_file(path: Path, args: argparse.Namespace) -> dict[str, object]:
                 skipped_methods = int(skipped_count.group(1)) if skipped_count else 0
                 result["executed_methods"] = int(ran.group(1)) - skipped_methods
                 result["skipped_methods"] = skipped_methods
+            if (getattr(args, "execution_profile", "full") == "source" and status in {"PASS", "PARTIAL", "EXCLUDED"}
+                    and result.get("executed_methods", 0) < 1):
+                output += "\nsource 回归缺少真实的正数方法执行计数"
+                result.update(status="FAIL", exit_code=1, output=output[-2000:])
             if status == "SKIP":
                 result["reason"] = "测试文件没有实际执行任何方法"
         except subprocess.TimeoutExpired as exc:
@@ -239,7 +250,10 @@ def main() -> int:
     if args.execution_profile == "source":
         files, deferred = source_selection(files)
         for item in deferred:
-            print(f"DEFERRED (not passed; pending CI full) {item['file']}: {', '.join(item['requires_env'])}", flush=True)
+            if "requires_env" in item or args.list:
+                detail = ', '.join(item["requires_env"]) if "requires_env" in item else item["reason"]
+                print(f"DEFERRED (not passed; pending CI full) {item['file']}: {detail}", flush=True)
+        print(f"source scope: unit + structural + {len(SOURCE_REGRESSION_FILES)} focused regression; deferred={len(deferred)} (not passed)", flush=True)
     if args.list:
         for path in files:
             print(path.relative_to(TEST_ROOT).as_posix())
@@ -263,18 +277,21 @@ def main() -> int:
     excluded = [method for item in results for method in item.get("excluded", [])]
     summary = {"total": len(results), "passed": sum(item["status"] == "PASS" for item in results), "partial": sum(item["status"] == "PARTIAL" for item in results), "failed": len(failures), "skipped": len(skipped), "excluded": excluded, "failures": failures, "skips": skipped}
     if args.execution_profile == "source":
-        summary.update(execution_profile="source", deferred=deferred, pending_full=[
+        summary.update(execution_profile="source", scope={"groups": ["unit", "structural"],
+                       "regression_files": SOURCE_REGRESSION_FILES,
+                       "selected_files": [path.relative_to(TEST_ROOT).as_posix() for path in files]}, deferred=deferred, pending_full=[
             {"file": item["file"], "status": "NOT_PASSED", "skipped_methods": item["skipped_methods"],
              "reason": "部分方法未执行，需 CI full 提供 PostgreSQL 或平台前置条件验证"}
             for item in results if item.get("skipped_methods", 0) > 0
-        ])
+        ], results=[{key: item[key] for key in ("file", "status", "exit_code", "executed_methods", "skipped_methods") if key in item}
+                    for item in results])
     if args.report:
         target = args.report.expanduser().resolve()
         if target.is_relative_to(API_ROOT):
             parser.error("测试报告必须保存在后端源码目录之外")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({key: value if key != "excluded" else len(value) for key, value in summary.items() if key not in {"failures", "skips"}}, ensure_ascii=False))
+    print(json.dumps({key: len(value) if key in {"excluded", "deferred"} else value for key, value in summary.items() if key not in {"failures", "skips", "results", "scope"}}, ensure_ascii=False))
     for item in failures:
         print(f"FAIL {item['file']}: {item.get('log', '')}")
     return 1 if failures or skipped else 0
