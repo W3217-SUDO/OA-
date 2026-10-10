@@ -343,12 +343,12 @@ def main() -> int:
                 missing_databases = [name for name in required_databases if not environment.get(name)]
                 if missing_databases:
                     raise ValueError("完整门禁要求隔离 PostgreSQL 测试配置：" + ", ".join(missing_databases))
-                run("backend-regression", regression_command, API, environment)
-                run("postgres-domain-boundaries", [sys.executable, "tests/run_regression.py", "--group", "integration", "--file", "postgres_domain_boundaries_test.py", "--report", str(report_dir / "postgres-domain.json")], API, environment)
                 run("backend-dependencies", [sys.executable, "-m", "pip_audit", "-r", str(API / "requirements.lock"), "--format", "json", "--output", str(report_dir / "backend-dependencies.json")], ROOT, environment)
                 npm = "npm.cmd" if os.name == "nt" else "npm"
                 run("frontend-dependencies", [npm, "audit", "--audit-level=low"], WEB, environment)
                 run("harness-dependencies", [npm, "exec", "--yes", "--package=pnpm@11.24.0", "--", "pnpm", "audit", "--audit-level=low"], ROOT / "apps/deepseek-harness-host", environment)
+                run("backend-regression", regression_command, API, environment)
+                run("postgres-domain-boundaries", [sys.executable, "tests/run_regression.py", "--group", "integration", "--file", "postgres_domain_boundaries_test.py", "--report", str(report_dir / "postgres-domain.json")], API, environment)
                 run("harness-health", [sys.executable, "scripts/verify_harness.py", "--node", args.node, "--report-dir", str(report_dir)], ROOT, environment)
             if args.profile != "source":
                 runtime = report_dir / "runtime"
