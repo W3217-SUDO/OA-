@@ -237,6 +237,27 @@ class NativeRuntimeTest(unittest.TestCase):
 class SourceQualityGateTest(unittest.TestCase):
     """发布前源码门禁不能被构建、旧报告或不同提交替代。"""
 
+    def test_github_actions_rejects_default_and_explicit_full_before_checks(self):
+        with tempfile.TemporaryDirectory(prefix="oa-test-github-full-rejection-") as directory:
+            for profile_args in ([], ["--profile", "full"]):
+                with self.subTest(profile_args=profile_args):
+                    errors = io.StringIO()
+                    with (
+                        patch.object(sys, "argv", ["quality_gate.py", "--report-dir", directory, *profile_args]),
+                        patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}),
+                        patch.object(quality_gate.shutil, "which") as discover,
+                        patch.object(quality_gate.subprocess, "check_output") as check,
+                        patch.object(quality_gate.subprocess, "run") as execute,
+                        redirect_stderr(errors),
+                        self.assertRaises(SystemExit) as rejected,
+                    ):
+                        quality_gate.main()
+                    self.assertEqual(rejected.exception.code, 2)
+                    self.assertIn("GitHub Actions 禁止运行 full", errors.getvalue())
+                    discover.assert_not_called()
+                    check.assert_not_called()
+                    execute.assert_not_called()
+
     def source_evidence(self, report_dir: Path) -> tuple[dict, dict]:
         report_dir.mkdir(parents=True, exist_ok=True)
         pending = [{"file": "test_postgres_startup_migrations.py", "status": "DEFERRED", "passed": False}]
@@ -345,7 +366,7 @@ class SourceQualityGateTest(unittest.TestCase):
                 patch.object(quality_gate.subprocess, "check_output", side_effect=lambda command, **_kwargs: "v22.20.0\n" if command[-1] == "--version" else "GIT_DIR\nGIT_WORK_TREE\n"),
                 patch.object(quality_gate.subprocess, "run", side_effect=execute),
                 patch.object(quality_gate, "inspect_production_sources"),
-                patch.dict(os.environ, {"OA_TEST_POSTGRES_URL": "must-not-use", "OA_TEST_API_BASE": "must-not-use", "GIT_DIR": "must-not-use"}),
+                patch.dict(os.environ, {"OA_TEST_POSTGRES_URL": "must-not-use", "OA_TEST_API_BASE": "must-not-use", "GIT_DIR": "must-not-use", "GITHUB_ACTIONS": "false"}),
                 redirect_stderr(errors),
             ):
                 result = quality_gate.main()

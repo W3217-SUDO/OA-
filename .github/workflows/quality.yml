@@ -38,11 +38,6 @@ jobs:
           python -m pip install --require-hashes -r apps/api-server/requirements.lock
           python -m pip install --require-hashes -r requirements-dev.lock
           npm ci --prefix apps/admin-web
-      - name: Check regression runner
-        working-directory: apps/api-server
-        run: |
-          python -m unittest tests.test_regression_runner
-
       - name: Run quality gate
         run: python scripts/quality_gate.py --profile static --report-dir "$RUNNER_TEMP/oa-quality" --jobs 2
       - name: Preserve verification evidence

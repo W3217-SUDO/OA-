@@ -237,6 +237,8 @@ def main() -> int:
     parser.add_argument("--refresh-receipt", action="store_true", help="强制重新执行推送提交的 source 检查")
     parser.add_argument("--jobs", type=int, default=2)
     args = parser.parse_args()
+    if os.environ.get("GITHUB_ACTIONS") == "true" and args.profile == "full":
+        parser.error("GitHub Actions 禁止运行 full；完整验证仅允许在本地或独立隔离测试环境手动执行")
     report_dir = args.report_dir.expanduser().resolve()
     if report_dir.is_relative_to(ROOT):
         parser.error("证据目录必须位于项目源码目录之外")
