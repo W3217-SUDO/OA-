@@ -980,6 +980,7 @@ function readStoredUser(): SessionUser | null {
 
 function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
   const siteBrand = resolveSiteBrand(window.location.hostname);
+  const isHuzhi = siteBrand.code === "huzhi";
   const [loading, setLoading] = useState(false);
   const [dingtalkEnabled, setDingtalkEnabled] = useState(false);
   const [dingtalkAuthCode, setDingtalkAuthCode] = useState("");
@@ -987,18 +988,8 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
   const [pendingUser, setPendingUser] = useState<SessionUser | null>(null);
   const [passwordForm] = Form.useForm();
   useEffect(() => {
-    if (siteBrand.code !== "huzhi") return;
-    document.title = siteBrand.documentTitle;
-    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    if (favicon) {
-      favicon.href = siteBrand.icon;
-      favicon.type = "image/svg+xml";
-    }
-    const touchIcon = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
-    if (touchIcon) touchIcon.href = siteBrand.icon;
-    const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
-    if (manifest) manifest.href = siteBrand.manifest;
-  }, [siteBrand]);
+    if (isHuzhi) document.title = siteBrand.documentTitle;
+  }, [isHuzhi, siteBrand]);
   useEffect(() => {
     const rememberInstallPrompt = (event: Event) => {
       event.preventDefault();
@@ -1095,51 +1086,77 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
     await prompt.userChoice;
     setInstallPrompt(null);
   };
-  return (
-    <div className={`login-page${siteBrand.code === "huzhi" ? " login-page-huzhi" : ""}`}>
-      <div className="login-brand">
-        {siteBrand.logo ? <img src={siteBrand.logo} alt={siteBrand.name} /> : <b>{siteBrand.name}</b>}
-        <span>{siteBrand.subtitle}</span>
-      </div>
-      <Card className="login-card">
-        <h2>系统登录</h2>
-        <p>{siteBrand.welcome}</p>
-        {dingtalkAuthCode && <Alert type="info" showIcon title="首次钉钉登录" description="输入一次现有 OA 账号和密码完成绑定；以后从钉钉工作台打开将直接登录。" style={{marginBottom:16}} />}
-        <Form
-          onFinish={submit}
-          layout="vertical"
+  const loginCard = (
+    <Card className="login-card">
+      <h2>{isHuzhi ? "登录工作台" : "系统登录"}</h2>
+      <p>{isHuzhi ? "使用沪知 OA 账号继续" : siteBrand.welcome}</p>
+      {dingtalkAuthCode && <Alert type="info" showIcon title="首次钉钉登录" description="输入一次现有 OA 账号和密码完成绑定；以后从钉钉工作台打开将直接登录。" style={{marginBottom:16}} />}
+      <Form onFinish={submit} layout="vertical">
+        <Form.Item name="username" label="账号" rules={[{ required: true }]}>
+          <Input size="large" autoComplete="username" prefix={<UserOutlined />} />
+        </Form.Item>
+        <Form.Item name="password" label="密码" rules={[{ required: true }]}>
+          <Input.Password size="large" autoComplete="current-password" />
+        </Form.Item>
+        <Button
+          className="login-submit-button"
+          block
+          size="large"
+          type="primary"
+          htmlType="submit"
+          loading={loading}
         >
-          <Form.Item name="username" label="账号" rules={[{ required: true }]}>
-            <Input size="large" prefix={<UserOutlined />} />
-          </Form.Item>
-          <Form.Item name="password" label="密码" rules={[{ required: true }]}>
-            <Input.Password size="large" />
-          </Form.Item>
-          <Button
-            block
-            size="large"
-            type="primary"
-            htmlType="submit"
-            loading={loading}
-          >
-            {dingtalkAuthCode ? "绑定钉钉并登录" : "登 录"}
-          </Button>
+          {dingtalkAuthCode ? "绑定钉钉并登录" : isHuzhi ? "登录" : "登 录"}
+        </Button>
+        <div className="login-secondary-actions">
           {dingtalkEnabled && getDingTalkEnvironment().platform === "notInDingTalk" && (
-            <Button block size="large" style={{ marginTop: 12 }} onClick={() => message.info("请从钉钉工作台打开本系统，即可自动登录")}>钉钉免登</Button>
+            <Button block size="large" style={isHuzhi ? undefined : { marginTop: 12 }} onClick={() => message.info("请从钉钉工作台打开本系统，即可自动登录")}>钉钉免登</Button>
           )}
           {getDingTalkEnvironment().platform === "notInDingTalk" && (
             <Button
               block
               size="large"
               icon={<DownloadOutlined />}
-              style={{ marginTop: 12 }}
+              style={isHuzhi ? undefined : { marginTop: 12 }}
               onClick={() => void installExternalApp()}
             >
               安装到手机桌面
             </Button>
           )}
-        </Form>
-      </Card>
+        </div>
+      </Form>
+    </Card>
+  );
+  return (
+    <div className={`login-page${isHuzhi ? " login-page-huzhi" : ""}`}>
+      {isHuzhi ? (
+        <div className="huzhi-login-shell">
+          <section className="huzhi-login-aside" aria-label="沪知协作平台">
+            <span className="huzhi-login-watermark" aria-hidden="true">沪知</span>
+            <div className="huzhi-login-aside-top">沪知 <span>OA</span></div>
+            <div className="huzhi-login-aside-main">
+              <span className="huzhi-login-aside-rule" />
+              <p className="huzhi-login-aside-kicker">上海沪知律师事务所</p>
+              <h1>律所工作，<br />从容有序。</h1>
+              <p className="huzhi-login-aside-description">面向律师团队的日常协作空间。</p>
+            </div>
+            <div className="huzhi-login-aside-bottom">法律服务机构管理系统</div>
+          </section>
+          <main className="huzhi-login-main">
+            <div className="huzhi-login-logo"><img src={siteBrand.logo} alt={siteBrand.name} /></div>
+            {loginCard}
+            <div className="huzhi-login-footer">仅供本所授权人员使用</div>
+          </main>
+        </div>
+      ) : (
+        <>
+          <div className="login-brand">
+            <b>{siteBrand.name}</b>
+            <span>{siteBrand.subtitle}</span>
+          </div>
+          {loginCard}
+        </>
+      )}
       <Modal open={Boolean(pendingUser)} title="首次登录修改密码" closable={false} maskClosable={false} keyboard={false} okText="修改密码并进入系统" cancelButtonProps={{style:{display:"none"}}} confirmLoading={loading} onOk={forcePasswordChange}>
         <Alert type="warning" showIcon title="当前密码是一次性初始密码，修改前不能进入任何业务页面。" style={{marginBottom:16}} />
         <Form form={passwordForm} layout="vertical">
@@ -1153,6 +1170,21 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
 }
 
 export default function App() {
+  const siteBrand = resolveSiteBrand(window.location.hostname);
+  useEffect(() => {
+    if (siteBrand.code !== "huzhi") return;
+    const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (favicon) {
+      favicon.href = siteBrand.icon;
+      favicon.type = "image/svg+xml";
+    }
+    const touchIcon = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
+    if (touchIcon) touchIcon.href = siteBrand.icon;
+    const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+    if (manifest) manifest.href = siteBrand.manifest;
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (themeColor) themeColor.content = "#183c36";
+  }, [siteBrand]);
   const [loggedIn, setLoggedIn] = useState(
     Boolean(localStorage.getItem("access_token")),
   );
@@ -1387,9 +1419,8 @@ export default function App() {
   useEffect(() => {
     if (!loggedIn) return;
     const pageTitle = resolveWorkspacePageLabel(active, effectiveMenuItems);
-    const siteBrand = resolveSiteBrand(window.location.hostname);
     document.title = siteBrand.code === "huzhi" ? `${pageTitle} · ${siteBrand.name}` : pageTitle;
-  }, [active, effectiveMenuItems, loggedIn]);
+  }, [active, effectiveMenuItems, loggedIn, siteBrand]);
   const navigate = (route: string) => {
     const normalizedRoute = resolveGrantedMenuRoute(normalizeWorkspaceRoute(route), effectiveMenuItems, grantedMenuKeys, permissionAdministrator);
     if (normalizedRoute === "contract-new") {
@@ -1598,7 +1629,7 @@ export default function App() {
             }
           }}
         >
-          {collapsed ? "S" : "Sunhold"}
+          {collapsed ? siteBrand.compactName : siteBrand.navigationName}
         </div>
         <Button
           className="sidebar-toggle"

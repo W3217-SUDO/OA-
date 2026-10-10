@@ -3,6 +3,8 @@ import config from "./siteBranding.config.json";
 const defaultBrand = {
   code: "sunhold",
   name: "Sunhold",
+  navigationName: "Sunhold",
+  compactName: "S",
   subtitle: "法律服务机构管理系统",
   welcome: "欢迎进入思法汇成协作平台",
   logo: "",
@@ -11,6 +13,8 @@ const defaultBrand = {
 const huzhiBrand = {
   code: "huzhi",
   name: "上海沪知律师事务所",
+  navigationName: "沪知",
+  compactName: "沪",
   subtitle: "法律服务机构管理系统",
   welcome: "欢迎进入沪知协作平台",
   documentTitle: "上海沪知律师事务所 OA 系统",

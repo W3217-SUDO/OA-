@@ -6,7 +6,7 @@
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#006c42",
+  "theme_color": "#183c36",
   "icons": [
     {
       "src": "/huzhi-icon.svg",
