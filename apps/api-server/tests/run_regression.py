@@ -26,6 +26,7 @@ SUITE_REQUIREMENTS = json.loads((TEST_ROOT / "suite_manifest.json").read_text(en
 INTEGRATION_REQUIREMENTS = SUITE_REQUIREMENTS["integration_requirements"]
 UNIT_REQUIREMENTS = SUITE_REQUIREMENTS["unit_requirements"]
 EXCLUDED_CATEGORIES = SUITE_REQUIREMENTS["excluded_categories"]
+SOURCE_DEFERRED_FILES = SUITE_REQUIREMENTS["source_deferred_files"]
 
 
 def selected_files(groups: list[str], patterns: list[str]) -> list[Path]:
@@ -38,6 +39,19 @@ def selected_files(groups: list[str], patterns: list[str]) -> list[Path]:
     if patterns:
         files = [path for path in files if any(fnmatch.fnmatch(path.name, pattern) for pattern in patterns)]
     return files
+
+
+def source_selection(files: list[Path]) -> tuple[list[Path], list[dict]]:
+    """只在执行前分出声明的纯 PG 文件，不按执行失败结果排除用例。"""
+    local, deferred = [], []
+    for path in files:
+        relative = path.relative_to(TEST_ROOT).as_posix()
+        if relative in SOURCE_DEFERRED_FILES:
+            deferred.append({"file": relative, "status": "DEFERRED", "passed": False,
+                             "requires_env": SOURCE_DEFERRED_FILES[relative]})
+        else:
+            local.append(path)
+    return local, deferred
 
 
 def decode_output(value: bytes | None, stream: str) -> str:
@@ -181,6 +195,10 @@ def run_file(path: Path, args: argparse.Namespace) -> dict[str, object]:
                 result["excluded"] = [excluded[method] for method in selection["excluded"]]
                 result["executed_methods"] = selection["executed"]
                 result["skipped_methods"] = selection["skipped"]
+            if direct_entry and return_code == 0 and ran:
+                skipped_methods = int(skipped_count.group(1)) if skipped_count else 0
+                result["executed_methods"] = int(ran.group(1)) - skipped_methods
+                result["skipped_methods"] = skipped_methods
             if status == "SKIP":
                 result["reason"] = "测试文件没有实际执行任何方法"
         except subprocess.TimeoutExpired as exc:
@@ -202,6 +220,7 @@ def run_file(path: Path, args: argparse.Namespace) -> dict[str, object]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--group", choices=GROUPS, action="append")
+    parser.add_argument("--execution-profile", choices=("full", "source"), default="full")
     parser.add_argument("--exclude-category", choices=sorted(EXCLUDED_CATEGORIES), action="append", default=[])
     parser.add_argument("--file", action="append", default=[], help="文件名 glob，可重复")
     parser.add_argument("--api-base", help="显式隔离服务地址，完整 /api/v1 URL")
@@ -213,7 +232,14 @@ def main() -> int:
     parser.add_argument("--jobs", type=int, default=1, help="独立临时目录中的并发文件数")
     args = parser.parse_args()
     groups = args.group or ["unit", "regression", "structural"]
+    if args.execution_profile == "source" and "integration" in groups:
+        parser.error("source 不执行外部集成；请由 CI full 提供显式隔离环境")
     files = selected_files(groups, args.file)
+    deferred = []
+    if args.execution_profile == "source":
+        files, deferred = source_selection(files)
+        for item in deferred:
+            print(f"DEFERRED (not passed; pending CI full) {item['file']}: {', '.join(item['requires_env'])}", flush=True)
     if args.list:
         for path in files:
             print(path.relative_to(TEST_ROOT).as_posix())
@@ -236,6 +262,12 @@ def main() -> int:
     skipped = [item for item in results if item["status"] == "SKIP"]
     excluded = [method for item in results for method in item.get("excluded", [])]
     summary = {"total": len(results), "passed": sum(item["status"] == "PASS" for item in results), "partial": sum(item["status"] == "PARTIAL" for item in results), "failed": len(failures), "skipped": len(skipped), "excluded": excluded, "failures": failures, "skips": skipped}
+    if args.execution_profile == "source":
+        summary.update(execution_profile="source", deferred=deferred, pending_full=[
+            {"file": item["file"], "status": "NOT_PASSED", "skipped_methods": item["skipped_methods"],
+             "reason": "部分方法未执行，需 CI full 提供 PostgreSQL 或平台前置条件验证"}
+            for item in results if item.get("skipped_methods", 0) > 0
+        ])
     if args.report:
         target = args.report.expanduser().resolve()
         if target.is_relative_to(API_ROOT):

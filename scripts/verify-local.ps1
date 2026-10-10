@@ -1,8 +1,8 @@
-param(
+﻿param(
     [string]$Python = '',
     [string]$Node = 'node',
     [string]$ReportDirectory = '',
-    [ValidateSet('full', 'static')][string]$Profile = 'full',
+    [ValidateSet('full', 'static', 'source')][string]$Profile = 'full',
     [int]$Jobs = 2
 )
 

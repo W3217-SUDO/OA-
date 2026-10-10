@@ -1,6 +1,7 @@
 """回归入口的独立导入与 UTF-8 输出失败路径。"""
 
 import argparse
+import io
 import json
 import os
 import shutil
@@ -8,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -168,3 +170,75 @@ class RegressionRunnerTests(unittest.TestCase):
                 )
                 self.assertEqual(completed.returncode, 1, completed.stdout.decode("utf-8", errors="strict"))
                 self.assertIn('"skipped": 1', completed.stdout.decode("utf-8", errors="strict"))
+
+    def test_source_defers_only_declared_pg_files_and_retains_mixed_files(self) -> None:
+        full = run_regression.selected_files(["unit", "regression", "structural"], [])
+        local, deferred = run_regression.source_selection(full)
+        self.assertEqual({item["file"] for item in deferred}, {
+            "test_agent_commands_postgres.py", "test_postgres_startup_migrations.py",
+        })
+        self.assertEqual(len(local), len(full) - 2)
+        self.assertTrue(all(item["status"] == "DEFERRED" and item["passed"] is False and item["requires_env"] for item in deferred))
+        self.assertTrue({
+            "test_archive_readonly_and_evidence_import.py", "test_business_rule_scheduler.py",
+            "test_customer_task_query_bounds.py", "test_dashboard_business_dates.py",
+            "test_domain_route_storage.py", "test_file_io_offloading.py",
+            "test_finance_incoming_query.py", "test_finance_selected_query.py",
+            "test_task_company_projection.py", "test_task_query_pushdown.py",
+            "test_notification_outbox.py", "ipr_custom_import_batch_contract_test.py",
+        }.issubset({path.name for path in local}))
+
+    def test_source_with_only_deferred_files_is_not_successful(self) -> None:
+        environment = os.environ.copy()
+        for name in ("AGENT_COMMANDS_TEST_POSTGRES_URL", "OA_TEST_POSTGRES_URL", "OA_TEST_POSTGRES_DSN"):
+            environment.pop(name, None)
+        for profile, expected_code in (("source", 2), ("full", 1)):
+            with self.subTest(profile=profile):
+                completed = subprocess.run(
+                    [sys.executable, str(run_regression.TEST_ROOT / "run_regression.py"),
+                     "--execution-profile", profile, "--group", "unit",
+                     "--file", "test_agent_commands_postgres.py", "--file", "test_postgres_startup_migrations.py"],
+                    cwd=run_regression.API_ROOT, env=environment,
+                    capture_output=True, timeout=30, check=False,
+                )
+                output = (completed.stdout + completed.stderr).decode("utf-8", errors="strict")
+                self.assertEqual(completed.returncode, expected_code, output)
+                if profile == "source":
+                    self.assertEqual(output.count("DEFERRED (not passed"), 2)
+                    self.assertIn("没有匹配的测试文件", output)
+                else:
+                    self.assertIn('"total": 2', output)
+                    self.assertIn('"skipped": 2', output)
+                    self.assertNotIn("DEFERRED", output)
+
+    def test_source_reports_deferred_and_partial_methods_without_hiding_failures(self) -> None:
+        files = [run_regression.TEST_ROOT / "test_agent_commands_postgres.py", self.path]
+        for status in ("PASS", "FAIL", "SKIP"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory(prefix="oa-test-source-selection-") as directory:
+                report = Path(directory) / "backend.json"
+                output = io.StringIO()
+                result = {"file": self.path.name, "status": status, "skipped_methods": 1, "exit_code": 1 if status == "FAIL" else 0}
+                with (
+                    patch.object(sys, "argv", ["run_regression.py", "--execution-profile", "source", "--report", str(report)]),
+                    patch.object(run_regression, "selected_files", return_value=files),
+                    patch.object(run_regression, "run_file", return_value=result) as execute,
+                    redirect_stdout(output),
+                ):
+                    code = run_regression.main()
+                self.assertEqual(code, 0 if status == "PASS" else 1)
+                self.assertEqual(execute.call_args.args[0], self.path)
+                self.assertEqual(execute.call_count, 1)
+                summary = json.loads(report.read_text(encoding="utf-8"))
+                self.assertEqual(summary["total"], 1)
+                self.assertEqual(summary["deferred"][0]["file"], "test_agent_commands_postgres.py")
+                self.assertEqual(summary["pending_full"][0]["status"], "NOT_PASSED")
+                self.assertEqual(summary["pending_full"][0]["skipped_methods"], 1)
+                self.assertIn("not passed; pending CI full", output.getvalue())
+
+    def test_direct_mixed_file_reports_actual_skipped_method_count(self) -> None:
+        output = b"Ran 3 tests in 0.001s\n\nOK (skipped=1)\n"
+        with patch.object(run_regression.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, output, b"")), patch.object(Path, "read_text", return_value="if __name__"):
+            result = run_regression.run_file(self.path, self.args)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["executed_methods"], 2)
+        self.assertEqual(result["skipped_methods"], 1)

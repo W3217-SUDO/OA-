@@ -2,6 +2,10 @@
   "unit_requirements": {
     "test_postgres_startup_migrations.py": ["postgres_dsn"]
   },
+  "source_deferred_files": {
+    "test_agent_commands_postgres.py": ["AGENT_COMMANDS_TEST_POSTGRES_URL"],
+    "test_postgres_startup_migrations.py": ["OA_TEST_POSTGRES_URL", "OA_TEST_POSTGRES_DSN"]
+  },
   "excluded_categories": {
     "permissions": {
       "regression/case_basic_phase_approval_independence_row4_test.py": {

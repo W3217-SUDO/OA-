@@ -1,0 +1,35 @@
+#!/bin/sh
+# OA_MANAGED_PRE_PUSH_V1
+set -eu
+
+commit=''
+while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$remote_ref" in
+        refs/heads/dev|refs/heads/main)
+            case "$local_sha" in
+                *[!0]*) ;;
+                *) echo 'OA pre-push: deleting dev/main is not allowed.' >&2; exit 1 ;;
+            esac
+            if [ -n "$commit" ] && [ "$commit" != "$local_sha" ]; then
+                echo 'OA pre-push: dev/main must reference the same checked commit.' >&2
+                exit 1
+            fi
+            commit="$local_sha"
+            ;;
+    esac
+done
+[ -n "$commit" ] || exit 0
+
+if [ -z "${OA_QUALITY_PYTHON:-}" ] || [ -z "${OA_QUALITY_NODE:-}" ]; then
+    echo 'OA pre-push: set OA_QUALITY_PYTHON (Python 3.12) and OA_QUALITY_NODE (Node.js 22).' >&2
+    exit 1
+fi
+jobs=${OA_QUALITY_JOBS:-2}
+case "$jobs" in
+    ''|*[!0-9]*|0) echo 'OA pre-push: OA_QUALITY_JOBS must be a positive integer (default 2).' >&2; exit 1 ;;
+esac
+root=$(git rev-parse --show-toplevel)
+report=$(mktemp -d "${TMPDIR:-/tmp}/oa-pre-push-XXXXXX")
+echo "OA pre-push: checking $commit; evidence: $report" >&2
+PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8 "$OA_QUALITY_PYTHON" "$root/scripts/quality_gate.py" \
+    --profile source --push-commit "$commit" --node "$OA_QUALITY_NODE" --jobs "$jobs" --report-dir "$report"
