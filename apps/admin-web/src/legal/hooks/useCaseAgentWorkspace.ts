@@ -34,6 +34,7 @@ export function useCaseAgentWorkspace({
   const [agentScreenshots, setAgentScreenshots] = useState<CaseAgentAttachment[]>([]);
   const [agentScreenshotUploading, setAgentScreenshotUploading] = useState(false);
   const [agentDocuments, setAgentDocuments] = useState<CaseAgentDocument[]>([]);
+  const [agentDocumentsLoading, setAgentDocumentsLoading] = useState(false);
   const [agentDocumentIds, setAgentDocumentIds] = useState<number[]>([]);
   const [agentMaterialPickerOpen, setAgentMaterialPickerOpen] = useState(false);
   const [agentHistoryExpanded, setAgentHistoryExpanded] = useState(false);
@@ -43,6 +44,8 @@ export function useCaseAgentWorkspace({
   const agentScreenshotPreviewUrlsRef = useRef(new Map<number, string>());
   const agentScreenshotUploadRequestsRef = useRef(new Set<AbortController>());
   const activeCaseAgentRequestRef = useRef<AbortController | null>(null);
+  const activeAgentLoadRequestRef = useRef<AbortController | null>(null);
+  const activeAgentDocumentsRequestRef = useRef<AbortController | null>(null);
 
   const stateWithAgentScreenshotPreviews = (nextState: CaseAgentState): CaseAgentState => ({
     ...nextState,
@@ -102,11 +105,12 @@ export function useCaseAgentWorkspace({
     }
   };
 
-  const { loadCaseAgent, sendCaseAgentMessage, decideCaseAgentAction, restoreCaseAgentAction } = createCaseAssistantActions({
+  const { loadCaseAgent, loadCaseAgentDocuments, sendCaseAgentMessage, decideCaseAgentAction, restoreCaseAgentAction } = createCaseAssistantActions({
     get setAgentLoading() { return setAgentLoading; },
     get setAgentStatus() { return setAgentStatus; },
     get setAgentState() { return setAgentState; },
     get setAgentDocuments() { return setAgentDocuments; },
+    get setAgentDocumentsLoading() { return setAgentDocumentsLoading; },
     get setAgentDocumentIds() { return setAgentDocumentIds; },
     get setAgentSkillId() { return setAgentSkillId; },
     get agentCase() { return agentCase; },
@@ -116,6 +120,8 @@ export function useCaseAgentWorkspace({
     get agentState() { return agentState; },
     get agentSending() { return agentSending; },
     get activeCaseAgentRequestRef() { return activeCaseAgentRequestRef; },
+    get activeAgentLoadRequestRef() { return activeAgentLoadRequestRef; },
+    get activeAgentDocumentsRequestRef() { return activeAgentDocumentsRequestRef; },
     get agentDocumentIds() { return agentDocumentIds; },
     get agentDocuments() { return agentDocuments; },
     get setAgentInput() { return setAgentInput; },
@@ -133,6 +139,8 @@ export function useCaseAgentWorkspace({
     clearAgentScreenshotPreviews();
     setAgentCase(row);
     setAgentOpen(true);
+    setAgentStatus(null);
+    setAgentState(null);
     setAgentInput("");
     setAgentScreenshots([]);
     setAgentDocuments([]);
@@ -140,6 +148,17 @@ export function useCaseAgentWorkspace({
     setAgentMaterialPickerOpen(false);
     setAgentHistoryExpanded(false);
     void loadCaseAgent(row, true);
+  };
+  const closeCaseAgent = () => {
+    activeAgentLoadRequestRef.current?.abort();
+    activeAgentDocumentsRequestRef.current?.abort();
+    setAgentLoading(false);
+    setAgentDocumentsLoading(false);
+    setAgentOpen(false);
+  };
+  const toggleAgentMaterialPicker = () => {
+    if (!agentMaterialPickerOpen && agentCase) void loadCaseAgentDocuments(agentCase);
+    setAgentMaterialPickerOpen((current) => !current);
   };
   const updateAgentDocumentSelection = (checkedKeys: Key[] | { checked: Key[]; halfChecked: Key[] }) => {
     const keys = Array.isArray(checkedKeys) ? checkedKeys : checkedKeys.checked;
@@ -171,18 +190,20 @@ export function useCaseAgentWorkspace({
   useEffect(() => () => {
     activeCaseAgentRequestRef.current?.abort();
     activeCaseAgentRequestRef.current = null;
+    activeAgentLoadRequestRef.current?.abort();
+    activeAgentDocumentsRequestRef.current?.abort();
     agentScreenshotUploadRequestsRef.current.forEach((controller) => controller.abort());
     agentScreenshotUploadRequestsRef.current.clear();
     clearAgentScreenshotPreviews();
   }, []);
 
   const drawerProps: DrawerProps = {
-    agentOpen, setAgentOpen, agentCase, agentDrawerWidth, startAgentDrawerResize,
+    agentOpen, closeCaseAgent, agentCase, agentDrawerWidth, startAgentDrawerResize,
     agentStatus, agentLoading, agentSending, agentSkillId, setAgentSkillId,
     loadCaseAgent, agentState, agentDecisionLoading, decideCaseAgentAction,
     restoreCaseAgentAction, agentHistoryExpanded, setAgentHistoryExpanded,
-    sendCaseAgentMessage, agentMaterialPickerOpen, setAgentMaterialPickerOpen,
-    agentDocuments, agentDocumentIds, setAgentDocumentIds, updateAgentDocumentSelection,
+    sendCaseAgentMessage, agentMaterialPickerOpen, setAgentMaterialPickerOpen, toggleAgentMaterialPicker,
+    agentDocuments, agentDocumentsLoading, agentDocumentIds, setAgentDocumentIds, updateAgentDocumentSelection,
     agentScreenshots, removeAgentScreenshot, agentScreenshotInputRef,
     uploadCaseAgentScreenshot, agentScreenshotUploading, agentInput, setAgentInput,
     pasteCaseAgentScreenshot, stopCaseAgentResponse, agentMessagesEndRef,

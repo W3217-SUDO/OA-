@@ -26,7 +26,7 @@ CaseRow
 
 interface CaseAgentDrawerProps {
   agentOpen: boolean;
-  setAgentOpen: (open: boolean) => void;
+  closeCaseAgent: () => void;
   agentCase: CaseRow | null;
   agentDrawerWidth: number;
   startAgentDrawerResize: (event: ReactPointerEvent<HTMLDivElement>) => void;
@@ -46,7 +46,9 @@ interface CaseAgentDrawerProps {
   sendCaseAgentMessage: (preset?: string) => Promise<unknown>;
   agentMaterialPickerOpen: boolean;
   setAgentMaterialPickerOpen: (open: boolean | ((current: boolean) => boolean)) => void;
+  toggleAgentMaterialPicker: () => void;
   agentDocuments: CaseAgentDocument[];
+  agentDocumentsLoading: boolean;
   agentDocumentIds: number[];
   setAgentDocumentIds: (ids: number[] | ((current: number[]) => number[])) => void;
   updateAgentDocumentSelection: (checkedKeys: Key[] | { checked: Key[]; halfChecked: Key[] }) => void;
@@ -64,7 +66,7 @@ interface CaseAgentDrawerProps {
 
 export const CaseAgentDrawer = ({
   agentOpen,
-  setAgentOpen,
+  closeCaseAgent,
   agentCase,
   agentDrawerWidth,
   startAgentDrawerResize,
@@ -84,7 +86,9 @@ export const CaseAgentDrawer = ({
   sendCaseAgentMessage,
   agentMaterialPickerOpen,
   setAgentMaterialPickerOpen,
+  toggleAgentMaterialPicker,
   agentDocuments,
+  agentDocumentsLoading,
   agentDocumentIds,
   setAgentDocumentIds,
   updateAgentDocumentSelection,
@@ -105,15 +109,15 @@ export const CaseAgentDrawer = ({
       width={agentDrawerWidth}
       open={agentOpen}
       title={<span><RobotOutlined /> 案件智能体：{agentCase?.serial_no || ""}</span>}
-      onClose={() => setAgentOpen(false)}
+      onClose={closeCaseAgent}
       destroyOnHidden
     >
       <div className="case-agent-resize-handle" role="separator" aria-label="拖动调整智能体宽度" onPointerDown={startAgentDrawerResize} />
       <div className="case-agent-panel" data-testid="case-agent-panel">
         <div className="case-agent-status">
           <Space size={[6, 6]} wrap>
-            <Tag color={agentStatus?.ready ? "success" : "warning"}>{agentStatus?.ready ? "服务正常" : "服务未就绪"}</Tag>
-            <Tag>{agentStatus?.model || "模型未配置"}</Tag>
+            <Tag color={agentStatus?.ready ? "success" : "warning"}>{agentStatus?.ready ? "服务正常" : agentLoading && !agentStatus ? "正在检查服务" : "服务未就绪"}</Tag>
+            <Tag>{agentStatus?.model || (agentLoading ? "正在读取配置" : "模型未配置")}</Tag>
             <Tag color={agentStatus?.checkpoint_backend === "postgresql" ? "blue" : "default"}>案件独立记忆</Tag>
             {agentStatus?.write_requires_approval && <Tag color="gold">人工审批</Tag>}
           </Space>
@@ -160,7 +164,7 @@ export const CaseAgentDrawer = ({
           {(agentLoading || agentSending) && <div className="case-agent-thinking"><RobotOutlined /> {agentSending ? "正在分析案件空间..." : "正在载入会话..."}</div>}
           <div ref={agentMessagesEndRef} />
         </div>
-        {!agentState?.messages?.length && agentStatus?.ready && <div className="case-agent-suggestions">
+        {!agentLoading && !agentState?.messages?.length && agentStatus?.ready && <div className="case-agent-suggestions">
           {["概括案件现状", "检查最近期限风险", "汇总合同与费用", "列出尚未完成的任务"].map((text) => <Button key={text} size="small" onClick={() => void sendCaseAgentMessage(text)}>{text}</Button>)}
         </div>}
         <div className="case-agent-composer">
@@ -173,11 +177,11 @@ export const CaseAgentDrawer = ({
                 <Button type="text" size="small" icon={<CloseOutlined />} title="收起材料选择" aria-label="收起材料选择" onClick={() => setAgentMaterialPickerOpen(false)} />
               </Space>
             </div>
-            <Tree checkable selectable={false} defaultExpandAll checkedKeys={agentDocumentIds.map((id) => `document:${id}`)} treeData={buildAgentDocumentTree(agentDocuments)} onCheck={updateAgentDocumentSelection} />
+            {agentDocumentsLoading ? <div className="case-agent-material-loading">正在加载案件材料...</div> : <Tree checkable selectable={false} defaultExpandAll checkedKeys={agentDocumentIds.map((id) => `document:${id}`)} treeData={buildAgentDocumentTree(agentDocuments)} onCheck={updateAgentDocumentSelection} />}
             <small>仅发送本轮勾选且当前账号有权查看的材料，最多 {AGENT_DOCUMENT_LIMIT} 份。</small>
           </div>}
           <div className="case-agent-composer-materials" aria-label="随本轮问题发送的案件材料">
-            <Button type="text" size="small" className="case-agent-composer-material-trigger" icon={agentMaterialPickerOpen ? <FolderOpenOutlined /> : <FolderOutlined />} aria-expanded={agentMaterialPickerOpen} onClick={() => setAgentMaterialPickerOpen((current) => !current)}>案件材料</Button>
+            <Button type="text" size="small" className="case-agent-composer-material-trigger" icon={agentMaterialPickerOpen ? <FolderOpenOutlined /> : <FolderOutlined />} aria-expanded={agentMaterialPickerOpen} onClick={toggleAgentMaterialPicker}>案件材料</Button>
             <div className="case-agent-composer-material-tags">
               {agentDocuments.filter((item) => agentDocumentIds.includes(item.id)).map((item) => <Tag key={item.id} closable title={item.original_name} onClose={(event) => { event.preventDefault(); setAgentDocumentIds((current) => current.filter((id) => id !== item.id)); }}>{item.original_name}</Tag>)}
               {!agentDocumentIds.length && <span>选择后随本轮问题一起发送</span>}
@@ -185,12 +189,12 @@ export const CaseAgentDrawer = ({
           </div>
           {agentScreenshots.length ? <div className="case-agent-composer-attachments" aria-label="待发送截图">{agentScreenshots.map((item) => <div key={item.id}><Image src={item.preview_url} alt={item.name} preview /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeAgentScreenshot(item)} /></div>)}</div> : null}
           <input ref={agentScreenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadCaseAgentScreenshot(event.target.files?.[0])} />
-          <Button className="case-agent-composer-upload" type="text" icon={<PaperClipOutlined />} title="上传截图" loading={agentScreenshotUploading} disabled={!agentStatus?.ready || agentScreenshots.length >= 4} onClick={() => agentScreenshotInputRef.current?.click()} />
+          <Button className="case-agent-composer-upload" type="text" icon={<PaperClipOutlined />} title="上传截图" loading={agentScreenshotUploading} disabled={agentLoading || !agentStatus?.ready || agentScreenshots.length >= 4} onClick={() => agentScreenshotInputRef.current?.click()} />
           <Input.TextArea
             value={agentInput}
             autoSize={{ minRows: 2, maxRows: 5 }}
             placeholder={agentSkillId === "screenshot-evidence" ? "可直接粘贴截图，并补充需要核验的问题" : "询问案件信息，也可直接粘贴截图"}
-            disabled={!agentStatus?.ready}
+            disabled={agentLoading || !agentStatus?.ready}
             onChange={(event) => setAgentInput(event.target.value)}
             onPaste={pasteCaseAgentScreenshot}
             onPressEnter={(event) => {
@@ -200,7 +204,7 @@ export const CaseAgentDrawer = ({
               }
             }}
           />
-          <Button type="primary" icon={agentSending && !agentInput.trim() && !agentScreenshots.length ? <StopOutlined /> : <SendOutlined />} disabled={!agentStatus?.ready || (!agentSending && !agentInput.trim() && !agentScreenshots.length)} title={agentSending && !agentInput.trim() && !agentScreenshots.length ? "停止生成" : agentSending ? "发送引导并打断当前生成" : "发送"} onClick={() => agentSending && !agentInput.trim() && !agentScreenshots.length ? stopCaseAgentResponse() : void sendCaseAgentMessage()} />
+          <Button type="primary" icon={agentSending && !agentInput.trim() && !agentScreenshots.length ? <StopOutlined /> : <SendOutlined />} disabled={agentLoading || !agentStatus?.ready || (!agentSending && !agentInput.trim() && !agentScreenshots.length)} title={agentSending && !agentInput.trim() && !agentScreenshots.length ? "停止生成" : agentSending ? "发送引导并打断当前生成" : "发送"} onClick={() => agentSending && !agentInput.trim() && !agentScreenshots.length ? stopCaseAgentResponse() : void sendCaseAgentMessage()} />
         </div>
       </div>
     </Drawer>

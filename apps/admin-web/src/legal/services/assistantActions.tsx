@@ -9,6 +9,7 @@ export interface CaseAssistantDependencies {
     readonly setAgentStatus: React.Dispatch<React.SetStateAction<CaseAgentStatus | null>>;
     readonly setAgentState: React.Dispatch<React.SetStateAction<CaseAgentState | null>>;
     readonly setAgentDocuments: React.Dispatch<React.SetStateAction<CaseAgentDocument[]>>;
+    readonly setAgentDocumentsLoading: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setAgentDocumentIds: React.Dispatch<React.SetStateAction<number[]>>;
     readonly setAgentSkillId: React.Dispatch<React.SetStateAction<string>>;
     readonly agentCase: CaseRow | null;
@@ -18,6 +19,8 @@ export interface CaseAssistantDependencies {
     readonly agentState: CaseAgentState | null;
     readonly agentSending: boolean;
     readonly activeCaseAgentRequestRef: React.RefObject<AbortController | null>;
+    readonly activeAgentLoadRequestRef: React.RefObject<AbortController | null>;
+    readonly activeAgentDocumentsRequestRef: React.RefObject<AbortController | null>;
     readonly agentDocumentIds: number[];
     readonly agentDocuments: CaseAgentDocument[];
     readonly setAgentInput: React.Dispatch<React.SetStateAction<string>>;
@@ -33,43 +36,71 @@ export interface CaseAssistantDependencies {
 }
 export function createCaseAssistantActions(context: CaseAssistantDependencies) {
     const loadCaseAgent = async (row: CaseRow, resetMaterials = false) => {
-        const { setAgentLoading, setAgentStatus, setAgentState, setAgentDocuments, setAgentDocumentIds, setAgentSkillId } = context;
+        const { setAgentLoading, setAgentStatus, setAgentState, setAgentDocuments, setAgentDocumentIds, setAgentSkillId, activeAgentLoadRequestRef, activeAgentDocumentsRequestRef, setAgentDocumentsLoading } = context;
+        activeAgentLoadRequestRef.current?.abort();
+        const controller = new AbortController();
+        activeAgentLoadRequestRef.current = controller;
+        if (resetMaterials) {
+            activeAgentDocumentsRequestRef.current?.abort();
+            setAgentDocumentsLoading(false);
+            setAgentDocuments([]);
+            setAgentDocumentIds([]);
+        }
         setAgentLoading(true);
         try {
-            const [statusRes, stateRes, contextRes] = await Promise.all([
-                api.get(`/case-spaces/${row.id}/agent/status`),
-                api.get(`/case-spaces/${row.id}/agent/state`),
-                api.get(`/case-spaces/${row.id}/context`),
+            const [statusResult, stateResult] = await Promise.allSettled([
+                api.get<CaseAgentStatus>(`/case-spaces/${row.id}/agent/status`, { signal: controller.signal }).then(({ data }) => {
+                    if (!controller.signal.aborted) setAgentStatus(data);
+                    return data;
+                }),
+                api.get<CaseAgentState>(`/case-spaces/${row.id}/agent/state`, { signal: controller.signal }).then(({ data }) => {
+                    if (!controller.signal.aborted) setAgentState(data);
+                    return data;
+                }),
             ]);
-            setAgentStatus(statusRes.data);
-            setAgentState(stateRes.data);
-            const documents = (contextRes.data?.documents || []) as CaseAgentDocument[];
-            const availableIds = documents.map((item) => Number(item.id)).filter((id) => id > 0);
-            setAgentDocuments(documents);
-            setAgentDocumentIds((current) => resetMaterials ? [] : current.filter((id) => availableIds.includes(id)).slice(0, AGENT_DOCUMENT_LIMIT));
-            const activeSkill = String(stateRes.data?.active_skill || DEFAULT_AGENT_SKILL);
-            const activeAvailable = (statusRes.data?.skills || []).some((item: AgentSkill) => item.id === activeSkill && item.available);
-            setAgentSkillId(activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
+            if (controller.signal.aborted) return;
+            if (statusResult.status === "rejected") setAgentStatus(null);
+            if (stateResult.status === "rejected") setAgentState(null);
+            if (statusResult.status === "fulfilled" && stateResult.status === "fulfilled") {
+                const activeSkill = String(stateResult.value?.active_skill || DEFAULT_AGENT_SKILL);
+                const activeAvailable = (statusResult.value?.skills || []).some((item: AgentSkill) => item.id === activeSkill && item.available);
+                setAgentSkillId(activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
+            }
+            const failure = stateResult.status === "rejected" ? stateResult.reason : statusResult.status === "rejected" ? statusResult.reason : null;
+            if (failure) message.error(failure?.response?.data?.detail || "案件智能体加载失败");
         }
         catch (error: any) {
-            const status = error?.response?.status;
+            if (controller.signal.aborted) return;
             setAgentState(null);
-            if (status === 503) {
-                try {
-                    const { data } = await api.get(`/case-spaces/${row.id}/agent/status`);
-                    setAgentStatus(data);
-                }
-                catch {
-                    setAgentStatus(null);
-                }
-            }
-            else {
-                setAgentStatus(null);
-            }
+            setAgentStatus(null);
             message.error(error?.response?.data?.detail || "案件智能体加载失败");
         }
         finally {
-            setAgentLoading(false);
+            if (activeAgentLoadRequestRef.current === controller) {
+                activeAgentLoadRequestRef.current = null;
+                setAgentLoading(false);
+            }
+        }
+    };
+    const loadCaseAgentDocuments = async (row: CaseRow) => {
+        const { activeAgentDocumentsRequestRef, setAgentDocumentsLoading, setAgentDocuments, setAgentDocumentIds } = context;
+        activeAgentDocumentsRequestRef.current?.abort();
+        const controller = new AbortController();
+        activeAgentDocumentsRequestRef.current = controller;
+        setAgentDocumentsLoading(true);
+        try {
+            const { data } = await api.get(`/case-spaces/${row.id}/context`, { signal: controller.signal });
+            const documents = (data?.documents || []) as CaseAgentDocument[];
+            const availableIds = new Set(documents.map((item) => Number(item.id)).filter((id) => id > 0));
+            setAgentDocuments(documents);
+            setAgentDocumentIds((current) => current.filter((id) => availableIds.has(id)).slice(0, AGENT_DOCUMENT_LIMIT));
+        } catch (error: any) {
+            if (!controller.signal.aborted) message.error(error?.response?.data?.detail || "案件材料加载失败");
+        } finally {
+            if (activeAgentDocumentsRequestRef.current === controller) {
+                activeAgentDocumentsRequestRef.current = null;
+                setAgentDocumentsLoading(false);
+            }
         }
     };
     const sendCaseAgentMessage = async (preset?: string) => {
@@ -247,5 +278,5 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             setAgentDecisionLoading("");
         }
     };
-    return { loadCaseAgent, sendCaseAgentMessage, decideCaseAgentAction, restoreCaseAgentAction };
+    return { loadCaseAgent, loadCaseAgentDocuments, sendCaseAgentMessage, decideCaseAgentAction, restoreCaseAgentAction };
 }
