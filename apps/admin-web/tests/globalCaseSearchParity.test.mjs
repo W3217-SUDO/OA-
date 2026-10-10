@@ -60,3 +60,16 @@ test("dedicated case search preserves its label and case branch while requiring 
     assert.equal(resolveGrantedMenuRoute(GLOBAL_CASE_SEARCH_ROUTE, [], granted), "dashboard");
   }
 });
+
+test("dynamic contract change routes require authorization to a contract page", () => {
+  const route = "contract-change-17-1234567890";
+  for (const key of ["contract-mine", "contract-audit"]) {
+    const granted = new Set([key]);
+    assert.equal(isWorkspaceRouteGranted(route, granted), true);
+    assert.equal(resolveGrantedMenuRoute(route, [], granted), route);
+  }
+  for (const granted of [new Set(), new Set(["task-my-accepted"]), new Set(["case-mine-civil"])]) {
+    assert.equal(isWorkspaceRouteGranted(route, granted), false);
+    assert.equal(resolveGrantedMenuRoute(route, [], granted), "dashboard");
+  }
+});

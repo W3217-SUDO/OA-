@@ -49,10 +49,18 @@ class Rework95BatchContractTest(unittest.TestCase):
         center = self.read("apps/admin-web/src/contract/ContractCenterPage.tsx")
         modals = self.read("apps/admin-web/src/contract/ContractModals.tsx")
         app = self.read("apps/admin-web/src/App.tsx")
+        permissions = self.read("apps/admin-web/src/workspacePermissions.ts")
         self.assertIn("contract-change-${r.id}-", center)
         self.assertIn('mode={isContractChangeView ? "page" : "modal"}', center)
         self.assertIn('mode?: "modal" | "page"', modals)
-        self.assertIn('active.startsWith("contract-change-")', app)
+        self.assertRegex(
+            permissions,
+            r'if\s*\(\[[^\]]*"contract-change-"[^\]]*\]\.some\(\(prefix\)\s*=>\s*route\.startsWith\(prefix\)\)\)\s*\{\s*return hasFamily\("contract"\);',
+        )
+        self.assertRegex(
+            app,
+            r'route\.startsWith\("contract-"\)\s*\?\s*\(\s*<ContractCenterPage\s+initialView=\{active\}',
+        )
 
     def test_seal_candidate_and_submission_share_contract_approver_capability(self):
         source = self.read("apps/api-server/app/core/documents.py")
