@@ -23,6 +23,7 @@ from app.core.incoming_settlement import (
 )
 from app.areas.finance.receipt_files import router as receipt_files_router
 from app.areas.finance.payment_workflow import router as payment_workflow_router
+from app.areas.finance.legacy_payment_history import router as legacy_payment_history_router
 
 
 from app.areas.finance.fee_action_guards import (
@@ -1841,6 +1842,7 @@ async def invoice_application_context(
 
 router.include_router(payment_workflow_router)
 router.include_router(receipt_files_router)
+router.include_router(legacy_payment_history_router)
 
 
 @router.get(f"{settings.api_prefix}/finance/projection/fees")
