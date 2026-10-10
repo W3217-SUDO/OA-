@@ -69,8 +69,10 @@ def _attachment_dict(
     from app.core.crm import (
         _customer_guid,
     )
+    from app.core.office_editor import office_configuration_enabled
     from app.core.oss_attachments import oss_attachment_location
     oss_location = oss_attachment_location(item)
+    office_editable = Path(item.original_name).suffix.lower() == ".docx" and office_configuration_enabled()
     uploader_display_name = (uploader_names or {}).get(str(item.uploader or "").lower(), "") or CONTRACT_PERSON_NAME_PLACEHOLDER
     return {
         "id": item.id, "record_id": item.record_id, "communication_log_id": item.communication_log_id, "finance_transaction_id": item.finance_transaction_id,
@@ -85,6 +87,7 @@ def _attachment_dict(
         "is_locked": bool(item.is_locked), "locked_at": item.locked_at, "locked_by": item.locked_by,
         "created_at": item.created_at, "download_url": f"{settings.api_prefix}/attachments/{item.id}/download",
         "storage_backend": "oss" if oss_location else "local",
+        "office_editable": office_editable,
         "oss_bucket": oss_location[0] if oss_location else None,
         "oss_object_key": oss_location[1] if oss_location else None,
     }

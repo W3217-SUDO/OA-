@@ -6,9 +6,11 @@ import hashlib
 import hmac
 import re
 import time
+from email.utils import formatdate
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit
 
+import httpx
 from fastapi import HTTPException
 
 from app.config import settings
@@ -85,3 +87,37 @@ def oss_attachment_preview_kind(item) -> str | None:
     if suffix in {".xls", ".xlsx"}:
         return "xlsx"
     return "unsupported"
+
+
+def office_revision_key(attachment_id: int, session_id: str, version: str) -> str:
+    """只在显式授权的独立前缀生成不可变版本键。"""
+    prefix = settings.oss_office_version_prefix.strip().rstrip("/")
+    if not prefix or prefix.startswith("/") or any(part in {"", ".", ".."} for part in prefix.split("/")):
+        raise HTTPException(status_code=503, detail="Office OSS 新版本写入前缀未配置或格式无效")
+    if not re.fullmatch(r"[a-f0-9]{32}", session_id) or not re.fullmatch(r"[a-f0-9]{64}", version):
+        raise HTTPException(status_code=422, detail="Office 文件版本标识无效")
+    return f"{prefix}/{attachment_id}/{session_id}/{version}.docx"
+
+
+async def put_office_revision(bucket: str, key: str, content: bytes, content_type: str) -> None:
+    """用原 OSS 凭据写入私有新对象，服务端禁止覆盖已有键。"""
+    access_key_id, access_key_secret = _load_credentials()
+    scheme, host = _endpoint_host()
+    date_header = formatdate(usegmt=True)
+    checksum = base64.b64encode(hashlib.md5(content, usedforsecurity=False).digest()).decode("ascii")
+    canonical_headers = "x-oss-forbid-overwrite:true\nx-oss-object-acl:private\n"
+    signing = f"PUT\n{checksum}\n{content_type}\n{date_header}\n{canonical_headers}/{bucket}/{key}"
+    signature = base64.b64encode(hmac.new(access_key_secret.encode(), signing.encode(), hashlib.sha1).digest()).decode("ascii")
+    headers = {
+        "Authorization": f"OSS {access_key_id}:{signature}", "Date": date_header,
+        "Content-MD5": checksum, "Content-Type": content_type,
+        "x-oss-forbid-overwrite": "true", "x-oss-object-acl": "private",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=60, follow_redirects=False, trust_env=False) as client:
+            response = await client.put(f"{scheme}://{bucket}.{host}/{quote(key, safe='/~')}", headers=headers, content=content)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Office OSS 新版本上传失败，原附件未修改") from exc
+    # 同一内容重试只允许命中已有不可变键，调用方必须回读并核对实际 SHA-256。
+    if response.status_code not in {200, 201, 409}:
+        raise HTTPException(status_code=502, detail=f"Office OSS 新版本写入被拒绝（HTTP {response.status_code}），原附件未修改")

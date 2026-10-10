@@ -6,6 +6,7 @@ import { api } from "../../api";
 import { openAttachmentOnlinePreview } from "../../attachmentOnlinePreview.mjs";
 import { getCaseAttachmentUploadValidationError, getCaseFileRenameValidationError, hasCaseFileTypeOption } from "../../caseFileFrontendParity.mjs";
 import { DEFAULT_CASE_ATTACHMENT_CATEGORY } from "../constants";
+import type { OfficeEditorTarget } from "../../office/types";
 import type { AttachmentPreview, AttachmentRow, CaseAiDraftEditor, CaseDocumentFolderEditor, CaseFileTypeOption, CaseRow, CaseTaskAttachment, CaseWordEditor, CaseWordEditorBlock, ContractRow } from "../types";
 /** legal documents operations; dependencies are read when each operation runs. */
 export interface CaseDocumentsDependencies {
@@ -49,6 +50,8 @@ export interface CaseDocumentsDependencies {
     readonly setWordEditorLockLost: React.Dispatch<React.SetStateAction<boolean>>;
     readonly wordEditorOpening: boolean;
     readonly wordEditor: CaseWordEditor | null;
+    readonly officeEditorTarget: OfficeEditorTarget | null;
+    readonly setOfficeEditorTarget: React.Dispatch<React.SetStateAction<OfficeEditorTarget | null>>;
     readonly setWordEditorOpening: React.Dispatch<React.SetStateAction<boolean>>;
     readonly wordEditorChanged: (editor: CaseWordEditor) => boolean;
     readonly wordEditorSavingRef: React.RefObject<boolean>;
@@ -386,10 +389,10 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
         setWordEditorLockLost(false);
     };
     const openCaseWordEditor = async (item: AttachmentRow) => {
-        const { viewingCounselCase, wordEditorOpening, wordEditor, setWordEditorOpening, wordEditorLockTokenRef, setWordEditor, setWordEditorLockLost } = context;
+        const { viewingCounselCase, wordEditorOpening, wordEditor, officeEditorTarget, setOfficeEditorTarget, setWordEditorOpening, wordEditorLockTokenRef, setWordEditor, setWordEditorLockLost } = context;
         if (!viewingCounselCase)
             return;
-        if (wordEditorOpening || wordEditor)
+        if (wordEditorOpening || wordEditor || officeEditorTarget)
             return;
         if (/\.doc$/i.test(item.original_name)) {
             message.warning("旧版 .doc 文件暂不支持在线编辑，请先转换为 .docx 后再编辑");
@@ -400,6 +403,10 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
             return;
         }
         const caseId = viewingCounselCase.id;
+        if (item.office_editable === true) {
+            setOfficeEditorTarget({ caseId, attachmentId: item.id, name: item.original_name });
+            return;
+        }
         setWordEditorOpening(true);
         try {
             const { data } = await api.get(`/cases/${caseId}/attachments/${item.id}/word-editor/content`);

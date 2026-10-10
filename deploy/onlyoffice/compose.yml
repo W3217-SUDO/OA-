@@ -1,0 +1,26 @@
+name: sunhold-onlyoffice
+services:
+  documentserver:
+    image: ${ONLYOFFICE_IMAGE:?required}
+    pull_policy: never
+    entrypoint: ["/bin/bash", "/usr/local/bin/sunhold-onlyoffice-entrypoint.sh"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${ONLYOFFICE_PORT:?required}:80"
+    env_file:
+      - ${ONLYOFFICE_CONTAINER_ENV:?required}
+    volumes:
+      - "./documentserver-entrypoint.sh:/usr/local/bin/sunhold-onlyoffice-entrypoint.sh:ro"
+      - ${ONLYOFFICE_RUNTIME_DIR:?required}/data:/var/www/onlyoffice/Data
+      - ${ONLYOFFICE_RUNTIME_DIR:?required}/cache:/var/lib/onlyoffice
+      - ${ONLYOFFICE_RUNTIME_DIR:?required}/logs:/var/log/onlyoffice
+    cpus: 2
+    mem_limit: 4g
+    shm_size: 256m
+    pids_limit: 512
+    stop_grace_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

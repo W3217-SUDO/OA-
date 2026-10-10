@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # Office Online fetches documents server-to-server and therefore needs a
     # publicly trusted HTTPS origin rather than the user's authenticated OA URL.
     office_preview_public_base_url: str = ""
+    onlyoffice_public_url: str = Field(default="", validation_alias="ONLYOFFICE_DOCUMENT_SERVER_URL")
+    onlyoffice_internal_url: str = Field(default="", validation_alias="ONLYOFFICE_SERVICE_URL")
+    onlyoffice_jwt_secret: str = ""
+    onlyoffice_callback_base_url: str = ""
+    onlyoffice_document_token_seconds: int = Field(default=600, ge=60, le=900)
     # Local non-Docker development falls back to uploads/; Docker/production
     # explicitly set minio:9000, preventing unavailable MinIO from blocking uploads.
     minio_endpoint: str = ""
@@ -40,6 +45,7 @@ class Settings(BaseSettings):
     oss_credentials_file: str = ""
     oss_endpoint: str = "oss-cn-shanghai.aliyuncs.com"
     oss_signed_url_expire_seconds: int = Field(default=600, ge=60, le=3600)
+    oss_office_version_prefix: str = Field(default="", validation_alias="ONLYOFFICE_OSS_WRITE_PREFIX")
     dify_base_url: str = ""
     dify_api_key: str = ""
     langgraph_enabled: bool = False
