@@ -22,6 +22,7 @@ from app.core.fee_cash_query import (
 )
 from app.core.fee_refund_query import fee_refund_progress, legacy_refund_progress, read_fee_refunds
 from app.core.finance_read_scope import unambiguous_fee_case_nos
+from app.core.fee_type_metadata import FEE_GROUP_BASES, fee_type_group, is_platform_agency_fee
 
 
 def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord, users_by_username: dict[str, User] | None = None) -> dict:
@@ -171,6 +172,9 @@ def _fee_type_base_from_root(root: SystemParameter) -> str:
     configured = str((root.extra or {}).get("base_fee_type") or "").strip()
     if configured in FINANCE_FEE_TYPES:
         return configured
+    group = fee_type_group(root)
+    if group in FEE_GROUP_BASES:
+        return FEE_GROUP_BASES[group]
     if root.code in FEE_TYPE_ROOT_BASES:
         return FEE_TYPE_ROOT_BASES[root.code]
     name = root.name.strip()
@@ -318,8 +322,8 @@ def _fee_type_catalog(items: list[SystemParameter], *, include_inactive: bool = 
             "path": " / ".join(node.name for node in lineage),
             "depth": max(len(lineage) - 1, 0),
             "root_code": root.code,
-            "fee_group": str((root.extra or {}).get("fee_group") or ""),
-            "platform_agency": bool((item.extra or {}).get("platform_agency")),
+            "fee_group": fee_type_group(item) or fee_type_group(root),
+            "platform_agency": is_platform_agency_fee(item),
             "base_fee_type": base_fee_type,
             "expense_scopes": scopes,
             "historical_names": list((item.extra or {}).get("historical_names", [])),
