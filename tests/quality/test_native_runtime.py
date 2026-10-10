@@ -284,6 +284,7 @@ class SourceQualityGateTest(unittest.TestCase):
             receipt = root / "git/source-receipt.json"
             quality_gate.write_source_receipt(receipt, fingerprint, original)
             evidence = quality_gate.receipt_evidence(original, "a" * 40)
+            self.assertIn("backend-runner-selfcheck.log", evidence)
             requested = root / "requested"
             with (
                 patch.object(sys, "argv", ["quality_gate.py", "--profile", "source", "--push-commit", "a" * 40, "--report-dir", str(requested)]),
@@ -303,7 +304,7 @@ class SourceQualityGateTest(unittest.TestCase):
             inspect.assert_not_called()
             execute.assert_not_called()
 
-    def invoke_gate(self, profile: str, failed_output: str = "") -> tuple[int, dict, list[str], str]:
+    def invoke_gate(self, profile: str, failed_output: str = "", failed_command: str = "tests/run-unit.mjs") -> tuple[int, dict, list[str], str]:
         with tempfile.TemporaryDirectory(prefix="oa-test-source-gate-") as temporary:
             report = Path(temporary)
             commands = []
@@ -318,7 +319,9 @@ class SourceQualityGateTest(unittest.TestCase):
                     self.assertNotIn("OA_TEST_POSTGRES_URL", environment)
                     self.assertNotIn("OA_TEST_API_BASE", environment)
                     self.assertNotIn("GIT_DIR", environment)
-                failed = failed_output and "tests/run-unit.mjs" in command
+                if "tests.test_regression_runner" in command:
+                    self.assertEqual(_kwargs["cwd"], quality_gate.API)
+                failed = failed_output and failed_command in command
                 if "tests/run_regression.py" in command:
                     (report / "backend-regression.json").write_text(json.dumps({
                         "execution_profile": "source", "total": 1, "passed": 1, "partial": 0,
@@ -354,9 +357,10 @@ class SourceQualityGateTest(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertTrue(summary["passed"])
         self.assertEqual([step["name"] for step in summary["steps"]], [
-            "backend-static", "quality-tools", "frontend-unit", "client-api-contract", "menu-route-coverage", "backend-regression",
+            "backend-static", "backend-runner-selfcheck", "quality-tools", "frontend-unit", "client-api-contract", "menu-route-coverage", "backend-regression",
         ])
-        self.assertEqual(commands[2][1:], ["tests/run-unit.mjs"])
+        self.assertEqual(commands[1][1:], ["-m", "unittest", "tests.test_regression_runner"])
+        self.assertEqual(commands[3][1:], ["tests/run-unit.mjs"])
         self.assertEqual(commands[-1][1:9], ["tests/run_regression.py", "--group", "unit", "--group", "regression", "--group", "structural", "--exclude-category"])
         self.assertEqual(commands[-1][-2:], ["--execution-profile", "source"])
         self.assertEqual(summary["backend_scope"]["groups"], ["unit", "structural"])
@@ -364,6 +368,17 @@ class SourceQualityGateTest(unittest.TestCase):
         self.assertIn("完整 regression", summary["pending_ci"])
         self.assertEqual([item["status"] for item in summary["backend_pending_ci"]], ["DEFERRED", "NOT_PASSED"])
         self.assertIn("PostgreSQL 专用回归与集成", summary["pending_ci"])
+        for profile in ("source", "full", "static"):
+            with self.subTest(profile=profile):
+                result, summary, _, errors = self.invoke_gate(
+                    profile, "FAIL: nested fixture\nIndexError: 1\n", "tests.test_regression_runner",
+                )
+                self.assertEqual(result, 1)
+                self.assertFalse(summary["passed"])
+                self.assertEqual([step["name"] for step in summary["steps"]], [
+                    "backend-static", "backend-runner-selfcheck",
+                ])
+                self.assertIn("IndexError: 1", errors)
 
     def test_static_keeps_build_and_runtime_checks(self):
         result, summary, _, _ = self.invoke_gate("static")

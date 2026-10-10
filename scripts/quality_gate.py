@@ -20,7 +20,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 API = ROOT / "apps/api-server"
 WEB = ROOT / "apps/admin-web"
-SOURCE_STEPS = ("backend-static", "quality-tools", "frontend-unit", "client-api-contract", "menu-route-coverage", "backend-regression")
+SOURCE_STEPS = ("backend-static", "backend-runner-selfcheck", "quality-tools", "frontend-unit", "client-api-contract", "menu-route-coverage", "backend-regression")
 SOURCE_RECEIPT_MAX_AGE_SECONDS = 2 * 60 * 60
 SOURCE_BACKEND_SCOPE = "unit + structural + four fixed regression files"
 
@@ -315,6 +315,7 @@ def main() -> int:
                 print("source 仅执行 unit、structural 与固定四项回归；完整 regression、PG 及依赖镜像待 CI full。", flush=True)
             environment["PATH"] = str(Path(args.node).resolve().parent) + os.pathsep + environment.get("PATH", "")
             run("backend-static", [sys.executable, "-m", "ruff", "check", str(API / "app")], ROOT, environment)
+            run("backend-runner-selfcheck", [sys.executable, "-m", "unittest", "tests.test_regression_runner"], API, environment)
             run("quality-tools", [sys.executable, "-m", "unittest", "discover", "-s", "tests/quality", "-p", "test_*.py"], ROOT, environment)
             run("frontend-unit", [args.node, "tests/run-unit.mjs"], WEB, environment)
             run("client-api-contract", [sys.executable, "scripts/audit-client-api-coverage.py"], ROOT, environment)
