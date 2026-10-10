@@ -61,8 +61,10 @@ async def personal_agent_message(body: PersonalMessageInput, identity: dict = De
 
     async def run() -> None:
         try:
-            result = await generate_response(safe_identity, db, body.content, on_delta)
+            result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta), timeout=180)
             await queue.put({"type": "state", "state": result["state"]})
+        except TimeoutError:
+            await queue.put({"type": "error", "detail": "个人智能体本轮处理超时，请查看待确认请求后继续"})
         except HTTPException as exc:
             await queue.put({"type": "error", "detail": str(exc.detail)})
         except Exception:
@@ -74,7 +76,11 @@ async def personal_agent_message(body: PersonalMessageInput, identity: dict = De
         task = asyncio.create_task(run())
         try:
             while True:
-                event = await queue.get()
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15)
+                except TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
                 if event["type"] == "done":
                     break

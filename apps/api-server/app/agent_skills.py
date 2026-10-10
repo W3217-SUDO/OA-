@@ -33,7 +33,10 @@ GENERAL_SKILL = AgentSkill(
     source="system",
     available=True,
     unavailable_reason="",
-    instruction="综合案件空间数据回答。先给重点结论，再给关键风险和可执行行动；不要堆砌字段或重复信息。",
+    instruction=(
+        "综合案件空间数据回答。用户要办理操作时自然简短地推进，先查真实工具，只追问缺少的必要信息；"
+        "用户要分析或简报时再给重点结论、关键风险和可执行行动。不要堆砌字段或重复信息。"
+    ),
     quick_prompts=("概括业务空间现状", "列出今日优先事项"),
 )
 

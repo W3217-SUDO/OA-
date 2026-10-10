@@ -257,6 +257,8 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
     ]
 
     capabilities = await _case_detail_action_capabilities(case_record, identity, db)
+    # 案件可见性已校验；工具入口不扩大原业务接口的操作权限。
+    capabilities["can_use_mcp_tools"] = True
     capabilities["can_update_customer"] = False
     if customer:
         try:
@@ -512,12 +514,13 @@ async def decide_case_agent_action(
     from app.core.permissions import (
         _ensure_record_module, _require_case_agent_action_access,
     )
+    from app.agent_mcp.auth import require_human_decision
+
+    require_human_decision(action_id)
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     case_customer = case_record.customer
     case_number = case_record.serial_no
     case_department = case_record.department
-    context = await get_case_space_context(case_id, identity, db)
-    capabilities = context.get("capabilities") or {}
     try:
         state = await case_agent_runtime.get_state(case_id, identity["username"])
         action = next((item for item in state.get("pending_actions") or [] if item.get("id") == action_id), None)
@@ -525,6 +528,30 @@ async def decide_case_agent_action(
             raise KeyError(action_id)
         if action.get("status") != "pending":
             raise ValueError("action_already_decided")
+        if action.get("type") == "mcp.call":
+            from app.agent_mcp.service import decide_tool_request
+
+            request_id = (action.get("payload") or {}).get("request_id")
+            if not isinstance(request_id, str) or not request_id:
+                raise HTTPException(status_code=422, detail="待确认工具请求缺少有效编号")
+            if action.get("requested_by") != identity["username"]:
+                raise HTTPException(status_code=403, detail="只能确认本人发起的工具请求")
+            _require_case_agent_action_access("mcp.call", {"can_use_mcp_tools": True})
+            # 原业务路由自行提交，不能进入旧动作共用事务的执行器。
+            execution = await decide_tool_request(
+                request_id, body.decision, identity, db,
+                comment=body.comment, expected_case_id=case_id,
+            )
+            expected_status = "succeeded" if body.decision == "approved" else "rejected"
+            if execution.get("status") != expected_status:
+                raise HTTPException(status_code=409, detail="工具请求未完成，请查看真实执行状态")
+            return await case_agent_runtime.decide_action(
+                case_id=case_id, action_id=action_id, decision=body.decision,
+                operator=identity["username"], comment=body.comment,
+                execution_result=execution,
+            )
+        context = await get_case_space_context(case_id, identity, db)
+        capabilities = context.get("capabilities") or {}
         _require_case_agent_action_access(str(action.get("type") or ""), capabilities)
         action_type = str(action.get("type") or "")
         preview = action.get("preview") if isinstance(action.get("preview"), dict) else {}
@@ -658,7 +685,10 @@ async def restore_case_agent_delete(
     db: AsyncSession = Depends(get_db),
 ):
     """恢复经智能体审批执行的逻辑删除，并保留完整审计链。"""
+    from app.agent_mcp.auth import require_human_decision
     from app.core.permissions import _ensure_record_module, _require_case_agent_action_access
+
+    require_human_decision(action_id)
     await _ensure_record_module(case_id, "case", identity, db)
     context = await get_case_space_context(case_id, identity, db)
     import hashlib

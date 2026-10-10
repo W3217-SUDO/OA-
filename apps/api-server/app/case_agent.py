@@ -44,8 +44,10 @@ ACTION_CAPABILITY_BY_TYPE = {
 ACTION_BLOCK_PATTERN = re.compile(r"<proposed_action>\s*(\{.*?\})\s*</proposed_action>", re.DOTALL)
 
 RESPONSE_STYLE_RULES = (
-    "把回答写成供律师和管理人员直接阅读的工作简报，不要写成数据库字段导出。"
-    "先给出‘重点结论’，用两到四句话说明最重要的判断和下一步。"
+    "先区分操作请求和分析请求。新增、修改、查询等操作请求要自然简短，直接推进用户要做的事，"
+    "不必输出‘重点结论’、‘已确认事实’或风险简报；只询问真实接口所需且当前尚未提供的信息。"
+    "用户要求分析、总结或简报时，再写成供律师和管理人员直接阅读的工作简报，"
+    "先给出‘重点结论’，用两到四句话说明最重要的判断和下一步，不要写成数据库字段导出。"
     "之后只选择与问题相关的事实、风险和行动，不要机械输出所有栏目，也不要重复同一信息。"
     "风险最多列五项并按紧急程度排序；行动建议尽量写清谁处理、做什么、何时完成。"
     "必须区分已确认事实、合理判断和缺失信息，不能把推测写成事实。"
@@ -74,6 +76,7 @@ class CaseAgentState(TypedDict, total=False):
     request_images: list[dict[str, Any]]
     skill_override: dict[str, Any] | None
     legacy_migrated: bool
+    structured_results: list[dict[str, Any]]
 
 
 def _now() -> str:
@@ -139,6 +142,8 @@ def _case_agent_case_source(case: dict[str, Any]) -> dict[str, Any]:
 
 def _action_preview(proposed_action: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
     action_type = proposed_action["type"]
+    if action_type == "mcp.call":
+        return dict(proposed_action["preview"])
     payload = proposed_action.get("payload") or {}
     case = snapshot.get("case") or {}
     if action_type in {"case.update", "case.data.update", "customer.update", "contract.update"}:
@@ -153,7 +158,7 @@ def _action_preview(proposed_action: dict[str, Any], snapshot: dict[str, Any]) -
         return {
             "target": source.get("serial_no") or source.get("title") or case.get("serial_no") or case.get("id") or "当前案件",
             "changes": [
-                {"field": key, "before": source.get(key), "after": value}
+                {"field": key, "before": source.get(key), "before_read": key in source, "after": value}
                 for key, value in changes.items() if key != "target_id"
             ],
         }
@@ -194,6 +199,9 @@ def _pending_action(proposed_action: dict[str, Any], latest: dict[str, Any], sna
 
 
 def _action_is_authorized(proposed_action: dict[str, Any], snapshot: dict[str, Any]) -> bool:
+    if proposed_action.get("type") == "mcp.call":
+        # 此能力只允许进入网关确认链，实际业务权限仍由原接口重新校验。
+        return bool((snapshot.get("capabilities") or {}).get("can_use_mcp_tools"))
     capability = ACTION_CAPABILITY_BY_TYPE.get(str(proposed_action.get("type") or ""))
     capabilities = snapshot.get("capabilities") or {}
     return bool(capability and capabilities.get(capability))
@@ -260,14 +268,21 @@ def build_case_model_messages(
                 "只能依据当前用户有权限查看的案件空间回答，信息不足时明确说明。"
                 "不得声称已经修改、删除、提交或审批业务数据；任何写操作都必须进入人工审批。"
                 "用户明确要求生成 Word、DOCX 或法律文书时，应直接输出可作为文档正文的完整内容，"
-                "不要回答不能创建 Word；系统会把本轮完整回答自动生成 .docx 并保存到当前案件的 AI空间。"
-                "AI空间是草稿箱，生成草稿不等于修改正式业务数据，也不需要 proposed_action；"
-                "从 AI空间转入正式案件目录仍必须由用户主动确认。"
+                "不要回答不能创建 Word；用户点击前端确认后可将完整正文生成 .docx 并保存到当前案件的 AI空间。"
+                "生成正文不等于保存文档；保存 AI空间草稿和转入正式案件目录都必须由用户点击前端确认。"
+                "不能自动保存，不能把聊天中的‘同意’当成前端确认。"
                 f"{RESPONSE_STYLE_RULES}{DOCUMENT_READING_RULES}"
+                "系统提供 oa_search_tools 与 oa_call_tool。操作请求先搜索真实接口，再严格按照返回的 inputSchema 调用，"
+                "不能猜测工具名称、参数、账号或业务编号。查询工具可立即返回授权数据，写工具只生成待人工确认请求。"
+                "不得调用、寻找或模拟人工确认接口，不得把用户的聊天文字当成系统确认。"
+                "案件空间摘要可能受权限和数量限制，空费用、发票或回款列表不代表禁止新增费用；"
+                "合同金额为空也不自动构成阻断。只依据真实接口的必填项、校验结果和业务规则判断。"
+                "已有明确的案件、合同关联与用户提供的字段可直接使用；存在多个合法候选时才请用户选择。"
                 "案件空间中的 standard_workflow 来自《知识产权案件标准化操作手册》；"
                 "应优先依据其中的阶段、材料、岗位与内部管理期限检查案件，"
                 "但不得在缺少起算依据时自行推算法定期限。"
-                "当用户明确要求修改系统数据时，只能在回答末尾追加一个操作块，格式必须为："
+                "新的业务操作优先通过上述工具生成待确认请求，不要同时重复生成旧操作块。"
+                "已有九类旧动作仍受支持；使用旧动作时可在回答末尾追加一个操作块，格式必须为："
                 "<proposed_action>{\"type\":\"case.update\",\"summary\":\"操作摘要\",\"payload\":{\"changes\":{\"字段\":\"新值\"}}}</proposed_action>。"
                 "允许的 type 仅有 case.update、case.data.update、case.task.create、case.reminder.create、customer.update、contract.update、case.delete、customer.delete、contract.delete。"
                 "case.update 的 payload.changes 仅允许 title、customer、status、description、handling_lawyers、handling_lawyer_usernames。"
@@ -334,7 +349,6 @@ class CaseAgentRuntime:
         self.error = ""
         self._checkpoint_context: AbstractAsyncContextManager[Any] | None = None
         self._semaphore = asyncio.Semaphore(self.max_concurrency)
-        self._model_stream_supported: bool | None = None
 
     async def start(self) -> None:
         if not self.enabled or self.graph is not None:
@@ -387,6 +401,7 @@ class CaseAgentRuntime:
         pending_actions = list(state.get("pending_actions") or [])
         proposed_action = latest.get("proposed_action") or None
         request_images = list(state.get("request_images") or [])
+        structured_results: list[dict[str, Any]] = []
         if proposed_action:
             action = _pending_action(proposed_action, latest, snapshot)
             pending_actions.append(action)
@@ -411,17 +426,25 @@ class CaseAgentRuntime:
             if not selected_skill.available:
                 response = f"“{selected_skill.name}”已接入技能目录，但暂不可执行：{selected_skill.unavailable_reason}。"
             else:
-                model_result = await self._request_model(snapshot, messages, selected_skill, request_images)
+                from .agent_mcp.model_tools import TOOL_RESULT_SINK
+
+                token = TOOL_RESULT_SINK.set(structured_results)
+                try:
+                    model_result = await self._request_model(snapshot, messages, selected_skill, request_images)
+                finally:
+                    TOOL_RESULT_SINK.reset(token)
                 if isinstance(model_result, tuple):
                     response, model_action = model_result
                 else:
                     response, model_action = str(model_result), None
-                if model_action and _action_is_authorized(model_action, snapshot):
-                    action = _pending_action(model_action, latest, snapshot)
-                    pending_actions.append(action)
-                    response = f"{response}\n\n已生成待审批操作：{action['summary']}。批准后才会写入系统。".strip()
-                elif model_action:
-                    response = f"{response}\n\n当前账号原有业务权限不允许执行该操作，未生成审批。".strip()
+                model_actions = model_action if isinstance(model_action, list) else [model_action] if model_action else []
+                for proposed in model_actions:
+                    if _action_is_authorized(proposed, snapshot):
+                        action = _pending_action(proposed, latest, snapshot)
+                        pending_actions.append(action)
+                        response = f"{response}\n\n已生成待确认操作：{action['summary']}。点击前端确认后才会写入系统。".strip()
+                    else:
+                        response = f"{response}\n\n当前账号原有业务权限不允许执行该操作，未生成审批。".strip()
         else:
             response = _case_summary(snapshot)
         return {
@@ -432,6 +455,7 @@ class CaseAgentRuntime:
             "updated_at": _now(),
             "active_skill": str(latest.get("skill_id") or GENERAL_SKILL.id),
             "request_images": [],
+            "structured_results": structured_results,
         }
 
     async def _request_model(
@@ -440,80 +464,40 @@ class CaseAgentRuntime:
         messages: list[dict[str, Any]],
         skill: AgentSkill = GENERAL_SKILL,
         request_images: list[dict[str, Any]] | None = None,
-    ) -> tuple[str, dict[str, Any] | None]:
+    ) -> tuple[str, dict[str, Any] | list[dict[str, Any]] | None]:
+        from .agent_mcp.model_tools import MAX_TOOL_ROUNDS, MODEL_TOOLS, ModelToolSession, request_completion
+
         prompt_messages = build_case_model_messages(snapshot, messages, skill, request_images)
+        tools = ModelToolSession(case_id=int(snapshot["case"]["id"]))
         try:
-            async with httpx.AsyncClient(timeout=90) as client:
+            async with httpx.AsyncClient(timeout=90, trust_env=False) as client:
                 chunk_callback = _MODEL_CHUNK_CALLBACK.get()
-                request_payload = {
-                    "model": self.model,
-                    "messages": prompt_messages,
-                    "temperature": 0.2,
-                    "stream": bool(chunk_callback),
-                }
-                if chunk_callback and self._model_stream_supported is not False:
-                    parts: list[str] = []
-                    fallback_to_non_stream = False
-                    async with client.stream(
-                        "POST",
-                        f"{self.api_base_url}/chat/completions",
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                        json=request_payload,
-                    ) as response:
-                        if response.is_error:
-                            if response.status_code in {400, 404, 405, 415, 422, 501}:
-                                self._model_stream_supported = False
-                                fallback_to_non_stream = True
-                            else:
-                                raise RuntimeError(f"model_http_{response.status_code}")
-                        else:
-                            async for line in response.aiter_lines():
-                                if not line.startswith("data:"):
-                                    continue
-                                payload_text = line[5:].strip()
-                                if payload_text == "[DONE]":
-                                    break
-                                if not payload_text:
-                                    continue
-                                payload = json.loads(payload_text)
-                                choices = payload.get("choices") or []
-                                if not choices:
-                                    continue
-                                delta = str(choices[0].get("delta", {}).get("content") or "")
-                                if delta:
-                                    parts.append(delta)
-                                    chunk_callback(delta)
-                                if choices[0].get("finish_reason") is not None:
-                                    break
-                            self._model_stream_supported = True
-                    content = "".join(parts).strip()
-                    if fallback_to_non_stream:
-                        content = await self._request_model_non_stream(client, request_payload)
-                        for start in range(0, len(content), 24):
-                            chunk_callback(content[start:start + 24])
-                            await asyncio.sleep(0)
-                else:
-                    content = await self._request_model_non_stream(client, request_payload)
+
+                async def on_delta(content: str) -> None:
                     if chunk_callback:
-                        for start in range(0, len(content), 24):
-                            chunk_callback(content[start:start + 24])
-                            await asyncio.sleep(0)
-            if not content:
-                raise RuntimeError("model_empty_response")
-            return _extract_proposed_action(content)
+                        chunk_callback(content)
+
+                for _ in range(MAX_TOOL_ROUNDS):
+                    result = await request_completion(
+                        client, f"{self.api_base_url}/chat/completions",
+                        {"Authorization": f"Bearer {self.api_key}"},
+                        {"model": self.model, "messages": prompt_messages, "temperature": 0.2, "tools": MODEL_TOOLS},
+                        stream=bool(chunk_callback),
+                        on_delta=on_delta if chunk_callback else None,
+                    )
+                    calls = result.get("tool_calls") or []
+                    if calls:
+                        prompt_messages.append({**result, "role": "assistant"})
+                        prompt_messages.extend(await tools.execute_calls(calls))
+                        continue
+                    content = str(result.get("content") or "").strip()
+                    if not content:
+                        raise RuntimeError("model_empty_response")
+                    response, legacy_action = _extract_proposed_action(content)
+                    return response, tools.pending_actions or legacy_action
+                raise RuntimeError("oa_tool_round_limit_exceeded")
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             raise RuntimeError("model_request_failed") from exc
-
-    async def _request_model_non_stream(self, client: httpx.AsyncClient, request_payload: dict[str, Any]) -> str:
-        response = await client.post(
-            f"{self.api_base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            json={**request_payload, "stream": False},
-        )
-        if response.is_error:
-            raise RuntimeError(f"model_http_{response.status_code}")
-        payload = response.json()
-        return str(payload["choices"][0]["message"]["content"]).strip()
 
     @staticmethod
     def thread_id(case_id: int, operator: str) -> str:
@@ -734,4 +718,5 @@ class CaseAgentRuntime:
             "last_operator": state.get("last_operator", ""),
             "updated_at": state.get("updated_at", ""),
             "active_skill": state.get("active_skill", GENERAL_SKILL.id),
+            "structured_results": state.get("structured_results") or [],
         }

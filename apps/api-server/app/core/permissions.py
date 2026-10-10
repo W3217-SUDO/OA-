@@ -1692,6 +1692,11 @@ async def _agent_skill_for_identity(skill_id: str, identity: dict, db: AsyncSess
 
 
 def _require_case_agent_action_access(action_type: str, capabilities: dict) -> None:
+    if action_type == "mcp.call":
+        # 仅放行已授权案件的网关入口，不授予任何原业务接口的写权限。
+        if not capabilities.get("can_use_mcp_tools"):
+            raise HTTPException(status_code=403, detail="当前案件不可使用业务工具")
+        return
     capability = AGENT_ACTION_CAPABILITY.get(action_type)
     if not capability:
         raise HTTPException(status_code=422, detail="该智能体操作类型不在系统白名单中")

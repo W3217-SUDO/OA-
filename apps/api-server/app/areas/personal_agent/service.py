@@ -26,6 +26,8 @@ from app.data_models.contracts import ContractApprovalStep
 from app.data_models.identity import User
 from app.data_models.records import BusinessRecord
 from app.security import user_role_ids
+from app.agent_mcp.model_tools import MAX_TOOL_ROUNDS, MODEL_TOOLS, ModelToolSession, request_completion
+from app.case_agent import RESPONSE_STYLE_RULES
 
 
 _WRITE_MARKER = re.compile(r"<personal_action>\s*(\{.*?\})\s*</personal_action>", re.S)
@@ -72,7 +74,12 @@ def _read_state(username: str) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail="个人智能体会话文件无法读取") from exc
     if not isinstance(value, dict):
         raise HTTPException(status_code=500, detail="个人智能体会话文件格式错误")
-    return {"messages": list(value.get("messages") or []), "pending_actions": list(value.get("pending_actions") or []), "updated_at": str(value.get("updated_at") or "")}
+    return {
+        "messages": list(value.get("messages") or []),
+        "pending_actions": list(value.get("pending_actions") or []),
+        "structured_results": list(value.get("structured_results") or []),
+        "updated_at": str(value.get("updated_at") or ""),
+    }
 
 
 def _write_json(path: Path, value: dict[str, Any]) -> None:
@@ -219,13 +226,18 @@ def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: d
         context_text = context_text[:60_000] + "\n[可用 OA 摘要已截断]"
     system = (
         "你是法律服务机构 OA 的个人智能体。你服务的只是当前登录用户，不能共享或引用其他用户的聊天记录。"
-        "你可以依据系统提供的、已经按权限裁剪的实时摘要回答审批、任务、案件和日常办公问题。"
+        "你可以依据系统提供的、已经按权限裁剪的实时摘要和 OA 查询工具回答审批、任务、案件和日常办公问题。"
         "不要猜测没有出现在摘要里的业务事实，不要声称已经写入系统。"
-        "用户明确要求新建任务或审批合同时，在正常说明后追加一个 JSON 操作块，严格使用格式："
+        "办理操作先调用 oa_search_tools 查真实接口和 inputSchema，再用 oa_call_tool 按 schema 调用。"
+        "查询可直接取得当前账号有权查看的数据，写操作只生成待确认请求。不得猜工具名称、字段或账号。"
+        "只询问真实 schema 或原接口明确需要且用户尚未提供的信息，不把无关的空费用、发票或合同金额当成阻断。"
+        "所有写入，包括保存 AI 空间文档，必须等用户点击前端确认；聊天‘同意’、‘是的’或‘1’不是确认。"
+        "不能发现或调用人工确认接口，不能自己批准操作。"
+        "已有新建任务或审批合同旧动作继续支持，但不要与工具生成的待确认请求重复。使用旧动作时严格使用格式："
         "<personal_action>{\"type\":\"create_task\",\"payload\":{\"title\":\"任务标题\",\"owner\":\"负责人用户名\",\"deadline\":\"YYYY-MM-DD\",\"priority\":\"普通\",\"description\":\"说明\"}}</personal_action>；"
         "审批合同使用 type=approve_contract，payload 只包含 contract_id、approved、comment。"
         "只有用户明确要求写操作时才输出操作块。操作块不是已经执行，必须等待用户确认。"
-        "回答中文、分段清晰，先给结论，再列行动；不要使用 Markdown 星号作为项目符号。\n\n"
+        f"回答中文。{RESPONSE_STYLE_RULES}\n\n"
         f"当前身份文件：\n{_identity_markdown(identity)}\n"
         f"当前 OA 摘要：\n{context_text}"
     )
@@ -278,38 +290,38 @@ def _action_from_model(action: dict[str, Any], identity: dict[str, Any], context
     return {"id": str(uuid4()), "type": action_type, "payload": safe_payload, "summary": "新建任务" if action_type == "create_task" else "审批合同", "status": "pending", "requested_by": identity["username"], "created_at": _now()}
 
 
-async def _request_model(messages: list[dict[str, str]], on_delta: Callable[[str], Awaitable[None]]) -> str:
+async def _request_model(
+    messages: list[dict[str, Any]],
+    on_delta: Callable[[str], Awaitable[None]],
+    *,
+    tools: ModelToolSession,
+) -> str:
     if not (settings.langgraph_api_base_url and settings.langgraph_api_key and settings.langgraph_model):
         raise HTTPException(status_code=503, detail="个人智能体模型未配置")
-    parts: list[str] = []
-    emitted = 0
-    marker_start = "<personal_action>"
-    async with httpx.AsyncClient(timeout=90, trust_env=False) as client:
-        async with client.stream("POST", f"{settings.langgraph_api_base_url.rstrip('/')}/chat/completions", headers={"Authorization": f"Bearer {settings.langgraph_api_key}"}, json={"model": settings.langgraph_model, "messages": messages, "temperature": 0.2, "stream": True}) as response:
-            if response.is_error:
-                raise HTTPException(status_code=502, detail=f"个人智能体模型请求失败（HTTP {response.status_code}）")
-            async for line in response.aiter_lines():
-                if not line.startswith("data:"):
+    try:
+        async with asyncio.timeout(180), httpx.AsyncClient(timeout=90, trust_env=False) as client:
+            for _ in range(MAX_TOOL_ROUNDS):
+                result = await request_completion(
+                    client, f"{settings.langgraph_api_base_url.rstrip('/')}/chat/completions",
+                    {"Authorization": f"Bearer {settings.langgraph_api_key}"},
+                    {"model": settings.langgraph_model, "messages": messages, "temperature": 0.2, "tools": MODEL_TOOLS},
+                    stream=True,
+                    on_delta=on_delta,
+                )
+                calls = result.get("tool_calls") or []
+                if calls:
+                    messages.append({**result, "role": "assistant"})
+                    messages.extend(await tools.execute_calls(calls))
                     continue
-                raw = line[5:].strip()
-                if raw == "[DONE]":
-                    break
-                if not raw:
-                    continue
-                try:
-                    delta = str((json.loads(raw).get("choices") or [{}])[0].get("delta", {}).get("content") or "")
-                except (ValueError, TypeError, IndexError, KeyError) as exc:
-                    raise HTTPException(status_code=502, detail="个人智能体模型返回格式错误") from exc
-                if not delta:
-                    continue
-                parts.append(delta)
-                visible = "".join(parts)
-                marker_index = visible.find(marker_start)
-                target = visible if marker_index < 0 else visible[:marker_index]
-                if len(target) > emitted:
-                    await on_delta(target[emitted:])
-                    emitted = len(target)
-    return "".join(parts).strip()
+                content = str(result.get("content") or "").strip()
+                if not content:
+                    raise RuntimeError("model_empty_response")
+                return content
+            raise RuntimeError("oa_tool_round_limit_exceeded")
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="个人智能体本轮处理超时，未取得完成结果") from exc
+    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=502, detail=f"个人智能体本轮处理失败：{exc}") from exc
 
 
 async def generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]]) -> dict[str, Any]:
@@ -320,9 +332,18 @@ async def generate_response(identity: dict[str, Any], db: AsyncSession, text: st
     state["messages"] = state["messages"][-100:]
     await _save_state(username, state)
     context = await build_context(identity, db)
-    raw = await _request_model(_prompt_messages(identity, state, context, text), on_delta)
+    tools = ModelToolSession()
+    raw = await _request_model(_prompt_messages(identity, state, context, text), on_delta, tools=tools)
     response, model_action = _extract_action(raw)
-    if model_action:
+    state["structured_results"] = tools.structured_results
+    for prepared in tools.pending_actions:
+        pending = {
+            **prepared, "id": str(uuid4()), "status": "pending",
+            "requested_by": username, "created_at": _now(),
+        }
+        state["pending_actions"] = [*state.get("pending_actions", []), pending][-30:]
+        response = f"{response}\n\n已生成待确认操作：{pending['summary']}。点击前端确认前不会写入系统。".strip()
+    if model_action and not tools.pending_actions:
         pending = _action_from_model(model_action, identity, context)
         state["pending_actions"] = [*state.get("pending_actions", []), pending][-30:]
         response = f"{response}\n\n已生成待确认操作：{pending['summary']}。确认前不会写入系统。".strip()
@@ -330,14 +351,47 @@ async def generate_response(identity: dict[str, Any], db: AsyncSession, text: st
     state["messages"] = state["messages"][-100:]
     state["updated_at"] = _now()
     await _save_state(username, state)
-    return {"response": response, "state": {"messages": state["messages"], "pending_actions": state["pending_actions"]}, "context": context}
+    return {
+        "response": response,
+        "state": {"messages": state["messages"], "pending_actions": state["pending_actions"], "structured_results": state["structured_results"]},
+        "context": context,
+    }
 
 
 async def decide_action(identity: dict[str, Any], db: AsyncSession, action_id: str, decision: str, comment: str = "") -> dict[str, Any]:
+    from app.agent_mcp.auth import require_human_decision
+
+    require_human_decision(action_id)
     state = _read_state(identity["username"])
     action = next((item for item in state.get("pending_actions", []) if str(item.get("id")) == action_id), None)
     if not action:
         raise HTTPException(status_code=404, detail="待确认操作不存在或已处理")
+    if action.get("status") != "pending" or action.get("requested_by") != identity["username"]:
+        raise HTTPException(status_code=403, detail="只能处理本人尚未确认的操作")
+    if decision not in {"approved", "rejected"}:
+        raise HTTPException(status_code=422, detail="确认结果无效")
+    if action.get("type") == "mcp.call":
+        from app.agent_mcp.service import decide_tool_request
+
+        request_id = (action.get("payload") or {}).get("request_id")
+        if not isinstance(request_id, str) or not request_id:
+            raise HTTPException(status_code=422, detail="工具请求缺少有效编号")
+        execution = await decide_tool_request(
+            request_id, decision, identity, db, comment=comment, expected_case_id=None,
+        )
+        expected_status = "succeeded" if decision == "approved" else "rejected"
+        if execution.get("status") != expected_status:
+            raise HTTPException(status_code=409, detail="工具请求未完成，请查看真实执行状态")
+        state["pending_actions"] = [item for item in state["pending_actions"] if item.get("id") != action_id]
+        state["messages"].append({
+            "role": "assistant",
+            "content": "操作已完成，系统数据已更新。" if decision == "approved" else "操作已驳回，系统数据未修改。",
+            "created_at": _now(),
+        })
+        state["messages"] = state["messages"][-100:]
+        state["updated_at"] = _now()
+        await _save_state(identity["username"], state)
+        return {"status": decision, "result": execution, "state": state}
     if decision == "rejected":
         action["status"] = "rejected"
         action["decision_comment"] = comment[:1000]
