@@ -134,13 +134,21 @@ test('R25 退款长文本保留全文提示、原链接动作及操作列，其�
   assert.equal(ordinary[1].render(null, {}), longText);
 });
 
-test('R26 开庭排期标题实际点击跳到我的案件开庭排期', () => {
+test('R26 已授权开庭排期标题实际点击跳到我的案件开庭排期，未授权不显示跳转入口', async () => {
   const page = source('../src/Dashboard.tsx');
   const title = find(page, item => ts.isJsxAttribute(item) && item.name.getText(page) === 'title' && item.initializer?.getText(page).includes('case-mine-schedule'));
   assert.ok(title);
   const routes = [];
-  const button = expression(title.initializer.expression.getText(page), { React, Button: 'button', onNavigate: route => routes.push(route) });
+  const { isWorkspaceRouteGranted } = await load('../src/workspacePermissions.ts');
+  const renderTitle = granted => expression(title.initializer.expression.getText(page), {
+    React, Button: 'button', onNavigate: route => routes.push(route),
+    canNavigate: route => isWorkspaceRouteGranted(route, granted),
+  });
+  const button = renderTitle(new Set(['case-mine-schedule']));
   assert.equal(button.props.children, '开庭排期');
   button.props.onClick();
+  assert.deepEqual(routes, ['case-mine-schedule']);
+  assert.equal(renderTitle(new Set()), '开庭排期');
+  assert.equal(renderTitle(new Set(['case-mine-civil'])), '开庭排期');
   assert.deepEqual(routes, ['case-mine-schedule']);
 });
