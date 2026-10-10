@@ -703,8 +703,12 @@ async def _sync_legacy_case(record: BusinessRecord, identity: dict, db: AsyncSes
         else 0
     )
     legacy.ArchiveTypeId = 2 if data.get("archive_type") == "deficit" else 1 if data.get("archive_type") == "normal" else None
-    legacy.FileNo = _legacy_case_text(data.get("archive_no"), 20)
-    legacy.ArchivedFileNo = _legacy_case_text(data.get("archive_no"), 100)
+    if not str(legacy.FileNo or "").strip():
+        legacy.FileNo = _legacy_case_text(data.get("file_no"), 20)
+    if "archive_no" in data:
+        legacy.ArchivedFileNo = _legacy_case_text(data["archive_no"], 100)
+    elif "archived_file_no" in data:
+        legacy.ArchivedFileNo = _legacy_case_text(data["archived_file_no"], 100)
     legacy.ClosingTime = _legacy_case_datetime(data.get("case_closed_at"))
     legacy.ToAuditTime = _legacy_case_datetime(data.get("archive_submitted_at"))
     legacy.ToAuditApplicant = _legacy_case_text(data.get("archive_submitter"), 20)
