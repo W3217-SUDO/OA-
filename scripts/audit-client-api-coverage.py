@@ -75,6 +75,10 @@ def included_router_calls(source: str) -> list[str]:
 def route_path(node: ast.expr | None) -> str:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
+    if isinstance(node, ast.Attribute) and ast.unparse(node) == "settings.api_prefix":
+        return ""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return route_path(node.left) + route_path(node.right)
     if isinstance(node, ast.JoinedStr):
         parts = []
         for part in node.values:
@@ -220,11 +224,13 @@ def sliced_router_routes(backend: Path, source: str) -> dict[str, list[str]]:
         for methods, path in entries[start:stop]:
             for method in methods:
                 server.setdefault(method, []).append(path)
+    for method, paths in registered_helper_routes(backend, source).items():
+        server.setdefault(method, []).extend(paths)
     return server
 
 
-def resolve_router_source(module: Path, symbol: str, visited=None) -> str:
-    """Follow explicit local re-exports, never import startup/database code."""
+def resolve_router_definition(module: Path, symbol: str, visited=None) -> tuple[Path, str, str]:
+    """追踪显式重导出并保留定义位置，不导入启动或数据库代码。"""
     visited = set() if visited is None else visited
     key = (module, symbol)
     if key in visited:
@@ -234,9 +240,9 @@ def resolve_router_source(module: Path, symbol: str, visited=None) -> str:
     tree = ast.parse(source)
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == symbol:
-            return ast.get_source_segment(source, node)
+            return module, symbol, ast.get_source_segment(source, node)
         if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == symbol for target in node.targets):
-            return source
+            return module, symbol, source
         if not isinstance(node, ast.ImportFrom) or not node.module:
             continue
         for name in node.names:
@@ -254,8 +260,80 @@ def resolve_router_source(module: Path, symbol: str, visited=None) -> str:
                 target = base.joinpath(*node.module.split(".")[1:]).with_suffix(".py")
             else:
                 raise AssertionError(f"Router import outside application: {node.module}")
-            return resolve_router_source(target, name.name, visited)
+            return resolve_router_definition(target, name.name, visited)
     raise AssertionError(f"Unresolved router symbol: {symbol}")
+
+
+def resolve_router_source(module: Path, symbol: str, visited=None) -> str:
+    """保留既有路由工厂与重导出的源码解析接口。"""
+    return resolve_router_definition(module, symbol, visited)[2]
+
+
+def registered_helper_routes(backend: Path, source: str) -> dict[str, list[str]]:
+    """只追踪实际收到应用对象的注册函数，不扫描未调用的函数体。"""
+    server: dict[str, list[str]] = {}
+
+    def scan(module: Path, statements: list[ast.stmt], applications: set[str], stack: frozenset):
+        module_tree = ast.parse(module.read_text(encoding="utf-8")) if module != backend else ast.parse(source)
+        symbols = {
+            imported.asname or imported.name
+            for node in module_tree.body
+            if isinstance(node, ast.ImportFrom) and node.module
+            and (node.level or node.module.startswith("app."))
+            for imported in node.names
+        } | {node.name for node in module_tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+        def is_application(node: ast.expr) -> bool:
+            return isinstance(node, ast.Name) and node.id in applications
+
+        for statement in statements:
+            if isinstance(statement, ast.Assign) and is_application(statement.value):
+                applications.update(target.id for target in statement.targets if isinstance(target, ast.Name))
+            call = statement.value if isinstance(statement, ast.Expr) else None
+            if not isinstance(call, ast.Call):
+                continue
+            if isinstance(call.func, ast.Attribute) and is_application(call.func.value) and call.func.attr == "include_router":
+                # 主模块的直接注册与切片沿用原解析器，这里只补函数内注册。
+                if module == backend and not stack:
+                    continue
+                router_node = call.args[0] if len(call.args) == 1 else next(
+                    (keyword.value for keyword in call.keywords if keyword.arg == "router"), None,
+                )
+                if not isinstance(router_node, ast.Name):
+                    raise AssertionError(f"Unsupported helper router include: {ast.unparse(call)}")
+                router_module, _, router_source = resolve_router_definition(module, router_node.id)
+                prefix_node = next((keyword.value for keyword in call.keywords if keyword.arg == "prefix"), None)
+                prefix = route_path(prefix_node) if prefix_node is not None else ""
+                for methods, path in area_route_entries(router_source, router_module, backend.parent):
+                    for method in methods:
+                        server.setdefault(method, []).append(prefix + path)
+                continue
+            if not isinstance(call.func, ast.Name) or call.func.id not in symbols:
+                continue
+            # 既有切片已逐条校验边界，不能再把切片函数当作完整路由注册。
+            if module == backend and not stack and call.func.id == "include_route_slice":
+                continue
+            if not any(is_application(value) for value in call.args) and not any(is_application(item.value) for item in call.keywords):
+                continue
+            target_module, target_symbol, function_source = resolve_router_definition(module, call.func.id)
+            function = ast.parse(function_source).body[0]
+            if not isinstance(function, ast.FunctionDef):
+                raise AssertionError(f"Unsupported registration helper: {call.func.id}")
+            key = (target_module, target_symbol)
+            if key in stack:
+                raise AssertionError(f"Cyclic registration helper: {target_symbol}")
+            parameters = function.args.posonlyargs + function.args.args
+            bound_applications = {
+                parameters[index].arg for index, value in enumerate(call.args)
+                if is_application(value) and index < len(parameters)
+            }
+            bound_applications.update(item.arg for item in call.keywords if item.arg and is_application(item.value))
+            if not bound_applications:
+                raise AssertionError(f"Unresolved application argument: {ast.unparse(call)}")
+            scan(target_module, function.body, bound_applications, stack | {key})
+
+    scan(backend, ast.parse(source).body, {"app"}, frozenset())
+    return server
 
 
 def main() -> None:

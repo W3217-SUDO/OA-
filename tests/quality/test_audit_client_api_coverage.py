@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 from pathlib import Path
 import tempfile
@@ -86,6 +87,110 @@ def create_router():
             source = AUDIT.resolve_router_source(root / "main.py", "make_router")
             self.assertIn('/mounted', source)
             self.assertNotIn('must-not-match', source)
+
+    def collect_helpers(self, modules):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "app"
+            for name, source in modules.items():
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(source, encoding="utf-8")
+            return AUDIT.sliced_router_routes(root / "main.py", modules["main.py"])
+
+    def test_called_helper_registers_router_alias_with_combined_prefix(self):
+        server = self.collect_helpers({
+            "main.py": "from app.gateway import install as mount_tools\nmount_tools(app)\n",
+            "gateway.py": '''
+from app.tools import router as pending_router
+def install(application):
+    application.include_router(pending_router, prefix=settings.api_prefix + "/gateway")
+''',
+            "tools.py": '''
+router = APIRouter(prefix=settings.api_prefix + "/tools")
+@router.get("/requests")
+def requests(): pass
+@router.get("/requests/{request_id}")
+def request(): pass
+@router.post("/requests/{request_id}/decision")
+def decision(): pass
+''',
+        })
+        self.assertEqual(server, {
+            "get": ["/gateway/tools/requests", "/gateway/tools/requests/{request_id}"],
+            "post": ["/gateway/tools/requests/{request_id}/decision"],
+        })
+        self.assertFalse(AUDIT.paths_compatible("/tools/requests", server["get"][0]))
+
+    def test_nested_helper_reexport_relative_alias_and_keyword_application(self):
+        server = self.collect_helpers({
+            "main.py": "from app.dependencies import initialize as setup\nsetup(target=app)\n",
+            "dependencies.py": "from .bootstrap import configure as initialize\n",
+            "bootstrap.py": '''
+from .gateway import install as mount_tools
+def configure(target):
+    mount_tools(application=target)
+''',
+            "gateway.py": '''
+from .tools import router as tool_routes
+def install(application):
+    active = application
+    active.include_router(router=tool_routes)
+''',
+            "tools.py": '''
+router = APIRouter(prefix=f"{settings.api_prefix}/tools")
+@router.api_route("/mounted", methods=["GET", "POST"])
+def endpoint(): pass
+''',
+        })
+        self.assertEqual(server, {"get": ["/tools/mounted"], "post": ["/tools/mounted"]})
+
+    def test_uncalled_helpers_and_different_application_cannot_satisfy_routes(self):
+        server = self.collect_helpers({
+            "main.py": '''
+from app.gateway import install, never_called
+install(other_application)
+''',
+            "gateway.py": '''
+from app.tools import router
+def install(application):
+    application.include_router(router)
+def never_called(application):
+    application.include_router(router)
+''',
+            "tools.py": '@router.get("/not-mounted")\ndef hidden(): pass\n',
+        })
+        self.assertEqual(server, {})
+
+    def test_uncalled_nested_function_does_not_count_as_registration(self):
+        server = self.collect_helpers({
+            "main.py": "from app.gateway import install\ninstall(app)\n",
+            "gateway.py": '''
+from app.tools import router
+def install(application):
+    def unused():
+        application.include_router(router)
+''',
+            "tools.py": '@router.get("/not-mounted")\ndef hidden(): pass\n',
+        })
+        self.assertEqual(server, {})
+
+    def test_recursive_registration_helper_fails_closed(self):
+        with self.assertRaisesRegex(AssertionError, "Cyclic registration helper"):
+            self.collect_helpers({
+                "main.py": "from app.gateway import install\ninstall(app)\n",
+                "gateway.py": "def install(application):\n    install(application)\n",
+            })
+
+    def test_unresolved_helper_router_fails_closed(self):
+        with self.assertRaisesRegex(AssertionError, "Unresolved router symbol"):
+            self.collect_helpers({
+                "main.py": "from app.gateway import install\ninstall(app)\n",
+                "gateway.py": "def install(application):\n    application.include_router(unknown_router)\n",
+            })
+
+    def test_combined_dynamic_prefix_fails_closed(self):
+        with self.assertRaisesRegex(AssertionError, "Missing or unsupported area route"):
+            AUDIT.route_path(ast.parse('settings.api_prefix + unknown_prefix').body[0].value)
 
 
 if __name__ == "__main__":
