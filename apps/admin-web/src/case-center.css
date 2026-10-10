@@ -176,7 +176,10 @@
 
 /* Legacy case-detail proportions: wide tree, compact file grid, fixed activity rail. */
 .case-court-summary{border-top:4px solid #eef2f6;background:#fff}
-.case-court-summary-title{height:27px;padding:5px 10px;border-bottom:1px solid #dce2e8;font-weight:600;line-height:16px}
+.case-court-summary-title{display:flex;align-items:center;justify-content:space-between;height:27px;min-height:27px;padding:0 6px 0 10px;border-bottom:1px solid #dce2e8;font-weight:600;line-height:16px}
+.case-summary-section-toggle.ant-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;min-width:24px;height:24px;padding:0;color:#6b7280;border:0;border-radius:0}
+.case-summary-section-toggle.ant-btn:hover{color:#00a870;background:#eef8f5}
+.case-summary-section-toggle.ant-btn:focus-visible{outline:2px solid #00a870;outline-offset:-2px}
 .case-court-summary-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border-left:1px solid #dce2e8}
 .case-court-summary-grid p{display:grid;grid-template-columns:minmax(66px,auto) minmax(0,1fr);min-height:24px;margin:0;border-right:1px solid #dce2e8;border-bottom:1px solid #dce2e8}
 .case-court-summary-grid strong,.case-court-summary-grid span{padding:4px 6px;overflow:hidden;line-height:15px;text-overflow:ellipsis;white-space:nowrap}

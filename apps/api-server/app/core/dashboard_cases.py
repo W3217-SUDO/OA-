@@ -1,13 +1,13 @@
 """控制台案件区块：统计在数据库完成，明细按显示范围读取。"""
 from datetime import datetime, time, timezone
 from sqlalchemy import String, cast
-from app.core.dependencies import BusinessRecord, HearingSchedule, select, func, or_, date, timedelta
+from app.core.dependencies import BusinessRecord, HearingSchedule, SystemParameter, select, func, or_, date, timedelta
 from app.core.constants import _CASE_HEARING_LEVELS, CASE_EVENT_TIME_ZONE
 from app.core.cases import _dashboard_case_hearing, _dashboard_latest_case_row
 from app.core.contracts import _contract_person_values
 from app.core.crm import _dashboard_customer_for_case
 from app.core.formatters import _normalized_customer_name, _user_display_map
-from app.core.system import _record_person_usernames
+from app.core.system import _dashboard_people, _record_person_usernames
 from app.core.dashboard import dashboard_scope
 from app.core.record_json_text_query import projected_record_condition, record_json_text_projection
 from app.core.record_projection_query import read_record_projections
@@ -131,6 +131,9 @@ async def dashboard_cases(identity, db):
             "assistant_usernames",
         ):
             person_usernames.update(_contract_person_values(data.get(person_key)))
+    for hearing in hearings:
+        for person_key in ("lawyer", "agent", "assistant"):
+            person_usernames.update(_contract_person_values(hearing.get(person_key)))
     customer_conditions = []
     if customer_ids:
         customer_conditions.append(BusinessRecord.id.in_(customer_ids))
@@ -151,6 +154,22 @@ async def dashboard_cases(identity, db):
         person_usernames.add(customer.owner)
         person_usernames.update(_contract_person_values((customer.data or {}).get("customer_managers")))
     users_by_username = await _user_display_map(person_usernames, db)
+    court_values = {
+        str(hearing.get("court") or "").strip()
+        for hearing in hearings
+        if str(hearing.get("court") or "").strip()
+    }
+    court_rows = (await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "court",
+        SystemParameter.is_active.is_(True),
+        SystemParameter.code.in_(court_values),
+    ))).all() if court_values else []
+    court_names_by_code = {str(item.code).strip().casefold(): str(item.name).strip() for item in court_rows}
+    for hearing in hearings:
+        raw_court = str(hearing.get("court") or "").strip()
+        hearing["court"] = court_names_by_code.get(raw_court.casefold(), raw_court)
+        for person_key in ("lawyer", "agent", "assistant"):
+            hearing[person_key] = _dashboard_people(users_by_username, hearing.get(person_key))
     latest_cases = [
         _dashboard_latest_case_row(
             item,

@@ -892,7 +892,10 @@ async def export_internal_fees(
 
 @router.get(f"{settings.api_prefix}/finance/legacy-history")
 async def list_legacy_finance_history(
-    record_kind: str = Query("", pattern="^(|ap_payment|ar_payment|invoice|ap_packing|case_fee)$"),
+    record_kind: str = Query(
+        "",
+        pattern="^(|ap_payment|ar_payment|invoice|ap_packing|case_fee|internal_fee|internal_payment|internal_packing)$",
+    ),
     status_code: str = "", audit_status_code: str = "", keyword: str = "", include_inactive: bool = False,
     page: int = Query(1, ge=1), page_size: int = Query(30, ge=1, le=200),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),

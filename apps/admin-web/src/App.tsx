@@ -81,14 +81,15 @@ function lazyWithVersionRecovery<T extends ComponentType<any>>(
 ) {
   return lazy(async () => {
     const marker = `sunhold:chunk-reload:${key}`;
+    const shellReloaded = new URL(window.location.href).searchParams.has("_v");
     try {
       const module = await importer();
       sessionStorage.removeItem(marker);
       return module;
     } catch (error) {
-      // A user can keep the previous shell open while a new image replaces its
-      // hashed chunks. Reload once to fetch the current no-store index page.
-      if (!sessionStorage.getItem(marker)) {
+      const previousReload = sessionStorage.getItem(marker) === "1";
+      // 只限制同一次带版本参数的重载，避免旧会话标记阻断后续正常导航。
+      if (!previousReload || !shellReloaded) {
         sessionStorage.setItem(marker, "1");
         reloadAppShell();
         return new Promise<never>(() => undefined);
@@ -149,7 +150,8 @@ const CustomerCenterPage = lazyWithVersionRecovery("customer", () => import("./c
 const ContractCenterPage = lazyWithVersionRecovery("contract", () => import("./contract"));
 const AuditLogPage = lazyWithVersionRecovery("audit-log", () => import("./AuditLogPage"));
 const AgentDocumentPage = lazyWithVersionRecovery("agent-document", () => import("./AgentDocumentPage"));
-const AgentCenterPage = lazyWithVersionRecovery("agent-center", () => import("./AgentCenterPage"));
+const CaseAgentCenterPage = lazyWithVersionRecovery("case-agent-center", () => import("./AgentCenterPage"));
+const PersonalAgentCenterPage = lazyWithVersionRecovery("personal-agent-center", () => import("./PersonalAgentCenterPage"));
 const SealCenterPage = lazyWithVersionRecovery("seal", () => import("./seal"));
 const UserCenterPage = lazyWithVersionRecovery("user", () => import("./UserCenterPage"));
 const MessageCenterPage = lazyWithVersionRecovery("message", () => import("./MessageCenterPage"));
@@ -438,6 +440,7 @@ const menuItems: NavItem[] = [
       { key: "finance-settlement", label: "结算管理" },
       { key: "finance-archive-fee", label: "归档费结算" },
       { key: "finance-fee-query", label: "费用查询" },
+      { key: "finance-legacy-history", label: "历史财务账本" },
     ],
   },
   {
@@ -451,6 +454,7 @@ const menuItems: NavItem[] = [
       { key: "platform-finance-settlement", label: "结算管理" },
       { key: "platform-finance-archive-fee", label: "归档费结算" },
       { key: "platform-finance-fee-query", label: "费用查询" },
+      { key: "platform-finance-legacy-history", label: "历史财务账本" },
     ],
   },
   {
@@ -648,14 +652,14 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
   const hasPublishedTaskRoute = ordered.some(
     (item) => item.key === "investigation-task-published",
   );
-  if (!hasPublishedTaskRoute) return built;
-  return built.map((item) => {
+  const normalized = hasPublishedTaskRoute ? built.map((item) => {
     if (item.key !== "investigation") return item;
     return {
       ...item,
       children: investigationChildren,
     };
-  });
+  }) : built;
+  return normalized.map((item) => item.key === "agent-center" ? { ...item, label: "智能体中心" } : item);
 }
 
 function flattenMenu(items: NavItem[]): NavItem[] {
@@ -797,6 +801,7 @@ function financeRouteFromPlatform(route: string): string {
     "platform-finance-settlement": "finance-settlement-pending",
     "platform-finance-archive-fee": "finance-archive-fee-pending",
     "platform-finance-fee-query": "finance-fee-query",
+    "platform-finance-legacy-history": "finance-legacy-history",
   };
   if (roots[route]) return roots[route];
   return route
@@ -882,6 +887,8 @@ const routePageLabels: Record<string, string> = {
   "system-audit": "操作日志",
   "contract-approver-settings": "审批关系",
   "documents-agent": "AI 智能文档",
+  "agent-center": "智能体中心",
+  "case-agent-center": "案件智能体中心",
   "notary-import-info": "公证信息导入",
   "notary-import-storage": "取证信息文件导入",
   "notary-import-files": "公证书文件导入",
@@ -1455,6 +1462,8 @@ export default function App() {
       Array.from(grantedMenuKeys).some((key) => key.startsWith("customer-"))) ||
     (active.startsWith("contract-investigation-") &&
       Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
+    (active === "case-agent-center" &&
+      Array.from(grantedMenuKeys).some((key) => key.startsWith("case-"))) ||
     // Leaf menus are independently grantable.  A canonical route can collapse
     // a leaf such as task-my-accepted to its container task-my for component
     // selection, but that must not discard the explicit leaf grant.
@@ -1470,7 +1479,9 @@ export default function App() {
     ) : route === "dashboard" ? (
       <Dashboard onNavigate={navigate} />
     ) : route === "agent-center" ? (
-      <AgentCenterPage />
+      <PersonalAgentCenterPage />
+    ) : route === "case-agent-center" ? (
+      <CaseAgentCenterPage />
     ) : route === FEEDBACK_ROUTE ? (
       <FeedbackPage onNavigate={navigate} />
     ) : route.startsWith("seal-") ? (

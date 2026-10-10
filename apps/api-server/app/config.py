@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     deepseek_harness_agent_preset: str = "standard"
     deepseek_harness_workspace: str = ""
     deepseek_harness_timeout_seconds: float = 120
+    # 个人智能体的身份文件和会话记录放在上传目录之外，不能被公开附件路由直接访问。
+    personal_agent_root: str = ""
     sms_webhook_url: str = ""
     sms_webhook_token: str = ""
     dingtalk_corp_id: str = ""

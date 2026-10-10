@@ -1,4 +1,6 @@
+import { DownOutlined, UpOutlined } from "@ant-design/icons";
 import { Button,Card,Collapse } from "antd";
+import { useEffect, useId, useState } from "react";
 import { getCaseDetailSectionVisibility } from "../../caseDetailSectionVisibility";
 import type { CaseRow } from "../types";
 
@@ -56,6 +58,19 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
   openRelatedClue,
   openRelatedOriginalCase,
  } = props;
+  const sectionVisibility = getCaseDetailSectionVisibility(viewingCase.data, viewingCase.status);
+  const [courtExpanded, setCourtExpanded] = useState(true);
+  const [archiveExpanded, setArchiveExpanded] = useState(true);
+  const sectionId = useId().replace(/:/g, "-");
+
+  useEffect(() => {
+    // 案件切换时恢复旧系统的默认展开状态，避免沿用上一案件的折叠状态。
+    setCourtExpanded(true);
+    setArchiveExpanded(true);
+  }, [viewingCase.id]);
+
+  const courtPanelId = `case-court-panel-${sectionId}`;
+  const archivePanelId = `case-archive-panel-${sectionId}`;
   return (
     <>
       {Array.isArray(viewingCase.data.merged_sources) && viewingCase.data.merged_sources.length > 0 &&
@@ -79,10 +94,23 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
           </table>
         </div>
       </Card>
-      {viewingCase.data.case_type !== "法律顾问" && getCaseDetailSectionVisibility(viewingCase.data, viewingCase.status).court && <section className="case-court-summary" aria-label="法院信息">
-        <div className="case-court-summary-title">法院信息</div>
-        <div className="case-court-summary-grid">
-          {getCaseDetailSectionVisibility(viewingCase.data, viewingCase.status).firstCourt && <>
+      {viewingCase.data.case_type !== "法律顾问" && sectionVisibility.court && <section className="case-court-summary" aria-label="法院信息">
+        <div className="case-court-summary-title">
+          <span>法院信息</span>
+          <Button
+            type="text"
+            size="small"
+            className="case-summary-section-toggle"
+            aria-expanded={courtExpanded}
+            aria-controls={courtPanelId}
+            aria-label={`${courtExpanded ? "收起" : "展开"}法院信息`}
+            title={`${courtExpanded ? "收起" : "展开"}法院信息`}
+            icon={courtExpanded ? <UpOutlined /> : <DownOutlined />}
+            onClick={() => setCourtExpanded((expanded) => !expanded)}
+          />
+        </div>
+        <div id={courtPanelId} className="case-court-summary-grid" hidden={!courtExpanded}>
+          {sectionVisibility.firstCourt && <>
             <p><strong>一审法院</strong><span>{viewingCase.data.first_court_name||viewingCase.data.first_instance_court||viewingCase.data.court||"—"}</span></p>
             <p><strong>法庭</strong><span>{viewingCase.data.first_court_courtroom||viewingCase.data.courtroom||"—"}</span></p>
             <p><strong>一审案号</strong><span>{viewingCase.data.first_court_case_no||viewingCase.data.first_instance_case_no||viewingCase.data.court_case_no||"—"}</span></p>
@@ -90,14 +118,14 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
             <p><strong>开庭时间</strong><span>{viewingCase.data.first_court_hearing_date||viewingCase.data.hearing_date||"—"}</span></p>
             <p><strong>判决日期</strong><span>{viewingCase.data.first_court_judgment_date||viewingCase.data.judgment_date||"—"}</span></p>
           </>}
-          {getCaseDetailSectionVisibility(viewingCase.data, viewingCase.status).secondCourt && <>
+          {sectionVisibility.secondCourt && <>
             <p><strong>二审法院</strong><span>{viewingCase.data.second_court_name||viewingCase.data.second_instance_court||"—"}</span></p>
             <p><strong>二审法庭</strong><span>{viewingCase.data.second_court_courtroom||"—"}</span></p>
             <p><strong>二审案号</strong><span>{viewingCase.data.second_court_case_no||viewingCase.data.second_instance_case_no||"—"}</span></p>
             <p><strong>二审立案日期</strong><span>{viewingCase.data.second_court_filing_date||"—"}</span></p>
             <p><strong>二审开庭日期</strong><span>{viewingCase.data.second_court_hearing_date||"—"}</span></p>
           </>}
-          {getCaseDetailSectionVisibility(viewingCase.data, viewingCase.status).executionCourt && <>
+          {sectionVisibility.executionCourt && <>
             <p><strong>执行法院</strong><span>{viewingCase.data.execution_court_name||"—"}</span></p>
             <p><strong>法庭</strong><span>{viewingCase.data.execution_court_courtroom||"—"}</span></p>
             <p><strong>执行案号</strong><span>{viewingCase.data.execution_court_case_no||"—"}</span></p>
@@ -105,11 +133,32 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
             <p><strong>开庭时间</strong><span>{viewingCase.data.execution_court_hearing_date||"—"}</span></p>
             <p><strong>生效日期</strong><span>{viewingCase.data.effective_date||"—"}</span></p>
           </>}
+          {sectionVisibility.retrialCourt && <>
+            <p><strong>再审法院</strong><span>{viewingCase.data.retrial_court_name||"—"}</span></p>
+            <p><strong>法庭</strong><span>{viewingCase.data.retrial_court_courtroom||"—"}</span></p>
+            <p><strong>再审案号</strong><span>{viewingCase.data.retrial_court_case_no||"—"}</span></p>
+            <p><strong>立案时间</strong><span>{viewingCase.data.retrial_court_filing_date||"—"}</span></p>
+            <p><strong>开庭时间</strong><span>{viewingCase.data.retrial_court_hearing_date||"—"}</span></p>
+            <p><strong>判决日期</strong><span>{viewingCase.data.retrial_court_judgment_date||"—"}</span></p>
+          </>}
         </div>
       </section>}
-      {getCaseDetailSectionVisibility(viewingCase.data, viewingCase.status).archive && <section className="case-archive-summary" aria-label="归档信息">
-        <div className="case-court-summary-title">归档信息</div>
-        <div className="case-court-summary-grid case-archive-summary-grid">
+      {sectionVisibility.archive && <section className="case-archive-summary" aria-label="归档信息">
+        <div className="case-court-summary-title">
+          <span>归档信息</span>
+          <Button
+            type="text"
+            size="small"
+            className="case-summary-section-toggle"
+            aria-expanded={archiveExpanded}
+            aria-controls={archivePanelId}
+            aria-label={`${archiveExpanded ? "收起" : "展开"}归档信息`}
+            title={`${archiveExpanded ? "收起" : "展开"}归档信息`}
+            icon={archiveExpanded ? <UpOutlined /> : <DownOutlined />}
+            onClick={() => setArchiveExpanded((expanded) => !expanded)}
+          />
+        </div>
+        <div id={archivePanelId} className="case-court-summary-grid case-archive-summary-grid" hidden={!archiveExpanded}>
           <p><strong>归档类型</strong><span>{viewingCase.data.archive_type === "deficit" ? "亏损归档" : viewingCase.data.archive_type === "normal" ? "正常归档" : "—"}</span></p>
           <p><strong>提交人</strong><span>{viewingCase.data.archive_submitter ? casePersonDisplayName(viewingCase.data.archive_submitter, viewingCase.data.archive_submitter_display_name) : "—"}</span></p>
           <p><strong>提交时间</strong><span>{viewingCase.data.archive_submitted_at || "—"}</span></p>

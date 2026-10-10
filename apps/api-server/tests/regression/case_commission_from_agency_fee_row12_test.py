@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -9,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, HrSubrecord, User, WorkflowEvent
+from app.models import BusinessRecord, HrSubrecord, IncomingPayment, User, WorkflowEvent
 from app.security import current_identity
 
 
@@ -169,6 +170,7 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         await self.engine.dispose()
 
     async def _create_one_commission(self) -> dict:
+        await self._mark_source_fee_received()
         preview = (await self.client.get(
             f"{API}/cases/{self.case_id}/commission-preview",
             params={"source_fee_id": self.fee_id},
@@ -184,6 +186,23 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual(response.status_code, 201, response.text)
         return response.json()["items"][0]
+
+    async def _mark_source_fee_received(self) -> None:
+        """为依赖到账前置条件的生命周期用例补齐已到账且已分配事实。"""
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            fee.data = {
+                **(fee.data or {}), "received_amount": 8400, "cashed_amount": 8400,
+                "received_at": "2026-06-15", "cashed_date": "2026-06-15",
+            }
+            db.add(IncomingPayment(
+                receipt_no="CODEX-831-R12-RECEIPT", received_date=date(2026, 6, 15),
+                amount=8400, payer_name=fee.customer, bank_reference="CODEX-831-R12-BANK",
+                status="已分配", claimed_customer=fee.customer, claimant=IDENTITY["username"],
+                operator=IDENTITY["username"], allocated_amount=8400,
+                allocations=[{"fee_record_id": fee.id, "case_no": fee.data.get("case_no", ""), "amount": 8400}],
+            ))
+            await db.commit()
 
     async def test_preview_uses_selected_fee_case_people_and_commission_settings(self):
         response = await self.client.get(
@@ -273,6 +292,7 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["quality_manager_source"], "客户基本信息：CODEX-831-R12-CUSTOMER")
 
     async def test_batch_create_is_atomic_and_persists_source_relation(self):
+        await self._mark_source_fee_received()
         preview = (await self.client.get(
             f"{API}/cases/{self.case_id}/commission-preview",
             params={"source_fee_id": self.fee_id},

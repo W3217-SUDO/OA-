@@ -36,6 +36,15 @@ const EXECUTION_COURT_FIELDS = [
   "effective_date",
 ];
 
+const RETRIAL_COURT_FIELDS = [
+  "retrial_court_name",
+  "retrial_court_courtroom",
+  "retrial_court_case_no",
+  "retrial_court_filing_date",
+  "retrial_court_hearing_date",
+  "retrial_court_judgment_date",
+];
+
 const ARCHIVE_FIELDS = [
   "archive_type",
   "archive_submitter",
@@ -79,6 +88,7 @@ export function getCaseDetailSectionVisibility(data: CaseDetailData = {}, status
   const firstCourt = hasAnyCaseDetailField(data, FIRST_COURT_FIELDS);
   const secondCourt = hasAnyCaseDetailField(data, SECOND_COURT_FIELDS);
   const executionCourt = hasAnyCaseDetailField(data, EXECUTION_COURT_FIELDS);
+  const retrialCourt = hasAnyCaseDetailField(data, RETRIAL_COURT_FIELDS);
   const archive =
     hasAnyCaseDetailField(data, ARCHIVE_FIELDS) ||
     hasSubmittedArchiveStatus(data.archive_status) ||
@@ -88,7 +98,8 @@ export function getCaseDetailSectionVisibility(data: CaseDetailData = {}, status
     firstCourt,
     secondCourt,
     executionCourt,
-    court: firstCourt || secondCourt || executionCourt,
+    court: firstCourt || secondCourt || executionCourt || retrialCourt,
+    retrialCourt,
     archive,
   };
 }

@@ -177,7 +177,8 @@ export default function FinanceCenterPage({
             : initialView.startsWith("finance-reconcile")
               ? "reconcile"
               : "fees";
-  const [tab, setTab] = useState(first);
+  const initialTab = initialView === "finance-legacy-history" ? "legacy-history" : first;
+  const [tab, setTab] = useState(initialTab);
   const [fees, setFees] = useState<Fee[]>([]);
   const [financeFeeListMeta, setFinanceFeeListMeta] = useState({
     page: 1,
