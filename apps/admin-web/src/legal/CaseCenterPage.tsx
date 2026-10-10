@@ -2204,13 +2204,18 @@ export default function CaseCenterPage({
     get deleteHearing() { return deleteHearing; },
   });
   const canReview = ["admin", "manager"].includes(profile.role || "");
-  const archiveColumns = createArchiveColumns({
-    get caseColumns() { return caseColumns; },
-    get canReview() { return canReview; },
-    get openArchiveReview() { return openArchiveReview; },
-    get getCaseCapability() { return getCaseCapability; },
-    get openArchive() { return openArchive; },
-  });
+  const archiveColumns = [
+    { title: "归档号", key: "file_no", width: 135, render: (_: unknown, row: CaseRow) => row.data.file_no || "—" },
+    ...createArchiveColumns({
+      get caseColumns() { return caseColumns; },
+      get canReview() { return canReview; },
+      get openArchiveReview() { return openArchiveReview; },
+      get getCaseCapability() { return getCaseCapability; },
+      get openArchive() { return openArchive; },
+    }).map(column => "key" in column && column.key === "archive_no"
+      ? { ...column, title: "纸质档案号", width: 180, ellipsis: true }
+      : column),
+  ];
   const archiveRows = cases.filter((row) =>
     ARCHIVE_REVIEW_STATUSES.includes(row.status)
     || ARCHIVE_FINAL_STATUSES.includes(row.status)
@@ -2454,21 +2459,25 @@ export default function CaseCenterPage({
   const selectedArchiveCases = originalArchiveRows.filter(row => selectedCaseKeySet.has(String(row.id)));
   const selectedArchiveCase = originalArchiveRows.find((row) => selectedCaseKeySet.has(String(row.id)));
   const selectedArchiveCaseCapability = getCaseCapability(selectedArchiveCase);
-  const originalArchiveColumns:any[]=createOriginalArchiveColumns({
-    get casePersonDisplayName() { return casePersonDisplayName; },
-    get archiveDone() { return archiveDone; },
-    get archiveRefused() { return archiveRefused; },
-    get openCounselDetail() { return openCounselDetail; },
-    get casePersonDisplayNames() { return casePersonDisplayNames; },
-    get caseAssistantDisplayNames() { return caseAssistantDisplayNames; },
-  });
+  const originalArchiveColumns:any[]=[
+    { title: "归档号", key: "file_no", width: 145, render: (_: unknown, row: CaseRow) => row.data.file_no || "—" },
+    { title: "纸质档案号", key: "archive_no", width: 180, ellipsis: true, render: (_: unknown, row: CaseRow) => row.data.archive_no || "—" },
+    ...createOriginalArchiveColumns({
+      get casePersonDisplayName() { return casePersonDisplayName; },
+      get archiveDone() { return archiveDone; },
+      get archiveRefused() { return archiveRefused; },
+      get openCounselDetail() { return openCounselDetail; },
+      get casePersonDisplayNames() { return casePersonDisplayNames; },
+      get caseAssistantDisplayNames() { return caseAssistantDisplayNames; },
+    }),
+  ];
   // All data columns below declare their widths. Keep the selection column inside
   // the horizontal viewport so the fixed right action column never overlays data.
   const companyArbitrationCaseTableScrollX=1610;
   const originalCaseTableScrollX=shouldUseCompanyArbitrationColumns(initialView)?companyArbitrationCaseTableScrollX:undefined;
   const companyCriminalCaseTableScrollX=1610;
   const counselCaseTableScrollX=1460;
-  const archiveCaseTableScrollX=archiveDone||archiveRefused?1700:1600;
+  const archiveCaseTableScrollX=archiveDone||archiveRefused?2025:1925;
   const specialMode=initialView.endsWith("-schedule")?"schedule":initialView.endsWith("-execution")?"execution":initialView.endsWith("-unclaimed")?"unclaimed":initialView.endsWith("-stage")?"stage":initialView.endsWith("-no-refund")?"refund":initialView==="case-files-receipt"?"receipt":initialView==="case-files-invoice"?"invoice":"";
   const specialTitle:Record<string,string>={schedule:"案件列表",execution:"案件列表",unclaimed:"内部提成-待结算",stage:"案件阶段统计",refund:"退费查询",receipt:"票据上传",invoice:"发票文件导入"};
   const specialFilters:Record<string,[string,string,string?,string?][]>= {
@@ -3112,7 +3121,7 @@ export default function CaseCenterPage({
             size="small"
             columns={archiveColumns}
             dataSource={archiveRows}
-            scroll={{ x: 1900 }}
+            scroll={{ x: 2080 }}
             pagination={{ pageSize: 20 }}
           />
         ) : (
@@ -4612,7 +4621,7 @@ export default function CaseCenterPage({
       <Modal
         open={Boolean(reviewing)}
         title={(reviewing?.rows?.length || 0) > 1 ? `批量归档审核（${reviewing?.rows?.length}条）` : reviewing?.row.status === "亏损内审" ? "内部审核" : "归档审核"}
-        width={860}
+        width={1040}
         footer={[
           <Button key="approve" type="primary" loading={archiveReviewSubmitting} onClick={() => void submitArchiveReview(true)}>同意</Button>,
           <Button key="reject" danger disabled={archiveReviewSubmitting} onClick={() => void submitArchiveReview(false)}>拒绝</Button>,
@@ -4632,19 +4641,27 @@ export default function CaseCenterPage({
             rowKey="id"
             size="small"
             pagination={false}
+            scroll={{ x: 940 }}
             dataSource={reviewing ? reviewing.rows || [reviewing.row] : []}
             columns={[
               { title: "案号", dataIndex: "serial_no", width: 150 },
               { title: "案件阶段", dataIndex: "status", width: 110 },
               {
                 title: "归档号",
+                key: "file_no",
+                width: 180,
+                render: (_: unknown, row: CaseRow) => <Input readOnly value={row.data.file_no || ""} aria-label={`${row.serial_no}归档号`} placeholder={row.status === "亏损内审" ? "内审阶段不生成" : "审核通过时自动生成"} />,
+              },
+              {
+                title: "纸质档案号",
                 key: "archive_no",
                 width: 180,
-                render: (_: unknown, row: CaseRow) => <Form.Item name={["items", String(row.id), "archive_no"]} noStyle><Input maxLength={100} placeholder="请输入归档号" /></Form.Item>,
+                render: (_: unknown, row: CaseRow) => <Form.Item name={["items", String(row.id), "archive_no"]} noStyle><Input maxLength={100} aria-label={`${row.serial_no}纸质档案号`} placeholder="请输入纸质档案号" /></Form.Item>,
               },
               {
                 title: "审核备注",
                 key: "comment",
+                width: 240,
                 render: (_: unknown, row: CaseRow) => <Form.Item name={["items", String(row.id), "comment"]} noStyle rules={[{ required: true, whitespace: true, min: 2, max: 1000, message: "请填写2至1000字审核备注" }]}><Input.TextArea autoSize={{ minRows: 1, maxRows: 3 }} /></Form.Item>,
               },
               {

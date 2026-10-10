@@ -492,12 +492,9 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             const values = await reviewForm.validateFields();
             const items = rows.map(row => ({case_id: row.id, approved,
                 comment: String(values.items?.[String(row.id)]?.comment || "").trim(),
+                // 只提交可选纸质档案号，自动归档流水号由后端分配。
                 archive_no: approved ? String(values.items?.[String(row.id)]?.archive_no || "").trim() : "",
             }));
-            for (const [index, row] of rows.entries()) {
-                if (approved && row.status !== "亏损内审" && (row.data.archive_type || "normal") !== "deficit" && !items[index].archive_no)
-                    return message.warning(`${row.serial_no}：请填写归档号`);
-            }
             if (items.length === 1) {
                 const {case_id, ...body} = items[0];
                 await api.post(`/cases/${case_id}/archive/review`, body);
