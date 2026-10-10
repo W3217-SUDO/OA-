@@ -1,11 +1,13 @@
-import { useMemo, type KeyboardEvent } from "react";
-import { Button, Card } from "antd";
+import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent } from "react";
+import { Button, Card, message } from "antd";
 import Table from "./components/ResizableTable";
 import DashboardPersonCell from "./DashboardPersonCell";
 import { useDashboardData, type DashboardData, type DashboardSection } from "./dashboardData";
 import { rememberDashboardFeeQuery } from "./dashboardFeeNavigation.mjs";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { resolveDetailRelation } from "./detailRelationResolver";
+import { isWorkspaceRouteGranted, normalizeWorkspaceRoute } from "./workspacePermissions";
 
 function CaseTrendChart({
   items,
@@ -131,8 +133,21 @@ function CivilDistribution({
   );
 }
 
-export default function Dashboard({ onNavigate }: { onNavigate: (route: string) => void }) {
+export default function Dashboard({ onNavigate, grantedMenuKeys, permissionAdministrator }: {
+  onNavigate: (route: string) => void;
+  grantedMenuKeys: ReadonlySet<string>;
+  permissionAdministrator: boolean;
+}) {
   const { data, loading, errors, retry } = useDashboardData();
+  const detailRequest = useRef<AbortController | null>(null);
+  const navigation = useRef({ onNavigate, grantedMenuKeys, permissionAdministrator });
+  navigation.current = { onNavigate, grantedMenuKeys, permissionAdministrator };
+  useEffect(() => () => detailRequest.current?.abort(), []);
+  const canNavigate = (route: string) => isWorkspaceRouteGranted(
+    normalizeWorkspaceRoute(route), grantedMenuKeys, permissionAdministrator,
+  );
+  const canOpenCase = canNavigate("case-detail-");
+  const canOpenCustomer = canNavigate("customer-detail-");
   const sectionStatus = (section: DashboardSection) => errors[section]
     ? <div className="dashboard-section-status" role="alert">{errors[section]} <Button size="small" onClick={() => retry(section)}>重试</Button></div>
     : loading[section] ? <div className="dashboard-section-status" role="status">正在加载...</div> : null;
@@ -149,7 +164,8 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string) 
     待审核预损费用: { primary: "finance-internal-fee-audit", secondary: "finance-internal-fee-audit" },
   };
   const navigateTodo = (label: string, kind: "primary" | "secondary") => {
-    const route = todoRoutes[label]?.[kind] || "dashboard";
+    const route = todoRoutes[label]?.[kind];
+    if (!route || !canNavigate(route)) return;
     if (label === "待处理任务") {
       sessionStorage.setItem(
         "sunhold:dashboard-task-tab",
@@ -158,7 +174,20 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string) 
     }
     onNavigate(route);
   };
+  const renderTodoEntry = (value: string | number, label: string, kind: "primary" | "secondary", className: string, ariaLabel?: string) => {
+    const route = todoRoutes[label]?.[kind];
+    return route && canNavigate(route) ? (
+      <button
+        type="button"
+        className={className}
+        aria-label={ariaLabel}
+        title={typeof value === "number" ? (kind === "primary" ? "查看待处理列表" : "查看已拒绝列表") : undefined}
+        onClick={() => navigateTodo(label, kind)}
+      >{value}</button>
+    ) : <span className={className} style={{ cursor: "default", textDecoration: "none", color: "inherit" }}>{value}</span>;
+  };
   const navigateMetric = (metric: DashboardData["metrics"][number]) => {
+    if (!canNavigate(metric.route)) return;
     rememberDashboardFeeQuery(metric.query);
     if (metric.detail_context) {
       try {
@@ -178,14 +207,29 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string) 
       navigateMetric(metric);
     }
   };
-  const openDashboardCase = (caseNo: string) => {
-    rememberCaseDetailTarget({ serial_no: caseNo });
-    onNavigate("case-company");
-  };
-  const openDashboardCustomer = (customer: string) => {
-    rememberCustomerDetailTarget({ title: customer });
-    onNavigate("customer-company");
-  };
+  const openDashboardDetail = useCallback(async (module: "case" | "customer", value: string) => {
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
+    try {
+      // 先按现有数据范围解析真实记录，再进入详情，不借用公司列表的页面授权。
+      const record = await resolveDetailRelation(module, module === "case" ? { serial_no: value } : { title: value }, controller.signal);
+      if (controller.signal.aborted) return;
+      if (!record) {
+        message.warning(module === "case" ? "未找到关联案件或当前账号无权查看" : "未找到关联客户或当前账号无权查看");
+        return;
+      }
+      const detailLabel = module === "case" ? record.serial_no : record.title;
+      const route = `${module}-detail-${record.id}-${encodeURIComponent(detailLabel)}`;
+      const current = navigation.current;
+      if (!isWorkspaceRouteGranted(route, current.grantedMenuKeys, current.permissionAdministrator)) return;
+      if (module === "case") rememberCaseDetailTarget({ id: record.id, serial_no: record.serial_no });
+      else rememberCustomerDetailTarget({ id: record.id, title: record.title, serial_no: record.serial_no });
+      current.onNavigate(route);
+    } catch (error: any) {
+      if (!controller.signal.aborted) message.error(error?.response?.data?.detail || (module === "case" ? "关联案件加载失败" : "关联客户加载失败"));
+    }
+  }, []);
   const hearingCols = useMemo(
     () => [
       { title: "星期", dataIndex: "weekday", width: 80 },
@@ -196,16 +240,14 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string) 
         title: "案号",
         dataIndex: "case_no",
         width: 140,
-        render: (v: string) => (
-          <a onClick={() => openDashboardCase(v)}>{v}</a>
-        ),
+        render: (v: string) => canOpenCase ? <a onClick={() => void openDashboardDetail("case", v)}>{v}</a> : v,
       },
       {
         title: "客户",
         dataIndex: "client",
         ellipsis: true,
         render: (value: string) =>
-          value ? <a onClick={() => openDashboardCustomer(value)}>{value}</a> : "—",
+          value ? canOpenCustomer ? <a onClick={() => void openDashboardDetail("customer", value)}>{value}</a> : value : "—",
       },
       {
         title: "开庭律师",
@@ -223,7 +265,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string) 
       },
       { title: "律师助理", dataIndex: "assistant", width: 105, ellipsis: true, render: (value: string) => <DashboardPersonCell value={value} /> },
     ],
-    [],
+    [canOpenCase, canOpenCustomer, openDashboardDetail],
   );
   const latestCaseCols = useMemo(
     () => [
@@ -231,9 +273,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string) 
         title: "案号",
         dataIndex: "case_no",
         width: 125,
-        render: (v: string) => (
-          <a onClick={() => openDashboardCase(v)}>{v}</a>
-        ),
+        render: (v: string) => canOpenCase ? <a onClick={() => void openDashboardDetail("case", v)}>{v}</a> : v,
       },
       { title: "阶段", dataIndex: "stage", width: 100 },
       { title: "原告", dataIndex: "plaintiff", width: 185, ellipsis: true },
@@ -244,7 +284,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string) 
       { title: "经办律师", dataIndex: "agent", width: 100, ellipsis: true, render: (value: string) => <DashboardPersonCell value={value} /> },
       { title: "律师助理", dataIndex: "assistant", width: 85, ellipsis: true, render: (value: string) => <DashboardPersonCell value={value} /> },
     ],
-    [],
+    [canOpenCase, openDashboardDetail],
   );
   return (
     <div className="reference-dashboard">
@@ -252,24 +292,28 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string) 
         <div className="dashboard-metrics-panel">
           {sectionStatus("metrics")}
           <div className="metrics reference-metrics">
-          {data.metrics?.map((m, i) => (
-            <div
-              className={`metric target-${i}`}
-              key={m.key}
-              role="button"
-              tabIndex={0}
-              onClick={() => navigateMetric(m)}
-              onKeyDown={(event) => keyboardNavigate(event, m)}
-            >
-              <div className="metric-icon">
-                {["◷", "✉", "♟", "⚖", "⚑", "▤", "☕", "¥"][i]}
+          {data.metrics?.map((m, i) => {
+            const allowed = canNavigate(m.route);
+            return (
+              <div
+                className={`metric target-${i}`}
+                key={m.key}
+                role={allowed ? "button" : undefined}
+                tabIndex={allowed ? 0 : undefined}
+                style={allowed ? undefined : { cursor: "default", filter: "none", outline: "none" }}
+                onClick={allowed ? () => navigateMetric(m) : undefined}
+                onKeyDown={allowed ? (event) => keyboardNavigate(event, m) : undefined}
+              >
+                <div className="metric-icon">
+                  {["◷", "✉", "♟", "⚖", "⚑", "▤", "☕", "¥"][i]}
+                </div>
+                <div>
+                  <strong>{m.value}</strong>
+                  <span>{m.label}</span>
+                </div>
               </div>
-              <div>
-                <strong>{m.value}</strong>
-                <span>{m.label}</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           </div>
         </div>
         <Card title="➤ 待办事项" className="dashboard-card compact-todo-card">
@@ -288,14 +332,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string) 
                           typeof c === "number" ? `count count-${j % 3}` : ""
                         }
                       >
-                        <button
-                          type="button"
-                          className="todo-link"
-                          title={typeof c === "number" ? (kind === "primary" ? "查看待处理列表" : "查看已拒绝列表") : undefined}
-                          onClick={() => navigateTodo(label, kind)}
-                        >
-                          {c}
-                        </button>
+                        {renderTodoEntry(c, label, kind, "todo-link")}
                       </td>
                     );
                   })}
@@ -314,16 +351,16 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string) 
                     className="mobile-todo-item"
                     key={`${rowIndex}-${itemIndex}`}
                   >
-                    <button type="button" className="mobile-todo-label" onClick={() => navigateTodo(String(item.label), "primary")}>{item.label}</button>
-                    <button type="button" className="mobile-todo-count primary" aria-label={`${item.label}待处理`} onClick={() => navigateTodo(String(item.label), "primary")}>{item.primary}</button>
-                    <button type="button" className="mobile-todo-count secondary" aria-label={`${item.label}已拒绝`} onClick={() => navigateTodo(String(item.label), "secondary")}>{item.secondary}</button>
+                    {renderTodoEntry(item.label, String(item.label), "primary", "mobile-todo-label")}
+                    {renderTodoEntry(item.primary, String(item.label), "primary", "mobile-todo-count primary", `${item.label}待处理`)}
+                    {renderTodoEntry(item.secondary, String(item.label), "secondary", "mobile-todo-count secondary", `${item.label}已拒绝`)}
                   </div>
                 );
               }),
             )}
           </div>
         </Card>
-        <Card title={<Button type="link" style={{ padding: 0, color: "inherit", fontSize: "inherit", fontWeight: "inherit" }} onClick={() => onNavigate("case-mine-schedule")}>开庭排期</Button>} className="dashboard-card target-hearing-card">
+        <Card title={canNavigate("case-mine-schedule") ? <Button type="link" style={{ padding: 0, color: "inherit", fontSize: "inherit", fontWeight: "inherit" }} onClick={() => onNavigate("case-mine-schedule")}>开庭排期</Button> : "开庭排期"} className="dashboard-card target-hearing-card">
           {sectionStatus("cases")}
           <Table
             rowKey={(r) => `${r.case_no}-${r.time}`}

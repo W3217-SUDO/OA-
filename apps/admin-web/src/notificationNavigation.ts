@@ -1,3 +1,5 @@
+import { isWorkspaceRouteGranted, normalizeWorkspaceRoute } from "./workspacePermissions";
+
 type NoticeTarget = {
   source_type: string;
   source_id: number | null;
@@ -16,8 +18,6 @@ const fallbackRoutes: Record<string, string> = {
   feedback: "feedback",
 };
 
-const personalTaskRoutes = new Set(["task-my-accepted", "task-my-created", "task-my-collaborating", "feedback"]);
-
 export function resolveNotificationNavigation(
   item: NoticeTarget,
   grantedMenuKeys: Set<string>,
@@ -25,10 +25,8 @@ export function resolveNotificationNavigation(
 ) {
   const caseDetailRoute = item.source_type === "case" && item.source_id && item.source_serial_no
     ? `case-detail-${item.source_id}-${encodeURIComponent(item.source_serial_no)}` : "";
-  const route = caseDetailRoute || iprWarningRoute || item.target_route || fallbackRoutes[item.source_type]
-    || (["clue", "notary", "evidence"].includes(item.source_type) ? item.source_type : "");
-  const allowed = !route || personalTaskRoutes.has(route)
-    || (Boolean(caseDetailRoute) && Array.from(grantedMenuKeys).some((key) => key.startsWith("case-")))
-    || grantedMenuKeys.has(route);
+  const route = normalizeWorkspaceRoute(caseDetailRoute || iprWarningRoute || item.target_route || fallbackRoutes[item.source_type]
+    || (["clue", "notary", "evidence"].includes(item.source_type) ? item.source_type : ""));
+  const allowed = !route || isWorkspaceRouteGranted(route, grantedMenuKeys);
   return { route, allowed, caseDetailRoute };
 }

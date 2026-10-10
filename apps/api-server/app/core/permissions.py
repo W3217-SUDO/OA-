@@ -19,6 +19,19 @@ from app.models_shared import (
 )
 
 
+_MENU_PERMISSION_ROUTE_ALIASES = {
+    "agent-document": "documents-agent",
+    "system-parameters-notary-office": "system-parameters-notary",
+    "system-users": "hr-all",
+}
+
+
+def _normalize_menu_permission_key(value: str) -> str:
+    """将历史菜单树前缀和已实现页面别名转换为路由标识。"""
+    key = str(value or "").strip().removeprefix("menu:")
+    return _MENU_PERMISSION_ROUTE_ALIASES.get(key, key)
+
+
 def _expand_menu_permission_keys(menu_keys: list[str]) -> list[str]:
     """Return effective grants while preserving legacy parent-menu grants.
 
@@ -27,7 +40,8 @@ def _expand_menu_permission_keys(menu_keys: list[str]) -> list[str]:
     a role configured with only a leaf receives that leaf and its actual route
     only.  The result is ordered for stable API responses and tests.
     """
-    granted = {key for key in menu_keys if key in SYSTEM_MENU_ROUTE_KEYS}
+    raw_keys = list(dict.fromkeys(str(key or "").strip().removeprefix("menu:") for key in menu_keys))
+    granted = {_normalize_menu_permission_key(key) for key in raw_keys}.intersection(SYSTEM_MENU_ROUTE_KEYS)
     pending = list(granted)
     while pending:
         current = pending.pop()
@@ -35,7 +49,9 @@ def _expand_menu_permission_keys(menu_keys: list[str]) -> list[str]:
             if child_key not in granted:
                 granted.add(child_key)
                 pending.append(child_key)
-    return [key for key in MENU_KEYS if key in granted]
+    # 原始配置标识供菜单树回显，规范路由供页面访问；不按标签推断外链对应页面。
+    preserved_keys = [key for key in raw_keys if key in _MENU_PERMISSION_ROUTE_ALIASES or key.startswith("legacy-menu-")]
+    return [key for key in MENU_KEYS if key in granted] + preserved_keys
 
 
 def _stored_menu_permission_keys(menu_keys: list[str]) -> list[str]:
@@ -87,7 +103,7 @@ def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:
         if value in _CASE_LEGACY_PERMISSION_LABELS:
             selected.extend(JOB_ROLE_LABEL_MENU_GRANTS.get(value, ()))
         elif value != CASE_ACTIONS_EXPLICIT_MARKER:
-            selected.append(value)
+            selected.append(str(value).removeprefix("menu:"))
     selected.extend(
         f"action:{code}" for code in _effective_job_role_action_keys(role)
         if code in _CASE_ACTION_CODES
@@ -109,8 +125,8 @@ def _job_role_menu_permission_keys(permissions: list[str]) -> list[str]:
     """Resolve explicit menu keys and narrow legacy approval-action grants."""
     result: list[str] = []
     for value in permissions:
-        key = str(value or "").strip()
-        candidates = (key,) if key in SYSTEM_MENU_ROUTE_KEYS else JOB_ACTION_MENU_GRANTS.get(key, ())
+        key = str(value or "").strip().removeprefix("menu:")
+        candidates = (key,) if _normalize_menu_permission_key(key) in SYSTEM_MENU_ROUTE_KEYS or key.startswith("legacy-menu-") else JOB_ACTION_MENU_GRANTS.get(key, ())
         for candidate in candidates:
             if candidate not in result:
                 result.append(candidate)
@@ -121,8 +137,8 @@ def _effective_job_role_menu_keys(role: JobRole) -> list[str]:
     """Resolve one HR role's checked tree nodes to real navigation grants."""
     result: list[str] = []
     for raw_value in role.permissions or []:
-        value = str(raw_value or "").strip()
-        candidates = (value,) if value in SYSTEM_MENU_ROUTE_KEYS else JOB_ROLE_LABEL_MENU_GRANTS.get(value, ())
+        value = str(raw_value or "").strip().removeprefix("menu:")
+        candidates = (value,) if _normalize_menu_permission_key(value) in SYSTEM_MENU_ROUTE_KEYS or value.startswith("legacy-menu-") else JOB_ROLE_LABEL_MENU_GRANTS.get(value, ())
         for candidate in candidates:
             if candidate not in result:
                 result.append(candidate)
@@ -137,7 +153,7 @@ def _split_role_permission_keys(menu_keys: list[str] | None) -> tuple[list[str],
         if value.startswith("@action:"):
             actions.append(value.removeprefix("@action:"))
         else:
-            menus.append(value)
+            menus.append(value.removeprefix("menu:"))
     return list(dict.fromkeys(menus)), list(dict.fromkeys(actions))
 
 
@@ -294,6 +310,27 @@ async def _permission_payload_for_roles(role_ids: list[str], db: AsyncSession) -
         "data_scope": data_scope,
         "field_keys": field_keys,
     }
+
+
+async def _explicit_system_role_menu_keys(role_ids: list[str], db: AsyncSession) -> list[str]:
+    """只合入已有授权审计确认的系统角色菜单，避免混入初始化默认授权。"""
+    cache_key = "explicit_system_role_menu_keys"
+    if cache_key not in db.info:
+        authorized_change = select(BusinessRecord.id).join(
+            WorkflowEvent, WorkflowEvent.record_id == BusinessRecord.id,
+        ).where(
+            BusinessRecord.module == "system_audit",
+            BusinessRecord.title == ("角色权限:" + RolePermission.role),
+            BusinessRecord.data["role"].as_string() == RolePermission.role,
+            WorkflowEvent.action == "更新角色权限",
+        ).correlate(RolePermission).exists()
+        rows = (await db.execute(select(RolePermission.role, RolePermission.menu_keys).where(
+            RolePermission.role.in_(SYSTEM_USER_ROLE_CODES - {"admin"}), authorized_change,
+        ))).all()
+        # Session.info 随请求数据库会话结束，不跨请求缓存授权；系统角色一次读取。
+        db.info[cache_key] = {role: _split_role_permission_keys(keys)[0] for role, keys in rows}
+    by_role = db.info[cache_key]
+    return list(dict.fromkeys(key for role in role_ids for key in by_role.get(role, [])))
 
 
 async def _require_record_module_menu(module: str, identity: dict, db: AsyncSession, *, action: str) -> None:
@@ -485,12 +522,14 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
     explicit_role_name = _configured_user_job_role_name(user)
     job_role = await _job_role_for_name(explicit_role_name, db) if explicit_role_name else None
     if explicit_role_name and "admin" not in role_ids:
-        if explicit_role_name in {"系统管理员", "管理员"}:
-            return _denied_job_role_payload(permission)
-        if not job_role:
-            return _denied_job_role_payload(permission)
-        permission = _apply_job_role_policy(permission, job_role)
+        if explicit_role_name in {"系统管理员", "管理员"} or not job_role:
+            permission = _denied_job_role_payload(permission)
+        else:
+            permission = _apply_job_role_policy(permission, job_role)
     overrides = _user_permission_overrides(user)
+    if explicit_role_name and "admin" not in role_ids and overrides.get("menu_keys") is None:
+        explicit_system_menus = await _explicit_system_role_menu_keys(role_ids, db)
+        permission["menu_keys"] = _expand_menu_permission_keys([*permission["menu_keys"], *explicit_system_menus])
     if overrides.get("menu_keys") is not None:
         permission["menu_keys"] = _expand_menu_permission_keys(overrides["menu_keys"])
     if overrides.get("field_keys") is not None:
@@ -499,10 +538,12 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
         permission["data_scope"] = overrides["data_scope"]
     can_approve_contract = await _is_contract_approver(user, db)
     menu_keys = list(permission["menu_keys"])
-    if "conflict.review.approve" in permission.get("action_keys", []) and "customer-conflict" not in menu_keys:
-        menu_keys.append("customer-conflict")
-    if can_approve_contract and "contract-audit" not in menu_keys:
-        menu_keys.append("contract-audit")
+    # 管理员明确设置的用户菜单是最终授权，不再由审批资格补入页面。
+    if overrides.get("menu_keys") is None:
+        if "conflict.review.approve" in permission.get("action_keys", []) and "customer-conflict" not in menu_keys:
+            menu_keys.append("customer-conflict")
+        if can_approve_contract and "contract-audit" not in menu_keys:
+            menu_keys.append("contract-audit")
     return {
         **permission,
         "menu_keys": _expand_menu_permission_keys(menu_keys),
@@ -1020,6 +1061,19 @@ def _require_dingtalk_access(user: User) -> None:
 def _require_admin(identity: dict) -> None:
     if "admin" not in _identity_role_ids(identity) and not identity.get("_page_menu_capability"):
         raise HTTPException(status_code=403, detail="当前账号没有该菜单的操作权限")
+
+
+def _require_actual_system_admin(identity: dict) -> None:
+    """用户授权管理只能由真实系统管理员执行，页面授权不授予此权限。"""
+    actual_role_ids = identity.get("_actual_role_ids")
+    if actual_role_ids is not None:
+        role_ids = actual_role_ids
+    elif identity.get("_actual_role") is not None:
+        role_ids = [identity["_actual_role"]]
+    else:
+        role_ids = _identity_role_ids(identity)
+    if "admin" not in role_ids:
+        raise HTTPException(status_code=403, detail="仅系统管理员可以管理用户授权")
 
 
 async def _ensure_unique_dingtalk_user_id(profile: dict, db: AsyncSession, exclude_user_id: int | None = None, display_name: str = "") -> None:

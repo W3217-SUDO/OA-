@@ -42,6 +42,7 @@ class UserPermissionOverrideUpdate(BaseModel):
     field_keys: list[str] | None = None
     data_scope: str | None = None
     clear: bool = False
+    clear_menu_keys: bool = False
 
 
 class SystemUserPasswordResetInput(BaseModel):

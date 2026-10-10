@@ -115,12 +115,14 @@ async def list_hr_employees(
 @router.post(f"{settings.api_prefix}/hr/employees", status_code=status.HTTP_201_CREATED)
 async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _identity_role_ids, _job_role_for_name, _require_hr_employee_action, _require_unique_hr_display_name, _system_user_role_ids,
+        _identity_role_ids, _job_role_for_name, _require_actual_system_admin, _require_hr_employee_action, _require_unique_hr_display_name, _system_user_role_ids,
     )
     from app.core.system import (
         _record_dict, _security_policy, _system_user_dict,
     )
     await _require_hr_employee_action(identity, db, "hr.employee.create", "新建")
+    if "permission_overrides" in body.data:
+        _require_actual_system_admin(identity)
     account_type = (body.account_type or body.data.get("account_type") or "员工账号").strip()
     if account_type not in {"员工账号", "客户账号", "外部合作账号"}:
         raise HTTPException(status_code=422, detail="账号类型无效")
@@ -219,7 +221,7 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
 @router.patch(f"{settings.api_prefix}/hr/employees/{{employee_id}}")
 async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _identity_role_ids, _job_role_for_name, _require_hr_employee_action, _require_hr_employee_target_access, _require_unique_hr_display_name,
+        _identity_role_ids, _job_role_for_name, _require_actual_system_admin, _require_hr_employee_action, _require_hr_employee_target_access, _require_unique_hr_display_name,
         _system_user_role_ids,
     )
     from app.core.system import (
@@ -267,6 +269,10 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     username = stored_username or (str(employee.owner or "").strip().lower() if account_type == "员工账号" else "")
     display_name = await _require_unique_hr_display_name(body.display_name, db, employee_id=employee.id, linked_username=username)
     user = await db.scalar(select(User).where(User.username == username)) if username else None
+    if "permission_overrides" in body.data:
+        stored_profile = (user.profile or {}) if user else (employee.data or {})
+        if "permission_overrides" not in stored_profile or body.data["permission_overrides"] != stored_profile["permission_overrides"]:
+            _require_actual_system_admin(identity)
     requested_department = body.department.strip()
     current_department = str((user.department if user and user.department else employee.department) or "").strip()
     department_changed = requested_department != current_department
@@ -709,12 +715,12 @@ async def update_job_role_permissions(
         _user_display_map,
     )
     from app.core.permissions import (
-        _explicit_case_role_permissions, _job_role_dict, _normalize_job_role_data_scope, _normalize_job_role_field_keys, _require_admin,
+        _explicit_case_role_permissions, _job_role_dict, _normalize_job_role_data_scope, _normalize_job_role_field_keys, _require_actual_system_admin,
     )
     from app.core.system import (
         _record_organization_audit,
     )
-    _require_admin(identity)
+    _require_actual_system_admin(identity)
     role = await db.get(JobRole, role_id)
     if not role:
         raise HTTPException(status_code=404, detail="岗位角色不存在")
@@ -756,12 +762,14 @@ async def create_job_role(body: JobRoleInput, identity: dict = Depends(current_i
         _user_display_map,
     )
     from app.core.permissions import (
-        _job_role_dict, _normalize_job_role_data_scope, _normalize_job_role_field_keys, _require_admin,
+        _job_role_dict, _normalize_job_role_data_scope, _normalize_job_role_field_keys, _require_admin, _require_actual_system_admin,
     )
     from app.core.system import (
         _record_organization_audit,
     )
     _require_admin(identity); code, name = body.code.strip().upper(), body.name.strip()
+    if body.permissions:
+        _require_actual_system_admin(identity)
     if await db.scalar(select(JobRole.id).where(or_(JobRole.code == code, JobRole.name == name))): raise HTTPException(status_code=409, detail="岗位角色代码或名称已存在")
     permissions = list(dict.fromkeys(value.strip() for value in body.permissions if value.strip()))
     field_keys = _normalize_job_role_field_keys(body.field_keys)
@@ -780,13 +788,15 @@ async def update_job_role(role_id: int, body: JobRoleUpdate, identity: dict = De
         _user_display_map,
     )
     from app.core.permissions import (
-        _job_role_dict, _normalize_job_role_data_scope, _normalize_job_role_field_keys, _require_admin,
+        _job_role_dict, _normalize_job_role_data_scope, _normalize_job_role_field_keys, _require_admin, _require_actual_system_admin,
     )
     from app.core.system import (
         _record_organization_audit,
     )
     _require_admin(identity); item = await db.get(JobRole, role_id)
     if not item: raise HTTPException(status_code=404, detail="岗位角色不存在")
+    if body.permissions is not None and set(body.permissions) != set(item.permissions or []):
+        _require_actual_system_admin(identity)
     if item.code == "SYSTEM-ADMIN":
         requested_permissions = body.permissions if body.permissions is not None else list(SYSTEM_ADMIN_JOB_PERMISSIONS)
         normalized_permissions = list(dict.fromkeys(entry.strip() for entry in requested_permissions if entry.strip()))

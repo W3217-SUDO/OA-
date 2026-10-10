@@ -18,6 +18,7 @@ export type DetailRelationTarget = {
 export async function resolveDetailRelation(
   module: DetailRelationModule,
   target: { serial_no?: unknown; title?: unknown },
+  signal?: AbortSignal,
 ): Promise<DetailRelationTarget | null> {
   const serialNo = String(target.serial_no || "").trim();
   const title = String(target.title || "").trim();
@@ -25,6 +26,7 @@ export async function resolveDetailRelation(
   if (!keyword) return null;
   const { data } = await api.get("/records", {
     params: { module, keyword, page_size: 100 },
+    signal,
   });
   return ((data.items || []) as DetailRelationTarget[]).find((item) => {
     if (serialNo && item.serial_no === serialNo) return true;

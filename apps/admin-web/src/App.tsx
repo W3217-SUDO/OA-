@@ -49,7 +49,13 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
-import { PERMISSIONS_UPDATED_EVENT, resolveGrantedMenuRoute } from "./workspacePermissions";
+import {
+  PERMISSIONS_UPDATED_EVENT,
+  PERMISSIONS_UPDATED_STORAGE_KEY,
+  isWorkspaceRouteGranted,
+  normalizeWorkspaceRoute,
+  resolveGrantedMenuRoute,
+} from "./workspacePermissions";
 import { LegacyLsHistoryPanel } from "./LegacyLsHistoryPanel";
 import "dingtalk-jsapi/entry/union";
 import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/requestAuthCode";
@@ -842,12 +848,6 @@ type OpenPage = { key: string; label: string };
 
 // Deep routes are not all navigation-menu leaves. Keep workspace tabs readable
 // instead of exposing an internal route key to users.
-const legacyRouteAliases: Record<string, string> = {
-  "agent-document": "documents-agent",
-  "system-parameters-notary-office": "system-parameters-notary",
-  "system-users": "hr-all",
-};
-const normalizeWorkspaceRoute = (route: string) => legacyRouteAliases[route] || route;
 const businessNavigationSessionKeys = [
   FEEDBACK_SOURCE_PAGE_KEY,
   FEEDBACK_SOURCE_ROUTE_KEY,
@@ -1156,6 +1156,8 @@ export default function App() {
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
+  const [permissionsReady, setPermissionsReady] = useState(false);
+  const [permissionLoadError, setPermissionLoadError] = useState("");
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
   const [taskUnreadCount, setTaskUnreadCount] = useState(0);
@@ -1164,15 +1166,21 @@ export default function App() {
     [menuConfig],
   );
   const actualRole = sessionUser?.actual_role || sessionUser?.role;
+  const permissionAdministrator = actualRole === "admin" || sessionUser?.actual_role_ids?.includes("admin") === true;
   const grantedMenuKeys = useMemo(() => new Set(
-    actualRole === "admin"
+    !permissionsReady ? ["dashboard"] : permissionAdministrator
       ? flattenMenu(effectiveMenuItems).map((item) => item.key)
       : ["user-center", ...(sessionUser?.menu_keys || [])],
-  ), [actualRole, effectiveMenuItems, sessionUser?.menu_keys]);
-  const active = resolveGrantedMenuRoute(requestedRoute, effectiveMenuItems, grantedMenuKeys);
+  ), [permissionsReady, permissionAdministrator, effectiveMenuItems, sessionUser?.menu_keys]);
+  const active = permissionsReady
+    ? resolveGrantedMenuRoute(requestedRoute, effectiveMenuItems, grantedMenuKeys, permissionAdministrator)
+    : requestedRoute;
+  const visibleOpenPages = openPages.filter((item) => isWorkspaceRouteGranted(
+    normalizeWorkspaceRoute(item.key), grantedMenuKeys, permissionAdministrator,
+  ));
   useEffect(() => {
-    if (active !== requestedRoute) setActive(active);
-  }, [active, requestedRoute]);
+    if (permissionsReady && active !== requestedRoute) setActive(active);
+  }, [active, requestedRoute, permissionsReady]);
   const sidebarCollapsed = isNarrowViewport
     ? !mobileSidebarOpen
     : collapsed && !sidebarHoverExpanded;
@@ -1188,6 +1196,8 @@ export default function App() {
     clearContractDetailTarget();
     setLoggedIn(false);
     setSessionUser(null);
+    setPermissionsReady(false);
+    setPermissionLoadError("");
     resetWorkspaceForSession();
     replaceWithRootRoute();
   };
@@ -1199,9 +1209,9 @@ export default function App() {
     return () => window.removeEventListener("popstate", restoreRouteFromHistory);
   }, []);
   useEffect(() => {
-    if (!loggedIn) return;
+    if (!loggedIn || !permissionsReady) return;
     localStorage.setItem("sunhold:last-page", active);
-  }, [active, loggedIn]);
+  }, [active, loggedIn, permissionsReady]);
   useEffect(() => {
     if (active !== "finance-fee-query") clearDashboardFeeQuery();
   }, [active]);
@@ -1219,7 +1229,9 @@ export default function App() {
     return () => window.removeEventListener(CONTRACT_DETAIL_TARGET_EVENT, receiveContractDetailTarget);
   }, []);
   useEffect(() => {
+    if (!loggedIn || !permissionsReady) return;
     const params = new URLSearchParams(window.location.search);
+    if (params.get("page") === "customer-portal") return;
     const routeFromUrl = params.get("page") || "dashboard";
     if (routeFromUrl === active) return;
     if (active === "dashboard") params.delete("page");
@@ -1230,7 +1242,7 @@ export default function App() {
       "",
       `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
     );
-  }, [active]);
+  }, [active, loggedIn, permissionsReady]);
   useEffect(() => {
     const expired = () => {
       endClientSession();
@@ -1277,6 +1289,8 @@ export default function App() {
           clearClientSessionStorage();
           setLoggedIn(false);
           setSessionUser(null);
+          setPermissionsReady(false);
+          setPermissionLoadError("");
           resetWorkspaceForSession();
           replaceWithRootRoute();
           message.warning("请重新登录并修改一次性初始密码后再进入系统");
@@ -1299,6 +1313,8 @@ export default function App() {
         // 权限与导航一起更新；配置未变时保留页面和菜单展开状态。
         setSessionUser((current) => JSON.stringify(current) === JSON.stringify(user) ? current : user);
         setMenuConfig((current) => JSON.stringify(current) === JSON.stringify(navigation.items) ? current : navigation.items);
+        setPermissionLoadError("");
+        setPermissionsReady(true);
         if (data.menu_auto_collapse === "yes" || data.menu_auto_collapse === "no") {
           localStorage.setItem(
             "sunhold:sidebar-auto-collapse",
@@ -1308,18 +1324,28 @@ export default function App() {
         }
       } catch (error: any) {
         if (!request.signal.aborted && ![401, 428].includes(error?.response?.status)) {
-          message.error("角色权限信息加载失败，请重试");
+          setPermissionLoadError("页面授权加载失败，请重试");
         }
       }
     };
     const refreshProfile = () => { void loadProfile(); };
+    const refreshVisibleProfile = () => { if (!document.hidden) refreshProfile(); };
+    const synchronizePermissions = (event: StorageEvent) => {
+      if (event.storageArea === localStorage && event.key === PERMISSIONS_UPDATED_STORAGE_KEY) refreshProfile();
+    };
     void loadProfile();
+    const timer = window.setInterval(refreshVisibleProfile, 30000);
+    document.addEventListener("visibilitychange", refreshVisibleProfile);
+    window.addEventListener("storage", synchronizePermissions);
     window.addEventListener("focus", refreshProfile);
     window.addEventListener(PERMISSIONS_UPDATED_EVENT, refreshProfile);
     window.addEventListener("sunhold:menus-updated", refreshProfile);
     window.addEventListener("sunhold:route-reselect", refreshProfile);
     return () => {
       controller?.abort();
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshVisibleProfile);
+      window.removeEventListener("storage", synchronizePermissions);
       window.removeEventListener("focus", refreshProfile);
       window.removeEventListener(PERMISSIONS_UPDATED_EVENT, refreshProfile);
       window.removeEventListener("sunhold:menus-updated", refreshProfile);
@@ -1348,7 +1374,7 @@ export default function App() {
     document.title = resolveWorkspacePageLabel(active, effectiveMenuItems);
   }, [active, effectiveMenuItems, loggedIn]);
   const navigate = (route: string) => {
-    const normalizedRoute = resolveGrantedMenuRoute(normalizeWorkspaceRoute(route), effectiveMenuItems, grantedMenuKeys);
+    const normalizedRoute = resolveGrantedMenuRoute(normalizeWorkspaceRoute(route), effectiveMenuItems, grantedMenuKeys, permissionAdministrator);
     if (normalizedRoute === "contract-new") {
       if (sessionStorage.getItem(CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY) !== "customer") {
         clearContractCustomerContext(sessionStorage);
@@ -1375,11 +1401,14 @@ export default function App() {
     else window.location.assign(url);
   };
   useEffect(() => {
+    if (!permissionsReady) return;
     const effectiveLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
     setOpenPages((current) => {
-      const normalized = Array.from(new Map(current.map((entry) => {
-        const key = resolveGrantedMenuRoute(normalizeWorkspaceRoute(entry.key), effectiveMenuItems, grantedMenuKeys);
-        return [key, { key, label: resolveWorkspacePageLabel(key, effectiveMenuItems) }];
+      const normalized = Array.from(new Map(current.flatMap((entry) => {
+        const requested = normalizeWorkspaceRoute(entry.key);
+        const key = resolveGrantedMenuRoute(requested, effectiveMenuItems, grantedMenuKeys, permissionAdministrator);
+        if (key === "dashboard" && requested !== "dashboard") return [];
+        return [[key, { key, label: resolveWorkspacePageLabel(key, effectiveMenuItems) }] as const];
       })).values());
       const next = normalized.some((entry) => entry.key === active)
         ? normalized
@@ -1391,7 +1420,7 @@ export default function App() {
       localStorage.setItem("sunhold:open-pages", JSON.stringify(next));
       return next;
     });
-  }, [active, effectiveMenuItems, grantedMenuKeys]);
+  }, [active, effectiveMenuItems, grantedMenuKeys, permissionAdministrator, permissionsReady]);
   const closeOpenPage = (target: string) => {
     setOpenPages((current) => {
       if (current.length <= 1) return current;
@@ -1418,57 +1447,31 @@ export default function App() {
           sessionStorage.removeItem(FEEDBACK_SOURCE_PAGE_KEY);
           sessionStorage.removeItem(FEEDBACK_SOURCE_ROUTE_KEY);
           setSessionUser(user);
+          setPermissionsReady(false);
+          setPermissionLoadError("");
           resetWorkspaceForSession();
           setLoggedIn(true);
         }}
       />
   );
+  if (!permissionsReady) return (
+    <Card className="panel">
+      {permissionLoadError ? (
+        <Alert type="error" title={permissionLoadError} action={
+          <Button onClick={() => window.dispatchEvent(new Event(PERMISSIONS_UPDATED_EVENT))}>重新加载</Button>
+        } />
+      ) : <div className="page-loading">正在加载页面授权…</div>}
+    </Card>
+  );
   const currentPageLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
   const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys);
   const sidebarReloadableItems = menuItemsWithDoubleClickReload(sideMenuItems, (item) => {
-    setActive(String(item.key));
+    navigate(String(item.key));
     setWorkspaceReloadKey((value) => value + 1);
   });
   const accountProfileRoute = grantedMenuKeys.has("user-account") ? "user-account" : "user-center";
   const route = canonicalRoute(active);
   const dashboardTarget = dashboardWorkspace(active);
-  const pageAllowed =
-    !!dashboardTarget ||
-    actualRole === "admin" ||
-    route === "dashboard" ||
-    route === FEEDBACK_ROUTE ||
-    ["task-my-accepted", "task-my-created", "task-my-collaborating", "task-my-unread"].includes(active) ||
-    (active === "case-global-search" &&
-      Array.from(grantedMenuKeys).some((key) =>
-        key.startsWith("case-mine") ||
-        key.startsWith("case-dept") ||
-        key.startsWith("case-company") ||
-        key.startsWith("case-archive")
-      )) ||
-    (active.startsWith("case-detail-") &&
-      Array.from(grantedMenuKeys).some((key) =>
-        key.startsWith("case-mine") ||
-        key.startsWith("case-dept") ||
-        key.startsWith("case-company") ||
-        key.startsWith("case-archive")
-      )) ||
-    (active.startsWith("contract-detail-") &&
-      Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
-    (active.startsWith("contract-change-") &&
-      Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
-    ((active.startsWith("contract-payment-apply-") || active.startsWith("contract-invoice-apply-")) &&
-      Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
-    (active.startsWith("customer-detail-") &&
-      Array.from(grantedMenuKeys).some((key) => key.startsWith("customer-"))) ||
-    (active.startsWith("contract-investigation-") &&
-      Array.from(grantedMenuKeys).some((key) => key.startsWith("contract-"))) ||
-    (active === "case-agent-center" &&
-      Array.from(grantedMenuKeys).some((key) => key.startsWith("case-"))) ||
-    // Leaf menus are independently grantable.  A canonical route can collapse
-    // a leaf such as task-my-accepted to its container task-my for component
-    // selection, but that must not discard the explicit leaf grant.
-    grantedMenuKeys.has(active) ||
-    grantedMenuKeys.has(route);
   const requestedPage =
     dashboardTarget ? (
       dashboardTarget.kind === "finance"
@@ -1477,7 +1480,7 @@ export default function App() {
           ? <ContractReceivablesPage key={active} initialView={dashboardTarget.view} dashboardQueue={dashboardTarget.key} onNavigate={navigate} />
           : <CaseCenterPage key={active} initialView={dashboardTarget.view} dashboardQueue={dashboardTarget.key} onNavigate={navigate} />
     ) : route === "dashboard" ? (
-      <Dashboard onNavigate={navigate} />
+      <Dashboard onNavigate={navigate} grantedMenuKeys={grantedMenuKeys} permissionAdministrator={permissionAdministrator} />
     ) : route === "agent-center" ? (
       <PersonalAgentCenterPage onNavigate={navigate} />
     ) : route === "case-agent-center" ? (
@@ -1561,19 +1564,7 @@ export default function App() {
         <div className="placeholder">页面不存在，请从左侧菜单重新选择。</div>
       </Card>
     );
-  const currentPage = pageAllowed ? (
-    requestedPage
-  ) : (
-    <Card className="panel">
-      <div className="placeholder">
-        <h2>无权访问</h2>
-        <p>当前角色没有该功能的菜单权限，请联系系统管理员。</p>
-        <Button type="primary" onClick={() => setActive("dashboard")}>
-          返回控制台
-        </Button>
-      </div>
-    </Card>
-  );
+  const currentPage = requestedPage;
   return (
     <Layout className="app-shell">
       <ConflictReviewHost key={sessionUser?.username || ""} />
@@ -1614,7 +1605,7 @@ export default function App() {
           activeKey={active}
           onChange={navigate}
           onEdit={(target, action) => action === "remove" && closeOpenPage(String(target))}
-          items={openPages.map((item) => ({
+          items={visibleOpenPages.map((item) => ({
             key: item.key,
             label: (
               <span

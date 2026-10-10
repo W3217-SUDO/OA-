@@ -1,7 +1,7 @@
 """系统管理路由编排。"""
 from app.core.constants import (
     DEFAULT_ROLE_PERMISSIONS,
-    DEFAULT_SYSTEM_MENUS, FIELD_KEYS, MENU_KEYS, MENU_PARENT_BY_KEY, ROLE_DATA_SCOPES, SYSTEM_ACTION_BY_CODE,
+    DEFAULT_SYSTEM_MENUS, FIELD_KEYS, MENU_KEYS, ROLE_DATA_SCOPES, SYSTEM_ACTION_BY_CODE,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_CACHE_META, SYSTEM_CACHE_REGISTRY, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_PARAMETER_CACHE,
     SYSTEM_PARAMETER_CATEGORIES, _LEGACY_CASE_TASK_HISTORY_ENTITIES, logger,
 )
@@ -289,12 +289,14 @@ async def list_active_people_options(identity: dict = Depends(current_identity),
 @router.post(f"{settings.api_prefix}/system/users", status_code=status.HTTP_201_CREATED)
 async def create_system_user(body: SystemUserInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_unique_dingtalk_user_id, _normalize_system_user_role_ids, _require_admin,
+        _ensure_unique_dingtalk_user_id, _normalize_system_user_role_ids, _require_actual_system_admin, _require_admin,
     )
     from app.core.system import (
         _security_policy, _system_user_dict, _system_user_manager_profile,
     )
     _require_admin(identity)
+    if "permission_overrides" in body.profile:
+        _require_actual_system_admin(identity)
     role_ids = _normalize_system_user_role_ids(body.role_ids, body.role)
     username = body.username.strip().lower()
     if await db.scalar(select(User).where(User.username == username)):
@@ -323,7 +325,7 @@ async def create_system_user(body: SystemUserInput, identity: dict = Depends(cur
 @router.patch(f"{settings.api_prefix}/system/users/{{user_id}}")
 async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_system_user_lifecycle_safe, _ensure_unique_dingtalk_user_id, _normalize_system_user_role_ids, _require_admin, _require_unique_hr_display_name,
+        _ensure_system_user_lifecycle_safe, _ensure_unique_dingtalk_user_id, _normalize_system_user_role_ids, _require_actual_system_admin, _require_admin, _require_unique_hr_display_name,
         _system_user_role_ids,
     )
     from app.core.system import (
@@ -333,6 +335,10 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+    if body.profile is not None and "permission_overrides" in body.profile:
+        stored_profile = user.profile or {}
+        if "permission_overrides" not in stored_profile or body.profile["permission_overrides"] != stored_profile["permission_overrides"]:
+            _require_actual_system_admin(identity)
     if body.username is not None:
         await _rename_system_username(user, body.username, identity, db)
     if body.role is not None or body.role_ids is not None:
@@ -378,9 +384,9 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
 @router.get(f"{settings.api_prefix}/system/users/{{user_id}}/permissions")
 async def get_system_user_permissions(user_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_admin, _user_permission_overrides, _user_permission_payload,
+        _require_actual_system_admin, _user_permission_overrides, _user_permission_payload,
     )
-    _require_admin(identity)
+    _require_actual_system_admin(identity)
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
@@ -390,12 +396,14 @@ async def get_system_user_permissions(user_id: int, identity: dict = Depends(cur
 @router.patch(f"{settings.api_prefix}/system/users/{{user_id}}/permissions")
 async def update_system_user_permissions(user_id: int, body: UserPermissionOverrideUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_admin, _system_user_role_ids, _user_permission_overrides, _user_permission_payload,
+        _require_actual_system_admin, _system_user_role_ids, _user_permission_overrides, _user_permission_payload,
     )
     from app.core.system import (
         _system_audit,
     )
-    _require_admin(identity)
+    _require_actual_system_admin(identity)
+    if body.clear_menu_keys and (body.clear or body.menu_keys is not None):
+        raise HTTPException(status_code=422, detail="恢复岗位菜单授权不能同时清除全部授权或设置用户菜单")
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
@@ -405,7 +413,9 @@ async def update_system_user_permissions(user_id: int, body: UserPermissionOverr
     if body.clear:
         profile.pop("permission_overrides", None)
     else:
-        overrides: dict[str, object] = {}
+        overrides: dict[str, object] = dict(_user_permission_overrides(user))
+        if body.clear_menu_keys:
+            overrides.pop("menu_keys", None)
         if body.menu_keys is not None:
             menu_keys = list(dict.fromkeys(body.menu_keys))
             legacy_keys = set((await db.scalars(select(SystemMenu.key).where(~SystemMenu.key.in_(SYSTEM_MENU_ROUTE_KEYS)))).all())
@@ -977,7 +987,7 @@ async def clear_system_cache(cache_key: str, identity: dict = Depends(current_id
 @router.get(f"{settings.api_prefix}/system/menus/navigation")
 async def navigation_menus(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _identity_role_ids, _permission_payload_for_identity, _user_permission_payload,
+        _identity_role_ids, _normalize_menu_permission_key, _permission_payload_for_identity, _user_permission_payload,
     )
     from app.core.system import (
         _system_menu_dict,
@@ -986,7 +996,7 @@ async def navigation_menus(identity: dict = Depends(current_identity), db: Async
         item for item in (await db.scalars(
             select(SystemMenu).where(SystemMenu.is_active.is_(True), SystemMenu.is_visible.is_(True)).order_by(SystemMenu.sort_order, SystemMenu.id)
         )).all()
-        if item.key in SYSTEM_MENU_ROUTE_KEYS or item.key.startswith("legacy-menu-")
+        if _normalize_menu_permission_key(item.key) in SYSTEM_MENU_ROUTE_KEYS or item.key.startswith("legacy-menu-")
     ]
     if "admin" in _identity_role_ids(identity):
         visible_keys = {item.key for item in items}
@@ -996,11 +1006,16 @@ async def navigation_menus(identity: dict = Depends(current_identity), db: Async
         visible_keys = {"dashboard", *permission["menu_keys"]}
         # Parent containers must remain visible for an authorized child, but
         # they are not themselves added as route grants.
+        menus_by_key = {item.key: item for item in items}
         for key in list(visible_keys):
-            parent_key = MENU_PARENT_BY_KEY.get(key, "")
-            while parent_key:
+            item = menus_by_key.get(key)
+            parent_key = item.parent_key if item else ""
+            visited: set[str] = set()
+            while parent_key and parent_key not in visited:
+                visited.add(parent_key)
                 visible_keys.add(parent_key)
-                parent_key = MENU_PARENT_BY_KEY.get(parent_key, "")
+                parent = menus_by_key.get(parent_key)
+                parent_key = parent.parent_key if parent else ""
     return {"items": [_system_menu_dict(item) for item in items if item.key in visible_keys]}
 
 
@@ -1201,12 +1216,12 @@ async def list_role_permissions(
 @router.patch(f"{settings.api_prefix}/system/role-permissions/{{role}}")
 async def update_role_permission(role: str, body: RolePermissionUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_admin, _role_permission_dict, _split_role_permission_keys,
+        _require_actual_system_admin, _role_permission_dict, _split_role_permission_keys,
     )
     from app.core.system import (
         _system_audit,
     )
-    _require_admin(identity)
+    _require_actual_system_admin(identity)
     if role not in DEFAULT_ROLE_PERMISSIONS:
         raise HTTPException(status_code=404, detail="角色不存在")
     data_scope = body.data_scope.strip()
