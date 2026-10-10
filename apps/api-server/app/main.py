@@ -349,7 +349,7 @@ from app.core.legacy_sync import (
     _sync_legacy_official_document_files as _sync_legacy_official_document_files, _sync_legacy_projection as _sync_legacy_projection,
 )
 from app.core.lifecycle import (
-    _backfill_clue_generated_case_register_dates as _backfill_clue_generated_case_register_dates, _upgrade_schema as _upgrade_schema, lifespan as lifespan, request_validation_error_handler as request_validation_error_handler,
+    _backfill_clue_generated_case_register_dates as _backfill_clue_generated_case_register_dates, _upgrade_schema as _upgrade_schema, request_validation_error_handler as request_validation_error_handler,
 )
 from app.core.permissions import (
     _agent_document_capabilities as _agent_document_capabilities, _agent_skill_catalog_for_identity as _agent_skill_catalog_for_identity, _agent_skill_for_identity as _agent_skill_for_identity, _apply_job_role_policy as _apply_job_role_policy, _can_act_on_contract_approval_step as _can_act_on_contract_approval_step,
@@ -492,8 +492,9 @@ from app.routing import include_route_slice as include_route_slice, verify_route
 
 
 from app.core.request_metrics import RequestMetricsMiddleware
+from app.agent_mcp.gateway import install_gateway, mcp_lifespan
 
-app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=mcp_lifespan)
 app.add_middleware(RequestMetricsMiddleware, api_prefix=settings.api_prefix,
                    threshold_seconds=settings.slow_request_log_seconds)
 app.include_router(feedback_router)
@@ -602,3 +603,4 @@ include_route_slice(app, hr_router, 31, len(hr_router.routes))
 include_route_slice(app, system_router, 86, len(system_router.routes))
 include_route_slice(app, aws_router, 18, len(aws_router.routes))
 verify_route_coverage(app, [aws_router, contract_router, crm_router, conflict_rules_router, conflict_reviews_router, finance_router, hr_router, investigation_router, ipr_router, legal_router, rpt_router, system_router, tp_router, wms_router])
+install_gateway(app)
