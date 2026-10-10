@@ -216,6 +216,7 @@ export default function FinanceCenterPage({
     get setLoading() { return setLoading; },
     get setFinanceDataReady() { return setFinanceDataReady; },
     get initialView() { return initialView; },
+    get tab() { return tab; },
     get loadPaymentQueryPage() { return loadPaymentQueryPage; },
     get paymentQueryPageSize() { return paymentQueryPageSize; },
     get contractPaymentSource() { return contractPaymentSource; },
@@ -1263,7 +1264,7 @@ export default function FinanceCenterPage({
   };
 
   useEffect(() => {
-    setTab(first);
+    setTab(initialTab);
     setRefundLogFeeId(null);
     const defaults =
       contractPaymentSource.active && contractPaymentSource.ok
@@ -1309,7 +1310,7 @@ export default function FinanceCenterPage({
     resetPaymentPackageRoute();
     setPaymentPackageMeta({ total: 0, page: 1, pageSize: 15 });
     setGeneralSettlementDetails([]);
-    load();
+    if (initialView !== "finance-legacy-history") load();
   }, [initialView, contractPaymentSourceSearch]);
   const { createIncoming, claimIncoming, openIncomingAllocation, allocateIncoming, deleteIncoming, createTransaction, createReconciliation, confirmReconciliation } = createFinanceAccountingActions({
     get incomingForm() { return incomingForm; },

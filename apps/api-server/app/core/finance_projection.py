@@ -57,8 +57,9 @@ def _legacy_fee_item(item: LegacyFinanceRecord, *, show_amount: bool) -> dict[st
         "internal_payment": "历史内部请款",
     }
     label = kind_labels.get(item.record_kind, "历史财务记录")
+    fee_type = "内部费用" if item.record_kind == "internal_fee" else label
     data = {
-        "fee_type": label,
+        "fee_type": fee_type,
         "amount": amount,
         "case_no": item.legacy_case_no,
         "contract_no": item.legacy_contract_no,
@@ -88,7 +89,7 @@ def _legacy_fee_item(item: LegacyFinanceRecord, *, show_amount: bool) -> dict[st
         "status": item.status_label or item.status_code,
         "status_code": item.status_code,
         "status_label": item.status_label,
-        "fee_type": label,
+        "fee_type": fee_type,
         "customer": item.legacy_customer_no,
         "contract_no": item.legacy_contract_no,
         "case_no": item.legacy_case_no,
@@ -304,7 +305,7 @@ async def read_unified_finance_projection(
                 LegacyFinanceRecord.status_code.ilike(f"%{status.strip()}%"),
                 LegacyFinanceRecord.status_label.ilike(f"%{status.strip()}%"),
             ))
-        if fee_type.strip():
+        if fee_type.strip() and fee_type.strip() not in {"内部费用", "历史内部费用", "internal_fee"}:
             legacy_conditions.append(LegacyFinanceRecord.record_kind.ilike(f"%{fee_type.strip()}%"))
         if keyword.strip():
             needle = f"%{keyword.strip()}%"

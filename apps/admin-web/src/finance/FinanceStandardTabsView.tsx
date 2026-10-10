@@ -28,7 +28,7 @@ export interface FinanceStandardTabsViewProps {
   financeProjectionEnabled: boolean;
   financeFeeListMeta: { total: number; page: number; pageSize: number };
   financeTransactionMeta: { total: number; page: number; pageSize: number };
-  loadFinanceProjectionPage: (kind: "fees" | "transactions", page?: number, pageSize?: number) => Promise<void>;
+  loadFinanceProjectionPage: (kind: "fees" | "transactions", page?: number, pageSize?: number, selectedTab?: string) => Promise<void>;
   shownFees: Fee[];
   feeColumns: any[];
   invoices: FinanceFlow[];
@@ -171,7 +171,13 @@ export function FinanceStandardTabsView(props: FinanceStandardTabsViewProps) {
             >
               <Tabs
                 activeKey={tab}
-                onChange={setTab}
+                onChange={(nextTab) => {
+                  setTab(nextTab);
+                  if (financeProjectionEnabled && ["fees", "audit", "transactions"].includes(nextTab)) {
+                    void loadFinanceProjectionPage(nextTab === "transactions" ? "transactions" : "fees", 1,
+                      nextTab === "transactions" ? financeTransactionMeta.pageSize : financeFeeListMeta.pageSize, nextTab);
+                  }
+                }}
                 items={[
                   { key: "legacy-history", label: "历史财务账本" },
                   { key: "fees", label: "费用管理" },

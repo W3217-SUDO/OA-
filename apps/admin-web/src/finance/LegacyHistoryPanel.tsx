@@ -19,6 +19,8 @@ import { money } from "./constants";
 import type { LegacyFinanceRecord,LegacyFinanceSummary } from "./types";
 
 interface LegacyHistoryPanelProps {
+  compact?: boolean;
+  availableKinds?: LegacyFinanceRecord["record_kind"][];
   rows: LegacyFinanceRecord[];
   loading: boolean;
   meta: { total: number; page: number; pageSize: number };
@@ -72,6 +74,8 @@ const statusLabel = (value?: string) => {
 };
 
 export function LegacyHistoryPanel({
+  compact = false,
+  availableKinds,
   rows,
   loading,
   meta,
@@ -209,7 +213,7 @@ export function LegacyHistoryPanel({
 
   return (
     <>
-      <Alert
+      {!compact && (<><Alert
         className="finance-rule"
         type="info"
         showIcon
@@ -254,7 +258,7 @@ export function LegacyHistoryPanel({
             </div>
           </Card>
         ) : null}
-      </div>
+      </div></>)}
       <Space wrap style={{ margin: "8px 0 12px" }}>
         <Input.Search
           aria-label="历史财务账本检索"
@@ -276,8 +280,8 @@ export function LegacyHistoryPanel({
           aria-label="历史财务账本类型"
           value={kind || undefined}
           placeholder="全部账本类型"
-          allowClear
-          options={(
+          allowClear={!compact}
+          options={(availableKinds ||
             [
               "ap_payment",
               "ar_payment",

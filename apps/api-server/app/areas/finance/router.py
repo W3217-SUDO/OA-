@@ -948,7 +948,7 @@ async def list_legacy_finance_history(
         select(LegacyFinanceFile.legacy_finance_record_id, func.count())
         .where(LegacyFinanceFile.legacy_finance_record_id.in_(ids))
         .group_by(LegacyFinanceFile.legacy_finance_record_id)
-    )).all()) if ids and audit_table_exists else {}
+    )).all()) if ids else {}
     audit_counts = dict((await db.execute(
         select(LegacyFinanceAudit.legacy_finance_record_id, func.count())
         .where(LegacyFinanceAudit.legacy_finance_record_id.in_(ids))
@@ -1145,7 +1145,7 @@ async def get_legacy_finance_history_record(
     audit_display_users = await _user_display_map({row.auditor for row in audits}, db)
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     result = _legacy_finance_record_dict(
-        item, allocation_count=len(allocations), file_count=len(files), audit_count=len(audits), show_amount=show_amount, include_payload=True,
+        item, allocation_count=len(allocations), file_count=len(files), audit_count=len(audits), show_amount=show_amount, include_payload=show_amount,
     )
     result["read_only"] = True
     result["allocations"] = [
@@ -1159,7 +1159,7 @@ async def get_legacy_finance_history_record(
             "archive_amount": round(float(row.archive_amount or 0), 2) if show_amount else None,
             "is_refund": row.is_refund, "is_active": row.is_active,
             "case_record_id": row.case_record_id, "mapping_status": row.mapping_status,
-            "source_payload": row.source_payload or {},
+            "source_payload": (row.source_payload or {}) if show_amount else {},
         } for row in allocations
     ]
     result["files"] = [
@@ -1169,7 +1169,7 @@ async def get_legacy_finance_history_record(
             "file_amount": round(float(row.file_amount or 0), 2) if show_amount else None,
             "invoice_date": row.invoice_date.isoformat() if row.invoice_date else None,
             "is_active": row.is_active, "physical_file_verified": row.physical_file_verified,
-            "source_payload": row.source_payload or {},
+            "source_payload": (row.source_payload or {}) if show_amount else {},
         } for row in files
     ]
     result["legacy_statuses"] = {
@@ -1184,7 +1184,7 @@ async def get_legacy_finance_history_record(
             "CaseFeeSettlementAmount", "CaseNonOfficeFeeSettlementAmount", "CaseFeeArchiveAmount", "InvoiceAmount", "InvoiceOverAmount",
             "CaseOfficeFeeAmount", "CaseNonOfficeFeeAmount", "CaseCommissionFeeAmount",
         }
-    }
+    } if show_amount else {}
     result["audits"] = [
         {
             "id": row.id, "source_table": row.source_table, "legacy_id": row.legacy_id,
@@ -1194,7 +1194,8 @@ async def get_legacy_finance_history_record(
             "auditor": row.auditor,
             "auditor_display_name": _person_reference_display(row.auditor, audit_display_users)[0],
             "audit_date": row.audit_date.isoformat() if row.audit_date else None,
-            "audit_content": row.audit_content, "source_payload": row.source_payload or {},
+            "audit_content": row.audit_content,
+            "source_payload": (row.source_payload or {}) if show_amount else {},
         } for row in audits
     ]
     return result

@@ -11,6 +11,7 @@ import {FinanceOriginalQueryView, type FinanceOriginalQueryViewProps} from "./Fi
 import {GeneralSettlementExpandedRow} from "./GeneralSettlementExpandedRow";
 import {FeeQueryPageSummary, FeeQueryTotalBody, InternalPaymentPageSummary, PaymentPackagePageSummary, PaymentPackageTotalBody, PaymentQueryPageSummary, PaymentQueryTotalBody} from "./FinanceOriginalTotals";
 import {FinanceFeeQueryActions} from "./FinanceFeeQueryActions";
+import {LegacyFinanceRouteSection} from "./LegacyFinanceRouteSection";
 
 import type {ComponentProps} from "react";
 
@@ -213,6 +214,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
     );
   const settlementRouteRows = configuredRows as Fee[];
   return (
+    <>
           <section
             className={`finance-original-panel${
               initialView === "finance-internal-mine"
@@ -1480,5 +1482,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
               </div>
             )}
           </section>
+          <LegacyFinanceRouteSection key={initialView} route={initialView} />
+    </>
   );
 }

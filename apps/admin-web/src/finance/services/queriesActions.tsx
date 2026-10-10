@@ -40,6 +40,14 @@ const normalizeProjectionTransactions = (items: unknown[]): Transaction[] => ite
     } as Transaction;
 });
 
+const projectionFeeParams = (route: string, tab: string) => ({
+    fee_type: route.startsWith("finance-internal") ? "内部费用"
+        : route.startsWith("finance-settlement") ? "结算费用"
+            : route.startsWith("finance-archive-fee") ? "归档费用" : undefined,
+    status: route.startsWith("finance-audit") || tab === "audit" ? "待审批" : undefined,
+    source: route.startsWith("finance-audit") || tab === "audit" ? "modern" : "all",
+});
+
 async function loadMyInternalApplications() {
     const items: Fee[] = [];
     let page = 1;
@@ -93,6 +101,7 @@ export interface FinanceQueriesDependencies {
     readonly setLoading: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setFinanceDataReady: React.Dispatch<React.SetStateAction<boolean>>;
     readonly initialView: string;
+    readonly tab: string;
     readonly loadPaymentQueryPage: (query: Record<string, any>, page?: number, pageSize?: number) => Promise<{
         data: {
             items: any[];
@@ -558,12 +567,16 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
         kind: "fees" | "transactions",
         page = 1,
         pageSize = kind === "fees" ? context.financeFeeListMeta.pageSize : context.financeTransactionMeta.pageSize,
+        selectedTab = context.tab,
     ) => {
         if (!context.financeProjectionEnabled) return;
         context.setLoading(true);
         try {
             const { data } = await api.get(`/finance/projection/${kind}`, {
-                params: { page, page_size: pageSize },
+                params: {
+                    page, page_size: pageSize,
+                    ...(kind === "fees" ? projectionFeeParams(context.initialView, selectedTab) : {}),
+                },
             });
             const meta = {
                 page: Number(data.page || page),
@@ -617,6 +630,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                             params: {
                                 page: context.financeFeeListMeta.page,
                                 page_size: context.financeFeeListMeta.pageSize,
+                                ...projectionFeeParams(initialView, context.tab),
                             },
                         })
                         : api.get("/records", { params: {
