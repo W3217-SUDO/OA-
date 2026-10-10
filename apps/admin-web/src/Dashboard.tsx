@@ -369,7 +369,8 @@ export default function Dashboard({ onNavigate, grantedMenuKeys, permissionAdmin
             columns={hearingCols}
             dataSource={data.hearings}
             loading={loading.cases}
-            scroll={{ x: 1050 }}
+            scroll={{ x: 1050, y: 180 }}
+            sticky={false}
           />
         </Card>
         <Card title="◩ 案件趋势" className="dashboard-card target-trend-card">
@@ -383,7 +384,8 @@ export default function Dashboard({ onNavigate, grantedMenuKeys, permissionAdmin
             columns={latestCaseCols}
             dataSource={data.latest_cases}
             loading={loading.cases}
-            scroll={{ x: 1100 }}
+            scroll={{ x: 1100, y: 300 }}
+            sticky={false}
           />
         </Card>
         <Card title="◔ 民事案件" className="dashboard-card civil-card">
