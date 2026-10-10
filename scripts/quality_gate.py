@@ -312,7 +312,7 @@ def main() -> int:
                         environment.pop(name)
                 summary["backend_scope"] = SOURCE_BACKEND_SCOPE
                 summary["pending_ci"] = ["完整 regression", "PostgreSQL 专用回归与集成", "依赖安全审计", "生产构建与运行包检查", "Linux 依赖镜像"]
-                print("source 仅执行 unit、structural 与固定四项回归；完整 regression、PG 及依赖镜像待 CI full。", flush=True)
+                print("source 仅执行 unit、structural 与固定四项回归；完整 regression、PG 及依赖镜像待隔离测试环境完整验证。", flush=True)
             environment["PATH"] = str(Path(args.node).resolve().parent) + os.pathsep + environment.get("PATH", "")
             run("backend-static", [sys.executable, "-m", "ruff", "check", str(API / "app")], ROOT, environment)
             run("backend-runner-selfcheck", [sys.executable, "-m", "unittest", "tests.test_regression_runner"], API, environment)
@@ -327,7 +327,7 @@ def main() -> int:
                 validate_source_backend(backend_report)
                 summary["backend_scope"] = backend_report["scope"]
                 summary["backend_pending_ci"] = backend_report["deferred"] + backend_report["pending_full"]
-                print(f"后端待 CI full：{len(summary['backend_pending_ci'])} 项未通过；具体名单见 backend-regression.json。", flush=True)
+                print(f"后端待隔离测试环境完整验证：{len(summary['backend_pending_ci'])} 项未通过；具体名单见 backend-regression.json。", flush=True)
             if args.profile != "source":
                 run("frontend-build", [args.node, "scripts/build-production.mjs"], WEB, environment)
             if args.profile == "full":
