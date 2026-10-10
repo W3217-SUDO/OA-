@@ -1,4 +1,4 @@
-.law-work-panel { min-width: 0; min-height: 0; overflow: auto; padding: 26px 28px 20px; background: #fff; scrollbar-gutter: stable; }
+.law-work-panel { min-width: 0; min-height: 0; overflow: auto; padding: 22px 18px 20px; background: #fff; scrollbar-gutter: stable; container: law-work / inline-size; }
 .law-work-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .law-work-heading h3 { margin: 0 0 7px; font-size: 21px; color: #27343c; }
 .law-work-date { color: #849097; font-size: 12px; }
@@ -68,6 +68,24 @@
 .law-work-skills button:hover { border-color: #9bbfb0; color: #0b8d68; }
 .law-work-tools button:disabled, .law-work-skills button:disabled { cursor: default; opacity: .5; }
 .law-work-panel button:focus-visible { outline: 2px solid #0b8d68; outline-offset: 2px; }
+@container law-work (max-width: 440px) {
+  .law-work-heading { gap: 8px; }
+  .law-work-heading h3 { font-size: 19px; }
+  .law-work-heading .ant-btn { font-size: 11px; padding-inline: 8px; }
+  .law-work-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .law-work-metric { padding: 12px; border-bottom: 1px solid #e8edf0; }
+  .law-work-metric:nth-child(even) { border-right: 0; }
+  .law-work-metric:nth-last-child(-n+2) { border-bottom: 0; }
+  .law-work-list-toolbar { flex-wrap: wrap; gap: 8px; }
+  .law-work-list-toolbar .ant-input-affix-wrapper { flex: 1 0 100%; width: 100%; max-width: none; }
+  .law-work-list-caption { flex-wrap: wrap; }
+  .law-record-mark { display: none; }
+  .law-record-actions { flex-wrap: wrap; justify-content: flex-end; width: 66px; }
+  .law-record-actions .ant-tag { margin-right: 0; max-width: 100%; }
+  .law-business-links { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; }
+  .law-work-tools { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .law-work-tools button { padding: 12px; }
+}
 @media (max-width: 1400px) {
   .law-work-panel { padding: 22px 20px; }
   .law-business-links { grid-template-columns: repeat(2, minmax(0, 1fr)); }
