@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Alert, Button, Input, Modal, Segmented, Select, Skeleton, Space, Tag, Tooltip, message } from "antd";
-import { AppstoreAddOutlined, ArrowDownOutlined, ArrowUpOutlined, AuditOutlined, CheckOutlined, CloseOutlined, CopyOutlined, FileTextOutlined, FileWordOutlined, FolderOpenOutlined, LockOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, ScheduleOutlined, StopOutlined, TeamOutlined, WalletOutlined } from "@ant-design/icons";
-import { AgentMessageContent } from "./AgentMessageContent";
+import { AppstoreAddOutlined, ArrowDownOutlined, ArrowUpOutlined, AuditOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, FolderOpenOutlined, LockOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, ScheduleOutlined, StopOutlined, TeamOutlined, WalletOutlined } from "@ant-design/icons";
 import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "./AgentOperationPreview";
 import { AgentToolRequests } from "./AgentToolRequests";
 import { AgentToolResult } from "./AgentToolResult";
@@ -9,12 +8,12 @@ import { CaseMaterialsPicker } from "./personal-agent/CaseMaterialsPicker";
 import { SkillManager } from "./personal-agent/SkillManager";
 import { MaterialPreview } from "./personal-agent/MaterialPreview";
 import { WorkPanel } from "./personal-agent/WorkPanel";
+import { ConversationMessage } from "./personal-agent/ConversationMessage";
 import { MATERIAL_ACCEPT, usePersonalWorkspace } from "./personal-agent/usePersonalWorkspace";
 import { errorText, type Material, type PendingAction, type WorkspaceCommand } from "./personal-agent/types";
 import "./personal-agent-center.css";
 
 const commandIcons: Record<string, ReactNode> = { today: <ScheduleOutlined />, task: <CheckOutlined />, approval: <AuditOutlined />, case: <FolderOpenOutlined />, finance: <WalletOutlined />, seal: <FileTextOutlined />, customer: <TeamOutlined /> };
-const formatTime = (value?: string) => value ? new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "";
 
 export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (route: string) => void }) {
   const workspace = usePersonalWorkspace();
@@ -55,8 +54,8 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
   };
   return <div className="personal-agent-page" data-testid="personal-agent-center-page">
     <header className="personal-agent-header">
-      <div className="personal-agent-title"><RobotOutlined /><h2>智能体中心</h2><span>律所工作台</span></div>
-      <Space size={6}>
+      <div className="personal-agent-title"><div className="workspace-brand-icon"><RobotOutlined /></div><h2>智能体中心</h2><span>律所工作台</span></div>
+      <Space className="workspace-header-actions" size={8}>
         <Segmented aria-label="切换工作视图" value={view} options={[{ value: "workspace", label: "工作台" }, { value: "chat", label: "对话" }]} onChange={(value) => setView(value as "workspace" | "chat")} />
         <Tooltip title={status?.ready ? `当前模型：${status.model}` : "模型服务未就绪"}><span className={`workspace-service ${status?.ready ? "ready" : ""}`}><i />{status?.ready ? "已连接" : loading ? "连接中" : "未就绪"}</span></Tooltip>
         {canUseCases && <Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} onClick={() => onNavigate("case-agent-center")}>案件智能体</Button>}
@@ -68,19 +67,11 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
     <div className="personal-agent-layout" data-view={view}>
       <WorkPanel status={status} skills={skills} busy={busy} refreshToken={refreshToken} decisionResult={workspace.decisionResult} onNavigate={onNavigate} onPrepare={prepare} onSkill={(skill) => { workspace.setSkillId(skill.id); if (skill.quick_prompts?.[0]) workspace.setInput(skill.quick_prompts[0]); showAssistant(); }} onUpload={() => { showAssistant(); fileRef.current?.click(); }} onSkills={() => void openSkills()} onDraft={draft} />
       <main className="personal-agent-chat">
-        <div className="workspace-thread-heading"><span><RobotOutlined /> 办公助手<LockOutlined /></span><Space>{selectedCase && <span className="workspace-current-case"><FolderOpenOutlined /> {selectedCase.serial_no}</span>}<AgentToolRequests buttonLabel="操作记录" titlePrefix="智能体" /></Space></div>
+        <div className="workspace-thread-heading"><div className="workspace-assistant-title"><span><RobotOutlined /> 办公助手</span><Tooltip title="仅当前账号可见的会话"><small><LockOutlined /> 个人会话</small></Tooltip></div><Space>{selectedCase && <Tooltip title={selectedCase.title}><span className="workspace-current-case"><FolderOpenOutlined /> {selectedCase.serial_no}</span></Tooltip>}<AgentToolRequests buttonLabel="操作记录" titlePrefix="智能体" /></Space></div>
         <div ref={scrollRef} className="personal-agent-messages" onScroll={() => { const element = scrollRef.current; if (element) setFollow(element.scrollHeight - element.scrollTop - element.clientHeight < 100); }}>
           <div className="workspace-thread">
             {loading ? <Skeleton active paragraph={{ rows: 4 }} /> : !state.messages.length && <div className="workspace-empty"><div className="workspace-empty-symbol"><RobotOutlined /></div><h3>开始今天的工作</h3><div className="workspace-start-actions">{status?.commands.slice(0, 4).map((command) => <button key={command.id} onClick={() => prepare(command)}>{commandIcons[command.icon]}<span>{command.label}</span><ArrowUpOutlined /></button>)}</div></div>}
-            {state.messages.map((item, index) => <article key={`${item.created_at || "message"}-${index}`} className={`personal-message ${item.role}${item.failed ? " failed" : ""}`}>
-              <div className="workspace-message-heading"><span>{item.role === "user" ? "我" : <><RobotOutlined /> 智能体</>}</span><time>{formatTime(item.created_at)}</time>{item.role === "assistant" && item.skill_name && <small>{item.skill_name}</small>}</div>
-              <div className="workspace-message-body">{item.role === "assistant" ? item.content ? <AgentMessageContent content={item.content} /> : <span className="workspace-thinking">{sending ? workspace.materials.length + workspace.caseMaterials.length ? "正在读取材料并处理问题…" : "正在处理…" : "未收到回答"}</span> : <div className="workspace-user-content">{item.content}</div>}</div>
-              {!!item.attachments?.length && <div className="workspace-message-files">{item.attachments.map((file) => <button key={file.id} onClick={() => setPreviewMaterial(file)}><PaperClipOutlined />{file.name}</button>)}</div>}
-              {item.role === "assistant" && !!item.content && !item.failed && !(sending && index === state.messages.length - 1) && <div className="workspace-message-actions">
-                <Tooltip title="复制回答"><Button type="text" size="small" icon={<CopyOutlined />} aria-label="复制回答" onClick={() => void copy(item.content)} /></Tooltip>
-                {!!item.can_save_document && <Tooltip title={`将回答保存为 Word 到 ${item.case_no} 的 AI 空间`}><Button type="text" size="small" icon={<FileWordOutlined />} disabled={!!workspace.savedDocuments[index] || busy} onClick={() => workspace.saveWord(item, index)}>{workspace.savedDocuments[index] ? "已存入 AI 空间" : "保存 Word"}</Button></Tooltip>}
-              </div>}
-            </article>)}
+            {state.messages.map((item, index) => <ConversationMessage key={`${item.created_at || "message"}-${index}`} item={item} generating={sending && index === state.messages.length - 1} readingMaterials={!!(workspace.materials.length + workspace.caseMaterials.length)} saved={!!workspace.savedDocuments[index]} busy={busy} onCopy={copy} onPreview={setPreviewMaterial} onSave={() => workspace.saveWord(item, index)} />)}
             <AgentToolResult result={[state.structured_results, workspace.decisionResult]} />
             <div ref={bottomRef} />
           </div>

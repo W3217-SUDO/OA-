@@ -1852,12 +1852,12 @@ export default function App() {
           />
         )}
         <Content
-          className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") || active.startsWith("contract-investigation-") ? "case-detail-content" : ""} ${active.startsWith("clue-audit-") ? "clue-audit-content" : ""}`}
+          className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active === "agent-center" ? "agent-workspace-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") || active.startsWith("contract-investigation-") ? "case-detail-content" : ""} ${active.startsWith("clue-audit-") ? "clue-audit-content" : ""}`}
           onClick={() => {
             if (isNarrowViewport && mobileSidebarOpen) setMobileSidebarOpen(false);
           }}
         >
-          <div className="page-head">
+          {active !== "agent-center" && <div className="page-head">
             <div>
               <h1>
                 {currentPageLabel}
@@ -1865,7 +1865,7 @@ export default function App() {
               </h1>
               <span>首页 / {currentPageLabel}</span>
             </div>
-          </div>
+          </div>}
           <main className="page-workbench">
             <PageLoadBoundary key={`${active}:${workspaceReloadKey}`}>
               <Suspense fallback={<div className="loading">正在加载页面...</div>}>
