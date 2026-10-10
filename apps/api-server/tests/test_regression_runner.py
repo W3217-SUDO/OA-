@@ -93,7 +93,9 @@ class RegressionRunnerTests(unittest.TestCase):
     def test_all_skipped_test_file_is_not_reported_as_passed(self) -> None:
         for direct_entry in (False, True):
             with self.subTest(direct_entry=direct_entry), tempfile.TemporaryDirectory(prefix="oa-test-runner-") as directory:
-                test_root = Path(directory)
+                # bootstrap 按仓库层级定位导入根目录，临时树必须保持同样布局。
+                test_root = Path(directory) / "apps/api-server/tests"
+                test_root.mkdir(parents=True)
                 shutil.copyfile(run_regression.TEST_ROOT / "_run_one.py", test_root / "_run_one.py")
                 testcase = test_root / "test_all_skipped.py"
                 testcase.write_text(
@@ -110,15 +112,16 @@ class RegressionRunnerTests(unittest.TestCase):
                 )
                 with patch.object(run_regression, "TEST_ROOT", test_root):
                     result = run_regression.run_file(testcase, args)
-                self.assertEqual(result["status"], "SKIP")
-                self.assertEqual(result["exit_code"], 0)
+                self.assertEqual(result["status"], "SKIP", result["output"])
+                self.assertEqual(result["exit_code"], 0, result["output"])
                 if not direct_entry:
-                    self.assertEqual(result["executed_methods"], 0)
-                    self.assertEqual(result["skipped_methods"], 1)
+                    self.assertEqual(result["executed_methods"], 0, result["output"])
+                    self.assertEqual(result["skipped_methods"], 1, result["output"])
 
     def test_permission_exclusion_keeps_business_methods_running(self) -> None:
         with tempfile.TemporaryDirectory(prefix="oa-test-runner-") as directory:
-            test_root = Path(directory)
+            test_root = Path(directory) / "apps/api-server/tests"
+            test_root.mkdir(parents=True)
             shutil.copyfile(run_regression.TEST_ROOT / "_run_one.py", test_root / "_run_one.py")
             testcase = test_root / "test_mixed.py"
             testcase.write_text(
@@ -138,9 +141,9 @@ class RegressionRunnerTests(unittest.TestCase):
             }}}
             with patch.object(run_regression, "TEST_ROOT", test_root), patch.object(run_regression, "EXCLUDED_CATEGORIES", category):
                 partial = run_regression.run_file(testcase, args)
-            self.assertEqual(partial["status"], "PARTIAL")
-            self.assertEqual(partial["executed_methods"], 1)
-            self.assertEqual(partial["skipped_methods"], 0)
+            self.assertEqual(partial["status"], "PARTIAL", partial["output"])
+            self.assertEqual(partial["executed_methods"], 1, partial["output"])
+            self.assertEqual(partial["skipped_methods"], 0, partial["output"])
             testcase.write_text(
                 "import unittest\n"
                 "class MixedTest(unittest.TestCase):\n"
@@ -149,9 +152,9 @@ class RegressionRunnerTests(unittest.TestCase):
             )
             with patch.object(run_regression, "TEST_ROOT", test_root), patch.object(run_regression, "EXCLUDED_CATEGORIES", category):
                 excluded = run_regression.run_file(testcase, args)
-            self.assertEqual(excluded["status"], "EXCLUDED")
-            self.assertEqual(excluded["executed_methods"], 0)
-            self.assertEqual(excluded["skipped_methods"], 0)
+            self.assertEqual(excluded["status"], "EXCLUDED", excluded["output"])
+            self.assertEqual(excluded["executed_methods"], 0, excluded["output"])
+            self.assertEqual(excluded["skipped_methods"], 0, excluded["output"])
 
     def test_missing_required_environment_returns_nonzero(self) -> None:
         environment = os.environ.copy()
