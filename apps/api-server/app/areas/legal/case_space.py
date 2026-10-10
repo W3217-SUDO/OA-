@@ -505,6 +505,7 @@ async def decide_case_agent_action(
     db: AsyncSession = Depends(get_db),
 ):
     from fastapi.encoders import jsonable_encoder
+    from app.case_agent import _action_preview
     from app.core.documents import (
         _execute_case_agent_action,
     )
@@ -529,18 +530,16 @@ async def decide_case_agent_action(
         preview = action.get("preview") if isinstance(action.get("preview"), dict) else {}
         if body.decision == "approved":
             if action_type in {"case.update", "case.data.update", "customer.update", "contract.update"}:
-                if action_type == "customer.update":
-                    current_source = context.get("customer") or {}
-                elif action_type == "contract.update":
-                    target_id = int((action.get("payload") or {}).get("target_id") or 0)
-                    current_source = next((item for item in context.get("contracts") or [] if int(item.get("id") or 0) == target_id), {})
-                elif action_type == "case.data.update":
-                    current_source = case_record.data or {}
-                else:
-                    current_source = {"title": case_record.title, "status": case_record.status, "description": case_record.description}
+                # 复用授权上下文的预览投影，旧操作缺少或不匹配的修改前值必须重新生成。
+                current_preview = _action_preview(action, context)
+                previous_changes = {
+                    str(item.get("field") or ""): item for item in preview.get("changes") or []
+                }
                 changed_fields = [
-                    str(item.get("field") or "") for item in preview.get("changes") or []
-                    if current_source.get(str(item.get("field") or "")) != item.get("before")
+                    item["field"] for item in current_preview["changes"]
+                    if item["field"] not in previous_changes
+                    or "before" not in previous_changes[item["field"]]
+                    or item["before"] != previous_changes[item["field"]]["before"]
                 ]
                 if changed_fields:
                     raise HTTPException(status_code=409, detail="目标数据已变化，请重新生成并确认操作：" + "、".join(changed_fields))

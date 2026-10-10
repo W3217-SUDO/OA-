@@ -1,6 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.constants import (
-    AGENT_CASE_DATA_FIELDS, AGENT_CASE_UPDATE_FIELDS, AI_SPACE_CATEGORY, ARCHIVE_REQUIRED_CATEGORIES, CASE_CUSTOM_DOCUMENT_FOLDERS_KEY,
+    AGENT_CASE_DATA_FIELDS, AGENT_CASE_PERSONNEL_UPDATE_FIELDS, AGENT_CASE_UPDATE_FIELDS, AI_SPACE_CATEGORY, ARCHIVE_REQUIRED_CATEGORIES, CASE_CUSTOM_DOCUMENT_FOLDERS_KEY,
     CASE_DOCUMENT_FOLDER_HEADERS, CASE_DOCUMENT_TYPES, CASE_FORMAL_DOCUMENT_FOLDERS, CASE_FORMAL_DOCUMENT_FOLDER_ORDER, CASE_INVESTIGATION_DOCUMENT_FOLDERS,
     CASE_LEGACY_LAW_FIRM_LETTER_TYPES, CUSTOMER_CREATE_DATA_FIELDS, SEAL_ACTION_CODES, SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY,
     SEAL_USE_TYPES, WORD_EDITOR_LOCK_SECONDS,
@@ -173,6 +173,9 @@ async def _execute_case_agent_action(
     payload = action.get("payload") or {}
     if not isinstance(payload, dict):
         raise HTTPException(status_code=422, detail="智能体操作参数格式错误")
+    if action_type in {"case.update", "case.data.update"}:
+        from app.core.case_agent_personnel import _case_agent_handling_lawyer_data
+        from app.core.cases import _case_commission_personnel_changed, _recalculate_case_draft_commissions
 
     if action_type in {"case.delete", "customer.delete", "contract.delete"}:
         module = action_type.split(".", 1)[0]
@@ -252,11 +255,15 @@ async def _execute_case_agent_action(
         return {"record_id": target_id, "operation": action_type, "updated_fields": changes, "record": updated}
 
     if action_type == "case.update":
-        changes = _case_agent_changes(payload)
+        changes = dict(_case_agent_changes(payload))
+        personnel_changes = {
+            field: changes.pop(field) for field in list(changes) if field in AGENT_CASE_PERSONNEL_UPDATE_FIELDS
+        }
         invalid = sorted(set(changes) - AGENT_CASE_UPDATE_FIELDS)
         if invalid:
             raise HTTPException(status_code=422, detail=f"智能体无权修改字段：{', '.join(invalid)}")
         before_status = case_record.status
+        before_data = dict(case_record.data or {})
         applied = {}
         limits = {"title": 255, "customer": 255, "status": 32, "description": 5000}
         for field, value in changes.items():
@@ -265,14 +272,26 @@ async def _execute_case_agent_action(
                 raise HTTPException(status_code=422, detail=f"{field}不能为空")
             if len(normalized) > limits[field]:
                 raise HTTPException(status_code=422, detail=f"{field}内容过长")
-            setattr(case_record, field, normalized)
             applied[field] = normalized
+        updated_data = before_data
+        if personnel_changes:
+            updated_data = await _case_agent_handling_lawyer_data(before_data, personnel_changes, db)
+        for field, value in applied.items():
+            setattr(case_record, field, value)
+        if personnel_changes:
+            case_record.data = updated_data
+            applied.update({
+                "handling_lawyers": updated_data["handling_lawyers"],
+                "handling_lawyer_usernames": updated_data["handling_lawyer_usernames"],
+            })
         await assess_conflict_review(case_record, identity, db, trigger="case_save")
         gate = await get_conflict_review_gate(case_record, db, action="智能体修改案件阶段")
         stage_blocked = gate["blocking"] and case_record.status != before_status
         if stage_blocked:
             case_record.status = before_status
             applied.pop("status", None)
+        if personnel_changes and _case_commission_personnel_changed(before_data, case_record.data or {}):
+            await _recalculate_case_draft_commissions(case_record, db, identity["username"])
         db.add(WorkflowEvent(
             record_id=case_record.id,
             action="智能体审批后更新案件",
@@ -298,10 +317,13 @@ async def _execute_case_agent_action(
         return {"record_id": case_record.id, "operation": action_type, "updated_fields": applied, "conflict_review": (case_record.data or {}).get("conflict_review")}
 
     if action_type == "case.data.update":
-        changes = _case_agent_changes(payload)
+        changes = dict(_case_agent_changes(payload))
         invalid = sorted(set(changes) - AGENT_CASE_DATA_FIELDS)
         if invalid:
             raise HTTPException(status_code=422, detail=f"智能体无权修改案件扩展字段：{', '.join(invalid)}")
+        personnel_changes = {
+            field: changes.pop(field) for field in list(changes) if field in AGENT_CASE_PERSONNEL_UPDATE_FIELDS
+        }
         normalized_changes = {}
         for field, value in changes.items():
             if isinstance(value, (dict, list)):
@@ -311,7 +333,14 @@ async def _execute_case_agent_action(
                 raise HTTPException(status_code=422, detail=f"{field}内容过长")
             normalized_changes[field] = normalized
         previous_data = dict(case_record.data or {})
-        case_record.data = {**previous_data, **normalized_changes}
+        updated_data = {**previous_data, **normalized_changes}
+        if personnel_changes:
+            updated_data = await _case_agent_handling_lawyer_data(updated_data, personnel_changes, db)
+            normalized_changes.update({
+                "handling_lawyers": updated_data["handling_lawyers"],
+                "handling_lawyer_usernames": updated_data["handling_lawyer_usernames"],
+            })
+        case_record.data = updated_data
         await assess_conflict_review(case_record, identity, db, trigger="case_save")
         gate = await get_conflict_review_gate(case_record, db, action="智能体修改案件阶段")
         stage_blocked = gate["blocking"] and "case_stage" in normalized_changes
@@ -323,6 +352,8 @@ async def _execute_case_agent_action(
                 updated_data.pop("case_stage", None)
             case_record.data = updated_data
             normalized_changes.pop("case_stage")
+        if personnel_changes and _case_commission_personnel_changed(previous_data, case_record.data or {}):
+            await _recalculate_case_draft_commissions(case_record, db, identity["username"])
         db.add(WorkflowEvent(
             record_id=case_record.id,
             action="智能体审批后更新案件信息",

@@ -1338,12 +1338,17 @@ _BUILTIN_DOCUMENT_TEMPLATES: dict[str, dict] = {
 AGENT_CASE_UPDATE_FIELDS = {"title", "customer", "status", "description"}
 
 
+AGENT_CASE_PERSONNEL_UPDATE_FIELDS = {
+    "case_lawyer", "case_lawyer_name", "handling_lawyers", "handling_lawyer_usernames",
+}
+
+
 AGENT_CASE_DATA_FIELDS = {
     "court", "first_instance_court", "first_instance_case_no", "second_instance_court",
     "second_instance_case_no", "cause_or_charge", "case_stage", "filing_date",
     "acceptance_date", "judgment_date", "effective_date", "archive_no",
     "paper_archive_location", "client_position",
-}
+} | AGENT_CASE_PERSONNEL_UPDATE_FIELDS
 
 
 AGENT_ACTION_CAPABILITY = {

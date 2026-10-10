@@ -122,11 +122,25 @@ def _extract_proposed_action(content: str) -> tuple[str, dict[str, Any] | None]:
     return cleaned, action
 
 
+def _case_agent_case_source(case: dict[str, Any]) -> dict[str, Any]:
+    """将案件顶层字段与案件 data 合并为审批时使用的当前快照。"""
+    case_data = case.get("data") or {}
+    source = {**case_data, **case}
+    handling_lawyers = case_data.get("handling_lawyers")
+    handling_usernames = case_data.get("handling_lawyer_usernames")
+    if isinstance(handling_lawyers, list):
+        source["handling_lawyers"] = handling_lawyers
+        source["case_lawyer_name"] = handling_lawyers[0] if handling_lawyers else None
+    if isinstance(handling_usernames, list):
+        source["handling_lawyer_usernames"] = handling_usernames
+        source["case_lawyer"] = handling_usernames[0] if handling_usernames else None
+    return source
+
+
 def _action_preview(proposed_action: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
     action_type = proposed_action["type"]
     payload = proposed_action.get("payload") or {}
     case = snapshot.get("case") or {}
-    case_data = case.get("data") or {}
     if action_type in {"case.update", "case.data.update", "customer.update", "contract.update"}:
         changes = payload.get("changes") if isinstance(payload.get("changes"), dict) else payload
         if action_type == "customer.update":
@@ -135,7 +149,7 @@ def _action_preview(proposed_action: dict[str, Any], snapshot: dict[str, Any]) -
             target_id = int(payload.get("target_id") or 0)
             source = next((item for item in snapshot.get("contracts") or [] if int(item.get("id") or 0) == target_id), {})
         else:
-            source = case_data if action_type == "case.data.update" else case
+            source = _case_agent_case_source(case)
         return {
             "target": source.get("serial_no") or source.get("title") or case.get("serial_no") or case.get("id") or "当前案件",
             "changes": [
@@ -256,9 +270,19 @@ def build_case_model_messages(
                 "当用户明确要求修改系统数据时，只能在回答末尾追加一个操作块，格式必须为："
                 "<proposed_action>{\"type\":\"case.update\",\"summary\":\"操作摘要\",\"payload\":{\"changes\":{\"字段\":\"新值\"}}}</proposed_action>。"
                 "允许的 type 仅有 case.update、case.data.update、case.task.create、case.reminder.create、customer.update、contract.update、case.delete、customer.delete、contract.delete。"
+                "case.update 的 payload.changes 仅允许 title、customer、status、description、handling_lawyers、handling_lawyer_usernames。"
+                "case.data.update 的 payload.changes 仅允许 court、first_instance_court、first_instance_case_no、second_instance_court、"
+                "second_instance_case_no、cause_or_charge、case_stage、filing_date、acceptance_date、judgment_date、effective_date、"
+                "archive_no、paper_archive_location、client_position、handling_lawyers、handling_lawyer_usernames。"
+                "案件字段必须直接放在 changes 内，不得嵌套 data，不得添加名单外字段。"
                 "客户或合同修改必须在 payload 中提供 target_id 和 changes；target_id 只能是当前案件空间已关联记录。"
                 "案件任务 payload 使用 title、owner、deadline、priority、description；"
                 "案件提醒 payload 使用 content、reminder_date、deadline。"
+                "案件经办律师变更必须使用有序数组，优先只提交 handling_lawyer_usernames，填写真实员工 username 而非姓名；"
+                "目标账号必须启用，先核对当前授权人员信息中的 username，不得按姓名猜测账号。"
+                "缺少目标账号时先要求用户提供或核实账号，不得编造；姓名可能重名，只有确认唯一时才使用 handling_lawyers。"
+                "如果同时提交两个数组，姓名和账号必须按相同顺序逐项对应，系统按账号解析并保存正式团队关系。"
+                "case_lawyer 与 case_lawyer_name 仅用于读取历史兼容字段，新操作不得输出它们或与数组重复提交别名。"
                 "不要声称操作已经执行；没有明确写操作要求时绝对不要输出 proposed_action。"
                 "任何写操作都必须服从当前案件空间 capabilities；对应能力为 false 时，"
                 "只能说明无权限，不能输出 proposed_action，也不能建议绕过权限。\n\n"
