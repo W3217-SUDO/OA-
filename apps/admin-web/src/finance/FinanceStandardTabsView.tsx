@@ -25,6 +25,10 @@ export interface FinanceStandardTabsViewProps {
   canApprove: boolean;
   currentUser: { username: string; displayName: string };
   load: () => Promise<void>;
+  financeProjectionEnabled: boolean;
+  financeFeeListMeta: { total: number; page: number; pageSize: number };
+  financeTransactionMeta: { total: number; page: number; pageSize: number };
+  loadFinanceProjectionPage: (kind: "fees" | "transactions", page?: number, pageSize?: number) => Promise<void>;
   shownFees: Fee[];
   feeColumns: any[];
   invoices: FinanceFlow[];
@@ -70,6 +74,10 @@ export function FinanceStandardTabsView(props: FinanceStandardTabsViewProps) {
     canApprove,
     currentUser,
     load,
+    financeProjectionEnabled,
+    financeFeeListMeta,
+    financeTransactionMeta,
+    loadFinanceProjectionPage,
     shownFees,
     feeColumns,
     invoices,
@@ -195,6 +203,14 @@ export function FinanceStandardTabsView(props: FinanceStandardTabsViewProps) {
                   columns={feeColumns}
                   dataSource={shownFees}
                   scroll={{ x: 1500 }}
+                  pagination={financeProjectionEnabled ? {
+                    current: financeFeeListMeta.page,
+                    pageSize: financeFeeListMeta.pageSize,
+                    total: financeFeeListMeta.total,
+                    showSizeChanger: true,
+                    pageSizeOptions: [20, 50, 100, 200],
+                    onChange: (page, pageSize) => void loadFinanceProjectionPage("fees", page, pageSize),
+                  } : undefined}
                 />
               ) : tab === "receipts" ? (
                 <FinanceReceiptsTable {...receiptsView} />
@@ -210,6 +226,14 @@ export function FinanceStandardTabsView(props: FinanceStandardTabsViewProps) {
                   columns={transactionColumns}
                   dataSource={transactions}
                   scroll={{ x: 1500 }}
+                  pagination={financeProjectionEnabled ? {
+                    current: financeTransactionMeta.page,
+                    pageSize: financeTransactionMeta.pageSize,
+                    total: financeTransactionMeta.total,
+                    showSizeChanger: true,
+                    pageSizeOptions: [20, 50, 100, 200],
+                    onChange: (page, pageSize) => void loadFinanceProjectionPage("transactions", page, pageSize),
+                  } : undefined}
                 />
               ) : tab === "legacy-history" ? (
                 <LegacyHistoryPanel

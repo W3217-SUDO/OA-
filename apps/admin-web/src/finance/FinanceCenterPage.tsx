@@ -178,6 +178,8 @@ export default function FinanceCenterPage({
               ? "reconcile"
               : "fees";
   const initialTab = initialView === "finance-legacy-history" ? "legacy-history" : first;
+  // 标准财务中心使用统一投影；旧版专用流程继续走原有接口和操作链路。
+  const financeProjectionEnabled = !originalFinanceRoutes.includes(initialView) && initialView !== "finance-legacy-history";
   const [tab, setTab] = useState(initialTab);
   const [fees, setFees] = useState<Fee[]>([]);
   const [financeFeeListMeta, setFinanceFeeListMeta] = useState({
@@ -205,7 +207,7 @@ export default function FinanceCenterPage({
   const [refundGroupFilter, setRefundGroupFilter] = useState("");
   const [cases, setCases] = useState<Fee[]>([]);
   const financeFeeRefreshGuard = useMemo(() => createLatestRequestGuard(), []);
-  const { openCaseDetail, openContractDetail, openCustomerDetail, loadInternalDetails, load, loadLegacyFinanceHistory, openLegacyFinanceDetail, exportInternalDetails, exportConfiguredRows } = createFinanceQueriesActions({
+  const { openCaseDetail, openContractDetail, openCustomerDetail, loadInternalDetails, loadFinanceProjectionPage, load, loadLegacyFinanceHistory, openLegacyFinanceDetail, exportInternalDetails, exportConfiguredRows } = createFinanceQueriesActions({
     get onNavigate() { return onNavigate; },
     get internalDetailMeta() { return internalDetailMeta; },
     get internalDetailParams() { return internalDetailParams; },
@@ -246,7 +248,11 @@ export default function FinanceCenterPage({
     get dashboardFeeQuerySeed() { return dashboardFeeQuerySeed; },
     get dashboardQueue() { return dashboardQueue; },
     get setFees() { return setFees; },
+    get financeProjectionEnabled() { return financeProjectionEnabled; },
+    get financeFeeListMeta() { return financeFeeListMeta; },
     get setFinanceFeeListMeta() { return setFinanceFeeListMeta; },
+    get financeTransactionMeta() { return financeTransactionMeta; },
+    get setFinanceTransactionMeta() { return setFinanceTransactionMeta; },
     get setPaymentQueryMeta() { return setPaymentQueryMeta; },
     get setContractPayments() { return setContractPayments; },
     get setInvoices() { return setInvoices; },
@@ -371,6 +377,11 @@ export default function FinanceCenterPage({
     pageSize: 15,
   });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [financeTransactionMeta, setFinanceTransactionMeta] = useState({
+    page: 1,
+    pageSize: 100,
+    total: 0,
+  });
   const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
   const [summary, setSummary] = useState<FinanceSummary>({
     fees: 0,
@@ -1464,6 +1475,8 @@ export default function FinanceCenterPage({
   };
 
   const rollbackFinanceTransaction = (row: Transaction) => {
+    if (typeof row.id !== "number" || row.read_only) return;
+    const transactionId = row.id;
     Modal.confirm({
       title: "回退财务流水",
       content:
@@ -1475,7 +1488,7 @@ export default function FinanceCenterPage({
       cancelText: "取消",
       onOk: async () => {
         try {
-          await rollbackFinanceTransactionRequest(row.id);
+          await rollbackFinanceTransactionRequest(transactionId);
           if (voucherTarget?.id === row.id) {
             setVoucherOpen(false);
             setVoucherTarget(null);
@@ -5119,6 +5132,10 @@ export default function FinanceCenterPage({
     canApprove,
     currentUser,
     load,
+    financeProjectionEnabled,
+    financeFeeListMeta,
+    financeTransactionMeta,
+    loadFinanceProjectionPage,
     shownFees,
     feeColumns,
     invoices,

@@ -1,5 +1,14 @@
 export type Fee = {
   id: number;
+  /** 统一财务投影中的来源；历史行只读，现代行保留原有操作。 */
+  source?: "modern" | "legacy";
+  read_only?: boolean;
+  projection_id?: string;
+  can_edit?: boolean;
+  can_delete?: boolean;
+  can_submit?: boolean;
+  can_pay?: boolean;
+  can_refund?: boolean;
   module?: string;
   serial_no: string;
   title: string;
@@ -133,7 +142,11 @@ export type Attachment = {
 };
 
 export type Transaction = {
-  id: number;
+  id: number | string;
+  /** 统一财务投影中的来源；历史行只读，现代行保留原有操作。 */
+  source?: "modern" | "legacy";
+  read_only?: boolean;
+  can_cancel?: boolean;
   finance_record_id: number | null;
   finance_no: string;
   finance_title: string;

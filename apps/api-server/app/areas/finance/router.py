@@ -1840,3 +1840,53 @@ async def invoice_application_context(
 
 router.include_router(payment_workflow_router)
 router.include_router(receipt_files_router)
+
+
+@router.get(f"{settings.api_prefix}/finance/projection/fees")
+async def list_unified_finance_projection(
+    keyword: str = "",
+    source: str = Query("all", pattern="^(all|modern|legacy)$"),
+    status_filter: str = Query("", alias="status"),
+    fee_type: str = "",
+    include_inactive: bool = False,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(30, ge=1, le=200),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """合并现代费用记录与导入的 FAM 表头，仅用于展示。"""
+    from app.core.finance_projection import read_unified_finance_projection
+
+    return await read_unified_finance_projection(
+        identity,
+        db,
+        page=page,
+        page_size=page_size,
+        keyword=keyword,
+        source=source,
+        include_inactive=include_inactive,
+        status=status_filter,
+        fee_type=fee_type,
+    )
+
+
+@router.get(f"{settings.api_prefix}/finance/projection/transactions")
+async def list_unified_finance_transactions_projection(
+    keyword: str = "",
+    source: str = Query("all", pattern="^(all|modern|legacy)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(30, ge=1, le=200),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """合并现代流水与旧系统分配明细，不执行任何数据变更。"""
+    from app.core.finance_projection import read_unified_finance_transactions
+
+    return await read_unified_finance_transactions(
+        identity,
+        db,
+        page=page,
+        page_size=page_size,
+        keyword=keyword,
+        source=source,
+    )

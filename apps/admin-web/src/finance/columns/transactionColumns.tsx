@@ -37,7 +37,9 @@ export function createTransactionColumns(context: {
             title: "凭证附件", ...moneyColumnStyle("凭证附件"),
             key: "vouchers",
             width: 150,
-            render: (_: unknown, r: Transaction) => (<Button type="link" icon={<PaperClipOutlined />} onClick={() => context.openVouchers(r)}>
+            render: (_: unknown, r: Transaction) => r.read_only ? (
+              <Tag color="default">只读历史</Tag>
+            ) : (<Button type="link" icon={<PaperClipOutlined />} onClick={() => context.openVouchers(r)}>
           {r.voucher_count ? `${r.voucher_count} 个附件` : "上传凭证"}
         </Button>),
         },
@@ -51,7 +53,7 @@ export function createTransactionColumns(context: {
                     key: "action",
                     fixed: "right" as const,
                     width: 96,
-                    render: (_: unknown, r: Transaction) => (<Button danger type="link" onClick={() => context.rollbackFinanceTransaction(r)}>
+                    render: (_: unknown, r: Transaction) => r.read_only ? null : (<Button danger type="link" onClick={() => context.rollbackFinanceTransaction(r)}>
                 回退
               </Button>),
                 },
