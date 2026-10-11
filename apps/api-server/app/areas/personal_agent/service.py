@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import re
@@ -31,10 +30,11 @@ from app.agent_mcp.model_context import MODEL_QUERY_RULES, model_result_view
 from app.case_agent import RESPONSE_STYLE_RULES
 from app.areas.personal_agent.materials import material_message, prepare_materials
 from app.areas.personal_agent.response_runtime import ProgressCallback, ResponseMode, request_model
+from app.areas.personal_agent import conversations
 
 
 _WRITE_MARKER = re.compile(r"<personal_action>\s*(\{.*?\})\s*</personal_action>", re.S)
-_STATE_LOCK = asyncio.Lock()
+_STATE_LOCK = conversations.STATE_LOCK
 
 
 def _now() -> str:
@@ -59,41 +59,30 @@ def _user_dir(username: str) -> Path:
     return target
 
 
-def _state_path(username: str) -> Path:
-    return _user_dir(username) / "session.json"
-
-
 def _identity_path(username: str) -> Path:
     return _user_dir(username) / "IDENTITY.md"
 
 
 def _read_state(username: str) -> dict[str, Any]:
-    path = _state_path(username)
-    if not path.exists():
-        return {"messages": [], "pending_actions": [], "updated_at": ""}
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=500, detail="个人智能体会话文件无法读取") from exc
-    if not isinstance(value, dict):
-        raise HTTPException(status_code=500, detail="个人智能体会话文件格式错误")
-    return {
-        "messages": list(value.get("messages") or []),
-        "pending_actions": list(value.get("pending_actions") or []),
-        "structured_results": list(value.get("structured_results") or []),
-        "updated_at": str(value.get("updated_at") or ""),
-    }
-
-
-def _write_json(path: Path, value: dict[str, Any]) -> None:
-    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
+    return conversations.read_state(_user_dir(username))
 
 
 async def _save_state(username: str, state: dict[str, Any]) -> None:
-    async with _STATE_LOCK:
-        _write_json(_state_path(username), state)
+    await conversations.save_state(_user_dir(username), state)
+
+
+async def manage_conversations(identity: dict[str, Any], action: str = "list", conversation_id: str | None = None) -> dict[str, Any]:
+    directory = _user_dir(identity["username"])
+    await ensure_identity_file(identity)
+    if action == "create":
+        return await conversations.create_conversation(directory)
+    if action == "select" and conversation_id:
+        return await conversations.select_conversation(directory, conversation_id)
+    if action == "delete" and conversation_id:
+        return await conversations.delete_conversation(directory, conversation_id)
+    if action == "list":
+        return await conversations.list_conversations(directory)
+    raise HTTPException(status_code=422, detail="对话操作无效")
 
 
 def _safe_identity_payload(user: User, permissions: dict[str, Any]) -> dict[str, Any]:
@@ -299,18 +288,23 @@ def _action_from_model(action: dict[str, Any], identity: dict[str, Any], context
     return {"id": str(uuid4()), "type": action_type, "payload": safe_payload, "summary": "新建任务" if action_type == "create_task" else "审批合同", "status": "pending", "requested_by": identity["username"], "created_at": _now()}
 
 
-async def generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, skill_id: str = "general-office", attachment_ids: list[int] | None = None, case_id: int | None = None, document_ids: list[int] | None = None, response_mode: ResponseMode = "fast", on_progress: ProgressCallback | None = None) -> dict[str, Any]:
+async def generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, conversation_id: str | None = None, skill_id: str = "general-office", attachment_ids: list[int] | None = None, case_id: int | None = None, document_ids: list[int] | None = None, response_mode: ResponseMode = "fast", on_progress: ProgressCallback | None = None) -> dict[str, Any]:
+    async with conversations.conversation_operation(_user_dir(identity["username"]), conversation_id) as state:
+        return await _generate_response(identity, db, text, on_delta, state=state, skill_id=skill_id, attachment_ids=attachment_ids, case_id=case_id, document_ids=document_ids, response_mode=response_mode, on_progress=on_progress)
+
+
+async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, state: dict[str, Any], skill_id: str, attachment_ids: list[int] | None, case_id: int | None, document_ids: list[int] | None, response_mode: ResponseMode, on_progress: ProgressCallback | None) -> dict[str, Any]:
     username = identity["username"]
     skill = await _agent_skill_for_identity(skill_id, identity, db)
     if on_progress:
         await on_progress("正在读取本轮材料…" if attachment_ids or document_ids or case_id else "正在准备问题…")
     with measure_phase("personal_agent.materials"):
         materials = await prepare_materials(identity, db, attachment_ids or [], case_id, document_ids or [])
-    state = _read_state(username)
     metadata = {"skill_id": skill.id, "skill_name": skill.name, "case_id": case_id, "case_no": (materials["case"] or {}).get("case", {}).get("serial_no", ""), "attachments": [{"id": item["id"], "name": item["name"], "case_id": case_id if item["id"] in (document_ids or []) else None} for item in materials["readings"]]}
     user_message = {"role": "user", "content": text, "created_at": _now(), **metadata}
     state["messages"].append(user_message)
     state["messages"] = state["messages"][-100:]
+    state["updated_at"] = _now()
     await _save_state(username, state)
     if on_progress:
         await on_progress("正在获取当前待办…")
@@ -339,16 +333,20 @@ async def generate_response(identity: dict[str, Any], db: AsyncSession, text: st
     await _save_state(username, state)
     return {
         "response": response,
-        "state": {"messages": state["messages"], "pending_actions": state["pending_actions"], "structured_results": state["structured_results"]},
+        "state": state,
         "context": context,
     }
 
 
-async def decide_action(identity: dict[str, Any], db: AsyncSession, action_id: str, decision: str, comment: str = "") -> dict[str, Any]:
+async def decide_action(identity: dict[str, Any], db: AsyncSession, action_id: str, decision: str, comment: str = "", *, conversation_id: str | None = None) -> dict[str, Any]:
+    async with conversations.conversation_operation(_user_dir(identity["username"]), conversation_id) as state:
+        return await _decide_action(identity, db, action_id, decision, comment, state)
+
+
+async def _decide_action(identity: dict[str, Any], db: AsyncSession, action_id: str, decision: str, comment: str, state: dict[str, Any]) -> dict[str, Any]:
     from app.agent_mcp.auth import require_human_decision
 
     require_human_decision(action_id)
-    state = _read_state(identity["username"])
     action = next((item for item in state.get("pending_actions", []) if str(item.get("id")) == action_id), None)
     if not action:
         raise HTTPException(status_code=404, detail="待确认操作不存在或已处理")

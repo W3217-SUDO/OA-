@@ -4,6 +4,7 @@ import { api } from "../api";
 import { DEFAULT_AGENT_SKILL } from "../agentSkillRouting";
 import { aiWordDocumentName, isAiWordGenerationRequest, isUsableAiDocumentContent } from "../legal/constants";
 import { confirmCaseAgentDocument } from "../legal/services/agentDocumentConfirmation";
+import { usePersonalConversations } from "./usePersonalConversations";
 import { errorText, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
 
 const SUPPORTED_FILE = /\.(pdf|docx|xlsx|txt|png|jpe?g)$/i;
@@ -30,6 +31,16 @@ export function usePersonalWorkspace() {
   const requestRef = useRef<AbortController | null>(null);
   const uploadLock = useRef(false);
   const decisionLock = useRef(false);
+  const conversations = usePersonalConversations(setState);
+  const resetConversation = () => {
+    setInput(""); setMaterials([]); setCaseMaterials([]); setSelectedCase(null);
+    setSavedDocuments({}); setDecisionResult(undefined); setProgress("");
+  };
+  const changeConversation = async (operation: () => Promise<WorkspaceState>, reset = true) => {
+    if (requestRef.current || uploadLock.current || decisionLock.current || loading) throw new Error("请先完成当前操作，再切换对话");
+    await operation();
+    if (reset) resetConversation();
+  };
 
   const refreshSkills = async () => {
     const { data } = await api.get<{ items: WorkspaceSkill[] }>("/agent/skills");
@@ -40,11 +51,10 @@ export function usePersonalWorkspace() {
     setLoading(true);
     setLoadError("");
     try {
-      const [statusResponse, stateResponse] = await Promise.all([
-        api.get<WorkspaceStatus>("/personal-agent/status"), api.get<WorkspaceState>("/personal-agent/state"), refreshSkills(),
+      const [statusResponse] = await Promise.all([
+        api.get<WorkspaceStatus>("/personal-agent/status"), conversations.load(), refreshSkills(),
       ]);
       setStatus(statusResponse.data);
-      setState(stateResponse.data);
       setSavedDocuments({});
     } catch (error) { setLoadError(errorText(error, "工作台加载失败")); }
     finally { setLoading(false); }
@@ -52,7 +62,7 @@ export function usePersonalWorkspace() {
   useEffect(() => { void load(); return () => requestRef.current?.abort(); }, []);
 
   const upload = async (files: File[]) => {
-    if (!files.length || uploadLock.current || requestRef.current) return;
+    if (!files.length || uploadLock.current || requestRef.current || conversations.locked()) return;
     if (materials.length + caseMaterials.length + files.length > 12) { message.warning("每次提问最多选择12份材料"); return; }
     if (files.some((file) => !SUPPORTED_FILE.test(file.name) || !file.size || file.size > 20 * 1024 * 1024)) {
       message.error("请选择20MB以内的 PDF、Word（.docx）、Excel（.xlsx）、TXT 或 PNG/JPG 图片"); return;
@@ -74,7 +84,7 @@ export function usePersonalWorkspace() {
   const chooseCase = (item: WorkspaceCase | null) => { setSelectedCase(item); setCaseMaterials([]); };
   const send = async () => {
     const content = input.trim();
-    if (!content || requestRef.current || uploadLock.current || loading || loadError || !status?.ready) return;
+    if (!content || requestRef.current || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
     const skill = skills.find((item) => item.id === skillId && item.available);
     if (!skill) { message.error("所选技能已停用或不存在，请重新选择"); return; }
     const controller = new AbortController();
@@ -82,13 +92,18 @@ export function usePersonalWorkspace() {
     setSending(true);
     setProgress("正在连接办公助手…");
     setInput("");
-    const assistantIndex = state.messages.length + 1;
+    let assistantIndex = state.messages.length + 1;
     const metadata = { skill_name: skill.name, case_id: selectedCase?.id, case_no: selectedCase?.serial_no };
-    setState((current) => ({ ...current, messages: [...current.messages, { role: "user", content, ...metadata, attachments: [...materials, ...caseMaterials] }, { role: "assistant", content: "", ...metadata }] }));
+    let started = false;
     try {
+      const conversation = state.conversation_id ? state : await conversations.create();
+      if (controller.signal.aborted) throw new DOMException("已停止生成", "AbortError");
+      assistantIndex = conversation.messages.length + 1;
+      setState({ ...conversation, messages: [...conversation.messages, { role: "user", content, ...metadata, attachments: [...materials, ...caseMaterials] }, { role: "assistant", content: "", ...metadata }] });
+      started = true;
       const response = await fetch("/api/v1/personal-agent/messages", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("access_token") || ""}` },
-        body: JSON.stringify({ content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: selectedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast" }), signal: controller.signal,
+        body: JSON.stringify({ conversation_id: conversation.conversation_id, content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: selectedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast" }), signal: controller.signal,
       });
       if (!response.ok || !response.body) {
         const detail = await response.text();
@@ -129,17 +144,21 @@ export function usePersonalWorkspace() {
       setCaseMaterials([]);
     } catch (error) {
       const stopped = (error as Error).name === "AbortError";
-      setState((current) => ({ ...current, messages: current.messages.map((item, index) => index === assistantIndex ? { ...item, failed: !stopped, content: stopped ? item.content || "已停止生成" : errorText(error, "智能体处理失败") } : item) }));
+      if (started) setState((current) => ({ ...current, messages: current.messages.map((item, index) => index === assistantIndex ? { ...item, failed: !stopped, content: stopped ? item.content || "已停止生成" : errorText(error, "智能体处理失败") } : item) }));
+      else if (!stopped) message.error(errorText(error, "新建对话失败"));
       if (!stopped) setInput(content);
-    } finally { requestRef.current = null; setSending(false); setProgress(""); }
+    } finally {
+      requestRef.current = null; setSending(false); setProgress("");
+      try { await conversations.refresh(); } catch (error) { message.error(errorText(error, "对话列表刷新失败")); }
+    }
   };
 
   const decide = async (action: PendingAction, decision: "approved" | "rejected") => {
-    if (decisionLock.current || sending) return false;
+    if (decisionLock.current || requestRef.current || conversations.locked()) return false;
     decisionLock.current = true;
     setDecisionId(action.id);
     try {
-      const { data } = await api.post<{ state: WorkspaceState; result?: unknown }>(`/personal-agent/actions/${action.id}/decision`, { decision }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
+      const { data } = await api.post<{ state: WorkspaceState; result?: unknown }>(`/personal-agent/actions/${action.id}/decision`, { conversation_id: state.conversation_id, decision }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
       setState(data.state);
       setDecisionResult(data.result);
       message.success(decision === "approved" ? "操作已完成" : "已取消操作");
@@ -154,5 +173,8 @@ export function usePersonalWorkspace() {
     confirmCaseAgentDocument({ caseId: item.case_id, serialNo: item.case_no || "", name, content: item.content, onSaved: async () => { setSavedDocuments((current) => ({ ...current, [index]: name })); } });
   };
 
-  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, responseMode, setResponseMode, progress, upload, uploading, materials, setMaterials, selectedCase, chooseCase, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, stop: () => requestRef.current?.abort(), refreshSkills, saveWord, savedDocuments };
+  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, responseMode, setResponseMode, progress, upload, uploading, materials, setMaterials, selectedCase, chooseCase, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, stop: () => requestRef.current?.abort(), refreshSkills, saveWord, savedDocuments,
+    conversations: conversations.items, conversationBusy: conversations.busy,
+    createConversation: () => changeConversation(conversations.create), selectConversation: (id: string) => id === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(id)), deleteConversation: (id: string) => changeConversation(() => conversations.remove(id), id === state.conversation_id),
+  };
 }

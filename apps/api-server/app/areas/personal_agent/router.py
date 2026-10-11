@@ -12,7 +12,7 @@ from app.config import settings
 from app.core.constants import logger
 from app.database import get_db
 from app.security import current_identity
-from app.areas.personal_agent.service import build_context, decide_action, generate_response, personal_identity, personal_state
+from app.areas.personal_agent.service import build_context, decide_action, generate_response, manage_conversations, personal_identity, personal_state
 from app.areas.personal_agent.workspace import workspace_commands
 from app.areas.personal_agent.response_runtime import ResponseMode, supports_response_modes
 
@@ -21,6 +21,7 @@ router = APIRouter()
 
 
 class PersonalMessageInput(BaseModel):
+    conversation_id: str | None = Field(default=None, max_length=64)
     content: str = Field(min_length=1, max_length=8000)
     skill_id: str = Field(default="general-office", max_length=120)
     attachment_ids: list[int] = Field(default_factory=list, max_length=12)
@@ -30,6 +31,7 @@ class PersonalMessageInput(BaseModel):
 
 
 class PersonalActionDecisionInput(BaseModel):
+    conversation_id: str | None = Field(default=None, max_length=64)
     decision: str = Field(pattern="^(approved|rejected)$")
     comment: str = Field(default="", max_length=1000)
 
@@ -64,6 +66,26 @@ async def personal_agent_workspace(identity: dict = Depends(current_identity), d
     )}
 
 
+@router.get(f"{settings.api_prefix}/personal-agent/conversations")
+async def personal_agent_conversations(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await manage_conversations(await personal_identity(identity, db))
+
+
+@router.post(f"{settings.api_prefix}/personal-agent/conversations")
+async def personal_agent_create_conversation(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await manage_conversations(await personal_identity(identity, db), "create")
+
+
+@router.post(f"{settings.api_prefix}/personal-agent/conversations/{{conversation_id}}/select")
+async def personal_agent_select_conversation(conversation_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await manage_conversations(await personal_identity(identity, db), "select", conversation_id)
+
+
+@router.delete(f"{settings.api_prefix}/personal-agent/conversations/{{conversation_id}}")
+async def personal_agent_delete_conversation(conversation_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await manage_conversations(await personal_identity(identity, db), "delete", conversation_id)
+
+
 @router.get(f"{settings.api_prefix}/personal-agent/identity.md")
 async def personal_agent_identity_file(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     safe_identity = await personal_identity(identity, db)
@@ -84,7 +106,7 @@ async def personal_agent_message(body: PersonalMessageInput, identity: dict = De
 
     async def run() -> None:
         try:
-            result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta, skill_id=body.skill_id, attachment_ids=body.attachment_ids, case_id=body.case_id, document_ids=body.document_ids, response_mode=body.response_mode, on_progress=on_progress), timeout=180)
+            result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta, conversation_id=body.conversation_id, skill_id=body.skill_id, attachment_ids=body.attachment_ids, case_id=body.case_id, document_ids=body.document_ids, response_mode=body.response_mode, on_progress=on_progress), timeout=180)
             await queue.put({"type": "state", "state": result["state"]})
         except TimeoutError:
             await queue.put({"type": "error", "detail": "个人智能体本轮处理超时，请查看待确认请求后继续"})
@@ -119,4 +141,4 @@ async def personal_agent_message(body: PersonalMessageInput, identity: dict = De
 @router.post(f"{settings.api_prefix}/personal-agent/actions/{{action_id}}/decision")
 async def personal_agent_action_decision(action_id: str, body: PersonalActionDecisionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     safe_identity = await personal_identity(identity, db)
-    return await decide_action(safe_identity, db, action_id, body.decision, body.comment)
+    return await decide_action(safe_identity, db, action_id, body.decision, body.comment, conversation_id=body.conversation_id)
