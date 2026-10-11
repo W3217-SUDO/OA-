@@ -98,6 +98,7 @@ export type LegacyFinanceSummary = {
   orphan_allocations: Array<Record<string, any>>;
   orphan_files: Array<Record<string, any>>;
   orphan_audits: Array<Record<string, any>>;
+  unverified_file_count?: number;
   amount_visible: boolean;
   read_only: boolean;
 };

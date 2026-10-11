@@ -1,8 +1,4 @@
-"""现代财务记录与旧 FAM 财务记录的只读展示投影。
-
-该模块只负责查询层归并。旧记录保持在 ``legacy_finance_*`` 表中，绝不
-转换为 ``FinanceTransaction``，也不参与现代费用审批、付款或退费状态机。
-"""
+"""财务业务记录与原始导入账本的查询投影。"""
 
 from __future__ import annotations
 
@@ -252,7 +248,7 @@ async def read_unified_finance_projection(
     status: str = "",
     fee_type: str = "",
 ) -> dict:
-    """将现代费用与旧 FAM 费用表头合并为只读投影。"""
+    """默认展示现行业务费用；原始账本供显式核对。"""
     from app.core.permissions import _record_scope_conditions
     from app.core.system import _allowed_field_keys
 
@@ -327,7 +323,7 @@ async def read_unified_finance_projection(
     rows = sorted(modern + legacy, key=lambda row: (str(row.get("updated_at") or ""), str(row.get("id") or "")), reverse=True)
     total = modern_total + legacy_total
     start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": total, "page": page, "page_size": page_size, "amount_visible": show_amount, "read_only": True}
+    return {"items": rows[start:start + page_size], "total": total, "page": page, "page_size": page_size, "amount_visible": show_amount, "read_only": source != "modern"}
 
 
 async def read_unified_finance_transactions(
@@ -339,7 +335,7 @@ async def read_unified_finance_transactions(
     keyword: str = "",
     source: str = "all",
 ) -> dict:
-    """将现代流水与历史分配明细合并返回，整个过程不产生写入。"""
+    """默认展示现行流水；原始分配明细供显式核对。"""
     from app.core.permissions import _record_scope_conditions
     from app.core.system import _allowed_field_keys
 
@@ -415,4 +411,4 @@ async def read_unified_finance_transactions(
     rows = sorted(modern + legacy, key=lambda row: (str(row.get("updated_at") or ""), str(row.get("id") or "")), reverse=True)
     total = modern_total + legacy_total
     start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": total, "page": page, "page_size": page_size, "amount_visible": show_amount, "read_only": True}
+    return {"items": rows[start:start + page_size], "total": total, "page": page, "page_size": page_size, "amount_visible": show_amount, "read_only": source != "modern"}

@@ -1039,10 +1039,14 @@ async def legacy_finance_history_summary(identity: dict = Depends(current_identi
             LegacyFinanceFile.orphan_reason,
             func.count(),
             func.coalesce(func.sum(LegacyFinanceFile.file_amount), 0),
-        ).where(LegacyFinanceFile.legacy_finance_record_id.is_(None)).group_by(
+        ).where(LegacyFinanceFile.legacy_finance_record_id.is_(None),
+                LegacyFinanceFile.orphan_reason != "").group_by(
             LegacyFinanceFile.orphan_reason,
         )
     )).all() if identity.get("role") in {"admin", "auditor"} else []
+    unverified_file_count = await db.scalar(select(func.count()).select_from(LegacyFinanceFile).where(
+        LegacyFinanceFile.is_active.is_(True), LegacyFinanceFile.physical_file_verified.is_(False),
+    )) if identity.get("role") in {"admin", "auditor"} else 0
     orphan_audit_rows = (await db.execute(
         select(
             LegacyFinanceAudit.audit_kind,
@@ -1102,6 +1106,7 @@ async def legacy_finance_history_summary(identity: dict = Depends(current_identi
             }
             for orphan_reason, count, amount in orphan_file_rows
         ],
+        "unverified_file_count": int(unverified_file_count or 0),
         "orphan_audits": [
             {
                 "audit_kind": audit_kind,
@@ -1848,7 +1853,7 @@ router.include_router(legacy_payment_history_router)
 @router.get(f"{settings.api_prefix}/finance/projection/fees")
 async def list_unified_finance_projection(
     keyword: str = "",
-    source: str = Query("all", pattern="^(all|modern|legacy)$"),
+    source: str = Query("modern", pattern="^(all|modern|legacy)$"),
     status_filter: str = Query("", alias="status"),
     fee_type: str = "",
     include_inactive: bool = False,
@@ -1857,7 +1862,7 @@ async def list_unified_finance_projection(
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
-    """合并现代费用记录与导入的 FAM 表头，仅用于展示。"""
+    """展示可操作的费用记录；原始导入账本仅供显式核对。"""
     from app.core.finance_projection import read_unified_finance_projection
 
     return await read_unified_finance_projection(
@@ -1876,13 +1881,13 @@ async def list_unified_finance_projection(
 @router.get(f"{settings.api_prefix}/finance/projection/transactions")
 async def list_unified_finance_transactions_projection(
     keyword: str = "",
-    source: str = Query("all", pattern="^(all|modern|legacy)$"),
+    source: str = Query("modern", pattern="^(all|modern|legacy)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(30, ge=1, le=200),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
-    """合并现代流水与旧系统分配明细，不执行任何数据变更。"""
+    """展示现行财务流水；原始导入明细仅供显式核对。"""
     from app.core.finance_projection import read_unified_finance_transactions
 
     return await read_unified_finance_transactions(

@@ -11,7 +11,6 @@ import {FinanceOriginalQueryView, type FinanceOriginalQueryViewProps} from "./Fi
 import {GeneralSettlementExpandedRow} from "./GeneralSettlementExpandedRow";
 import {FeeQueryPageSummary, FeeQueryTotalBody, InternalPaymentPageSummary, PaymentPackagePageSummary, PaymentPackageTotalBody, PaymentQueryPageSummary, PaymentQueryTotalBody} from "./FinanceOriginalTotals";
 import {FinanceFeeQueryActions} from "./FinanceFeeQueryActions";
-import {LegacyFinanceRouteSection} from "./LegacyFinanceRouteSection";
 
 import type {ComponentProps} from "react";
 
@@ -269,9 +268,6 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
             }`}
           >
             <FinanceOriginalQueryView {...originalQueryView} />
-            {initialView.startsWith("finance-payment-") && (
-              <LegacyFinanceRouteSection key={initialView} route={initialView} />
-            )}
             <div className="finance-original-table-wrap">
               <Table
                 rowKey="id"
@@ -1485,9 +1481,6 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
               </div>
             )}
           </section>
-          {!initialView.startsWith("finance-payment-") && (
-            <LegacyFinanceRouteSection key={initialView} route={initialView} />
-          )}
     </>
   );
 }

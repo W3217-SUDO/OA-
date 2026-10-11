@@ -56,7 +56,7 @@ const projectionFeeParams = (route: string, tab: string) => ({
         : route.startsWith("finance-settlement") ? "结算费用"
             : route.startsWith("finance-archive-fee") ? "归档费用" : undefined,
     status: route.startsWith("finance-audit") || tab === "audit" ? "待审批" : undefined,
-    source: route.startsWith("finance-audit") || tab === "audit" ? "modern" : "all",
+    source: "modern",
 });
 
 async function loadMyInternalApplications() {
@@ -1007,7 +1007,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             setLegacyFinanceSummary(summaryRes.data);
         }
         catch (error: any) {
-            message.error(error?.response?.data?.detail || "历史财务账本加载失败");
+            message.error(error?.response?.data?.detail || "导入数据核对加载失败");
         }
         finally {
             setLegacyFinanceLoading(false);
@@ -1022,7 +1022,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             setLegacyFinanceDetail(data);
         }
         catch (error: any) {
-            message.error(error?.response?.data?.detail || "历史财务明细加载失败");
+            message.error(error?.response?.data?.detail || "导入来源明细加载失败");
         }
         finally {
             setLegacyFinanceDetailLoading(false);

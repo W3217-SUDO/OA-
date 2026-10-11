@@ -138,6 +138,8 @@ async def create_finance_transaction(body: FinanceTransactionInput, identity: di
     if float(paid or 0) + body.amount > float((record.data or {}).get("amount", 0)) + 0.001: raise HTTPException(status_code=409, detail="付款金额不能超过费用金额")
     item = FinanceTransaction(**body.model_dump(), operator=identity["username"]); db.add(item); await db.flush()
     if record:
+        from app.core.imported_internal_finance import adjust_imported_internal_paid
+        await adjust_imported_internal_paid(record, body.amount, db)
         previous = record.status
         if body.transaction_type == "付款":
             paid_total = float(paid or 0) + body.amount
@@ -154,12 +156,16 @@ async def delete_finance_transaction(transaction_id: int, identity: dict = Depen
     item = await db.get(FinanceTransaction, transaction_id)
     if not item: raise HTTPException(status_code=404, detail="财务流水不存在")
     record = await db.get(BusinessRecord, item.finance_record_id) if item.finance_record_id else None
+    if record and (record.data or {}).get("legacy_kind") == "internal_fee_source":
+        raise HTTPException(409, "导入费用的付款流水须通过关联付款包冲正")
     attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.finance_transaction_id == item.id))).all()
     paths = [Path(x.path) for x in attachments]
     for attachment in attachments:
         await db.delete(attachment)
     await db.delete(item); await db.flush()
     if record and item.transaction_type == "付款":
+        from app.core.imported_internal_finance import adjust_imported_internal_paid
+        await adjust_imported_internal_paid(record, -float(item.amount), db)
         paid = float(await db.scalar(select(func.coalesce(func.sum(FinanceTransaction.amount), 0)).where(FinanceTransaction.finance_record_id == record.id, FinanceTransaction.transaction_type == "付款")) or 0)
         fee_amount = float((record.data or {}).get("amount", 0))
         record.status = "已审批" if paid <= 0 else ("已付款" if paid + 0.001 >= fee_amount else "部分付款")

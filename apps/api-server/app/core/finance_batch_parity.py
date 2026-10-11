@@ -57,7 +57,8 @@ def group_commission_applications(rows: list[dict]) -> list[dict]:
     for row in rows:
         data = row.get('data') or {}
         number = str(data.get('payment_application_no') or '').strip()
-        key = (number, data.get('case_no'), data.get('source_fee_id'), data.get('applicant')) if number else ('single', row['id'])
+        imported_id = data.get('internal_application_id') if data.get('legacy_kind') == 'internal_payment_line' else None
+        key = ('imported', imported_id) if imported_id else (number, data.get('case_no'), data.get('source_fee_id'), data.get('applicant')) if number else ('single', row['id'])
         groups.setdefault(key, []).append(row)
     result = []
     for items in groups.values():

@@ -54,7 +54,7 @@ export function createFeeColumns(context: {
             fixed: "right" as const,
             width: 145,
             render: (_: unknown, r: Fee) => r.read_only ? (
-              <Tag color="default">只读历史</Tag>
+              <Tag color="default">来源核对</Tag>
             ) : (<Space>
           {["草稿", "已退回"].includes(r.status) && (<Button type="link" icon={<AuditOutlined />} onClick={() => context.feeAction(r, "submit")}>
               提交

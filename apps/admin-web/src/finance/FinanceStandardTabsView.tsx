@@ -179,7 +179,7 @@ export function FinanceStandardTabsView(props: FinanceStandardTabsViewProps) {
                   }
                 }}
                 items={[
-                  { key: "legacy-history", label: "历史财务账本" },
+                  { key: "legacy-history", label: "导入数据核对" },
                   { key: "fees", label: "费用管理" },
                   {
                     key: "audit",

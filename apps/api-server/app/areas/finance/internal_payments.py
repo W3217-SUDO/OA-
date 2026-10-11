@@ -108,6 +108,7 @@ async def list_internal_payment_packages(
     page_size: int | None = Query(None, ge=1, le=200),
     status_filter: str = Query("", alias="status"),
     page_id: str = Query("", alias="page_id"),
+    package_scope: str = Query("all", alias="package_scope", pattern="^(all|ordinary|internal)$"),
     package_no: str = Query(""),
     payee: str = Query(""),
     payment_date_from: date | None = Query(None),
@@ -128,6 +129,10 @@ async def list_internal_payment_packages(
         BusinessRecord.module == "finance_package",
         *(await _record_scope_conditions(identity, db)),
     ]
+    if package_scope == "ordinary":
+        conditions.append(BusinessRecord.data["fee_type"].as_string() == "普通付款包")
+    elif package_scope == "internal":
+        conditions.append(BusinessRecord.data["fee_type"].as_string() != "普通付款包")
     if effective_status:
         conditions.append(BusinessRecord.status == effective_status)
     if package_no.strip():
@@ -168,6 +173,9 @@ async def list_internal_payment_package_candidates(
     items = [
         row for row in rows
         if (row.data or {}).get("fee_type") == "内部费用"
+        and (row.data or {}).get("legacy_kind") != "internal_fee_source"
+        and ((row.data or {}).get("legacy_kind") != "internal_payment_line"
+             or (row.data or {}).get("relation_status") == "已关联")
         and (row.status == "已审批" or (package_id is not None and row.status == "待核销" and int((row.data or {}).get("payment_package_id") or 0) == package_id))
     ]
     return {"items": await _record_dicts_for_identity(items, identity, db), "total": len(items)}
@@ -328,6 +336,7 @@ async def update_internal_payment_package(package_id: int, body: FinancePaymentP
 
 @router.post(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}/writeoff")
 async def writeoff_internal_payment_package(package_id: int, body: FinancePaymentPackageWriteoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.imported_internal_finance import adjust_imported_internal_paid
     from app.core.finance import (
         _round_fee_amount,
     )
@@ -362,6 +371,8 @@ async def writeoff_internal_payment_package(package_id: int, body: FinancePaymen
         "written_off_by": identity["username"],
     }
     fee_ids = [int(item_id) for item_id in package_data.get("fee_ids", [])]
+    if not fee_ids:
+        raise HTTPException(status_code=409, detail="付款包缺少费用明细，不能核销")
     fees = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(fee_ids), BusinessRecord.module == "finance"
     ))).all() if fee_ids else []
@@ -369,6 +380,8 @@ async def writeoff_internal_payment_package(package_id: int, body: FinancePaymen
         raise HTTPException(status_code=409, detail="付款包关联的费用记录不完整")
     for fee in fees:
         data = fee.data or {}
+        if fee.status != "待核销":
+            raise HTTPException(status_code=409, detail=f"费用 {fee.serial_no} 当前不可重复核销")
         if int(data.get("payment_package_id") or 0) != package.id:
             raise HTTPException(status_code=409, detail=f"费用 {fee.serial_no} 的付款包关联不一致")
         previous = fee.status
@@ -387,6 +400,10 @@ async def writeoff_internal_payment_package(package_id: int, body: FinancePaymen
             "written_off_at": written_off_at,
             "written_off_by": identity["username"],
         }
+        await adjust_imported_internal_paid(
+            fee, fee_amount, db, transaction_date=body.paid_date,
+            operator=identity["username"], voucher_no=body.invoice_no.strip(),
+        )
         db.add(WorkflowEvent(record_id=fee.id, action="付款包核销", from_status=previous, to_status="已付款", operator=identity["username"], comment=f"付款包 {package.serial_no}；单据号 {body.invoice_no.strip()}；{body.remark.strip()}"))
     db.add(WorkflowEvent(record_id=package.id, action="付款核销", from_status="待核销", to_status="已付款", operator=identity["username"], comment=f"{body.payment_method}；单据号 {body.invoice_no.strip()}；{body.remark.strip()}"))
     await db.commit()
@@ -395,6 +412,7 @@ async def writeoff_internal_payment_package(package_id: int, body: FinancePaymen
 
 @router.delete(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_internal_payment_package(package_id: int, reverse_paid: bool = Query(False), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.imported_internal_finance import adjust_imported_internal_paid
     from app.core.permissions import (
         _ensure_record_module,
     )
@@ -430,6 +448,12 @@ async def cancel_internal_payment_package(package_id: int, reverse_paid: bool = 
         ):
             raise HTTPException(status_code=409, detail=f"费用 {fee.serial_no} 的付款包关联不一致")
         previous = fee.status
+        if package.status == "已付款":
+            fee_amount = float(data.get("paid_amount") or 0)
+            await adjust_imported_internal_paid(
+                fee, -fee_amount, db, transaction_date=date.today(),
+                operator=identity["username"], voucher_no=str(package_data.get("invoice_no") or ""),
+            )
         fee.status = "已审批"
         fee.data = {key: value for key, value in data.items() if key not in payment_keys}
         action = "冲正已核销付款包" if package.status == "已付款" else "撤销打包付款"

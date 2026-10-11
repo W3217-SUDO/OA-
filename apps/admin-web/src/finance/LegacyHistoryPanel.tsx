@@ -41,14 +41,14 @@ interface LegacyHistoryPanelProps {
 }
 
 const KIND_LABELS: Record<LegacyFinanceRecord["record_kind"], string> = {
-  ap_payment: "历史请款",
-  ar_payment: "历史回款",
-  invoice: "历史开票",
-  ap_packing: "历史付款打包",
-  case_fee: "历史案件应收费用",
-  internal_fee: "历史内部费用",
-  internal_payment: "历史内部请款",
-  internal_packing: "历史内部付款打包",
+  ap_payment: "请款",
+  ar_payment: "回款",
+  invoice: "开票",
+  ap_packing: "付款打包",
+  case_fee: "案件应收费用",
+  internal_fee: "内部费用",
+  internal_payment: "内部请款",
+  internal_packing: "内部付款打包",
 };
 
 const mappingLabel = (value?: string) => {
@@ -112,7 +112,7 @@ export function LegacyHistoryPanel({
 
   const columns = [
     {
-      title: "历史编号",
+      title: "来源编号",
       dataIndex: "legacy_id",
       width: 148,
       render: (value: string, row: LegacyFinanceRecord) => (
@@ -217,8 +217,8 @@ export function LegacyHistoryPanel({
         className="finance-rule"
         type="info"
         showIcon
-        title="历史财务账本"
-        description="历史请款、回款、开票及付款打包与实时财务口径完全分离；仅可检索和查看原始迁移信息。"
+        title="导入数据核对"
+        description="按来源编号核对请款、回款、开票及付款打包的原始记录和关联；业务办理请使用对应财务页面。"
       />
       <div className="finance-stats">
         {(
@@ -252,32 +252,38 @@ export function LegacyHistoryPanel({
         })}
         {orphanCount > 0 ? (
           <Card size="small">
-            <Statistic title="孤儿历史引用" value={orphanCount} suffix="条" />
+            <Statistic title="未关联的来源记录" value={orphanCount} suffix="条" />
             <div className="finance-stat-caption">
-              父记录在旧库快照中缺失，已保留来源信息
+              来源记录缺少父记录，需核对原始数据
             </div>
+          </Card>
+        ) : null}
+        {Number(summary.unverified_file_count || 0) > 0 ? (
+          <Card size="small">
+            <Statistic title="文件实体待核实" value={summary.unverified_file_count} suffix="条" />
+            <div className="finance-stat-caption">来源记录存在，文件尚未验证可下载</div>
           </Card>
         ) : null}
       </div></>)}
       <Space wrap style={{ margin: "8px 0 12px" }}>
         <Input.Search
-          aria-label="历史财务账本检索"
-          placeholder="历史编号、合同、案件或客户编号"
+          aria-label="导入数据核对检索"
+          placeholder="来源编号、合同、案件或客户编号"
           value={keyword}
           onChange={(event) => onKeywordChange(event.target.value)}
           onSearch={() => onLoad(1, meta.pageSize)}
           style={{ width: 250 }}
         />
         <Input
-          aria-label="旧库状态码"
-          placeholder="旧库状态码"
+          aria-label="来源状态码"
+          placeholder="来源状态码"
           value={statusCode}
           onChange={(event) => onStatusCodeChange(event.target.value)}
           onPressEnter={() => onLoad(1, meta.pageSize)}
           style={{ width: 118 }}
         />
         <Select
-          aria-label="历史财务账本类型"
+          aria-label="导入数据核对类型"
           value={kind || undefined}
           placeholder="全部账本类型"
           allowClear={!compact}
@@ -331,14 +337,14 @@ export function LegacyHistoryPanel({
       />
       <Drawer
         open={detailLoading || Boolean(detail)}
-        title="历史财务账本明细"
+        title="导入来源记录明细"
         width={760}
         placement="right"
         onClose={onCloseDetail}
-        footer={<Tag color="default">只读历史镜像</Tag>}
+        footer={<Tag color="default">来源核对</Tag>}
       >
         {detailLoading ? (
-          <div className="finance-empty">正在加载历史财务明细...</div>
+          <div className="finance-empty">正在加载来源记录...</div>
         ) : detail ? (
           <>
             <Alert
@@ -359,7 +365,7 @@ export function LegacyHistoryPanel({
               bordered
               style={{ marginTop: 12 }}
             >
-              <Descriptions.Item label="历史编号">
+              <Descriptions.Item label="来源编号">
                 {detail.legacy_id || `#${detail.id}`}
               </Descriptions.Item>
               <Descriptions.Item label="账本类型">
@@ -513,7 +519,7 @@ export function LegacyHistoryPanel({
                 },
                 {
                   key: "audits",
-                  label: `审批历史（${detail.audits?.length || 0}）`,
+                  label: `审批记录（${detail.audits?.length || 0}）`,
                   children: (
                     <Table
                       size="small"

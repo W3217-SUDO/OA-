@@ -38,7 +38,7 @@ export function createTransactionColumns(context: {
             key: "vouchers",
             width: 150,
             render: (_: unknown, r: Transaction) => r.read_only ? (
-              <Tag color="default">只读历史</Tag>
+              <Tag color="default">来源核对</Tag>
             ) : (<Button type="link" icon={<PaperClipOutlined />} onClick={() => context.openVouchers(r)}>
           {r.voucher_count ? `${r.voucher_count} 个附件` : "上传凭证"}
         </Button>),

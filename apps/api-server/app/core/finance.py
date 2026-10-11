@@ -2052,7 +2052,7 @@ def _internal_fee_payment_status(item: BusinessRecord, paid_amount: float) -> st
     data = item.data or {}
     amount = float(data.get("amount", 0) or 0)
     explicit = str(data.get("payment_status", "")).strip()
-    if explicit in {"已付", "已付款"} or item.status == "已付款" or (amount > 0 and paid_amount >= amount):
+    if explicit in {"已付", "已付款"} or item.status == "已付款" or (amount > 0 and paid_amount >= amount) or (amount < 0 and paid_amount <= amount):
         return "已付"
     return "未付"
 
@@ -2073,6 +2073,7 @@ def _is_case_agency_fee_commission(item: BusinessRecord) -> bool:
         item.module == "finance"
         and item.status in _CASE_COMMISSION_PENDING_STATUSES
         and data.get("fee_type") == "内部费用"
+        and data.get("legacy_kind") != "internal_payment_line"
         and data.get("commission_lifecycle") != "case_agency_refund"
         and not data.get("is_refund")
         and is_explicit_internal_commission(data)
@@ -2312,15 +2313,35 @@ async def _internal_fee_rows(
         fee_conditions = [BusinessRecord.data["applicant"].as_string() == identity["username"]]
     else:
         fee_conditions = scope_conditions
-    fees = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", *fee_conditions).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
-    fees = [item for item in fees if (item.data or {}).get("fee_type") == "内部费用" and item.status != "已删除"]
+    imported_kind = BusinessRecord.data["legacy_kind"].as_string()
+    if scope in {"applications", "review"}:
+        fee_conditions.append(or_(imported_kind.is_(None), imported_kind != "internal_fee_source"))
+    else:
+        fee_conditions.append(or_(imported_kind.is_(None), imported_kind != "internal_payment_line"))
+    if scope == "review":
+        fee_conditions.append(BusinessRecord.status.in_(_CASE_COMMISSION_PENDING_STATUSES))
+    fees = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance",
+        BusinessRecord.data["fee_type"].as_string() == "内部费用",
+        BusinessRecord.status != "已删除", *fee_conditions,
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     if ids is not None:
         def application_key(item):
             data = item.data or {}
+            if data.get("legacy_kind") == "internal_payment_line" and data.get("internal_application_id"):
+                return ("imported", int(data["internal_application_id"]))
             return (data.get("payment_application_no"), data.get("case_no"), data.get("source_fee_id"), data.get("applicant") or data.get("commission_created_by") or data.get("handler") or item.owner)
         keys = {application_key(item) for item in fees if item.id in ids and (item.data or {}).get("payment_application_no")} if scope == "applications" else set()
         fees = [item for item in fees if item.id in ids or application_key(item) in keys]
-    case_records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *scope_conditions))).all())
+    linked_case_ids = {int((item.data or {}).get("case_id") or 0) for item in fees}
+    linked_case_nos = {str((item.data or {}).get("case_no") or "").strip() for item in fees
+                       if not (item.data or {}).get("case_id")}
+    linked_case_ids.discard(0)
+    linked_case_nos.discard("")
+    case_records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case", *scope_conditions,
+        or_(BusinessRecord.id.in_(linked_case_ids), BusinessRecord.serial_no.in_(linked_case_nos)),
+    ))).all()) if fees else []
     cases_by_id = {item.id: item for item in case_records}
     cases_by_no = {item.serial_no: item for item in case_records}
     fee_ids = [item.id for item in fees]
@@ -2332,6 +2353,16 @@ async def _internal_fee_rows(
             continue
         paid_by_fee[transaction.finance_record_id] = paid_by_fee.get(transaction.finance_record_id, 0.0) + float(transaction.amount or 0)
         paid_dates_by_fee.setdefault(transaction.finance_record_id, []).append(transaction.transaction_date)
+    paid_by_case_role: dict[str, dict[str, float]] = {}
+    for item in fees:
+        fee_data = item.data or {}
+        case_key = str(fee_data.get("case_no") or "")
+        role = str(fee_data.get("commission_type") or fee_data.get("fee_type_name") or "")
+        paid = paid_by_fee.get(item.id, 0.0)
+        if fee_data.get("legacy_kind") == "internal_payment_line":
+            paid = float(fee_data.get("paid_amount") or 0)
+        by_role = paid_by_case_role.setdefault(case_key, {})
+        by_role[role] = round(by_role.get(role, 0.0) + paid, 2)
     allowed_fields = await _allowed_field_keys(identity, db)
     selected_stages = {value.strip() for value in case_stages.split(",") if value.strip()}
     selected_types = {value.strip() for value in fee_types.split(",") if value.strip()}
@@ -2362,13 +2393,7 @@ async def _internal_fee_rows(
             row_data['customer_no'] = customer_record.serial_no if customer_record else data.get('customer_no', '')
             row_data['customer_manager'] = (customer_record.data or {}).get('customer_manager', row_data.get('customer_manager', '')) if customer_record else row_data.get('customer_manager', '')
             if 'finance.amount' in allowed_fields:
-                paid_by_role = {}
-                for f in fees:
-                    fd = f.data or {}
-                    if fd.get('case_no') == row_data.get('case_no'):
-                        role = fd.get('commission_type') or fd.get('fee_type_name') or ''
-                        paid_by_role[role] = round(paid_by_role.get(role, 0) + paid_by_fee.get(f.id, 0), 2)
-                row_data['paid_by_role'] = paid_by_role
+                row_data['paid_by_role'] = paid_by_case_role.get(str(row_data.get('case_no') or ''), {})
             complete_applications.append(row)
             # The application list displays lifecycle status, unlike payee details.
             row_data["payment_status"] = row["status"]
@@ -2408,6 +2433,8 @@ async def _internal_fee_rows(
         from app.core.finance_batch_parity import group_commission_applications
         def group_key(row):
             d = row.get("data") or {}
+            if d.get("legacy_kind") == "internal_payment_line" and d.get("internal_application_id"):
+                return ("imported", int(d["internal_application_id"]))
             return (d.get("payment_application_no"), d.get("case_no"), d.get("source_fee_id"), d.get("applicant")) if d.get("payment_application_no") else (row["id"],)
         matched = {group_key(row) for row in rows}
         return group_commission_applications([row for row in complete_applications if group_key(row) in matched])
@@ -3108,6 +3135,11 @@ async def _prepare_internal_payment_package(
     invalid_type = [item.serial_no for item in fees if (item.data or {}).get("fee_type") != "内部费用"]
     if invalid_type:
         raise HTTPException(status_code=409, detail="仅内部费用提成可以打包付款：" + "、".join(invalid_type))
+    invalid_relations = [item.serial_no for item in fees if
+                         (item.data or {}).get("legacy_kind") == "internal_payment_line"
+                         and (item.data or {}).get("relation_status") != "已关联"]
+    if invalid_relations:
+        raise HTTPException(status_code=409, detail="请款明细来源关联不完整：" + "、".join(invalid_relations))
     invalid_status = [
         item.serial_no
         for item in fees

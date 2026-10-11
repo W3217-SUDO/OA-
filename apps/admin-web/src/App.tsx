@@ -449,7 +449,7 @@ const menuItems: NavItem[] = [
       { key: "finance-settlement", label: "结算管理" },
       { key: "finance-archive-fee", label: "归档费结算" },
       { key: "finance-fee-query", label: "费用查询" },
-      { key: "finance-legacy-history", label: "历史财务账本" },
+      { key: "finance-legacy-history", label: "导入数据核对" },
     ],
   },
   {
@@ -463,7 +463,7 @@ const menuItems: NavItem[] = [
       { key: "platform-finance-settlement", label: "结算管理" },
       { key: "platform-finance-archive-fee", label: "归档费结算" },
       { key: "platform-finance-fee-query", label: "费用查询" },
-      { key: "platform-finance-legacy-history", label: "历史财务账本" },
+      { key: "platform-finance-legacy-history", label: "导入数据核对" },
     ],
   },
   {

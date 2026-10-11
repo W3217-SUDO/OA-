@@ -204,6 +204,7 @@ export const paymentPackageRequestParams = (
     return {
       page,
       page_size: pageSize,
+      package_scope: "ordinary",
       ...(String(query.routeField0 || "").trim() ? { package_no: String(query.routeField0).trim() } : {}),
       ...(String(query.routeField1 || "").trim() ? { status: String(query.routeField1).trim() } : {}),
       ...(String(query.routeField2 || "").trim() ? { payee: String(query.routeField2).trim() } : {}),
@@ -220,6 +221,7 @@ export const paymentPackageRequestParams = (
   return {
     page,
     page_size: pageSize,
+    package_scope: "internal",
     ...(pageId ? { page_id: pageId } : {}),
     ...(status ? { status } : {}),
   };

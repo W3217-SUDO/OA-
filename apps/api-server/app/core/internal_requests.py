@@ -55,6 +55,9 @@ async def refund_commission_ids(items: list[BusinessRecord], db: AsyncSession) -
 
 def _application_key(item: BusinessRecord) -> tuple:
     data = item.data or {}
+    imported_id = data.get("internal_application_id")
+    if data.get("legacy_kind") == "internal_payment_line" and imported_id:
+        return ("imported", int(imported_id))
     number = str(data.get("payment_application_no") or "").strip()
     if not number:
         return ("single", item.id)
@@ -67,26 +70,38 @@ def _application_key(item: BusinessRecord) -> tuple:
 async def _application_members(
     anchors: list[BusinessRecord], db: AsyncSession, *, lock: bool,
 ) -> list[BusinessRecord]:
+    imported_ids = {int((item.data or {}).get("internal_application_id")) for item in anchors
+                    if (item.data or {}).get("legacy_kind") == "internal_payment_line"
+                    and (item.data or {}).get("internal_application_id")}
     numbers = {str((item.data or {}).get("payment_application_no") or "").strip()
-               for item in anchors if str((item.data or {}).get("payment_application_no") or "").strip()}
+               for item in anchors if str((item.data or {}).get("payment_application_no") or "").strip()
+               and not (item.data or {}).get("internal_application_id")}
+    match_conditions = []
+    if numbers:
+        match_conditions.append(BusinessRecord.data["payment_application_no"].as_string().in_(numbers))
+    if imported_ids:
+        match_conditions.append(BusinessRecord.data["internal_application_id"].as_integer().in_(imported_ids))
     statement = select(BusinessRecord).where(
-        BusinessRecord.module == "finance",
-        BusinessRecord.data["payment_application_no"].as_string().in_(numbers),
+        BusinessRecord.module == "finance", or_(*match_conditions),
     ).order_by(BusinessRecord.id)
     if lock:
         statement = statement.with_for_update()
-    candidates = list((await db.scalars(statement)).all()) if numbers else []
-    by_number: dict[str, list[BusinessRecord]] = {}
+    candidates = list((await db.scalars(statement)).all()) if match_conditions else []
+    by_number: dict[tuple, list[BusinessRecord]] = {}
     for item in candidates:
-        by_number.setdefault(_application_key(item)[0], []).append(item)
+        by_number.setdefault(_application_key(item), []).append(item)
     result: dict[int, BusinessRecord] = {}
     for anchor in anchors:
         key = _application_key(anchor)
         if key[0] == "single":
             result[anchor.id] = anchor
             continue
-        same_number = by_number.get(key[0], [])
-        if not same_number or any(_application_key(item) != key for item in same_number):
+        same_number = by_number.get(key, [])
+        if not same_number or (
+            key[0] not in {"imported", "single"}
+            and any(_application_key(item) != key for item in candidates
+                    if str((item.data or {}).get("payment_application_no") or "").strip() == key[0])
+        ):
             raise HTTPException(409, "请款单关联数据不一致，不能部分操作")
         for item in same_number:
             result[item.id] = item
@@ -98,7 +113,7 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
     from app.core.finance import _internal_fee_rows
 
     rows = await _internal_fee_rows(
-        identity, db, scope="company", case_no="", handling_lawyer="",
+        identity, db, scope="review", case_no="", handling_lawyer="",
         assistant="", source_person="", customer="", customer_manager="",
         investigator="", payment_status="", paid_from=None, paid_to=None,
         payee="", case_stages="", fee_types="",
