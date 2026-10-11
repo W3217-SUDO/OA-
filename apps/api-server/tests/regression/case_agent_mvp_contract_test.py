@@ -292,7 +292,10 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         stream_support = []
 
         def respond(request):
-            requests.append(json.loads(request.content))
+            payload = json.loads(request.content)
+            requests.append(payload)
+            if payload["stream"]:
+                return httpx.Response(400, json={"error": {"message": "stream is not supported"}})
             return httpx.Response(400, json={"error": {"message": "invalid tools schema"}})
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
@@ -335,8 +338,8 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
             "tool_calls": [{"id": "call-1", "type": "function", "function": {"name": "oa_search_tools", "arguments": '{"query":"案件"}'}}],
         })
 
-    async def test_stream_auth_rate_limit_and_server_errors_are_not_retried(self):
-        for status in (401, 403, 429, 500, 502, 503):
+    async def test_stream_parameter_auth_rate_limit_and_server_errors_are_not_retried(self):
+        for status in (400, 401, 403, 422, 429, 500, 502, 503):
             with self.subTest(status=status):
                 requests = []
                 stream_support = []
