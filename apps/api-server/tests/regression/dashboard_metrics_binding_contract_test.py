@@ -278,6 +278,121 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
             full.assert_awaited_once_with(IDENTITY, db)
             self.assertEqual(cache.call_count, 4)
 
+    async def test_deleted_fee_supplement_keeps_official_explicit_unknown_and_null_status(self):
+        from sqlalchemy import JSON, literal, select
+        from sqlalchemy.dialects import postgresql
+        from app.core.constants import _OFFICIAL_RECEIVABLE_FEE_WORDS
+        from app.core.dashboard_receivable_input import dashboard_receivable_supplement_condition
+
+        def json_typeof(value):
+            if value is None:
+                return None
+            value = json.loads(value)
+            if value is None:
+                return "null"
+            if isinstance(value, str):
+                return "string"
+            if isinstance(value, bool):
+                return "boolean"
+            if isinstance(value, (int, float)):
+                return "number"
+            return "array" if isinstance(value, list) else "object"
+
+        async with self.engine.connect() as connection:
+            raw = await connection.get_raw_connection()
+            await raw.driver_connection.create_function("json_typeof", 1, json_typeof)
+        fields = ("fee_type", "fee_type_name", "case_fee_type_name", "expense_subtype", "contract_object_id")
+        condition = dashboard_receivable_supplement_condition({key: BusinessRecord.data[key] for key in fields})
+        sql = str(condition.compile(dialect=postgresql.dialect()))
+        self.assertIn("IS DISTINCT FROM", sql)
+        self.assertIn("json_typeof", sql)
+        self.assertNotIn(" AS INTEGER", sql)
+        examples = [
+            ("agency", "已删除", "代理费", {"fee_type": "代理费"}, False),
+            ("absent", "已删除", "代理费", {}, False),
+            ("nulls", "已删除", "代理费", {key: None for key in fields}, False),
+            ("live", "草稿", "代理费", {"fee_type": "代理费"}, True),
+            ("null-status", None, "代理费", {"fee_type": "代理费"}, True),
+            ("alias", "已删除", "代理费", {"fee_type": "官方费用"}, True),
+            ("conflict", "已删除", "代理费", {"fee_type": "官费", "fee_type_name": "代理费"}, True),
+            ("explicit", "已删除", "代理费", {"fee_type": "代理费", "contract_object_id": 19}, True),
+            ("explicit-unknown", "已删除", "代理费", {"contract_object_id": "invalid"}, True),
+            ("explicit-zero", "已删除", "代理费", {"contract_object_id": 0}, True),
+        ]
+        for key in fields[:-1]:
+            examples.extend((f"{key}-{index}", "已删除", "代理费", {key: value}, True)
+                            for index, value in enumerate((False, 0, [], {}, {"类型": "官费"})))
+            examples.extend((f"{key}-word-{index}", "已删除", "代理费", {key: word}, True)
+                            for index, word in enumerate(_OFFICIAL_RECEIVABLE_FEE_WORDS))
+        examples.extend((f"title-{index}", "已删除", word, {}, True)
+                        for index, word in enumerate(_OFFICIAL_RECEIVABLE_FEE_WORDS))
+        async with self.sessions() as db:
+            for name, status, title, data, keep in examples:
+                record = BusinessRecord(module="finance", serial_no=f"CODEX-DELETED-{name}", title=title,
+                                        status=status, owner="admin", department="测试部", data=data)
+                if status is not None:
+                    db.add(record)
+            await db.flush()
+            rows = (await db.scalars(select(BusinessRecord.serial_no).where(condition))).all()
+            self.assertEqual(set(rows), {f"CODEX-DELETED-{name}" for name, status, _, _, keep in examples
+                                         if status is not None and keep})
+            # 空状态不依赖模型的非空列，直接验证相同 SQL 表达式的三值语义。
+            with patch("app.core.dashboard_receivable_input.BusinessRecord", SimpleNamespace(
+                status=literal(None), title=literal("代理费"),
+            )):
+                empty = {key: literal({}, type_=JSON)[key] for key in fields}
+                self.assertTrue(await db.scalar(select(dashboard_receivable_supplement_condition(empty))))
+
+    async def test_deleted_fee_supplement_preserves_raw_amounts_and_default_detail(self):
+        from app.core.projections import _receivable_detail_projection
+        from app.core.finance import _fee_matches_contract_object, _receivable_fee_category
+        from app.core.finance_summary_query import read_fee_summaries
+
+        async with self.sessions() as db:
+            contract = BusinessRecord(module="contract", serial_no="CODEX-DELETED-CONTRACT", title="合同",
+                                      status="审批通过", owner="admin", department="测试部", data={})
+            db.add(contract)
+            await db.flush()
+            case = BusinessRecord(module="case", serial_no="CODEX-DELETED-CASE", title="案件",
+                                  status="一审", owner="admin", department="测试部", data={"contract_id": contract.id})
+            db.add(case)
+            await db.flush()
+            official = ContractObject(contract_record_id=contract.id, case_record_id=case.id,
+                                      fee_type="官费", amount=100, created_by="admin", updated_by="admin")
+            db.add(official)
+            await db.flush()
+            inputs = [
+                ("official", {"fee_type": "官方费用", "received_amount": 12.34}),
+                ("agency", {"fee_type": "代理费", "received_amount": 90}),
+                ("explicit", {"fee_type": "代理费", "received_amount": 23.45, "contract_object_id": official.id}),
+                ("conflict", {"fee_type": "官费", "fee_type_name": "代理费", "received_amount": 3.21}),
+                ("unknown", {"fee_type": {"value": "官费"}, "received_amount": 11}),
+            ]
+            fees = [BusinessRecord(module="finance", serial_no=f"CODEX-DELETED-AMOUNT-{name}", title="代理费",
+                    status="已删除", owner="admin", department="测试部",
+                    data={"contract_id": contract.id, "case_id": case.id, "case_no": case.serial_no,
+                          "amount": 100, **data}) for name, data in inputs]
+            db.add_all(fees)
+            await db.commit()
+            self.assertFalse(_fee_matches_contract_object(fees[1], official, case))
+            self.assertEqual(_receivable_fee_category(fees[1].data["fee_type"]), "agency")
+            self.assertTrue(_fee_matches_contract_object(fees[2], official, case))
+            self.assertTrue(_fee_matches_contract_object(fees[3], official, case))
+            records = [contract, case]
+            identity = {**IDENTITY, "_dashboard_case_ids": {case.id}}
+            before = await _receivable_detail_projection(identity, db, records, summary_only=True, official_only=True)
+            async def filtered_supplement(*args, **kwargs):
+                rows = await read_fee_summaries(*args, **kwargs)
+                return [row for row in rows if row.id != fees[1].id]
+
+            with patch("app.core.finance_summary_query.read_fee_summaries", side_effect=filtered_supplement):
+                after = await _receivable_detail_projection(identity, db, records, summary_only=True, official_only=True,
+                                                            dashboard_finance_only=True)
+            self.assertEqual(before, after)
+            self.assertEqual(next(row for row in after if row["id"] == f"object:{official.id}")["remaining_amount"], 61.0)
+            with self.assertRaises(ValueError):
+                await _receivable_detail_projection(identity, db, records, dashboard_finance_only=True)
+
     async def test_narrow_metadata_is_explicit_and_default_projection_is_unchanged(self):
         from app.core.record_projection_query import read_record_projections
         from app.core.dashboard_scope import DashboardFinanceCaseProjection

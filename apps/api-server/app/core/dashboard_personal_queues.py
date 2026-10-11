@@ -84,6 +84,7 @@ async def _personal_queues(identity, db, *, finance_only=False):
     with measure_phase("dashboard.receivables"):
         receivables = await dashboard_receivables(
             identity, db, records=[*scope.contracts, *scope.fees, *cases], summary_only=True,
+            finance_metrics=finance_only,
         )
     for row in receivables:
         case = by_id.get(row.get("case_record_id"))

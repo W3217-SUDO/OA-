@@ -74,7 +74,7 @@ async def _contract_customer_projection_context(records: list[BusinessRecord], d
 
 async def _receivable_detail_projection(
     identity: dict, db: AsyncSession, records: list[BusinessRecord] | None = None,
-    *, summary_only: bool = False, official_only: bool = False,
+    *, summary_only: bool = False, official_only: bool = False, dashboard_finance_only: bool = False,
 ) -> list[dict]:
     """Project the legacy contract-object receivable detail from visible data."""
     from app.core.finance import (
@@ -87,6 +87,11 @@ async def _receivable_detail_projection(
     from app.core.record_projection_query import read_record_projections
     from app.core.finance_summary_query import read_fee_summaries, receivable_payment_projection
     from app.core.json_relation_query import scalar_in_values
+
+    if dashboard_finance_only and not (
+        summary_only and official_only and records is not None and "_dashboard_case_ids" in identity
+    ):
+        raise ValueError("控制台补读筛选必须使用已授权的财务三卡范围")
 
     record_scope = None
     if records is None:
@@ -159,7 +164,11 @@ async def _receivable_detail_projection(
         for key, values in related_numbers:
             if values:
                 conditions.append(scalar_in_values(data[key].as_string(), values))
-        return [or_(*conditions)]
+        filters = [or_(*conditions)]
+        if dashboard_finance_only and db.get_bind().dialect.name == "postgresql":
+            from app.core.dashboard_receivable_input import dashboard_receivable_supplement_condition
+            filters.append(dashboard_receivable_supplement_condition(data))
+        return filters
 
     if any(values for _, values in (*related_ids, *related_numbers)):
         # 初始可见费用已经读取，只补充原有关系允许访问的其它费用。
