@@ -821,8 +821,8 @@ async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateIn
             raise HTTPException(status_code=403, detail="无权编辑该回款")
     if "finance.amount" not in await _allowed_field_keys(identity, db):
         raise HTTPException(status_code=403, detail="当前账号没有回款金额权限")
-    if item.source_kind != "manual":
-        raise HTTPException(status_code=403, detail="仅手动新增的回款可以编辑，导入或来源未确认的记录不可编辑")
+    if item.source_kind not in {"manual", "hz_crm_20260930"}:
+        raise HTTPException(status_code=403, detail="仅手动新增或已核对来源的回款可以编辑")
     allocated = max(float(item.allocated_amount or 0), sum(float(row.get("amount") or 0) for row in (item.allocations or []) if isinstance(row, dict)))
     if _round_fee_amount(body.amount) < _round_fee_amount(allocated):
         raise HTTPException(status_code=422, detail="回款金额不能小于已分配金额")

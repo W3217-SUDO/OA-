@@ -19,7 +19,6 @@ const paymentViews: Record<string, LegacyPaymentView> = {
 };
 
 function routeHistoryKinds(route: string): LegacyKind[] {
-  if (route.startsWith("finance-receipts-")) return ["ar_payment"];
   if (route.startsWith("finance-invoice-")) return ["invoice"];
   if (route === "finance-internal-detail" || route === "finance-internal-company") {
     return ["internal_fee", "internal_payment", "internal_packing"];

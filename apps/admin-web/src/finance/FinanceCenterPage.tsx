@@ -1516,7 +1516,7 @@ export default function FinanceCenterPage({
   const originalIncomingOperation = (_: unknown, r: IncomingPayment) => (
     <Space size={0}>
       {initialView === "finance-receipts-manage" ? (
-        canManage && r.source_kind === "manual" && r.amount !== null &&
+        canManage && ["manual", "hz_crm_20260930"].includes(r.source_kind || "") && r.amount !== null &&
         <Button type="link" onClick={() => setEditingIncoming(r)}>编辑</Button>
       ) : <Button type="link" onClick={() => setIncomingDetailTarget(r)}>查看</Button>}
       {initialView !== "finance-receipts-manage" && r.status === "待认领" && (
