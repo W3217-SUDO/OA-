@@ -84,6 +84,10 @@ async def publish(key, token, snapshot, result, *, ttl_seconds=None):
     ttl = settings.query_cache_ttl_seconds if ttl_seconds is None else ttl_seconds
     if type(ttl) is not int or not 1 <= ttl <= 300:
         raise ValueError("共享查询缓存有效期必须为 1 至 300 秒")
+    await _publish(key, token, snapshot, result, ttl)
+
+
+async def _publish(key, token, snapshot, result, ttl):
     # 文件、流和自定义响应的状态、头部不可被 JSON 缓存替换。
     if isinstance(result, Response):
         logger.info("查询结果未进入共享缓存：响应对象；key=%s", key)

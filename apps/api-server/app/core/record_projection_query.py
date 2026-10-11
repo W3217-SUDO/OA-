@@ -19,7 +19,8 @@ def _postgresql_record_projection(data_fields, legacy_fields, text_fields=(), *,
 
 
 async def read_record_projections(db, conditions, data_fields, *, legacy_fields=(), text_fields=(), annotations=None,
-                                  where_data=None, record_factory=None, metadata_fields=None):
+                                  where_data=None, record_factory=None, metadata_fields=None, filter_fields=None,
+                                  select_data_fields=False):
     columns = ("id", "module", "serial_no", "title", "customer", "status", "owner",
                "department", "description", "created_at", "updated_at")
     if metadata_fields is not None:
@@ -29,17 +30,30 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
             raise ValueError("精简元数据字段不能重复")
         columns = tuple(metadata_fields)
     data_fields = tuple(dict.fromkeys(data_fields))
+    if filter_fields is not None:
+        filter_fields = tuple(filter_fields)
+        if (where_data is None or not filter_fields or len(set(filter_fields)) != len(filter_fields)
+                or not set(filter_fields) <= set(data_fields)):
+            raise ValueError("筛选字段必须是返回字段的非空子集且声明筛选函数")
+    else:
+        filter_fields = data_fields
     legacy_fields = tuple(dict.fromkeys(legacy_fields))
     text_fields = tuple(dict.fromkeys(text_fields))
     if set(text_fields) & (set(data_fields) | ({"legacy_record"} if legacy_fields else set())):
         raise ValueError("JSON 与文本投影字段不能重名")
     read_model = uses_record_read_model(db, (*data_fields, *text_fields), legacy_fields)
     source = record_read_models.c.data if read_model else BusinessRecord.data
-    projection = _postgresql_record_projection(data_fields, legacy_fields, text_fields, source=source) if (
+    narrow_read_model = read_model and select_data_fields and bool(data_fields)
+    # 读模型直接返回原 JSON，筛选投影只需解析调用方声明的关系字段。
+    projection = _postgresql_record_projection(filter_fields if read_model and not narrow_read_model else data_fields,
+                                               legacy_fields, text_fields, source=source) if (
         data_fields and db.get_bind().dialect.name == "postgresql"
-        and (not read_model or where_data is not None or annotations is not None)
+        and (not read_model or narrow_read_model or where_data is not None or annotations is not None)
     ) else None
-    if read_model:
+    if narrow_read_model:
+        # 少量关系字段直接作为 JSON 列传回，保留标量类型和嵌套值，避免传输完整读模型。
+        data_columns = tuple(projection.c[key] for key in data_fields)
+    elif read_model:
         # 查询表已是精简 JSON，直接读取，避免重新组装所有空字段和文本权限字段。
         data_columns = (source,)
     elif projection is not None:
@@ -70,7 +84,7 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
         # 空路径保留原 JSON 取键的文本、数字及空值语义，筛选不再重读整份历史 JSON。
         query = query.where(*where_data({
             key: projection.c[key][()] if projection is not None else BusinessRecord.data[key]
-            for key in data_fields
+            for key in filter_fields
         }))
     query = query.where(*conditions).execution_options(yield_per=1024 if read_model else 256)
     result = await db.stream(query)
@@ -82,7 +96,7 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
         # 按既有有界批量消费游标，避免每一行都切换异步调度上下文。
         async for batch in result.partitions():
             for values in batch:
-                projected = values[len(columns)] if read_model or projection is not None else dict(
+                projected = values[len(columns)] if not narrow_read_model and (read_model or projection is not None) else dict(
                     zip(data_fields, values[len(columns):data_end]),
                 )
                 data = {key: value for key, value in projected.items() if key in data_keys and value is not None}

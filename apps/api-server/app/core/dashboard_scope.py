@@ -146,6 +146,7 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
             annotations=personal_annotation if case_summaries else None,
             record_factory=DashboardFinanceCaseProjection if finance_metrics else None,
             metadata_fields=("id", "module", "serial_no", "title", "status") if finance_metrics else None,
+            select_data_fields=finance_metrics,
         )
     case_ids = {item.id for item in cases}
     case_nos = {item.serial_no for item in cases}
@@ -168,6 +169,7 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
             BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
         ], FEE_SUMMARY_FIELDS if include_summaries else (*relation_fields, "case_id", "case_record_id", "case_no"),
             where_data=related_fee,
+            filter_fields=("case_id", "case_record_id", "case_no") if finance_metrics else None,
             record_factory=(DashboardFinanceFeeProjection if finance_metrics else
                             DashboardFeeProjection if include_summaries else None),
             metadata_fields=("id", "module", "serial_no", "title", "status", "updated_at")

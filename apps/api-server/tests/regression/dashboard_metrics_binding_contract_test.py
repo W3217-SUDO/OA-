@@ -255,24 +255,20 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
 
         request = Request({"type": "http", "method": "GET", "path": "/api/v1/dashboard", "headers": []})
         db = object()
-        async def cached(session, identity, namespace, parameters, compute, *, snapshot_reader=None, ttl_seconds=None):
-            from app.core.dashboard_revision import dashboard_snapshot
-            self.assertIs(snapshot_reader, dashboard_snapshot)
-            self.assertEqual(ttl_seconds, 300)
+        async def cached(session, identity, section, compute):
             self.assertIs(session, db)
             self.assertIs(identity, IDENTITY)
-            self.assertEqual(parameters, {})
-            self.assertTrue(namespace.startswith("dashboard."))
+            self.assertIn(section, {"metrics_finance", "metrics_cases", "todos", "cases"})
             return await compute()
         async def run(_request, calculation):
             return await calculation
-        with patch("app.core.query_cache.cached_query", side_effect=cached) as cache, \
+        with patch("app.core.dashboard_metrics_cache.cached_dashboard_query", side_effect=cached) as cache, \
              patch("app.core.dashboard_request.run_dashboard_read", side_effect=run), \
              patch("app.areas.system.router.dashboard", new=AsyncMock(return_value={"result": "original"})) as compute, \
              patch("app.core.dashboard_metrics_cache.read_dashboard_metrics", new=AsyncMock(return_value={"metrics": []})) as full:
             for section in ("metrics_finance", "metrics_cases", "todos", "cases"):
                 self.assertEqual(await dashboard_http(request, IDENTITY, db, section), {"result": "original"})
-                self.assertEqual(cache.call_args.args[2], f"dashboard.{section}")
+                self.assertEqual(cache.call_args.args[2], section)
                 compute.assert_awaited_with(IDENTITY, db, section)
             await dashboard_http(request, IDENTITY, db, "metrics")
             full.assert_awaited_once_with(IDENTITY, db)
@@ -418,6 +414,71 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 await read_record_projections(db, conditions, fields, metadata_fields=("id", "unknown"),
                                              record_factory=DashboardFinanceCaseProjection)
+
+    async def test_projection_filter_fields_keep_return_fields_and_json_types(self):
+        from sqlalchemy.dialects import postgresql
+        from app.core.record_projection_query import read_record_projections
+
+        fields = ("contract_id", "contract_record_id", "contract_no")
+        metadata = (1, "case", "CODEX-PROJECTION", "案件", "客户", "一审", "admin", "部门", "描述",
+                    datetime(2026, 1, 1), datetime(2026, 1, 2))
+        values = [
+            {"contract_id": 7, "contract_record_id": None, "contract_no": {"nested": None}, "amount": 50},
+            {"contract_id": False, "contract_no": [0, None, {"nested": None}]},
+            {"contract_id": "007", "contract_no": ""},
+            {},
+        ]
+        queries = []
+        returned = []
+        seen_fields = []
+        def where_data(data):
+            seen_fields.append(tuple(data))
+            return [data["contract_id"].as_string().is_not(None)]
+
+        class Rows:
+            def __init__(self, rows):
+                self.rows = rows
+                self.closed = False
+            async def partitions(self):
+                yield self.rows
+            async def close(self):
+                self.closed = True
+
+        async def stream(query):
+            queries.append(query)
+            rows = Rows([(*metadata, *(tuple(data.get(key) for key in fields) if narrow else (data,)))
+                         for data in values])
+            returned.append(rows)
+            return rows
+
+        db = SimpleNamespace(get_bind=lambda: SimpleNamespace(dialect=postgresql.dialect()), stream=stream)
+        outputs = []
+        for narrow in (False, True):
+            records = await read_record_projections(db, [], fields, where_data=where_data,
+                filter_fields=("contract_id",), select_data_fields=narrow)
+            outputs.append([vars(row) for row in records])
+        self.assertEqual(outputs[0], outputs[1])
+        self.assertEqual(outputs[0][0]["data"], {"contract_id": 7, "contract_no": {"nested": None}})
+        self.assertIs(outputs[1][1]["data"]["contract_id"], False)
+        self.assertEqual(outputs[1][1]["data"]["contract_no"], [0, None, {"nested": None}])
+        self.assertEqual(outputs[1][2]["data"], {"contract_id": "007", "contract_no": ""})
+        self.assertEqual(outputs[1][3]["data"], {})
+        self.assertEqual(seen_fields, [("contract_id",), ("contract_id",)])
+        self.assertTrue(all(row.closed for row in returned))
+        full_sql, narrow_sql = [str(query.compile(dialect=postgresql.dialect())) for query in queries]
+        self.assertIn("(contract_id JSON)", full_sql)
+        self.assertIn("(contract_id JSON, contract_record_id JSON, contract_no JSON)", narrow_sql)
+        self.assertEqual(len(queries[0].selected_columns), len(metadata) + 1)
+        self.assertEqual(len(queries[1].selected_columns), len(metadata) + len(fields))
+
+    async def test_projection_filter_fields_reject_invalid_declarations(self):
+        from app.core.record_projection_query import read_record_projections
+        async with self.sessions() as db:
+            for fields, where in (((), lambda data: []), (("unknown",), lambda data: []),
+                                  (("case_id", "case_id"), lambda data: []), (("case_id",), None)):
+                with self.assertRaises(ValueError):
+                    await read_record_projections(db, [], ("case_id", "case_no"),
+                        filter_fields=fields, where_data=where)
 
     async def test_dashboard_hearings_follow_case_court_fields_with_legacy_priority(self):
         first_hearing = datetime.combine(date.today() + timedelta(days=5), time(9, 30))
@@ -871,6 +932,95 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.store.settings.query_cache_ttl_seconds, 60)
             await self.original_publish("key", "owner", "10:20:", self.result)
             self.assertEqual(client.eval.await_args.args[-1], 60)
+
+    async def test_dashboard_retention_survives_refresh_expires_and_checks_live_revision(self):
+        from app.core import dashboard_metrics_cache as dashboard_cache
+
+        clock = 0
+        business_day = date(2026, 10, 12)
+        saved = {}
+        shared_flow = self.cache.read_shared_query
+
+        async def read_query(*args, **kwargs):
+            return await shared_flow(*args, **kwargs, today=lambda: business_day)
+
+        async def get(key):
+            entry = saved.get(key)
+            return entry[0] if entry is not None and clock < entry[1] else None
+
+        async def evaluate(_script, _count, _lock_key, data_key, _token, payload, ttl):
+            saved[data_key] = (payload, clock + ttl)
+            return 1
+
+        client = SimpleNamespace(get=AsyncMock(side_effect=get), eval=AsyncMock(side_effect=evaluate))
+        reader = AsyncMock(return_value="1:100:")
+        with patch.object(self.shared, "client", return_value=client), \
+             patch.object(self.store, "read", self.original_read), \
+             patch.object(self.cache, "read_shared_query", side_effect=read_query), \
+             patch.object(dashboard_cache, "dashboard_snapshot", reader), \
+             patch.object(dashboard_cache.settings, "dashboard_metrics_cache_ttl_seconds", 3600):
+            async def query():
+                return await dashboard_cache.cached_dashboard_query(self.db, IDENTITY, "metrics_finance", self.compute)
+
+            await query()
+            self.assertEqual(client.eval.await_args.args[-1], 3600)
+            self.compute.reset_mock()
+            clock = 301
+            self.assertEqual(await query(), jsonable_encoder(self.result))
+            self.compute.assert_not_awaited()
+            self.assertGreaterEqual(reader.await_count, 6)
+
+            reader.return_value = "2:201:"
+            clock = 302
+            self.compute.return_value = {"amount": 123.45}
+            self.assertEqual(await query(), {"amount": 123.45})
+            self.compute.assert_awaited_once()
+            self.compute.reset_mock()
+            clock = 3903
+            await query()
+            self.compute.assert_awaited_once()
+            self.compute.reset_mock()
+
+            self.revision.return_value = "source-b"
+            await query()
+            self.compute.assert_awaited_once()
+            self.compute.reset_mock()
+            await dashboard_cache.cached_dashboard_query(
+                self.db, {**IDENTITY, "field_keys": ["finance.amount"]}, "metrics_finance", self.compute,
+            )
+            self.compute.assert_awaited_once()
+            self.compute.reset_mock()
+            business_day += timedelta(days=1)
+            await query()
+            self.compute.assert_awaited_once()
+
+    async def test_dashboard_retention_keeps_generic_bounds_and_publication_errors(self):
+        from app.config import Settings
+        from app.core import dashboard_metrics_cache as dashboard_cache
+        from pydantic import ValidationError
+
+        self.assertEqual(Settings.model_fields["dashboard_metrics_cache_ttl_seconds"].default, 3600)
+        self.assertEqual(Settings.model_fields["query_cache_ttl_seconds"].default, 60)
+        self.assertEqual(Settings(_env_file=None, dashboard_metrics_cache_ttl_seconds=86400).dashboard_metrics_cache_ttl_seconds, 86400)
+        for invalid in (0, 86401):
+            with self.assertRaises(ValidationError):
+                Settings(_env_file=None, dashboard_metrics_cache_ttl_seconds=invalid)
+        with self.assertRaises(ValidationError):
+            Settings(_env_file=None, query_cache_ttl_seconds=301)
+
+        client = SimpleNamespace(eval=AsyncMock(return_value=1))
+        with patch.object(self.shared, "client", return_value=client), \
+             patch.object(dashboard_cache.settings, "dashboard_metrics_cache_ttl_seconds", 86400):
+            await dashboard_cache._publish_dashboard_query("key", "owner", "1:100:", self.result)
+            self.assertEqual(client.eval.await_args.args[-1], 86400)
+            with self.assertRaises(ValueError):
+                await self.original_publish("key", "owner", "1:100:", self.result, ttl_seconds=301)
+            await self.original_publish("key", "owner", "1:100:", self.result)
+            self.assertEqual(client.eval.await_args.args[-1], 60)
+            client.eval.return_value = 0
+            with self.assertRaises(HTTPException) as caught:
+                await dashboard_cache._publish_dashboard_query("key", "expired", "1:100:", self.result)
+            self.assertEqual(caught.exception.status_code, 503)
 
 
     async def test_request_and_orm_dependencies_are_not_encoded(self):

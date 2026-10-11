@@ -1,5 +1,6 @@
 import unittest
 from datetime import date
+from unittest.mock import patch
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -30,6 +31,106 @@ class Row7ReceivableDetailTest(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         await self.engine.dispose()
+
+    async def test_compact_receipts_preserve_binding_pool_and_zero_nested_receipts(self):
+        from app.core.finance_summary_query import receivable_payment_projection
+        from app.core.formatters import _case_fee_display_type
+
+        async with self.sessions() as db:
+            case = BusinessRecord(module="case", serial_no="CODEX-COMPACT-CASE", title="案件",
+                                  status="一审", owner="admin", department="测试部", data={})
+            db.add(case)
+            await db.flush()
+            definitions = [("官费", "草稿", 912345), ("代理费", "草稿", 912345),
+                           ("官费", "草稿", 0), ("官费", "已删除", 0), ("官费", "草稿", 0)]
+            fees = [BusinessRecord(module="finance", serial_no=f"CODEX-COMPACT-FEE-{index}",
+                        title=fee_type, status=status, owner="admin", department="测试部",
+                        data={"fee_type": fee_type, "case_id": case.id, "case_no": case.serial_no,
+                              "legacy_case_fee_id": legacy_id, "amount": 100})
+                    for index, (fee_type, status, legacy_id) in enumerate(definitions)]
+            db.add_all(fees)
+            await db.flush()
+            db.add(IncomingPayment(receipt_no="CODEX-COMPACT-RECEIPT", received_date=date(2026, 10, 12),
+                amount=500, payer_name="测试客户", status="已认领", operator="admin", allocations=[
+                    {"fee_id": fees[0].id, "amount": 99,
+                     "settlement_items": [{"fee_id": fees[2].id, "amount": 0}]},
+                    {"legacy_case_fee_id": 912345, "amount": 50},
+                    {"case_no": case.serial_no, "amount": 88},
+                    {"fee_id": fees[0].id, "amount": 0.015},
+                    {"fee_id": fees[0].id, "amount": 0.005},
+                    {"fee_id": fees[1].id, "amount": 1.234},
+                    {"fee_id": fees[3].id, "amount": 99},
+                ]))
+            await db.commit()
+            original = await receivable_payment_projection(fees, IDENTITY, db, record_scope=[], receipts_only=True)
+            with patch("app.core.formatters._case_fee_display_type", wraps=_case_fee_display_type) as display:
+                compact = await receivable_payment_projection(
+                    fees, IDENTITY, db, record_scope=[], receipts_only=True, compact_receipts=True,
+                )
+                display.assert_not_called()
+            self.assertEqual(compact, {
+                fees[0].id: {"cashed_amount": 0.02},
+                fees[1].id: {"cashed_amount": 1.23},
+                fees[2].id: {"cashed_amount": 0.0},
+            })
+            self.assertNotIn(fees[3].id, original)
+            self.assertEqual(original[fees[4].id]["cashed_amount"], 0)
+            for fee_id, values in compact.items():
+                self.assertEqual(values["cashed_amount"], original[fee_id]["cashed_amount"])
+            self.assertTrue(all(set(values) == {"fee_type", "cashed_amount"} for values in original.values()))
+            with self.assertRaises(ValueError):
+                await receivable_payment_projection(fees, IDENTITY, db, compact_receipts=True)
+
+    async def test_compact_summary_preserves_deleted_type_and_object_claims(self):
+        from app.core.finance import _receivable_fee_category
+        from app.core.projections import _receivable_detail_projection
+
+        async with self.sessions() as db:
+            contract = BusinessRecord(module="contract", serial_no="CODEX-COMPACT-CONTRACT", title="合同",
+                                      status="审批通过", owner="admin", department="测试部", data={})
+            db.add(contract)
+            await db.flush()
+            cases = [BusinessRecord(module="case", serial_no=f"CODEX-COMPACT-TYPE-CASE-{index}", title="案件",
+                        status="一审", owner="admin", department="测试部", data={"contract_id": contract.id})
+                     for index in range(2)]
+            db.add_all(cases)
+            await db.flush()
+            agency = ContractObject(contract_record_id=contract.id, case_record_id=cases[0].id,
+                                    fee_type="代理费", amount=100, created_by="admin", updated_by="admin")
+            db.add(agency)
+            await db.flush()
+            definitions = [
+                ("草稿", {"fee_type": "官费", "contract_object_id": agency.id}),
+                ("草稿", {"fee_type": "代理费", "fee_type_name": "官费", "amount": 100.125,
+                          "received_amount": 10.125}),
+                ("已删除", {"fee_type": "官费", "fee_type_name": "代理费", "amount": 30, "received_amount": 5}),
+                ("草稿", {"fee_type": "官费", "fee_type_name": "代理费"}),
+                ("已删除", {"fee_type": "代理费", "fee_type_name": "官费"}),
+                ("草稿", {"fee_type": "", "amount": 40}),
+            ]
+            fees = []
+            for index, (status, data) in enumerate(definitions):
+                case = cases[0] if index == 0 else cases[1]
+                fees.append(BusinessRecord(module="finance", serial_no=f"CODEX-COMPACT-TYPE-FEE-{index}",
+                    title="官费", status=status, owner="admin", department="测试部",
+                    data={"contract_id": contract.id, "case_id": case.id, "case_no": case.serial_no,
+                          "amount": 100, **data}))
+            db.add_all(fees)
+            await db.commit()
+            records = [contract, *cases, *fees]
+            identity = {**IDENTITY, "_dashboard_case_ids": {case.id for case in cases}}
+            original = await _receivable_detail_projection(
+                identity, db, records, summary_only=True, official_only=True,
+            )
+            with patch("app.core.finance._receivable_fee_category", wraps=_receivable_fee_category) as classify:
+                compact = await _receivable_detail_projection(
+                    identity, db, records, summary_only=True, official_only=True, dashboard_finance_only=True,
+                )
+                self.assertEqual(classify.call_count, 2)
+            self.assertEqual(compact, original)
+            self.assertEqual({row["id"]: row["remaining_amount"] for row in compact}, {
+                f"fee:{fees[1].id}": 90.0, f"fee:{fees[2].id}": 25.0, f"fee:{fees[5].id}": 40.0,
+            })
 
     async def test_dashboard_and_detail_share_receivable_projection(self):
         async with self.sessions() as db:

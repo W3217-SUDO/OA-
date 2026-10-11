@@ -29,11 +29,15 @@ async def read_fee_summaries(db, conditions, *, where_data=None):
     return await read_record_projections(db, conditions, FEE_SUMMARY_FIELDS, where_data=where_data)
 
 
-async def receivable_payment_projection(finances, identity, db, *, record_scope=None, receipts_only=False):
+async def receivable_payment_projection(
+    finances, identity, db, *, record_scope=None, receipts_only=False, compact_receipts=False,
+):
     """应收只计算收付款，复用已读取费用，不构造发票、退款和提成明细。"""
     from app.core.formatters import _case_fee_display_type
     from app.core.permissions import _record_scope_conditions
 
+    if compact_receipts and not receipts_only:
+        raise ValueError("精简收款投影只能用于只读收款统计")
     fees = [item for item in finances if item.status != "已删除"]
     if not fees:
         return {}
@@ -62,6 +66,12 @@ async def receivable_payment_projection(finances, identity, db, *, record_scope=
     if not receipts_only:
         payments = await read_fee_payments({fee.id for fee in fees}, db)
     receipts = await read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, filter_related=True)
+    if compact_receipts:
+        # 先用完整费用池绑定，之后仅构造有收款记录的金额；保留零金额及原累加顺序。
+        return {
+            fee_id: {"cashed_amount": round(sum(amount for _, amount in items), 2)}
+            for fee_id, items in receipts.items()
+        }
     result = {}
     for fee in fees:
         values = {

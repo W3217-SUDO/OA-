@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     cache_redis_url: str = ""
     cache_redis_max_connections: int = Field(default=16, ge=1, le=128)
     cache_redis_timeout_seconds: float = Field(default=1, gt=0, le=10)
-    dashboard_metrics_cache_ttl_seconds: int = Field(default=300, ge=1, le=300)
+    dashboard_metrics_cache_ttl_seconds: int = Field(default=3600, ge=1, le=86400)
     dashboard_metrics_cache_wait_seconds: float = Field(default=15, gt=0, le=60)
     dashboard_metrics_compute_timeout_seconds: float = Field(default=30, gt=0, le=120)
     query_cache_ttl_seconds: int = Field(default=60, ge=1, le=300)

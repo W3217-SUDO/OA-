@@ -77,6 +77,8 @@ async def _receivable_detail_projection(
     *, summary_only: bool = False, official_only: bool = False, dashboard_finance_only: bool = False,
 ) -> list[dict]:
     """Project the legacy contract-object receivable detail from visible data."""
+    from functools import cache
+
     from app.core.finance import (
         _fee_contract_record_id, _fee_matches_contract_object,
         _receivable_fee_category, _receivable_number, _receivable_relation_id,
@@ -86,6 +88,7 @@ async def _receivable_detail_projection(
     )
     from app.core.record_projection_query import read_record_projections
     from app.core.finance_summary_query import read_fee_summaries, receivable_payment_projection
+    from app.core.formatters import _case_fee_display_type
     from app.core.json_relation_query import scalar_in_values
 
     if dashboard_finance_only and not (
@@ -93,6 +96,8 @@ async def _receivable_detail_projection(
     ):
         raise ValueError("控制台补读筛选必须使用已授权的财务三卡范围")
 
+    # 仅在本次财务三卡计算内复用相同类型文本的纯分类结果。
+    classify_fee_type = cache(_receivable_fee_category) if dashboard_finance_only else _receivable_fee_category
     record_scope = None
     if records is None:
         record_scope = await _record_scope_conditions(identity, db)
@@ -182,6 +187,7 @@ async def _receivable_detail_projection(
     # 仅复用本次无写入读取的范围；外部传入记录时仍按原逻辑重新解析。
     finance_data_by_id = await receivable_payment_projection(
         finances, identity, db, record_scope=record_scope, receipts_only=summary_only,
+        compact_receipts=dashboard_finance_only,
     )
     # 合同编号是原匹配函数的首个必要条件，先归组避免明细逐条扫描全部费用。
     finances_by_contract: dict[int, list[BusinessRecord]] = {}
@@ -216,7 +222,7 @@ async def _receivable_detail_projection(
         ]
         matched_fee_ids.update(fee.id for fee in linked_fees)
         # 官费统计不计算最终被过滤的代理费，但仍标记其费用，避免历史行重复计入。
-        if summary_only and official_only and _receivable_fee_category(item.fee_type) != "official":
+        if summary_only and official_only and classify_fee_type(item.fee_type) != "official":
             continue
         paid = 0.0
         received = 0.0
@@ -238,7 +244,7 @@ async def _receivable_detail_projection(
         if summary_only:
             rows.append({"id": f"object:{item.id}", "contract_no": contract.serial_no,
                          "case_no": case_record.serial_no, "case_record_id": case_record.id,
-                         "fee_category": _receivable_fee_category(item.fee_type), "remaining_amount": remaining})
+                         "fee_category": classify_fee_type(item.fee_type), "remaining_amount": remaining})
             continue
         paid = min(_receivable_number(paid), amount)
         case_data = case_record.data or {}
@@ -256,7 +262,7 @@ async def _receivable_detail_projection(
             "case_stage": str(case_data.get("case_stage") or case_data.get("business_stage") or case_record.status),
             "case_type": str(case_data.get("case_type") or ""),
             "phase": str(case_data.get("case_stage") or case_data.get("business_stage") or case_record.status),
-            "fee_type": item.fee_type, "fee_category": _receivable_fee_category(item.fee_type),
+            "fee_type": item.fee_type, "fee_category": classify_fee_type(item.fee_type),
             "due_date": "", "amount": amount, "paid_amount": paid,
             "received_amount": received, "remaining_amount": remaining,
             "status": case_record.status, "payer": contract.customer,
@@ -273,8 +279,12 @@ async def _receivable_detail_projection(
         if fee.status in _INVALID_RECEIVABLE_FEE_STATUSES:
             continue
         projected = finance_data_by_id.get(fee.id, {})
-        fee_type = str(projected.get("fee_type") or data.get("fee_type") or fee.title or "案件费用").strip()
-        fee_category = _receivable_fee_category(fee_type)
+        projected_fee_type = projected.get("fee_type")
+        if dashboard_finance_only and fee.status != "已删除":
+            # 已删除费用原本不生成收款投影，不能为其补展示类型而改变历史行分类。
+            projected_fee_type = _case_fee_display_type(fee)
+        fee_type = str(projected_fee_type or data.get("fee_type") or fee.title or "案件费用").strip()
+        fee_category = classify_fee_type(fee_type)
         if summary_only and official_only and fee_category != "official":
             continue
         contract, case_record = relation(data)

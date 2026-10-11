@@ -8,17 +8,19 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date
 from time import monotonic
+from types import SimpleNamespace
 
 from app.core.dashboard_metrics import dashboard_metrics
 from app.core.query_cache_flow import read_shared_query, release_lock
 from app.core.dashboard_revision import dashboard_snapshot
 from app.config import settings
 from app.core import dashboard_metrics_redis as shared
+from app.core import query_cache_store
+from app.core.query_cache import _cached_query
 from redis.exceptions import RedisError
 
 
 _MAX_ENTRIES = 64
-_MAX_AGE_SECONDS = 300
 _SHARED_PREFIX = "sunhold:dashboard:metrics:v1"
 logger = logging.getLogger(__name__)
 
@@ -85,7 +87,7 @@ async def read_dashboard_metrics(identity, db):
             entry.result = deepcopy(result)
             entry.snapshot = snapshot
             entry.business_date = business_date
-            entry.expires_at = monotonic() + _MAX_AGE_SECONDS
+            entry.expires_at = monotonic() + settings.dashboard_metrics_cache_ttl_seconds
         return result
 
 
@@ -109,3 +111,22 @@ async def _read_shared_metrics(identity, db, snapshot):
         snapshot_reader=_visible_snapshot, release=_release_shared_lock,
         label="控制台统计", today=date.today,
     )
+
+
+async def _publish_dashboard_query(key, token, snapshot, result):
+    ttl = settings.dashboard_metrics_cache_ttl_seconds
+    if type(ttl) is not int or not 1 <= ttl <= 86400:
+        raise ValueError("控制台缓存留存时间必须为 1 至 86400 秒")
+    await query_cache_store._publish(key, token, snapshot, result, ttl)
+
+
+async def cached_dashboard_query(db, identity, section, compute):
+    if section not in {"metrics_finance", "metrics_cases", "todos", "cases"}:
+        raise ValueError("无效的控制台缓存分区")
+    # 留存期只控制清理；每次命中仍由共享流程核对当前业务修订号。
+    store = SimpleNamespace(
+        read=query_cache_store.read, acquire=query_cache_store.acquire,
+        unavailable=query_cache_store.unavailable, publish=_publish_dashboard_query,
+    )
+    return await _cached_query(db, identity, f"dashboard.{section}", {}, compute,
+                               snapshot_reader=dashboard_snapshot, query_store=store)

@@ -29,7 +29,6 @@ async def dashboard_unpaid_fee_rows(identity, db, cases_by_id, cases_by_no, *, f
             "case_fee_type_name", "expense_subtype", "writeoff_status", "payment_status",
             "source_fee_id", "commission_type", "commission_lifecycle", "is_refund", "expense_scope",
         ))
-    fees = sorted(fees, key=lambda item: (item.updated_at, item.id), reverse=True)
     # 类型条件与最终筛选一致，非官费不读取付款流水或计算提成生命周期。
     candidates = []
     for fee in fees:
@@ -39,6 +38,8 @@ async def dashboard_unpaid_fee_rows(identity, db, cases_by_id, cases_by_no, *, f
                 or "官费" in display_type or "诉讼费" in display_type
                 or display_type in {"保全费", "执行费"}):
             candidates.append((fee, display_type))
+    # 类型筛选不依赖顺序，保留候选的原排序，避免对无关费用排序。
+    candidates.sort(key=lambda item: (item[0].updated_at, item[0].id), reverse=True)
     fees = [fee for fee, _ in candidates]
     lifecycle = await _case_commission_lifecycle_statuses(fees, db)
     candidates = [(fee, display_type, _finance_fee_payment_status(fee, lifecycle.get(fee.id)))
