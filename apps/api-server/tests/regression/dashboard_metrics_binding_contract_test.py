@@ -198,6 +198,109 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(limited_list["total"], 1)
         self.assertEqual(limited_list["items"][0]["serial_no"], "CODEX-827-R6-FIRST")
 
+    async def test_finance_section_preserves_full_metrics_for_owner_and_contract_scope(self):
+        from app.core.dashboard_scope import CASE_QUEUES, load_dashboard_scope
+        from app.core.dashboard_personal_queues import personal_finance_queues
+
+        async with self.sessions() as db:
+            db.add(User(username="limited", display_name="受限用户", department="测试部",
+                        password_hash="unused", role="user", is_active=True))
+            contract = BusinessRecord(module="contract", serial_no="CODEX-FINANCE-CONTRACT", title="合同",
+                                      customer="客户", status="审批通过", owner="limited", department="测试部", data={})
+            db.add(contract)
+            await db.flush()
+            cases = [BusinessRecord(module="case", serial_no=f"CODEX-FINANCE-CASE-{index}", title="案件",
+                        customer="客户", status="一审补充证据", owner=owner, department="测试部",
+                        data={"contract_id": contract.id, "contract_no": contract.serial_no,
+                              "case_type": "民事争议", **staff})
+                     for index, (owner, staff) in enumerate([
+                         ("limited", {}), ("other", {}),
+                         ("other", {"handling_lawyer_usernames": ["limited"]}),
+                         ("limited", {"source_person_username": "other"}),
+                     ])]
+            db.add_all(cases)
+            await db.flush()
+            for index, case in enumerate(cases):
+                db.add(ContractObject(contract_record_id=contract.id, case_record_id=case.id,
+                                      fee_type="官费", amount=100.03, created_by="admin", updated_by="admin"))
+                db.add(BusinessRecord(module="finance", serial_no=f"CODEX-FINANCE-FEE-{index}", title="官费",
+                    customer="客户", status="草稿", owner="admin", department="测试部",
+                    data={"contract_id": contract.id, "case_id": case.id, "case_no": case.serial_no,
+                          "fee_type": "官方费用", "amount": 100.03, "received_amount": 20.01,
+                          "refund_requested_amount": 30, "refunded_amount": 1}))
+            await db.commit()
+            for identity in (IDENTITY, {"username": "limited", "role": "user"}):
+                full = await dashboard(identity, db, section="metrics")
+                with patch("app.core.dashboard_personal_queues.personal_case_queues", side_effect=AssertionError("重复案件队列")):
+                    finance = await dashboard(identity, db, section="metrics_finance")
+                self.assertEqual(finance["metrics"], [row for row in full["metrics"] if row["key"] not in CASE_QUEUES])
+                scope = await load_dashboard_scope(identity, db, include_summaries=True, finance_metrics=True)
+                self.assertIsNone(scope.personal_case_ids)
+                self.assertEqual(set(scope.cases[0]._fields), {"id", "module", "serial_no", "title", "status", "data"})
+                self.assertFalse(hasattr(scope.cases[0], "description"))
+                self.assertEqual(set(scope.cases[0].data), {"contract_id", "contract_no"})
+                original_scope = await load_dashboard_scope(identity, db, include_summaries=True)
+                self.assertEqual(set(scope.fees[0]._fields),
+                                 {"id", "module", "serial_no", "title", "status", "updated_at", "data"})
+                self.assertEqual([fee.id for fee in scope.fees], [fee.id for fee in original_scope.fees])
+                for narrow, original in zip(scope.fees, original_scope.fees):
+                    for key in narrow._fields:
+                        self.assertEqual(getattr(narrow, key), getattr(original, key))
+                    self.assertIsInstance(narrow.updated_at, datetime)
+                queues = await personal_finance_queues(identity, db)
+                self.assertEqual(len(queues["refund-pending"]), 2 if identity["username"] == "limited" else 0)
+
+    async def test_dashboard_sections_reuse_guarded_cache_without_changing_full_metrics_api(self):
+        from app.areas.system.router import dashboard_http
+
+        request = Request({"type": "http", "method": "GET", "path": "/api/v1/dashboard", "headers": []})
+        db = object()
+        async def cached(session, identity, namespace, parameters, compute):
+            self.assertIs(session, db)
+            self.assertIs(identity, IDENTITY)
+            self.assertEqual(parameters, {})
+            self.assertTrue(namespace.startswith("dashboard."))
+            return await compute()
+        async def run(_request, calculation):
+            return await calculation
+        with patch("app.core.query_cache.cached_query", side_effect=cached) as cache, \
+             patch("app.core.dashboard_request.run_dashboard_read", side_effect=run), \
+             patch("app.areas.system.router.dashboard", new=AsyncMock(return_value={"result": "original"})) as compute, \
+             patch("app.core.dashboard_metrics_cache.read_dashboard_metrics", new=AsyncMock(return_value={"metrics": []})) as full:
+            for section in ("metrics_finance", "metrics_cases", "todos", "cases"):
+                self.assertEqual(await dashboard_http(request, IDENTITY, db, section), {"result": "original"})
+                self.assertEqual(cache.call_args.args[2], f"dashboard.{section}")
+                compute.assert_awaited_with(IDENTITY, db, section)
+            await dashboard_http(request, IDENTITY, db, "metrics")
+            full.assert_awaited_once_with(IDENTITY, db)
+            self.assertEqual(cache.call_count, 4)
+
+    async def test_narrow_metadata_is_explicit_and_default_projection_is_unchanged(self):
+        from app.core.record_projection_query import read_record_projections
+        from app.core.dashboard_scope import DashboardFinanceCaseProjection
+        async with self.sessions() as db:
+            case = BusinessRecord(module="case", serial_no="CODEX-PROJECTION", title="案件", customer="客户",
+                                  status="一审", owner="admin", department="上海", description="不能伪造为空",
+                                  data={"contract_id": None, "contract_no": "HT", "nested": {"value": None}})
+            db.add(case)
+            await db.commit()
+            conditions = [BusinessRecord.id == case.id]
+            fields = ("contract_id", "contract_no", "nested")
+            default = (await read_record_projections(db, conditions, fields))[0]
+            narrow = (await read_record_projections(db, conditions, fields,
+                metadata_fields=("id", "module", "serial_no", "title", "status"),
+                record_factory=DashboardFinanceCaseProjection))[0]
+            self.assertEqual(narrow.data, default.data)
+            self.assertEqual(narrow.data, {"contract_no": "HT", "nested": {"value": None}})
+            self.assertEqual(default.description, "不能伪造为空")
+            for key in narrow._fields[:-1]:
+                self.assertEqual(getattr(default, key), getattr(narrow, key))
+            with self.assertRaises(ValueError):
+                await read_record_projections(db, conditions, fields, metadata_fields=("id",))
+            with self.assertRaises(ValueError):
+                await read_record_projections(db, conditions, fields, metadata_fields=("id", "unknown"),
+                                             record_factory=DashboardFinanceCaseProjection)
+
     async def test_dashboard_hearings_follow_case_court_fields_with_legacy_priority(self):
         first_hearing = datetime.combine(date.today() + timedelta(days=5), time(9, 30))
         retrial_hearing = datetime.combine(date.today() + timedelta(days=7), time(14, 15))

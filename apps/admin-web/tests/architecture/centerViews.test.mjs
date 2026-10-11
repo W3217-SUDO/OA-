@@ -37,6 +37,147 @@ function nodes(element) {
   return [element, ...nodes(element.props.children)];
 }
 
+function dashboardDataHarness() {
+  const slots = [];
+  const requests = [];
+  const deferredUpdates = [];
+  let cursor = 0;
+  let mounted = false;
+  let effect;
+  let cleanup;
+  let deferData = false;
+  const { useDashboardData } = loadComponent("../../src/dashboardData.ts", {
+    react: {
+      useState: (initial) => {
+        const index = cursor++;
+        if (!(index in slots)) slots[index] = initial;
+        return [slots[index], (update) => {
+          const apply = () => { slots[index] = typeof update === "function" ? update(slots[index]) : update; };
+          if (index === 0 && deferData) deferredUpdates.push(apply);
+          else apply();
+        }];
+      },
+      useRef: (initial) => {
+        const index = cursor++;
+        if (!(index in slots)) slots[index] = { current: initial };
+        return slots[index];
+      },
+      useEffect: (callback) => { if (!mounted) effect = callback; },
+      useCallback: (callback) => callback,
+    },
+    "./api": { api: { get: (url, config) => new Promise((resolve, reject) => requests.push({ url, config, resolve, reject })) } },
+  }, {
+    AbortController,
+    document: { hidden: false, addEventListener: () => {}, removeEventListener: () => {} },
+    window: { setInterval: () => 1, clearInterval: () => {} },
+  });
+  const render = () => { cursor = 0; return useDashboardData(); };
+  render();
+  mounted = true;
+  cleanup = effect();
+  return {
+    requests,
+    get view() { return render(); },
+    request: (section, round = 0) => requests.filter((request) => request.config.params.section === section)[round],
+    pauseData: () => { deferData = true; },
+    flushData: () => { deferData = false; deferredUpdates.splice(0).forEach((apply) => apply()); },
+    cleanup,
+  };
+}
+
+const financeMetricKeys = ["official-fee-unpaid", "refund-pending", "official-fee-unreceived"];
+const caseMetricKeys = ["evidence-supplement", "opinion-supplement", "appeal-pending", "execution-pending", "urgent-cases"];
+const metricResponse = (keys, value = "1件") => ({ data: { metrics: keys.map((key) => ({ key, label: key, value, tone: "green", route: `dashboard-queue-${key}` })) } });
+const settleDashboard = () => new Promise((resolve) => setImmediate(resolve));
+
+test("dashboard split metrics merge both arrival orders without cancelling cases", async () => {
+  for (const first of ["metrics_finance", "metrics_cases"]) {
+    const harness = dashboardDataHarness();
+    try {
+      assert.deepEqual(harness.requests.map((request) => request.config.params.section), ["metrics_cases", "metrics_finance", "todos", "cases"]);
+      const firstKeys = first === "metrics_finance" ? financeMetricKeys : caseMetricKeys;
+      const second = first === "metrics_finance" ? "metrics_cases" : "metrics_finance";
+      harness.request(first).resolve(metricResponse(firstKeys));
+      await settleDashboard();
+      assert.equal(harness.view.data.metrics.length, firstKeys.length);
+      assert.equal(harness.view.loading.metrics, true);
+      assert.equal(harness.request("metrics_cases").config.signal.aborted, false);
+      assert.equal(harness.request("metrics_finance").config.signal.aborted, false);
+      harness.view.retry("metrics");
+      assert.equal(harness.requests.length, 4);
+      harness.request(second).resolve(metricResponse(second === "metrics_cases" ? caseMetricKeys : financeMetricKeys));
+      await settleDashboard();
+      assert.deepEqual(Array.from(harness.view.data.metrics, (metric) => metric.key).sort(), [...financeMetricKeys, ...caseMetricKeys].sort());
+      assert.equal(harness.view.loading.metrics, false);
+      assert.equal(harness.view.caseMetricsError, undefined);
+      assert.equal(harness.view.errors.metrics, undefined);
+    } finally {
+      harness.cleanup();
+    }
+  }
+});
+
+test("dashboard split errors survive the other group's success and retry merges independently", async () => {
+  for (const failed of ["metrics_cases", "metrics_finance"]) {
+    const harness = dashboardDataHarness();
+    try {
+      const successful = failed === "metrics_cases" ? "metrics_finance" : "metrics_cases";
+      harness.request(failed).reject({ response: { data: { detail: "真实分区错误" } } });
+      await settleDashboard();
+      assert.equal(harness.view.loading.metrics, true);
+      harness.request(successful).resolve(metricResponse(successful === "metrics_finance" ? financeMetricKeys : caseMetricKeys));
+      await settleDashboard();
+      assert.equal(harness.view.loading.metrics, false);
+      assert.equal(harness.view.caseMetricsError, failed === "metrics_cases" ? "案件统计加载失败：真实分区错误" : undefined);
+      assert.equal(harness.view.errors.metrics, failed === "metrics_finance" ? "真实分区错误" : undefined);
+      assert.equal(harness.requests.length, 4);
+      harness.view.retry("metrics");
+      assert.equal(harness.requests.length, 6);
+      assert.equal(harness.view.caseMetricsError, undefined);
+      assert.equal(harness.view.errors.metrics, undefined);
+      harness.request("metrics_finance", 1).resolve(metricResponse(financeMetricKeys, "2件"));
+      await settleDashboard();
+      assert.equal(harness.view.loading.metrics, true);
+      assert.equal(harness.request("metrics_cases", 1).config.signal.aborted, false);
+      harness.request("metrics_cases", 1).resolve(metricResponse(caseMetricKeys, "2件"));
+      await settleDashboard();
+      assert.equal(harness.view.data.metrics.length, 8);
+      assert.equal(harness.view.data.metrics.every((metric) => metric.value === "2件"), true);
+      assert.equal(harness.view.loading.metrics, false);
+    } finally {
+      harness.cleanup();
+    }
+  }
+});
+
+test("dashboard old-generation queued state and unmounted responses cannot write back", async () => {
+  const harness = dashboardDataHarness();
+  try {
+    harness.pauseData();
+    harness.request("metrics_finance").resolve(metricResponse(financeMetricKeys, "旧轮"));
+    harness.request("metrics_cases").resolve(metricResponse(caseMetricKeys, "旧轮"));
+    await settleDashboard();
+    harness.view.retry("metrics");
+    harness.flushData();
+    assert.equal(harness.view.data.metrics, undefined);
+    harness.request("metrics_finance", 1).resolve(metricResponse(financeMetricKeys, "新轮"));
+    harness.request("metrics_cases", 1).resolve(metricResponse(caseMetricKeys, "新轮"));
+    await settleDashboard();
+    assert.equal(harness.view.data.metrics.length, 8);
+    assert.equal(harness.view.data.metrics.every((metric) => metric.value === "新轮"), true);
+    harness.view.retry("metrics");
+    harness.cleanup();
+    assert.equal(harness.request("metrics_cases", 2).config.signal.aborted, true);
+    assert.equal(harness.request("metrics_finance", 2).config.signal.aborted, true);
+    harness.request("metrics_cases", 2).resolve(metricResponse(caseMetricKeys, "卸载后"));
+    harness.request("metrics_finance", 2).resolve(metricResponse(financeMetricKeys, "卸载后"));
+    await settleDashboard();
+    assert.equal(harness.view.data.metrics.every((metric) => metric.value === "新轮"), true);
+  } finally {
+    harness.cleanup();
+  }
+});
+
 test("case clue context keeps file download, evidence selection and operation availability", () => {
   const { CaseClueContextPanel } = loadComponent("../../src/legal/CaseClueContextPanel.tsx", {
     antd: { Button, Space },

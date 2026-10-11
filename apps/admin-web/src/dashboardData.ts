@@ -34,7 +34,6 @@ export function useDashboardData() {
     const loaded = new Set<DashboardSection>();
     const lastAttempt = new Map<DashboardSection, number>();
     let metricsGeneration = 0;
-    let fullMetricsGeneration = 0;
     let caseMetricsController: AbortController | undefined;
     const load = (section: DashboardSection, force = true) => {
       if (!active || pending.has(section)) return;
@@ -43,6 +42,14 @@ export function useDashboardData() {
       const controller = new AbortController();
       pending.set(section, controller);
       const generation = section === "metrics" ? ++metricsGeneration : 0;
+      let remaining = section === "metrics" ? 2 : 1;
+      const finish = () => {
+        if (--remaining > 0 || pending.get(section) !== controller) return;
+        pending.delete(section);
+        if (active && (section !== "metrics" || generation === metricsGeneration)) {
+          setLoading((previous) => ({ ...previous, [section]: false }));
+        }
+      };
       setLoading((previous) => ({ ...previous, [section]: section === "metrics" || !loaded.has(section) }));
       setErrors((previous) => ({ ...previous, [section]: undefined }));
       if (section === "metrics") {
@@ -50,44 +57,51 @@ export function useDashboardData() {
         const caseController = new AbortController();
         caseMetricsController = caseController;
         setCaseMetricsError(undefined);
-        // 案件统计独立返回；同一轮的完整统计始终优先，旧轮请求不得写回。
-        api.get<Pick<DashboardData, "metrics">>("/dashboard", { params: { section: "metrics_cases" }, signal: caseController.signal })
-          .then(({ data: result }) => {
-            if (!active || caseController.signal.aborted || generation !== metricsGeneration || fullMetricsGeneration === generation) return;
-            setData((previous) => {
-              if (generation !== metricsGeneration || fullMetricsGeneration === generation) return previous;
-              const metrics = new Map(previous.metrics?.map((metric) => [metric.key, metric]));
-              result.metrics.forEach((metric) => metrics.set(metric.key, metric));
-              return { ...previous, metrics: Array.from(metrics.values()) };
-            });
-          })
-          .catch((error) => {
-            if (!active || caseController.signal.aborted || generation !== metricsGeneration || fullMetricsGeneration === generation) return;
-            const detail = error.response?.data?.detail;
-            setCaseMetricsError(typeof detail === "string" ? `案件统计加载失败：${detail}` : "案件统计加载失败，请重试");
-          });
+        // 两组真实指标按键独立合并；任一组先返回都不能覆盖或取消另一组。
+        const loadMetrics = (
+          apiSection: "metrics_cases" | "metrics_finance",
+          requestController: AbortController,
+          onError: (detail: string | undefined) => void,
+        ) => {
+          api.get<Pick<DashboardData, "metrics">>("/dashboard", { params: { section: apiSection }, signal: requestController.signal })
+            .then(({ data: result }) => {
+              if (!active || requestController.signal.aborted || generation !== metricsGeneration) return;
+              loaded.add(section);
+              setData((previous) => {
+                if (!active || requestController.signal.aborted || generation !== metricsGeneration) return previous;
+                const metrics = new Map(previous.metrics?.map((metric) => [metric.key, metric]));
+                result.metrics.forEach((metric) => metrics.set(metric.key, metric));
+                return { ...previous, metrics: Array.from(metrics.values()) };
+              });
+            })
+            .catch((error) => {
+              if (!active || requestController.signal.aborted || generation !== metricsGeneration) return;
+              const detail = error.response?.data?.detail;
+              onError(typeof detail === "string" ? detail : undefined);
+            })
+            .finally(finish);
+        };
+        loadMetrics("metrics_cases", caseController, (detail) => {
+          setCaseMetricsError(detail !== undefined ? `案件统计加载失败：${detail}` : "案件统计加载失败，请重试");
+        });
+        loadMetrics("metrics_finance", controller, (detail) => {
+          setErrors((previous) => ({ ...previous, metrics: detail ?? "加载失败，请重试" }));
+        });
+        return;
       }
       api.get<Partial<DashboardData>>("/dashboard", { params: { section }, signal: controller.signal })
         .then(({ data: result }) => {
-          if (active && (section !== "metrics" || generation === metricsGeneration)) {
-            if (section === "metrics") {
-              fullMetricsGeneration = generation;
-              caseMetricsController?.abort();
-              setCaseMetricsError(undefined);
-            }
+          if (active && !controller.signal.aborted) {
             loaded.add(section);
             setData((previous) => ({ ...previous, ...result }));
           }
         })
         .catch((error) => {
-          if (!active || controller.signal.aborted || (section === "metrics" && generation !== metricsGeneration)) return;
+          if (!active || controller.signal.aborted) return;
           const detail = error.response?.data?.detail;
           setErrors((previous) => ({ ...previous, [section]: typeof detail === "string" ? detail : "加载失败，请重试" }));
         })
-        .finally(() => {
-          pending.delete(section);
-          if (active && (section !== "metrics" || generation === metricsGeneration)) setLoading((previous) => ({ ...previous, [section]: false }));
-        });
+        .finally(finish);
     };
     loader.current = load;
     sections.forEach((section) => load(section));

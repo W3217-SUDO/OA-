@@ -14,6 +14,12 @@ async def personal_queues(identity, db):
         return await _personal_queues(identity, db)
 
 
+async def personal_finance_queues(identity, db):
+    """财务三卡沿用金额和去重口径，不重复读取或计算案件五队列。"""
+    with finance_read_scope(db):
+        return await _personal_queues(identity, db, finance_only=True)
+
+
 async def personal_case_queues(identity, db, *, scope_data=None):
     """案件指标独立读取，完整指标仍复用同一案件队列计算。"""
     if scope_data is None:
@@ -39,17 +45,17 @@ async def personal_case_queues(identity, db, *, scope_data=None):
     return {key: list(rows.values()) for key, rows in queues.items()}
 
 
-async def _personal_queues(identity, db):
+async def _personal_queues(identity, db, *, finance_only=False):
     with measure_phase("dashboard.scope"):
         with measure_phase("dashboard.scope.records"):
-            scope = await load_dashboard_scope(identity, db, include_summaries=True)
+            scope = await load_dashboard_scope(identity, db, include_summaries=True, finance_metrics=finance_only)
         identity = scope.identity
         with measure_phase("dashboard.scope.refund"):
             refund_identity = await personal_refund_identity(identity, db, scope_data=scope)
         cases = scope.cases
     by_id = {case.id: case for case in cases}
     by_no = {case.serial_no: case for case in cases}
-    queues = {key: {} for key in QUEUE_KEYS}
+    queues = {key: {} for key in QUEUE_KEYS if not finance_only or key not in CASE_QUEUES}
 
     def add(key, case, amount=0, fee_id=None):
         queue_id = (case.id, fee_id) if fee_id is not None else case.id
@@ -59,9 +65,10 @@ async def _personal_queues(identity, db):
         if fee_id is not None:
             row["fee_id"] = fee_id
 
-    case_queues = await personal_case_queues(identity, db, scope_data=scope)
-    for key, rows in case_queues.items():
-        queues[key] = {row["id"]: row for row in rows}
+    if not finance_only:
+        case_queues = await personal_case_queues(identity, db, scope_data=scope)
+        for key, rows in case_queues.items():
+            queues[key] = {row["id"]: row for row in rows}
     for key in ("official-fee-unpaid", "refund-pending"):
         with measure_phase(f"dashboard.{key}"):
             if key == "official-fee-unpaid":

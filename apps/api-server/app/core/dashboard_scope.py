@@ -44,6 +44,29 @@ class DashboardFeeProjection(NamedTuple):
     data: dict
 
 
+class DashboardFinanceCaseProjection(NamedTuple):
+    """财务三卡只消费案件编号、名称、状态和合同关系。"""
+
+    id: int
+    module: str
+    serial_no: str
+    title: str
+    status: str
+    data: dict
+
+
+class DashboardFinanceFeeProjection(NamedTuple):
+    """财务三卡费用保留原状态、类型回退、更新时间排序及完整摘要。"""
+
+    id: int
+    module: str
+    serial_no: str
+    title: str
+    status: str
+    updated_at: datetime
+    data: dict
+
+
 @dataclass
 class DashboardScopeData:
     """仅供本次请求复用的授权范围和轻量数据，不跨账号或请求缓存。"""
@@ -78,7 +101,10 @@ async def dashboard_identity(identity, db, *, personal_cases=False):
     return scope.identity
 
 
-async def load_dashboard_scope(identity, db, *, personal_cases=False, include_summaries=False, include_finance=True):
+async def load_dashboard_scope(identity, db, *, personal_cases=False, include_summaries=False, include_finance=True,
+                               finance_metrics=False):
+    if finance_metrics and (not include_summaries or not include_finance):
+        raise ValueError("财务指标读取必须包含费用摘要")
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if user is None or not user.is_active:
         raise HTTPException(401, "当前用户不存在或已停用")
@@ -111,15 +137,19 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         return {"dashboard_personal": await _case_mine_scope_condition(identity, db, projected_data=data)}
 
     with measure_phase("dashboard.scope.cases"):
+        # 财务统计不消费案件阶段或个人标记，退款范围仍由原权限 SQL 单独确认。
+        case_summaries = include_summaries and not finance_metrics
         cases = await read_record_projections(
-            db, conditions, case_fields if include_summaries else relation_fields,
-            legacy_fields=("CasePhaseName",) if include_summaries else (),
-            text_fields=CASE_MINE_TEXT_FIELDS if include_summaries else (),
-            annotations=personal_annotation if include_summaries else None,
+            db, conditions, case_fields if case_summaries else relation_fields,
+            legacy_fields=("CasePhaseName",) if case_summaries else (),
+            text_fields=CASE_MINE_TEXT_FIELDS if case_summaries else (),
+            annotations=personal_annotation if case_summaries else None,
+            record_factory=DashboardFinanceCaseProjection if finance_metrics else None,
+            metadata_fields=("id", "module", "serial_no", "title", "status") if finance_metrics else None,
         )
     case_ids = {item.id for item in cases}
     case_nos = {item.serial_no for item in cases}
-    personal_ids = {case.id for case in cases if case.dashboard_personal} if include_summaries else None
+    personal_ids = {case.id for case in cases if case.dashboard_personal} if case_summaries else None
     if not include_finance:
         # 案件指标沿用同一授权范围，独立返回时不等待费用和合同内容读取。
         scoped_identity = {
@@ -138,7 +168,10 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
             BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
         ], FEE_SUMMARY_FIELDS if include_summaries else (*relation_fields, "case_id", "case_record_id", "case_no"),
             where_data=related_fee,
-            record_factory=DashboardFeeProjection if include_summaries else None) if case_ids else []
+            record_factory=(DashboardFinanceFeeProjection if finance_metrics else
+                            DashboardFeeProjection if include_summaries else None),
+            metadata_fields=("id", "module", "serial_no", "title", "status", "updated_at")
+            if finance_metrics else None) if case_ids else []
     contract_ids = set((await db.scalars(select(ContractObject.contract_record_id).where(
         scalar_in_values(ContractObject.case_record_id, case_ids),
     ))).all()) if case_ids else set()

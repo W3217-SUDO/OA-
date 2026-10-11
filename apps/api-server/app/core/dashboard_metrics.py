@@ -1,5 +1,5 @@
 """控制台个人统计和明细使用同一队列口径。"""
-from app.core.dashboard_personal_queues import personal_case_queues, personal_queues
+from app.core.dashboard_personal_queues import personal_case_queues, personal_finance_queues, personal_queues
 from app.core.dashboard_scope import CASE_QUEUES
 
 
@@ -24,6 +24,12 @@ def _metrics_response(queues, definitions=METRIC_DEFINITIONS):
 
 async def dashboard_metrics(identity, db):
     return _metrics_response(await personal_queues(identity, db))
+
+
+async def dashboard_finance_metrics(identity, db):
+    """返回原八卡中的三张财务卡，其他指标由案件分区读取。"""
+    definitions = [item for item in METRIC_DEFINITIONS if item[0] not in CASE_QUEUES]
+    return _metrics_response(await personal_finance_queues(identity, db), definitions)
 
 
 async def dashboard_case_metrics(identity, db):

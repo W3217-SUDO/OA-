@@ -19,9 +19,15 @@ def _postgresql_record_projection(data_fields, legacy_fields, text_fields=(), *,
 
 
 async def read_record_projections(db, conditions, data_fields, *, legacy_fields=(), text_fields=(), annotations=None,
-                                  where_data=None, record_factory=None):
+                                  where_data=None, record_factory=None, metadata_fields=None):
     columns = ("id", "module", "serial_no", "title", "customer", "status", "owner",
                "department", "description", "created_at", "updated_at")
+    if metadata_fields is not None:
+        if record_factory is None or not metadata_fields or not set(metadata_fields) <= set(columns):
+            raise ValueError("精简元数据必须声明有效字段和固定投影类型")
+        if len(set(metadata_fields)) != len(metadata_fields):
+            raise ValueError("精简元数据字段不能重复")
+        columns = tuple(metadata_fields)
     data_fields = tuple(dict.fromkeys(data_fields))
     legacy_fields = tuple(dict.fromkeys(legacy_fields))
     text_fields = tuple(dict.fromkeys(text_fields))
