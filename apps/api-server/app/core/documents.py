@@ -523,8 +523,15 @@ async def _case_formal_document_folder_payload(record: BusinessRecord, db: Async
 
 
 def _word_editor_now() -> datetime:
-    """Use naive UTC because SQLite drops timezone data while PostgreSQL accepts it."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    """编辑租约统一写入带时区 UTC，避免数据库驱动按主机时区解释。"""
+    return datetime.now(timezone.utc)
+
+
+def _word_editor_utc(value: datetime | None) -> datetime | None:
+    """SQLite 丢弃时区后，按原始 UTC 写入语义恢复比较值。"""
+    if value is None:
+        return None
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
 def _word_editor_paragraph_editable(paragraph) -> bool:
@@ -626,9 +633,10 @@ def _replace_word_editor_blocks(document: Document, requested_blocks: list[WordE
 
 
 def _word_editor_lock_payload(item: FileAttachment, *, include_token: bool = False) -> dict:
+    expires_at = _word_editor_utc(item.word_editor_lock_expires_at)
     payload = {
         "lock_holder": item.word_editor_locked_by or "",
-        "lock_expires_at": item.word_editor_lock_expires_at.isoformat() if item.word_editor_lock_expires_at else "",
+        "lock_expires_at": expires_at.isoformat() if expires_at else "",
     }
     if include_token:
         payload["lock_token"] = item.word_editor_lock_token

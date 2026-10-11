@@ -3535,6 +3535,10 @@ from app.areas.legal.case_documents import (
 )
 router.include_router(case_documents_router)
 
+from app.areas.legal.libreoffice import router as libreoffice_router
+
+router.include_router(libreoffice_router)
+
 
 from app.areas.legal.seals import (
     router as seals_router,

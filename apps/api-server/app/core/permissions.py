@@ -1785,9 +1785,9 @@ async def _ensure_case_document_folder_name_available(
 
 async def _require_case_word_editor_lock(item: FileAttachment, token: str, db: AsyncSession) -> None:
     from app.core.documents import (
-        _word_editor_lock_payload, _word_editor_now,
+        _word_editor_lock_payload, _word_editor_now, _word_editor_utc,
     )
-    expires_at = item.word_editor_lock_expires_at
+    expires_at = _word_editor_utc(item.word_editor_lock_expires_at)
     if not item.word_editor_lock_token or not secrets.compare_digest(item.word_editor_lock_token, token):
         raise HTTPException(status_code=409, detail={"message": "Word 编辑锁已被其他会话占用", **_word_editor_lock_payload(item)})
     now = _word_editor_now()
@@ -1797,9 +1797,9 @@ async def _require_case_word_editor_lock(item: FileAttachment, token: str, db: A
 
 def _ensure_case_word_editor_not_locked(item: FileAttachment) -> None:
     from app.core.documents import (
-        _word_editor_now,
+        _word_editor_now, _word_editor_utc,
     )
-    expires_at = item.word_editor_lock_expires_at
+    expires_at = _word_editor_utc(item.word_editor_lock_expires_at)
     now = _word_editor_now()
     if item.word_editor_lock_token and expires_at and expires_at > now:
         raise HTTPException(status_code=409, detail=f"文件 {item.original_name} 正在由 {item.word_editor_locked_by or '其他用户'} 在线编辑，不能修改或删除")

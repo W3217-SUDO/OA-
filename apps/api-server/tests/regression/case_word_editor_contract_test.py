@@ -98,7 +98,11 @@ class CaseWordEditorContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(locked_row.word_editor_locked_by, OWNER["username"])
             self.assertTrue(locked_row.word_editor_lock_token)
             now = main_module._word_editor_now()
-            self.assertGreater(locked_row.word_editor_lock_expires_at, now)
+            locked_expires_at = locked_row.word_editor_lock_expires_at
+            # SQLite 丢弃时区，读回值按租约的 UTC 存储语义比较。
+            if locked_expires_at.tzinfo is None:
+                locked_expires_at = locked_expires_at.replace(tzinfo=timezone.utc)
+            self.assertGreater(locked_expires_at, now)
         denied_rename = await self.client.put(f"{API}/cases/attachments/{self.attachment_id}/rename", json={"original_name": "renamed.docx"})
         self.assertEqual(denied_rename.status_code, 409, denied_rename.text)
 

@@ -33,6 +33,9 @@ def _record_dict(record: BusinessRecord, allowed_fields: set[str] | None = None)
         _customer_contact_dict, _customer_guid,
     )
     data = dict(record.data or {})
+    # 编辑会话和存储版本账本仅供服务端使用，不进入任何记录 API 输出。
+    data.pop("libreoffice_sessions", None)
+    data.pop("libreoffice_documents", None)
     if record.module == "conflict_review":
         from app.core.conflict_review import review_summary
         data = review_summary(record)

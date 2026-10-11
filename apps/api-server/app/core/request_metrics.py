@@ -11,6 +11,31 @@ from sqlalchemy import event
 logger = logging.getLogger(__name__)
 
 
+class _WopiAccessLogFilter(logging.Filter):
+    """仅移除 WOPI access 日志的查询串，保留其余请求监控字段。"""
+
+    def __init__(self, api_prefix):
+        super().__init__()
+        self.path_prefix = api_prefix.rstrip("/") + "/office/wopi/"
+
+    def filter(self, record):
+        args = record.args
+        # Uvicorn 的 access 记录依次包含客户端、方法、地址、协议和状态码。
+        if isinstance(args, tuple) and len(args) == 5 and isinstance(args[2], str):
+            path = args[2].partition("?")[0]
+            if path.startswith(self.path_prefix):
+                record.args = (*args[:2], path, *args[3:])
+        return True
+
+
+def _install_wopi_access_filter(api_prefix):
+    access_logger = logging.getLogger("uvicorn.access")
+    path_prefix = api_prefix.rstrip("/") + "/office/wopi/"
+    if not any(isinstance(item, _WopiAccessLogFilter) and item.path_prefix == path_prefix
+               for item in access_logger.filters):
+        access_logger.addFilter(_WopiAccessLogFilter(api_prefix))
+
+
 @dataclass
 class RequestMetrics:
     started: float = field(default_factory=perf_counter)
@@ -62,6 +87,7 @@ def install_query_metrics(engine):
 
 class RequestMetricsMiddleware:
     def __init__(self, app, *, api_prefix, threshold_seconds):
+        _install_wopi_access_filter(api_prefix)
         self.app = app
         self.api_prefix = api_prefix
         self.threshold_seconds = threshold_seconds

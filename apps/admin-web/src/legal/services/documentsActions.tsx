@@ -6,6 +6,7 @@ import { api } from "../../api";
 import { openAttachmentOnlinePreview } from "../../attachmentOnlinePreview.mjs";
 import { getCaseAttachmentUploadValidationError, getCaseFileRenameValidationError, hasCaseFileTypeOption } from "../../caseFileFrontendParity.mjs";
 import { DEFAULT_CASE_ATTACHMENT_CATEGORY } from "../constants";
+import type { LibreOfficeEditorTarget } from "../../office/types";
 import type { AttachmentPreview, AttachmentRow, CaseAiDraftEditor, CaseDetailCapabilities, CaseDocumentFolderEditor, CaseFileTypeOption, CaseRow, CaseTaskAttachment, CaseWordEditor, CaseWordEditorBlock, ContractRow } from "../types";
 /** legal documents operations; dependencies are read when each operation runs. */
 export interface CaseDocumentsDependencies {
@@ -50,6 +51,8 @@ export interface CaseDocumentsDependencies {
     readonly setWordEditorLockLost: React.Dispatch<React.SetStateAction<boolean>>;
     readonly wordEditorOpening: boolean;
     readonly wordEditor: CaseWordEditor | null;
+    readonly libreOfficeEditorTarget: LibreOfficeEditorTarget | null;
+    readonly setLibreOfficeEditorTarget: React.Dispatch<React.SetStateAction<LibreOfficeEditorTarget | null>>;
     readonly setWordEditorOpening: React.Dispatch<React.SetStateAction<boolean>>;
     readonly wordEditorChanged: (editor: CaseWordEditor) => boolean;
     readonly wordEditorSavingRef: React.RefObject<boolean>;
@@ -387,10 +390,10 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
         setWordEditorLockLost(false);
     };
     const openCaseWordEditor = async (item: AttachmentRow) => {
-        const { viewingCounselCase, counselDetailCapabilities, activeCounselDocCategory, wordEditorOpening, wordEditor, setWordEditorOpening, wordEditorLockTokenRef, setWordEditor, setWordEditorLockLost } = context;
+        const { viewingCounselCase, counselDetailCapabilities, activeCounselDocCategory, wordEditorOpening, wordEditor, libreOfficeEditorTarget, setLibreOfficeEditorTarget, setWordEditorOpening, wordEditorLockTokenRef, setWordEditor, setWordEditorLockLost } = context;
         if (!viewingCounselCase)
             return;
-        if (wordEditorOpening || wordEditor)
+        if (wordEditorOpening || wordEditor || libreOfficeEditorTarget)
             return;
         if (!counselDetailCapabilities.can_manage_document) {
             message.warning("当前账号无权编辑案件文档");
@@ -409,6 +412,10 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
             return;
         }
         const caseId = viewingCounselCase.id;
+        if (item.libreoffice_editable === true) {
+            setLibreOfficeEditorTarget({ caseId, attachmentId: item.id, filename: item.original_name });
+            return;
+        }
         if (item.storage_backend !== "local") {
             message.warning("仅支持在线编辑已确认本地存储的 Word 文件");
             return;

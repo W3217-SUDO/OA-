@@ -283,6 +283,19 @@ http {{
       proxy_read_timeout 600s;
       proxy_send_timeout 600s;
     }}
+    location ^~ /api/v1/office/wopi/ {{
+      access_log off;
+      error_log stderr crit;
+      proxy_pass {api};
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_connect_timeout 5s;
+      proxy_read_timeout 120s;
+      proxy_send_timeout 120s;
+    }}
     location /api/ {{
       proxy_pass {api};
       proxy_http_version 1.1;
