@@ -617,9 +617,7 @@ body {
 }
 @media (max-width: 991px) {
   .bug-feedback-trigger {
-    right: 8px;
-    bottom: calc(70px + env(safe-area-inset-bottom));
-    min-height: 32px;
+    display: none;
   }
   html,
   body,

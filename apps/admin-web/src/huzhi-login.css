@@ -190,7 +190,7 @@
 
 @media (max-width: 520px) {
   .huzhi-login-shell {
-    grid-template-rows: 170px minmax(0, 1fr);
+    grid-template-rows: 260px minmax(0, 1fr);
   }
 
   .huzhi-login-visual {
@@ -199,20 +199,48 @@
 
   .huzhi-login-main {
     align-items: flex-start;
-    padding: 34px 24px max(36px, env(safe-area-inset-bottom));
+    padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
   }
 
   .huzhi-login-logo {
-    width: 186px;
-    margin-bottom: 24px;
+    width: min(176px, 100%);
+    margin-bottom: 18px;
+  }
+
+  .login-page-huzhi .login-card h2 {
+    margin-bottom: 6px;
+    font-size: 24px;
   }
 
   .login-page-huzhi .login-card p {
-    margin-bottom: 27px;
+    margin-bottom: 20px;
+  }
+
+  .login-page-huzhi .login-card .ant-form-item {
+    margin-bottom: 16px;
+  }
+
+  .login-page-huzhi .login-card .ant-form-item-label {
+    padding-bottom: 6px;
+  }
+
+  .login-page-huzhi .login-card .ant-input-affix-wrapper {
+    min-height: 48px;
+    padding: 3px 12px;
+  }
+
+  .login-page-huzhi .login-card .login-submit-button {
+    min-height: 48px;
+    margin-top: 4px;
+  }
+
+  .login-page-huzhi .login-secondary-actions {
+    gap: 8px 20px;
+    margin-top: 16px;
   }
 
   .huzhi-login-footer {
-    margin-top: 28px;
+    margin-top: 20px;
   }
 }
 
