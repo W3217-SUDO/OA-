@@ -375,11 +375,14 @@
   .case-original-layout .case-original-table .ant-table-sticky-holder{position:static}
   .case-original-layout .case-original-table .ant-table-thead,
   .case-original-layout .case-original-table .ant-table-tbody{display:block}
-  .case-original-layout .case-original-table .ant-table-thead>tr{display:flex;flex-wrap:wrap}
+  .case-original-layout .case-original-table .ant-table-thead>tr{display:flex;width:100%;background:#f1f1f1;flex-wrap:nowrap}
   .case-original-layout .case-original-table .ant-table-thead>tr>th{display:none}
   .case-original-layout .case-original-table .ant-table-thead>tr>th.case-list-sort-header,
   .case-original-layout .case-original-table .ant-table-thead>tr>th.ant-table-selection-column{display:flex;position:static;align-items:center;min-width:44px;width:auto!important;min-height:44px;height:auto;padding:8px!important;white-space:normal}
-  .case-original-layout .case-original-table .ant-table-column-sorters{min-height:28px;gap:8px}
+  .case-original-layout .case-original-table .ant-table-thead>tr>th.case-list-sort-header{flex:1 1 0;min-width:0}
+  .case-original-layout .case-original-table .ant-table-thead>tr>th.ant-table-selection-column{flex:0 0 auto}
+  .case-original-layout .case-original-table .ant-table-column-sorters{min-width:0;width:100%;min-height:28px;gap:8px}
+  .case-original-layout .case-original-table .ant-table-column-title{min-width:0;white-space:normal;overflow-wrap:anywhere}
   .case-original-layout .case-original-table .oa-resizable-header::after{display:none}
   .case-original-layout .case-original-table .ant-table-thead .ant-table-selection-column::after{content:"全选";margin-left:4px}
   .case-original-layout .case-original-table .ant-table-tbody>tr.ant-table-row{display:block;padding:8px 0;border-bottom:4px solid #eef2f6}
