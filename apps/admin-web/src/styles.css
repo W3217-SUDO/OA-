@@ -922,7 +922,7 @@ body {
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
-  body:has(.ant-modal-wrap) .mobile-bottom-nav {
+  body:has(.ant-modal-wrap:not([style*="display: none"])) .mobile-bottom-nav {
     display: none;
   }
   .ant-modal-root .ant-modal-wrap,
