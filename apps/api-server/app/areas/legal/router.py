@@ -17,7 +17,7 @@ from app.core.dependencies import (
     func, get_db, io, json,
     or_, qn, qrcode, quote, re,
     select, settings, status,
-    timedelta, timezone, uuid4,
+    timezone, uuid4,
 )
 from app.models_shared import (
     ArchiveCheckInput, ArchiveReviewInput, CaseArbitrationBasicInput, CaseAssignmentInput,
@@ -2082,10 +2082,7 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     from app.core.system import (
         _record_dict,
     )
-    from app.core.tasks import (
-        _ensure_document_preparation_task, _ensure_execution_application_reminder_task,
-        _ensure_phase_automatic_tasks, _ensure_timestamp_evidence_handoff_task,
-    )
+    from app.core.case_automation import apply_case_rules_on_change
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_action(identity, db, "case.detail.update")
     case_data = case_record.data or {}
@@ -2174,16 +2171,8 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     if phase != previous_status:
         case_record.data = {**case_record.data, "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
-        await _ensure_execution_application_reminder_task(
-            case_record, db, previous_status=previous_status, operator=identity["username"],
-        )
-        await _ensure_phase_automatic_tasks(case_record, db, previous_status=previous_status)
-    # These rules depend on both the current phase and assigned people. Run
-    # after every basic-information save so assigning the assistant after the
-    # phase transition cannot silently lose the automatic tasks.
     if not gate["blocking"]:
-        await _ensure_document_preparation_task(case_record, db, system_operator=identity["username"])
-        await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator=identity["username"])
+        await apply_case_rules_on_change(case_record, db)
     db.add(WorkflowEvent(
         record_id=case_record.id, action="修改普通案件基本信息",
         from_status=previous_status, to_status=case_record.status, operator=identity["username"],
@@ -2265,6 +2254,9 @@ async def update_arbitration_case_basic(case_id: int, body: CaseArbitrationBasic
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     if phase != previous_status:
         case_record.data = {**case_record.data, "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
+    if not gate["blocking"]:
+        from app.core.case_automation import apply_case_rules_on_change
+        await apply_case_rules_on_change(case_record, db)
     db.add(WorkflowEvent(record_id=case_record.id, action="修改仲裁案件基本信息", from_status=previous_status, to_status=case_record.status, operator=identity["username"], comment=f"修改前：{old_summary}" + (f"｜说明：{body.comment.strip()}" if body.comment.strip() else "")))
     await db.commit(); await db.refresh(case_record)
     return _record_dict(case_record)
@@ -2564,10 +2556,7 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
     from app.core.system import (
         _record_dict,
     )
-    from app.core.tasks import (
-        _add_task_message_notifications, _ensure_document_preparation_task,
-        _ensure_timestamp_evidence_handoff_task, _next_manual_task_serial,
-    )
+    from app.core.case_automation import apply_case_rules_on_change
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     previous = case_record.status
     handling_lawyers, handling_usernames = await _resolve_active_case_people(body.handling_lawyers, db, field_name="经办律师")
@@ -2598,18 +2587,9 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
     if case_record.status == "新案待分配":
         case_record.status = "文书准备"
+        case_record.data = {**(case_record.data or {}), "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
     db.add(WorkflowEvent(record_id=case_record.id, action="案件人员分配", from_status=previous, to_status=case_record.status, operator=identity["username"], comment=f"开庭律师：{case_data['hearing_lawyer']}；经办律师：{','.join(handling_lawyers)}；助理：{assistant}。{body.comment}"))
-    await _ensure_document_preparation_task(case_record, db, system_operator=identity["username"])
-    await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator=identity["username"])
-    notary_id = int(case_data.get("notary_id") or 0)
-    if notary_id and not case_data.get("notary_handoff_task_id"):
-        notary = await db.get(BusinessRecord, notary_id)
-        if notary:
-            notary_data = notary.data or {}; scanner = str(notary_data.get("scan_uploaded_by") or notary.owner or identity["username"]).strip(); recipient = (assistant_username or next(iter(handling_usernames), "") or case_data["hearing_lawyer"])
-            task = BusinessRecord(module="task", serial_no=await _next_manual_task_serial(db), title=f"公证书及公证费发票原件交接—{case_record.serial_no}", customer=case_record.customer, status="待接收", owner=scanner, department=case_record.department, description=f"扫描文员向案件文书人员 {recipient} 交接公证书及公证费发票原件", data={"deadline": str(date.today() + timedelta(days=5)), "priority": "紧急", "source": "案件任务", "creation_mode": "自动", "task_type": "自动任务", "initiator": recipient, "collaborators": [recipient] if recipient != scanner else [], "case_no": case_record.serial_no, "case_id": case_record.id, "notary_id": notary.id, "notary_no": notary.serial_no, "auto_task_type": "notary_original_handoff", "handoff_recipient": recipient, "system_created_by": identity["username"]})
-            db.add(task); await db.flush(); case_record.data = {**case_record.data, "notary_handoff_task_id": task.id}; notary.data = {**notary_data, "handoff_task_id": task.id, "handoff_recipient": recipient}
-            await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="系统生成原件交接任务", to_status="待接收", operator="system", comment=f"扫描文员 {scanner} 向 {recipient} 交接；来源案件 {case_record.serial_no}"), db, content="任务已分派.")
-            db.add(WorkflowEvent(record_id=case_record.id, action="生成公证原件交接任务", from_status=case_record.status, to_status=case_record.status, operator="system", comment=f"任务 {task.serial_no}；负责人 {scanner}；接收人 {recipient}"))
+    await apply_case_rules_on_change(case_record, db)
     await db.commit()
     await db.refresh(case_record)
     return _record_dict(case_record)
@@ -2649,6 +2629,8 @@ async def update_case_hearing_lawyer(
     previous_hearing_lawyer = str(case_data.get("hearing_lawyer") or "")
     case_data["hearing_lawyer"] = hearing_values[0]
     case_data["hearing_lawyer_username"] = hearing_usernames[0]
+    if previous_hearing_lawyer != hearing_values[0]:
+        case_data["hearing_lawyer_changed_at"] = datetime.now().isoformat(timespec="seconds")
     case_record.data = case_data
     if _case_commission_personnel_changed(before_case_data, case_data):
         await _recalculate_case_draft_commissions(case_record, db, identity["username"])
@@ -2664,6 +2646,8 @@ async def update_case_hearing_lawyer(
         ),
     ))
     await assess_conflict_review(case_record, identity, db, trigger="case_save")
+    from app.core.case_automation import apply_case_rules_on_change
+    await apply_case_rules_on_change(case_record, db)
     await db.commit()
     await db.refresh(case_record)
     return _record_dict(case_record)
@@ -2760,6 +2744,7 @@ async def finish_case_tasks(
     task, checks case and task participation/status for the complete selection,
     then writes all status/events/notifications in one transaction.
     """
+    from app.core.case_automation import requires_phase_completion
     from app.core.permissions import (
         _record_scope_conditions, _require_case_progress_write_access,
     )
@@ -2797,6 +2782,8 @@ async def finish_case_tasks(
         if not linked:
             raise HTTPException(status_code=409, detail="案件没有可完成的任务")
         for task in linked:
+            if requires_phase_completion(task):
+                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 只能由案件阶段变化自动完成")
             if not _is_task_participant(task, identity):
                 raise HTTPException(status_code=403, detail="只有任务参与人可以结束案件任务")
             if task.status != "处理中":
@@ -2923,12 +2910,7 @@ async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends
     from app.core.system import (
         _record_dict,
     )
-    from app.core.tasks import (
-        _ensure_execution_application_reminder_task,
-        _ensure_document_preparation_task,
-        _ensure_phase_automatic_tasks,
-        _ensure_timestamp_evidence_handoff_task,
-    )
+    from app.core.case_automation import apply_case_rules_on_change
     case_nos = _normalize_case_numbers(body.case_nos)
     if not case_nos:
         raise HTTPException(status_code=422, detail="至少选择一件案件")
@@ -2967,12 +2949,7 @@ async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends
                 to_status=case_record.status, operator=identity["username"],
                 comment=f"{phase['name']}（{phase['id']}）" + (f"｜{body.comment.strip()}" if body.comment.strip() else ""),
             ))
-            await _ensure_execution_application_reminder_task(
-                case_record, db, previous_status=previous_status, operator=identity["username"],
-            )
-            await _ensure_document_preparation_task(case_record, db, system_operator=identity["username"])
-            await _ensure_timestamp_evidence_handoff_task(case_record, db, system_operator=identity["username"])
-            await _ensure_phase_automatic_tasks(case_record, db, previous_status=previous_status)
+            await apply_case_rules_on_change(case_record, db)
         await db.commit()
     except HTTPException:
         await db.rollback()
@@ -3016,10 +2993,11 @@ async def update_case_progress(case_id: int, body: CaseProgressInput, identity: 
     if body.retrial_court_name.strip() or body.retrial_court_case_no.strip(): target = "再审"
     elif body.execution_court_name.strip() or body.execution_court_case_no.strip(): target = "执行"
     elif body.second_instance_case_no.strip() or body.second_court_name.strip() or body.second_court_case_no.strip(): target = "二审"
-    elif body.judgment_date or body.judgment_document_no.strip(): target = "待上诉"
-    elif body.first_instance_case_no.strip(): target = "一审立案受理"
-    stage_rank = {"新案待分配": 0, "文书准备": 1, "一审立案受理": 2, "一审准备开庭": 3, "待上诉": 4, "二审": 5, "再审": 6, "执行": 7}
-    if stage_rank.get(target, -1) < stage_rank.get(previous, -1): target = previous
+    elif body.judgment_date or body.first_court_judgment_date or body.judgment_document_no.strip(): target = "待上诉"
+    elif body.first_instance_case_no.strip() or body.first_court_case_no.strip(): target = "一审立案受理"
+    from app.core.case_automation import case_progress_rank
+    if case_progress_rank(target) < case_progress_rank(previous):
+        target = previous
     canonical_stage = "再审" if (body.retrial_court_name.strip() or body.retrial_court_case_no.strip()) else "执行" if (body.execution_court_name.strip() or body.execution_court_case_no.strip()) else "判决" if (body.judgment_date or body.judgment_document_no.strip()) else "审理" if (body.second_instance_case_no.strip() or body.second_court_name.strip() or body.second_court_case_no.strip()) else "立案"
     submitted_fields = body.model_fields_set
     merged_progress = {
@@ -3058,6 +3036,9 @@ async def update_case_progress(case_id: int, body: CaseProgressInput, identity: 
     if target != previous:
         case_record.data = {**case_record.data, "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
     case_record.status = target
+    if not gate["blocking"]:
+        from app.core.case_automation import apply_case_rules_on_change
+        await apply_case_rules_on_change(case_record, db)
     progress_comment = "诉讼进展资料已保存，案件阶段待利益冲突核查" if gate["blocking"] else "根据法院案号、裁判日期等案件要素自动推进阶段"
     db.add(WorkflowEvent(record_id=case_record.id, action="登记案件诉讼进展", from_status=previous, to_status=target, operator=identity["username"], comment=body.comment or progress_comment))
     await db.commit(); await db.refresh(case_record); return _record_dict(case_record)
@@ -3164,11 +3145,23 @@ async def create_hearing(body: HearingInput, identity: dict = Depends(current_id
     db.add(item)
     await db.flush()
     previous_status = case_record.status
-    case_record.data = {**(case_record.data or {}), "court": body.court, "next_hearing_date": str(body.hearing_date), "next_hearing_time": body.hearing_time, "hearing_lawyer": body.hearing_lawyer, "business_stage": "审理"}
+    previous_hearing_lawyer = str((case_record.data or {}).get("hearing_lawyer") or "").strip()
+    hearing_data = {**(case_record.data or {}), "court": body.court, "next_hearing_date": str(body.hearing_date), "next_hearing_time": body.hearing_time, "hearing_lawyer": body.hearing_lawyer, "business_stage": "审理"}
+    if body.hearing_lawyer.strip() != previous_hearing_lawyer:
+        from app.core.task_personnel import resolve_automatic_task_user
+        hearing_user = await resolve_automatic_task_user(body.hearing_lawyer, db)
+        if hearing_user:
+            hearing_data["hearing_lawyer_username"] = hearing_user.username
+            hearing_data["hearing_lawyer_changed_at"] = datetime.now().isoformat(timespec="seconds")
+    case_record.data = hearing_data
     if body.hearing_type.startswith("二审"):
-        case_record.status = "二审"
+        case_record.status = "二审通知开庭"
     elif case_record.status in {"新案待分配", "文书准备", "一审立案受理"}:
         case_record.status = "一审准备开庭"
+    if case_record.status != previous_status:
+        case_record.data = {**(case_record.data or {}), "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
+    from app.core.case_automation import apply_case_rules_on_change
+    await apply_case_rules_on_change(case_record, db)
     db.add(WorkflowEvent(record_id=case_record.id, action="新增开庭排期并推进阶段", from_status=previous_status, to_status=case_record.status, operator=identity["username"], comment=f"{body.hearing_date} {body.hearing_time} {body.court} {body.courtroom}"))
     await db.commit()
     await db.refresh(item)

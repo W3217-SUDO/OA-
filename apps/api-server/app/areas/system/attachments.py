@@ -290,6 +290,14 @@ async def upload_attachment(
         item = FileAttachment(record_id=record_id, finance_transaction_id=finance_transaction_id, category=category, file_type_code=resolved_case_file_type.code if resolved_case_file_type else "", original_name=Path(file.filename or stored_name).name, stored_name=stored_name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target), uploader=identity["username"], remark=remark, is_license=bool(is_license), document_date=document_date)
         db.add(item)
         await db.flush()
+        if (record and record.module == "case") or source_case:
+            from app.core.case_automation import advance_case_for_uploaded_document
+            await advance_case_for_uploaded_document(
+                source_case or record, item.original_name, db, operator=identity["username"],
+            )
+            if "保全裁定" in item.original_name:
+                from app.core.case_automation import apply_case_rules_on_change
+                await apply_case_rules_on_change(source_case or record, db)
         if record and record.module == "hr" and category == "员工头像":
             record.data = {**(record.data or {}), "avatar_attachment_id": item.id}
             linked_username = str((record.data or {}).get("username") or record.owner or "").strip().lower()
@@ -310,6 +318,8 @@ async def upload_attachment(
                 clue = await db.get(BusinessRecord, int((record.data or {}).get("clue_id") or 0)); case_record = await db.get(BusinessRecord, int(((record.data or {}).get("case_id") or ((clue.data or {}).get("converted_case_id") if clue else 0)) or 0))
                 if case_record and case_record.status == "等待公证书":
                     case_record.status = "等待审核公证书"; db.add(WorkflowEvent(record_id=case_record.id, action="公证书扫描件已上传", from_status="等待公证书", to_status="等待审核公证书", operator=identity["username"], comment=f"公证记录 {record.serial_no}"))
+                    from app.core.case_automation import apply_case_rules_on_change
+                    await apply_case_rules_on_change(case_record, db)
                 db.add(WorkflowEvent(record_id=record.id, action="提交公证书审核", from_status=previous_notary_status, to_status="待审核", operator=identity["username"], comment=f"扫描件 {item.original_name}；审核期限 30 日"))
         elif record and record.module == "customer":
             db.add(WorkflowEvent(record_id=record.id, action="上传客户文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{category}：{item.original_name}"))

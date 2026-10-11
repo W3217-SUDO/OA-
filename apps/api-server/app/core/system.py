@@ -521,6 +521,19 @@ def _validate_system_config(key: str, value: dict) -> dict:
         if set(value) != {"supervisor_username"} or not isinstance(value["supervisor_username"], str):
             raise HTTPException(status_code=422, detail="调查任务分配人配置无效")
         value = {"supervisor_username": value["supervisor_username"].strip()}
+    elif key == "automatic_task_staff":
+        companies = value.get("companies")
+        if set(value) != {"companies"} or not isinstance(companies, dict):
+            raise HTTPException(status_code=422, detail="案件自动任务人员配置无效")
+        for company_id, staff in companies.items():
+            if not str(company_id).isdigit() or not isinstance(staff, dict) or set(staff) != {"notary_handover_username", "warehouse_username"}:
+                raise HTTPException(status_code=422, detail="请按公司配置公证书交接人员与仓库管理员")
+            if any(not isinstance(username, str) for username in staff.values()):
+                raise HTTPException(status_code=422, detail="案件自动任务人员账号无效")
+        value = {"companies": {
+            str(company_id): {role: username.strip() for role, username in staff.items()}
+            for company_id, staff in companies.items()
+        }}
     elif key == "conflict_auto_review":
         if set(value) != {"enabled"} or not isinstance(value["enabled"], bool):
             raise HTTPException(status_code=422, detail="自动利冲审查开关必须为布尔值")

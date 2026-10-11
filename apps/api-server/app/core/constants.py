@@ -465,6 +465,11 @@ DEFAULT_SYSTEM_CONFIGS = {
         "label": "调查任务分配人", "group": "业务配置", "description": "合同新建调查任务时固定流转到该调查主管，由其再分配调查子任务。",
         "value": {"supervisor_username": ""},
     },
+    "automatic_task_staff": {
+        "label": "案件自动任务交接人员", "group": "业务配置",
+        "description": "按公司配置公证书交接人员与证物仓库管理员；未配置时对应任务不生成并记录诊断。",
+        "value": {"companies": {}},
+    },
     "conflict_auto_review": {
         "label": "自动利冲审查", "group": "业务配置", "description": "提交合同审批、合同用印和保存案件时自动检索并发起人工核查；关闭不解除已有审查阻断。",
         "value": {"enabled": False},

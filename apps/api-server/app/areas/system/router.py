@@ -861,6 +861,13 @@ async def update_system_config(config_key: str, body: SystemConfigUpdate, identi
         supervisor = await db.scalar(select(User).where(User.username == value["supervisor_username"], User.is_active.is_(True)))
         if not supervisor:
             raise HTTPException(status_code=422, detail="调查任务分配人必须是启用的系统人员")
+    if config_key == "automatic_task_staff":
+        usernames = {username for staff in value["companies"].values() for username in staff.values() if username}
+        active = set((await db.scalars(select(User.username).where(
+            User.username.in_(usernames), User.is_active.is_(True),
+        ))).all()) if usernames else set()
+        if usernames != active:
+            raise HTTPException(status_code=422, detail="交接人员与仓库管理员必须是启用的系统人员")
     previous_value = dict(item.value or {})
     item.value = value; item.updated_by = identity["username"]
     audit_detail = {"key": item.key}

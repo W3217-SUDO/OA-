@@ -710,6 +710,7 @@ async def create_task(body: TaskInput, identity: dict = Depends(current_identity
 
 @router.post(f"{settings.api_prefix}/tasks/batch-update")
 async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.case_automation import requires_phase_completion
     from app.core.permissions import (
         _require_task_owner_or_initiator,
     )
@@ -735,6 +736,8 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
         normalized_owner = await _active_task_username(body.owner, db, field_name="负责人")
     for task in tasks:
         _require_task_owner_or_initiator(task, identity, action="批量修改任务")
+        if requires_phase_completion(task) and (body.owner is not None or body.priority is not None or body.is_vip is not None):
+            raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 只能人工变更期限")
         if task.status not in {"待接收", "待处理", "处理中"}:
             raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 已进入不可批量修改的状态")
         changes: list[str] = []
@@ -763,6 +766,7 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
 
 @router.post(f"{settings.api_prefix}/tasks/batch-lifecycle")
 async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.case_automation import requires_phase_completion
     """Apply one dedicated task lifecycle action atomically to selected tasks.
 
     This deliberately does not reuse ``batch-update`` or the generic record
@@ -791,6 +795,8 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     # selection never creates a partial lifecycle result.
     for task in ordered_tasks:
         data = task.data or {}
+        if requires_phase_completion(task) and body.action not in {"accept"}:
+            raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 由案件阶段自动完成，人工只能变更期限")
         if body.action == "accept":
             if identity.get("role") != "admin" and task.owner != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅负责人可接收")
@@ -1295,10 +1301,13 @@ async def batch_read_task_messages(body: TaskBatchReadInput, identity: dict = De
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/handoff")
 async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.case_automation import requires_phase_completion
     from app.core.tasks import (
         _active_task_username, _add_task_message_notifications, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db)
+    if requires_phase_completion(task):
+        raise HTTPException(status_code=409, detail="该任务只能人工变更期限")
     if identity.get("role") != "admin" and task.owner != identity["username"]:
         raise HTTPException(status_code=403, detail="只有当前负责人可以转交任务")
     if task.status in {"已完成", "已验收", "已撤回", "已停止", "已取消", "待确认", "已拒绝"}:
@@ -1397,10 +1406,13 @@ async def restart_task(task_id: int, body: TaskActionInput, identity: dict = Dep
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/exception-request")
 async def request_task_exception(task_id: int, body: TaskExceptionRequestInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.case_automation import requires_phase_completion
     from app.core.tasks import (
         _add_task_message_notifications, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db)
+    if requires_phase_completion(task):
+        raise HTTPException(status_code=409, detail="该任务只能人工变更期限")
     if identity.get("role") != "admin" and task.owner != identity["username"]:
         raise HTTPException(status_code=403, detail="只有任务负责人可以申请挂起或取消")
     if task.status not in {"待接收", "待处理", "处理中"}:
@@ -1445,10 +1457,13 @@ async def review_task_exception(task_id: int, body: TaskExceptionReviewInput, id
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/complete")
 async def complete_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.case_automation import requires_phase_completion
     from app.core.tasks import (
         _add_task_message_notifications, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db)
+    if requires_phase_completion(task):
+        raise HTTPException(status_code=409, detail="该任务只能由案件阶段变化自动完成")
     if identity.get("role") != "admin" and task.owner != identity["username"]: raise HTTPException(status_code=403, detail="只有任务负责人可以提交完成")
     if task.status not in {"待接收", "待处理", "处理中", "进行中", "已逾期"}: raise HTTPException(status_code=409, detail="当前状态不能提交完成")
     previous = task.status
