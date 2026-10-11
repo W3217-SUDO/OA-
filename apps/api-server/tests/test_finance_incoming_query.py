@@ -304,7 +304,7 @@ class IncomingQueryAssertions:
         self.assertEqual(administrator["paid_amount"], 1007)
         self.assertEqual(administrator["incoming_payments"], 5)
 
-    async def test_summary_invalid_existing_amount_is_an_explicit_failure(self):
+    async def test_summary_missing_amount_is_reported_without_changing_source(self):
         async with self.sessions() as db:
             fee = BusinessRecord(module="finance", serial_no="SUMMARY-BAD-AMOUNT", title="费用",
                                  owner="alice", data={"fee_type": "官方费用", "amount": None})
@@ -314,8 +314,10 @@ class IncomingQueryAssertions:
         identity = {"username": "alice", "role": "user", "_actual_role_ids": [],
                     "_dashboard_record_ids": [fee_id]}
         async with self.sessions() as db:
-            with self.assertRaises(TypeError):
-                await finance_summary(identity=identity, db=db)
+            summary = await finance_summary(identity=identity, db=db)
+            self.assertEqual(summary["fees"], 1)
+            self.assertEqual(summary["total_fee_amount"], 0)
+            self.assertEqual(summary["missing_amount_count"], 1)
             fee = await db.get(BusinessRecord, fee_id)
             self.assertIsNone(fee.data["amount"])
 

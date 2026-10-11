@@ -27,8 +27,8 @@ async def read_finance_summary(identity: dict, db: AsyncSession) -> dict:
         counts[module, record_status] = int(count)
         totals[module] += int(count)
 
-    # 历史金额可能是数字或数字字符串；SQLite强制转换会吞掉非法值，
-    # 因此只投影金额及JSON类型，仍按原实现float转换，并区分缺键与显式null。
+    # 金额可能是数字或数字字符串；保留未填写的空值，不将其伪装成零。
+    # SQLite强制转换会吞掉非法值，因此仍逐项转换已填写金额。
     dialect = db.get_bind().dialect.name
     if dialect == "sqlite":
         amount_kind = func.json_type(BusinessRecord.data, "$.amount")
@@ -37,6 +37,7 @@ async def read_finance_summary(identity: dict, db: AsyncSession) -> dict:
     else:
         raise ValueError(f"财务概览不支持数据库类型：{dialect}")
     amounts = {fee_type: 0 for fee_type in FINANCE_FEE_TYPES}
+    missing_amount_count = 0
     amount_rows = await db.stream(
         select(BusinessRecord.data["fee_type"].as_string(),
                BusinessRecord.data["amount"], amount_kind)
@@ -47,7 +48,10 @@ async def read_finance_summary(identity: dict, db: AsyncSession) -> dict:
     try:
         async for batch in amount_rows.partitions(400):
             for fee_type, amount, kind in batch:
-                amounts[fee_type] += float(0 if kind is None else amount)
+                if kind is None or kind == "null":
+                    missing_amount_count += 1
+                    continue
+                amounts[fee_type] += float(amount)
     finally:
         await amount_rows.close()
 
@@ -82,6 +86,7 @@ async def read_finance_summary(identity: dict, db: AsyncSession) -> dict:
         "refund_pending": counts["refund", "待审批"],
         "amount_visible": can_view_amount,
         "total_fee_amount": sum(amounts.values()) if can_view_amount else None,
+        "missing_amount_count": missing_amount_count if can_view_amount else None,
         "amounts_by_type": amounts if can_view_amount else {},
         "paid_amount": transaction_amounts.get("付款", 0) if can_view_amount else None,
         "invoice_amount": transaction_amounts.get("开票", 0) if can_view_amount else None,

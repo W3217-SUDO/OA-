@@ -29,6 +29,7 @@ export type FinanceSummary = {
   approved: number;
   paid: number;
   total_fee_amount: number;
+  missing_amount_count?: number;
   paid_amount: number;
   invoice_amount: number;
   refund_amount: number;

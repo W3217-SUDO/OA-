@@ -5,6 +5,7 @@ interface FinanceStatsCardsProps {
   summary: {
     amount_visible?: boolean;
     total_fee_amount?: number;
+    missing_amount_count?: number;
     pending?: number;
     approved?: number;
     paid_amount?: number;
@@ -20,7 +21,7 @@ export function FinanceStatsCards({ summary }: FinanceStatsCardsProps) {
     <div className="finance-stats">
       <Card>
         <Statistic
-          title="费用总额"
+          title={summary.missing_amount_count ? `费用总额（仅已填金额；${summary.missing_amount_count}笔未填）` : "费用总额"}
           value={amountVisible ? summary.total_fee_amount : "无权限"}
           formatter={(v) =>
             typeof v === "number" ? money(v) : String(v)
