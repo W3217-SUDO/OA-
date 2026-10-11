@@ -3,17 +3,14 @@ import asyncio
 import hashlib
 import json
 import logging
-import sys
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date
 from time import monotonic
 
-from sqlalchemy import Text, cast, func, select
-
 from app.core.dashboard_metrics import dashboard_metrics
-from app.core.request_metrics import measure_phase
+from app.core.query_cache_flow import read_shared_query, release_lock, visible_snapshot
 from app.config import settings
 from app.core import dashboard_metrics_redis as shared
 from redis.exceptions import RedisError
@@ -38,14 +35,7 @@ _entries: OrderedDict[tuple, _MetricsEntry] = OrderedDict()
 
 
 async def _visible_snapshot(db):
-    with measure_phase("dashboard.metrics.snapshot"):
-        row = (await db.execute(select(
-            cast(func.pg_current_snapshot(), Text).label("snapshot"),
-            cast(func.pg_current_xact_id_if_assigned(), Text).label("own_xid"),
-            func.current_setting("transaction_isolation").label("isolation"),
-        ))).one()
-    # 写事务和固定快照事务不复用，避免遗漏本事务的改动或读到过期版本。
-    return row.snapshot if row.own_xid is None and row.isolation == "read committed" else None
+    return await visible_snapshot(db, "dashboard.metrics.snapshot")
 
 
 def _matches(entry, snapshot, business_date):
@@ -108,80 +98,13 @@ def _shared_key(identity, db, business_date):
 
 
 async def _release_shared_lock(key, token, primary_error=None):
-    # 客户端断开也等待精确解锁结束；不能把仍在执行的清理任务留给会话回收。
-    cleanup = asyncio.create_task(shared.release(key, token))
-    try:
-        await asyncio.shield(cleanup)
-    except asyncio.CancelledError as cancelled:
-        try:
-            await cleanup
-        except RedisError as exc:
-            logger.error("控制台取消查询后的解锁失败：%s", type(exc).__name__)
-        raise cancelled
-    except RedisError as exc:
-        if primary_error is None:
-            raise
-        # 清理故障保留日志，但不能把客户端取消或计算失败替换成另一种异常。
-        logger.error("控制台失败查询后的解锁失败：%s", type(exc).__name__)
+    await release_lock(shared, key, token, primary_error)
 
 
 async def _read_shared_metrics(identity, db, snapshot):
-    deadline = monotonic() + settings.dashboard_metrics_cache_wait_seconds
-    while True:
-        if monotonic() >= deadline:
-            raise shared.unavailable("控制台统计仍在重算，请稍后重试")
-        if db.new or db.dirty or db.deleted:
-            return await dashboard_metrics(identity, db)
-        if db.in_transaction():
-            # 仅此专用只读入口结束已验证的只读事务，等待 Redis 时不占数据库连接。
-            snapshot = await _visible_snapshot(db)
-            if snapshot is None:
-                return await dashboard_metrics(identity, db)
-            if db.new or db.dirty or db.deleted:
-                return await dashboard_metrics(identity, db)
-            await db.rollback()
-        business_date = date.today()
-        key = _shared_key(identity, db, business_date)
-        # Redis 有结果时才取新快照；空缓存等待不增加数据库轮询。
-        cached = await shared.read(key)
-        if cached is not None:
-            end_snapshot = await _visible_snapshot(db)
-            if end_snapshot == cached["snapshot"] and business_date == date.today():
-                return cached["result"]
-            snapshot = end_snapshot
-            if snapshot is None:
-                return await dashboard_metrics(identity, db)
-            if db.new or db.dirty or db.deleted:
-                return await dashboard_metrics(identity, db)
-            await db.rollback()
-        token = await shared.acquire(key)
-        if token is not None:
-            try:
-                snapshot = await _visible_snapshot(db)
-                if snapshot is None:
-                    return await dashboard_metrics(identity, db)
-                cached = await shared.read(key)
-                if (cached is not None and cached["snapshot"] == snapshot
-                        and business_date == date.today()):
-                    end_snapshot = await _visible_snapshot(db)
-                    if end_snapshot == snapshot and business_date == date.today():
-                        return cached["result"]
-                    snapshot = end_snapshot
-                    if snapshot is None:
-                        return await dashboard_metrics(identity, db)
-                try:
-                    async with asyncio.timeout(settings.dashboard_metrics_compute_timeout_seconds):
-                        result = await dashboard_metrics(identity, db)
-                except TimeoutError as exc:
-                    raise shared.unavailable("控制台统计计算超时，请稍后重试") from exc
-                end_snapshot = await _visible_snapshot(db)
-                if (snapshot == end_snapshot and business_date == date.today()
-                        and not (db.new or db.dirty or db.deleted)):
-                    await shared.publish(key, token, snapshot, result)
-                return result
-            finally:
-                await _release_shared_lock(key, token, sys.exception())
-        remaining = deadline - monotonic()
-        if remaining <= 0:
-            raise shared.unavailable("控制台统计仍在重算，请稍后重试")
-        await asyncio.sleep(min(0.1, remaining))
+    return await read_shared_query(
+        db, key_for_date=lambda today: _shared_key(identity, db, today),
+        compute=lambda: dashboard_metrics(identity, db), store=shared,
+        snapshot_reader=_visible_snapshot, release=_release_shared_lock,
+        label="控制台统计", today=date.today,
+    )

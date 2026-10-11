@@ -2,9 +2,13 @@
 
 import unittest
 from datetime import date
+from inspect import signature
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
-from fastapi import status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.routing import APIRoute
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -23,6 +27,7 @@ from app.models import (
     WorkflowEvent,
 )
 from app.security import current_identity
+from app.areas.finance import query_cache_routes as cache_routes
 
 
 API = settings.api_prefix
@@ -236,6 +241,173 @@ class FinanceIncomingGapsDContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["summary"]["ap_paid"], 120)
         hidden = await self.client.get(f"{API}/finance/contract-ledger/999999")
         self.assertEqual(hidden.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class FinanceQueryCacheRouteContractTest(unittest.IsolatedAsyncioTestCase):
+    def test_actual_registration_preserves_routes_and_excludes_writes_files_auth(self):
+        expected = {**cache_routes.FINANCE_JSON_QUERIES, **cache_routes.FINANCE_CONDITIONAL_QUERIES}
+        mounted = {route.path.removeprefix(API): route for route in app.routes if isinstance(route, APIRoute) and route.methods == {"GET"}}
+        self.assertEqual(len(expected), 60)
+        self.assertEqual(len(cache_routes.FINANCE_FILE_QUERIES), 17)
+        for path, name in expected.items():
+            route = mounted[path]
+            self.assertEqual(route.endpoint.__name__, name)
+            self.assertIs(route.dependant.call.__wrapped__, route.endpoint)
+            self.assertEqual(signature(route.dependant.call), signature(route.endpoint))
+            self.assertEqual({dep.name for dep in route.dependant.dependencies}, {"db", "identity"})
+        for path in cache_routes.FINANCE_FILE_QUERIES | {"/auth/me"}:
+            self.assertIs(mounted[path].dependant.call, mounted[path].endpoint)
+        for route in app.routes:
+            if isinstance(route, APIRoute) and "GET" not in route.methods:
+                self.assertIs(route.dependant.call, route.endpoint)
+
+    async def test_associated_lists_and_parameter_categories_are_precise(self):
+        db = Mock()
+        for module in cache_routes.FINANCE_RECORD_LIST_MODULES:
+            self.assertTrue(await cache_routes._financial_query_branch("/records", {"module": module, "db": db}))
+        for module in ("hr", "task", "clue", "investigation", "warehouse", "unknown"):
+            self.assertFalse(await cache_routes._financial_query_branch("/records", {"module": module, "db": db}))
+        for category in ("fee_type", "case_file_type"):
+            self.assertTrue(await cache_routes._financial_query_branch("/system/parameters/options", {"category": category}))
+        self.assertFalse(await cache_routes._financial_query_branch("/system/parameters/options", {"category": "notary_office"}))
+        db.scalar.assert_not_called()
+
+    async def test_detail_cache_does_not_expand_to_linked_modules_or_audit_scope(self):
+        db = Mock(scalar=AsyncMock())
+        for module in cache_routes.FINANCIAL_RECORD_MODULES:
+            db.scalar.return_value = module
+            self.assertTrue(await cache_routes._financial_query_branch("/records/{record_id}", {"record_id": 1, "scope": "", "db": db}))
+        for module in ("case", "customer", "contract", "clue", None):
+            db.scalar.return_value = module
+            self.assertFalse(await cache_routes._financial_query_branch("/records/{record_id}/history", {"record_id": 1, "db": db}))
+        db.scalar.reset_mock()
+        self.assertFalse(await cache_routes._financial_query_branch("/records/{record_id}", {"record_id": 1, "scope": "audit", "db": db}))
+        db.scalar.assert_not_awaited()
+
+    def _install_isolated_route(self, endpoint, path, **route_options):
+        local = FastAPI()
+        local.add_api_route(API + path, endpoint, methods=["GET"], **route_options)
+        with patch.object(cache_routes, "FINANCE_JSON_QUERIES", {path: endpoint.__name__}), \
+             patch.object(cache_routes, "FINANCE_CONDITIONAL_QUERIES", {}), \
+             patch.object(cache_routes, "FINANCE_FILE_QUERIES", set()):
+            cache_routes.install_finance_query_cache(local)
+        return local
+
+    async def test_asgi_cache_hit_still_authenticates_and_preserves_alias_defaults_filters(self):
+        auth_calls = 0
+        computed = 0
+        identity_value = {"username": "CODEX-CACHE-A", "menu_keys": ["finance"], "data_scope": "self"}
+        authenticated = True
+        db_value = object()
+
+        async def identity_dependency():
+            nonlocal auth_calls
+            auth_calls += 1
+            if not authenticated:
+                raise HTTPException(401, "认证失效")
+            return dict(identity_value)
+
+        async def db_dependency():
+            yield db_value
+
+        async def list_incoming_payments(payment_id: int, kind: str = Query("all", alias="type"),
+                                         page: int = Query(1, ge=1), received_date: date | None = None,
+                                         identity: dict = Depends(identity_dependency), db=Depends(db_dependency)):
+            nonlocal computed
+            computed += 1
+            return {"id": payment_id, "kind": kind, "page": page, "date": received_date, "user": identity["username"]}
+
+        path = "/finance/incoming-payments/{payment_id}"
+        local = self._install_isolated_route(list_incoming_payments, path)
+        keys = {}
+
+        async def cache_stub(db, identity, namespace, parameters, compute):
+            self.assertIs(db, db_value)
+            self.assertEqual(namespace, "finance.list_incoming_payments")
+            key = (str(sorted(identity.items())), tuple(sorted(parameters.items())))
+            if key not in keys:
+                keys[key] = await compute()
+            return keys[key]
+
+        cache = AsyncMock(side_effect=cache_stub)
+        with patch("app.core.query_cache.cached_query", cache):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=local), base_url="http://cache-route.test") as client:
+                url = API + "/finance/incoming-payments/7"
+                first = await client.get(url)
+                second = await client.get(url)
+                self.assertEqual(first.json(), second.json())
+                self.assertEqual(first.status_code, 200)
+                self.assertEqual(computed, 1)
+                self.assertEqual(auth_calls, 2)
+                self.assertEqual(cache.call_args.args[3], {"payment_id": 7, "kind": "all", "page": 1, "received_date": None})
+                filtered = await client.get(url, params={"type": "bank", "page": 2, "received_date": "2026-10-11"})
+                self.assertEqual(filtered.json()["kind"], "bank")
+                self.assertEqual(filtered.json()["date"], "2026-10-11")
+                self.assertEqual(cache.call_args.args[3]["received_date"], date(2026, 10, 11))
+                identity_value["data_scope"] = "department"
+                await client.get(url)
+                self.assertEqual(computed, 3)
+                calls = cache.await_count
+                authenticated = False
+                self.assertEqual((await client.get(url)).status_code, 401)
+                self.assertEqual(cache.await_count, calls)
+                self.assertEqual((await client.get(url, params={"page": 0})).status_code, 401)
+
+    async def test_response_status_and_headers_stay_owned_by_original_route(self):
+        async def identity_dependency():
+            return ADMIN
+
+        async def db_dependency():
+            yield object()
+
+        async def query(identity: dict = Depends(identity_dependency), db=Depends(db_dependency)):
+            return JSONResponse({"ok": True}, status_code=202, headers={"X-Query-Contract": "unchanged"})
+
+        local = self._install_isolated_route(query, "/finance/summary")
+
+        async def call_original(db, identity, namespace, parameters, compute):
+            return await compute()
+
+        with patch("app.core.query_cache.cached_query", AsyncMock(side_effect=call_original)):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=local), base_url="http://cache-route.test") as client:
+                response = await client.get(API + "/finance/summary")
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.headers["X-Query-Contract"], "unchanged")
+        self.assertEqual(response.json(), {"ok": True})
+
+    async def test_conditional_bypass_calls_original_without_cache(self):
+        endpoint = AsyncMock(return_value={"items": []})
+        endpoint.__name__ = "list_records"
+        endpoint.__signature__ = signature(lambda module, identity, db: None)
+        wrapped = cache_routes._wrap_query(endpoint, "/records")
+        with patch("app.core.query_cache.cached_query", AsyncMock()) as cache:
+            result = await wrapped(module="hr", identity=ADMIN, db=object())
+        self.assertEqual(result, {"items": []})
+        endpoint.assert_awaited_once()
+        cache.assert_not_awaited()
+
+    def test_unregistered_finance_get_and_special_request_parameter_fail_registration(self):
+        async def identity_dependency():
+            return ADMIN
+
+        async def db_dependency():
+            yield object()
+
+        async def query(identity: dict = Depends(identity_dependency), db=Depends(db_dependency)):
+            return {}
+
+        local = FastAPI()
+        local.add_api_route(API + "/finance/unreviewed", query, methods=["GET"])
+        with self.assertRaisesRegex(RuntimeError, "未审计"):
+            cache_routes.install_finance_query_cache(local)
+
+        from starlette.requests import Request
+
+        async def special(request: Request, identity: dict = Depends(identity_dependency), db=Depends(db_dependency)):
+            return {}
+
+        with self.assertRaisesRegex(RuntimeError, "非查询参数"):
+            self._install_isolated_route(special, "/finance/summary")
 
 
 if __name__ == "__main__":

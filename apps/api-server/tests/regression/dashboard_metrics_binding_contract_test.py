@@ -4,13 +4,18 @@ import json
 from contextlib import ExitStack
 from collections import OrderedDict
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi import HTTPException
+from fastapi.encoders import jsonable_encoder
+from starlette.responses import FileResponse, JSONResponse, StreamingResponse
+from starlette.requests import Request
 from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import ResponseError as RedisResponseError
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -441,6 +446,254 @@ class DashboardSharedMetricsCacheTest(unittest.IsolatedAsyncioTestCase):
             (Path(right) / "core" / "metrics.py").write_bytes(b"value = 1\n")
             (Path(right) / "settings.py").rename(Path(right) / "other.py")
             self.assertNotEqual(digest, self.shared._source_digest(Path(right)))
+
+
+class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        from app.core import query_cache as cache
+        from app.core import query_cache_store as store
+        from app.core import dashboard_metrics_redis as shared
+
+        self.cache, self.store, self.shared = cache, store, shared
+        self.original_read, self.original_publish = store.read, store.publish
+        self.patches = ExitStack()
+        self.addCleanup(self.patches.close)
+        self.patches.enter_context(patch.object(cache.settings, "cache_redis_url", "redis://cache:6380/0"))
+        self.patches.enter_context(patch.object(cache.settings, "dashboard_metrics_cache_wait_seconds", 0.03))
+        self.patches.enter_context(patch.object(cache.settings, "dashboard_metrics_compute_timeout_seconds", 0.02))
+        self.revision = self.patches.enter_context(patch.object(shared, "source_revision", return_value="source-a"))
+        self.snapshot = self.patches.enter_context(patch.object(cache, "visible_snapshot", AsyncMock(return_value="10:20:")))
+        self.read = self.patches.enter_context(patch.object(store, "read", AsyncMock(return_value=None)))
+        self.acquire = self.patches.enter_context(patch.object(store, "acquire", AsyncMock(return_value="owner")))
+        self.publish = self.patches.enter_context(patch.object(store, "publish", AsyncMock()))
+        self.release = self.patches.enter_context(patch.object(store, "release", AsyncMock()))
+        self.db = SimpleNamespace(
+            new=[], dirty=[], deleted=[], rollback=AsyncMock(), in_transaction=Mock(return_value=True),
+            get_bind=Mock(return_value=Mock(dialect=SimpleNamespace(name="postgresql"),
+                                          url=make_url("postgresql+asyncpg://account:secret@db/oa"))),
+        )
+        self.result = {"items": [{"date": date(2026, 10, 11), "amount": Decimal("100.20"),
+                                  "created_at": datetime(2026, 10, 11, 9, 30), "empty": None}], "total": 1}
+        self.compute = AsyncMock(return_value=self.result)
+        self.namespace = "finance.incoming.list"
+        self.parameters = {"keyword": "客户", "page": 1}
+
+    async def query(self):
+        return await self.cache.cached_query(self.db, IDENTITY, self.namespace, self.parameters, self.compute)
+
+    async def test_cold_preserves_original_result_and_hot_preserves_json_wire_values(self):
+        cold = await self.query()
+        self.assertIs(cold, self.result)
+        encoded = self.store._encode("10:20:", cold)
+        self.read.return_value = self.store._decode(encoded)
+        self.compute.reset_mock()
+        hot = await self.query()
+        self.assertEqual(jsonable_encoder(cold), hot)
+        self.assertEqual(JSONResponse(jsonable_encoder(cold)).body, JSONResponse(hot).body)
+        self.compute.assert_not_awaited()
+
+    async def test_key_isolates_full_permission_identity_parameters_source_database_and_date(self):
+        today = date.today()
+        def key(identity=IDENTITY, parameters=None, namespace=None, day=today):
+            return self.cache._query_key(self.db, identity, namespace or self.namespace,
+                                         parameters or self.parameters, day)
+        base = key()
+        self.assertNotIn("secret", base)
+        self.assertNotIn("客户", base)
+        for field, value in (("role", "user"), ("field_keys", ["amount"]),
+                             ("action_keys", ["finance.read"]), ("_actual_role", "partner"),
+                             ("_page_menu_capability", {"role": "admin"}), ("_request_path", "/other")):
+            self.assertNotEqual(base, key(identity={**IDENTITY, field: value}))
+        for parameters in ({"keyword": "other", "page": 1}, {"keyword": "客户", "page": 2},
+                           {**self.parameters, "date": date.today()}, {**self.parameters, "id": 2}):
+            self.assertNotEqual(base, key(parameters=parameters))
+        self.assertNotEqual(base, key(namespace="finance.incoming.detail"))
+        self.assertNotEqual(base, key(day=today + timedelta(days=1)))
+        self.revision.return_value = "source-b"
+        self.assertNotEqual(base, key())
+        self.revision.return_value = "source-a"
+        self.db.get_bind.return_value.url = make_url("postgresql+asyncpg://account:secret@db/other")
+        self.assertNotEqual(base, key())
+
+    async def test_parameters_use_fastapi_encoder_for_validated_dates_and_decimals(self):
+        typed = {"date": date(2026, 10, 11), "amount": Decimal("10.20"), "filters": (1, 2)}
+        self.assertEqual(self.cache._digest(typed), self.cache._digest(jsonable_encoder(typed)))
+        self.assertEqual(self.cache._digest({"a": 1, "b": None}), self.cache._digest({"b": None, "a": 1}))
+        self.assertNotEqual(self.cache._digest({"b": None}), self.cache._digest({}))
+
+    async def test_ineligible_sessions_and_disabled_cache_do_not_rollback(self):
+        with patch.object(self.cache.settings, "cache_redis_url", ""):
+            self.assertIs(await self.query(), self.result)
+        self.snapshot.assert_not_awaited()
+        self.db.get_bind.return_value.dialect.name = "sqlite"
+        await self.query()
+        self.db.get_bind.return_value.dialect.name = "postgresql"
+        for field in ("new", "dirty", "deleted"):
+            setattr(self.db, field, [object()])
+            await self.query()
+            setattr(self.db, field, [])
+        self.snapshot.return_value = None
+        await self.query()
+        self.db.rollback.assert_not_awaited()
+        self.read.assert_not_awaited()
+
+    async def test_changed_snapshot_or_pending_write_does_not_publish(self):
+        self.snapshot.side_effect = ["10:20:", "10:20:", "10:20:", "20:30:"]
+        self.assertIs(await self.query(), self.result)
+        self.publish.assert_not_awaited()
+        self.snapshot.side_effect = None
+        async def compute():
+            self.db.dirty.append(object())
+            return self.result
+        self.compute.side_effect = compute
+        self.assertIs(await self.query(), self.result)
+        self.publish.assert_not_awaited()
+
+    async def test_lock_wait_does_not_hold_database_connection(self):
+        held = True
+        async def rollback():
+            nonlocal held
+            held = False
+        async def acquire(key):
+            self.assertFalse(held)
+            return None
+        self.db.rollback.side_effect = rollback
+        self.db.in_transaction.side_effect = lambda: held
+        self.acquire.side_effect = acquire
+        with self.assertRaises(HTTPException) as caught:
+            await self.query()
+        self.assertEqual(caught.exception.status_code, 503)
+        self.compute.assert_not_awaited()
+
+    async def test_enabled_redis_network_or_oom_failure_never_recomputes(self):
+        for error in (RedisConnectionError("offline"), RedisResponseError("OOM command not allowed")):
+            self.read.side_effect = error
+            with self.assertRaises(HTTPException) as caught:
+                await self.query()
+            self.assertEqual(caught.exception.status_code, 503)
+        self.compute.assert_not_awaited()
+
+    async def test_payload_limit_and_response_objects_are_explicit_admission_bypasses(self):
+        client = SimpleNamespace(eval=AsyncMock(return_value=1))
+        with patch.object(self.shared, "client", return_value=client), \
+                patch.object(self.store.settings, "query_cache_max_payload_bytes", 1024):
+            self.assertIsNone(self.store._encode("10:20:", {"items": ["客户" * 1000]}))
+            await self.original_publish("key", "owner", "10:20:", {"items": ["客户" * 1000]})
+            for response in (JSONResponse({"ok": True}, status_code=202),
+                             FileResponse("unused.docx"), StreamingResponse(iter([b"data"]))):
+                await self.original_publish("key", "owner", "10:20:", response)
+        client.eval.assert_not_awaited()
+
+    async def test_store_validates_schema_size_and_nonfinite_numbers_without_fake_results(self):
+        client = SimpleNamespace(get=AsyncMock())
+        with patch.object(self.shared, "client", return_value=client), \
+                patch.object(self.store.settings, "query_cache_max_payload_bytes", 1024):
+            for payload in (b"{", b"\xff", b"{}", b"x" * 1025,
+                            b'{"snapshot":"bad","result":null}',
+                            b'{"snapshot":"10:20:","result":NaN}',
+                            b'{"snapshot":"10:20:","result":1e999}',
+                            b'{"snapshot":"10:20:","result":{},"extra":1}'):
+                client.get.return_value = payload
+                with self.assertRaises(HTTPException) as caught:
+                    await self.original_read("key")
+                self.assertEqual(caught.exception.status_code, 503)
+            for result in (None, [], [{"a": None}, {"b": 1}], True, "文字", 100.2):
+                client.get.return_value = self.store._encode("10:20:", result)
+                self.assertEqual((await self.original_read("key"))["result"], result)
+
+    async def test_publish_uses_bounded_ttl_and_checks_owner_token(self):
+        client = SimpleNamespace(eval=AsyncMock(return_value=1))
+        with patch.object(self.shared, "client", return_value=client):
+            await self.original_publish("key", "owner", "10:20:", self.result)
+            args = client.eval.await_args.args
+            self.assertEqual(args[:5], (self.shared._PUBLISH, 2, "key:lock", "key:data", "owner"))
+            self.assertEqual(args[6], 60)
+            self.assertEqual(self.store._decode(args[5])["result"], jsonable_encoder(self.result))
+            client.eval.return_value = 0
+            with self.assertRaises(HTTPException) as caught:
+                await self.original_publish("key", "expired", "10:20:", self.result)
+            self.assertEqual(caught.exception.status_code, 503)
+
+
+    async def test_request_and_orm_dependencies_are_not_encoded(self):
+        for value in (Request({"type": "http"}), User(username="unused")):
+            with self.assertRaises(TypeError):
+                self.cache._digest({"dependency": value})
+            with self.assertRaises(TypeError):
+                self.store._encode("10:20:", {"item": value})
+
+    async def test_actual_snapshot_reader_rejects_own_xid_and_fixed_isolation(self):
+        from app.core.query_cache_flow import visible_snapshot
+        row = SimpleNamespace(snapshot="10:20:", own_xid=None, isolation="read committed")
+        db = SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(one=lambda: row)))
+        self.assertEqual(await visible_snapshot(db), "10:20:")
+        row.own_xid = "15"
+        self.assertIsNone(await visible_snapshot(db))
+        row.own_xid = None
+        for isolation in ("repeatable read", "serializable"):
+            row.isolation = isolation
+            self.assertIsNone(await visible_snapshot(db))
+
+    async def test_small_cold_concurrency_has_one_owner_and_independent_sessions(self):
+        entries, locks, databases = {}, {}, []
+        async def read(key):
+            return entries.get(key)
+        async def acquire(key):
+            if key in locks:
+                return None
+            locks[key] = "owner"
+            return "owner"
+        async def publish(key, token, snapshot, result):
+            self.assertEqual(locks[key], token)
+            entries[key] = self.store._decode(self.store._encode(snapshot, result))
+        async def release(key, token):
+            self.assertEqual(locks.pop(key), token)
+        async def compute():
+            await asyncio.sleep(0.01)
+            return self.result
+        self.read.side_effect, self.acquire.side_effect = read, acquire
+        self.publish.side_effect, self.release.side_effect = publish, release
+        self.compute.side_effect = compute
+        for _ in range(4):
+            databases.append(SimpleNamespace(
+                new=[], dirty=[], deleted=[], rollback=AsyncMock(), in_transaction=Mock(return_value=True),
+                get_bind=self.db.get_bind,
+            ))
+        self.assertEqual(self.cache.settings.dashboard_metrics_compute_timeout_seconds, 0.02)
+        with patch.object(self.cache.settings, "dashboard_metrics_cache_wait_seconds", 0.5), \
+                patch.object(self.cache.settings, "dashboard_metrics_compute_timeout_seconds", 0.3):
+            results = await asyncio.gather(*(self.cache.cached_query(
+                db, IDENTITY, self.namespace, self.parameters, self.compute,
+            ) for db in databases))
+        self.assertEqual(self.cache.settings.dashboard_metrics_compute_timeout_seconds, 0.02)
+        self.compute.assert_awaited_once()
+        self.publish.assert_awaited_once()
+        self.release.assert_awaited_once()
+        self.assertFalse(locks)
+        for result in results:
+            self.assertEqual(jsonable_encoder(result), jsonable_encoder(self.result))
+        for db in databases:
+            db.rollback.assert_awaited()
+
+    async def test_generic_cancel_and_compute_timeout_release_owned_lock(self):
+        started = asyncio.Event()
+        async def slow():
+            started.set()
+            await asyncio.sleep(1)
+        self.compute.side_effect = slow
+        task = asyncio.create_task(self.query())
+        await started.wait()
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.release.assert_awaited_once()
+        self.publish.assert_not_awaited()
+        self.release.reset_mock()
+        with self.assertRaises(HTTPException) as caught:
+            await self.query()
+        self.assertIn("计算超时", caught.exception.detail)
+        self.release.assert_awaited_once()
+        self.publish.assert_not_awaited()
 
 
 if __name__ == "__main__":

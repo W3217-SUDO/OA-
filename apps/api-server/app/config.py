@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     dashboard_metrics_cache_ttl_seconds: int = Field(default=300, ge=1, le=300)
     dashboard_metrics_cache_wait_seconds: float = Field(default=15, gt=0, le=60)
     dashboard_metrics_compute_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    query_cache_ttl_seconds: int = Field(default=60, ge=1, le=300)
+    query_cache_max_payload_bytes: int = Field(default=4 * 1024 * 1024, ge=1024, le=64 * 1024 * 1024)
     secret_key: str = "replace-this-before-production"
     initial_admin_username: str = "admin"
     initial_admin_password: str = ""

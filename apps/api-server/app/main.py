@@ -605,4 +605,6 @@ include_route_slice(app, hr_router, 31, len(hr_router.routes))
 include_route_slice(app, system_router, 86, len(system_router.routes))
 include_route_slice(app, aws_router, 18, len(aws_router.routes))
 verify_route_coverage(app, [aws_router, contract_router, crm_router, conflict_rules_router, conflict_reviews_router, finance_router, hr_router, investigation_router, ipr_router, legal_router, rpt_router, system_router, tp_router, wms_router])
+from app.areas.finance.query_cache_routes import install_finance_query_cache
+install_finance_query_cache(app)
 install_gateway(app)
