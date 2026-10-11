@@ -69,24 +69,23 @@ export const receivableDetailAmountFilters: Record<string, ReceivableDetailAmoun
   unCashedCaseNonOfficeFeeAmount: "agency-due",
 };
 export const receivablesDetailSummaryKeys = ["official_paid", "official_received", "official_unreceived", "official_loss", "agency_total", "agency_received", "agency_due"];
+const receivableDetailAmounts = (detail: Receivable) => ({
+  official_paid: detail.fee_category === "official" ? Number(detail.paid_amount || 0) : 0,
+  official_received: detail.fee_category === "official" ? Number(detail.received_amount || 0) : 0,
+  official_unreceived: detail.fee_category === "official" ? Number(detail.remaining_amount || 0) : 0,
+  official_loss: detail.fee_category === "official" && String(detail.phase || "").includes("亏损") ? Number(detail.remaining_amount || 0) : 0,
+  agency_total: detail.fee_category === "agency" ? Number(detail.amount || 0) : 0,
+  agency_received: detail.fee_category === "agency" ? Number(detail.received_amount || 0) : 0,
+  agency_due: detail.fee_category === "agency" ? Number(detail.remaining_amount || 0) : 0,
+});
 export const calculateReceivablesDetailTotals = (rows: Array<{ contract_record_id: number }>, _contractById: Map<number, Contract>) => {
   const totals = Object.fromEntries(receivablesDetailSummaryKeys.map((key) => [key, 0])) as Record<string, number>;
   rows.forEach((row) => {
-    const detail = row as Receivable;
-    if (detail.fee_category === "official") {
-      totals.official_paid += Number(detail.paid_amount || 0);
-      totals.official_received += Number(detail.received_amount || 0);
-      totals.official_unreceived += Number(detail.remaining_amount || 0);
-      if (String(detail.phase || "").includes("亏损")) totals.official_loss += Number(detail.remaining_amount || 0);
-    } else {
-      totals.agency_total += Number(detail.amount || 0);
-      totals.agency_received += Number(detail.received_amount || 0);
-      totals.agency_due += Number(detail.remaining_amount || 0);
-    }
+    const amounts = receivableDetailAmounts(row as Receivable);
+    receivablesDetailSummaryKeys.forEach((key) => { totals[key] += amounts[key as keyof typeof amounts]; });
   });
   return totals;
 };
-export const isRepeatedReceivableDetailRow = (rows: Array<{ contract_record_id: number }>, index: number) => index > 0 && rows[index - 1]?.contract_record_id === rows[index]?.contract_record_id;
 export const buildReceivableCaseDetailRoute = (record: { id: number; serial_no: string }) => `case-detail-${record.id}-${encodeURIComponent(record.serial_no)}`;
 export const receivableDetailReturnView = (initialView: string) => ["contract-receivable-mine", "contract-receivable-dept", "contract-receivable-company"].includes(initialView) ? initialView : "contract-receivable-mine";
 export const matchesReceivableDetailContract = (detailContractNo: unknown, contractNo: unknown) => !String(detailContractNo || "").trim() || String(detailContractNo).trim() === String(contractNo || "").trim();
@@ -243,12 +242,6 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
     return true;
   }), [receivables, contractById, detailContext, query]);
   const detailSummary = useMemo(() => calculateReceivablesDetailTotals(detailRows, contractById), [detailRows, contractById]);
-  const detailTotalsByContract = useMemo(() => new Map(
-    [...new Set(detailRows.map((row) => row.contract_record_id))].map((contractId) => [
-      contractId,
-      calculateReceivablesDetailTotals(detailRows.filter((row) => row.contract_record_id === contractId), contractById),
-    ]),
-  ), [detailRows, contractById]);
   const listSummary = useMemo(() => calculateReceivablesListTotals(visibleContracts), [visibleContracts]);
   const renderDetailSummaryRow = (totals: Record<string, number>, visible = true) => visible ? <tr className="contract-detail-summary-row"><td /><td /><td />{receivablesDetailSummaryKeys.map((key) => <td key={key} style={{ textAlign: "right" }}><strong>{money(totals[key])}</strong></td>)}{Array.from({ length: 7 }, (_, index) => <td key={index} />)}</tr> : null;
   const renderReceivablesListSummaryRow = (totals: Record<string, number>, visible = true) => visible ? <tr className="contract-list-summary-row"><td /><td /><td />
@@ -296,15 +289,13 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
     { title: "客户名称", dataIndex: "customer", width: 190, ellipsis: true, render: (value: string) => <Button type="link" onClick={() => openCustomer(value)}>{value}</Button> },
   ];
   const detailColumns = [
-        { title: "合同号", dataIndex: "contract_no", width: 130, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : <Button type="link" onClick={() => openContract(row)}>{row.contract_no}</Button> },
-        { title: "合同名称", dataIndex: "contract_title", width: 200, ellipsis: true, render: (value: string, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : value || contractById.get(row.contract_record_id)?.title },
-        { title: "官费支付金额", key: "official_paid", width: 110, align: "right" as const, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(detailTotalsByContract.get(row.contract_record_id)?.official_paid) },
-        { title: "官费到账金额", key: "official_received", width: 110, align: "right" as const, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(detailTotalsByContract.get(row.contract_record_id)?.official_received) },
-        { title: "官费未到金额", key: "official_unreceived", width: 110, align: "right" as const, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(detailTotalsByContract.get(row.contract_record_id)?.official_unreceived) },
-        { title: "官费亏损金额", key: "official_loss", width: 110, align: "right" as const, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(detailTotalsByContract.get(row.contract_record_id)?.official_loss) },
-        { title: "代理费总金额", key: "agency_total", width: 110, align: "right" as const, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(detailTotalsByContract.get(row.contract_record_id)?.agency_total) },
-        { title: "代理费到账金额", key: "agency_received", width: 110, align: "right" as const, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(detailTotalsByContract.get(row.contract_record_id)?.agency_received) },
-        { title: "代理费待收金额", key: "agency_due", width: 110, align: "right" as const, render: (_: unknown, row: Receivable, index: number) => isRepeatedReceivableDetailRow(detailRows, index) ? null : money(detailTotalsByContract.get(row.contract_record_id)?.agency_due) },
+    { title: "合同号", dataIndex: "contract_no", width: 130, render: (_: unknown, row: Receivable) => <Button type="link" onClick={() => openContract(row)}>{row.contract_no}</Button> },
+    { title: "合同名称", dataIndex: "contract_title", width: 200, ellipsis: true, render: (value: string, row: Receivable) => value || contractById.get(row.contract_record_id)?.title },
+    ...receivablesDetailSummaryKeys.map((key, index) => ({
+      title: ["官费支付金额", "官费到账金额", "官费未到金额", "官费亏损金额", "代理费总金额", "代理费到账金额", "代理费待收金额"][index],
+      key, width: 110, align: "right" as const,
+      render: (_: unknown, row: Receivable) => money(receivableDetailAmounts(row)[key as keyof ReturnType<typeof receivableDetailAmounts>]),
+    })),
     { title: "案号", key: "case_no", width: 130, render: (_: unknown, row: Receivable) => {
       const caseNo = row.case_no;
               return caseNo ? <Button type="link" className="receivable-case-link" style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }} onClick={() => void openCase(caseNo, row.contract_no)}>{caseNo}</Button> : "—";
@@ -323,7 +314,7 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
       : ["合同号", "合同名称", "合同状态", "官费支付金额", "官费到账金额", "官费未到金额", "官费亏损金额", "代理费总金额", "代理费到账金额", "代理费待收金额", "案源人", "客户管理人", "签订日期", "客户名称"];
     const body = detailView
       ? detailRows.map((row) => {
-          const totals = detailTotalsByContract.get(row.contract_record_id) || {};
+          const totals = receivableDetailAmounts(row);
           return [row.contract_no, row.contract_title, totals.official_paid, totals.official_received, totals.official_unreceived, totals.official_loss, totals.agency_total, totals.agency_received, totals.agency_due, row.case_no, row.case_stage, row.case_type, row.fee_type, row.amount, row.received_amount, row.remaining_amount];
         })
       : visibleContracts.map((row) => [row.serial_no, row.title, row.status, row.data.official_paid, row.data.official_received, row.data.official_unreceived, row.data.official_loss, row.data.agency_total, row.data.agency_received, row.data.agency_due, personDisplayName(row.data.source_person_display_name || row.owner_display_name), peopleDisplayNames(row.data.customer_manager_display_names || row.data.customer_manager_display_name), row.data.signed_at || "", row.customer]);

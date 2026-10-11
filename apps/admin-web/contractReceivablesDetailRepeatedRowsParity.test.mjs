@@ -4,8 +4,8 @@ import fs from 'node:fs'
 
 const source = fs.readFileSync(new URL('./src/ContractReceivablesPage.tsx', import.meta.url), 'utf8')
 
-test('receivables detail blanks contract and seven amount cells on repeated contract rows', () => {
-  assert.match(source, /export const isRepeatedReceivableDetailRow = \(/, 'detail rows need a repeated-contract predicate')
-  assert.match(source, /isRepeatedReceivableDetailRow\([^)]*\)\s*\?\s*null/, 'contract and amount cells must render empty on repeats')
-  assert.match(source, /detailColumns[\s\S]*?isRepeatedReceivableDetailRow[\s\S]*?contractById/, 'detail columns must apply repeat handling')
+test('receivables detail shows the contract and row amounts on every fee row', () => {
+  assert.doesNotMatch(source, /isRepeatedReceivableDetailRow/, 'detail rows must not hide repeated contracts')
+  assert.match(source, /detailColumns[\s\S]*?onClick=\{\(\) => openContract\(row\)\}/, 'each row must retain its contract link')
+  assert.match(source, /receivableDetailAmounts\(row\)\[key as keyof ReturnType/, 'amount cells must use the current fee row')
 })

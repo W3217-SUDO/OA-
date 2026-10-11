@@ -258,9 +258,16 @@ async def list_receivable_details(
     from app.core.projections import (
         _receivable_detail_projection,
     )
-    from app.core.dashboard_scope import dashboard_request_identity, dashboard_receivables
-    identity = await dashboard_request_identity(dashboard_queue, {"official-fee-unreceived"}, identity, db)
-    items = await dashboard_receivables(identity, db) if dashboard_queue else await _receivable_detail_projection(identity, db)
+    if dashboard_queue:
+        if dashboard_queue != "official-fee-unreceived":
+            raise HTTPException(422, "控制台业务入口无效")
+        from app.core.dashboard_scope import dashboard_receivables, load_dashboard_scope
+        scope = await load_dashboard_scope(identity, db, include_summaries=True)
+        items = await dashboard_receivables(
+            scope.identity, db, records=[*scope.contracts, *scope.cases, *scope.fees],
+        )
+    else:
+        items = await _receivable_detail_projection(identity, db)
     return {
         "items": items,
         "total": len(items),
