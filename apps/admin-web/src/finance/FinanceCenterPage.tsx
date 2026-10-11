@@ -104,6 +104,7 @@ import { useRefundMaintenanceState } from "./hooks/useRefundMaintenanceState";
 import { useRefundCaseFeeActionState } from "./hooks/useRefundCaseFeeActionState";
 import { useFinanceDocumentWorkspaceState } from "./hooks/useFinanceDocumentWorkspaceState";
 import { useFinanceIncomingState } from "./hooks/useFinanceIncomingState";
+import { useIncomingPaymentQuery } from "./hooks/useIncomingPaymentQuery";
 import { useFinanceLinkedDetail, type FinanceLinkedDetailResult } from "./hooks/useFinanceLinkedDetail";
 import { useInvoiceApplicationState } from "./hooks/useInvoiceApplicationState";
 import { usePaymentPackageWorkspaceState } from "./hooks/usePaymentPackageWorkspaceState";
@@ -262,6 +263,7 @@ export default function FinanceCenterPage({
     get setCases() { return setCases; },
     get setCustomers() { return setCustomers; },
     get setIncoming() { return setIncoming; },
+    get loadIncomingPayments() { return loadIncomingPayments; },
     get setSelectedIncomingRows() { return setSelectedIncomingRows; },
     get setTransactions() { return setTransactions; },
     get setReconciliations() { return setReconciliations; },
@@ -556,6 +558,7 @@ export default function FinanceCenterPage({
   const [selectedOriginalRows, setSelectedOriginalRows] = useState<
     (string | number)[]
   >([]);
+  const { meta: incomingMeta, loading: incomingLoading, load: loadIncomingPayments } = useIncomingPaymentQuery(initialView, setIncoming, setSelectedOriginalRows);
   const [paymentPrintPreview, setPaymentPrintPreview] =
     useState<PaymentPrintDocumentData | null>(null);
   const [paymentWordExportLoading, setPaymentWordExportLoading] = useState(false);
@@ -3372,6 +3375,7 @@ export default function FinanceCenterPage({
   });
   const configuredRows = useMemo(() => {
     if (!activeRouteConfig) return originalFinanceRows;
+    if (activeRouteConfig.source === "incoming") return incoming as OriginalFinanceRow[];
     let rows: OriginalFinanceRow[] = initialView === "finance-payment-print"
       ? [...originalFinanceRows]
       : isFeeQueryRoute
@@ -3386,9 +3390,7 @@ export default function FinanceCenterPage({
             ? [...invoiceCompanyRows]
           : isInvoiceUnissuedRoute
             ? [...invoiceUnissuedRows]
-            : activeRouteConfig?.source === "incoming"
-              ? incoming.filter((row) => !receiptBankCode(initialView) || matchesReceiptBank(row.bank_source, receiptBankCode(initialView)!))
-              : activeRouteConfig?.source === "generalSettlements"
+            : activeRouteConfig?.source === "generalSettlements"
                 ? [...generalSettlementRows]
               : activeRouteConfig?.source === "archiveSettlements"
                 ? [...archiveSettlementRows]
@@ -3414,12 +3416,6 @@ export default function FinanceCenterPage({
       rows = rows.filter((row) => row.data?.fee_type === "结算费用");
     if (initialView.startsWith("finance-archive-fee"))
       rows = rows.filter((row) => row.data?.fee_type === "归档费用");
-    if (["finance-receipts-claim"].includes(initialView))
-      rows = rows.filter((row) => row.status === "待认领");
-    if (["finance-receipts-pending"].includes(initialView))
-      rows = rows.filter((row) => ["待分配", "部分分配"].includes(row.status || ""));
-    if (["finance-receipts-allocated"].includes(initialView))
-      rows = rows.filter((row) => row.status === "已分配");
     if (initialView === "finance-invoice-mine") {
       const identities = [currentUser.username, currentUser.displayName].filter(
         Boolean,
@@ -3689,6 +3685,12 @@ export default function FinanceCenterPage({
     );
     setOriginalQuery(next);
     setSelectedOriginalRows([]);
+    if (activeRouteConfig?.source === "incoming") {
+      void loadIncomingPayments(next, 1, incomingMeta.pageSize).catch((error: unknown) =>
+        message.error(financeErrorDetail(error) || "回款查询失败"),
+      );
+      return;
+    }
     if (initialView === "finance-payment-query") {
       void loadPaymentQueryPage(next, 1, paymentQueryPageSize)
         .then(({ data }) => {
@@ -3772,6 +3774,15 @@ export default function FinanceCenterPage({
     }
   };
   const clearConfiguredQuery = () => {
+    if (activeRouteConfig?.source === "incoming") {
+      const next = paymentWriteoffClearQuery(initialView);
+      setOriginalQueryDraft(next);
+      setOriginalQuery(next);
+      void loadIncomingPayments(next, 1, incomingMeta.pageSize).catch((error: unknown) =>
+        message.error(financeErrorDetail(error) || "回款查询清空失败"),
+      );
+      return;
+    }
     if (initialView === "finance-payment-query") {
       setOriginalQueryDraft({});
       setOriginalQuery({});
@@ -5046,7 +5057,7 @@ export default function FinanceCenterPage({
     isInternalApprovalRoute,
     isRefundCaseFeeRoute,
     activeRouteConfig,
-    loading,
+    loading: activeRouteConfig?.source === "incoming" ? loading || incomingLoading : loading,
     paymentPackageLoading,
     invoiceExportLoading,
     feeQueryExportLoading,
@@ -5077,6 +5088,8 @@ export default function FinanceCenterPage({
     generalSettlementMeta,
     archiveSettlementMeta,
     internalDetailMeta,
+    incomingMeta,
+    loadIncomingPayments,
     originalQuery,
     submitPaymentQueryQuickPage,
     refreshPaymentQueryPage,

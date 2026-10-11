@@ -74,7 +74,7 @@ async def _contract_customer_projection_context(records: list[BusinessRecord], d
 
 async def _receivable_detail_projection(
     identity: dict, db: AsyncSession, records: list[BusinessRecord] | None = None,
-    *, summary_only: bool = False,
+    *, summary_only: bool = False, official_only: bool = False,
 ) -> list[dict]:
     """Project the legacy contract-object receivable detail from visible data."""
     from app.core.finance import (
@@ -204,6 +204,9 @@ async def _receivable_detail_projection(
             if _fee_matches_contract_object(fee, item, case_record)
         ]
         matched_fee_ids.update(fee.id for fee in linked_fees)
+        # 官费统计不计算最终被过滤的代理费，但仍标记其费用，避免历史行重复计入。
+        if summary_only and official_only and _receivable_fee_category(item.fee_type) != "official":
+            continue
         paid = 0.0
         received = 0.0
         for fee in linked_fees:
@@ -260,6 +263,8 @@ async def _receivable_detail_projection(
         projected = finance_data_by_id.get(fee.id, {})
         fee_type = str(projected.get("fee_type") or data.get("fee_type") or fee.title or "案件费用").strip()
         fee_category = _receivable_fee_category(fee_type)
+        if summary_only and official_only and fee_category != "official":
+            continue
         contract, case_record = relation(data)
         if contract is None:
             continue

@@ -16,7 +16,7 @@ import type {ComponentProps} from "react";
 
 import {RefundCaseFeeOperationMenu, RefundCaseFeeMarkButton, type RefundCaseFeeOperationMenuProps, type RefundCaseFeeMarkButtonProps} from "./RefundCaseFeeActions";
 import {internalApprovalRoutes, paymentPackagePageSizeOptions, paymentQueryControlledPageSize, paymentQueryDefaultPageSize, paymentQueryPageSizeOptions, paymentQueryQuickJumper, paymentQueryShowsSinglePageGo} from "./constants";
-import type {ArchiveSettlementTarget, Fee, FinancePageMeta, FinanceAmountPageMeta, FinanceInvoicePageMeta, FinanceUnissuedPageMeta, FinanceSettlementPageMeta, FinanceFeeQueryMeta, OriginalFinanceRow, IncomingPayment, OriginalRouteConfig} from "./types";
+import type {ArchiveSettlementTarget, Fee, FinancePageMeta, FinanceAmountPageMeta, FinanceInvoicePageMeta, FinanceUnissuedPageMeta, FinanceSettlementPageMeta, FinanceFeeQueryMeta, OriginalFinanceRow, OriginalRouteConfig} from "./types";
 
 export interface FinanceOriginalRoutesViewProps {
   originalQueryView: FinanceOriginalQueryViewProps;
@@ -71,6 +71,8 @@ export interface FinanceOriginalRoutesViewProps {
   generalSettlementMeta: FinanceSettlementPageMeta;
   archiveSettlementMeta: FinanceSettlementPageMeta;
   internalDetailMeta: FinanceAmountPageMeta;
+  incomingMeta: FinancePageMeta & { totals: Record<string, number | null> };
+  loadIncomingPayments: (query: Record<string, unknown>, page?: number, pageSize?: number) => Promise<unknown>;
   originalQuery: Record<string, unknown>;
   submitPaymentQueryQuickPage: () => void;
   refreshPaymentQueryPage: (page: number, pageSize: number) => void;
@@ -166,6 +168,8 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
     generalSettlementMeta,
     archiveSettlementMeta,
     internalDetailMeta,
+    incomingMeta,
+    loadIncomingPayments,
     originalQuery,
     submitPaymentQueryQuickPage,
     refreshPaymentQueryPage,
@@ -340,7 +344,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                 }
                 components={
                   ["finance-receipts-manage", "finance-receipts-claim", "finance-receipts-pending", "finance-receipts-allocated", "finance-receipts-query"].includes(initialView)
-                    ? { body: { wrapper: (props: ComponentProps<"tbody">) => <IncomingTotalsBody {...props} headers={originalHeaders} rows={configuredRows as IncomingPayment[]} /> } }
+                    ? { body: { wrapper: (props: ComponentProps<"tbody">) => <IncomingTotalsBody {...props} headers={originalHeaders} totals={incomingMeta.totals} /> } }
                   : initialView === "finance-payment-query" && configuredRows.length
                     ? { body: { wrapper: (props: ComponentProps<"tbody">) => (
                       <PaymentQueryTotalBody {...props} rows={configuredRows} columnCount={paymentOriginalColumns.length} />
@@ -716,7 +720,9 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                 }}
                 pagination={{
                   size: "small",
-                  pageSize: isGeneralSettlementRoute
+                  pageSize: activeRouteConfig?.source === "incoming"
+                    ? incomingMeta.pageSize
+                    : isGeneralSettlementRoute
                     ? generalSettlementMeta.pageSize
                     : isArchiveSettlementActiveRoute
                       ? archiveSettlementMeta.pageSize
@@ -755,7 +761,9 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                       ? internalDetailMeta.pageSize
                       : 20),
                   pageSizeOptions:
-                    activeRouteConfig?.source === "paymentPackages"
+                    activeRouteConfig?.source === "incoming"
+                      ? [10, 20, 50, 100]
+                      : activeRouteConfig?.source === "paymentPackages"
                       ? paymentPackagePageSizeOptions
                       : paymentQueryPageSizeOptions(initialView) ??
                     ([
@@ -811,6 +819,17 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                           setSelectedOriginalRows([]);
                           void loadPaymentPackages(originalQuery, 1, pageSize).catch(
                             () => message.error("付款包查询失败"),
+                          );
+                        },
+                      }
+                    : {}),
+                  ...(activeRouteConfig?.source === "incoming"
+                    ? {
+                        current: incomingMeta.page,
+                        total: incomingMeta.total,
+                        onChange: (page: number, pageSize: number) => {
+                          void loadIncomingPayments(originalQuery, pageSize === incomingMeta.pageSize ? page : 1, pageSize).catch(
+                            (error: unknown) => message.error(financeErrorDetail(error) || "回款翻页失败"),
                           );
                         },
                       }

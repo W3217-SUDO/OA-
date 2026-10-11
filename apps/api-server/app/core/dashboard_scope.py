@@ -235,7 +235,9 @@ async def dashboard_queue_cases(db, conditions):
 
 async def dashboard_receivables(identity, db, *, records=None, summary_only=False):
     from app.core.projections import _receivable_detail_projection
-    rows = await _receivable_detail_projection(identity, db, records=records, summary_only=summary_only)
+    rows = await _receivable_detail_projection(
+        identity, db, records=records, summary_only=summary_only, official_only=summary_only,
+    )
     return [row for row in rows if row["fee_category"] == "official" and row["remaining_amount"] > 0]
 
 

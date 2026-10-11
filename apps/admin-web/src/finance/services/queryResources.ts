@@ -9,6 +9,7 @@ export type FinanceQueryResource =
 
 // 只声明当前页面的真实依赖；未加载资源不生成空响应，也不覆盖其他页面的数据。
 export function financeRouteResources(route: string, tab: string, source?: string): FinanceQueryResource[] {
+  if (originalFinanceRoutes.includes(route) && source === "incoming") return ["incomingRes", "profileRes", "peopleRes"];
   const resources: FinanceQueryResource[] = [
     "feeRes", "invoiceRes", "caseRes", "customerRes", "profileRes", "peopleRes",
   ];
@@ -19,7 +20,6 @@ export function financeRouteResources(route: string, tab: string, source?: strin
     if (tab === "reconcile") resources.push("recRes");
     return resources;
   }
-  if (source === "incoming") resources.push("incomingRes");
   if (!source || source === "fees" || source === "feeQuery") resources.push("txRes");
   if (source === "paymentPackages") resources.push("paymentPackageRes");
   if (source === "settlements") resources.push("settlementRes");

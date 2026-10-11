@@ -1,5 +1,7 @@
 """按业务职责组织的 API 路由，保留原有端点行为与注册顺序。"""
 
+from typing import Annotated
+
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, Depends, File, FinanceTransaction, Form, HTTPException,
     IncomingPayment, Query, ReceivablePlan, Response, UploadFile, User, WorkflowEvent,
@@ -30,19 +32,25 @@ def _record_relation_id(data: dict, *keys: str) -> int:
 
 
 @router.get(f"{settings.api_prefix}/finance/incoming-payments")
-async def list_incoming_payments(payment_status: str = "", keyword: str = "", bank_source: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.contracts import (
-        _contract_person_values,
-    )
+async def list_incoming_payments(
+    payment_status: str = "", keyword: str = "", bank_source: str = "",
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    page: Annotated[int | None, Query(ge=1)] = None,
+    page_size: Annotated[int | None, Query(ge=1, le=100)] = None,
+    view: str = "",
+    filters: Annotated[str, Query(max_length=16384)] = "",
+):
     from app.core.finance import (
         _incoming_payment_dict, _visible_incoming_payment_statement,
-    )
-    from app.core.formatters import (
-        _person_reference_display,
     )
     from app.core.system import (
         _allowed_field_keys,
     )
+    from app.areas.finance.incoming_query import (
+        incoming_customer_fields, incoming_customers, incoming_summary,
+        parse_incoming_filters, read_incoming_query,
+    )
+    filter_values = parse_incoming_filters(view, filters)
     if bank_source:
         aliases = {
             "icbc": ("工行", "工商银行"),
@@ -61,32 +69,29 @@ async def list_incoming_payments(payment_status: str = "", keyword: str = "", ba
         ))
     if payment_status:
         statement = statement.where(IncomingPayment.status == payment_status)
-    items = (await db.scalars(statement.order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all()
-    if keyword:
-        key = keyword.casefold(); items = [item for item in items if key in f"{item.receipt_no} {item.payer_name} {item.bank_reference} {item.claimed_customer}".casefold()]
     can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
     users_by_username = {user.username.lower(): user for user in users}
-    claimed_names = {item.claimed_customer.strip() for item in items if item.claimed_customer.strip()}
-    customer_rows = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "customer", BusinessRecord.title.in_(claimed_names),
-    ))).all()) if claimed_names else []
-    customers_by_title = {row.title.strip(): row for row in customer_rows}
+    if page is not None or page_size is not None or view or filters:
+        result = await read_incoming_query(
+            statement, keyword, view, filter_values, page, page_size,
+            can_view_amount, users_by_username, db,
+        )
+        items = result["items"]
+        customers_by_title = result.pop("customers")
+    else:
+        items = (await db.scalars(statement.order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all()
+        if keyword:
+            key = keyword.casefold(); items = [item for item in items if key in f"{item.receipt_no} {item.payer_name} {item.bank_reference} {item.claimed_customer}".casefold()]
+        customers_by_title = await incoming_customers(items, db)
+        result = {"total": len(items), "summary": incoming_summary(items, can_view_amount)}
     rows = []
     for item in items:
         payload = _incoming_payment_dict(item, show_amount=can_view_amount, users_by_username=users_by_username)
-        customer = customers_by_title.get(item.claimed_customer.strip())
-        if customer:
-            manager_values = _contract_person_values((customer.data or {}).get("customer_managers") or [customer.owner])
-            payload["customer_manager"] = "、".join(manager_values)
-            payload["customer_manager_display_name"] = "、".join(
-                _person_reference_display(value, users_by_username)[0] for value in manager_values
-            )
-        else:
-            payload["customer_manager"] = ""
-            payload["customer_manager_display_name"] = ""
+        payload.update(incoming_customer_fields(item, customers_by_title, users_by_username))
         rows.append(payload)
-    return {"items": rows, "total": len(items), "summary": {"total": len(items), "unclaimed": sum(1 for item in items if item.status == "待认领"), "unallocated": sum(1 for item in items if item.status in {"待分配", "部分分配"}), "completed": sum(1 for item in items if item.status == "已分配"), "amount": sum(item.amount for item in items) if can_view_amount else None, "remaining": sum(max(item.amount - item.allocated_amount, 0) for item in items) if can_view_amount else None}}
+    result["items"] = rows
+    return result
 
 
 @router.get(f"{settings.api_prefix}/finance/customer-options")

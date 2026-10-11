@@ -11,6 +11,9 @@ import { normalizeRefundResponse } from "../../financeRefundHelpers.mjs";
 import { invoiceLegacyDefaultPageSize, normalizePaymentPackageResponse, paymentPackageRequestParams } from "../constants";
 import type { ArchiveSettlementRow, ContractPaymentSourceState, Fee, FinancePersonOption, FinanceSummary, IncomingPayment, LegacyFinanceRecord, LegacyFinanceSummary, Reconciliation, Transaction, OriginalRouteConfig } from "../types";
 import { financeRouteResources, loadFinanceQueryResources } from "./queryResources";
+import { incomingPaymentQueryParams } from "./incomingQuery";
+import type { IncomingPaymentPage } from "../hooks/useIncomingPaymentQuery";
+import { financeErrorDetail } from "../financeErrors";
 
 const projectionNumericId = (value: unknown) => {
     const raw = String(value ?? "");
@@ -412,6 +415,7 @@ export interface FinanceQueriesDependencies {
     readonly setCases: React.Dispatch<React.SetStateAction<Fee[]>>;
     readonly setCustomers: React.Dispatch<React.SetStateAction<Fee[]>>;
     readonly setIncoming: React.Dispatch<React.SetStateAction<IncomingPayment[]>>;
+    readonly loadIncomingPayments: (query: Record<string, unknown>, page?: number, pageSize?: number) => Promise<{ data: IncomingPaymentPage } | null>;
     readonly setSelectedIncomingRows: React.Dispatch<React.SetStateAction<number[]>>;
     readonly setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
     readonly setReconciliations: React.Dispatch<React.SetStateAction<Reconciliation[]>>;
@@ -698,7 +702,8 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                 setCases(caseRes.data.items || []);
                 return;
             }
-            const feeRequest = initialView === "finance-payment-query"
+            const resources = financeRouteResources(initialView, selectedTab, context.activeRouteConfig?.source);
+            const feeRequest = !resources.includes("feeRes") ? null : initialView === "finance-payment-query"
                     ? loadPaymentQueryPage({}, 1, paymentQueryPageSize)
                     : initialView === "finance-internal-mine"
                         ? loadMyInternalApplications()
@@ -725,16 +730,17 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     params: feeQueryParams(dashboardFeeQuerySeed, 1, 15),
                 })
                 : null;
-            const resources = financeRouteResources(initialView, selectedTab, context.activeRouteConfig?.source);
             const { feeRes, contractPaymentRes, invoiceRes, refundRes, caseRes, customerRes, incomingRes, txRes, recRes, sumRes, profileRes, settlementRes, refundReviewRes, paymentPackageRes, internalDetailRes, invoiceMineRes, invoicePendingRes, invoiceCompanyRes, invoiceUnissuedRes, generalSettlementRes, archiveSettlementRes, feeQueryRes, peopleRes } = await loadFinanceQueryResources(
                 resources, {
-                feeRes: () => feeRequest,
+                feeRes: () => feeRequest!,
                 contractPaymentRes: () => loadContractPaymentRecords(),
                 invoiceRes: () => api.get("/records", { params: { module: "invoice", page_size: 100 } }),
                 refundRes: () => loadRefunds(1, refundMeta.pageSize, activeRefundStatus, isRefundNotRequiredRoute),
                 caseRes: () => api.get("/records", { params: { module: "case", page_size: 100 } }),
                 customerRes: () => api.get("/records", { params: { module: "customer", page_size: 100 } }),
-                incomingRes: () => api.get("/finance/incoming-payments", { params: { bank_source: receiptBankCode(initialView) } }),
+                incomingRes: () => context.activeRouteConfig?.source === "incoming"
+                    ? context.loadIncomingPayments(context.originalQuery)
+                    : api.get("/finance/incoming-payments", { params: { bank_source: receiptBankCode(initialView) } }),
                 txRes: () => context.financeProjectionEnabled
                     ? api.get("/finance/projection/transactions", {
                         params: {
@@ -744,7 +750,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     })
                     : context.activeRouteConfig?.source === "feeQuery"
                         ? feeQueryRequest!.then((response) => loadTransactionsForFees(response.data.items || []))
-                        : feeRequest.then((response) => loadTransactionsForFees(response.data.items || [])),
+                        : feeRequest!.then((response) => loadTransactionsForFees(response.data.items || [])),
                 recRes: () => api.get("/finance/reconciliations"),
                 sumRes: () => api.get<FinanceSummary>("/finance/summary"),
                 profileRes: () => api.get("/auth/me"),
@@ -826,7 +832,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             }
             if (caseRes) setCases(caseRes.data.items);
             if (customerRes) setCustomers(customerRes.data.items);
-            if (incomingRes) {
+            if (incomingRes && context.activeRouteConfig?.source !== "incoming") {
                 setIncoming(incomingRes.data.items);
                 setSelectedIncomingRows([]);
             }
@@ -936,8 +942,10 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                 });
             }
         }
-        catch {
-            message.error("财务中心数据加载失败");
+        catch (error: unknown) {
+            message.error(context.activeRouteConfig?.source === "incoming"
+                ? financeErrorDetail(error) || "回款查询失败"
+                : "财务中心数据加载失败");
         }
         finally {
             setLoading(false);
@@ -1059,9 +1067,20 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             }
             return;
         }
-        const rows = selectedOnly
+        let rows = selectedOnly
             ? configuredRows.filter((row) => selectedOriginalRows.includes(row.id))
             : configuredRows;
+        if (activeRouteConfig.source === "incoming" && !selectedOnly) {
+            try {
+                const response = await api.get<{ items: IncomingPayment[] }>("/finance/incoming-payments", {
+                    params: incomingPaymentQueryParams(initialView, originalQuery),
+                });
+                rows = response.data.items;
+            } catch (error: unknown) {
+                message.error(financeErrorDetail(error) || "回款导出失败");
+                return;
+            }
+        }
         if (!rows.length) {
             message.warning(selectedOnly ? "请先选择需要导出的记录" : "当前没有可导出的记录");
             return;
