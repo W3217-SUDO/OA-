@@ -466,6 +466,7 @@ class CaseAgentRuntime:
         request_images: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any] | list[dict[str, Any]] | None]:
         from .agent_mcp.model_tools import MAX_TOOL_ROUNDS, MODEL_TOOLS, ModelToolSession, request_completion
+        from .agent_mcp.model_rounds import request_final_answer
 
         prompt_messages = build_case_model_messages(snapshot, messages, skill, request_images)
         tools = ModelToolSession(case_id=int(snapshot["case"]["id"]))
@@ -480,7 +481,7 @@ class CaseAgentRuntime:
                 def on_stream_support(supported: bool) -> None:
                     self._model_stream_supported = supported
 
-                for _ in range(MAX_TOOL_ROUNDS):
+                for round_index in range(MAX_TOOL_ROUNDS):
                     result = await request_completion(
                         client, f"{self.api_base_url}/chat/completions",
                         {"Authorization": f"Bearer {self.api_key}"},
@@ -493,13 +494,25 @@ class CaseAgentRuntime:
                     if calls:
                         prompt_messages.append({**result, "role": "assistant"})
                         prompt_messages.extend(await tools.execute_calls(calls))
+                        if tools.remaining_calls == 0:
+                            break
                         continue
                     content = str(result.get("content") or "").strip()
                     if not content:
                         raise RuntimeError("model_empty_response")
                     response, legacy_action = _extract_proposed_action(content)
                     return response, tools.pending_actions or legacy_action
-                raise RuntimeError("oa_tool_round_limit_exceeded")
+                result = await request_final_answer(
+                    client, f"{self.api_base_url}/chat/completions",
+                    {"Authorization": f"Bearer {self.api_key}"},
+                    {"model": self.model, "messages": prompt_messages, "temperature": 0.2, "tools": MODEL_TOOLS},
+                    tools=tools, entry="case_agent", tool_rounds=round_index + 1,
+                    stream=bool(chunk_callback) and self._model_stream_supported is not False,
+                    on_delta=on_delta if chunk_callback else None,
+                    on_stream_support=on_stream_support,
+                )
+                response, legacy_action = _extract_proposed_action(str(result["content"]).strip())
+                return response, tools.pending_actions or legacy_action
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             raise RuntimeError("model_request_failed") from exc
 

@@ -393,11 +393,19 @@ class ToolCatalog:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
             raise HTTPException(422, detail="目录检索数量必须为 1 至 50")
         terms = re.findall(r"[a-z0-9_/-]+|[\u4e00-\u9fff]", query.lower())
+        # 中文相邻双字词补充原字符评分，避免“任务”只因“务”字命中财务工具。
+        phrases = tuple(dict.fromkeys(
+            text[index:index + 2]
+            for text in re.findall(r"[\u4e00-\u9fff]{2,}", query.lower())
+            for index in range(len(text) - 1)
+        ))
         scored = []
         for tool in self.tools:
             text = tool.description.lower()
             subject = " ".join((tool.domain, tool._route.name, tool.path)).lower()
+            phrase_subject = f"{subject} {tool.title.lower()}"
             score = sum(4 if term in subject else 1 if term in text else 0 for term in terms)
+            score += sum(4 if phrase in phrase_subject else 1 if phrase in text else 0 for phrase in phrases)
             if query.lower() in text:
                 score += 8
             if score:

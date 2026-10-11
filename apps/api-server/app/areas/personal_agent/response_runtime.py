@@ -11,6 +11,7 @@ import httpx
 from fastapi import HTTPException
 
 from app.agent_mcp.model_tools import MAX_TOOL_ROUNDS, MODEL_TOOLS, ModelToolSession, request_completion
+from app.agent_mcp.model_rounds import request_final_answer
 from app.config import settings
 from app.core.constants import logger
 from app.core.request_metrics import measure_phase
@@ -75,12 +76,23 @@ async def request_model(
                         await on_progress("正在调用办公工具…")
                     with measure_phase("personal_agent.tools"):
                         messages.extend(await tools.execute_calls(calls))
+                    if tools.remaining_calls == 0:
+                        break
                     continue
                 content = str(result.get("content") or "").strip()
                 if not content:
                     raise RuntimeError("model_empty_response")
                 return content
-            raise RuntimeError("oa_tool_round_limit_exceeded")
+            if on_progress:
+                await on_progress("正在整理查询结果…")
+            with measure_phase("personal_agent.model"):
+                result = await request_final_answer(
+                    client, f"{settings.langgraph_api_base_url.rstrip('/')}/chat/completions",
+                    {"Authorization": f"Bearer {settings.langgraph_api_key}"}, payload,
+                    tools=tools, entry="personal_agent", tool_rounds=round_index + 1,
+                    stream=True, on_delta=on_delta,
+                )
+            return str(result["content"]).strip()
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail="个人智能体本轮处理超时，未取得完成结果") from exc
     except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError, RuntimeError) as exc:

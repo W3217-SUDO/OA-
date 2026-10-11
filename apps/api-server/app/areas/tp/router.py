@@ -1,4 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from typing import Annotated
+
 from sqlalchemy import case
 from app.core.constants import (
     UPLOAD_ROOT, VIP_TASK_PRIORITIES, VIP_TASK_STATUSES,
@@ -292,12 +294,27 @@ async def read_vip_task_messages(task_id: int, body: VipTaskMessageReadInput, id
     await db.commit(); return {"updated": len(messages)}
 
 
-@router.get(f"{settings.api_prefix}/tasks")
+@router.get(
+    f"{settings.api_prefix}/tasks",
+    summary="查询公司任务、部门任务、我的任务及全量筛选数量",
+    description=(
+        "查询普通任务列表和任务数量，包含公司紧急任务统计。公司任务使用 scope=company；"
+        "紧急任务使用 priority=紧急，按任务优先级标签筛选，不代表逾期或临近到期。"
+        "返回 total 是全部匹配筛选条件的任务数量，不受 page/page_size 限制；"
+        "仅查询数量时读取 total 即可，不需要逐页读取或按 items 样本估算。"
+        "summary 是当前范围、人员关系及 reminder_only 条件下、文本、优先级和状态等筛选之前的汇总，"
+        "不能将 summary.total 当作紧急任务等筛选结果数量。"
+        "status_counts 在优先级等条件之后、statuses/status_filter 之前汇总。"
+        "scope=company 仍要求原公司任务菜单及全所数据权限；无权限时明确拒绝。"
+    ),
+)
 async def list_tasks(
-    keyword: str = "", status_filter: str = "", reminder_only: bool = False, scope: str = "default",
+    keyword: str = "", status_filter: str = "", reminder_only: bool = False,
+    scope: Annotated[str, Query(description="任务范围：default/mine 为本人，department 为部门，company 为公司任务（须原菜单及全所数据权限）")] = "default",
     relation: str = Query("", pattern="^(|initiated|owned|collaborating)$"), statuses: str = "",
     page_id: str | None = Query(None, description="legacy TaskController PageId"),
-    priority: str = "", serial_no: str = "", title: str = "", description: str = "",
+    priority: Annotated[str, Query(description="任务优先级标签筛选，如普通、重要、紧急；紧急任务数量用 priority=紧急 后的 total")] = "",
+    serial_no: str = "", title: str = "", description: str = "",
     initiator: str = "", case_no: str = "", source: str = "", owner: str = "",
     plaintiff: str = "", defendant: str = "",
     created_from: date | None = None, created_to: date | None = None,

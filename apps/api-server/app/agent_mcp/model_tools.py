@@ -68,6 +68,10 @@ class ModelToolSession:
         self._prepared: dict[str, dict[str, Any]] = {}
         self._call_count = 0
 
+    @property
+    def remaining_calls(self) -> int:
+        return MAX_TOOL_CALLS - self._call_count
+
     async def execute(self, name: str, arguments: object) -> dict[str, Any]:
         self._call_count += 1
         if self._call_count > MAX_TOOL_CALLS:
