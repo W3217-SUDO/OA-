@@ -16,6 +16,7 @@ async def list_pending_finance_settlements(identity: dict = Depends(current_iden
 
 @router.post(f"{settings.api_prefix}/finance/settlements/mark-commission-paid")
 async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.legacy_case_fee_settlement import legacy_case_fee_settlement_sources
     from app.core.permissions import (
         _record_scope_conditions,
     )
@@ -35,6 +36,11 @@ async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkIn
                or (item.data or {}).get("commission_paid")]
     if invalid:
         raise HTTPException(status_code=409, detail="仅可标识尚未发放提成的律师代理费：" + "、".join(invalid))
+    legacy_sources = await legacy_case_fee_settlement_sources(db, set(fee_ids))
+    ineligible_legacy = [item.serial_no for item in fees if
+                         item.id in legacy_sources and not legacy_sources[item.id]["eligible"]]
+    if ineligible_legacy:
+        raise HTTPException(status_code=409, detail="导入的案件费用未到账或提成已发：" + "、".join(ineligible_legacy))
     linked = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance",
         BusinessRecord.status.not_in(("已删除", "已撤回", "已驳回", "已拒绝", "已作废")),
@@ -45,7 +51,8 @@ async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkIn
     for commission in linked:
         if (commission.data or {}).get("commission_type"):
             linked_by_source[int((commission.data or {})["source_fee_id"])].append(commission)
-    missing = [item.serial_no for item in fees if not linked_by_source[item.id]]
+    missing = [item.serial_no for item in fees if
+               not linked_by_source[item.id] and not legacy_sources.get(item.id, {}).get("eligible")]
     if missing:
         raise HTTPException(409, "来源费用没有可标识的提成：" + "、".join(missing))
     if any((item.data or {}).get("commission_paid") for group in linked_by_source.values() for item in group):
@@ -55,6 +62,7 @@ async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkIn
         item.data = {
             **(item.data or {}),
             "commission_paid": True,
+            **({"settlement_status": "25"} if item.id in legacy_sources else {}),
             "commission_paid_by": identity["username"],
             "commission_paid_at": marked_at,
             "commission_paid_comment": body.comment.strip(),

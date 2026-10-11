@@ -211,6 +211,7 @@ async def review_internal_applications(
 async def pending_case_fee_settlements(identity: dict, db: AsyncSession) -> list[dict]:
     """按案件费用及实际到账展示待发放提成。"""
     from app.core.finance import _invoice_case_fee_rows
+    from app.core.legacy_case_fee_settlement import legacy_case_fee_settlement_sources
     from app.core.permissions import _record_scope_conditions
 
     scope = await _record_scope_conditions(identity, db)
@@ -227,6 +228,9 @@ async def pending_case_fee_settlements(identity: dict, db: AsyncSession) -> list
         and not (item.data or {}).get("commission_paid")
         and item.status not in {"已撤回", "已驳回", "已拒绝", "已作废"}
     }
+    legacy_sources = await legacy_case_fee_settlement_sources(db)
+    legacy_source_ids = {record_id for record_id, source in legacy_sources.items() if source["eligible"]}
+    source_ids.update(legacy_source_ids)
     if not source_ids:
         return []
     rows = await _invoice_case_fee_rows(identity, db, scope="company", ids=source_ids)
@@ -247,11 +251,15 @@ async def pending_case_fee_settlements(identity: dict, db: AsyncSession) -> list
         data = row["data"]
         case = cases.get(int(data.get("case_id") or 0))
         case_data = (case.data or {}) if case else {}
+        legacy_source = legacy_sources.get(row["id"])
         row["data"] = {
             **data,
+            "cashed_amount": max(float(data["cashed_amount"]), legacy_source["cashed_amount"])
+            if legacy_source and data.get("cashed_amount") is not None else data.get("cashed_amount"),
             "case_source": data.get("case_source") or case_data.get("case_source") or case_data.get("business_owner") or "",
             "quality_manager": data.get("quality_manager") or case_data.get("quality_manager") or case_data.get("quality_control") or "",
-            "settlement_status": data.get("settlement_status") or data.get("payment_status") or "",
+            "settlement_status": "待结算" if row["id"] in legacy_source_ids
+            else data.get("settlement_status") or data.get("payment_status") or "",
         }
     return rows
 
