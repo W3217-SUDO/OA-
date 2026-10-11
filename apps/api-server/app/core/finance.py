@@ -2087,6 +2087,7 @@ async def _case_commission_lifecycle_statuses(
 ) -> dict[int, str]:
     """Derive pending automatic commission state from settlement and archive facts."""
     from app.core.record_projection_query import read_record_projections
+    from app.core.json_relation_query import scalar_in_values
     candidates = [item for item in items if _is_case_agency_fee_commission(item)]
     if not candidates:
         return {}
@@ -2096,7 +2097,7 @@ async def _case_commission_lifecycle_statuses(
         for item in candidates
     }
     source_fees = await read_record_projections(db, [
-        BusinessRecord.module == "finance", BusinessRecord.id.in_(source_fee_ids),
+        BusinessRecord.module == "finance", scalar_in_values(BusinessRecord.id, source_fee_ids),
     ], ("refund_fee", "fee_type", "received_amount", "cashed_amount"))
     refund_source_ids = {
         item.id for item in source_fees
@@ -2153,9 +2154,9 @@ async def _case_commission_lifecycle_statuses(
     }
     case_conditions = []
     if case_ids:
-        case_conditions.append(BusinessRecord.id.in_(case_ids))
+        case_conditions.append(scalar_in_values(BusinessRecord.id, case_ids))
     if case_nos:
-        case_conditions.append(BusinessRecord.serial_no.in_(case_nos))
+        case_conditions.append(scalar_in_values(BusinessRecord.serial_no, case_nos))
     cases = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no, BusinessRecord.status).where(
         BusinessRecord.module == "case",
         or_(*case_conditions),

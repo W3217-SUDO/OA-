@@ -17,6 +17,7 @@ from app.core.dependencies import (
 from app.models_shared import (
     FinanceFeeInput,
 )
+from app.core.json_relation_query import scalar_in_values
 
 
 _MENU_PERMISSION_ROUTE_ALIASES = {
@@ -679,7 +680,8 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
             BusinessRecord.module != "bug_feedback", BusinessRecord.owner == identity.get("username", ""),
         ))
     if "_dashboard_record_ids" in identity:
-        return [*protected_scope, BusinessRecord.id.in_(identity["_dashboard_record_ids"])]
+        # 控制台授权编号共用一个参数，保留完整范围且不随记录数量突破参数上限。
+        return [*protected_scope, scalar_in_values(BusinessRecord.id, identity["_dashboard_record_ids"])]
     if identity.get("role") == "admin" or identity.get("_page_menu_capability"):
         return protected_scope
     user = await db.scalar(select(User).where(User.username == identity["username"]))

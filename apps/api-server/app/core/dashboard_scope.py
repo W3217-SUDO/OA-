@@ -76,13 +76,15 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         ))).all()
         owned_ids = {item.id for item in owned_contracts}
         owned_nos = {item.serial_no for item in owned_contracts}
-        linked_cases = select(ContractObject.case_record_id).where(ContractObject.contract_record_id.in_(owned_ids))
+        linked_cases = select(ContractObject.case_record_id).where(
+            scalar_in_values(ContractObject.contract_record_id, owned_ids),
+        )
         conditions.append(or_(
             await _case_mine_scope_condition(identity, db),
             BusinessRecord.id.in_(linked_cases),
-            BusinessRecord.data['contract_id'].as_integer().in_(owned_ids),
-            BusinessRecord.data['contract_record_id'].as_integer().in_(owned_ids),
-            BusinessRecord.data['contract_no'].as_string().in_(owned_nos),
+            scalar_in_values(BusinessRecord.data['contract_id'].as_integer(), owned_ids),
+            scalar_in_values(BusinessRecord.data['contract_record_id'].as_integer(), owned_ids),
+            scalar_in_values(BusinessRecord.data['contract_no'].as_string(), owned_nos),
         ))
     relation_fields = ("contract_id", "contract_record_id", "contract_no")
     case_fields = (*relation_fields, "case_type", "case_phase_name", "case_phase", "case_stage", "business_stage")
@@ -188,7 +190,7 @@ async def personal_refund_identity(scoped_identity, db, *, scope_data=None):
         cases = [case for case in scope_data.cases if case.id in scope_data.personal_case_ids]
     else:
         case_query = select(BusinessRecord.id, BusinessRecord.serial_no).where(
-            BusinessRecord.id.in_(scoped_identity["_dashboard_case_ids"]),
+            scalar_in_values(BusinessRecord.id, scoped_identity["_dashboard_case_ids"]),
             await _case_mine_scope_condition(scoped_identity, db),
         )
         cases = (await db.execute(case_query)).all()
@@ -199,10 +201,10 @@ async def personal_refund_identity(scoped_identity, db, *, scope_data=None):
         candidate_ids = {fee.id for fee in scope_data.fees if fee.id in candidate_ids
                          and _possible_refund_fee(fee, case_ids, case_nos)}
     fee_ids = set((await db.scalars(select(BusinessRecord.id).where(
-        BusinessRecord.id.in_(candidate_ids),
-        or_(BusinessRecord.data["case_id"].as_integer().in_(case_ids),
-            BusinessRecord.data["case_record_id"].as_integer().in_(case_ids),
-            BusinessRecord.data["case_no"].as_string().in_(case_nos)),
+        scalar_in_values(BusinessRecord.id, candidate_ids),
+        or_(scalar_in_values(BusinessRecord.data["case_id"].as_integer(), case_ids),
+            scalar_in_values(BusinessRecord.data["case_record_id"].as_integer(), case_ids),
+            scalar_in_values(BusinessRecord.data["case_no"].as_string(), case_nos)),
     ))).all()) if case_ids and candidate_ids else set()
     return {**scoped_identity, "_dashboard_case_ids": case_ids,
             "_dashboard_fee_ids": fee_ids, "_dashboard_record_ids": case_ids | fee_ids}

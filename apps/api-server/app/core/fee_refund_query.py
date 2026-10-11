@@ -3,7 +3,7 @@ from sqlalchemy import or_, select
 
 from app.models import BusinessRecord
 from app.core.finance_batch_parity import official_refund_progress
-from app.core.json_relation_query import json_scalar_overlap
+from app.core.json_relation_query import json_scalar_overlap, scalar_in_values
 from app.core.record_projection_query import read_record_projections
 
 
@@ -14,8 +14,8 @@ async def read_fee_refunds(fees, db, *, scope_conditions=(), ids=None, summary_o
         case_nos = {str((fee.data or {}).get("case_no") or "") for fee in fees if (fee.data or {}).get("case_no")}
         conditions.append(or_(
             json_scalar_overlap(BusinessRecord.data, {int(fee_id) for fee_id in ids}),
-            BusinessRecord.data["case_no"].as_string().in_(case_nos),
-            BusinessRecord.data["original_payment_no"].as_string().in_(
+            scalar_in_values(BusinessRecord.data["case_no"].as_string(), case_nos),
+            scalar_in_values(BusinessRecord.data["original_payment_no"].as_string(),
                 {str((fee.data or {}).get("document_no") or "") for fee in fees} - {""}),
         ))
     if summary_only:
