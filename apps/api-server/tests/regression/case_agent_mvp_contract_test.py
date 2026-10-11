@@ -186,6 +186,9 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 if False:
                     yield ""
 
+            async def aread(self):
+                return b""
+
             def json(self):
                 return self._payload
 
@@ -204,7 +207,7 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
             def stream(self, *_args, **kwargs):
                 self.stream_payloads.append(kwargs["json"])
-                return FakeResponse(400)
+                return FakeResponse(400, {"error": {"message": "stream is not supported"}})
 
             async def post(self, *_args, **kwargs):
                 self.post_payloads.append(kwargs["json"])

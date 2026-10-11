@@ -14,6 +14,7 @@ READ_ONLY_POSTS = {
     ("POST", "/finance/payment-packages/preview", "preview_internal_payment_package"): "仅计算付款包预览，不保存付款包",
     ("POST", "/cases/counsel/search", "search_counsel_cases"): "法律顾问案件分页查询",
     ("POST", "/cases/search", "search_ordinary_cases"): "普通案件分页及阶段统计查询",
+    ("POST", "/cases/statistics", "case_statistics"): "按原案件权限和筛选条件汇总全部匹配案件，不读取分页历史明细",
     ("POST", "/cases/archive/search", "search_case_archive"): "归档案件分页查询",
     ("POST", "/WMS/Warehouse/GoodsList", "warehouse_goods_list"): "仓库证物分页查询",
     ("POST", "/WMS/WarehouseStorageLocation/GetStorageLocationGoodsCountList", "warehouse_storage_location_goods_count_list"): "仓库库位及证物数量查询",

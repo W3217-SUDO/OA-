@@ -14,6 +14,8 @@ from app.config import settings
 from .auth import get_auth_context, tool_origin
 from .catalog import ToolDefinition, get_catalog
 from .service import call_tool, search_tools
+from .model_context import bounded_model_payload, discovered_tools_view, model_result_view
+from .model_errors import model_error, unsupported_stream
 
 
 MAX_TOOL_ROUNDS = 8
@@ -90,8 +92,9 @@ class ModelToolSession:
                 raise HTTPException(status_code=422, detail="limit 必须是 1 至 12 的整数")
             catalog = get_catalog(get_auth_context().application)
             tools = search_tools(query.strip(), limit=limit)
-            self.discovered.update({tool["name"]: catalog.get(tool["name"]) for tool in tools})
-            return {"tools": tools}
+            result = discovered_tools_view(tools)
+            self.discovered.update({tool["name"]: catalog.get(tool["name"]) for tool in result["tools"]})
+            return result
         if name != "oa_call_tool":
             raise HTTPException(status_code=422, detail="模型只能使用 OA 工具发现与受控调用")
         if set(arguments) != {"name", "arguments"} or not isinstance(arguments.get("name"), str):
@@ -166,7 +169,7 @@ class ModelToolSession:
             results.append({
                 "role": "tool",
                 "tool_call_id": call["id"],
-                "content": json.dumps(result, ensure_ascii=False, default=str),
+                "content": json.dumps(model_result_view(result), ensure_ascii=False, default=str),
             })
         return results
 
@@ -180,7 +183,7 @@ async def _request_non_stream_completion(
 ) -> dict[str, Any]:
     response = await client.post(url, headers=headers, json={**payload, "stream": False})
     if response.is_error:
-        raise RuntimeError(f"model_http_{response.status_code}")
+        raise model_error(response)
     result = response.json()["choices"][0]
     if result.get("finish_reason") in {"length", "content_filter"}:
         raise RuntimeError("model_response_incomplete")
@@ -203,6 +206,7 @@ async def request_completion(
     on_delta: Callable[[str], Awaitable[None]] | None = None,
     on_stream_support: Callable[[bool], None] | None = None,
 ) -> dict[str, Any]:
+    payload = bounded_model_payload(payload)
     if not stream:
         return await _request_non_stream_completion(client, url, headers, payload, on_delta)
     parts: list[str] = []
@@ -212,8 +216,9 @@ async def request_completion(
     emitted = 0
     async with client.stream("POST", url, headers=headers, json={**payload, "stream": True}) as response:
         if response.is_error:
-            if response.status_code not in {400, 404, 405, 415, 422, 501}:
-                raise RuntimeError(f"model_http_{response.status_code}")
+            await response.aread()
+            if not unsupported_stream(response):
+                raise model_error(response)
             if on_stream_support:
                 on_stream_support(False)
         else:

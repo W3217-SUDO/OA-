@@ -253,13 +253,12 @@ def build_case_model_messages(
     skill: AgentSkill = GENERAL_SKILL,
     request_images: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
+    from .agent_mcp.model_context import MODEL_QUERY_RULES, model_result_view
     prioritized_snapshot = {
         "document_readings": snapshot.get("document_readings") or [],
         **{key: value for key, value in snapshot.items() if key != "document_readings"},
     }
-    context = json.dumps(prioritized_snapshot, ensure_ascii=False, default=str)
-    if len(context) > 80_000:
-        context = context[:80_000] + "\n[案件空间内容过长，已截断]"
+    context = json.dumps(model_result_view(prioritized_snapshot, 80_000), ensure_ascii=False, default=str)
     prompt_messages: list[dict[str, Any]] = [
         {
             "role": "system",
@@ -302,7 +301,7 @@ def build_case_model_messages(
                 "任何写操作都必须服从当前案件空间 capabilities；对应能力为 false 时，"
                 "只能说明无权限，不能输出 proposed_action，也不能建议绕过权限。\n\n"
                 f"当前启用技能：{skill.name}。{skill.instruction}\n\n"
-                f"当前案件空间数据：\n{context}"
+                f"{MODEL_QUERY_RULES}\n当前案件空间数据：\n{context}"
             ),
         }
     ]
