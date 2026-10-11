@@ -109,6 +109,7 @@
 .workspace-file-chip { display: flex; align-items: center; gap: 5px; background: #f1f5fa; border: 1px solid #dce5ef; padding: 3px 3px 3px 8px; border-radius: 4px; max-width: min(260px, 100%); color: #617c96; font-size: 12px; }
 .workspace-file-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .workspace-file-chip .ant-btn { height: 22px; width: 22px; flex-shrink: 0; padding: 0; color: #8b96a8; }
+.workspace-mobile-composer-options, .workspace-mobile-response-mode, .workspace-mobile-case-chip, .workspace-selected-files.workspace-case-only { display: none; }
 .workspace-skill-manager { display: grid; gap: 24px; }
 .workspace-skill-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .workspace-skill-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; gap: 12px; border-bottom: 1px solid #e9edef; }
@@ -131,16 +132,25 @@
 }
 @media (max-width: 760px) {
   .personal-agent-page { position: fixed; z-index: 2; top: 56px; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); left: 0; height: auto; min-height: 0; border: 0; }
-  .personal-agent-header { min-height: 52px; padding: 8px 12px; gap: 4px; }
-  .personal-agent-title { gap: 7px; }
-  .personal-agent-title h2 { font-size: 15px; }
+  .personal-agent-page .personal-agent-header { min-height: 48px; padding: 2px 8px; gap: 4px; }
+  .personal-agent-page .personal-agent-title { display: none; }
   .workspace-brand-icon, .workspace-service { display: none; }
-  .workspace-header-actions .ant-segmented-item { min-width: 48px; }
-  .workspace-case-link.ant-btn { width: 28px; padding-inline: 0; }
-  .workspace-case-link.ant-btn > span:not(.anticon) { display: none; }
-  .workspace-thread-heading { min-height: 44px; padding: 6px 12px; gap: 8px; }
-  .workspace-assistant-title { flex-direction: column; align-items: flex-start; gap: 2px; }
-  .workspace-current-case { max-width: 120px; }
+  .personal-agent-page .workspace-header-actions { width: 100%; flex-wrap: nowrap; }
+  .personal-agent-page .workspace-header-actions > .ant-space-item:first-child { margin-right: auto; }
+  .personal-agent-page .workspace-header-actions .ant-segmented { padding: 0; }
+  .personal-agent-page .workspace-header-actions .ant-segmented-item { min-width: 56px; }
+  .personal-agent-page .workspace-header-actions .ant-segmented-item-label { min-height: 44px; line-height: 44px; }
+  .personal-agent-page .workspace-header-actions .ant-btn { width: 44px; height: 44px; min-height: 44px; padding: 0; flex-shrink: 0; }
+  .personal-agent-page .workspace-case-link.ant-btn > span:not(.anticon):not(.ant-btn-icon) { display: none; }
+  .personal-agent-page .workspace-thread-heading { min-height: 48px; padding: 2px 8px; gap: 4px; flex-wrap: nowrap; }
+  .personal-agent-page .workspace-assistant-title { flex: 1; flex-direction: row; align-items: center; gap: 0; }
+  .personal-agent-page .workspace-assistant-title > span { font-size: 13px; gap: 5px; }
+  .personal-agent-page .workspace-assistant-title .workspace-conversation-title { display: none; }
+  .personal-agent-page .workspace-thread-heading > .ant-space { flex-shrink: 0; flex-wrap: nowrap !important; gap: 4px !important; }
+  .personal-agent-page .workspace-thread-heading > .ant-space > .ant-space-item:has(.workspace-current-case) { display: none; }
+  .personal-agent-page .workspace-thread-heading .workspace-conversation-label,
+  .personal-agent-page .workspace-thread-heading .workspace-operation-record > span:not(.anticon):not(.ant-btn-icon) { display: none; }
+  .personal-agent-page .workspace-thread-heading .ant-btn { width: 44px; height: 44px; min-height: 44px; padding: 0; }
   .personal-agent-messages { padding: 10px 12px 0; }
   .personal-message { gap: 7px; margin-bottom: 14px; }
   .workspace-message-heading { gap: 6px; }
@@ -149,9 +159,36 @@
   .workspace-empty { padding-top: 24px; }
   .workspace-start-actions button { gap: 7px; padding: 10px; }
   .personal-agent-composer-wrap { padding: 6px 12px 8px; }
-  .personal-agent-composer { padding: 6px 8px; }
-  .workspace-composer-context .ant-select { width: 135px; }
-  .workspace-selected-files { max-height: 76px; }
+  .personal-agent-page .personal-agent-composer { display: flex; flex-direction: column; padding: 6px 8px; }
+  .personal-agent-page .workspace-composer-context,
+  .personal-agent-page .workspace-desktop-composer-tools { display: none; }
+  .personal-agent-page .personal-agent-composer textarea { order: 0; font-size: 16px; }
+  .personal-agent-page .workspace-selected-files { order: 1; flex-wrap: nowrap; max-height: none; overflow-x: auto; padding: 4px 0; }
+  .personal-agent-page .workspace-selected-files.workspace-case-only,
+  .personal-agent-page .workspace-mobile-case-chip { display: flex; }
+  .personal-agent-page .workspace-file-chip { flex-shrink: 0; max-width: min(240px, 100%); min-height: 44px; padding: 0 0 0 8px; }
+  .personal-agent-page .workspace-file-name { min-height: 44px; }
+  .personal-agent-page .workspace-file-chip .ant-btn { width: 44px; height: 44px; min-height: 44px; }
+  .personal-agent-page .workspace-composer-tools { order: 2; min-width: 0; flex-wrap: nowrap; gap: 4px; }
+  .personal-agent-page .workspace-mobile-composer-options { display: flex; flex: 1; min-width: 44px; }
+  .personal-agent-page .workspace-mobile-composer-options .ant-btn { justify-content: flex-start; width: 100%; min-width: 44px; height: 44px; min-height: 44px; padding-inline: 8px; gap: 6px; color: #728692; }
+  .personal-agent-page .workspace-mobile-skill-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .personal-agent-page .workspace-mobile-response-mode { display: flex; flex-shrink: 0; }
+  .personal-agent-page .workspace-mobile-response-mode .ant-segmented { padding: 0; font-size: 12px; }
+  .personal-agent-page .workspace-mobile-response-mode .ant-segmented-item-label { min-width: 44px; min-height: 44px; padding-inline: 6px; line-height: 44px; }
+  .personal-agent-page .workspace-mobile-response-mode .ant-segmented-item-icon { display: none; }
+  .personal-agent-page .workspace-send-area { flex-shrink: 0; gap: 4px; }
+  .personal-agent-page .workspace-send-area .ant-btn { width: 44px; height: 44px; min-height: 44px; }
+  .personal-agent-page .workspace-send-area > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .workspace-mobile-composer-drawer.ant-drawer-bottom .ant-drawer-content-wrapper { width: 100% !important; max-width: none; max-height: min(70dvh, 520px); right: 0; left: 0; }
+  .workspace-mobile-composer-drawer .ant-drawer-body { padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .workspace-mobile-composer-drawer .ant-drawer-close { width: 44px; height: 44px; }
+  .workspace-mobile-composer-sheet { display: grid; gap: 8px; }
+  .workspace-mobile-skill-field { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+  .workspace-mobile-skill-field .ant-select { width: 100%; min-height: 44px; }
+  .workspace-mobile-skill-field .ant-select-selector { min-height: 44px; }
+  .workspace-mobile-composer-sheet > .ant-btn { justify-content: flex-start; height: auto; min-height: 44px; }
+  .workspace-mobile-composer-sheet > .ant-btn > span:not(.anticon) { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; }
   .workspace-pending { padding: 10px 15px; max-height: 150px; }
   .workspace-pending-row, .workspace-skill-row { flex-wrap: wrap; gap: 8px; }
   .workspace-skill-row > .ant-space { margin-left: auto; }

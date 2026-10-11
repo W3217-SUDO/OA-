@@ -32,7 +32,7 @@ export function ConversationManager({ items, activeId, busy, runningIds, onCreat
   return <>
     {contextHolder}
     <div className="workspace-conversation-controls">
-      <Button size="small" icon={<PlusOutlined />} disabled={busy} onClick={() => void run(onCreate)}>新建对话</Button>
+      <Tooltip title="新建对话"><Button size="small" icon={<PlusOutlined />} aria-label="新建对话" disabled={busy} onClick={() => void run(onCreate)}><span className="workspace-conversation-label">新建对话</span></Button></Tooltip>
       <Tooltip title="对话列表"><Button size="small" type="text" icon={<HistoryOutlined />} aria-label="对话列表" onClick={() => setOpen(true)} /></Tooltip>
     </div>
     <Drawer title="我的对话" placement="right" width={360} open={open} onClose={() => setOpen(false)} className="workspace-conversation-drawer" extra={<Button icon={<PlusOutlined />} disabled={busy} onClick={() => void run(onCreate, true)}>新建对话</Button>}>
