@@ -83,7 +83,7 @@ test("dashboard approved entries keep their destinations and unapproved entries 
   const cleanups = [];
   let relatedRecords = [{ id: 17, serial_no: "CASE-1", title: "案件" }];
   const data = {
-    metrics: [{ key: "m", label: "待收费用", value: "2", route: "finance-fee-query", query: { scope: "mine" }, detail_context: { contract_no: "HT-1", return_view: "dashboard" } }],
+    metrics: [{ key: "official-fee-unpaid", label: "待收费用", value: "2", route: "finance-fee-query", query: { scope: "mine" }, detail_context: { contract_no: "HT-1", return_view: "dashboard" } }],
     todos: [["待处理任务", 2, 1, "待审批用印", 3, 0]],
     hearings: [{ case_no: "CASE-1", time: "09:00" }],
     latest_cases: [{ case_no: "CASE-2" }],

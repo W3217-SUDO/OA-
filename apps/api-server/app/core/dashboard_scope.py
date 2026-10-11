@@ -78,7 +78,7 @@ async def dashboard_identity(identity, db, *, personal_cases=False):
     return scope.identity
 
 
-async def load_dashboard_scope(identity, db, *, personal_cases=False, include_summaries=False):
+async def load_dashboard_scope(identity, db, *, personal_cases=False, include_summaries=False, include_finance=True):
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if user is None or not user.is_active:
         raise HTTPException(401, "当前用户不存在或已停用")
@@ -119,6 +119,15 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         )
     case_ids = {item.id for item in cases}
     case_nos = {item.serial_no for item in cases}
+    personal_ids = {case.id for case in cases if case.dashboard_personal} if include_summaries else None
+    if not include_finance:
+        # 案件指标沿用同一授权范围，独立返回时不等待费用和合同内容读取。
+        scoped_identity = {
+            **identity, "role": roles[0], "role_ids": roles, "_page_menu_capability": False,
+            "_dashboard_case_ids": case_ids, "_dashboard_fee_ids": set(),
+            "_dashboard_record_ids": case_ids,
+        }
+        return DashboardScopeData(scoped_identity, cases, [], [], all_cases and not personal_cases, personal_ids)
     def related_fee(data):
         return [or_(scalar_in_values(data["case_id"].as_integer(), case_ids),
                     scalar_in_values(data["case_record_id"].as_integer(), case_ids),
@@ -162,7 +171,6 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         "_dashboard_fee_ids": {item.id for item in fees},
         "_dashboard_record_ids": case_ids | {item.id for item in fees} | visible_contract_ids,
     }
-    personal_ids = {case.id for case in cases if case.dashboard_personal} if include_summaries else None
     return DashboardScopeData(scoped_identity, cases, fees, contracts, all_cases and not personal_cases, personal_ids)
 
 

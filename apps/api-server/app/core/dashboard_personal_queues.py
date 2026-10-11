@@ -14,6 +14,31 @@ async def personal_queues(identity, db):
         return await _personal_queues(identity, db)
 
 
+async def personal_case_queues(identity, db, *, scope_data=None):
+    """案件指标独立读取，完整指标仍复用同一案件队列计算。"""
+    if scope_data is None:
+        with measure_phase("dashboard.case_metrics.scope"):
+            scope_data = await load_dashboard_scope(identity, db, include_summaries=True, include_finance=False)
+    identity = scope_data.identity
+    queues = {key: {} for key in CASE_QUEUES}
+
+    def add(key, case):
+        queues[key].setdefault(case.id, {"id": case.id, "serial_no": case.serial_no,
+            "title": case.title, "status": case.status, "amount": 0})
+
+    with measure_phase("dashboard.urgent"):
+        urgent_cases = await dashboard_urgent_cases(identity, db, identity["_dashboard_case_ids"], scope_data=scope_data)
+        urgent_case_ids = await _urgent_case_ids(urgent_cases, db, identity["username"])
+    for case in urgent_cases:
+        if case.id in urgent_case_ids:
+            add("urgent-cases", case)
+    for case in scope_data.cases:
+        for key, queue in CASE_QUEUES.items():
+            if queue != "urgent" and _matches_dashboard_case_queue(case, queue):
+                add(key, case)
+    return {key: list(rows.values()) for key, rows in queues.items()}
+
+
 async def _personal_queues(identity, db):
     with measure_phase("dashboard.scope"):
         with measure_phase("dashboard.scope.records"):
@@ -34,16 +59,9 @@ async def _personal_queues(identity, db):
         if fee_id is not None:
             row["fee_id"] = fee_id
 
-    with measure_phase("dashboard.urgent"):
-        urgent_cases = await dashboard_urgent_cases(identity, db, identity["_dashboard_case_ids"], scope_data=scope)
-        urgent_case_ids = await _urgent_case_ids(urgent_cases, db, identity["username"])
-    for case in urgent_cases:
-        if case.id in urgent_case_ids:
-            add("urgent-cases", case)
-    for case in cases:
-        for key, queue in CASE_QUEUES.items():
-            if queue != "urgent" and _matches_dashboard_case_queue(case, queue):
-                add(key, case)
+    case_queues = await personal_case_queues(identity, db, scope_data=scope)
+    for key, rows in case_queues.items():
+        queues[key] = {row["id"]: row for row in rows}
     for key in ("official-fee-unpaid", "refund-pending"):
         with measure_phase(f"dashboard.{key}"):
             if key == "official-fee-unpaid":

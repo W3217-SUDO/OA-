@@ -20,6 +20,7 @@
 .dashboard-metrics-panel,.dashboard-card .ant-card-body{position:relative}
 .dashboard-section-status{position:absolute;top:0;left:0;z-index:2;padding:2px 6px;background:#fff;font-size:12px}
 .reference-metrics{grid-template-rows:repeat(2,84px)}
+.reference-metrics .metric-loading,.reference-metrics .metric-unavailable{cursor:default;pointer-events:none}.metric-loading-content{flex:1;min-width:0}.metric-loading-content .ant-skeleton-title{margin-top:0;height:20px}.metric-loading-content .ant-skeleton-paragraph{margin-top:8px!important;margin-bottom:0}.metric-loading-content .ant-skeleton-paragraph>li{height:12px}.metric-loading-icon{flex-shrink:0;opacity:.5}.dashboard-case-metrics-status{top:26px}
 @media(max-width:1100px){.reference-metrics{grid-template-rows:repeat(4,84px)}}
 @media(max-width:720px){.reference-metrics{grid-template-rows:repeat(4,96px)}}
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent } from "react";
-import { Button, Card, message } from "antd";
+import { Button, Card, message, Skeleton } from "antd";
 import Table from "./components/ResizableTable";
 import DashboardPersonCell from "./DashboardPersonCell";
 import { useDashboardData, type DashboardData, type DashboardSection } from "./dashboardData";
@@ -8,6 +8,11 @@ import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { resolveDetailRelation } from "./detailRelationResolver";
 import { isWorkspaceRouteGranted, normalizeWorkspaceRoute } from "./workspacePermissions";
+
+const metricKeys = [
+  "official-fee-unpaid", "refund-pending", "evidence-supplement", "opinion-supplement",
+  "appeal-pending", "execution-pending", "urgent-cases", "official-fee-unreceived",
+];
 
 function CaseTrendChart({
   items,
@@ -138,7 +143,7 @@ export default function Dashboard({ onNavigate, grantedMenuKeys, permissionAdmin
   grantedMenuKeys: ReadonlySet<string>;
   permissionAdministrator: boolean;
 }) {
-  const { data, loading, errors, retry } = useDashboardData();
+  const { data, loading, errors, caseMetricsError, retry } = useDashboardData();
   const detailRequest = useRef<AbortController | null>(null);
   const navigation = useRef({ onNavigate, grantedMenuKeys, permissionAdministrator });
   navigation.current = { onNavigate, grantedMenuKeys, permissionAdministrator };
@@ -291,8 +296,18 @@ export default function Dashboard({ onNavigate, grantedMenuKeys, permissionAdmin
       <div className="dashboard-legacy-grid">
         <div className="dashboard-metrics-panel">
           {sectionStatus("metrics")}
-          <div className="metrics reference-metrics">
-          {data.metrics?.map((m, i) => {
+          {caseMetricsError && <div className="dashboard-section-status dashboard-case-metrics-status" role="alert">{caseMetricsError} {!loading.metrics && <Button size="small" onClick={() => retry("metrics")}>重试</Button>}</div>}
+          <div className="metrics reference-metrics" aria-busy={loading.metrics}>
+          {metricKeys.map((key, i) => {
+            const m = data.metrics?.find((metric) => metric.key === key);
+            if (!m) return loading.metrics && !errors.metrics ? (
+              <div className={`metric target-${i} metric-loading`} key={key} aria-hidden="true">
+                <div className="metric-loading-content">
+                  <Skeleton active title={{ width: "70%" }} paragraph={{ rows: 1, width: "55%" }} />
+                </div>
+                <Skeleton.Avatar active shape="square" size={40} className="metric-loading-icon" />
+              </div>
+            ) : <div className={`metric target-${i} metric-unavailable`} key={key}>{errors.metrics ? "加载失败" : "统计未返回"}</div>;
             const allowed = canNavigate(m.route);
             return (
               <div
