@@ -40,6 +40,17 @@ const normalizeProjectionTransactions = (items: unknown[]): Transaction[] => ite
     } as Transaction;
 });
 
+const normalizeContractPayments = (items: Fee[]): Fee[] => items.map((item) => ({
+    ...item,
+    data: {
+        ...(item.data || {}),
+        _source_module: "contract_payment",
+        fee_type: item.data?.lines?.[0]?.fee_type || item.data?.payment_type,
+        case_no: item.data?.lines?.[0]?.case_no,
+        amount: item.data?.amount,
+    },
+}));
+
 const projectionFeeParams = (route: string, tab: string) => ({
     fee_type: route.startsWith("finance-internal") ? "内部费用"
         : route.startsWith("finance-settlement") ? "结算费用"
@@ -598,6 +609,16 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
     };
     const load = async () => {
         const { setLoading, setFinanceDataReady, initialView, loadPaymentQueryPage, paymentQueryPageSize, contractPaymentSource, loadRefunds, refundMeta, activeRefundStatus, isRefundNotRequiredRoute, paymentPackageMeta, isInternalDetailRoute, internalDetailParams, currentUser, isInvoiceMineRoute, invoiceMineParams, isInvoicePendingRoute, invoicePendingParams, isInvoiceCompanyRoute, invoiceCompanyParams, isInvoiceUnissuedRoute, invoiceUnissuedParams, isGeneralSettlementRoute, isGeneralSettlementPendingRoute, generalSettlementParams, isArchiveSettlementActiveRoute, isArchiveSettlementPaymentRoute, isArchiveSettlementPaidRoute, isArchiveSettlementRejectedRoute, archiveSettlementParams, isFeeQueryRoute, isRefundCaseFeeRoute, feeQueryParams, dashboardFeeQuerySeed, setFees, setFinanceFeeListMeta, setPaymentQueryMeta, setContractPayments, setInvoices, setRefunds, setRefundMeta, setSelectedRefundRows, setCases, setCustomers, setReceivables, setIncoming, setSelectedIncomingRows, setTransactions, setReconciliations, setSummary, setRole, setCurrentUser, setFinancePeople, setPendingSettlements, setRefundReviewFees, setPaymentPackages, setPaymentPackageMeta, setInternalDetailRows, setInternalDetailMeta, setInvoiceMineRows, setInvoiceMineMeta, setInvoicePendingRows, setInvoicePendingMeta, setInvoiceCompanyRows, setInvoiceCompanyMeta, setInvoiceUnissuedRows, setInvoiceUnissuedMeta, setGeneralSettlementRows, setGeneralSettlementMeta, setArchiveSettlementRows, setArchiveSettlementMeta, setFeeQueryRows, setFeeQueryMeta } = context;
+        const loadContractPaymentRecords = () => contractPaymentSource.active && contractPaymentSource.ok
+            ? api.get(`/finance/payment-source/${contractPaymentSource.sourceId}`, {
+                params: {
+                    payment_no: contractPaymentSource.paymentNo,
+                    contract_no: contractPaymentSource.contractNo,
+                    customer: contractPaymentSource.customer,
+                    amount: contractPaymentSource.amount,
+                },
+            })
+            : api.get("/records", { params: { module: "contract_payment", page_size: 100 } });
         setLoading(true);
         setFinanceDataReady(false);
         try {
@@ -612,6 +633,42 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                 setFinancePeople(people.data.items || []);
                 setRole(profile.data.role);
                 setCurrentUser({ username: profile.data.username, displayName: profile.data.display_name });
+                return;
+            }
+            if (initialView === "finance-payment-mine") {
+                const [feeRes, contractPaymentRes, txRes, profileRes, peopleRes, caseRes] = await Promise.all([
+                    api.get("/records", { params: {
+                        module: "finance", page_size: 100, finance_view: "external",
+                    } }),
+                    loadContractPaymentRecords(),
+                    api.get("/finance/transactions"),
+                    api.get("/auth/me"),
+                    api.get("/people/options").catch(() => ({ data: { items: [] } })),
+                    api.get("/records", { params: { module: "case", page_size: 100 } }),
+                ]);
+                setFees(feeRes.data.items || []);
+                setFinanceFeeListMeta({
+                    page: Number(feeRes.data.page || 1),
+                    pageSize: Number(feeRes.data.page_size || context.financeFeeListMeta.pageSize),
+                    total: Number(feeRes.data.total || feeRes.data.items?.length || 0),
+                });
+                const contractPaymentItems = contractPaymentSource.active && contractPaymentSource.ok
+                    ? [contractPaymentRes.data]
+                    : contractPaymentRes.data.items || [];
+                setContractPayments(normalizeContractPayments(contractPaymentItems));
+                setTransactions(txRes.data.items || []);
+                context.setFinanceTransactionMeta({
+                    page: Number(txRes.data.page || 1),
+                    pageSize: Number(txRes.data.page_size || context.financeTransactionMeta.pageSize),
+                    total: Number(txRes.data.total || txRes.data.items?.length || 0),
+                });
+                setRole(profileRes.data.role);
+                setCurrentUser({
+                    username: profileRes.data.username || "",
+                    displayName: profileRes.data.display_name || "",
+                });
+                setFinancePeople(peopleRes.data.items || []);
+                setCases(caseRes.data.items || []);
                 return;
             }
             const [feeRes, contractPaymentRes, invoiceRes, refundRes, caseRes, customerRes, receivableRes, incomingRes, txRes, recRes, sumRes, profileRes, settlementRes, refundReviewRes, paymentPackageRes, internalDetailRes, invoiceMineRes, invoicePendingRes, invoiceCompanyRes, invoiceUnissuedRes, generalSettlementRes, archiveSettlementRes, feeQueryRes, peopleRes,] = await Promise.all([
@@ -646,16 +703,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                             page_size: paymentQueryPageSize,
                         },
                     })
-                    : contractPaymentSource.active && contractPaymentSource.ok
-                        ? api.get(`/finance/payment-source/${contractPaymentSource.sourceId}`, {
-                            params: {
-                                payment_no: contractPaymentSource.paymentNo,
-                                contract_no: contractPaymentSource.contractNo,
-                                customer: contractPaymentSource.customer,
-                                amount: contractPaymentSource.amount,
-                            },
-                        })
-                        : api.get("/records", { params: { module: "contract_payment", page_size: 100 } }),
+                    : loadContractPaymentRecords(),
                 api.get("/records", { params: { module: "invoice", page_size: 100 } }),
                 loadRefunds(1, refundMeta.pageSize, activeRefundStatus, isRefundNotRequiredRoute),
                 api.get("/records", { params: { module: "case", page_size: 100 } }),
@@ -807,16 +855,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             const contractPaymentItems = contractPaymentSource.active && contractPaymentSource.ok
                 ? [contractPaymentRes.data]
                 : contractPaymentRes.data.items || [];
-            setContractPayments(contractPaymentItems.map((item: Fee) => ({
-                ...item,
-                data: {
-                    ...(item.data || {}),
-                    _source_module: "contract_payment",
-                    fee_type: item.data?.lines?.[0]?.fee_type || item.data?.payment_type,
-                    case_no: item.data?.lines?.[0]?.case_no,
-                    amount: item.data?.amount,
-                },
-            })));
+            setContractPayments(normalizeContractPayments(contractPaymentItems));
             setInvoices(invoiceRes.data.items);
             if (refundRes?.applied && refundRes.response) {
                 const normalizedRefunds = normalizeRefundResponse(refundRes.response.data, 1, refundMeta.pageSize);
