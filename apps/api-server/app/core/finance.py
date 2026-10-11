@@ -2377,6 +2377,15 @@ async def _internal_fee_rows(
     complete_applications: list[dict] = []
     contracts = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == 'contract', *scope_conditions))).all() if scope == 'applications' else []
     customers = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == 'customer', *scope_conditions))).all() if scope == 'applications' else []
+    contracts_by_id = {}
+    contracts_by_no = {}
+    customers_by_title = {}
+    # 保留原列表首个匹配项；ID 与编号同时命中时仍按原列表顺序取值。
+    for index, contract in enumerate(contracts):
+        contracts_by_id.setdefault(contract.id, (index, contract))
+        contracts_by_no.setdefault(contract.serial_no, (index, contract))
+    for customer_record in customers:
+        customers_by_title.setdefault(customer_record.title, customer_record)
     for item in fees:
         data = item.data or {}
         linked_case = cases_by_id.get(int(data.get("case_id") or 0)) or cases_by_no.get(str(data.get("case_no") or ""))
@@ -2388,8 +2397,12 @@ async def _internal_fee_rows(
         if scope == "applications":
             if str(row_data.get("applicant") or "").strip() not in personal_names:
                 continue
-            contract = next((c for c in contracts if c.id == int(data.get('contract_id') or 0) or c.serial_no == data.get('contract_no')), None)
-            customer_record = next((c for c in customers if c.title == item.customer), None)
+            contract_matches = [match for match in (
+                contracts_by_id.get(int(data.get('contract_id') or 0)) if contracts else None,
+                contracts_by_no.get(data.get('contract_no')) if isinstance(data.get('contract_no'), str) else None,
+            ) if match is not None]
+            contract = min(contract_matches, key=lambda match: match[0])[1] if contract_matches else None
+            customer_record = customers_by_title.get(item.customer)
             row_data['contract_name'] = contract.title if contract else data.get('contract_name', '')
             row_data['customer_no'] = customer_record.serial_no if customer_record else data.get('customer_no', '')
             row_data['customer_manager'] = (customer_record.data or {}).get('customer_manager', row_data.get('customer_manager', '')) if customer_record else row_data.get('customer_manager', '')

@@ -2680,7 +2680,7 @@ async def list_case_tasks(
     is_vip: bool | None = None,
 ):
     from app.core.formatters import (
-        _task_display_dict,
+        _task_display_dicts,
     )
     from app.core.permissions import (
         _ensure_case_read_module,
@@ -2716,7 +2716,7 @@ async def list_case_tasks(
         .offset((page - 1) * page_size).limit(page_size)
     )).all())
     pages = (total + page_size - 1) // page_size if total else 0
-    items = [await _task_display_dict(item, db) for item in rows]
+    items = await _task_display_dicts(rows, db)
     for item in items:
         item["case_context_id"] = case_id
         if item.get("workflow_status") in {"待接收", "待处理"} and item.get("source") == "案件任务":

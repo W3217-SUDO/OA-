@@ -1124,6 +1124,7 @@ async def list_contract_payment_applications(contract_id: int, identity: dict = 
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity, _record_scope_conditions,
     )
+    from app.core.query_batches import _scalars_in_batches
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     items = (await db.scalars(select(BusinessRecord).where(
         or_(
@@ -1139,9 +1140,18 @@ async def list_contract_payment_applications(contract_id: int, identity: dict = 
         ),
         *(await _record_scope_conditions(identity, db)),
     ).order_by(BusinessRecord.id.desc()))).all()
+    # 每个申请的明细仍按 ID 排序，读取次数不再随申请逐条增长。
+    lines_by_payment: dict[int, list[ContractPaymentLine]] = {}
+    for line in await _scalars_in_batches(
+        db, {item.id for item in items},
+        lambda batch: select(ContractPaymentLine).where(
+            ContractPaymentLine.payment_record_id.in_(batch),
+        ).order_by(ContractPaymentLine.id),
+    ):
+        lines_by_payment.setdefault(line.payment_record_id, []).append(line)
     result = []
     for item in items:
-        lines = (await db.scalars(select(ContractPaymentLine).where(ContractPaymentLine.payment_record_id == item.id).order_by(ContractPaymentLine.id))).all()
+        lines = lines_by_payment.get(item.id, [])
         line_payload = [{"id": line.id, "contract_object_id": line.contract_object_id, "case_record_id": line.case_record_id, "fee_type": line.fee_type, "requested_amount": line.requested_amount} for line in lines]
         snapshots = (item.data or {}).get("lines", [])
         if snapshots and line_payload:

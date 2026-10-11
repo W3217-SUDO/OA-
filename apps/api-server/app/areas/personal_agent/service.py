@@ -165,8 +165,9 @@ async def personal_state(identity: dict[str, Any], db: AsyncSession) -> dict[str
 
 
 async def build_context(identity: dict[str, Any], db: AsyncSession) -> dict[str, Any]:
-    todos = await dashboard_todos(identity, db)
     scope = await _record_scope_conditions(identity, db)
+    # 仅在本次无写入的上下文读取中复用，后续提交或重新调用时重新解析权限。
+    todos = await dashboard_todos(identity, db, record_scope=scope)
     username = identity["username"]
     permission = {"menu_keys": identity.get("menu_keys") or []}
     module_allowed = lambda module: _record_module_menu_allowed(module, identity, permission)
@@ -179,13 +180,13 @@ async def build_context(identity: dict[str, Any], db: AsyncSession) -> dict[str,
         ).order_by(BusinessRecord.updated_at.desc()).limit(12))).all())
     contracts = []
     if module_allowed("contract"):
-        approval_ids = set(await db.scalars(select(ContractApprovalStep.contract_record_id).where(
+        approval_ids = select(ContractApprovalStep.contract_record_id).where(
             ContractApprovalStep.approver == username,
             ContractApprovalStep.status == "待审批",
-        )))
+        )
         contracts = list((await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "contract",
-            BusinessRecord.id.in_(approval_ids) if approval_ids else BusinessRecord.id == -1,
+            BusinessRecord.id.in_(approval_ids),
             *scope,
         ).order_by(BusinessRecord.updated_at.desc()).limit(20))).all())
     other_approvals: list[BusinessRecord] = []

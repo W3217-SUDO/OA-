@@ -535,7 +535,8 @@ async def _contract_archive_rows(
     customer_filter = customer.strip().casefold()
     requested_state = archive_status.strip()
     allowed_fields = await _allowed_field_keys(identity, db)
-    rows: list[dict] = []
+    selected_contracts: list[BusinessRecord] = []
+    archive_values: list[tuple[str, str]] = []
     for contract in contracts:
         data = contract.data or {}
         archived_at = str(data.get("archived_at") or "").strip()
@@ -562,10 +563,17 @@ async def _contract_archive_rows(
             continue
         if archive_date_to and (archive_day is None or archive_day > archive_date_to):
             continue
-        item = (await _contract_customer_record_dicts([contract], allowed_fields, db, identity))[0]
+        selected_contracts.append(contract)
+        archive_values.append((state, archive_date))
+    # 筛选与顺序不变；分批复用投影，限制客户三组关联条件的参数规模。
+    rows: list[dict] = []
+    for offset in range(0, len(selected_contracts), 200):
+        rows.extend(await _contract_customer_record_dicts(
+            selected_contracts[offset:offset + 200], allowed_fields, db, identity,
+        ))
+    for item, (state, archive_date) in zip(rows, archive_values):
         item["archive_status"] = state
         item["archive_date"] = archive_date
-        rows.append(item)
     return rows
 
 

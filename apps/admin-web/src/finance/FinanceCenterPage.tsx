@@ -206,7 +206,7 @@ export default function FinanceCenterPage({
   const [refundGroupFilter, setRefundGroupFilter] = useState("");
   const [cases, setCases] = useState<Fee[]>([]);
   const financeFeeRefreshGuard = useMemo(() => createLatestRequestGuard(), []);
-  const { openCaseDetail, openContractDetail, openCustomerDetail, loadInternalDetails, loadFinanceProjectionPage, load, loadLegacyFinanceHistory, openLegacyFinanceDetail, exportInternalDetails, exportConfiguredRows } = createFinanceQueriesActions({
+  const { openCaseDetail, openContractDetail, openCustomerDetail, loadInternalDetails, loadFinanceProjectionPage, load, loadForTab, loadLegacyFinanceHistory, openLegacyFinanceDetail, exportInternalDetails, exportConfiguredRows } = createFinanceQueriesActions({
     get onNavigate() { return onNavigate; },
     get internalDetailMeta() { return internalDetailMeta; },
     get internalDetailParams() { return internalDetailParams; },
@@ -1307,7 +1307,7 @@ export default function FinanceCenterPage({
     resetPaymentPackageRoute();
     setPaymentPackageMeta({ total: 0, page: 1, pageSize: 15 });
     setGeneralSettlementDetails([]);
-    if (initialView !== "finance-legacy-history") load();
+    if (initialView !== "finance-legacy-history") void loadForTab(initialTab);
   }, [initialView, contractPaymentSourceSearch]);
   const { createIncoming, claimIncoming, openIncomingAllocation, allocateIncoming, deleteIncoming, createTransaction, createReconciliation, confirmReconciliation } = createFinanceAccountingActions({
     get incomingForm() { return incomingForm; },
@@ -5123,7 +5123,10 @@ export default function FinanceCenterPage({
     refundsView,
     invoicesView,
     tab,
-    setTab,
+    setTab: (nextTab: string) => {
+      setTab(nextTab);
+      if (nextTab === "reconcile") void loadForTab(nextTab);
+    },
     isRefundNotRequiredRoute,
     loading,
     summary,

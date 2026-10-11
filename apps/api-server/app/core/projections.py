@@ -84,13 +84,14 @@ async def _receivable_detail_projection(
     from app.core.permissions import (
         _record_scope_conditions,
     )
-    from app.core.query_batches import _scalars_in_batches
     from app.core.record_projection_query import read_record_projections
     from app.core.finance_summary_query import read_fee_summaries, receivable_payment_projection
     from app.core.json_relation_query import scalar_in_values
 
+    record_scope = None
     if records is None:
-        conditions = await _record_scope_conditions(identity, db)
+        record_scope = await _record_scope_conditions(identity, db)
+        conditions = record_scope
         # 应收只使用合同、案件和费用，不读取线索、客户等无关历史快照。
         records = await read_record_projections(db, [
             BusinessRecord.module == "contract", *conditions,
@@ -110,21 +111,21 @@ async def _receivable_detail_projection(
 
     objects = []
     if contracts_by_id and cases_by_id:
+        # 合同与案件均沿用已授权范围，先过滤再读取，集合参数不随编号数量膨胀。
+        object_conditions = (
+            scalar_in_values(ContractObject.contract_record_id, contracts_by_id),
+            scalar_in_values(ContractObject.case_record_id, cases_by_id),
+        )
         if summary_only:
             # 控制台只读匹配与金额字段，不创建完整 ORM 对象或读取备注等展示信息。
             objects = (await db.execute(select(
                 ContractObject.id, ContractObject.contract_record_id, ContractObject.case_record_id,
                 ContractObject.fee_type, ContractObject.amount,
-            ).where(scalar_in_values(ContractObject.contract_record_id, contracts_by_id)))).all()
+            ).where(*object_conditions))).all()
         else:
-            objects = await _scalars_in_batches(
-                db, contracts_by_id,
-                lambda batch: select(ContractObject).where(
-                    ContractObject.contract_record_id.in_(batch),
-                ),
-            )
+            objects = (await db.scalars(select(ContractObject).where(*object_conditions))).all()
     objects = sorted(
-        (item for item in objects if item.case_record_id in cases_by_id),
+        objects,
         key=lambda item: (item.contract_record_id, item.case_record_id, item.id),
     )
 
@@ -169,7 +170,8 @@ async def _receivable_detail_projection(
         finances_by_id.update((item.id, item) for item in related_finances)
     finances = list(finances_by_id.values())
 
-    finance_data_by_id = await receivable_payment_projection(finances, identity, db)
+    # 仅复用本次无写入读取的范围；外部传入记录时仍按原逻辑重新解析。
+    finance_data_by_id = await receivable_payment_projection(finances, identity, db, record_scope=record_scope)
     # 合同编号是原匹配函数的首个必要条件，先归组避免明细逐条扫描全部费用。
     finances_by_contract: dict[int, list[BusinessRecord]] = {}
     for fee in finances:

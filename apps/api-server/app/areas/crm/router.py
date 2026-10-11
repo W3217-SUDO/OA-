@@ -1685,16 +1685,6 @@ async def list_customers(
         source = str(data.get("customer_source") or data.get("source_person") or "").strip()
         return {str(item.owner or "").strip(), *exact_managers(item), source} - {""}
 
-    department_users = (await db.scalars(
-        select(User).where(User.is_active.is_(True), User.department == current_user.department)
-    )).all()
-    department_tokens = {
-        value
-        for user in department_users
-        for value in (str(user.username or "").strip(), str(user.display_name or "").strip())
-        if value
-    }
-
     # “我的客户” means that the current user is either a customer manager or
     # the source person; this applies to administrators too.
     if scope in {"mine", "recycle"}:
@@ -1706,6 +1696,16 @@ async def list_customers(
     # A department list is a projection of the personnel relationships shown
     # in the screenshot, not merely the department stamped on the record.
     if scope in {"department", "department_recycle"}:
+        # 部门人员仅用于部门关系筛选，其他客户范围无需读取整个部门。
+        department_users = (await db.execute(select(User.username, User.display_name).where(
+            User.is_active.is_(True), User.department == current_user.department,
+        ))).all()
+        department_tokens = {
+            value
+            for user in department_users
+            for value in (str(user.username or "").strip(), str(user.display_name or "").strip())
+            if value
+        }
         candidate_rows = [
             item for item in candidate_rows
             if bool(customer_participants(item) & department_tokens)

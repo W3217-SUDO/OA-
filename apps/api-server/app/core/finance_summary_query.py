@@ -29,7 +29,7 @@ async def read_fee_summaries(db, conditions, *, where_data=None):
     return await read_record_projections(db, conditions, FEE_SUMMARY_FIELDS, where_data=where_data)
 
 
-async def receivable_payment_projection(finances, identity, db):
+async def receivable_payment_projection(finances, identity, db, *, record_scope=None):
     """应收只计算收付款，复用已读取费用，不构造发票、退款和提成明细。"""
     from app.core.formatters import _case_fee_display_type
     from app.core.permissions import _record_scope_conditions
@@ -39,7 +39,7 @@ async def receivable_payment_projection(finances, identity, db):
         return {}
     case_ids = {int((item.data or {}).get("case_id") or 0) for item in fees if (item.data or {}).get("case_id")}
     case_nos = {str((item.data or {}).get("case_no") or "") for item in fees if (item.data or {}).get("case_no")}
-    conditions = await _record_scope_conditions(identity, db)
+    conditions = await _record_scope_conditions(identity, db) if record_scope is None else record_scope
     cases = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(
         BusinessRecord.module.in_(("case", "ipr_case")),
         or_(scalar_in_values(BusinessRecord.id, case_ids), scalar_in_values(BusinessRecord.serial_no, case_nos)),

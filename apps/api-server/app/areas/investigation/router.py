@@ -1230,7 +1230,7 @@ async def batch_delete_investigation_records(body: InvestigationBatchDeleteInput
 @router.get(f"{settings.api_prefix}/investigations/{{record_id}}/tasks")
 async def list_investigation_tasks(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.formatters import (
-        _task_display_dict,
+        _task_display_dicts,
     )
     from app.core.investigation import (
         _resolve_investigation_task_root,
@@ -1269,7 +1269,7 @@ async def list_investigation_tasks(record_id: int, identity: dict = Depends(curr
             .order_by(BusinessRecord.created_at, BusinessRecord.id)
         )
     ).all()
-    return {"record": _record_dict(root), "items": [await _task_display_dict(item, db) for item in tasks], "total": len(tasks)}
+    return {"record": _record_dict(root), "items": await _task_display_dicts(tasks, db), "total": len(tasks)}
 
 
 @router.post(f"{settings.api_prefix}/investigations/{{record_id}}/close")

@@ -5,13 +5,12 @@ from app.core.record_json_text_query import projected_record_condition, record_j
 from app.core.cases import _case_action_granted
 from app.core.documents import _seal_authorization_context
 from app.core.investigation import _is_investigation_task
-from app.core.permissions import _record_scope_conditions
 from app.core.tasks import _task_dict
 from app.core.dashboard import dashboard_scope
 
 
-async def dashboard_todos(identity, db):
-    scope, modules = await dashboard_scope(identity, db)
+async def dashboard_todos(identity, db, *, record_scope=None):
+    scope, modules = await dashboard_scope(identity, db, record_scope=record_scope)
     username = identity["username"]
     pending_statuses = {"待审批", "审批中", "待审核"}
     tasks = list((await db.scalars(select(BusinessRecord).where(
@@ -73,16 +72,17 @@ async def dashboard_todos(identity, db):
         "待审批用印": (0, 0),
         "待审核归档": (0, 0),
     }
-    pending_contract_ids = set((await db.scalars(select(ContractApprovalStep.contract_record_id).where(
+    # 待审批合同范围留在数据库内，避免先读取全部编号再展开计数参数。
+    pending_contract_ids = select(ContractApprovalStep.contract_record_id).where(
         ContractApprovalStep.approver == username,
         ContractApprovalStep.status == "待审批",
-    ))).all())
+    )
     personal_todo_counts["待审批合同"] = (
         int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
             BusinessRecord.module == "contract",
             BusinessRecord.id.in_(pending_contract_ids),
             BusinessRecord.status.in_(pending_statuses),
-        )) or 0) if pending_contract_ids else 0,
+        )) or 0),
         int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
             BusinessRecord.module == "contract",
             BusinessRecord.owner == username,
@@ -106,7 +106,8 @@ async def dashboard_todos(identity, db):
     )
 
     archive_action_allowed = await _case_action_granted(identity, db, "case.archive.review")
-    archive_scope = await _record_scope_conditions(identity, db)
+    # 本函数没有业务写入，归档计数沿用本次调用已读取的同账号权限范围。
+    archive_scope = scope
     archive_projection, archive_data = record_json_text_projection(db, (
         "archive_submitter", "archive_reviewer", "archive_internal_reviewer", "archive_reject_reason",
     ))

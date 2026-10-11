@@ -49,9 +49,11 @@ async def investigation_task_detail(
         .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all())
     users = (await db.scalars(select(User).where(User.username.in_({item.uploader for item in files})))).all() if files else []
     names = {item.username.lower(): item.display_name for item in users}
-    record_data, parent_data = await _task_display_dicts([source, parent], db)
+    # 同一响应的主体和关联项共用一次人员及案件批量读取，保留原有位置顺序。
+    display_items = await _task_display_dicts([source, parent, *related], db)
+    record_data, parent_data = display_items[:2]
     return {
         "record": record_data, "parent": parent_data,
         "materials": [_attachment_dict(item, parent, names) for item in files],
-        "items": await _task_display_dicts(related, db), "total": total, "page": page, "page_size": page_size,
+        "items": display_items[2:], "total": total, "page": page, "page_size": page_size,
     }

@@ -10,6 +10,7 @@ import { internalFeeExportRequestParams } from "../../financeInternalFeeHelpers.
 import { normalizeRefundResponse } from "../../financeRefundHelpers.mjs";
 import { invoiceLegacyDefaultPageSize, normalizePaymentPackageResponse, paymentPackageRequestParams } from "../constants";
 import type { ArchiveSettlementRow, ContractPaymentSourceState, Fee, FinancePersonOption, FinanceSummary, IncomingPayment, LegacyFinanceRecord, LegacyFinanceSummary, Reconciliation, Transaction, OriginalRouteConfig } from "../types";
+import { financeRouteResources, loadFinanceQueryResources } from "./queryResources";
 
 const projectionNumericId = (value: unknown) => {
     const raw = String(value ?? "");
@@ -622,7 +623,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             context.setLoading(false);
         }
     };
-    const load = async () => {
+    const loadForTab = async (selectedTab: string) => {
         const { setLoading, setFinanceDataReady, initialView, loadPaymentQueryPage, paymentQueryPageSize, contractPaymentSource, loadRefunds, refundMeta, activeRefundStatus, isRefundNotRequiredRoute, paymentPackageMeta, isInternalDetailRoute, internalDetailParams, currentUser, isInvoiceMineRoute, invoiceMineParams, isInvoicePendingRoute, invoicePendingParams, isInvoiceCompanyRoute, invoiceCompanyParams, isInvoiceUnissuedRoute, invoiceUnissuedParams, isGeneralSettlementRoute, isGeneralSettlementPendingRoute, generalSettlementParams, isArchiveSettlementActiveRoute, isArchiveSettlementPaymentRoute, isArchiveSettlementPaidRoute, isArchiveSettlementRejectedRoute, archiveSettlementParams, isFeeQueryRoute, isRefundCaseFeeRoute, feeQueryParams, dashboardFeeQuerySeed, setFees, setFinanceFeeListMeta, setPaymentQueryMeta, setContractPayments, setInvoices, setRefunds, setRefundMeta, setSelectedRefundRows, setCases, setCustomers, setIncoming, setSelectedIncomingRows, setTransactions, setReconciliations, setSummary, setRole, setCurrentUser, setFinancePeople, setPendingSettlements, setRefundReviewFees, setPaymentPackages, setPaymentPackageMeta, setInternalDetailRows, setInternalDetailMeta, setInvoiceMineRows, setInvoiceMineMeta, setInvoicePendingRows, setInvoicePendingMeta, setInvoiceCompanyRows, setInvoiceCompanyMeta, setInvoiceUnissuedRows, setInvoiceUnissuedMeta, setGeneralSettlementRows, setGeneralSettlementMeta, setArchiveSettlementRows, setArchiveSettlementMeta, setFeeQueryRows, setFeeQueryMeta } = context;
         const loadContractPaymentRecords = () => contractPaymentSource.active && contractPaymentSource.ok
             ? api.get(`/finance/payment-source/${contractPaymentSource.sourceId}`, {
@@ -712,23 +713,29 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                             params: {
                                 page: context.financeFeeListMeta.page,
                                 page_size: context.financeFeeListMeta.pageSize,
-                                ...projectionFeeParams(initialView, context.tab),
+                                ...projectionFeeParams(initialView, selectedTab),
                             },
                         })
                         : api.get("/records", { params: {
                             module: "finance", page_size: 100,
                             finance_view: initialView.startsWith("finance-payment-") ? "external" : undefined,
                         } });
-            const needsTransactions = context.financeProjectionEnabled
-                ? context.tab === "transactions"
-                : !context.activeRouteConfig || ["fees", "feeQuery"].includes(context.activeRouteConfig.source);
             const feeQueryRequest = isFeeQueryRoute
                 ? api.get(isRefundCaseFeeRoute ? "/finance/case-fees/refunds" : "/finance/fees/query", {
                     params: feeQueryParams(dashboardFeeQuerySeed, 1, 15),
                 })
                 : null;
-            const transactionRequest = !needsTransactions ? Promise.resolve(null)
-                : context.financeProjectionEnabled
+            const resources = financeRouteResources(initialView, selectedTab, context.activeRouteConfig?.source);
+            const { feeRes, contractPaymentRes, invoiceRes, refundRes, caseRes, customerRes, incomingRes, txRes, recRes, sumRes, profileRes, settlementRes, refundReviewRes, paymentPackageRes, internalDetailRes, invoiceMineRes, invoicePendingRes, invoiceCompanyRes, invoiceUnissuedRes, generalSettlementRes, archiveSettlementRes, feeQueryRes, peopleRes } = await loadFinanceQueryResources(
+                resources, {
+                feeRes: () => feeRequest,
+                contractPaymentRes: () => loadContractPaymentRecords(),
+                invoiceRes: () => api.get("/records", { params: { module: "invoice", page_size: 100 } }),
+                refundRes: () => loadRefunds(1, refundMeta.pageSize, activeRefundStatus, isRefundNotRequiredRoute),
+                caseRes: () => api.get("/records", { params: { module: "case", page_size: 100 } }),
+                customerRes: () => api.get("/records", { params: { module: "customer", page_size: 100 } }),
+                incomingRes: () => api.get("/finance/incoming-payments", { params: { bank_source: receiptBankCode(initialView) } }),
+                txRes: () => context.financeProjectionEnabled
                     ? api.get("/finance/projection/transactions", {
                         params: {
                             page: context.financeTransactionMeta.page,
@@ -736,133 +743,45 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                         },
                     })
                     : context.activeRouteConfig?.source === "feeQuery"
-                        ? feeQueryRequest?.then((response) => loadTransactionsForFees(response.data.items || []))
-                        : feeRequest.then((response) => loadTransactionsForFees(response.data.items || []));
-            const [feeRes, contractPaymentRes, invoiceRes, refundRes, caseRes, customerRes, incomingRes, txRes, recRes, sumRes, profileRes, settlementRes, refundReviewRes, paymentPackageRes, internalDetailRes, invoiceMineRes, invoicePendingRes, invoiceCompanyRes, invoiceUnissuedRes, generalSettlementRes, archiveSettlementRes, feeQueryRes, peopleRes,] = await Promise.all([
-                feeRequest,
-                initialView === "finance-payment-query"
-                    ? Promise.resolve({
-                        data: {
-                            items: [],
-                            total: 0,
-                            page: 1,
-                            page_size: paymentQueryPageSize,
-                        },
-                    })
-                    : !context.activeRouteConfig || context.activeRouteConfig.source === "fees"
-                        ? loadContractPaymentRecords()
-                        : null,
-                api.get("/records", { params: { module: "invoice", page_size: 100 } }),
-                context.financeProjectionEnabled
-                    ? loadRefunds(1, refundMeta.pageSize, activeRefundStatus, isRefundNotRequiredRoute)
-                    : null,
-                api.get("/records", { params: { module: "case", page_size: 100 } }),
-                api.get("/records", { params: { module: "customer", page_size: 100 } }),
-                context.financeProjectionEnabled || context.activeRouteConfig?.source === "incoming"
-                    ? api.get("/finance/incoming-payments", { params: { bank_source: receiptBankCode(initialView) } })
-                    : null,
-                transactionRequest,
-                context.financeProjectionEnabled ? api.get("/finance/reconciliations") : Promise.resolve(null),
-                context.financeProjectionEnabled ? api.get<FinanceSummary>("/finance/summary") : Promise.resolve(null),
-                api.get("/auth/me"),
-                initialView === "finance-internal-settle"
-                    ? api.get("/finance/settlements/pending")
-                    : Promise.resolve({ data: { items: [], total: 0 } }),
-                initialView === "finance-internal-refund-audit"
-                    ? api.get("/finance/fees/refund-review-candidates")
-                    : Promise.resolve({ data: { items: [], total: 0 } }),
-                context.activeRouteConfig?.source === "paymentPackages"
-                    ? api.get("/finance/payment-packages", {
-                        params: paymentPackageRequestParams(initialView, initialView === "finance-internal-writeoff"
-                            ? { status: "待核销" }
-                            : {}, 1, paymentPackageMeta.pageSize),
-                    })
-                    : null,
-                isInternalDetailRoute
-                    ? api.get("/finance/internal-fees", {
+                        ? feeQueryRequest!.then((response) => loadTransactionsForFees(response.data.items || []))
+                        : feeRequest.then((response) => loadTransactionsForFees(response.data.items || [])),
+                recRes: () => api.get("/finance/reconciliations"),
+                sumRes: () => api.get<FinanceSummary>("/finance/summary"),
+                profileRes: () => api.get("/auth/me"),
+                settlementRes: () => api.get("/finance/settlements/pending"),
+                refundReviewRes: () => api.get("/finance/fees/refund-review-candidates"),
+                paymentPackageRes: () => api.get("/finance/payment-packages", {
+                    params: paymentPackageRequestParams(initialView, initialView === "finance-internal-writeoff"
+                        ? { status: "待核销" }
+                        : {}, 1, paymentPackageMeta.pageSize),
+                }),
+                internalDetailRes: () => api.get("/finance/internal-fees", {
                         params: internalDetailParams(initialView === "finance-internal-detail"
                             ? {
                                 routeField7: "全部",
                                 routeField9: currentUser.displayName || "姓名待维护",
                             }
                             : { routeField7: "全部" }, 1, 15),
-                    })
-                    : Promise.resolve({
-                        data: {
-                            items: [],
-                            total: 0,
-                            total_amount: 0,
-                            page: 1,
-                            page_size: 15,
-                        },
                     }),
-                isInvoiceMineRoute
-                    ? api.get("/finance/invoices", {
+                invoiceMineRes: () => api.get("/finance/invoices", {
                         params: invoiceMineParams({}, 1, invoiceLegacyDefaultPageSize(initialView)),
-                    })
-                    : Promise.resolve({
-                        data: {
-                            items: [],
-                            total: 0,
-                            total_amount: 0,
-                            total_extra_amount: 0,
-                            page: 1,
-                            page_size: invoiceLegacyDefaultPageSize(initialView),
-                        },
                     }),
-                isInvoicePendingRoute
-                    ? api.get("/finance/invoices", {
+                invoicePendingRes: () => api.get("/finance/invoices", {
                         params: invoicePendingParams({}, 1, invoiceLegacyDefaultPageSize(initialView)),
-                    })
-                    : Promise.resolve({
-                        data: {
-                            items: [],
-                            total: 0,
-                            total_amount: 0,
-                            total_extra_amount: 0,
-                            page: 1,
-                            page_size: invoiceLegacyDefaultPageSize(initialView),
-                        },
                     }),
-                isInvoiceCompanyRoute
-                    ? api.get("/finance/invoices", {
+                invoiceCompanyRes: () => api.get("/finance/invoices", {
                         params: invoiceCompanyParams({}, 1, invoiceLegacyDefaultPageSize(initialView)),
-                    })
-                    : Promise.resolve({
-                        data: {
-                            items: [],
-                            total: 0,
-                            total_amount: 0,
-                            total_extra_amount: 0,
-                            page: 1,
-                            page_size: invoiceLegacyDefaultPageSize(initialView),
-                        },
                     }),
-                isInvoiceUnissuedRoute
-                    ? api.get("/finance/case-fees/invoice-status", {
+                invoiceUnissuedRes: () => api.get("/finance/case-fees/invoice-status", {
                         params: invoiceUnissuedParams({
                             routeField6: "未开票",
                             routeField12: ["律师代理费"],
                         }, 1, invoiceLegacyDefaultPageSize(initialView)),
-                    })
-                    : Promise.resolve({
-                        data: {
-                            items: [],
-                            total: 0,
-                            totals: {},
-                            page: 1,
-                            page_size: invoiceLegacyDefaultPageSize(initialView),
-                        },
                     }),
-                isGeneralSettlementRoute
-                    ? api.get(isGeneralSettlementPendingRoute
+                generalSettlementRes: () => api.get(isGeneralSettlementPendingRoute
                         ? "/finance/general-settlements/pending"
-                        : "/finance/general-settlements/applications", { params: generalSettlementParams({}, 1, 10) })
-                    : Promise.resolve({
-                        data: { items: [], total: 0, totals: {}, page: 1, page_size: 10 },
-                    }),
-                isArchiveSettlementActiveRoute
-                    ? api.get(isArchiveSettlementPaymentRoute
+                        : "/finance/general-settlements/applications", { params: generalSettlementParams({}, 1, 10) }),
+                archiveSettlementRes: () => api.get(isArchiveSettlementPaymentRoute
                         ? "/finance/archive-settlements/payment"
                         : isArchiveSettlementPaidRoute
                             ? "/finance/archive-settlements/paid"
@@ -870,69 +789,75 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                                 ? "/finance/archive-settlements/rejected"
                                 : "/finance/archive-settlements/pending", {
                         params: archiveSettlementParams({}, 1, 10),
-                    })
-                    : Promise.resolve({
-                        data: { items: [], total: 0, totals: {}, page: 1, page_size: 10 },
                     }),
-                feeQueryRequest,
-                api.get("/people/options").catch(() => ({ data: { items: [] } })),
-            ]);
-            setFees(context.financeProjectionEnabled
-                ? normalizeProjectionFees(feeRes.data.items || [])
-                : (feeRes.data.items || []));
-            setFinanceFeeListMeta({
-                page: Number(feeRes.data.page || 1),
-                pageSize: Number(feeRes.data.page_size || context.financeFeeListMeta.pageSize),
-                total: Number(feeRes.data.total || feeRes.data.items?.length || 0),
+                feeQueryRes: () => feeQueryRequest!,
+                peopleRes: () => api.get("/people/options"),
             });
-            if (initialView === "finance-payment-query") {
-                setPaymentQueryMeta({
-                    total: Number(feeRes.data.total || 0),
+            if (feeRes) {
+                setFees(context.financeProjectionEnabled
+                    ? normalizeProjectionFees(feeRes.data.items || [])
+                    : (feeRes.data.items || []));
+                setFinanceFeeListMeta({
                     page: Number(feeRes.data.page || 1),
-                    pageSize: Number(feeRes.data.page_size || paymentQueryPageSize),
+                    pageSize: Number(feeRes.data.page_size || context.financeFeeListMeta.pageSize),
+                    total: Number(feeRes.data.total || feeRes.data.items?.length || 0),
                 });
+                if (initialView === "finance-payment-query") {
+                    setPaymentQueryMeta({
+                        total: Number(feeRes.data.total || 0),
+                        page: Number(feeRes.data.page || 1),
+                        pageSize: Number(feeRes.data.page_size || paymentQueryPageSize),
+                    });
+                    setContractPayments([]);
+                }
             }
-            const contractPaymentItems = contractPaymentRes
-                ? contractPaymentSource.active && contractPaymentSource.ok
+            if (contractPaymentRes) {
+                const contractPaymentItems = contractPaymentSource.active && contractPaymentSource.ok
                     ? [contractPaymentRes.data]
-                    : contractPaymentRes.data.items || []
-                : [];
-            setContractPayments(normalizeContractPayments(contractPaymentItems));
-            setInvoices(invoiceRes.data.items);
+                    : contractPaymentRes.data.items || [];
+                setContractPayments(normalizeContractPayments(contractPaymentItems));
+            }
+            if (invoiceRes) setInvoices(invoiceRes.data.items);
             if (refundRes?.applied && refundRes.response) {
                 const normalizedRefunds = normalizeRefundResponse(refundRes.response.data, 1, refundMeta.pageSize);
                 setRefunds(normalizedRefunds.items);
                 setRefundMeta(normalizedRefunds);
                 setSelectedRefundRows([]);
             }
-            setCases(caseRes.data.items);
-            setCustomers(customerRes.data.items);
-            setIncoming(incomingRes?.data.items || []);
-            setSelectedIncomingRows([]);
-            setTransactions(context.financeProjectionEnabled
-                ? normalizeProjectionTransactions(txRes?.data.items || [])
-                : (txRes?.data.items || []));
-            context.setFinanceTransactionMeta({
-                page: Number(txRes?.data.page || 1),
-                pageSize: Number(txRes?.data.page_size || context.financeTransactionMeta.pageSize),
-                total: Number(txRes?.data.total || txRes?.data.items?.length || 0),
-            });
+            if (caseRes) setCases(caseRes.data.items);
+            if (customerRes) setCustomers(customerRes.data.items);
+            if (incomingRes) {
+                setIncoming(incomingRes.data.items);
+                setSelectedIncomingRows([]);
+            }
+            if (resources.includes("txRes")) {
+                setTransactions(context.financeProjectionEnabled
+                    ? normalizeProjectionTransactions(txRes?.data.items || [])
+                    : (txRes?.data.items || []));
+                context.setFinanceTransactionMeta({
+                    page: Number(txRes?.data.page || 1),
+                    pageSize: Number(txRes?.data.page_size || context.financeTransactionMeta.pageSize),
+                    total: Number(txRes?.data.total || txRes?.data.items?.length || 0),
+                });
+            }
             if (recRes) setReconciliations(recRes.data.items);
             if (sumRes) setSummary(sumRes.data);
-            setRole(profileRes.data.role);
-            setCurrentUser({
-                username: profileRes.data.username || "",
-                displayName: profileRes.data.display_name || "",
-            });
-            setFinancePeople(peopleRes.data.items || []);
-            setPendingSettlements(settlementRes.data.items);
-            setRefundReviewFees(refundReviewRes.data.items);
+            if (profileRes) {
+                setRole(profileRes.data.role);
+                setCurrentUser({
+                    username: profileRes.data.username || "",
+                    displayName: profileRes.data.display_name || "",
+                });
+            }
+            if (peopleRes) setFinancePeople(peopleRes.data.items || []);
+            if (settlementRes) setPendingSettlements(settlementRes.data.items);
+            if (refundReviewRes) setRefundReviewFees(refundReviewRes.data.items);
             if (paymentPackageRes) {
                 const normalizedPaymentPackages = normalizePaymentPackageResponse(paymentPackageRes.data, 1, paymentPackageMeta.pageSize);
                 setPaymentPackages(normalizedPaymentPackages.items);
                 setPaymentPackageMeta(normalizedPaymentPackages);
             }
-            if (isInternalDetailRoute) {
+            if (isInternalDetailRoute && internalDetailRes) {
                 setInternalDetailRows(internalDetailRes.data.items || []);
                 setInternalDetailMeta({
                     total: internalDetailRes.data.total || 0,
@@ -941,7 +866,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     pageSize: internalDetailRes.data.page_size || 15,
                 });
             }
-            if (isInvoiceMineRoute) {
+            if (isInvoiceMineRoute && invoiceMineRes) {
                 setInvoiceMineRows(invoiceMineRes.data.items || []);
                 setInvoiceMineMeta({
                     total: invoiceMineRes.data.total || 0,
@@ -951,7 +876,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     pageSize: invoiceMineRes.data.page_size || 15,
                 });
             }
-            if (isInvoicePendingRoute) {
+            if (isInvoicePendingRoute && invoicePendingRes) {
                 setInvoicePendingRows(invoicePendingRes.data.items || []);
                 setInvoicePendingMeta({
                     total: invoicePendingRes.data.total || 0,
@@ -961,7 +886,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     pageSize: invoicePendingRes.data.page_size || 15,
                 });
             }
-            if (isInvoiceCompanyRoute) {
+            if (isInvoiceCompanyRoute && invoiceCompanyRes) {
                 setInvoiceCompanyRows(invoiceCompanyRes.data.items || []);
                 setInvoiceCompanyMeta({
                     total: invoiceCompanyRes.data.total || 0,
@@ -971,7 +896,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     pageSize: invoiceCompanyRes.data.page_size || 15,
                 });
             }
-            if (isInvoiceUnissuedRoute) {
+            if (isInvoiceUnissuedRoute && invoiceUnissuedRes) {
                 setInvoiceUnissuedRows(invoiceUnissuedRes.data.items || []);
                 setInvoiceUnissuedMeta({
                     total: invoiceUnissuedRes.data.total || 0,
@@ -983,7 +908,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     pageSize: invoiceUnissuedRes.data.page_size || 15,
                 });
             }
-            if (isGeneralSettlementRoute) {
+            if (isGeneralSettlementRoute && generalSettlementRes) {
                 setGeneralSettlementRows(generalSettlementRes.data.items || []);
                 setGeneralSettlementMeta({
                     total: generalSettlementRes.data.total || 0,
@@ -992,7 +917,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     totals: generalSettlementRes.data.totals || {},
                 });
             }
-            if (isArchiveSettlementActiveRoute) {
+            if (isArchiveSettlementActiveRoute && archiveSettlementRes) {
                 setArchiveSettlementRows(archiveSettlementRes.data.items || []);
                 setArchiveSettlementMeta({
                     total: archiveSettlementRes.data.total || 0,
@@ -1001,7 +926,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     totals: archiveSettlementRes.data.totals || {},
                 });
             }
-            if (feeQueryRes) {
+            if (isFeeQueryRoute && feeQueryRes) {
                 setFeeQueryRows(feeQueryRes.data.items || []);
                 setFeeQueryMeta({
                     total: feeQueryRes.data.total || 0,
@@ -1019,6 +944,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             setFinanceDataReady(true);
         }
     };
+    const load = () => loadForTab(context.tab);
     const loadLegacyFinanceHistory = async (page = context.legacyFinanceMeta.page, pageSize = context.legacyFinanceMeta.pageSize) => {
         const { setLegacyFinanceLoading, legacyFinanceKind, legacyFinanceStatusCode, legacyFinanceKeyword, legacyFinanceIncludeInactive, setLegacyFinanceRows, setLegacyFinanceMeta, setLegacyFinanceSummary } = context;
         setLegacyFinanceLoading(true);
@@ -1153,5 +1079,5 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
         anchor.click();
         URL.revokeObjectURL(url);
     };
-    return { openCaseDetail, openContractDetail, openCustomerDetail, loadInternalDetails, loadFinanceProjectionPage, load, loadLegacyFinanceHistory, openLegacyFinanceDetail, exportInternalDetails, exportConfiguredRows };
+    return { openCaseDetail, openContractDetail, openCustomerDetail, loadInternalDetails, loadFinanceProjectionPage, load, loadForTab, loadLegacyFinanceHistory, openLegacyFinanceDetail, exportInternalDetails, exportConfiguredRows };
 }
