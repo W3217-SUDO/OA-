@@ -47,8 +47,10 @@ import {
   TeamOutlined,
   UnorderedListOutlined,
   UserOutlined,
+  QrcodeOutlined,
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
+import { bindDingTalkWebLogin, clearDingTalkWebCallback, consumeDingTalkWebCallback, startDingTalkWebLogin } from "./auth/dingtalkWebLogin";
 import {
   PERMISSIONS_UPDATED_EVENT,
   PERMISSIONS_UPDATED_STORAGE_KEY,
@@ -984,6 +986,7 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
   const [loading, setLoading] = useState(false);
   const [dingtalkEnabled, setDingtalkEnabled] = useState(false);
   const [dingtalkAuthCode, setDingtalkAuthCode] = useState("");
+  const [dingtalkWebBinding, setDingtalkWebBinding] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
   const [pendingUser, setPendingUser] = useState<SessionUser | null>(null);
   const [passwordForm] = Form.useForm();
@@ -1001,11 +1004,29 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
   useEffect(() => {
     let active = true;
     const loginFromDingTalk = async () => {
+      let webCallback = false;
       try {
         const { data: config } = await api.get("/auth/dingtalk/config");
         if (!active || !config.enabled) return;
         setDingtalkEnabled(true);
-        if (getDingTalkEnvironment().platform === "notInDingTalk") return;
+        if (getDingTalkEnvironment().platform === "notInDingTalk") {
+          const request = consumeDingTalkWebCallback();
+          if (!request) return;
+          webCallback = true;
+          setLoading(true);
+          const data = await request;
+          if (!active) return;
+          clearDingTalkWebCallback();
+          if ("binding_required" in data) {
+            setDingtalkWebBinding(true);
+            message.info("首次扫码请输入本人 OA 账号和密码完成绑定");
+            return;
+          }
+          localStorage.setItem("access_token", data.access_token);
+          localStorage.setItem("user", JSON.stringify(data.user));
+          onSuccess(data.user);
+          return;
+        }
         setLoading(true);
         const result = await requestDingTalkAuthCode({ corpId: config.corp_id });
         const { data } = await api.post("/auth/dingtalk/login", { auth_code: result.code });
@@ -1013,7 +1034,10 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
         localStorage.setItem("user", JSON.stringify(data.user));
         if (active) onSuccess(data.user);
       } catch (error: any) {
-        if (active && error?.response?.status === 403 && error?.config?.data) {
+        if (active && webCallback) {
+          clearDingTalkWebCallback();
+          message.error(error?.response?.data?.detail || error.message || "钉钉扫码登录失败");
+        } else if (active && error?.response?.status === 403 && error?.config?.data) {
           try { setDingtalkAuthCode(JSON.parse(error.config.data).auth_code || ""); } catch { setDingtalkAuthCode(""); }
           message.info("首次使用钉钉登录，请输入一次现有 OA 账号和密码完成绑定");
         } else if (active && getDingTalkEnvironment().platform !== "notInDingTalk") {
@@ -1031,7 +1055,9 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
     try {
       const form = new URLSearchParams(values);
       let data: any;
-      if (dingtalkAuthCode) {
+      if (dingtalkWebBinding) {
+        data = await bindDingTalkWebLogin(values);
+      } else if (dingtalkAuthCode) {
         // DingTalk auth codes are single-use. The initial SSO probe consumes its
         // code before an unbound user reaches this form, so binding needs a new one.
         const { data: config } = await api.get("/auth/dingtalk/config");
@@ -1090,7 +1116,7 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
     <Card className="login-card">
       <h2>{isHuzhi ? "登录沪知工作台" : "系统登录"}</h2>
       <p>{isHuzhi ? "请输入 OA 账号与密码" : siteBrand.welcome}</p>
-      {dingtalkAuthCode && <Alert type="info" showIcon title="首次钉钉登录" description="输入一次现有 OA 账号和密码完成绑定；以后从钉钉工作台打开将直接登录。" style={{marginBottom:16}} />}
+      {(dingtalkAuthCode || dingtalkWebBinding) && <Alert type="info" showIcon title="首次钉钉登录" description={dingtalkWebBinding ? "输入本人 OA 账号和密码完成绑定，以后可扫码登录。" : "输入一次现有 OA 账号和密码完成绑定；以后从钉钉工作台打开将直接登录。"} style={{marginBottom:16}} />}
       <Form onFinish={submit} layout="vertical">
         <Form.Item name="username" label="账号" rules={[{ required: true }]}>
           <Input size="large" autoComplete="username" prefix={<UserOutlined />} />
@@ -1106,11 +1132,15 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
           htmlType="submit"
           loading={loading}
         >
-          {dingtalkAuthCode ? "绑定钉钉并登录" : isHuzhi ? "登录" : "登 录"}
+          {dingtalkAuthCode || dingtalkWebBinding ? "绑定钉钉并登录" : isHuzhi ? "登录" : "登 录"}
         </Button>
         <div className="login-secondary-actions">
           {dingtalkEnabled && getDingTalkEnvironment().platform === "notInDingTalk" && (
-            <Button block size="large" style={isHuzhi ? undefined : { marginTop: 12 }} onClick={() => message.info("请从钉钉工作台打开本系统，即可自动登录")}>钉钉免登</Button>
+            <Button block size="large" icon={<QrcodeOutlined />} loading={loading} style={isHuzhi ? undefined : { marginTop: 12 }} onClick={async () => {
+              setLoading(true);
+              try { await startDingTalkWebLogin(); }
+              catch (error: any) { message.error(error?.response?.data?.detail || error.message || "无法打开钉钉扫码登录"); setLoading(false); }
+            }}>钉钉扫码登录</Button>
           )}
           {getDingTalkEnvironment().platform === "notInDingTalk" && (
             <Button

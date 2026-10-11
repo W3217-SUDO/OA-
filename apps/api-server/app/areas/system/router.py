@@ -76,15 +76,7 @@ async def dingtalk_login_config():
 
 @router.post(f"{settings.api_prefix}/auth/dingtalk/login")
 async def dingtalk_login(body: DingTalkLoginInput, db: AsyncSession = Depends(get_db)):
-    from app.core.formatters import (
-        _dingtalk_allowed_display_names,
-    )
-    from app.core.permissions import (
-        _require_dingtalk_access,
-    )
-    from app.core.system import (
-        _login_response,
-    )
+    from .dingtalk_auth import login_verified_employee
     if not dingtalk_client.configured:
         raise HTTPException(status_code=503, detail="钉钉免登尚未配置")
     try:
@@ -92,50 +84,22 @@ async def dingtalk_login(body: DingTalkLoginInput, db: AsyncSession = Depends(ge
     except (DingTalkError, httpx.HTTPError) as exc:
         logger.warning("DingTalk login failed: %s", exc)
         raise HTTPException(status_code=502, detail="钉钉身份校验失败，请稍后重试") from exc
-    users = (await db.scalars(select(User).where(User.is_active.is_(True)))).all()
-    matched = [user for user in users if str((user.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user["user_id"]]
-    if not matched and ding_user.get("mobile"):
-        matched = [user for user in users if str((user.profile or {}).get("mobile") or "").strip() == ding_user["mobile"]]
-        if len(matched) == 1:
-            matched[0].profile = {**(matched[0].profile or {}), "dingtalk_user_id": ding_user["user_id"]}
-    ding_name = str(ding_user.get("name") or "").strip()
-    if not matched and ding_name in _dingtalk_allowed_display_names():
-        matched = [user for user in users if str(user.display_name or "").strip() == ding_name]
-        if len(matched) == 1:
-            matched[0].profile = {**(matched[0].profile or {}), "dingtalk_user_id": ding_user["user_id"]}
-    if len(matched) != 1:
+    data = await login_verified_employee(ding_user, db)
+    if data is None:
         raise HTTPException(status_code=403, detail="钉钉账号尚未绑定系统员工，请联系管理员在员工账号中绑定")
-    user = matched[0]
-    _require_dingtalk_access(user)
-    user.last_login_at = datetime.now()
-    await db.commit()
-    return await _login_response(user, db, require_password_change=False)
+    return data
 
 
 @router.post(f"{settings.api_prefix}/auth/dingtalk/bind")
 async def bind_dingtalk_login(body: DingTalkBindInput, db: AsyncSession = Depends(get_db)):
-    from app.core.permissions import (
-        _ensure_unique_dingtalk_user_id, _require_dingtalk_access,
-    )
-    from app.core.system import (
-        _login_response,
-    )
+    from .dingtalk_auth import bind_verified_employee
     if not dingtalk_client.configured:
         raise HTTPException(status_code=503, detail="钉钉免登尚未配置")
     try:
         ding_user = await dingtalk_client.user_by_auth_code(body.auth_code.strip())
     except (DingTalkError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail="钉钉身份校验失败，请从工作台重新打开系统") from exc
-    user = await db.scalar(select(User).where(User.username == body.username.strip().lower(), User.is_active.is_(True)))
-    if not user or not verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="OA 账号或密码错误")
-    _require_dingtalk_access(user)
-    profile = {**(user.profile or {}), "dingtalk_user_id": ding_user["user_id"]}
-    await _ensure_unique_dingtalk_user_id(profile, db, user.id, user.display_name)
-    user.profile = profile
-    user.last_login_at = datetime.now()
-    await db.commit()
-    return await _login_response(user, db)
+    return await bind_verified_employee(ding_user, body.username, body.password, db)
 
 
 @router.get(f"{settings.api_prefix}/auth/me")
@@ -1889,3 +1853,9 @@ async def agent_chat(body: DifyRequest, identity: dict = Depends(current_identit
     if response.is_error:
         raise HTTPException(status_code=502, detail="Dify 调用失败")
     return response.json()
+
+
+# 新增独立登录路由放在末尾，保持既有区域路由切片的顺序不变。
+from .dingtalk_web import router as dingtalk_web_router
+
+router.include_router(dingtalk_web_router)
