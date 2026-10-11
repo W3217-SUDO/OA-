@@ -929,6 +929,10 @@ body {
   .ant-modal-root .ant-modal-mask {
     z-index: 1300;
   }
+  .ant-drawer:not(.ant-drawer-inline) .ant-drawer-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
   .ant-modal .ant-modal-header { margin-bottom: 12px; }
   .ant-modal .ant-modal-body { padding-inline: 0; }
   .ant-modal {
