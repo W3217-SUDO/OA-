@@ -271,7 +271,11 @@ async def query_payments(filters, identity, db):
     scope = filters.get("scope", "all")
     applicant_value = func.coalesce(func.nullif(data["applicant"].as_string(), ""), record.owner)
     if scope == "mine":
-        conditions.append(applicant_value == identity["username"])
+        identities = {identity["username"], identity.get("display_name")}
+        conditions.extend([
+            applicant_value.in_({value for value in identities if value}),
+            or_(record.module != "finance", record.status != "已删除"),
+        ])
     elif scope == "department":
         user = await db.scalar(select(User).where(User.username == identity["username"]))
         if not user:

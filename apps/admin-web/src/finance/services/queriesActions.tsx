@@ -636,25 +636,30 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                 return;
             }
             if (initialView === "finance-payment-mine") {
-                const [feeRes, contractPaymentRes, txRes, profileRes, peopleRes, caseRes] = await Promise.all([
-                    api.get("/records", { params: {
-                        module: "finance", page_size: 100, finance_view: "external",
-                    } }),
-                    loadContractPaymentRecords(),
+                const [paymentRes, txRes, profileRes, peopleRes, caseRes] = await Promise.all([
+                    contractPaymentSource.active
+                        ? contractPaymentSource.ok
+                            ? loadContractPaymentRecords()
+                            : Promise.resolve({ data: { items: [] } })
+                        : api.get("/finance/payment-applications/query", {
+                            params: { scope: "mine", page: 1, page_size: 100 },
+                        }),
                     api.get("/finance/transactions"),
                     api.get("/auth/me"),
-                    api.get("/people/options").catch(() => ({ data: { items: [] } })),
+                    api.get("/people/options"),
                     api.get("/records", { params: { module: "case", page_size: 100 } }),
                 ]);
-                setFees(feeRes.data.items || []);
+                const paymentItems: Fee[] = contractPaymentSource.active && contractPaymentSource.ok
+                    ? [paymentRes.data]
+                    : paymentRes.data.items || [];
+                const feeItems = paymentItems.filter((item) => item.module === "finance");
+                const contractPaymentItems = paymentItems.filter((item) => item.module === "contract_payment");
+                setFees(feeItems);
                 setFinanceFeeListMeta({
-                    page: Number(feeRes.data.page || 1),
-                    pageSize: Number(feeRes.data.page_size || context.financeFeeListMeta.pageSize),
-                    total: Number(feeRes.data.total || feeRes.data.items?.length || 0),
+                    page: 1,
+                    pageSize: 100,
+                    total: feeItems.length,
                 });
-                const contractPaymentItems = contractPaymentSource.active && contractPaymentSource.ok
-                    ? [contractPaymentRes.data]
-                    : contractPaymentRes.data.items || [];
                 setContractPayments(normalizeContractPayments(contractPaymentItems));
                 setTransactions(txRes.data.items || []);
                 context.setFinanceTransactionMeta({
