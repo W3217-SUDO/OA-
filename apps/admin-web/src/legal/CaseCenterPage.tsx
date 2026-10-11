@@ -8,15 +8,19 @@ import { CommissionPerson } from "./CommissionPerson";
 import {
 CloseOutlined,
 CommentOutlined,
+DownOutlined,
 DownloadOutlined,
+FolderOutlined,
 InfoCircleOutlined,
 MinusCircleOutlined,
 PlusOutlined,
 ReloadOutlined,
 RobotOutlined,
+RightOutlined,
+UpOutlined,
 UploadOutlined
 } from "@ant-design/icons";
-import type { UploadFile } from "antd";
+import type { TableColumnsType, UploadFile } from "antd";
 import {
 Alert,
 Button,
@@ -382,6 +386,19 @@ export default function CaseCenterPage({
   const [phaseOptions, setPhaseOptions] = useState<CasePhaseOption[]>([]);
   const [phaseCatalog, setPhaseCatalog] = useState<CasePhaseOption[]>([]);
   const [phasePanelCollapsed, setPhasePanelCollapsed] = useState(false);
+  const [isPhoneViewport, setIsPhoneViewport] = useState(() => window.matchMedia("(max-width: 767px)").matches);
+  const [mobilePhaseExpanded, setMobilePhaseExpanded] = useState(false);
+  const [mobileQueryExpanded, setMobileQueryExpanded] = useState(false);
+  const [desktopQueryExpanded, setDesktopQueryExpanded] = useState(true);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const updateViewport = () => setIsPhoneViewport(media.matches);
+    updateViewport();
+    media.addEventListener("change", updateViewport);
+    return () => media.removeEventListener("change", updateViewport);
+  }, []);
+  const listPhaseCollapsed = isPhoneViewport ? !mobilePhaseExpanded : phasePanelCollapsed;
+  const listQueryExpanded = isPhoneViewport ? mobileQueryExpanded : desktopQueryExpanded;
   const [expandedPhaseGroups, setExpandedPhaseGroups] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(LEGACY_DEFAULT_EXPANDED_PHASE_GROUPS.map((label) => [label, true])),
   );
@@ -2453,6 +2470,27 @@ export default function CaseCenterPage({
     {title:"剩余时间",key:"remaining_days",width:105,render:(_:unknown,row:CaseRow)=>{const end=dayjs(String(row.data.counsel_end||""));const days=end.isValid()?Math.max(0,end.startOf("day").diff(dayjs().startOf("day"),"day")):0;return <span style={{color:days<10?"red":"green"}}>{days} 天</span>;}},
     {title:"操作",key:"actions",fixed:"right" as const,width:150,render:(_:unknown,row:CaseRow)=><Space size={0}><Button type="link" onClick={()=>void openCounselDetail(row)}>查看</Button>{getCaseCapability(row).can_edit_basic&&<Button type="link" disabled={ARCHIVE_LOCKED_STATUSES.includes(row.status)} onClick={()=>openCounselEdit(row)}>编辑</Button>}</Space>},
   ];
+  const originalListColumns: TableColumnsType<CaseRow> = counselListMode ? counselCaseColumns : shouldUseCompanyCriminalQueryFields(initialView) ? companyCriminalCaseColumns : originalCaseColumns;
+  // 只补展示标签，手机纵向行复用原单元格与排序、关联操作。
+  const responsiveOriginalListColumns = originalListColumns.map((column) => ({
+    ...column,
+    className: [column.className, column.sorter && "case-list-sort-header"].filter(Boolean).join(" "),
+    ...(column.key === "base" || column.key === "serial_no" || ("dataIndex" in column && column.dataIndex === "serial_no") ? {
+      render: (value: unknown, row: CaseRow, index: number) => <>{column.render?.(value, row, index)}<p className="case-list-title">{row.title}</p></>,
+    } : {}),
+    onCell: (row: CaseRow, index?: number) => {
+      const cell = column.onCell?.(row, index);
+      return { ...cell, className: [cell?.className, "case-list-cell"].filter(Boolean).join(" "), "data-label": column.title as string };
+    },
+    onHeaderCell: (...args: Parameters<NonNullable<typeof column.onHeaderCell>>) => {
+      const cell = column.onHeaderCell?.(...args);
+      return { ...cell, onPointerDownCapture: (event: React.PointerEvent<HTMLTableCellElement>) => {
+        cell?.onPointerDownCapture?.(event);
+        // 手机只保留排序点击，阻止共享表头的拖宽处理进入冒泡阶段。
+        if (isPhoneViewport) event.stopPropagation();
+      } };
+    },
+  }));
   const criminalPhaseItems=[{label:"待分配",value:"新案待分配"},{label:"公安侦查",value:"公安侦查"},{label:"批捕",value:"批捕"},{label:"检察院审查起诉",value:"检察院审查起诉"},{label:"一审阶段",value:"一审阶段"},{label:"二审阶段",value:"二审阶段"},{label:"再审阶段",value:"再审阶段"},{label:"归档阶段",value:"归档阶段"}];
   const phaseDefinitions=getCasePhaseDefinitions(initialView,CASE_PHASE_ROOT_LABELS.map(value=>({label:value,value})),criminalPhaseItems);
   const phaseItems = counselListMode
@@ -2921,31 +2959,31 @@ export default function CaseCenterPage({
             void reviewUnarchive(selectedArchiveCase, true);
           }}>解档审批</Button>}
         </Space></div>
-      </Card> : originalListMode && <div className={`case-original-layout${phasePanelCollapsed ? " case-phase-collapsed" : ""}`}>
-        <aside className="case-phase-panel" aria-label="案件阶段筛选"><div className="case-phase-title"><span>{phasePanelCollapsed ? "阶段" : "案件阶段"}</span><button type="button" className="case-phase-collapse-button" aria-label={phasePanelCollapsed ? "展开案件阶段" : "收起案件阶段"} aria-expanded={!phasePanelCollapsed} onClick={() => setPhasePanelCollapsed((collapsed) => !collapsed)}>{phasePanelCollapsed ? "›" : "‹"}</button></div>{!phasePanelCollapsed && <div className="case-phase-tree">{phaseTreeItems.map(({label,value,count,children})=>{
+      </Card> : originalListMode && <div className={`case-original-layout${listPhaseCollapsed ? " case-phase-collapsed" : ""}`}>
+        <aside className="case-phase-panel" aria-label="案件阶段筛选"><div className="case-phase-title"><span>{isPhoneViewport ? `案件阶段${caseQuery.status ? `：${caseQuery.status}` : ""}` : phasePanelCollapsed ? "阶段" : "案件阶段"}</span><button type="button" className="case-phase-collapse-button" aria-label={listPhaseCollapsed ? "展开案件阶段" : "收起案件阶段"} aria-expanded={!listPhaseCollapsed} onClick={() => isPhoneViewport ? setMobilePhaseExpanded((expanded) => !expanded) : setPhasePanelCollapsed((collapsed) => !collapsed)}>{isPhoneViewport ? listPhaseCollapsed ? <DownOutlined /> : <UpOutlined /> : phasePanelCollapsed ? "›" : "‹"}</button></div>{!listPhaseCollapsed && <div className="case-phase-tree">{phaseTreeItems.map(({label,value,count,children})=>{
           const grouped = children.length > 0 || LEGACY_PHASE_GROUPS.has(label);
           const expanded = Boolean(expandedPhaseGroups[label]);
           return <div key={value} className={grouped ? "case-phase-group" : "case-phase-group case-phase-group-leaf"}>
             <div className="case-phase-row">
-              {grouped ? <button type="button" className="case-phase-toggle" aria-label={`${expanded ? "收起" : "展开"}${label}`} onClick={()=>setExpandedPhaseGroups((current)=>({...current,[label]:!expanded}))}>{expanded ? "▾" : "▸"}</button> : <span className="case-phase-toggle-placeholder" />}
-              <button type="button" className="case-phase-filter" onClick={()=>void searchByPhase(value)}>📁 {label}【{count}】</button>
+              {grouped ? <button type="button" className="case-phase-toggle" aria-label={`${expanded ? "收起" : "展开"}${label}`} aria-expanded={expanded} onClick={()=>setExpandedPhaseGroups((current)=>({...current,[label]:!expanded}))}>{expanded ? <DownOutlined /> : <RightOutlined />}</button> : <span className="case-phase-toggle-placeholder" />}
+              <button type="button" className="case-phase-filter" onClick={()=>void searchByPhase(value)}><FolderOutlined /> {label}【{count}】</button>
             </div>
-            {expanded && <div className="case-phase-children">{children.map((child)=><button key={`${label}-${child.value}`} type="button" className="case-phase-child" onClick={()=>void searchByPhase(child.value)}>📁 {child.label}【{child.count}】</button>)}</div>}
+            {expanded && <div className="case-phase-children">{children.map((child)=><button key={`${label}-${child.value}`} type="button" className="case-phase-child" onClick={()=>void searchByPhase(child.value)}><FolderOutlined /> {child.label}【{child.count}】</button>)}</div>}
           </div>;
         })}</div>}</aside>
-        <Card className="panel case-original-panel" title="案件列表" extra={<Button type="link" onClick={()=>document.querySelector('.case-advanced-query')?.classList.toggle('case-query-expanded')}>高级搜索</Button>}>
+        <Card className="panel case-original-panel" title="案件列表" extra={<Button type="link" aria-expanded={listQueryExpanded} onClick={()=>isPhoneViewport ? setMobileQueryExpanded((expanded) => !expanded) : setDesktopQueryExpanded((expanded) => !expanded)}>{isPhoneViewport && listQueryExpanded ? "收起高级搜索" : "高级搜索"}</Button>}>
           {selectedCase?.status === "待立案审批" && <ConflictReviewNotice guard={selectedCaseConflict} />}
-          <ListFilterBar form={caseQueryForm} className="case-advanced-query case-query-expanded" onFinish={(values)=>{setCaseQuery(values);setOriginalPage(1);if(counselListMode)void loadCounselCases(values,1,counselPageSize);else void loadOrdinaryCases(values,1,originalPageSize);}}>
+          <ListFilterBar form={caseQueryForm} className={`case-advanced-query${listQueryExpanded ? " case-query-expanded" : ""}`} onFinish={(values)=>{setCaseQuery(values);setOriginalPage(1);if(counselListMode)void loadCounselCases(values,1,counselPageSize);else void loadOrdinaryCases(values,1,originalPageSize);}}>
             {counselListMode ? <>
-              <Form.Item label="客户" name="customer"><Input placeholder="客户"/></Form.Item><Form.Item label="案号" name="serial_no"><Input placeholder="案号"/></Form.Item><Form.Item label="关键字" name="keyword"><Input placeholder="案号、案件名称、客户名称"/></Form.Item><Form.Item label="顾问期间" name="counsel_range"><DatePicker.RangePicker /></Form.Item>
-              <Form.Item label="顾问类型" name="counsel_type"><Input placeholder="顾问类型"/></Form.Item><Form.Item label="案件阶段" name="status"><Input placeholder="案件阶段"/></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input placeholder="经办律师"/></Form.Item><Form.Item label="律师助理" name="assistant"><Input placeholder="律师助理"/></Form.Item><Form.Item label="文档名称" name="document_name"><Input placeholder="文档名称"/></Form.Item>
+              <Form.Item className="case-query-primary" label="客户" name="customer"><Input placeholder="客户"/></Form.Item><Form.Item className="case-query-primary" label="案号" name="serial_no"><Input placeholder="案号"/></Form.Item><Form.Item className="case-query-primary" label="关键字" name="keyword"><Input placeholder="案号、案件名称、客户名称"/></Form.Item><Form.Item label="顾问期间" name="counsel_range"><DatePicker.RangePicker /></Form.Item>
+              <Form.Item label="顾问类型" name="counsel_type"><Input placeholder="顾问类型"/></Form.Item><Form.Item className="case-query-primary" label="案件阶段" name="status"><Input placeholder="案件阶段"/></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input placeholder="经办律师"/></Form.Item><Form.Item label="律师助理" name="assistant"><Input placeholder="律师助理"/></Form.Item><Form.Item label="文档名称" name="document_name"><Input placeholder="文档名称"/></Form.Item>
             </> : shouldUseCompanyCriminalQueryFields(initialView) ? <>
-              {getCompanyCriminalQueryFields().map(([name,label,placeholder])=><Form.Item key={name} label={label} name={name}><Input placeholder={placeholder}/></Form.Item>)}
+              {getCompanyCriminalQueryFields().map(([name,label,placeholder])=><Form.Item key={name} className={["serial_no", "keyword", "status"].includes(name) ? "case-query-primary" : undefined} label={label} name={name}><Input placeholder={placeholder}/></Form.Item>)}
             </> : shouldUseCompanyArbitrationQueryFields(initialView) ? <>
-              {getCompanyArbitrationQueryFields().map(([name,label,placeholder])=><Form.Item key={name} label={label} name={name}><Input placeholder={placeholder}/></Form.Item>)}
+              {getCompanyArbitrationQueryFields().map(([name,label,placeholder])=><Form.Item key={name} className={["serial_no", "keyword", "status"].includes(name) ? "case-query-primary" : undefined} label={label} name={name}><Input placeholder={placeholder}/></Form.Item>)}
             </> : <>
-              <Form.Item label="原告" name="plaintiff"><Input placeholder="原告"/></Form.Item><Form.Item label="案件编号" name="serial_no"><Input placeholder="案件编号"/></Form.Item><Form.Item label="取证机构" name="evidence_org"><Input placeholder="取证机构"/></Form.Item><Form.Item label="关键字" name="keyword"><Input placeholder="案号、法院号、案件名、客户名"/></Form.Item>
-              <Form.Item label="被告" name="defendant"><Input placeholder="被告"/></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input placeholder="经办律师"/></Form.Item><Form.Item label="公证书号" name="notary_no"><Input placeholder="公证书号"/></Form.Item><Form.Item label="案件阶段" name="status"><Input placeholder="案件阶段"/></Form.Item>
+              <Form.Item label="原告" name="plaintiff"><Input placeholder="原告"/></Form.Item><Form.Item className="case-query-primary" label="案件编号" name="serial_no"><Input placeholder="案件编号"/></Form.Item><Form.Item label="取证机构" name="evidence_org"><Input placeholder="取证机构"/></Form.Item><Form.Item className="case-query-primary" label="关键字" name="keyword"><Input placeholder="案号、法院号、案件名、客户名"/></Form.Item>
+              <Form.Item label="被告" name="defendant"><Input placeholder="被告"/></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input placeholder="经办律师"/></Form.Item><Form.Item label="公证书号" name="notary_no"><Input placeholder="公证书号"/></Form.Item><Form.Item className="case-query-primary" label="案件阶段" name="status"><Input placeholder="案件阶段"/></Form.Item>
               <Form.Item label="开庭律师" name="hearing_lawyer"><Input placeholder="开庭律师"/></Form.Item><Form.Item label="律师助理" name="assistant"><Input placeholder="律师助理"/></Form.Item><Form.Item label="调查员" name="investigator"><Input placeholder="调查员"/></Form.Item><Form.Item label="法院名称" name="court"><Input placeholder="法院名称"/></Form.Item>
               <Form.Item label="案源时间" name="source_range"><DatePicker.RangePicker /></Form.Item><Form.Item label="侵权渠道" name="channel"><Input placeholder="侵权渠道"/></Form.Item><Form.Item label="仓库" name="warehouse"><Input placeholder="仓库"/></Form.Item><Form.Item label="文档名称" name="document_name"><Input placeholder="文档名称"/></Form.Item>
               <Form.Item label="开庭时间" name="hearing_range"><DatePicker.RangePicker /></Form.Item><Form.Item label="侵权区域" name="area"><Input placeholder="侵权区域"/></Form.Item><Form.Item label="库位" name="location"><Input placeholder="库位"/></Form.Item><Form.Item label="日志内容" name="log_content"><Input placeholder="日志内容"/></Form.Item>
@@ -2953,7 +2991,7 @@ export default function CaseCenterPage({
             <Form.Item className="case-query-buttons"><Space><Button type="primary" htmlType="submit">{legacyCaseListOperationLabels.query}</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setOriginalPage(1);if(counselListMode)void loadCounselCases({},1,counselPageSize);else void loadOrdinaryCases({},1,originalPageSize);}}>{legacyCaseListOperationLabels.reset}</Button></Space></Form.Item>
           </ListFilterBar>
           <input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>
-          <Table className="case-original-table" rowKey="id" size="small" loading={counselListMode ? loading : ordinaryLoading} locale={counselListMode ? undefined : { emptyText: ordinaryLoading ? "案件加载中…" : ordinaryLoadError || "暂无案件" }} columns={counselListMode?counselCaseColumns:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseColumns:originalCaseColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:counselListMode?counselCaseTableScrollX:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseTableScrollX:originalCaseTableScrollX,y:"calc(100dvh - 465px)"}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize||legacyCaseListDefaults.pageSize,total:ordinaryTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:nextQuery}));void loadOrdinaryCases(nextQuery,nextPage,nextPageSize);return;}void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
+          <Table className="case-original-table" rowKey="id" size="small" loading={counselListMode ? loading : ordinaryLoading} locale={counselListMode ? undefined : { emptyText: ordinaryLoading ? "案件加载中…" : ordinaryLoadError || "暂无案件" }} columns={responsiveOriginalListColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} sticky={isPhoneViewport ? false : undefined} scroll={isPhoneViewport ? undefined : {x:counselListMode?counselCaseTableScrollX:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseTableScrollX:originalCaseTableScrollX,y:"calc(100dvh - 465px)"}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize||legacyCaseListDefaults.pageSize,total:ordinaryTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:nextQuery}));void loadOrdinaryCases(nextQuery,nextPage,nextPageSize);return;}void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
           {shouldShowCaseListActions(initialView)&&<div className={`case-bottom-actions case-mine-list-actions${isCompanyCaseListRoute(initialView) ? " case-company-list-actions" : ""}`}><Space size={5} wrap>
             <Dropdown
               trigger={["click"]}
