@@ -125,8 +125,6 @@ import { createOriginalArchiveColumns } from "./columns/originalArchiveColumns";
 import { createSpecialColumns } from "./columns/specialColumns";
 import { useCaseAgentWorkspace } from "./hooks/useCaseAgentWorkspace";
 import { createCaseDocumentsActions } from "./services/documentsActions";
-import { OfficeEditorModal } from "../office/OfficeEditorModal";
-import type { OfficeEditorTarget } from "../office/types";
 import { createCaseFinanceActions } from "./services/financeActions";
 import { createCaseQueriesActions } from "./services/queriesActions";
 import { createCaseWorkflowActions } from "./services/workflowActions";
@@ -441,7 +439,6 @@ export default function CaseCenterPage({
   const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [aiDraftEditor, setAiDraftEditor] = useState<CaseAiDraftEditor | null>(null);
   const [wordEditor, setWordEditor] = useState<CaseWordEditor | null>(null);
-  const [officeEditorTarget, setOfficeEditorTarget] = useState<OfficeEditorTarget | null>(null);
   const [wordEditorOpening, setWordEditorOpening] = useState(false);
   const [wordEditorSaving, setWordEditorSaving] = useState(false);
   const [wordEditorLockLost, setWordEditorLockLost] = useState(false);
@@ -1309,6 +1306,7 @@ export default function CaseCenterPage({
     get applyCounselDocumentFolderPayload() { return applyCounselDocumentFolderPayload; },
     get setCounselDetailAttachments() { return setCounselDetailAttachments; },
     get viewingCounselCase() { return viewingCounselCase; },
+    get counselDetailCapabilities() { return counselDetailCapabilities; },
     get generatingCaseDocumentType() { return generatingCaseDocumentType; },
     get setCaseDocumentGenerationError() { return setCaseDocumentGenerationError; },
     get setGeneratingCaseDocumentType() { return setGeneratingCaseDocumentType; },
@@ -1341,8 +1339,6 @@ export default function CaseCenterPage({
     get setWordEditorLockLost() { return setWordEditorLockLost; },
     get wordEditorOpening() { return wordEditorOpening; },
     get wordEditor() { return wordEditor; },
-    get officeEditorTarget() { return officeEditorTarget; },
-    get setOfficeEditorTarget() { return setOfficeEditorTarget; },
     get setWordEditorOpening() { return setWordEditorOpening; },
     get wordEditorChanged() { return wordEditorChanged; },
     get wordEditorSavingRef() { return wordEditorSavingRef; },
@@ -4110,11 +4106,6 @@ export default function CaseCenterPage({
           <Form.Item label="文档正文" name="content"><Input.TextArea autoSize={{minRows:16,maxRows:28}} placeholder="在这里编辑 Word 文档正文；保存后可查看、下载或转入正式系统"/></Form.Item>
         </Form>
       </Modal>
-      {officeEditorTarget && <OfficeEditorModal
-        target={officeEditorTarget}
-        onStored={() => refreshCounselDetailAttachments(officeEditorTarget.caseId)}
-        onClosed={() => setOfficeEditorTarget(null)}
-      />}
       <Modal
         width={920}
         open={Boolean(wordEditor)}

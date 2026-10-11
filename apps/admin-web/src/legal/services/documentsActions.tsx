@@ -6,13 +6,13 @@ import { api } from "../../api";
 import { openAttachmentOnlinePreview } from "../../attachmentOnlinePreview.mjs";
 import { getCaseAttachmentUploadValidationError, getCaseFileRenameValidationError, hasCaseFileTypeOption } from "../../caseFileFrontendParity.mjs";
 import { DEFAULT_CASE_ATTACHMENT_CATEGORY } from "../constants";
-import type { OfficeEditorTarget } from "../../office/types";
-import type { AttachmentPreview, AttachmentRow, CaseAiDraftEditor, CaseDocumentFolderEditor, CaseFileTypeOption, CaseRow, CaseTaskAttachment, CaseWordEditor, CaseWordEditorBlock, ContractRow } from "../types";
+import type { AttachmentPreview, AttachmentRow, CaseAiDraftEditor, CaseDetailCapabilities, CaseDocumentFolderEditor, CaseFileTypeOption, CaseRow, CaseTaskAttachment, CaseWordEditor, CaseWordEditorBlock, ContractRow } from "../types";
 /** legal documents operations; dependencies are read when each operation runs. */
 export interface CaseDocumentsDependencies {
     readonly applyCounselDocumentFolderPayload: (payload: any) => CaseFileTypeOption[];
     readonly setCounselDetailAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;
     readonly viewingCounselCase: CaseRow | null;
+    readonly counselDetailCapabilities: CaseDetailCapabilities;
     readonly generatingCaseDocumentType: string;
     readonly setCaseDocumentGenerationError: React.Dispatch<React.SetStateAction<string>>;
     readonly setGeneratingCaseDocumentType: React.Dispatch<React.SetStateAction<string>>;
@@ -50,8 +50,6 @@ export interface CaseDocumentsDependencies {
     readonly setWordEditorLockLost: React.Dispatch<React.SetStateAction<boolean>>;
     readonly wordEditorOpening: boolean;
     readonly wordEditor: CaseWordEditor | null;
-    readonly officeEditorTarget: OfficeEditorTarget | null;
-    readonly setOfficeEditorTarget: React.Dispatch<React.SetStateAction<OfficeEditorTarget | null>>;
     readonly setWordEditorOpening: React.Dispatch<React.SetStateAction<boolean>>;
     readonly wordEditorChanged: (editor: CaseWordEditor) => boolean;
     readonly wordEditorSavingRef: React.RefObject<boolean>;
@@ -389,11 +387,19 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
         setWordEditorLockLost(false);
     };
     const openCaseWordEditor = async (item: AttachmentRow) => {
-        const { viewingCounselCase, wordEditorOpening, wordEditor, officeEditorTarget, setOfficeEditorTarget, setWordEditorOpening, wordEditorLockTokenRef, setWordEditor, setWordEditorLockLost } = context;
+        const { viewingCounselCase, counselDetailCapabilities, activeCounselDocCategory, wordEditorOpening, wordEditor, setWordEditorOpening, wordEditorLockTokenRef, setWordEditor, setWordEditorLockLost } = context;
         if (!viewingCounselCase)
             return;
-        if (wordEditorOpening || wordEditor || officeEditorTarget)
+        if (wordEditorOpening || wordEditor)
             return;
+        if (!counselDetailCapabilities.can_manage_document) {
+            message.warning("当前账号无权编辑案件文档");
+            return;
+        }
+        if (activeCounselDocCategory === "AI空间" || item.record_id !== viewingCounselCase.id) {
+            message.warning("仅支持编辑当前案件的正式文档");
+            return;
+        }
         if (/\.doc$/i.test(item.original_name)) {
             message.warning("旧版 .doc 文件暂不支持在线编辑，请先转换为 .docx 后再编辑");
             return;
@@ -403,8 +409,8 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
             return;
         }
         const caseId = viewingCounselCase.id;
-        if (item.office_editable === true) {
-            setOfficeEditorTarget({ caseId, attachmentId: item.id, name: item.original_name });
+        if (item.storage_backend !== "local") {
+            message.warning("仅支持在线编辑已确认本地存储的 Word 文件");
             return;
         }
         setWordEditorOpening(true);
