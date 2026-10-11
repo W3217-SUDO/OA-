@@ -1246,15 +1246,30 @@ async def _official_outgoing_dict(item: OfficialOutgoingDocument, record: Busine
     }
 
 
-def _department_dict(item: Department, parent_name: str = "", users_by_username: dict[str, User] | None = None) -> dict:
+def _department_dict(
+    item: Department, parent_name: str = "", users_by_username: dict[str, User] | None = None,
+    actor_sources: dict[str, dict] | None = None,
+) -> dict:
     from app.core.formatters import (
+        _person_display_name,
         _person_reference_display,
     )
     users = users_by_username or {}
     manager_name, manager_missing = _person_reference_display(item.manager, users)
     created_name, created_missing = _person_reference_display(item.created_by, users)
     updated_name, updated_missing = _person_reference_display(item.updated_by, users)
-    return {"id": item.id, "code": item.code, "name": item.name, "parent_department_id": item.parent_department_id, "parent_department_name": parent_name, "manager": item.manager, "manager_display_name": manager_name, "manager_display_name_missing": manager_missing, "overdue_deduction": item.overdue_deduction, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "created_by_display_name": created_name, "created_by_display_name_missing": created_missing, "updated_by": item.updated_by, "updated_by_display_name": updated_name, "updated_by_display_name_missing": updated_missing, "created_at": item.created_at, "updated_at": item.updated_at}
+    result = {"id": item.id, "code": item.code, "name": item.name, "parent_department_id": item.parent_department_id, "parent_department_name": parent_name, "manager": item.manager, "manager_display_name": manager_name, "manager_display_name_missing": manager_missing, "overdue_deduction": item.overdue_deduction, "sort_order": item.sort_order, "is_active": item.is_active, "created_by": item.created_by, "created_by_display_name": created_name, "created_by_display_name_missing": created_missing, "updated_by": item.updated_by, "updated_by_display_name": updated_name, "updated_by_display_name_missing": updated_missing, "created_at": item.created_at, "updated_at": item.updated_at}
+    for field in ("created_by", "updated_by"):
+        if getattr(item, field) != "legacy-hr-migration":
+            continue
+        source = (actor_sources or {}).get(field)
+        display_name, missing = _person_display_name(source["legacy_staff_name"], source["actor"]) if source else ("", True)
+        result[f"{field}_display_name"] = display_name if not missing else "系统迁移"
+        result[f"{field}_display_name_missing"] = False
+        result[f"{field}_display_source"] = {
+            **(source or {}), "kind": "system_migration" if missing else "legacy_department_audit",
+        }
+    return result
 
 
 def _hr_record_linked_username(record: BusinessRecord) -> str:

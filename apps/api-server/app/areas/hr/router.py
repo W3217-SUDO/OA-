@@ -549,6 +549,7 @@ async def list_departments(
     from app.core.system import (
         _department_dict, _organization_page,
     )
+    from app.core.department_audit import _department_actor_sources
     statement = select(Department)
     if keyword.strip():
         term = f"%{keyword.strip()}%"; statement = statement.where(or_(Department.code.ilike(term), Department.name.ilike(term), Department.manager.ilike(term)))
@@ -559,8 +560,9 @@ async def list_departments(
     names_by_id = {item.id: item.name for item in parents}
     page_items, effective_page, effective_page_size, total = _organization_page(items, page, page_size)
     display_users = await _user_display_map({value for item in page_items for value in (item.manager, item.created_by, item.updated_by)}, db)
+    actor_sources = await _department_actor_sources(page_items, db)
     return {
-        "items": [_department_dict(item, names_by_id.get(item.parent_department_id or 0, ""), display_users) for item in page_items],
+        "items": [_department_dict(item, names_by_id.get(item.parent_department_id or 0, ""), display_users, actor_sources.get(item.id)) for item in page_items],
         "total": total, "page": effective_page, "page_size": effective_page_size,
     }
 
@@ -576,6 +578,7 @@ async def create_department(body: DepartmentInput, identity: dict = Depends(curr
     from app.core.system import (
         _department_dict, _record_organization_audit,
     )
+    from app.core.department_audit import _department_actor_sources
     _require_admin(identity); code, name = body.code.strip().upper(), body.name.strip()
     if await db.scalar(select(Department.id).where(or_(Department.code == code, Department.name == name))): raise HTTPException(status_code=409, detail="部门代码或名称已存在")
     parent = None
@@ -585,9 +588,10 @@ async def create_department(body: DepartmentInput, identity: dict = Depends(curr
     item = Department(**body.model_dump(exclude={"code", "name", "manager"}), code=code, name=name, manager=body.manager.strip(), created_by=identity["username"], updated_by=identity["username"])
     db.add(item); await db.flush()
     await _record_organization_audit(db, identity, "创建部门", f"部门:{item.code}", {"department_id": item.id, "code": item.code, "name": item.name})
+    actor_sources = await _department_actor_sources([item], db)
     await db.commit(); await db.refresh(item)
     display_users = await _user_display_map({item.manager, item.created_by, item.updated_by}, db)
-    return _department_dict(item, parent.name if parent else "", display_users)
+    return _department_dict(item, parent.name if parent else "", display_users, actor_sources.get(item.id))
 
 
 @router.patch(f"{settings.api_prefix}/hr/departments/{{department_id}}")
@@ -601,6 +605,7 @@ async def update_department(department_id: int, body: DepartmentUpdate, identity
     from app.core.system import (
         _department_dict, _record_organization_audit,
     )
+    from app.core.department_audit import _department_actor_sources
     _require_admin(identity); item = await db.get(Department, department_id)
     if not item: raise HTTPException(status_code=404, detail="部门不存在")
     old_name = item.name; code = body.code.strip().upper() if body.code is not None else item.code; name = body.name.strip() if body.name is not None else item.name
@@ -623,10 +628,11 @@ async def update_department(department_id: int, body: DepartmentUpdate, identity
         await db.execute(update(User).where(User.department == old_name).values(department=item.name))
         await db.execute(update(BusinessRecord).where(BusinessRecord.department == old_name).values(department=item.name))
     await _record_organization_audit(db, identity, "修改部门", f"部门:{item.code}", {"department_id": item.id, "code": item.code, "name": item.name})
+    actor_sources = await _department_actor_sources([item], db)
     await db.commit(); await db.refresh(item)
     parent = await db.get(Department, item.parent_department_id) if item.parent_department_id else None
     display_users = await _user_display_map({item.manager, item.created_by, item.updated_by}, db)
-    return _department_dict(item, parent.name if parent else "", display_users)
+    return _department_dict(item, parent.name if parent else "", display_users, actor_sources.get(item.id))
 
 
 @router.delete(f"{settings.api_prefix}/hr/departments/{{department_id}}", status_code=status.HTTP_204_NO_CONTENT)
