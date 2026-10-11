@@ -348,9 +348,10 @@
   .case-original-layout .case-advanced-query:not(.case-query-expanded)>.ant-form-item:not(.case-query-primary):not(.case-query-buttons){display:none}
   .case-original-layout .case-advanced-query>.case-query-primary{order:1}
   .case-original-layout .case-advanced-query .ant-form-item-row{flex-wrap:nowrap;align-items:center}
-  .case-original-layout .case-advanced-query .ant-form-item-label{flex:0 0 84px;max-width:84px;padding:0 8px 0 0;text-align:left;white-space:normal}
+  /* 高于 AntD 窄屏整列规则，避免标签和控件各占整行却又禁止换行。 */
+  .case-original-layout .case-advanced-query.ant-form>.ant-form-item>.ant-form-item-row>.ant-form-item-label{flex:0 0 84px;max-width:84px;padding:0 8px 0 0;text-align:left;white-space:normal}
   .case-original-layout .case-advanced-query .ant-form-item-label>label{height:auto;font-size:13px;line-height:20px;white-space:normal}
-  .case-original-layout .case-advanced-query .ant-form-item-control{flex:1 1 0;min-width:0;max-width:100%}
+  .case-original-layout .case-advanced-query.ant-form>.ant-form-item>.ant-form-item-row>.ant-form-item-control{flex:1 1 0;min-width:0;max-width:100%}
   .case-original-layout .case-advanced-query .ant-input,
   .case-original-layout .case-advanced-query .ant-picker{width:100%;min-width:0;min-height:44px;height:auto;font-size:14px}
   .case-original-layout .case-advanced-query .ant-picker-range .ant-picker-input{flex:1 1 0;min-width:0;width:auto}
@@ -395,6 +396,7 @@
   .case-original-layout .case-original-table .ant-space{max-width:100%;flex-wrap:wrap}
   .case-original-layout .case-original-table .ant-space-item{min-width:0;max-width:100%}
   .case-original-layout .case-original-table .ant-btn{min-height:44px;height:auto;white-space:normal;overflow-wrap:anywhere}
+  .case-original-layout .case-original-table .case-cell-link:empty{min-height:0}
   .case-original-layout .case-original-table .ant-table-placeholder,
   .case-original-layout .case-original-table .ant-table-placeholder>td{display:block;width:100%}
   .case-original-layout .case-original-table .ant-pagination{flex-wrap:wrap;justify-content:flex-start;padding:0 8px;gap:8px 0}
