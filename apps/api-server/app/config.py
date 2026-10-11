@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     upload_root: str = ""
     attachment_delete_reconcile_min_age_seconds: int = Field(default=60, ge=0)
     redis_url: str = "redis://redis:6379/0"
+    # 留空保留进程内缓存；共享缓存使用独立连接和逻辑数据库，不复用任务队列配置。
+    cache_redis_url: str = ""
+    cache_redis_max_connections: int = Field(default=16, ge=1, le=128)
+    cache_redis_timeout_seconds: float = Field(default=1, gt=0, le=10)
+    dashboard_metrics_cache_ttl_seconds: int = Field(default=300, ge=1, le=300)
+    dashboard_metrics_cache_wait_seconds: float = Field(default=15, gt=0, le=60)
+    dashboard_metrics_compute_timeout_seconds: float = Field(default=30, gt=0, le=120)
     secret_key: str = "replace-this-before-production"
     initial_admin_username: str = "admin"
     initial_admin_password: str = ""

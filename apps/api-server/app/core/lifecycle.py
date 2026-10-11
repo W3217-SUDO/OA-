@@ -200,6 +200,9 @@ async def _backfill_clue_generated_case_register_dates(db: AsyncSession) -> int:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    from app.core.dashboard_metrics_redis import (
+        close_dashboard_metrics_cache, start_dashboard_metrics_cache,
+    )
     from app.core.system import (
         _automatic_cache_cleanup_loop, _business_rule_loop,
     )
@@ -237,21 +240,25 @@ async def lifespan(_: FastAPI):
     dingtalk_task = asyncio.create_task(_dingtalk_notification_loop())
     notification_task = asyncio.create_task(notification_scheduler_loop())
     try:
+        await start_dashboard_metrics_cache()
         yield
     finally:
-        rule_task.cancel()
-        cache_cleanup_task.cancel()
-        dingtalk_task.cancel()
-        notification_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await rule_task
-        with suppress(asyncio.CancelledError):
-            await cache_cleanup_task
-        with suppress(asyncio.CancelledError):
-            await dingtalk_task
-        with suppress(asyncio.CancelledError):
-            await notification_task
-        await case_agent_runtime.stop()
+        try:
+            rule_task.cancel()
+            cache_cleanup_task.cancel()
+            dingtalk_task.cancel()
+            notification_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await rule_task
+            with suppress(asyncio.CancelledError):
+                await cache_cleanup_task
+            with suppress(asyncio.CancelledError):
+                await dingtalk_task
+            with suppress(asyncio.CancelledError):
+                await notification_task
+            await case_agent_runtime.stop()
+        finally:
+            await close_dashboard_metrics_cache()
 
 
 async def request_validation_error_handler(_, exc: RequestValidationError):

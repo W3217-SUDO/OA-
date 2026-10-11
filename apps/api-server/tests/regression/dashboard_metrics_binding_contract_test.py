@@ -1,6 +1,17 @@
 import unittest
+import asyncio
+import json
+from contextlib import ExitStack
+from collections import OrderedDict
 from datetime import date, datetime, time, timedelta
+from types import SimpleNamespace
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import AsyncMock, Mock, patch
 
+from fastapi import HTTPException
+from redis.exceptions import ConnectionError as RedisConnectionError
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -218,6 +229,218 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(matching[0]["lawyer"], "开庭律师")
         self.assertEqual(matching[0]["agent"], "经办律师")
         self.assertEqual(matching[0]["assistant"], "律师助理")
+
+
+class DashboardSharedMetricsCacheTest(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        from app.core import dashboard_metrics_cache as cache
+        from app.core import dashboard_metrics_redis as shared
+
+        self.cache, self.shared = cache, shared
+        self.original_read = shared.read
+        self.patches = ExitStack()
+        self.addCleanup(self.patches.close)
+        self.revision = self.patches.enter_context(patch.object(shared, "source_revision", return_value="source-a"))
+        self.patches.enter_context(patch.object(cache.settings, "cache_redis_url", "redis://cache:6380/0"))
+        self.patches.enter_context(patch.object(cache.settings, "dashboard_metrics_cache_wait_seconds", 0.03))
+        self.patches.enter_context(patch.object(cache.settings, "dashboard_metrics_compute_timeout_seconds", 0.02))
+        self.snapshot = self.patches.enter_context(patch.object(cache, "_visible_snapshot", AsyncMock(return_value="10:20:")))
+        self.result = {"metrics": [
+            {"key": str(i), "label": "统计", "tone": "green", "value": "0件", "route": "dashboard-queue-" + str(i)}
+            for i in range(8)
+        ]}
+        self.compute = self.patches.enter_context(patch.object(cache, "dashboard_metrics", AsyncMock(return_value=self.result)))
+        self.read = self.patches.enter_context(patch.object(shared, "read", AsyncMock(return_value=None)))
+        self.acquire = self.patches.enter_context(patch.object(shared, "acquire", AsyncMock(return_value="owner")))
+        self.publish = self.patches.enter_context(patch.object(shared, "publish", AsyncMock()))
+        self.release = self.patches.enter_context(patch.object(shared, "release", AsyncMock()))
+        self.db = SimpleNamespace(
+            new=[], dirty=[], deleted=[], rollback=AsyncMock(), in_transaction=Mock(return_value=True),
+            get_bind=Mock(return_value=Mock(
+                dialect=SimpleNamespace(name="postgresql"),
+                url=make_url("postgresql+asyncpg://account:secret@db/oa"),
+            )),
+        )
+
+    async def test_cached_hit_releases_read_connection_and_checks_new_snapshot(self):
+        self.read.return_value = {"snapshot": "10:20:", "result": self.result}
+        self.assertEqual(await self.cache.read_dashboard_metrics(IDENTITY, self.db), self.result)
+        self.db.rollback.assert_awaited_once()
+        self.assertEqual(self.snapshot.await_count, 3)
+        self.compute.assert_not_awaited()
+
+    async def test_disabled_cache_and_non_postgres_keep_original_path(self):
+        self.db.get_bind.return_value.dialect.name = "sqlite"
+        await self.cache.read_dashboard_metrics(IDENTITY, self.db)
+        self.read.assert_not_awaited()
+        self.db.get_bind.return_value.dialect.name = "postgresql"
+        with patch.object(self.cache.settings, "cache_redis_url", ""), patch.object(self.cache, "_entries", OrderedDict()):
+            await self.cache.read_dashboard_metrics(IDENTITY, self.db)
+        self.read.assert_not_awaited()
+
+    async def test_owner_refreshes_snapshot_and_publishes_complete_result(self):
+        self.snapshot.side_effect = ["10:20:", "10:20:", "20:30:", "20:30:"]
+        self.assertEqual(await self.cache.read_dashboard_metrics(IDENTITY, self.db), self.result)
+        self.publish.assert_awaited_once()
+        self.assertEqual(self.publish.await_args.args[2:], ("20:30:", self.result))
+        self.release.assert_awaited_once()
+
+    async def test_changed_snapshot_during_compute_does_not_publish(self):
+        self.snapshot.side_effect = ["10:20:", "10:20:", "10:20:", "20:30:"]
+        self.assertEqual(await self.cache.read_dashboard_metrics(IDENTITY, self.db), self.result)
+        self.publish.assert_not_awaited()
+
+    async def test_pending_writes_and_fixed_snapshot_bypass_without_rollback(self):
+        for pending in ("new", "dirty", "deleted"):
+            setattr(self.db, pending, [object()])
+            await self.cache.read_dashboard_metrics(IDENTITY, self.db)
+            setattr(self.db, pending, [])
+        self.snapshot.return_value = None
+        await self.cache.read_dashboard_metrics(IDENTITY, self.db)
+        self.db.rollback.assert_not_awaited()
+        self.read.assert_not_awaited()
+
+    async def test_second_snapshot_ineligible_does_not_rollback(self):
+        self.snapshot.side_effect = ["10:20:", None]
+        await self.cache.read_dashboard_metrics(IDENTITY, self.db)
+        self.db.rollback.assert_not_awaited()
+        self.read.assert_not_awaited()
+
+    async def test_pending_change_after_second_check_does_not_rollback(self):
+        async def snapshot(db):
+            if self.snapshot.await_count == 2:
+                db.dirty.append(object())
+            return "10:20:"
+        self.snapshot.side_effect = snapshot
+        await self.cache.read_dashboard_metrics(IDENTITY, self.db)
+        self.db.rollback.assert_not_awaited()
+
+    async def test_lock_wait_has_no_checked_out_database_connection(self):
+        self.acquire.return_value = None
+        held = True
+        async def rollback():
+            nonlocal held
+            held = False
+        async def acquire(key):
+            self.assertFalse(held)
+            return None
+        self.db.rollback.side_effect = rollback
+        self.db.in_transaction.side_effect = lambda: held
+        self.acquire.side_effect = acquire
+        with self.assertRaises(HTTPException) as caught:
+            await self.cache.read_dashboard_metrics(IDENTITY, self.db)
+        self.assertEqual(caught.exception.status_code, 503)
+        self.release.assert_not_awaited()
+        self.compute.assert_not_awaited()
+
+    async def test_continuously_changing_cached_snapshot_is_bounded(self):
+        self.read.return_value = {"snapshot": "10:20:", "result": self.result}
+        self.acquire.return_value = None
+        async def snapshot(db):
+            return f"{self.snapshot.await_count}:{1000 + self.snapshot.await_count}:"
+        self.snapshot.side_effect = snapshot
+        with self.assertRaises(HTTPException):
+            await asyncio.wait_for(self.cache.read_dashboard_metrics(IDENTITY, self.db), 0.3)
+        self.compute.assert_not_awaited()
+
+    async def test_waiter_accepts_new_published_snapshot_without_reacquiring_lock(self):
+        self.read.side_effect = [None, {"snapshot": "20:30:", "result": self.result}]
+        self.acquire.return_value = None
+        self.db.in_transaction.side_effect = [True, False]
+        self.snapshot.side_effect = ["10:20:", "10:20:", "20:30:"]
+        with patch.object(self.cache.settings, "dashboard_metrics_cache_wait_seconds", 0.3), \
+                patch.object(self.cache.asyncio, "sleep", AsyncMock()):
+            self.assertEqual(await self.cache.read_dashboard_metrics(IDENTITY, self.db), self.result)
+        self.acquire.assert_awaited_once()
+        self.db.rollback.assert_awaited_once()
+        self.compute.assert_not_awaited()
+
+    async def test_redis_failure_is_explicit_and_does_not_compute(self):
+        self.read.side_effect = RedisConnectionError("unavailable")
+        with self.assertRaises(HTTPException) as caught:
+            await self.cache.read_dashboard_metrics(IDENTITY, self.db)
+        self.assertEqual(caught.exception.status_code, 503)
+        self.compute.assert_not_awaited()
+
+    async def test_compute_timeout_releases_lock_and_preserves_error(self):
+        async def slow(*args):
+            await asyncio.sleep(1)
+        self.compute.side_effect = slow
+        self.release.side_effect = RedisConnectionError("cleanup failed")
+        with self.assertRaises(HTTPException) as caught:
+            await self.cache.read_dashboard_metrics(IDENTITY, self.db)
+        self.assertIn("计算超时", caught.exception.detail)
+        self.release.assert_awaited_once()
+        self.publish.assert_not_awaited()
+
+    async def test_owner_cancel_waits_for_cleanup_and_preserves_cancellation(self):
+        started = asyncio.Event()
+        async def slow(*args):
+            started.set()
+            await asyncio.sleep(1)
+        self.compute.side_effect = slow
+        self.release.side_effect = RedisConnectionError("cleanup failed")
+        task = asyncio.create_task(self.cache.read_dashboard_metrics(IDENTITY, self.db))
+        await started.wait()
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.release.assert_awaited_once()
+
+    async def test_namespace_isolates_full_identity_database_and_date(self):
+        key = self.cache._shared_key(IDENTITY, self.db, date.today())
+        self.assertNotIn("secret", key)
+        self.assertNotIn("account", key)
+        self.revision.return_value = "source-b"
+        self.assertNotEqual(key, self.cache._shared_key(IDENTITY, self.db, date.today()))
+        self.revision.return_value = "source-a"
+        self.assertNotEqual(key, self.cache._shared_key({**IDENTITY, "action_keys": ["*"]}, self.db, date.today()))
+        self.assertNotEqual(key, self.cache._shared_key(IDENTITY, self.db, date.today() + timedelta(days=1)))
+        self.db.get_bind.return_value.url = make_url("postgresql+asyncpg://account:secret@db/other")
+        self.assertNotEqual(key, self.cache._shared_key(IDENTITY, self.db, date.today()))
+
+    async def test_cache_corruption_is_explicit(self):
+        client = SimpleNamespace(get=AsyncMock())
+        with patch.object(self.shared, "client", return_value=client):
+            for payload in (b"{", b"\xff", b"{}", json.dumps({"snapshot": "invalid", "result": self.result}),
+                            json.dumps({"snapshot": "10:20:", "result": {"metrics": []}})):
+                client.get.return_value = payload
+                with self.assertRaises(HTTPException) as caught:
+                    await self.original_read("key")
+                self.assertEqual(caught.exception.status_code, 503)
+
+    async def test_pool_url_cannot_override_limits_and_shutdown_closes_owner(self):
+        from redis.asyncio import BlockingConnectionPool
+        url = "redis://cache:6380/0?max_connections=999&socket_timeout=99&socket_connect_timeout=99&decode_responses=True&timeout=99"
+        pool = BlockingConnectionPool.from_url(url)
+        client = SimpleNamespace(ping=AsyncMock(), aclose=AsyncMock())
+        with patch.object(self.shared, "_client", None), patch.object(self.shared.settings, "cache_redis_url", url), \
+                patch.object(self.shared.BlockingConnectionPool, "from_url", return_value=pool), \
+                patch.object(self.shared.Redis, "from_pool", return_value=client):
+            await self.shared.start_dashboard_metrics_cache()
+            self.assertEqual(pool.max_connections, 16)
+            self.assertEqual(pool.timeout, 1)
+            self.assertEqual(pool.connection_kwargs["socket_timeout"], 1)
+            self.assertEqual(pool.connection_kwargs["socket_connect_timeout"], 1)
+            self.assertFalse(pool.connection_kwargs["decode_responses"])
+            self.assertEqual(pool.connection_kwargs["retry"]._retries, 0)
+            await self.shared.close_dashboard_metrics_cache()
+            client.aclose.assert_awaited_once()
+            self.assertIsNone(self.shared._client)
+
+    async def test_source_revision_is_portable_stable_and_content_sensitive(self):
+        with TemporaryDirectory() as left, TemporaryDirectory() as right:
+            for root in (Path(left), Path(right)):
+                (root / "core").mkdir()
+                (root / "core" / "metrics.py").write_bytes(b"value = 1\n")
+                (root / "settings.py").write_bytes(b"enabled = True\n")
+            digest = self.shared._source_digest(Path(left))
+            self.assertEqual(digest, self.shared._source_digest(Path(right)))
+            (Path(right) / "core" / "metrics.py").write_bytes(b"value = 2\n")
+            self.assertNotEqual(digest, self.shared._source_digest(Path(right)))
+            (Path(right) / "core" / "metrics.py").write_bytes(b"value = 1\n")
+            (Path(right) / "settings.py").rename(Path(right) / "other.py")
+            self.assertNotEqual(digest, self.shared._source_digest(Path(right)))
 
 
 if __name__ == "__main__":
