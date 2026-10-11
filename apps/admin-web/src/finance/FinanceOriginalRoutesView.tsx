@@ -276,7 +276,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
               <Table
                 rowKey="id"
                 size="small"
-                tableLayout={isInvoiceUnissuedRoute || activeRouteConfig?.source === "incoming" ? "fixed" : undefined}
+                tableLayout={isFeeQueryRoute || isInvoiceUnissuedRoute || activeRouteConfig?.source === "incoming" ? "fixed" : undefined}
                 loading={loading}
                 columns={originalColumns}
                 dataSource={configuredRows}
@@ -696,7 +696,9 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                     : ""
                 }
                 scroll={{
-                  x: activeRouteConfig?.source === "incoming"
+                  x: isFeeQueryRoute
+                    ? originalColumns.reduce((total, column) => total + Number(column.width), 36)
+                    : activeRouteConfig?.source === "incoming"
                     ? originalColumns.reduce((total, column) => total + Number(column.width || 120), 48)
                     : activeRouteConfig
                     ? isGeneralSettlementRoute

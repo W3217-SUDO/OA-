@@ -2,6 +2,21 @@ import type { OriginalRouteConfig } from "../types";
 import { moneyColumnStyle } from "../moneyColumns";
 import { Button, message } from "antd";
 import type { Fee, IncomingPayment } from "../types";
+
+const feeQueryColumnWidths: Record<string, number> = {
+    案号: 140,
+    客户: 240,
+    原告: 240,
+    被告: 240,
+    案件阶段: 120,
+    助理: 120,
+    律师助理: 120,
+    开庭律师: 120,
+    法院案号: 240,
+    法院名称: 240,
+    费用类型: 150,
+};
+
 export function createConfiguredColumns(context: {
     readonly activeRouteConfig: OriginalRouteConfig;
     readonly initialView: string;
@@ -71,8 +86,8 @@ export function createConfiguredColumns(context: {
                                         ? 280
                                         : 145
                                     : Math.max(90, Math.min(190, header.length * 17 + 45)),
-        ...(context.initialView === "finance-fee-query" && header === "费用类型"
-            ? { width: 150, ellipsis: true }
+        ...(context.isFeeQueryRoute && header in feeQueryColumnWidths
+            ? { width: feeQueryColumnWidths[header] }
             : {}),
         fixed: header === "操作" &&
             ![
@@ -129,7 +144,7 @@ export function createConfiguredColumns(context: {
           {context.cellValue(row, header)}
         </Button>) : (context.cellValue(row, header)),
     })).map((column) => {
-        if (context.isRefundCaseFeeRoute) {
+        if (context.isFeeQueryRoute) {
             const header = context.activeRouteConfig.headers[Number(column.key.split("-").pop())];
             if (header === "操作") return column;
             const render = column.render;
