@@ -29,7 +29,7 @@ async def read_fee_summaries(db, conditions, *, where_data=None):
     return await read_record_projections(db, conditions, FEE_SUMMARY_FIELDS, where_data=where_data)
 
 
-async def receivable_payment_projection(finances, identity, db, *, record_scope=None):
+async def receivable_payment_projection(finances, identity, db, *, record_scope=None, receipts_only=False):
     """应收只计算收付款，复用已读取费用，不构造发票、退款和提成明细。"""
     from app.core.formatters import _case_fee_display_type
     from app.core.permissions import _record_scope_conditions
@@ -58,13 +58,17 @@ async def receivable_payment_projection(finances, identity, db, *, record_scope=
     if case_nos:
         # 与明细一致：全库同案只有一笔费用，才允许没有费用编号的旧收款归属。
         unambiguous_case_nos = await unambiguous_fee_case_nos(case_nos, db)
-    payments = await read_fee_payments({fee.id for fee in fees}, db)
+    # 控制台未收金额不依赖付款；收款的全集关联和旧编号歧义判断仍保持不变。
+    if not receipts_only:
+        payments = await read_fee_payments({fee.id for fee in fees}, db)
     receipts = await read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, filter_related=True)
-    return {
-        fee.id: {
+    result = {}
+    for fee in fees:
+        values = {
             "fee_type": _case_fee_display_type(fee),
-            "paid_amount": fee_paid_amount(fee.data or {}, payments.get(fee.id, [])),
             "cashed_amount": round(sum(amount for _, amount in receipts.get(fee.id, [])), 2),
         }
-        for fee in fees
-    }
+        if not receipts_only:
+            values["paid_amount"] = fee_paid_amount(fee.data or {}, payments.get(fee.id, []))
+        result[fee.id] = values
+    return result

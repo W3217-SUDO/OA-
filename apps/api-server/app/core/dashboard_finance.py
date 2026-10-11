@@ -30,17 +30,31 @@ async def dashboard_unpaid_fee_rows(identity, db, cases_by_id, cases_by_no, *, f
             "source_fee_id", "commission_type", "commission_lifecycle", "is_refund", "expense_scope",
         ))
     fees = sorted(fees, key=lambda item: (item.updated_at, item.id), reverse=True)
+    # 类型条件与最终筛选一致，非官费不读取付款流水或计算提成生命周期。
+    candidates = []
+    for fee in fees:
+        data = fee.data or {}
+        display_type = _case_fee_display_type(fee)
+        if (str(data.get("fee_type") or "") == "官方费用"
+                or "官费" in display_type or "诉讼费" in display_type
+                or display_type in {"保全费", "执行费"}):
+            candidates.append((fee, display_type))
+    fees = [fee for fee, _ in candidates]
     lifecycle = await _case_commission_lifecycle_statuses(fees, db)
+    candidates = [(fee, display_type, _finance_fee_payment_status(fee, lifecycle.get(fee.id)))
+                  for fee, display_type in candidates]
+    candidates = [item for item in candidates if item[2] not in {"已付款", "已驳回", "已作废"}]
+    fees = [fee for fee, _, _ in candidates]
     payments = await read_fee_payments({fee.id for fee in fees}, db)
     rows = []
-    for fee in fees:
+    for fee, display_type, payment_status in candidates:
         data = fee.data or {}
         values = {
             "base_fee_type": str(data.get("fee_type") or ""),
-            "fee_type": _case_fee_display_type(fee),
+            "fee_type": display_type,
             "amount": data.get("amount"),
             "paid_amount": fee_paid_amount(data, payments.get(fee.id, [])),
-            "payment_status": _finance_fee_payment_status(fee, lifecycle.get(fee.id)),
+            "payment_status": payment_status,
         }
         if not _matches_unpaid_official_fee(values):
             continue

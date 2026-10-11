@@ -171,7 +171,9 @@ async def _receivable_detail_projection(
     finances = list(finances_by_id.values())
 
     # 仅复用本次无写入读取的范围；外部传入记录时仍按原逻辑重新解析。
-    finance_data_by_id = await receivable_payment_projection(finances, identity, db, record_scope=record_scope)
+    finance_data_by_id = await receivable_payment_projection(
+        finances, identity, db, record_scope=record_scope, receipts_only=summary_only,
+    )
     # 合同编号是原匹配函数的首个必要条件，先归组避免明细逐条扫描全部费用。
     finances_by_contract: dict[int, list[BusinessRecord]] = {}
     for fee in finances:
@@ -212,16 +214,16 @@ async def _receivable_detail_projection(
         for fee in linked_fees:
             raw = fee.data or {}
             projected = finance_data_by_id.get(fee.id, {})
-            paid += max(
-                _receivable_number(projected.get("paid_amount")),
-                _receivable_number(raw.get("paid_amount")),
-            )
+            if not summary_only:
+                paid += max(
+                    _receivable_number(projected.get("paid_amount")),
+                    _receivable_number(raw.get("paid_amount")),
+                )
             received += max(
                 _receivable_number(projected.get("cashed_amount")),
                 _receivable_number(raw.get("cashed_amount")),
                 _receivable_number(raw.get("received_amount")),
             )
-        paid = min(_receivable_number(paid), amount)
         received = min(_receivable_number(received), amount)
         remaining = max(round(amount - received, 2), 0)
         if summary_only:
@@ -229,6 +231,7 @@ async def _receivable_detail_projection(
                          "case_no": case_record.serial_no, "case_record_id": case_record.id,
                          "fee_category": _receivable_fee_category(item.fee_type), "remaining_amount": remaining})
             continue
+        paid = min(_receivable_number(paid), amount)
         case_data = case_record.data or {}
         contract_data = contract.data or {}
         rows.append({
@@ -269,16 +272,11 @@ async def _receivable_detail_projection(
         if contract is None:
             continue
         amount = _receivable_number(data.get("amount"))
-        paid = max(
-            _receivable_number(projected.get("paid_amount")),
-            _receivable_number(data.get("paid_amount")),
-        )
         received = max(
             _receivable_number(projected.get("cashed_amount")),
             _receivable_number(data.get("cashed_amount")),
             _receivable_number(data.get("received_amount")),
         )
-        paid = min(paid, amount)
         received = min(received, amount)
         remaining = max(round(amount - received, 2), 0)
         if amount <= 0:
@@ -289,6 +287,10 @@ async def _receivable_detail_projection(
                          "case_record_id": case_record.id if case_record else None,
                          "fee_category": fee_category, "remaining_amount": remaining})
             continue
+        paid = min(max(
+            _receivable_number(projected.get("paid_amount")),
+            _receivable_number(data.get("paid_amount")),
+        ), amount)
         case_data = case_record.data or {} if case_record else {}
         contract_data = contract.data or {} if contract else {}
         rows.append({

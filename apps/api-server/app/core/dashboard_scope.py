@@ -1,5 +1,7 @@
 """控制台业务入口的数据边界；不授予额外写权限。"""
 from dataclasses import dataclass
+from datetime import datetime
+from typing import NamedTuple
 import re
 
 from fastapi import HTTPException
@@ -23,6 +25,23 @@ CASE_QUEUES = {
     "urgent-cases": "urgent",
 }
 QUEUE_KEYS = {*CASE_QUEUES, "official-fee-unpaid", "refund-pending", "official-fee-unreceived"}
+
+
+class DashboardFeeProjection(NamedTuple):
+    """控制台费用的只读元数据；字段和值与通用投影保持一致。"""
+
+    id: int
+    module: str
+    serial_no: str
+    title: str
+    customer: str
+    status: str
+    owner: str
+    department: str
+    description: str
+    created_at: datetime
+    updated_at: datetime
+    data: dict
 
 
 @dataclass
@@ -109,7 +128,8 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         fees = await read_record_projections(db, [
             BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
         ], FEE_SUMMARY_FIELDS if include_summaries else (*relation_fields, "case_id", "case_record_id", "case_no"),
-            where_data=related_fee) if case_ids else []
+            where_data=related_fee,
+            record_factory=DashboardFeeProjection if include_summaries else None) if case_ids else []
     contract_ids = set((await db.scalars(select(ContractObject.contract_record_id).where(
         scalar_in_values(ContractObject.case_record_id, case_ids),
     ))).all()) if case_ids else set()

@@ -19,7 +19,7 @@ def _postgresql_record_projection(data_fields, legacy_fields, text_fields=(), *,
 
 
 async def read_record_projections(db, conditions, data_fields, *, legacy_fields=(), text_fields=(), annotations=None,
-                                  where_data=None):
+                                  where_data=None, record_factory=None):
     columns = ("id", "module", "serial_no", "title", "customer", "status", "owner",
                "department", "description", "created_at", "updated_at")
     data_fields = tuple(dict.fromkeys(data_fields))
@@ -48,6 +48,8 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
     }) if annotations is not None else {}
     if set(extra) & {*columns, "data"}:
         raise ValueError("查询标记不能覆盖业务记录字段")
+    if record_factory is not None and extra:
+        raise ValueError("固定字段投影不支持额外查询标记")
     query = select(
         *(getattr(BusinessRecord, key) for key in columns),
         *data_columns,
@@ -83,8 +85,11 @@ async def read_record_projections(db, conditions, data_fields, *, legacy_fields=
                 if legacy:
                     data["legacy_record"] = legacy
                 # 不加入 ORM 会话，避免轻量读取覆盖完整业务数据。
-                records.append(SimpleNamespace(**dict(zip(columns, values[:len(columns)])), data=data,
-                                               **dict(zip(extra, values[legacy_end:]))))
+                if record_factory is not None:
+                    records.append(record_factory(*values[:len(columns)], data))
+                else:
+                    records.append(SimpleNamespace(**dict(zip(columns, values[:len(columns)])), data=data,
+                                                   **dict(zip(extra, values[legacy_end:]))))
     finally:
         await result.close()
     return records
