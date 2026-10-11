@@ -1,16 +1,18 @@
 import {
 CloseOutlined,
+DownOutlined,
 EditOutlined,
 FileWordOutlined,
 FolderOpenOutlined,
 FolderOutlined,
 PlusCircleFilled,
 RobotOutlined,
+UpOutlined,
 } from "@ant-design/icons";
 import { Alert,Button,Dropdown,Select,Space,Tag } from "antd";
 import Table from "../../components/ResizableTable";
 import dayjs from "dayjs";
-import type { Key } from "react";
+import { useId, useState, type Key } from "react";
 import { dispatchCaseDocumentGenerationMenuClick } from "../../caseDocumentGenerationActions.mjs";
 import { getLegacyCaseDocumentGenerationItems } from "../constants";
 import type { AttachmentRow,CaseDetailCapabilities,CaseDocumentFolderEditor,CaseRow } from "../types";
@@ -103,9 +105,21 @@ export const CaseDocumentsPanel = ({
   generateCaseDocument,
   handleCounselDocumentMoreAction,
 }: CaseDocumentsPanelProps) => {
+  const [directoryExpanded, setDirectoryExpanded] = useState(false);
+  const directoryId = useId();
   return (
     <div className="case-documents-layout">
-      <aside className="case-detail-doc-tree" aria-label="案件文档目录">
+      <aside className="case-detail-doc-tree" aria-label="案件文档目录" data-expanded={directoryExpanded}>
+        <Button
+          type="text"
+          className="case-document-directory-toggle"
+          icon={directoryExpanded ? <UpOutlined /> : <DownOutlined />}
+          aria-expanded={directoryExpanded}
+          aria-controls={directoryId}
+          title={directoryExpanded ? "收起文档目录" : "展开文档目录"}
+          onClick={() => setDirectoryExpanded((expanded) => !expanded)}
+        >文档目录：{activeCounselDocLabel}</Button>
+        <div id={directoryId} className="case-document-directory-items">
         {counselDocTree.map((item,index)=>(
           <div className="case-doc-tree-row" key={`${item.category}-${item.type}-${index}`}>
           <button
@@ -125,16 +139,17 @@ export const CaseDocumentsPanel = ({
           {counselDetailCapabilities.can_manage_document&&item.custom&&activeCounselDocCategory===item.category&&<><Button type="text" className="case-doc-tree-action" icon={<EditOutlined/>} title={`重命名目录${item.label}`} aria-label={`重命名目录${item.label}`} onClick={()=>openCaseDocumentFolderEditor({mode:"rename",originalName:item.label})}/><Button type="text" danger className="case-doc-tree-action" icon={<CloseOutlined/>} title={`删除目录${item.label}`} aria-label={`删除目录${item.label}`} onClick={()=>deleteCaseDocumentFolder(item.label)}/></>}
           </div>
         ))}
+        </div>
       </aside>
       <div className="case-document-list">
       <input ref={counselDetailUploadRef} hidden type="file" onChange={event=>void uploadCounselDetailAttachment(event.target.files?.[0])}/>
       {counselDocumentsLoadError && <Alert type="error" showIcon message={counselDocumentsLoadError} action={<Button size="small" onClick={retryCounselDocuments}>重试</Button>} />}
-      <Table rowKey="id" size="small" loading={counselDocumentsLoading} pagination={getCaseFilePagination()} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys,getCheckboxProps:(row:AttachmentRow)=>({disabled:Boolean(row.is_related_document)})}} locale={{emptyText:counselDocumentsLoading?<span>正在加载文档...</span>:counselDocumentsLoadError?<span>文档加载失败，请重试。</span>:<Space direction="vertical" size={10}><span>当前目录没有文档。</span>{counselDetailCapabilities.can_upload_attachment&&<Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}</Space>}} columns={[
-        {title:"序号",key:"sequence",width:70,render:(_:unknown,_row:AttachmentRow,index:number)=>index+1},
-        {title:"上传人",dataIndex:"uploader_display_name",width:110,render:(_:unknown,row:AttachmentRow)=>row.uploader_display_name||row.uploader||"—"},
-        {title:"文件名称",dataIndex:"original_name",width:360,ellipsis:true},
-        {title:"上传时间",dataIndex:"created_at",width:180,render:(value:string)=>value&&dayjs(value).isValid()?dayjs(value).format("YYYY-MM-DD HH:mm:ss"):"—"},
-        {title:"操作",key:"actions",width:isAiSpaceFolder?410:420,render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_manage_document&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_manage_document&&!isAiSpaceFolder&&row.record_id===viewingCase.id&&(row.libreoffice_editable===true||row.storage_backend==="local")&&/\.docx$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCaseWordEditor(row)}>在线编辑</Button>}{counselDetailCapabilities.can_manage_document&&!row.is_related_document&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_upload_attachment&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_manage_document&&row.record_id===viewingCase.id&&row.is_locked&&<Button type="link" onClick={()=>void unlockCounselDetailAttachment(row)}>解锁</Button>}{counselDetailCapabilities.can_write&&canApplySealToCounselAttachment(row)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>申请用印</Button>}</Space>},
+      <Table rowKey="id" size="small" loading={counselDocumentsLoading} pagination={getCaseFilePagination()} scroll={{x:940}} dataSource={filteredCounselDetailAttachments} rowSelection={{selectedRowKeys:selectedCounselAttachmentKeys,onChange:setSelectedCounselAttachmentKeys,getCheckboxProps:(row:AttachmentRow)=>({disabled:Boolean(row.is_related_document)}),onCell:()=>({className:"case-document-cell","data-label":"选择"})}} locale={{emptyText:counselDocumentsLoading?<span>正在加载文档...</span>:counselDocumentsLoadError?<span>文档加载失败，请重试。</span>:<Space direction="vertical" size={10}><span>当前目录没有文档。</span>{counselDetailCapabilities.can_upload_attachment&&<Button type="primary" onClick={()=>counselDetailUploadRef.current?.click()}>上传文件</Button>}</Space>}} columns={[
+        {title:"序号",key:"sequence",width:70,onCell:()=>({className:"case-document-cell","data-label":"序号"}),render:(_:unknown,_row:AttachmentRow,index:number)=>index+1},
+        {title:"上传人",dataIndex:"uploader_display_name",width:110,onCell:()=>({className:"case-document-cell","data-label":"上传人"}),render:(_:unknown,row:AttachmentRow)=>row.uploader_display_name||row.uploader||"—"},
+        {title:"文件名称",dataIndex:"original_name",width:360,ellipsis:true,onCell:()=>({className:"case-document-cell case-document-name","data-label":"文件名称"})},
+        {title:"上传时间",dataIndex:"created_at",width:180,onCell:()=>({className:"case-document-cell","data-label":"上传时间"}),render:(value:string)=>value&&dayjs(value).isValid()?dayjs(value).format("YYYY-MM-DD HH:mm:ss"):"—"},
+        {title:"操作",key:"actions",width:isAiSpaceFolder?410:420,onCell:()=>({className:"case-document-cell","data-label":"操作"}),render:(_:unknown,row:AttachmentRow)=><Space size={0}><Button type="link" onClick={()=>void previewCounselDetailAttachment(row)}>查看</Button><Button type="link" onClick={()=>void downloadCounselDetailAttachment(row)}>下载</Button>{counselDetailCapabilities.can_manage_document&&isAiSpaceFolder&&/\.(docx|md|txt)$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openEditAiDraft(row)}>编辑</Button>}{counselDetailCapabilities.can_manage_document&&!isAiSpaceFolder&&row.record_id===viewingCase.id&&(row.libreoffice_editable===true||row.storage_backend==="local")&&/\.docx$/i.test(row.original_name)&&<Button type="link" onClick={()=>void openCaseWordEditor(row)}>在线编辑</Button>}{counselDetailCapabilities.can_manage_document&&!row.is_related_document&&<Button type="link" onClick={()=>openCounselAttachmentRename(row)}>重命名</Button>}{counselDetailCapabilities.can_upload_attachment&&isAiSpaceFolder&&<Button type="link" onClick={()=>openPromoteAiDraft(row)}>转入正式系统</Button>}{counselDetailCapabilities.can_delete_attachment&&isAiSpaceFolder&&<Button type="link" danger onClick={()=>deleteAiDraft(row)}>删除</Button>}{counselDetailCapabilities.can_manage_document&&row.record_id===viewingCase.id&&row.is_locked&&<Button type="link" onClick={()=>void unlockCounselDetailAttachment(row)}>解锁</Button>}{counselDetailCapabilities.can_write&&canApplySealToCounselAttachment(row)&&<Button type="link" onClick={()=>void openCounselAttachmentSeal(row)}>申请用印</Button>}</Space>},
       ]}/>
       {caseDocumentGenerationError && <Alert
         type="error"

@@ -316,3 +316,102 @@
 .case-detail-legacy-submenu-panel{position:absolute;right:calc(100% - 1px);bottom:0;z-index:1100;display:none}
 .case-detail-legacy-submenu:hover>.case-detail-legacy-submenu-panel,
 .case-detail-legacy-submenu:focus-within>.case-detail-legacy-submenu-panel{display:block}
+
+.case-document-directory-toggle.ant-btn{display:none}
+
+/* 手机案件详情统一纵向滚动，表格宽度只在各自页签内消化。 */
+@media(max-width:767px){
+  .case-detail-responsive-root .ant-drawer-content-wrapper{width:100%!important;height:100%!important}
+  .case-detail-responsive-root .ant-drawer-content{display:block;height:100%;max-height:none;overflow-y:auto;overscroll-behavior:contain}
+  .case-detail-drawer .ant-drawer-header{flex-wrap:wrap;gap:8px;padding:8px;overflow:visible}
+  .case-detail-drawer .ant-drawer-header-title{flex:1 1 100%;min-width:0}
+  .case-detail-drawer .ant-drawer-title{white-space:normal;overflow-wrap:anywhere;line-height:20px}
+  .case-detail-drawer .ant-drawer-extra{flex:1 1 100%;width:100%;max-width:none;overflow:visible;white-space:normal}
+  .case-detail-drawer .ant-drawer-extra .ant-space{max-width:100%;flex-wrap:wrap!important}
+  .case-detail-drawer .ant-drawer-extra .ant-btn{height:auto;min-height:44px;white-space:normal}
+  .case-detail-drawer .ant-drawer-close{flex:none;min-width:44px;min-height:44px}
+  .case-detail-responsive-root .ant-drawer-body{display:block;height:auto;min-height:0;flex:none;overflow:visible}
+  .case-detail-responsive-root .case-detail-workbench{display:block;width:100%;height:auto;min-height:0!important;overflow:visible}
+  .case-detail-responsive-root .case-detail-body-grid{grid-template-columns:minmax(0,1fr);min-height:0;flex:none;overflow:visible;scrollbar-gutter:auto}
+  .case-detail-drawer .case-detail-tab-area{min-width:0;overflow:visible}
+  .case-detail-drawer .case-detail-side-panel{grid-column:1;display:block;border-left:0;border-top:1px solid #dce2e8}
+  .case-detail-drawer .case-detail-log-list{max-height:none;overflow:visible;scrollbar-gutter:auto}
+  .case-detail-drawer .case-clue-context-panel{position:fixed;inset:0;width:100%;max-width:100%;min-width:0;height:100%;max-height:100dvh}
+  .case-detail-drawer .case-clue-context-body{min-width:0;max-width:100%;overflow-wrap:anywhere}
+  .case-detail-drawer .case-clue-context-body .ant-table-wrapper{max-width:100%;overflow-x:auto}
+  .case-detail-drawer .case-legacy-summary-scroll{overflow:visible}
+  .case-detail-drawer .case-legacy-summary{display:block;min-width:0;table-layout:auto}
+  .case-detail-drawer .case-legacy-summary colgroup{display:none}
+  .case-detail-drawer .case-legacy-summary tbody{display:block}
+  .case-detail-drawer .case-legacy-summary tr{display:grid;grid-template-columns:100px minmax(0,1fr)}
+  .case-detail-drawer .case-legacy-summary th,
+  .case-detail-drawer .case-legacy-summary td{display:block;min-width:0;height:auto;padding:8px;line-height:20px;text-align:left;white-space:normal;overflow-wrap:anywhere}
+  .case-detail-drawer .case-legacy-summary .case-cell-link.ant-btn-link{display:block;min-width:0;max-width:100%;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;line-height:20px}
+  .case-detail-drawer .case-court-summary-grid{grid-template-columns:minmax(0,1fr)}
+  .case-detail-drawer .case-court-summary-grid p{grid-template-columns:100px minmax(0,1fr)}
+  .case-detail-drawer .case-court-summary-grid strong,
+  .case-detail-drawer .case-court-summary-grid span{min-width:0;padding:8px;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;line-height:20px;text-align:left}
+  .case-detail-drawer .case-court-summary-title{height:auto;min-height:44px}
+  .case-detail-drawer .case-summary-section-toggle.ant-btn{width:44px;height:44px}
+  .case-detail-drawer .ant-collapse-header-text{min-width:0;white-space:normal;overflow-wrap:anywhere}
+  .case-detail-drawer .ant-collapse-content-box{padding:8px}
+  .case-detail-drawer .case-detail-tab-area>.ant-tabs>.ant-tabs-nav .ant-tabs-nav-wrap{overflow-x:auto!important;touch-action:pan-x}
+  .case-detail-drawer .case-detail-tab-area>.ant-tabs>.ant-tabs-nav .ant-tabs-nav-list{transform:none!important}
+  .case-detail-drawer .case-detail-tab-area>.ant-tabs>.ant-tabs-nav .ant-tabs-tab{min-height:44px;padding:10px 0}
+  .case-detail-drawer .case-detail-tab-area>.ant-tabs>.ant-tabs-content-holder{min-width:0;overflow:visible}
+  .case-detail-drawer .case-legacy-tab-panel{min-height:0;max-width:100%}
+  .case-detail-drawer .case-detail-tab-area .ant-table-wrapper{min-width:0;max-width:100%;overflow:visible;border-radius:0}
+  .case-detail-drawer .case-detail-tab-area .ant-table-content,
+  .case-detail-drawer .case-detail-tab-area .ant-table-body{max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain}
+  .case-detail-drawer .case-legacy-bottom-actions .ant-space{max-width:100%;flex-wrap:wrap}
+  .case-detail-drawer .case-documents-layout{grid-template-columns:minmax(0,1fr);min-height:0}
+  .case-detail-drawer .case-detail-doc-tree{min-width:0;padding:0 8px;border-right:0;border-bottom:1px solid #dce2e8}
+  .case-detail-drawer .case-document-directory-toggle.ant-btn{display:flex;align-items:center;width:100%;height:auto;min-height:44px;padding:8px 0;text-align:left;white-space:normal}
+  .case-detail-drawer .case-document-directory-toggle.ant-btn>span:not(.ant-btn-icon){min-width:0;overflow-wrap:anywhere}
+  .case-detail-drawer .case-detail-doc-tree[data-expanded="false"] .case-document-directory-items{display:none}
+  .case-detail-drawer .case-document-directory-items{max-height:40dvh;overflow-y:auto;margin-bottom:8px}
+  .case-detail-drawer .case-doc-tree-row{height:auto;min-height:44px}
+  .case-detail-drawer .case-doc-folder,
+  .case-detail-drawer .case-doc-child{height:auto;min-height:44px;line-height:20px;white-space:normal}
+  .case-detail-drawer .case-doc-folder>span:last-child,
+  .case-detail-drawer .case-doc-child>span:last-child{overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere}
+  .case-detail-drawer .case-doc-tree-action.ant-btn{flex-basis:44px;width:44px;min-width:44px;height:44px}
+  .case-detail-drawer .case-document-list{padding:8px;min-width:0}
+  .case-detail-drawer .case-document-list .ant-table-content,
+  .case-detail-drawer .case-document-list .ant-table-body{overflow:visible!important}
+  .case-detail-drawer .case-document-list .ant-table-header{overflow:visible!important}
+  .case-detail-drawer .case-document-list .ant-table-sticky-holder{position:static}
+  .case-detail-drawer .case-document-list .ant-table-sticky-scroll{display:none}
+  .case-detail-drawer .case-document-list .ant-table-measure-row{display:none}
+  .case-detail-drawer .case-document-list table{display:block;width:100%!important;min-width:0!important;table-layout:auto!important}
+  .case-detail-drawer .case-document-list colgroup{display:none}
+  .case-detail-drawer .case-document-list .ant-table-thead,
+  .case-detail-drawer .case-document-list .ant-table-thead>tr,
+  .case-detail-drawer .case-document-list .ant-table-tbody{display:block}
+  .case-detail-drawer .case-document-list .ant-table-thead>tr>th{display:none}
+  .case-detail-drawer .case-document-list .ant-table-thead>tr>th.ant-table-selection-column{display:flex;align-items:center;gap:8px;position:static;min-height:44px;width:100%;padding:8px!important}
+  .case-detail-drawer .case-document-list .ant-table-thead>tr>th.ant-table-selection-column::after{position:static;width:auto;border:0;cursor:auto;content:"全选"}
+  .case-detail-drawer .case-document-list .ant-table-tbody>tr.ant-table-row{display:flex;flex-direction:column;padding:8px 0;border-bottom:1px solid #dce2e8}
+  .case-detail-drawer .case-document-list .ant-table-tbody>tr>td.case-document-cell{display:grid;grid-template-columns:72px minmax(0,1fr);align-items:start;gap:8px;width:auto!important;min-width:0;min-height:0;height:auto;padding:6px 8px!important;border:0;overflow:visible;white-space:normal;overflow-wrap:anywhere;text-overflow:clip;line-height:20px}
+  .case-detail-drawer .case-document-list .case-document-cell::before{content:attr(data-label);color:#68727d;font-weight:400}
+  .case-detail-drawer .case-document-list .ant-table-tbody>tr>td.case-document-name{order:-1;font-weight:600}
+  .case-detail-drawer .case-document-list .case-document-cell .ant-space{min-width:0;max-width:100%;flex-wrap:wrap}
+  .case-detail-drawer .case-document-list .case-document-cell .ant-space-item{min-width:0;max-width:100%}
+  .case-detail-drawer .case-document-list .case-document-cell .ant-btn{height:auto;min-height:44px;padding:6px 8px;white-space:normal;overflow-wrap:anywhere}
+  .case-detail-drawer .case-document-list .ant-table-selection-column .ant-checkbox-wrapper{min-width:44px;min-height:44px;align-items:center;justify-content:center}
+  .case-detail-drawer .case-document-list .ant-table-placeholder{display:block}
+  .case-detail-drawer .case-document-list .ant-table-placeholder>td{display:block;width:100%}
+  .case-detail-drawer .case-document-list .ant-pagination{flex-wrap:wrap;justify-content:flex-start}
+  .case-detail-drawer .case-document-list .ant-pagination-options,
+  .case-detail-drawer .case-document-list .ant-pagination-total-text{display:block;max-width:100%;margin-inline-start:0}
+  .case-detail-drawer .case-document-toolbar{display:flex;width:100%;gap:8px!important}
+  .case-detail-drawer .case-document-toolbar .ant-space-item{min-width:0;max-width:100%}
+  .case-detail-drawer .case-document-toolbar .ant-btn{height:auto;min-height:44px;white-space:normal}
+  .case-detail-drawer .case-document-toolbar .ant-select{max-width:100%;min-height:44px}
+  .case-detail-drawer .case-document-toolbar .ant-tag{height:auto;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .case-detail-legacy-operation-menu{max-width:calc(100vw - 24px);max-height:calc(100dvh - 96px);overflow-y:auto}
+  .case-detail-legacy-submenu-panel{position:static;width:100%;border:0;border-top:1px solid #dce2e8;box-shadow:none}
+  .case-detail-legacy-operation-menu>.ant-btn,
+  .case-detail-legacy-submenu>.ant-btn,
+  .case-detail-legacy-submenu-panel>.ant-btn{height:auto;min-height:44px;white-space:normal;overflow-wrap:anywhere}
+}

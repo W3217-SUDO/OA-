@@ -3829,7 +3829,7 @@ export default function CaseCenterPage({
       </Modal>
       <Drawer
         width="100%"
-        rootClassName={isCaseDetailView ? "case-detail-static-root" : undefined}
+        rootClassName={isCaseDetailView ? "case-detail-static-root case-detail-responsive-root" : "case-detail-responsive-root"}
         className="case-detail-drawer"
         getContainer={false}
         mask={false}
