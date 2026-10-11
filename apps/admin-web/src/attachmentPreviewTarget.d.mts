@@ -1,0 +1,1 @@
+export function isInlineAttachmentPreviewEnvironment(): boolean;

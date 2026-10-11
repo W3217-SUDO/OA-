@@ -1,6 +1,8 @@
 import { message } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import { api } from "../../api";
+import { openAttachmentOnlinePreview } from "../../attachmentOnlinePreview.mjs";
+import { isInlineAttachmentPreviewEnvironment } from "../../attachmentPreviewTarget.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { assertIprMutationSuccess, getIprApiErrorMessage } from "../../iprCaseDetailParity.mjs";
 import type { Attachment, CpcApplication, IprDetailPagePayload, IprDetailPageState, IprFileType, IprRecord } from "../types";
@@ -172,6 +174,15 @@ export function createIprDocumentsActions(context: IprDocumentsDependencies) {
         }
     };
     const previewAttachment = async (item: Attachment) => {
+        if (isInlineAttachmentPreviewEnvironment()) {
+            try {
+                await openAttachmentOnlinePreview(api, item);
+            }
+            catch (error: any) {
+                message.error(error?.response?.data?.detail || error?.message || "案件附件预览失败");
+            }
+            return;
+        }
         const previewWindow = window.open("", "_blank");
         if (!previewWindow) {
             message.warning("预览窗口被浏览器拦截");

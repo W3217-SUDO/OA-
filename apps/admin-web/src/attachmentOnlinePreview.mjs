@@ -1,5 +1,6 @@
 import { renderAsync as renderDocxAsync } from "docx-preview";
 import * as XLSX from "xlsx";
+import { createAttachmentPreviewTarget } from "./attachmentPreviewTarget.mjs";
 
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;")
@@ -139,10 +140,9 @@ export function renderStructuredWorkbook(sheets, truncated = false) {
 }
 
 export async function openAttachmentOnlinePreview(api, attachment, options = {}) {
-  const openWindow = options.openWindow || (() => window.open("about:blank", "_blank"));
   const createObjectURL = options.createObjectURL || ((blob) => URL.createObjectURL(blob));
   const revokeObjectURL = options.revokeObjectURL || ((url) => URL.revokeObjectURL(url));
-  const target = openWindow();
+  const target = createAttachmentPreviewTarget(options.openWindow);
   if (!target) throw new Error("浏览器阻止了新标签页，请允许本站打开新标签页后重试");
 
   const name = attachment.original_name || "附件预览";
