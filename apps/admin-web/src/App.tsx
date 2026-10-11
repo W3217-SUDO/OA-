@@ -1088,8 +1088,8 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
   };
   const loginCard = (
     <Card className="login-card">
-      <h2>{isHuzhi ? "登录工作台" : "系统登录"}</h2>
-      <p>{isHuzhi ? "使用沪知 OA 账号继续" : siteBrand.welcome}</p>
+      <h2>{isHuzhi ? "登录沪知工作台" : "系统登录"}</h2>
+      <p>{isHuzhi ? "请输入 OA 账号与密码" : siteBrand.welcome}</p>
       {dingtalkAuthCode && <Alert type="info" showIcon title="首次钉钉登录" description="输入一次现有 OA 账号和密码完成绑定；以后从钉钉工作台打开将直接登录。" style={{marginBottom:16}} />}
       <Form onFinish={submit} layout="vertical">
         <Form.Item name="username" label="账号" rules={[{ required: true }]}>
@@ -1131,21 +1131,13 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
     <div className={`login-page${isHuzhi ? " login-page-huzhi" : ""}`}>
       {isHuzhi ? (
         <div className="huzhi-login-shell">
-          <section className="huzhi-login-aside" aria-label="沪知协作平台">
-            <span className="huzhi-login-watermark" aria-hidden="true">沪知</span>
-            <div className="huzhi-login-aside-top">沪知 <span>OA</span></div>
-            <div className="huzhi-login-aside-main">
-              <span className="huzhi-login-aside-rule" />
-              <p className="huzhi-login-aside-kicker">上海沪知律师事务所</p>
-              <h1>律所工作，<br />从容有序。</h1>
-              <p className="huzhi-login-aside-description">面向律师团队的日常协作空间。</p>
-            </div>
-            <div className="huzhi-login-aside-bottom">法律服务机构管理系统</div>
-          </section>
+          <div className="huzhi-login-visual" aria-hidden="true" />
           <main className="huzhi-login-main">
-            <div className="huzhi-login-logo"><img src={siteBrand.logo} alt={siteBrand.name} /></div>
-            {loginCard}
-            <div className="huzhi-login-footer">仅供本所授权人员使用</div>
+            <div className="huzhi-login-form">
+              <img className="huzhi-login-logo" src={siteBrand.logo} alt={siteBrand.name} />
+              {loginCard}
+              <footer className="huzhi-login-footer">仅供本所授权人员使用</footer>
+            </div>
           </main>
         </div>
       ) : (
