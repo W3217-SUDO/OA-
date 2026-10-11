@@ -7,6 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import logger
+from app.core.automatic_task_diagnostics import warn_automatic_task
 from app.models import Department, User
 
 
@@ -83,10 +84,10 @@ async def resolve_automatic_task_user(values: object, db: AsyncSession) -> User 
         if manager:
             logger.debug("automatic task personnel reassigned: departed=%s manager=%s", user.username, manager.username)
             return manager
-        logger.warning(
+        warn_automatic_task(
             "automatic task personnel unresolved: user=%s department=%s reason=no_active_department_manager",
             user.username, user.department,
         )
     if unresolved:
-        logger.warning("automatic task personnel unresolved: references=%s reason=missing_or_ambiguous_account", unresolved)
+        warn_automatic_task("automatic task personnel unresolved: references=%s reason=missing_or_ambiguous_account", unresolved)
     return None

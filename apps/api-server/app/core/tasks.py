@@ -2,6 +2,7 @@
 import calendar
 import math
 from app.core.task_personnel import resolve_automatic_task_user
+from app.core.automatic_task_diagnostics import automatic_task_diagnostics_scope, warn_automatic_task
 
 from app.core.constants import (
     CASE_EVENT_COMPLETED_STATUS, logger,
@@ -806,7 +807,7 @@ async def _ensure_document_preparation_task(
         db,
     )
     if not assistant_username or not initiator_username:
-        logger.warning(
+        warn_automatic_task(
             "case automatic task skipped: case_id=%s rule=document_preparation_stage missing=%s",
             case_record.id,
             ",".join(role for role, value in (("handling_lawyer", initiator_username), ("assistant", assistant_username)) if not value),
@@ -986,7 +987,7 @@ async def _ensure_timestamp_evidence_handoff_task(
         db,
     )
     if not assistant_username or not assistant_user:
-        logger.warning("case automatic task skipped: case_id=%s rule=timestamp_evidence_handoff missing=assistant", case_record.id)
+        warn_automatic_task("case automatic task skipped: case_id=%s rule=timestamp_evidence_handoff missing=assistant", case_record.id)
         return None
 
     from app.core.automatic_task_lookup import find_case_automatic_task
@@ -1395,7 +1396,7 @@ async def _apply_case_automatic_task_rules(db: AsyncSession, *, today: date | No
     from app.core.automatic_task_lookup import automatic_task_lookup_scope
     from app.core.task_personnel import automatic_task_personnel_scope
 
-    async with automatic_task_personnel_scope(db), automatic_task_lookup_scope(db):
+    async with automatic_task_diagnostics_scope(), automatic_task_personnel_scope(db), automatic_task_lookup_scope(db):
         return await _scan_case_automatic_task_rules(db, today=today)
 
 
@@ -1449,6 +1450,9 @@ async def _scan_case_automatic_task_rules(db: AsyncSession, *, today: date | Non
     for case_index in cases:
         # 显式异步加载数据库更新后失效的字段，避免属性访问触发同步查询。
         case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.id == case_index.id))
+        # 已归档案件无需再生成阶段及归档催办任务，后续仍处理已有任务的自动完成。
+        if case_record.status in {"已归档", "亏损归档"}:
+            continue
         data = case_record.data or {}
         phase_date = _task_rule_date(data.get("phase_changed_at") or case_record.updated_at or case_record.created_at)
         if not phase_date:
@@ -1463,7 +1467,7 @@ async def _scan_case_automatic_task_rules(db: AsyncSession, *, today: date | Non
                 case_record, db, previous_status="", operator="system", today=effective_today,
             )
         elif case_record.status == "一审待执行":
-            logger.warning(
+            warn_automatic_task(
                 "case automatic task skipped: case_id=%s rule=execution_application_reminder missing=%s",
                 case_record.id,
                 ",".join(role for role, value in (("handling_lawyer", lawyer), ("assistant", assistant)) if not value),
@@ -1491,7 +1495,7 @@ async def _scan_case_automatic_task_rules(db: AsyncSession, *, today: date | Non
         )}.values())
         if case_receipts:
             if not lawyer or not assistant:
-                logger.warning(
+                warn_automatic_task(
                     "case automatic task skipped: case_id=%s rule=payment_received_30d_archive missing=%s",
                     case_record.id,
                     "handling_lawyer" if not lawyer else "assistant",
