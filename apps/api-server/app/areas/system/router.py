@@ -1238,12 +1238,14 @@ async def dashboard_http(
     from app.core.dashboard_request import run_dashboard_read
     from app.core.dashboard_metrics_cache import read_dashboard_metrics
     from app.core.query_cache import cached_query
+    from app.core.dashboard_revision import dashboard_snapshot
 
     if section == "metrics":
         calculation = read_dashboard_metrics(identity, db)
     elif section in {"metrics_finance", "metrics_cases", "todos", "cases"}:
         calculation = cached_query(db, identity, f"dashboard.{section}", {},
-                                   lambda: dashboard(identity, db, section))
+                                   lambda: dashboard(identity, db, section), snapshot_reader=dashboard_snapshot,
+                                   ttl_seconds=settings.dashboard_metrics_cache_ttl_seconds)
     else:
         calculation = dashboard(identity, db, section)
     return await run_dashboard_read(request, calculation)

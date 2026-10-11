@@ -80,7 +80,10 @@ async def release(key, token):
     await shared.release(key, token)
 
 
-async def publish(key, token, snapshot, result):
+async def publish(key, token, snapshot, result, *, ttl_seconds=None):
+    ttl = settings.query_cache_ttl_seconds if ttl_seconds is None else ttl_seconds
+    if type(ttl) is not int or not 1 <= ttl <= 300:
+        raise ValueError("共享查询缓存有效期必须为 1 至 300 秒")
     # 文件、流和自定义响应的状态、头部不可被 JSON 缓存替换。
     if isinstance(result, Response):
         logger.info("查询结果未进入共享缓存：响应对象；key=%s", key)
@@ -91,5 +94,5 @@ async def publish(key, token, snapshot, result):
                     settings.query_cache_max_payload_bytes, key)
         return
     if not await shared.client().eval(shared._PUBLISH, 2, key + ":lock", key + ":data",
-                                      token, payload, settings.query_cache_ttl_seconds):
+                                      token, payload, ttl):
         raise unavailable("查询重算锁已失效，请重新查询")

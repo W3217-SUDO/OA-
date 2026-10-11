@@ -1,7 +1,7 @@
 import unittest
 import asyncio
 import json
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from collections import OrderedDict
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -255,7 +255,10 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
 
         request = Request({"type": "http", "method": "GET", "path": "/api/v1/dashboard", "headers": []})
         db = object()
-        async def cached(session, identity, namespace, parameters, compute):
+        async def cached(session, identity, namespace, parameters, compute, *, snapshot_reader=None, ttl_seconds=None):
+            from app.core.dashboard_revision import dashboard_snapshot
+            self.assertIs(snapshot_reader, dashboard_snapshot)
+            self.assertEqual(ttl_seconds, 300)
             self.assertIs(session, db)
             self.assertIs(identity, IDENTITY)
             self.assertEqual(parameters, {})
@@ -584,6 +587,34 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
     async def query(self):
         return await self.cache.cached_query(self.db, IDENTITY, self.namespace, self.parameters, self.compute)
 
+    async def test_optional_business_reader_preserves_default_finance_reader_and_flow_guards(self):
+        reader = AsyncMock(return_value="1:100:")
+        await self.cache.cached_query(self.db, IDENTITY, "dashboard.metrics_finance", {}, self.compute,
+                                      snapshot_reader=reader)
+        self.snapshot.assert_not_awaited()
+        self.assertEqual(self.publish.call_args.args[2], "1:100:")
+        self.assertGreaterEqual(reader.await_count, 3)
+        self.publish.reset_mock()
+        reader.reset_mock(side_effect=True)
+        reader.side_effect = ["1:100:", "1:100:", "1:100:", "2:199:"]
+        await self.cache.cached_query(self.db, IDENTITY, "dashboard.metrics_finance", {}, self.compute,
+                                      snapshot_reader=reader)
+        self.publish.assert_not_awaited()
+        await self.query()
+        self.snapshot.assert_awaited()
+        self.assertEqual(self.publish.call_args.args[2], "10:20:")
+
+    async def test_dashboard_ttl_is_explicit_and_finance_default_is_unchanged(self):
+        await self.cache.cached_query(self.db, IDENTITY, "dashboard.cases", {}, self.compute, ttl_seconds=300)
+        self.assertEqual(self.publish.await_args.kwargs, {"ttl_seconds": 300})
+        self.publish.reset_mock()
+        await self.query()
+        self.assertEqual(self.publish.await_args.kwargs, {})
+        for invalid in (0, 301, True, "300"):
+            with self.assertRaises(ValueError):
+                await self.cache.cached_query(self.db, IDENTITY, "dashboard.cases", {}, self.compute,
+                                              ttl_seconds=invalid)
+
     async def test_cold_preserves_original_result_and_hot_preserves_json_wire_values(self):
         cold = await self.query()
         self.assertIs(cold, self.result)
@@ -717,6 +748,15 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
                 await self.original_publish("key", "expired", "10:20:", self.result)
             self.assertEqual(caught.exception.status_code, 503)
 
+    async def test_explicit_dashboard_ttl_does_not_mutate_finance_configuration(self):
+        client = SimpleNamespace(eval=AsyncMock(return_value=1))
+        with patch.object(self.shared, "client", return_value=client):
+            await self.original_publish("key", "owner", "10:20:", self.result, ttl_seconds=300)
+            self.assertEqual(client.eval.await_args.args[-1], 300)
+            self.assertEqual(self.store.settings.query_cache_ttl_seconds, 60)
+            await self.original_publish("key", "owner", "10:20:", self.result)
+            self.assertEqual(client.eval.await_args.args[-1], 60)
+
 
     async def test_request_and_orm_dependencies_are_not_encoded(self):
         for value in (Request({"type": "http"}), User(username="unused")):
@@ -797,6 +837,111 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("计算超时", caught.exception.detail)
         self.release.assert_awaited_once()
         self.publish.assert_not_awaited()
+
+
+class DashboardRevisionContractTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        from app.core import dashboard_revision as revision
+        from app.core import dashboard_revision_migration as migration
+        self.revision, self.migration = revision, migration
+        self.row = SimpleNamespace(revision_count="2", revision_sum="199", pg_snapshot="100:200:",
+                                   own_xid=None, isolation="read committed", ready=True)
+        self.db = SimpleNamespace(new=[], dirty=[], deleted=[], no_autoflush=nullcontext(),
+                                  get_bind=Mock(return_value=SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))),
+                                  execute=AsyncMock(return_value=SimpleNamespace(one=lambda: self.row)))
+
+    async def test_business_token_ignores_unrelated_global_snapshot_and_detects_late_commit(self):
+        self.assertEqual(await self.revision.dashboard_snapshot(self.db), "2:199:")
+        self.row.pg_snapshot = "200:300:250"
+        self.assertEqual(await self.revision.dashboard_snapshot(self.db), "2:199:")
+        self.row.revision_count, self.row.revision_sum = "3", "249"
+        self.assertEqual(await self.revision.dashboard_snapshot(self.db), "3:249:")
+        statement = str(self.db.execute.await_args.args[0])
+        self.assertIn("count(*)::text", statement)
+        self.assertIn("sum(txid)", statement)
+        self.assertNotIn("max(txid)", statement.lower())
+        self.assertIn("pg_current_snapshot()", statement)
+        self.assertIn("pg_current_xact_id_if_assigned()", statement)
+
+    async def test_revision_reader_preserves_dirty_xid_and_isolation_guards(self):
+        for field in ("new", "dirty", "deleted"):
+            setattr(self.db, field, [object()])
+            self.assertIsNone(await self.revision.dashboard_snapshot(self.db))
+            setattr(self.db, field, [])
+        self.db.execute.assert_not_awaited()
+        self.db.get_bind.return_value.dialect.name = "sqlite"
+        self.assertIsNone(await self.revision.dashboard_snapshot(self.db))
+        self.db.get_bind.return_value.dialect.name = "postgresql"
+        self.row.own_xid = "100"
+        self.assertIsNone(await self.revision.dashboard_snapshot(self.db))
+        self.row.own_xid = None
+        for isolation in ("repeatable read", "serializable"):
+            self.row.isolation = isolation
+            self.assertIsNone(await self.revision.dashboard_snapshot(self.db))
+
+    async def test_missing_drifted_or_invalid_revision_is_explicit_failure(self):
+        from sqlalchemy.exc import ProgrammingError
+        self.db.execute.side_effect = ProgrammingError("query", {}, Exception("missing relation"))
+        with self.assertRaises(HTTPException) as caught:
+            await self.revision.dashboard_snapshot(self.db)
+        self.assertEqual(caught.exception.status_code, 503)
+        self.db.execute.side_effect = None
+        self.row.ready = False
+        with self.assertRaises(HTTPException) as caught:
+            await self.revision.dashboard_snapshot(self.db)
+        self.assertEqual(caught.exception.status_code, 503)
+        self.row.ready = True
+        for field, invalid in (("revision_count", "-1"), ("revision_sum", "1.5"),
+                               ("revision_sum", "１２"), ("pg_snapshot", None)):
+            previous = getattr(self.row, field)
+            setattr(self.row, field, invalid)
+            with self.assertRaises(HTTPException) as caught:
+                await self.revision.dashboard_snapshot(self.db)
+            self.assertEqual(caught.exception.status_code, 503)
+            setattr(self.row, field, previous)
+
+    def test_migration_only_installs_transactional_append_log_and_exact_dependency_triggers(self):
+        connection = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"), execute=Mock(),
+                                     scalar=Mock(side_effect=[False, 'tenant"schema', True, True]))
+        self.migration.upgrade_dashboard_revision(connection)
+        statements = [str(call.args[0]) for call in connection.execute.call_args_list]
+        self.assertEqual(len([s for s in statements if "AFTER INSERT OR UPDATE OR DELETE" in s]), 14)
+        self.assertEqual(len([s for s in statements if "AFTER TRUNCATE" in s]), 14)
+        self.assertEqual(len([s for s in statements if "ENABLE ALWAYS TRIGGER" in s]), 30)
+        ddl = "\n".join(statements)
+        self.assertIn('"tenant""schema"."dashboard_change_revisions"', ddl)
+        self.assertIn("ON CONFLICT (txid) DO NOTHING", ddl)
+        self.assertIn("pg_current_xact_id()::text::bigint", ddl)
+        self.assertIn("BEFORE UPDATE OR DELETE OR TRUNCATE", ddl)
+        self.assertIn("NEW.txid <> pg_current_xact_id()", ddl)
+        for name in self.revision.DEPENDENCY_TABLES:
+            self.assertIn(f'ON "{name}"', ddl)
+            self.assertIn(name, Base.metadata.tables)
+        for excluded in ("notification_sync_schedules", "notification_deliveries", "notifications"):
+            self.assertNotIn(excluded, ddl)
+        self.assertFalse(any(s.lstrip().startswith(("UPDATE ", "DELETE ", "TRUNCATE ")) for s in statements))
+        integrity = self.revision.integrity_sql()
+        for check in ("procedure.prosrc", "procedure.proconfig", "trigger.tgenabled = 'A'",
+                      "primary_key.conkey", "attribute.attnotnull", "trigger.tgqual IS NULL"):
+            self.assertIn(check, integrity)
+        body = self.revision.function_body(self.revision.TOUCH_FUNCTION, 'tenant"schema')
+        self.assertTrue(any(body in s for s in statements))
+
+    def test_registered_revision_drift_fails_instead_of_silent_repair(self):
+        connection = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"), execute=Mock(),
+                                     scalar=Mock(side_effect=[True, True, False]))
+        with self.assertRaisesRegex(RuntimeError, "触发器不完整"):
+            self.migration.upgrade_dashboard_revision(connection)
+        connection.execute.assert_not_called()
+        connection.scalar.side_effect = [False]
+        with self.assertRaisesRegex(RuntimeError, "表缺失"):
+            self.migration.validate_dashboard_revision(connection)
+
+    async def test_full_metrics_uses_same_business_revision_reader(self):
+        from app.core import dashboard_metrics_cache as cache
+        with patch.object(cache, "dashboard_snapshot", AsyncMock(return_value="2:199:")) as reader:
+            self.assertEqual(await cache._visible_snapshot(self.db), "2:199:")
+            reader.assert_awaited_once_with(self.db, "dashboard.metrics.snapshot")
 
 
 if __name__ == "__main__":

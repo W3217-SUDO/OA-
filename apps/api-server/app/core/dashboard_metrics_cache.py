@@ -10,7 +10,8 @@ from datetime import date
 from time import monotonic
 
 from app.core.dashboard_metrics import dashboard_metrics
-from app.core.query_cache_flow import read_shared_query, release_lock, visible_snapshot
+from app.core.query_cache_flow import read_shared_query, release_lock
+from app.core.dashboard_revision import dashboard_snapshot
 from app.config import settings
 from app.core import dashboard_metrics_redis as shared
 from redis.exceptions import RedisError
@@ -35,7 +36,7 @@ _entries: OrderedDict[tuple, _MetricsEntry] = OrderedDict()
 
 
 async def _visible_snapshot(db):
-    return await visible_snapshot(db, "dashboard.metrics.snapshot")
+    return await dashboard_snapshot(db, "dashboard.metrics.snapshot")
 
 
 def _matches(entry, snapshot, business_date):

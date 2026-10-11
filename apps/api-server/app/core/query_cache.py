@@ -3,6 +3,8 @@ import hashlib
 import json
 import logging
 import re
+from functools import partial
+from types import SimpleNamespace
 
 from redis.exceptions import RedisError
 
@@ -26,7 +28,7 @@ def _query_key(db, identity, namespace, parameters, business_date):
             f"{{{database}:{_digest(identity)}:{_digest(parameters)}:{business_date.isoformat()}}}")
 
 
-async def cached_query(db, identity, namespace, parameters, compute):
+async def cached_query(db, identity, namespace, parameters, compute, *, snapshot_reader=None, ttl_seconds=None):
     """只包装最终响应；调用者不得捕获 ORM 依赖或包含写入、下载及动态签名操作。"""
     if not settings.cache_redis_url.strip():
         return await compute()
@@ -34,10 +36,17 @@ async def cached_query(db, identity, namespace, parameters, compute):
         raise TypeError("共享查询缓存需要已认证的身份字典")
     if not isinstance(namespace, str) or re.fullmatch(r"[A-Za-z0-9_.:-]{1,160}", namespace) is None:
         raise ValueError("共享查询缓存需要稳定的查询命名空间")
+    if ttl_seconds is not None and (type(ttl_seconds) is not int or not 1 <= ttl_seconds <= 300):
+        raise ValueError("共享查询缓存有效期必须为 1 至 300 秒")
     if db.get_bind().dialect.name != "postgresql" or db.new or db.dirty or db.deleted:
         return await compute()
-    if await visible_snapshot(db) is None:
+    reader = visible_snapshot if snapshot_reader is None else snapshot_reader
+    if await reader(db) is None:
         return await compute()
+    query_store = store if ttl_seconds is None else SimpleNamespace(
+        read=store.read, acquire=store.acquire, unavailable=store.unavailable,
+        publish=partial(store.publish, ttl_seconds=ttl_seconds),
+    )
 
     async def release(key, token, primary_error):
         await release_lock(store, key, token, primary_error)
@@ -45,7 +54,7 @@ async def cached_query(db, identity, namespace, parameters, compute):
     try:
         return await read_shared_query(
             db, key_for_date=lambda today: _query_key(db, identity, namespace, parameters, today),
-            compute=compute, store=store, snapshot_reader=visible_snapshot,
+            compute=compute, store=query_store, snapshot_reader=reader,
             release=release, label="查询结果",
         )
     except RedisError as exc:
