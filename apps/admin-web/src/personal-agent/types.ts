@@ -4,7 +4,7 @@ import type { AgentActionPreview } from "../AgentOperationPreview";
 export type WorkspaceSkill = AgentSkill & { custom?: boolean; enabled?: boolean; instruction?: string };
 export type ResponseMode = "fast" | "deep";
 export type Material = { id: number; name: string; case_id?: number };
-export type WorkspaceMessage = { role: "user" | "assistant"; content: string; created_at?: string; skill_name?: string; case_id?: number; case_no?: string; can_save_document?: boolean; attachments?: Material[]; failed?: boolean };
+export type WorkspaceMessage = { role: "user" | "assistant"; content: string; created_at?: string; skill_name?: string; case_id?: number; case_no?: string; can_save_document?: boolean; attachments?: Material[]; failed?: boolean; stopped?: boolean };
 export type PendingAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; preview?: AgentActionPreview; status: "pending" | "approved" | "rejected" };
 export type WorkspaceState = { conversation_id?: string | null; conversation_title?: string; messages: WorkspaceMessage[]; pending_actions: PendingAction[]; structured_results?: unknown[] };
 export type WorkspaceConversation = { id: string; title: string; message_count: number; updated_at: string };

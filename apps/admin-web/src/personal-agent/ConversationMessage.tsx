@@ -23,6 +23,7 @@ export function ConversationMessage({ item, generating, readingMaterials, progre
       <div className="workspace-message-heading">
         <span>{assistant ? "办公助手" : "我"}</span>
         {item.created_at && <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time>}
+        {item.stopped && <span className="workspace-thinking">已停止</span>}
         {assistant && item.skill_name && <small title={item.skill_name}>{item.skill_name}</small>}
       </div>
       <div className="workspace-message-surface">

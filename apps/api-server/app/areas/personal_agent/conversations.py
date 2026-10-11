@@ -13,7 +13,7 @@ from fastapi import HTTPException
 
 
 STATE_LOCK = asyncio.Lock()
-_ACTIVE_OPERATIONS: set[tuple[Path, str]] = set()
+_ACTIVE_OPERATIONS: dict[tuple[Path, str], tuple[asyncio.Task, bool]] = {}
 _CONVERSATION_ID = re.compile(r"^(default|[0-9a-f]{32})$")
 
 
@@ -173,7 +173,7 @@ async def save_state(directory: Path, state: dict[str, Any]) -> None:
 
 
 @asynccontextmanager
-async def conversation_operation(directory: Path, conversation_id: str | None) -> AsyncIterator[dict[str, Any]]:
+async def conversation_operation(directory: Path, conversation_id: str | None, *, cancellable: bool = False) -> AsyncIterator[dict[str, Any]]:
     async with STATE_LOCK:
         state = read_state(directory, conversation_id)
         if not state["conversation_id"]:
@@ -181,9 +181,33 @@ async def conversation_operation(directory: Path, conversation_id: str | None) -
         key = (directory, state["conversation_id"])
         if key in _ACTIVE_OPERATIONS:
             raise HTTPException(status_code=409, detail="该对话正在处理，请稍后再试")
-        _ACTIVE_OPERATIONS.add(key)
+        task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("对话操作缺少运行任务")
+        _ACTIVE_OPERATIONS[key] = (task, cancellable)
     try:
         yield state
     finally:
         async with STATE_LOCK:
-            _ACTIVE_OPERATIONS.remove(key)
+            del _ACTIVE_OPERATIONS[key]
+
+
+async def stop_generation(directory: Path, conversation_id: str) -> dict[str, Any]:
+    async with STATE_LOCK:
+        read_state(directory, conversation_id)
+        operation = _ACTIVE_OPERATIONS.get((directory, conversation_id))
+        if operation and not operation[1]:
+            raise HTTPException(status_code=409, detail="该对话正在执行已确认的 OA 操作，不能中断")
+        if operation:
+            task = operation[0]
+            if not task.cancelling():
+                task.cancel()
+    # 不持有文件锁等待取消，让生成任务保存部分回答并释放对话占用。
+    if operation:
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if asyncio.current_task().cancelling():
+                raise
+    async with STATE_LOCK:
+        return read_state(directory, conversation_id)

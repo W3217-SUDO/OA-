@@ -1,79 +1,81 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { message } from "antd";
 import { api } from "../api";
 import { DEFAULT_AGENT_SKILL } from "../agentSkillRouting";
 import { aiWordDocumentName, isAiWordGenerationRequest, isUsableAiDocumentContent } from "../legal/constants";
 import { confirmCaseAgentDocument } from "../legal/services/agentDocumentConfirmation";
 import { usePersonalConversations } from "./usePersonalConversations";
+import { useConversationRuntime } from "./useConversationRuntime";
 import { errorText, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
 
 const SUPPORTED_FILE = /\.(pdf|docx|xlsx|txt|png|jpe?g)$/i;
 export const MATERIAL_ACCEPT = ".pdf,.docx,.xlsx,.txt,.png,.jpg,.jpeg";
+type Draft = { input: string; skillId: string; responseMode: ResponseMode; materials: Material[]; caseMaterials: Material[]; selectedCase: WorkspaceCase | null; savedDocuments: Record<number, string>; decisionResult?: unknown };
+const EMPTY_DRAFT: Draft = { input: "", skillId: DEFAULT_AGENT_SKILL, responseMode: "fast", materials: [], caseMaterials: [], selectedCase: null, savedDocuments: {} };
 
 export function usePersonalWorkspace() {
   const [status, setStatus] = useState<WorkspaceStatus | null>(null);
-  const [state, setState] = useState<WorkspaceState>({ messages: [], pending_actions: [] });
   const [skills, setSkills] = useState<WorkspaceSkill[]>([]);
-  const [skillId, setSkillId] = useState(DEFAULT_AGENT_SKILL);
-  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [sending, setSending] = useState(false);
-  const [responseMode, setResponseMode] = useState<ResponseMode>("fast");
-  const [progress, setProgress] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [materials, setMaterials] = useState<Material[]>([]);
-  const [selectedCase, setSelectedCase] = useState<WorkspaceCase | null>(null);
-  const [caseMaterials, setCaseMaterials] = useState<Material[]>([]);
   const [decisionId, setDecisionId] = useState("");
-  const [decisionResult, setDecisionResult] = useState<unknown>();
-  const [savedDocuments, setSavedDocuments] = useState<Record<number, string>>({});
-  const requestRef = useRef<AbortController | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const uploadLock = useRef(false);
   const decisionLock = useRef(false);
-  const conversations = usePersonalConversations(setState);
-  const resetConversation = () => {
-    setInput(""); setMaterials([]); setCaseMaterials([]); setSelectedCase(null);
-    setSavedDocuments({}); setDecisionResult(undefined); setProgress("");
+  const sendStarts = useRef(new Set<string>());
+  const runtime = useConversationRuntime();
+  const state = runtime.state;
+  const id = state.conversation_id || "";
+  const draft = drafts[id] || EMPTY_DRAFT;
+  const { input, skillId, responseMode, materials, caseMaterials, selectedCase, savedDocuments, decisionResult } = draft;
+  const sending = !!runtime.activities[id];
+  const stopping = !!runtime.activities[id]?.stopping;
+  const conversations = usePersonalConversations(runtime.activate);
+  const updateDraft = <K extends keyof Draft>(target: string, key: K, value: SetStateAction<Draft[K]>) => {
+    setDrafts((current) => {
+      const previous = current[target] || EMPTY_DRAFT;
+      const next = typeof value === "function" ? (value as (old: Draft[K]) => Draft[K])(previous[key]) : value;
+      return { ...current, [target]: { ...previous, [key]: next } };
+    });
   };
-  const changeConversation = async (operation: () => Promise<WorkspaceState>, reset = true) => {
-    if (requestRef.current || uploadLock.current || decisionLock.current || loading) throw new Error("请先完成当前操作，再切换对话");
+  const setInput = (value: SetStateAction<string>) => updateDraft(id, "input", value);
+  const setSkillId = (value: string) => updateDraft(id, "skillId", value);
+  const setResponseMode = (value: ResponseMode) => updateDraft(id, "responseMode", value);
+  const setMaterials = (value: SetStateAction<Material[]>) => updateDraft(id, "materials", value);
+  const setCaseMaterials = (value: SetStateAction<Material[]>) => updateDraft(id, "caseMaterials", value);
+  const changeConversation = async (operation: () => Promise<WorkspaceState>) => {
+    if (uploadLock.current || decisionLock.current || loading || sendStarts.current.has("")) throw new Error("请先完成当前文件或确认操作，再切换对话");
     await operation();
-    if (reset) resetConversation();
   };
 
   const refreshSkills = async () => {
     const { data } = await api.get<{ items: WorkspaceSkill[] }>("/agent/skills");
     setSkills(data.items);
-    setSkillId((current) => data.items.some((item) => item.id === current && item.available) ? current : DEFAULT_AGENT_SKILL);
+    setDrafts((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, { ...value, skillId: data.items.some((item) => item.id === value.skillId && item.available) ? value.skillId : DEFAULT_AGENT_SKILL }])));
   };
   const load = async () => {
-    setLoading(true);
-    setLoadError("");
+    if (runtime.anyRunning()) { message.warning("请先停止正在运行的对话再刷新"); return; }
+    setLoading(true); setLoadError("");
     try {
-      const [statusResponse] = await Promise.all([
-        api.get<WorkspaceStatus>("/personal-agent/status"), conversations.load(), refreshSkills(),
-      ]);
+      runtime.reset();
+      const [statusResponse] = await Promise.all([api.get<WorkspaceStatus>("/personal-agent/status"), conversations.load(), refreshSkills()]);
       setStatus(statusResponse.data);
-      setSavedDocuments({});
     } catch (error) { setLoadError(errorText(error, "工作台加载失败")); }
     finally { setLoading(false); }
   };
-  useEffect(() => { void load(); return () => requestRef.current?.abort(); }, []);
+  useEffect(() => { void load(); }, []);
 
   const upload = async (files: File[]) => {
-    if (!files.length || uploadLock.current || requestRef.current || conversations.locked()) return;
+    if (!files.length || uploadLock.current || conversations.locked()) return;
     if (materials.length + caseMaterials.length + files.length > 12) { message.warning("每次提问最多选择12份材料"); return; }
     if (files.some((file) => !SUPPORTED_FILE.test(file.name) || !file.size || file.size > 20 * 1024 * 1024)) {
       message.error("请选择20MB以内的 PDF、Word（.docx）、Excel（.xlsx）、TXT 或 PNG/JPG 图片"); return;
     }
-    uploadLock.current = true;
-    setUploading(true);
+    uploadLock.current = true; setUploading(true);
     try {
       for (const file of files) {
-        const form = new FormData();
-        form.append("file", file);
-        form.append("category", "个人智能体材料");
+        const form = new FormData(); form.append("file", file); form.append("category", "个人智能体材料");
         const { data } = await api.post<{ id: number; original_name: string }>("/attachments", form);
         setMaterials((current) => [...current, { id: data.id, name: data.original_name }]);
       }
@@ -81,100 +83,57 @@ export function usePersonalWorkspace() {
     finally { uploadLock.current = false; setUploading(false); }
   };
 
-  const chooseCase = (item: WorkspaceCase | null) => { setSelectedCase(item); setCaseMaterials([]); };
+  const chooseCase = (item: WorkspaceCase | null) => { updateDraft(id, "selectedCase", item); setCaseMaterials([]); };
+  const saveWord = (item: WorkspaceMessage, index: number, target = id) => {
+    if (!item.case_id || !item.content.trim()) return;
+    const name = aiWordDocumentName("", item.content);
+    confirmCaseAgentDocument({ caseId: item.case_id, serialNo: item.case_no || "", name, content: item.content, onSaved: async () => { updateDraft(target, "savedDocuments", (current) => ({ ...current, [index]: name })); } });
+  };
   const send = async () => {
     const content = input.trim();
-    if (!content || requestRef.current || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
+    if (!content || stopping || sendStarts.current.has(id) || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
     const skill = skills.find((item) => item.id === skillId && item.available);
     if (!skill) { message.error("所选技能已停用或不存在，请重新选择"); return; }
-    const controller = new AbortController();
-    requestRef.current = controller;
-    setSending(true);
-    setProgress("正在连接办公助手…");
-    setInput("");
-    let assistantIndex = state.messages.length + 1;
-    const metadata = { skill_name: skill.name, case_id: selectedCase?.id, case_no: selectedCase?.serial_no };
-    let started = false;
+    // 只锁住启动阶段；模型生成期间允许其他对话独立发送。
+    sendStarts.current.add(id);
+    let target = id;
     try {
-      const conversation = state.conversation_id ? state : await conversations.create();
-      if (controller.signal.aborted) throw new DOMException("已停止生成", "AbortError");
-      assistantIndex = conversation.messages.length + 1;
-      setState({ ...conversation, messages: [...conversation.messages, { role: "user", content, ...metadata, attachments: [...materials, ...caseMaterials] }, { role: "assistant", content: "", ...metadata }] });
-      started = true;
-      const response = await fetch("/api/v1/personal-agent/messages", {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("access_token") || ""}` },
-        body: JSON.stringify({ conversation_id: conversation.conversation_id, content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: selectedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast" }), signal: controller.signal,
-      });
-      if (!response.ok || !response.body) {
-        const detail = await response.text();
-        throw new Error(detail || "智能体响应失败");
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let completed = false;
-      let finalState: WorkspaceState | null = null;
-      const consume = (chunk: string) => {
-        buffer += chunk.replace(/\r\n/g, "\n");
-        const blocks = buffer.split("\n\n");
-        buffer = blocks.pop() || "";
-        for (const block of blocks) {
-          const line = block.split("\n").find((item) => item.startsWith("data:"));
-          if (!line) continue;
-          const event = JSON.parse(line.slice(5).trim()) as { type: string; content?: string; detail?: string; state?: WorkspaceState };
-          if (event.type === "progress") { setProgress(event.content || ""); }
-          else if (event.type === "delta") {
-            setState((current) => ({ ...current, messages: current.messages.map((item, index) => index === assistantIndex ? { ...item, content: item.content + (event.content || "") } : item) }));
-          } else if (event.type === "state" && event.state) { completed = true; finalState = event.state; setState(event.state); }
-          else if (event.type === "error") throw new Error(event.detail || "智能体处理失败");
-        }
-      };
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) { consume(decoder.decode()); break; }
-        consume(decoder.decode(value, { stream: true }));
-      }
-      if (!completed) throw new Error("响应中断，未收到完整结果，请重新发送");
-      const completedState = finalState as WorkspaceState | null;
+      if (runtime.running(id)) await runtime.stop(id);
+      const conversation = id ? runtime.get(id) : await conversations.create();
+      target = conversation.conversation_id!;
+      if (!id) setDrafts((current) => ({ ...current, [target]: { ...draft, input: "" } }));
+      else setInput("");
+      const metadata = { skill_name: skill.name, case_id: selectedCase?.id, case_no: selectedCase?.serial_no };
+      const generation = runtime.generate(conversation, { content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: selectedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast" }, { role: "user", content, ...metadata, attachments: [...materials, ...caseMaterials] }, metadata);
+      updateDraft(target, "materials", []); updateDraft(target, "caseMaterials", []);
+      sendStarts.current.delete(id);
+      const completedState = await generation;
       const finalMessage = completedState?.messages.at(-1);
-      if (finalMessage?.can_save_document && isAiWordGenerationRequest(content) && isUsableAiDocumentContent(finalMessage.content) && !completedState?.pending_actions.some((action) => action.preview?.path?.endsWith("/ai-space/files"))) {
-        saveWord(finalMessage, completedState!.messages.length - 1);
-      }
-      setMaterials([]);
-      setCaseMaterials([]);
+      if (finalMessage?.can_save_document && isAiWordGenerationRequest(content) && isUsableAiDocumentContent(finalMessage.content) && !completedState?.pending_actions.some((action) => action.preview?.path?.endsWith("/ai-space/files"))) saveWord(finalMessage, completedState!.messages.length - 1, target);
     } catch (error) {
-      const stopped = (error as Error).name === "AbortError";
-      if (started) setState((current) => ({ ...current, messages: current.messages.map((item, index) => index === assistantIndex ? { ...item, failed: !stopped, content: stopped ? item.content || "已停止生成" : errorText(error, "智能体处理失败") } : item) }));
-      else if (!stopped) message.error(errorText(error, "新建对话失败"));
-      if (!stopped) setInput(content);
+      updateDraft(target, "input", (current) => current || content);
+      message.error(errorText(error, "智能体处理失败"));
     } finally {
-      requestRef.current = null; setSending(false); setProgress("");
+      sendStarts.current.delete(id);
       try { await conversations.refresh(); } catch (error) { message.error(errorText(error, "对话列表刷新失败")); }
     }
   };
+  const stop = async () => { try { await runtime.stop(id); } catch (error) { message.error(errorText(error, "停止生成失败")); } };
 
   const decide = async (action: PendingAction, decision: "approved" | "rejected") => {
-    if (decisionLock.current || requestRef.current || conversations.locked()) return false;
-    decisionLock.current = true;
-    setDecisionId(action.id);
+    if (decisionLock.current || runtime.running(id) || conversations.locked()) return false;
+    decisionLock.current = true; setDecisionId(action.id);
     try {
       const { data } = await api.post<{ state: WorkspaceState; result?: unknown }>(`/personal-agent/actions/${action.id}/decision`, { conversation_id: state.conversation_id, decision }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
-      setState(data.state);
-      setDecisionResult(data.result);
-      message.success(decision === "approved" ? "操作已完成" : "已取消操作");
-      return true;
+      runtime.replace(data.state); updateDraft(id, "decisionResult", data.result);
+      message.success(decision === "approved" ? "操作已完成" : "已取消操作"); return true;
     } catch (error) { message.error(errorText(error, "操作未完成，请查看真实执行状态")); return false; }
     finally { decisionLock.current = false; setDecisionId(""); }
   };
 
-  const saveWord = (item: WorkspaceMessage, index: number) => {
-    if (!item.case_id || !item.content.trim()) return;
-    const name = aiWordDocumentName("", item.content);
-    confirmCaseAgentDocument({ caseId: item.case_id, serialNo: item.case_no || "", name, content: item.content, onSaved: async () => { setSavedDocuments((current) => ({ ...current, [index]: name })); } });
-  };
-
-  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, responseMode, setResponseMode, progress, upload, uploading, materials, setMaterials, selectedCase, chooseCase, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, stop: () => requestRef.current?.abort(), refreshSkills, saveWord, savedDocuments,
-    conversations: conversations.items, conversationBusy: conversations.busy,
-    createConversation: () => changeConversation(conversations.create), selectConversation: (id: string) => id === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(id)), deleteConversation: (id: string) => changeConversation(() => conversations.remove(id), id === state.conversation_id),
+  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, stop, refreshSkills, saveWord, savedDocuments,
+    conversations: conversations.items, conversationBusy: conversations.busy, runningIds: Object.keys(runtime.activities),
+    createConversation: () => changeConversation(conversations.create), selectConversation: (target: string) => target === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(target)),
+    deleteConversation: (target: string) => changeConversation(async () => { const next = await conversations.remove(target); runtime.forget(target); setDrafts((current) => { const updated = { ...current }; delete updated[target]; return updated; }); return next; }),
   };
 }

@@ -1,18 +1,19 @@
 import { useState } from "react";
 import { Button, Drawer, Empty, Modal, Tooltip, message } from "antd";
-import { DeleteOutlined, HistoryOutlined, MessageOutlined, PlusOutlined } from "@ant-design/icons";
+import { DeleteOutlined, HistoryOutlined, LoadingOutlined, MessageOutlined, PlusOutlined } from "@ant-design/icons";
 import { errorText, type WorkspaceConversation } from "./types";
 
 type Props = {
   items: WorkspaceConversation[];
   activeId?: string | null;
   busy: boolean;
+  runningIds: string[];
   onCreate: () => Promise<void>;
   onSelect: (id: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 };
 
-export function ConversationManager({ items, activeId, busy, onCreate, onSelect, onDelete }: Props) {
+export function ConversationManager({ items, activeId, busy, runningIds, onCreate, onSelect, onDelete }: Props) {
   const [open, setOpen] = useState(false);
   const [modal, contextHolder] = Modal.useModal();
   const run = async (operation: () => Promise<void>, close = false) => {
@@ -38,9 +39,9 @@ export function ConversationManager({ items, activeId, busy, onCreate, onSelect,
       {!items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />}
       <div className="workspace-conversation-list">{items.map((item) => <div className={`workspace-conversation-row${item.id === activeId ? " active" : ""}`} key={item.id}>
         <button className="workspace-conversation-select" aria-current={item.id === activeId ? "true" : undefined} disabled={busy} onClick={() => void run(() => onSelect(item.id), true)}>
-          <MessageOutlined /><span><b title={item.title}>{item.title}</b><small>{item.updated_at && `${new Date(item.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · `}{item.message_count} 条消息</small></span>
+          {runningIds.includes(item.id) ? <LoadingOutlined /> : <MessageOutlined />}<span><b title={item.title}>{item.title}</b><small>{runningIds.includes(item.id) ? "正在回答" : `${item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " · " : ""}${item.message_count} 条消息`}</small></span>
         </button>
-        <Tooltip title="删除对话"><Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除对话：${item.title}`} disabled={busy} onClick={() => remove(item)} /></Tooltip>
+        <Tooltip title={runningIds.includes(item.id) ? "请先停止该对话的回答" : "删除对话"}><Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除对话：${item.title}`} disabled={busy || runningIds.includes(item.id)} onClick={() => remove(item)} /></Tooltip>
       </div>)}</div>
     </Drawer>
   </>;

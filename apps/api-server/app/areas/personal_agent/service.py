@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -289,8 +290,31 @@ def _action_from_model(action: dict[str, Any], identity: dict[str, Any], context
 
 
 async def generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, conversation_id: str | None = None, skill_id: str = "general-office", attachment_ids: list[int] | None = None, case_id: int | None = None, document_ids: list[int] | None = None, response_mode: ResponseMode = "fast", on_progress: ProgressCallback | None = None) -> dict[str, Any]:
-    async with conversations.conversation_operation(_user_dir(identity["username"]), conversation_id) as state:
-        return await _generate_response(identity, db, text, on_delta, state=state, skill_id=skill_id, attachment_ids=attachment_ids, case_id=case_id, document_ids=document_ids, response_mode=response_mode, on_progress=on_progress)
+    async with conversations.conversation_operation(_user_dir(identity["username"]), conversation_id, cancellable=True) as state:
+        initial_last = state["messages"][-1] if state["messages"] else None
+        partial: list[str] = []
+
+        async def capture_delta(content: str) -> None:
+            partial.append(content)
+            await on_delta(content)
+
+        try:
+            return await _generate_response(identity, db, text, capture_delta, state=state, skill_id=skill_id, attachment_ids=attachment_ids, case_id=case_id, document_ids=document_ids, response_mode=response_mode, on_progress=on_progress)
+        except asyncio.CancelledError:
+            if not state["messages"] or state["messages"][-1] is initial_last:
+                state["messages"].append({"role": "user", "content": text, "created_at": _now()})
+            if state["messages"] and state["messages"][-1] is not initial_last:
+                if state["messages"][-1]["role"] == "user":
+                    user_message = state["messages"][-1]
+                    state["messages"].append({"role": "assistant", "content": "".join(partial) or "已停止生成", "created_at": _now(), "skill_name": user_message.get("skill_name"), "case_id": case_id, "case_no": user_message.get("case_no"), "stopped": True})
+                state["messages"] = state["messages"][-100:]
+                state["updated_at"] = _now()
+                await _save_state(identity["username"], state)
+            raise
+
+
+async def stop_response(identity: dict[str, Any], conversation_id: str) -> dict[str, Any]:
+    return {"state": await conversations.stop_generation(_user_dir(identity["username"]), conversation_id)}
 
 
 async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, state: dict[str, Any], skill_id: str, attachment_ids: list[int] | None, case_id: int | None, document_ids: list[int] | None, response_mode: ResponseMode, on_progress: ProgressCallback | None) -> dict[str, Any]:

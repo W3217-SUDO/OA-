@@ -12,7 +12,7 @@ from app.config import settings
 from app.core.constants import logger
 from app.database import get_db
 from app.security import current_identity
-from app.areas.personal_agent.service import build_context, decide_action, generate_response, manage_conversations, personal_identity, personal_state
+from app.areas.personal_agent.service import build_context, decide_action, generate_response, manage_conversations, personal_identity, personal_state, stop_response
 from app.areas.personal_agent.workspace import workspace_commands
 from app.areas.personal_agent.response_runtime import ResponseMode, supports_response_modes
 
@@ -84,6 +84,11 @@ async def personal_agent_select_conversation(conversation_id: str, identity: dic
 @router.delete(f"{settings.api_prefix}/personal-agent/conversations/{{conversation_id}}")
 async def personal_agent_delete_conversation(conversation_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     return await manage_conversations(await personal_identity(identity, db), "delete", conversation_id)
+
+
+@router.post(f"{settings.api_prefix}/personal-agent/conversations/{{conversation_id}}/stop")
+async def personal_agent_stop_generation(conversation_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await stop_response(await personal_identity(identity, db), conversation_id)
 
 
 @router.get(f"{settings.api_prefix}/personal-agent/identity.md")
