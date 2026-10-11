@@ -19,23 +19,21 @@ from app.database import get_db
 from app.security import current_identity
 
 router = APIRouter()
-_session_path = f"{settings.api_prefix}/cases/{{case_id}}/attachments/{{attachment_id}}/libreoffice"
-_wopi_path = f"{settings.api_prefix}/office/wopi/files/{{session_id}}"
 
 
-@router.post(_session_path + "/session")
+@router.post(f"{settings.api_prefix}/cases/{{case_id}}/attachments/{{attachment_id}}/libreoffice/session")
 async def create_libreoffice_session(case_id: int, attachment_id: int,
                                     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     return await create_session(case_id, attachment_id, identity, db)
 
 
-@router.get(_session_path + "/sessions/{session_id}")
+@router.get(f"{settings.api_prefix}/cases/{{case_id}}/attachments/{{attachment_id}}/libreoffice/sessions/{{session_id}}")
 async def get_libreoffice_session(case_id: int, attachment_id: int, session_id: str,
                                  identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     return await get_session(case_id, attachment_id, session_id, identity, db)
 
 
-@router.post(_session_path + "/sessions/{session_id}/close")
+@router.post(f"{settings.api_prefix}/cases/{{case_id}}/attachments/{{attachment_id}}/libreoffice/sessions/{{session_id}}/close")
 async def close_libreoffice_session(case_id: int, attachment_id: int, session_id: str,
                                    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     return await close_session(case_id, attachment_id, session_id, identity, db)
@@ -53,7 +51,7 @@ async def authenticated_wopi(request: Request, session_id: str, db):
     return context
 
 
-@router.get(_wopi_path)
+@router.get(f"{settings.api_prefix}/office/wopi/files/{{session_id}}")
 async def check_file_info(session_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     context = await authenticated_wopi(request, session_id, db)
     context.session["engine_started"] = True
@@ -69,7 +67,7 @@ async def check_file_info(session_id: str, request: Request, db: AsyncSession = 
             "UserCanRename": False, "PostMessageOrigin": editor_configuration()["frontend"]}
 
 
-@router.get(_wopi_path + "/contents")
+@router.get(f"{settings.api_prefix}/office/wopi/files/{{session_id}}/contents")
 async def get_file(session_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     context = await authenticated_wopi(request, session_id, db)
     expected = request.headers.get("x-wopi-maxexpectedsize")
@@ -97,7 +95,7 @@ async def get_file(session_id: str, request: Request, db: AsyncSession = Depends
                     headers={"X-WOPI-ItemVersion": previous["version"], "Cache-Control": "no-store"})
 
 
-@router.post(_wopi_path)
+@router.post(f"{settings.api_prefix}/office/wopi/files/{{session_id}}")
 async def change_file_lock(session_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     context = await authenticated_wopi(request, session_id, db)
     operation = request.headers.get("x-wopi-override", "")
@@ -129,7 +127,7 @@ async def change_file_lock(session_id: str, request: Request, db: AsyncSession =
     return Response(status_code=200)
 
 
-@router.post(_wopi_path + "/contents")
+@router.post(f"{settings.api_prefix}/office/wopi/files/{{session_id}}/contents")
 async def save_file(session_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     context = await authenticated_wopi(request, session_id, db)
     if request.headers.get("x-wopi-override") != "PUT":

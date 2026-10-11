@@ -2,20 +2,16 @@ import axios from "axios";
 import { api } from "../api";
 import type { LibreOfficeEditorTarget, LibreOfficeSession, LibreOfficeSessionStatus } from "./types";
 
-function sessionPath(target: LibreOfficeEditorTarget): string {
-  return `/cases/${target.caseId}/attachments/${target.attachmentId}/libreoffice`;
-}
-
 export async function createLibreOfficeSession(target: LibreOfficeEditorTarget): Promise<LibreOfficeSession> {
-  return (await api.post<LibreOfficeSession>(`${sessionPath(target)}/session`, {})).data;
+  return (await api.post<LibreOfficeSession>(`/cases/${target.caseId}/attachments/${target.attachmentId}/libreoffice/session`, {})).data;
 }
 
 export async function getLibreOfficeSession(target: LibreOfficeEditorTarget, sessionId: string): Promise<LibreOfficeSessionStatus> {
-  return (await api.get<LibreOfficeSessionStatus>(`${sessionPath(target)}/sessions/${encodeURIComponent(sessionId)}`)).data;
+  return (await api.get<LibreOfficeSessionStatus>(`/cases/${target.caseId}/attachments/${target.attachmentId}/libreoffice/sessions/${encodeURIComponent(sessionId)}`)).data;
 }
 
 export async function closeLibreOfficeSession(target: LibreOfficeEditorTarget, sessionId: string): Promise<LibreOfficeSessionStatus> {
-  return (await api.post<LibreOfficeSessionStatus>(`${sessionPath(target)}/sessions/${encodeURIComponent(sessionId)}/close`, {})).data;
+  return (await api.post<LibreOfficeSessionStatus>(`/cases/${target.caseId}/attachments/${target.attachmentId}/libreoffice/sessions/${encodeURIComponent(sessionId)}/close`, {})).data;
 }
 
 export function libreOfficeError(error: unknown, operation: string): string {
