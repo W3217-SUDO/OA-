@@ -144,7 +144,7 @@ export function createConfiguredColumns(context: {
           {context.cellValue(row, header)}
         </Button>) : (context.cellValue(row, header)),
     })).map((column) => {
-        if (context.isFeeQueryRoute) {
+        if (context.isRefundCaseFeeRoute || context.isFeeQueryRoute) {
             const header = context.activeRouteConfig.headers[Number(column.key.split("-").pop())];
             if (header === "操作") return column;
             const render = column.render;
