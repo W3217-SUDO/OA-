@@ -39,6 +39,7 @@ async def list_finance_transactions(
     page: int = Query(1, ge=1),
     page_size: int | None = Query(None, ge=1, le=200),
     finance_record_id: int | None = Query(None, ge=1),
+    finance_record_ids: str = "",
     transaction_type: str = "",
     keyword: str = "",
     date_from: date | None = None,
@@ -53,7 +54,7 @@ async def list_finance_transactions(
         _user_display_map,
     )
     from app.core.permissions import (
-        _visible_record_ids,
+        _record_scope_conditions,
     )
     from app.core.system import (
         _allowed_field_keys,
@@ -61,6 +62,11 @@ async def list_finance_transactions(
     conditions = []
     if finance_record_id is not None:
         conditions.append(FinanceTransaction.finance_record_id == finance_record_id)
+    if finance_record_ids:
+        parts = finance_record_ids.split(",")
+        if len(finance_record_ids) > 12000 or len(parts) > 1000 or any(not part.isdecimal() or int(part) < 1 for part in parts):
+            raise HTTPException(status_code=422, detail="费用记录编号列表无效")
+        conditions.append(FinanceTransaction.finance_record_id.in_({int(part) for part in parts}))
     if transaction_type.strip():
         conditions.append(FinanceTransaction.transaction_type == transaction_type.strip())
     if keyword.strip():
@@ -77,7 +83,7 @@ async def list_finance_transactions(
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status_code=422, detail="流水开始日期不能晚于结束日期")
     if identity.get("role") != "admin":
-        visible_record_ids = await _visible_record_ids(identity, db)
+        visible_record_ids = select(BusinessRecord.id).where(*(await _record_scope_conditions(identity, db)))
         conditions.append(or_(
             and_(FinanceTransaction.finance_record_id.is_not(None), FinanceTransaction.finance_record_id.in_(visible_record_ids)),
             and_(FinanceTransaction.finance_record_id.is_(None), FinanceTransaction.operator == identity["username"]),

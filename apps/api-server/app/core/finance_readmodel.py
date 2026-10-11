@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import Numeric, case, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import FINANCE_FEE_TYPES
@@ -13,7 +13,7 @@ from app.models import BusinessRecord, FinanceTransaction, IncomingPayment
 
 
 async def read_finance_summary(identity: dict, db: AsyncSession) -> dict:
-    """保留原有范围和金额语义，计数下推，历史JSON金额分批读取。"""
+    """保留原有范围和金额语义，将计数与金额聚合交给数据库。"""
     conditions = [
         BusinessRecord.module.in_(["finance", "invoice", "refund"]),
         *(await _record_scope_conditions(identity, db)),
@@ -28,7 +28,7 @@ async def read_finance_summary(identity: dict, db: AsyncSession) -> dict:
         totals[module] += int(count)
 
     # 金额可能是数字或数字字符串；保留未填写的空值，不将其伪装成零。
-    # SQLite强制转换会吞掉非法值，因此仍逐项转换已填写金额。
+    # SQLite强制转换会吞掉非法值，因此测试数据库仍逐项转换已填写金额。
     dialect = db.get_bind().dialect.name
     if dialect == "sqlite":
         amount_kind = func.json_type(BusinessRecord.data, "$.amount")
@@ -38,22 +38,44 @@ async def read_finance_summary(identity: dict, db: AsyncSession) -> dict:
         raise ValueError(f"财务概览不支持数据库类型：{dialect}")
     amounts = {fee_type: 0 for fee_type in FINANCE_FEE_TYPES}
     missing_amount_count = 0
-    amount_rows = await db.stream(
-        select(BusinessRecord.data["fee_type"].as_string(),
-               BusinessRecord.data["amount"], amount_kind)
-        .where(*conditions, BusinessRecord.module == "finance",
-               BusinessRecord.data["fee_type"].as_string().in_(FINANCE_FEE_TYPES))
-        .order_by(BusinessRecord.id).execution_options(yield_per=400)
-    )
-    try:
-        async for batch in amount_rows.partitions(400):
-            for fee_type, amount, kind in batch:
-                if kind is None or kind == "null":
-                    missing_amount_count += 1
-                    continue
-                amounts[fee_type] += float(amount)
-    finally:
-        await amount_rows.close()
+    fee_type_column = BusinessRecord.data["fee_type"].as_string()
+    amount_conditions = [*conditions, BusinessRecord.module == "finance",
+                         fee_type_column.in_(FINANCE_FEE_TYPES)]
+    if dialect == "postgresql":
+        amount_text = BusinessRecord.data["amount"].as_string()
+        numeric_amount = case(
+            (amount_kind == "boolean", case((amount_text == "true", 1), else_=0)),
+            else_=cast(amount_text, Numeric),
+        )
+        amount_rows = (
+            select(fee_type_column.label("fee_type"), numeric_amount.label("amount"),
+                   case((or_(amount_kind.is_(None), amount_kind == "null"), 1), else_=0).label("missing"))
+            .where(*amount_conditions)
+            .cte("finance_amount_rows")
+            .prefix_with("MATERIALIZED", dialect="postgresql")
+        )
+        amount_totals = await db.execute(
+            select(amount_rows.c.fee_type, func.sum(amount_rows.c.amount),
+                   func.sum(amount_rows.c.missing)).group_by(amount_rows.c.fee_type)
+        )
+        for fee_type, amount, missing in amount_totals:
+            amounts[fee_type] = float(amount or 0)
+            missing_amount_count += int(missing or 0)
+    else:
+        amount_rows = await db.stream(
+            select(fee_type_column, BusinessRecord.data["amount"], amount_kind)
+            .where(*amount_conditions)
+            .order_by(BusinessRecord.id).execution_options(yield_per=400)
+        )
+        try:
+            async for batch in amount_rows.partitions(400):
+                for fee_type, amount, kind in batch:
+                    if kind is None or kind == "null":
+                        missing_amount_count += 1
+                        continue
+                    amounts[fee_type] += float(amount)
+        finally:
+            await amount_rows.close()
 
     transactions = select(FinanceTransaction.transaction_type,
                           func.sum(FinanceTransaction.amount))

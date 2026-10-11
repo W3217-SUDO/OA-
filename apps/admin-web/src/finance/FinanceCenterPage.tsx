@@ -146,7 +146,6 @@ LegacyFinanceRecord,
 LegacyFinanceSummary,OriginalFieldSpec,OriginalRouteConfig,PaymentPackagePreview,
 OriginalFinanceRow,
 PaymentPrintDocumentData,
-Receivable,
 Reconciliation,
 Transaction
 } from "./types";
@@ -262,7 +261,6 @@ export default function FinanceCenterPage({
     get setSelectedRefundRows() { return setSelectedRefundRows; },
     get setCases() { return setCases; },
     get setCustomers() { return setCustomers; },
-    get setReceivables() { return setReceivables; },
     get setIncoming() { return setIncoming; },
     get setSelectedIncomingRows() { return setSelectedIncomingRows; },
     get setTransactions() { return setTransactions; },
@@ -323,7 +321,6 @@ export default function FinanceCenterPage({
     onNavigate?.("task-my-created");
   };
   const [customers, setCustomers] = useState<Fee[]>([]);
-  const [, setReceivables] = useState<Receivable[]>([]);
   const [incoming, setIncoming] = useState<IncomingPayment[]>([]);
   const [selectedIncomingRows, setSelectedIncomingRows] = useState<number[]>([]);
   const [pendingSettlements, setPendingSettlements] = useState<Fee[]>([]);
