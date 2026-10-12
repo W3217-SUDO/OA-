@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Input, List, Tooltip } from "antd";
-import { ArrowUpOutlined, CheckOutlined, CloseOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
+import { ArrowUpOutlined, CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import { ConversationManager } from "./ConversationManager";
 import { AssistantWorkspaceTools } from "./AssistantWorkspaceTools";
@@ -34,12 +34,11 @@ type Props = {
   suggestions: AssistantSuggestion[];
   focusRequested: boolean;
   onFocusHandled: () => void;
-  onOpenCaseAgent: () => void;
 };
 
 // 工作台里的个人智能体：对话和输入框合在一个面板内，会话可并行进行；问候语放在工作台顶部。
 const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
-  { workspace, suggestions, focusRequested, onFocusHandled, onOpenCaseAgent },
+  { workspace, suggestions, focusRequested, onFocusHandled },
   ref,
 ) {
   const { status, state, loading, loadError, sending, stopping, input, setInput, send, stop, decide, load } = workspace;
@@ -87,21 +86,35 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   return (
     <section className={`assistant${state.messages.length ? "" : " is-empty"}`} aria-label="个人智能体" ref={ref}>
       <div className="assistant-bar">
-        <span className="assistant-bar-title">助手对话</span>
-        <ConversationManager
-          items={workspace.conversations}
-          activeId={state.conversation_id}
-          busy={loading || workspace.conversationBusy}
-          runningIds={runningIds}
-          onCreate={workspace.createConversation}
-          onSelect={workspace.selectConversation}
-          onDelete={workspace.deleteConversation}
-          drawerClassName="assistant-conversation-drawer"
-          listClassName="assistant-conversation-list"
-          rowClassName="assistant-conversation-row"
-          selectClassName="assistant-conversation-select"
-          showHistoryLabel
-        />
+        <span className="assistant-bar-summary">
+          <span className="assistant-bar-title">助手对话</span>
+          {runningIds.length > 1 && <span className="assistant-running">{runningIds.length} 个对话正在回答</span>}
+        </span>
+        <div className="assistant-bar-actions">
+          <Button
+            className="assistant-refresh"
+            type="text"
+            icon={<ReloadOutlined />}
+            aria-label="刷新智能体"
+            title="刷新智能体"
+            disabled={loading || !!runningIds.length}
+            onClick={() => void load()}
+          />
+          <ConversationManager
+            items={workspace.conversations}
+            activeId={state.conversation_id}
+            busy={loading || workspace.conversationBusy}
+            runningIds={runningIds}
+            onCreate={workspace.createConversation}
+            onSelect={workspace.selectConversation}
+            onDelete={workspace.deleteConversation}
+            drawerClassName="assistant-conversation-drawer"
+            listClassName="assistant-conversation-list"
+            rowClassName="assistant-conversation-row"
+            selectClassName="assistant-conversation-select"
+            showHistoryLabel
+          />
+        </div>
       </div>
       {loadError && (
         <Alert className="assistant-alert" type="error" showIcon title={loadError} action={<Button size="small" onClick={() => void load()}>重试</Button>} />
@@ -193,12 +206,18 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           />
           <div className="assistant-composer-actions">
             {sending && <Tooltip title={stopping ? "正在停止回答" : "停止回答"}>
-              <Button className="assistant-send" shape="circle" danger icon={<StopOutlined />} loading={stopping} disabled={stopping} aria-label="停止回答" onClick={() => void stop()} />
+              <Button
+                className="assistant-send assistant-stop"
+                shape="circle"
+                icon={<span className="assistant-stop-glyph" aria-hidden="true" />}
+                loading={stopping}
+                disabled={stopping}
+                aria-label={stopping ? "正在停止回答" : "停止回答"}
+                onClick={() => void stop()}
+              />
             </Tooltip>}
             {(!sending || !!input.trim()) && <Tooltip title={sending ? "打断并发送" : "发送"}>
-              <Button className="assistant-send" shape={sending ? undefined : "circle"} type="primary" icon={<ArrowUpOutlined />} aria-label={sending ? "打断并发送" : "发送"} htmlType="submit" disabled={sendBlocked || !input.trim()}>
-                {sending ? "打断并发送" : null}
-              </Button>
+              <Button className="assistant-send" shape="circle" type="primary" icon={<ArrowUpOutlined />} aria-label={sending ? "打断并发送" : "发送"} htmlType="submit" disabled={sendBlocked || !input.trim()} />
             </Tooltip>}
           </div>
         </form>
@@ -212,16 +231,6 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         {shortcuts.map((item) => (
           <button key={item.label} type="button" disabled={sending} onClick={() => submit(item.prompt)}>{item.label}</button>
         ))}
-      </div>
-      <div className="assistant-meta">
-        {runningIds.length > 1 && <span>{runningIds.length} 个对话正在同时回答</span>}
-        <span className="assistant-tools">
-          <span className={`assistant-status ${status?.ready ? "is-ready" : "is-down"}`}>
-            {loading ? "连接中" : status?.ready ? "服务已连接" : "模型未就绪"}
-          </span>
-          <Button type="text" size="small" icon={<ReloadOutlined />} aria-label="刷新智能体" title="刷新智能体" disabled={loading || !!runningIds.length} onClick={() => void load()} />
-          <Button type="link" size="small" onClick={onOpenCaseAgent}>案件智能体</Button>
-        </span>
       </div>
     </section>
   );

@@ -1567,7 +1567,6 @@ export default function App() {
         onNavigate={navigate}
         grantedMenuKeys={grantedMenuKeys}
         permissionAdministrator={permissionAdministrator}
-        onOpenCaseAgent={() => navigate("case-agent-center")}
         assistantFocusRequested={assistantFocusRequested}
         onAssistantFocusHandled={() => setAssistantFocusRequested(false)}
       />

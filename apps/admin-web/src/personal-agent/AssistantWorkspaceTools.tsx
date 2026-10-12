@@ -14,7 +14,8 @@ export function AssistantWorkspaceTools({ workspace }: Props) {
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [previewMaterial, setPreviewMaterial] = useState<Material | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const busy = workspace.loading || workspace.sending || workspace.uploading || !!workspace.decisionId || workspace.conversationBusy;
+  // 生成期间允许准备下一轮草稿；上传、确认、切换和停止中的真实锁仍保持禁用。
+  const busy = workspace.loading || workspace.stopping || workspace.uploading || !!workspace.decisionId || workspace.conversationBusy;
   const canUseCases = workspace.status?.commands.some((item) => item.id === "cases");
   const openSkills = async () => {
     setSkillsOpen(true);

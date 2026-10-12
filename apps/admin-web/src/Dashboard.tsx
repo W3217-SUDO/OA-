@@ -33,7 +33,6 @@ export default function Dashboard({
   onNavigate,
   grantedMenuKeys,
   permissionAdministrator,
-  onOpenCaseAgent,
   assistantFocusRequested,
   onAssistantFocusHandled,
 }: {
@@ -42,7 +41,6 @@ export default function Dashboard({
   onNavigate: (route: string) => void;
   grantedMenuKeys: ReadonlySet<string>;
   permissionAdministrator: boolean;
-  onOpenCaseAgent: () => void;
   assistantFocusRequested: boolean;
   onAssistantFocusHandled: () => void;
 }) {
@@ -193,7 +191,6 @@ export default function Dashboard({
               suggestions={suggestions}
               focusRequested={assistantFocusRequested}
               onFocusHandled={onAssistantFocusHandled}
-              onOpenCaseAgent={onOpenCaseAgent}
             /> : <DashboardOverview
               greeting={greetingByHour(now.hour())}
               name={workspace.status?.identity?.display_name}
