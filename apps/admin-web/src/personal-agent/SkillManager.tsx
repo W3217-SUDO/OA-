@@ -3,6 +3,7 @@ import { Button, Empty, Form, Input, Modal, Space, Switch, Tooltip, message } fr
 import { DeleteOutlined, EditOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { errorText, type WorkspaceSkill } from "./types";
+import "./workspace-context.css";
 
 type Props = { open: boolean; onClose: () => void; skills: WorkspaceSkill[]; refresh: () => Promise<void>; onSelect: (id: string) => void };
 

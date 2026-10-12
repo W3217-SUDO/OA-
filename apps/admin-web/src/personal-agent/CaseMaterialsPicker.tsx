@@ -5,6 +5,7 @@ import { api } from "../api";
 import { buildAgentDocumentTree } from "../legal/constants";
 import type { CaseAgentDocument } from "../legal/types";
 import { errorText, type Material, type WorkspaceCase } from "./types";
+import "./workspace-context.css";
 
 type Props = { mode: "case" | "materials" | null; onClose: () => void; selectedCase: WorkspaceCase | null; onCase: (item: WorkspaceCase | null) => void; selectedMaterials: Material[]; onMaterials: (items: Material[]) => void; privateCount: number };
 

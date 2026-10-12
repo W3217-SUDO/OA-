@@ -3,6 +3,7 @@ import { Alert, Button, Input, List, Tooltip } from "antd";
 import { ArrowUpOutlined, CheckOutlined, CloseOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import { ConversationManager } from "./ConversationManager";
+import { AssistantWorkspaceTools } from "./AssistantWorkspaceTools";
 import { actionLabel } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 import "./assistant-panel.css";
@@ -159,35 +160,49 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           />
         </div>
       )}
-      <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); submit(); }}>
-        <Input.TextArea
-          ref={inputRef}
-          variant="borderless"
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          onCompositionStart={() => setComposing(true)}
-          onCompositionEnd={() => setComposing(false)}
-          onPressEnter={(event) => {
-            if (event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229 || composing) return;
-            event.preventDefault();
-            submit();
-          }}
-          autoSize={{ minRows: 1, maxRows: 5 }}
-          placeholder="告诉智能体你要完成的 OA 工作"
-          disabled={loading || !status?.ready}
-          aria-label="给智能体的指令"
-        />
-        <div className="assistant-composer-actions">
-          {sending && <Tooltip title={stopping ? "正在停止回答" : "停止回答"}>
-            <Button className="assistant-send" shape="circle" danger icon={<StopOutlined />} loading={stopping} disabled={stopping} aria-label="停止回答" onClick={() => void stop()} />
-          </Tooltip>}
-          {(!sending || !!input.trim()) && <Tooltip title={sending ? "打断并发送" : "发送"}>
-            <Button className="assistant-send" shape={sending ? undefined : "circle"} type="primary" icon={<ArrowUpOutlined />} aria-label={sending ? "打断并发送" : "发送"} htmlType="submit" disabled={sendBlocked || !input.trim()}>
-              {sending ? "打断并发送" : null}
-            </Button>
-          </Tooltip>}
-        </div>
-      </form>
+      <div className="assistant-composer"
+        onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
+        onDrop={(event) => {
+          if (!event.dataTransfer.files.length) return;
+          event.preventDefault();
+          void workspace.upload(Array.from(event.dataTransfer.files));
+        }}
+      >
+        <AssistantWorkspaceTools key={state.conversation_id || "new"} workspace={workspace} />
+        <form className="assistant-composer-input" onSubmit={(event) => { event.preventDefault(); submit(); }}>
+          <Input.TextArea
+            ref={inputRef}
+            variant="borderless"
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
+            onPressEnter={(event) => {
+              if (event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229 || composing) return;
+              event.preventDefault();
+              submit();
+            }}
+            onPaste={(event) => {
+              if (event.clipboardData.files.length) { event.preventDefault(); void workspace.upload(Array.from(event.clipboardData.files)); }
+            }}
+            maxLength={8000}
+            autoSize={{ minRows: 1, maxRows: 5 }}
+            placeholder="告诉智能体你要完成的 OA 工作"
+            disabled={loading || !status?.ready}
+            aria-label="给智能体的指令"
+          />
+          <div className="assistant-composer-actions">
+            {sending && <Tooltip title={stopping ? "正在停止回答" : "停止回答"}>
+              <Button className="assistant-send" shape="circle" danger icon={<StopOutlined />} loading={stopping} disabled={stopping} aria-label="停止回答" onClick={() => void stop()} />
+            </Tooltip>}
+            {(!sending || !!input.trim()) && <Tooltip title={sending ? "打断并发送" : "发送"}>
+              <Button className="assistant-send" shape={sending ? undefined : "circle"} type="primary" icon={<ArrowUpOutlined />} aria-label={sending ? "打断并发送" : "发送"} htmlType="submit" disabled={sendBlocked || !input.trim()}>
+                {sending ? "打断并发送" : null}
+              </Button>
+            </Tooltip>}
+          </div>
+        </form>
+      </div>
       <div className="assistant-chips">
         {suggestions.map((item) => (
           <button key={item.kind} type="button" className="is-context" disabled={sending} onClick={() => submit(item.prompt)}>
@@ -199,7 +214,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         ))}
       </div>
       <div className="assistant-meta">
-        <span>{runningIds.length > 1 ? `${runningIds.length} 个对话正在同时回答` : "所有查询和操作都受 OA 原有权限控制，写入系统前需要你确认"}</span>
+        {runningIds.length > 1 && <span>{runningIds.length} 个对话正在同时回答</span>}
         <span className="assistant-tools">
           <span className={`assistant-status ${status?.ready ? "is-ready" : "is-down"}`}>
             {loading ? "连接中" : status?.ready ? "服务已连接" : "模型未就绪"}
