@@ -84,6 +84,7 @@ FINANCE_FILE_QUERIES = {
     "/finance/refunds/export-selected",
     "/finance/internal-fees/export",
     "/finance/incoming-payments/export",
+    "/finance/incoming-payments/query/export",
     "/finance/archive-settlements/export",
     "/finance/archive-settlements/payment/export",
     "/finance/archive-settlements/paid/export",
