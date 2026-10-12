@@ -12,6 +12,23 @@ def joined(values):
     return ",".join(dict.fromkeys(str(value) for value in values if value is not None and value != ""))
 
 
+def case_court_export_fields(data):
+    """各审级先读当前保存字段，再读同级旧字段；拼接保留审级顺序并去重。"""
+    numbers = joined((
+        data.get("first_court_case_no") or data.get("first_instance_case_no") or data.get("court_case_no"),
+        data.get("second_court_case_no") or data.get("second_instance_case_no"),
+        data.get("execution_court_case_no") or data.get("execution_instance_case_no") or data.get("execution_case_no"),
+        data.get("retrial_court_case_no") or data.get("last_instance_case_no") or data.get("retrial_case_no"),
+    ))
+    courts = joined((
+        data.get("first_court_name") or data.get("first_instance_court"),
+        data.get("second_court_name") or data.get("second_instance_court"),
+        data.get("execution_court_name") or data.get("execution_instance_court"),
+        data.get("retrial_court_name") or data.get("last_instance_court"),
+    ))
+    return numbers, courts
+
+
 async def linked_cases(rows, identity, db):
     from app.core.permissions import _record_scope_conditions
     from app.core.query_batches import _scalars_in_batches
@@ -65,6 +82,7 @@ async def fee_export_values(rows, identity, db, internal=False):
                 data.get("amount"), case_data.get("notary_nos") or case_data.get("notary_no") or case_data.get("certificate_no"),
                 "", data.get("internal_fee_type")])
             continue
+        case_numbers, case_courts = case_court_export_fields(case_data)
         requested, refunded = data.get("refund_requested_amount"), data.get("refunded_amount")
         refund = None if requested is None or refunded is None else f"{Decimal(str(requested)):.2f}/{Decimal(str(refunded)):.2f}"
         values.append([index, data.get("case_no"), case.customer, data.get("case_stage"),
@@ -77,11 +95,7 @@ async def fee_export_values(rows, identity, db, internal=False):
             refund, data.get("cashed_date"), data.get("cashed_amount"), data.get("received_payer_name"),
             data.get("paid_date"), data.get("paid_amount"), data.get("paid_organization"),
             data.get("payment_status"), data.get("contract_no"),
-            joined((case_data.get("first_instance_case_no") or case_data.get("court_case_no"),
-                case_data.get("second_instance_case_no") or case_data.get("second_court_case_no"),
-                case_data.get("execution_instance_case_no") or case_data.get("execution_case_no"),
-                case_data.get("last_instance_case_no") or case_data.get("retrial_case_no"))) or data.get("court_case_no"),
-            joined(case_data.get(key) for key in ("first_instance_court", "second_instance_court", "execution_instance_court", "last_instance_court")) or data.get("court_name")])
+            case_numbers or data.get("court_case_no"), case_courts or data.get("court_name")])
     return values
 
 
