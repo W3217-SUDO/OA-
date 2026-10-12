@@ -266,7 +266,6 @@ test("dashboard approved entries keep their destinations and unapproved entries 
       useMemo: (factory) => factory(),
       useCallback: (callback) => callback,
       useRef: (value) => ({ current: value }),
-      useState: () => [conversationVisible, (value) => { conversationVisible = value; }],
       useEffect: (effect) => { const cleanup = effect(); if (typeof cleanup === "function") cleanups.push(cleanup); },
     },
     antd: { Button, Card, message: { warning: (value) => warnings.push(value), error: (value) => errors.push(value) } },
@@ -289,6 +288,8 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     "./workspacePermissions": permissions,
   }, { AbortController, sessionStorage: { setItem: (key, value) => storage.set(key, value) } }).default;
   const props = {
+    get view() { return conversationVisible ? "conversation" : "overview"; },
+    onViewChange: (view) => { conversationVisible = view === "conversation"; },
     onNavigate: (route) => calls.push(["route", route]),
     grantedMenuKeys: new Set(["finance-fee-query", "task-my-accepted", "case-mine-civil"]),
     permissionAdministrator: false,
@@ -322,7 +323,7 @@ test("dashboard approved entries keep their destinations and unapproved entries 
   schedule.props.onAsk("开庭 CASE-1");
   assert.equal(conversationVisible, true);
   assert.ok(nodes(Dashboard(props)).some((node) => node.type === AssistantPanelStub));
-  const overviewButton = nodes(Dashboard(props)).find((node) => node.type === "button" && node.props.children === "工作概览");
+  const overviewButton = nodes(Dashboard(props)).find((node) => node.type === "button" && node.props.children === "工作概况");
   overviewButton.props.onClick();
   assert.equal(conversationVisible, false);
   assert.ok(nodes(Dashboard(props)).some((node) => node.type === OverviewStub));
