@@ -77,7 +77,7 @@ export default function DashboardMetricTiles({ leading, metrics, status, onOpen 
       {!collapsed && (
         <div className="wb-metric-grid">
           {metrics.map((metric, index) => (
-            <button type="button" className={`wb-metric tone-${index}`} key={metric.key} onClick={() => onOpen(metric)}>
+            <button type="button" className={`wb-metric tone-${index}${metric.key === "urgent-cases" && Number.parseInt(metric.value, 10) > 0 ? " is-urgent" : ""}`} key={metric.key} onClick={() => onOpen(metric)}>
               <span className="wb-metric-icon">{metricIcons[metric.key]}</span>
               <span className="wb-metric-text">
                 <strong>{metric.value}</strong>

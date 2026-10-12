@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Button, Empty } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { AuditOutlined, BankOutlined, CheckSquareOutlined, FileSearchOutlined, FolderOpenOutlined, ReloadOutlined, RightOutlined } from "@ant-design/icons";
 import type { DashboardData } from "./dashboardData";
 
 // 沿用工作台原有待办入口；统计展示与个人智能体对话互相独立。
@@ -15,6 +15,18 @@ const todoRoutes: Record<string, string> = {
   待审批归档费用: "finance-archive-fee-pending",
   待审核归档: "case-archive-pending",
   待审核预损费用: "finance-internal-fee-audit",
+};
+
+const todoIcons: Record<string, ReactNode> = {
+  "task-my-accepted": <CheckSquareOutlined />,
+  "clue-audit-pending": <FileSearchOutlined />,
+  "contract-audit-pending": <AuditOutlined />,
+  "seal-audit-pending": <AuditOutlined />,
+  "case-archive-pending": <FolderOpenOutlined />,
+  "finance-payment-audit": <BankOutlined />,
+  "finance-internal-fee-audit": <BankOutlined />,
+  "finance-settlement-audit": <BankOutlined />,
+  "finance-archive-fee-pending": <BankOutlined />,
 };
 
 type Props = {
@@ -47,42 +59,57 @@ export default function DashboardOverview({ todos, cases, todoStatus, caseStatus
   return (
     <section className="wb-overview" aria-label="工作概览">
       <header className="wb-overview-head">
-        {/* 问候语由顶部提醒指标那一行统一展示，这里只保留刷新入口，避免重复。 */}
-        <Button icon={<ReloadOutlined />} onClick={onRefresh}>刷新概览</Button>
+        <div>
+          <h2>我的待办</h2>
+          <p>任务、审批与归档</p>
+        </div>
+        <Button type="text" icon={<ReloadOutlined />} onClick={onRefresh}>刷新概览</Button>
       </header>
       <div className="wb-overview-body">
         <section className="wb-overview-section" aria-label="我的待办">
-          <h3>我的待办</h3>
           {todoStatus}
           {!todosLoading && !todosError && !items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待办事项" />}
           <div className="wb-todo-grid">
             {items.map(({ label, count }) => {
               const route = todoRoutes[label];
-              const content = <><span>{label}</span><strong>{count}</strong></>;
-              return route && canNavigate(route)
-                ? <button key={label} className="wb-todo-entry" type="button" onClick={() => openTodo(label)}>{content}</button>
-                : <div key={label} className="wb-todo-entry">{content}</div>;
+              const clickable = Boolean(route && canNavigate(route));
+              const category = route?.startsWith("finance-") ? "finance" : route === "case-archive-pending" ? "archive" : "workflow";
+              const className = `wb-todo-entry todo-${category}${Number(count) > 0 ? " has-pending" : ""}`;
+              const content = <>
+                <span className="wb-todo-label"><span aria-hidden="true">{todoIcons[route]}</span>{label}</span>
+                <span className="wb-todo-value"><strong>{count}</strong>{clickable && <RightOutlined aria-hidden="true" />}</span>
+              </>;
+              return clickable
+                ? <button key={label} className={className} type="button" onClick={() => openTodo(label)}>{content}</button>
+                : <div key={label} className={className}>{content}</div>;
             })}
           </div>
         </section>
-        <section className="wb-overview-section" aria-label="最新案件">
-          <h3>最新案件</h3>
+        <section className="wb-overview-section wb-overview-recent" aria-label="最新案件">
+          <div className="wb-overview-section-head">
+            <h3>最新案件</h3>
+            {!!cases?.length && <span>最近 {cases.length} 条</span>}
+          </div>
           {caseStatus}
           {!casesLoading && !casesError && !cases?.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无案件" />}
-          {!!cases?.length && <ul className="wb-overview-cases">
-            {cases.map((item) => (
-              <li key={item.case_no}>
-                <div className="wb-overview-case-head">
-                  {canOpenCase
-                    ? <button type="button" onClick={() => onOpenCase(item.case_no)}>{item.case_no}</button>
-                    : <span>{item.case_no}</span>}
-                  <span>{item.stage}</span>
-                  <time>{item.date}</time>
-                </div>
-                <p>{item.plaintiff} / {item.defendant}</p>
-              </li>
-            ))}
-          </ul>}
+          {!!cases?.length && <div className="wb-overview-case-list">
+            <table className="wb-overview-cases">
+              <caption className="wb-visually-hidden">最新案件的案号、当事人、案件阶段和创建日期</caption>
+              <thead><tr><th scope="col">案号</th><th scope="col">当事人</th><th scope="col">案件阶段</th><th scope="col">创建日期</th></tr></thead>
+              <tbody>{cases.map((item) => (
+                <tr key={item.case_no}>
+                  <td className="wb-overview-case-number">
+                    {canOpenCase
+                      ? <button type="button" onClick={() => onOpenCase(item.case_no)}>{item.case_no}</button>
+                      : <span>{item.case_no}</span>}
+                  </td>
+                  <td className="wb-overview-parties"><span title={item.plaintiff}>{item.plaintiff}</span><span title={item.defendant}>{item.defendant}</span></td>
+                  <td><span className="wb-overview-stage">{item.stage}</span></td>
+                  <td className="wb-overview-case-date"><time>{item.date}</time></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>}
         </section>
       </div>
     </section>
