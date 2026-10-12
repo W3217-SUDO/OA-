@@ -48,21 +48,24 @@ async def receivable_export_rows(contracts, identity, db, *, case_ids=None):
             scalar_in_values(BusinessRecord.data["contract_object_id"].as_integer(), by_object_id)),
     ).order_by(BusinessRecord.id))).all())
     fees = [fee for fee in fees if is_external_case_fee(fee)]
-    cash = await receivable_payment_projection(fees, identity, db, receipts_only=True)
+    cash = await receivable_payment_projection(fees, identity, db)
     rows = []
     matched_objects = set()
 
-    def row(contract, case, fee_type, amount, received, source_id):
+    def row(contract, case, fee_type, amount, received, paid, source_id):
         data, case_data = contract["data"], case.data or {}
+        phase = case_data.get("case_stage") or case_data.get("business_stage") or case.status
         return {"id": source_id, "contract_record_id": contract["id"], "contract_no": contract["serial_no"],
+                "contract_title": contract["title"],
                 "owner": contract["owner"], "contract_body": data.get("contract_body") or "律所",
                 "contract_date": data.get("signed_at") or "", "customer": contract["customer"],
                 "source_person": data.get("source_person") or contract["owner"],
                 "case_record_id": case.id, "case_no": case.serial_no,
                 "case_type": case_data.get("case_type") or "", "fee_type": fee_type,
                 "fee_category": _receivable_fee_category(fee_type),
-                "phase": case_data.get("case_stage") or case_data.get("business_stage") or case.status,
-                "amount": amount, "received_amount": received,
+                "phase": phase, "case_stage": phase, "due_date": "", "status": case.status,
+                "payer": contract["customer"], "remark": "",
+                "amount": amount, "paid_amount": paid, "received_amount": received,
                 "remaining_amount": round(amount - received, 2) if amount is not None else None}
 
     for fee in fees:
@@ -84,11 +87,33 @@ async def receivable_export_rows(contracts, identity, db, *, case_ids=None):
         amount = float(data["amount"]) if data.get("amount") is not None else None
         if amount == 0 and cash[fee.id]["cashed_amount"] == 0:
             continue
-        rows.append(row(contract, case, _case_fee_display_type(fee), amount, cash[fee.id]["cashed_amount"], f"fee:{fee.id}"))
+        projected = row(contract, case, _case_fee_display_type(fee), amount, cash[fee.id]["cashed_amount"],
+                        cash[fee.id]["paid_amount"], f"fee:{fee.id}")
+        projected.update({"source_type": "case_fee", "fee_record_id": fee.id,
+                          "contract_object_id": int(data["contract_object_id"]) if data.get("contract_object_id") else None,
+                          "due_date": str(data.get("deadline") or ""), "status": fee.status,
+                          "remark": fee.description, "updated_at": fee.updated_at})
+        rows.append(projected)
     for item in objects:
         if item.id in matched_objects or item.amount == 0:
             continue
         amount = float(item.amount) if item.amount is not None else None
-        rows.append(row(by_contract_id[item.contract_record_id], by_case_id[item.case_record_id], item.fee_type,
-                        amount, 0.0, f"object:{item.id}"))
+        projected = row(by_contract_id[item.contract_record_id], by_case_id[item.case_record_id], item.fee_type,
+                        amount, 0.0, 0.0, f"object:{item.id}")
+        projected.update({"source_type": "contract_object", "fee_record_id": None,
+                          "contract_object_id": item.id, "remark": item.remark, "updated_at": item.updated_at})
+        rows.append(projected)
+    totals = {}
+    for item in rows:
+        amounts = totals.setdefault(item["contract_record_id"], {
+            "official_paid": 0.0, "official_received": 0.0, "official_unreceived": 0.0, "official_loss": 0.0,
+            "agency_total": 0.0, "agency_received": 0.0, "agency_due": 0.0,
+        })
+        keys = {"official_paid": "paid_amount", "official_received": "received_amount", "official_unreceived": "remaining_amount"} if item["fee_category"] == "official" else {"agency_total": "amount", "agency_received": "received_amount", "agency_due": "remaining_amount"}
+        if item["fee_category"] == "official" and "亏损" in item["phase"]:
+            keys["official_loss"] = "remaining_amount"
+        for target, source in keys.items():
+            amounts[target] = None if amounts[target] is None or item[source] is None else round(amounts[target] + item[source], 2)
+    for item in rows:
+        item["contract_totals"] = totals[item["contract_record_id"]]
     return sorted(rows, key=lambda item: (item["contract_no"], item["case_no"], item["id"]))

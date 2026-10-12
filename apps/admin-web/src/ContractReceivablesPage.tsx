@@ -18,10 +18,10 @@ type Receivable = {
   customer: string;
   phase: string;
   due_date: string;
-  amount: number;
-  paid_amount: number;
-  received_amount: number;
-  remaining_amount: number;
+  amount: number | null;
+  paid_amount: number | null;
+  received_amount: number | null;
+  remaining_amount: number | null;
   status: string;
   owner: string;
   source_person: string;
@@ -33,7 +33,7 @@ type Receivable = {
   case_type: string;
   fee_type: string;
   fee_category: "official" | "agency";
-  contract_totals: Record<string, number>;
+  contract_totals: Record<string, number | null>;
 };
 type Contract = {
   id: number;
@@ -49,7 +49,7 @@ type Contract = {
 export type ReceivableDetailAmountFilter = "official-unreceived" | "official-loss" | "agency-due";
 type ReceivableDetailContext = { contract_no: string; return_view: string; amount_filter?: ReceivableDetailAmountFilter; owner?: string };
 
-const money = (value: unknown) => Number(value || 0).toFixed(2);
+const money = (value: unknown) => value === null || value === undefined ? "—" : Number(value).toFixed(2);
 const personDisplayName = (value: unknown) => String(value || "").trim() || "姓名待维护";
 const peopleDisplayNames = (value: unknown) => {
   const names = (Array.isArray(value) ? value : [value]).map((item) => String(item || "").trim()).filter(Boolean);
@@ -68,20 +68,24 @@ export const receivableDetailAmountFilters: Record<string, ReceivableDetailAmoun
   unCashedCaseNonOfficeFeeAmount: "agency-due",
 };
 export const receivablesDetailSummaryKeys = ["official_paid", "official_received", "official_unreceived", "official_loss", "agency_total", "agency_received", "agency_due"];
+const detailAmount = (value: number | null) => value === null ? null : Number(value || 0);
 const receivableDetailAmounts = (detail: Receivable) => ({
-  official_paid: detail.fee_category === "official" ? Number(detail.paid_amount || 0) : 0,
-  official_received: detail.fee_category === "official" ? Number(detail.received_amount || 0) : 0,
-  official_unreceived: detail.fee_category === "official" ? Number(detail.remaining_amount || 0) : 0,
-  official_loss: detail.fee_category === "official" && String(detail.phase || "").includes("亏损") ? Number(detail.remaining_amount || 0) : 0,
-  agency_total: detail.fee_category === "agency" ? Number(detail.amount || 0) : 0,
-  agency_received: detail.fee_category === "agency" ? Number(detail.received_amount || 0) : 0,
-  agency_due: detail.fee_category === "agency" ? Number(detail.remaining_amount || 0) : 0,
+  official_paid: detail.fee_category === "official" ? detailAmount(detail.paid_amount) : 0,
+  official_received: detail.fee_category === "official" ? detailAmount(detail.received_amount) : 0,
+  official_unreceived: detail.fee_category === "official" ? detailAmount(detail.remaining_amount) : 0,
+  official_loss: detail.fee_category === "official" && String(detail.phase || "").includes("亏损") ? detailAmount(detail.remaining_amount) : 0,
+  agency_total: detail.fee_category === "agency" ? detailAmount(detail.amount) : 0,
+  agency_received: detail.fee_category === "agency" ? detailAmount(detail.received_amount) : 0,
+  agency_due: detail.fee_category === "agency" ? detailAmount(detail.remaining_amount) : 0,
 });
 export const calculateReceivablesDetailTotals = (rows: Array<{ contract_record_id: number }>, _contractById: Map<number, Contract>) => {
-  const totals = Object.fromEntries(receivablesDetailSummaryKeys.map((key) => [key, 0])) as Record<string, number>;
+  const totals = Object.fromEntries(receivablesDetailSummaryKeys.map((key) => [key, 0])) as Record<string, number | null>;
   rows.forEach((row) => {
     const amounts = receivableDetailAmounts(row as Receivable);
-    receivablesDetailSummaryKeys.forEach((key) => { totals[key] += amounts[key as keyof typeof amounts]; });
+    receivablesDetailSummaryKeys.forEach((key) => {
+      const value = amounts[key as keyof typeof amounts];
+      totals[key] = totals[key] === null || value === null ? null : totals[key] + value;
+    });
   });
   return totals;
 };
@@ -119,6 +123,7 @@ const readReceivableDetailContext = (): ReceivableDetailContext | null => {
 
 export default function ContractReceivablesPage({ initialView, dashboardQueue = "", onNavigate }: { initialView: string; dashboardQueue?: string; onNavigate?: (route: string) => void }) {
   const [receivables, setReceivables] = useState<Receivable[]>([]);
+  const [detailAmountVisible, setDetailAmountVisible] = useState(false);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState<Record<string, any>>({});
@@ -146,7 +151,7 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
     setLoading(true);
     try {
       const [receivableRes, contractRes] = await Promise.all([
-        api.get("/receivables/detail", { params: { dashboard_queue: dashboardQueue || undefined } }),
+        api.get("/contracts/receivables/detail", { params: { dashboard_queue: dashboardQueue || undefined } }),
         dashboardQueue ? Promise.resolve(null) : api.get("/contracts/receivables/contracts", { params: {
           scope: detailView ? "all" : initialView === "contract-receivable-mine" ? "mine" : initialView === "contract-receivable-dept" ? "department" : "company",
           contract_no: query.contract_no, customer: query.customer, case_no: detailView ? undefined : query.case_no,
@@ -156,6 +161,7 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
         } }),
       ]);
       setReceivables(receivableRes.data.items || []);
+      setDetailAmountVisible(receivableRes.data.amount_visible);
       setContracts(contractRes?.data.items || []);
     } catch {
       message.error("合同应收加载失败");
@@ -232,7 +238,8 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
   }), [receivables, contractById, detailContext, query]);
   const detailSummary = useMemo(() => calculateReceivablesDetailTotals(detailRows, contractById), [detailRows, contractById]);
   const listSummary = useMemo(() => calculateReceivablesListTotals(visibleContracts), [visibleContracts]);
-  const renderDetailSummaryRow = (totals: Record<string, number>, visible = true) => visible ? <tr className="contract-detail-summary-row"><td /><td /><td />{receivablesDetailSummaryKeys.map((key) => <td key={key} style={{ textAlign: "right" }}><strong>{money(totals[key])}</strong></td>)}{Array.from({ length: 7 }, (_, index) => <td key={index} />)}</tr> : null;
+  const detailMoney = (value: unknown) => detailAmountVisible ? money(value) : "—";
+  const renderDetailSummaryRow = (totals: Record<string, number | null>, visible = true) => visible ? <tr className="contract-detail-summary-row"><td /><td /><td />{receivablesDetailSummaryKeys.map((key) => <td key={key} style={{ textAlign: "right" }}><strong>{detailMoney(totals[key])}</strong></td>)}{Array.from({ length: 7 }, (_, index) => <td key={index} />)}</tr> : null;
   const renderReceivablesListSummaryRow = (totals: Record<string, number>, visible = true) => visible ? <tr className="contract-list-summary-row"><td /><td /><td />
     <td>{money(totals.official_paid)}</td><td>{money(totals.official_received)}</td>
     <td><Button type="link" onClick={() => openReceivableDetail({}, "official-unreceived")}>{money(totals.official_unreceived)}</Button></td>
@@ -283,7 +290,7 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
     ...receivablesDetailSummaryKeys.map((key, index) => ({
       title: ["官费支付金额", "官费到账金额", "官费未到金额", "官费亏损金额", "代理费总金额", "代理费到账金额", "代理费待收金额"][index],
       key, width: 110, align: "right" as const,
-      render: (_: unknown, row: Receivable) => money(receivableDetailAmounts(row)[key as keyof ReturnType<typeof receivableDetailAmounts>]),
+      render: (_: unknown, row: Receivable) => detailMoney(receivableDetailAmounts(row)[key as keyof ReturnType<typeof receivableDetailAmounts>]),
     })),
     { title: "案号", key: "case_no", width: 130, render: (_: unknown, row: Receivable) => {
       const caseNo = row.case_no;
@@ -292,9 +299,9 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
     { title: "案件阶段", dataIndex: "case_stage", width: 110 },
     { title: "案件类型", dataIndex: "case_type", width: 110, align: "right" as const, render: (value: string) => value || "—" },
     { title: "费用类型", dataIndex: "fee_type", width: 110 },
-    { title: "费用金额", dataIndex: "amount", width: 105, align: "right" as const, render: money },
-    { title: "已收", dataIndex: "received_amount", width: 105, align: "right" as const, render: money },
-    { title: "应收", dataIndex: "remaining_amount", width: 105, align: "right" as const, render: money },
+    { title: "费用金额", dataIndex: "amount", width: 105, align: "right" as const, render: detailMoney },
+    { title: "已收", dataIndex: "received_amount", width: 105, align: "right" as const, render: detailMoney },
+    { title: "应收", dataIndex: "remaining_amount", width: 105, align: "right" as const, render: detailMoney },
   ];
 
   const exportExcel = async () => {
