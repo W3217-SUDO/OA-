@@ -2,11 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 
 async function loadActualModule(relative) {
   const compiled = await build({ entryPoints: [fileURLToPath(new URL(relative, import.meta.url))],
     bundle: true, write: false, platform: "node", format: "esm", logLevel: "silent",
     plugins: [{ name: "isolated-adapters", setup(plugin) {
+      // 仅转换 Vite 资产查询，读取真实文件，不替换业务模块或断言。
+      plugin.onResolve({ filter: /\?(?:worker&url|url&inline)$/ }, (args) => ({
+        path: createRequire(args.importer).resolve(args.path.split("?")[0]), namespace: "vite-asset",
+      }));
+      plugin.onLoad({ filter: /.*/, namespace: "vite-asset" }, (args) => ({ contents: readFileSync(args.path), loader: "dataurl" }));
       plugin.onResolve({ filter: /\.css$/ }, (args) => ({ path: args.path, namespace: "test-style" }));
       plugin.onLoad({ filter: /.*/, namespace: "test-style" }, () => ({ contents: "", loader: "js" }));
       plugin.onResolve({ filter: /^antd$|^\.\.\/\.\.\/api$/ }, (args) => ({ path: args.path, namespace: "test-adapter" }));

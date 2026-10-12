@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import { createRequire } from 'node:module';
 
 // 将真实模块打包到独立临时目录，确保所有操作共享同一个 API mock。
 const temporaryParent = fs.realpathSync(os.tmpdir());
@@ -20,7 +21,13 @@ function cleanupOutput() {
 let bundled;
 try {
   fs.symlinkSync(path.join(process.cwd(), 'node_modules'), path.join(outputDirectory, 'node_modules'), 'junction');
-  await build({ stdin: { contents: `export { api } from './src/api'; export { message } from 'antd'; export { createFinancePaymentsActions } from './src/finance/services/paymentsActions'; export { createCaseQueriesActions } from './src/legal/services/queriesActions'; export { createContractDocumentsActions } from './src/contract/services/documentsActions'; export { CaseEventsPanel } from './src/legal/CaseDetail/CaseEventsPanel'; export { IncomingAllocationModal } from './src/finance/IncomingAllocationModal';`, resolveDir: process.cwd(), loader: 'ts' }, outfile: output, bundle: true, platform: 'node', format: 'esm', packages: 'external', logLevel: 'silent' });
+  await build({ stdin: { contents: `export { api } from './src/api'; export { message } from 'antd'; export { createFinancePaymentsActions } from './src/finance/services/paymentsActions'; export { createCaseQueriesActions } from './src/legal/services/queriesActions'; export { createContractDocumentsActions } from './src/contract/services/documentsActions'; export { CaseEventsPanel } from './src/legal/CaseDetail/CaseEventsPanel'; export { IncomingAllocationModal } from './src/finance/IncomingAllocationModal';`, resolveDir: process.cwd(), loader: 'ts' }, outfile: output, bundle: true, platform: 'node', format: 'esm', packages: 'external', logLevel: 'silent', plugins: [{ name: 'vite-assets', setup(plugin) {
+    // 仅转换 Vite 资产查询，读取真实文件，不替换业务模块或断言。
+    plugin.onResolve({ filter: /\?(?:worker&url|url&inline)$/ }, (args) => ({
+      path: createRequire(args.importer).resolve(args.path.split('?')[0]), namespace: 'vite-asset',
+    }));
+    plugin.onLoad({ filter: /.*/, namespace: 'vite-asset' }, (args) => ({ contents: fs.readFileSync(args.path), loader: 'dataurl' }));
+  } }] });
   bundled = await import(pathToFileURL(output).href);
 } catch (error) {
   cleanupOutput();
