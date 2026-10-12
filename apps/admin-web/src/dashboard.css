@@ -120,6 +120,7 @@
   .wb-day-date{flex-direction:row;align-items:center;gap:6px;padding:0}
   .wb-day-date strong{font-size:15px}
   .wb-day-date em{padding:1px 6px}
+}
 
 .dashboard-card{border:1px solid #e1e4e7;border-radius:0;box-shadow:none;background:#fff;overflow:hidden}.dashboard-card .ant-card-head{min-height:34px;padding:0 10px;border-bottom:1px solid #e1e4e7}.dashboard-card .ant-card-head-title{padding:6px 0;color:#47545c;font-size:13px;font-weight:600}.dashboard-card .ant-card-body{padding:8px}.compact-todo-card{grid-area:todo;height:178px}.compact-todo-card .ant-card-body{padding:7px 8px}.todo-table{width:100%;border-collapse:collapse;font-size:11px}.todo-table td{height:27px;padding:3px 6px;border:1px solid #e5e5e5;white-space:nowrap}.todo-table td:nth-child(1),.todo-table td:nth-child(4){width:38%}.todo-table .count{width:30px;color:#009fe3;font-weight:600;text-align:center}.todo-table .count-2{color:#f29a06}.todo-link{width:100%;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:inherit;cursor:pointer}.todo-link:hover,.todo-link:focus-visible{color:#18a98f;text-decoration:underline;outline:none}
 .mobile-todo-list{display:none}
