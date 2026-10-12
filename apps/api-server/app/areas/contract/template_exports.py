@@ -22,11 +22,10 @@ async def _detail_rows(identity, db, *, contracts=None, dashboard_queue=""):
         dashboard = await load_dashboard_scope(identity, db, include_summaries=True)
         identity = dashboard.identity
         case_ids = {case.id for case in dashboard.cases}
-        if contracts is None:
-            contracts = await _contract_customer_record_dicts(dashboard.contracts, await _allowed_field_keys(identity, db), db, identity)
+        contracts = await _contract_customer_record_dicts(dashboard.contracts, await _allowed_field_keys(identity, db), db, identity)
     elif contracts is None:
         contracts = await contract_export_rows(identity, db, action="查看", scope="all")
-    return await receivable_export_rows(contracts, identity, db, case_ids=case_ids), identity
+    return await receivable_export_rows(contracts, identity, db, case_ids=case_ids), identity, contracts
 
 
 @router.get(f"{settings.api_prefix}/contracts/receivables/detail")
@@ -34,7 +33,7 @@ async def list_contract_receivable_details(
     dashboard_queue: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.system import _allowed_field_keys
-    items, scoped_identity = await _detail_rows(identity, db, dashboard_queue=dashboard_queue)
+    items, scoped_identity, _ = await _detail_rows(identity, db, dashboard_queue=dashboard_queue)
     amount_visible = "contract.amount" in await _allowed_field_keys(scoped_identity, db)
     if not amount_visible:
         for item in items:
@@ -68,13 +67,31 @@ async def export_contract_receivables(
     dashboard_queue: str = "", owner: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
-    contracts = await contract_export_rows(identity, db, scope=scope if not detail else "all",
-        serial_no=contract_no, customer=customer, contract_body=contract_body, case_no=case_no if not detail else "",
-        source_person=source_person, signed_at_start=signed_at_start, signed_at_end=signed_at_end)
+    contracts = None
+    if detail and dashboard_queue:
+        from app.core.permissions import _require_record_module_menu
+        # 控制台合同集合沿用页面范围，导出仍校验原身份的合同菜单权限。
+        await _require_record_module_menu("contract", identity, db, action="导出")
+    else:
+        contracts = await contract_export_rows(identity, db, scope=scope if not detail else "all",
+            serial_no=contract_no, customer=customer, contract_body=contract_body, case_no=case_no if not detail else "",
+            source_person=source_person, signed_at_start=signed_at_start, signed_at_end=signed_at_end)
     if not detail:
         return await render_contract_list(contracts, identity, db, summary=True)
-    details, scoped_identity = await _detail_rows(identity, db, contracts=contracts, dashboard_queue=dashboard_queue)
+    details, scoped_identity, contracts = await _detail_rows(identity, db, contracts=contracts, dashboard_queue=dashboard_queue)
     def matches(row):
+        if dashboard_queue:
+            # 控制台沿用当前明细页面对投影字段的筛选，避免普通合同列表范围截断。
+            for value, key in ((contract_no, "contract_no"), (customer, "customer"), (source_person, "source_person")):
+                if value and value.casefold() not in row[key].casefold():
+                    return False
+            if contract_body and row["contract_body"] != contract_body:
+                return False
+            contract_date = row["contract_date"][:10]
+            if signed_at_start and (not contract_date or contract_date < signed_at_start):
+                return False
+            if signed_at_end and (not contract_date or contract_date > signed_at_end):
+                return False
         if detail_contract_no and row["contract_no"] != detail_contract_no:
             return False
         if owner and row["owner"] != owner:
