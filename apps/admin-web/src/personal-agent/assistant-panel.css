@@ -3,9 +3,11 @@
 .assistant-alert{flex:none;padding:6px 12px;border-radius:10px;font-size:13px}
 
 /* 会话控件在面板顶部一条窄工具栏里；抽屉样式在智能体中心已有，这里只补工作台需要的作用域规则。 */
-.assistant-bar{display:flex;flex:none;align-items:center;justify-content:space-between;gap:10px}
-.assistant-bar-title{color:#5b6776;font-size:13px}
-.assistant-bar .workspace-conversation-controls{display:flex;flex:none;align-items:center;gap:6px}
+.assistant-bar{display:flex;flex:none;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 10px}
+.assistant-bar-title{min-width:0;color:#5b6776;font-size:13px}
+.assistant-bar .workspace-conversation-controls{display:flex;flex:none;align-items:center;gap:8px;max-width:100%}
+.assistant-bar .workspace-conversation-controls .ant-btn{min-height:32px}
+.assistant-bar .workspace-conversation-controls .ant-btn[aria-label="对话列表"]{width:auto;padding-inline:10px;color:#0e7a5f}
 .assistant-conversation-drawer .ant-drawer-content-wrapper{max-width:100vw}
 .assistant-conversation-drawer .ant-drawer-body{padding:12px}
 .assistant-conversation-list{display:flex;flex-direction:column;gap:4px}
@@ -40,18 +42,23 @@
 .assistant-card em{flex:none;min-width:22px;padding:0 7px;border-radius:999px;background:#0e7a5f;color:#fff;font-size:12px;font-style:normal;font-variant-numeric:tabular-nums;line-height:22px;text-align:center}
 .assistant-card.is-rejection em{background:#c4402f}
 
-.assistant-thread{display:flex;flex:1 1 auto;flex-direction:column;gap:12px;min-height:0;padding:2px 4px 2px 0;overflow:auto;scrollbar-width:thin;scrollbar-color:#c9d2dc transparent}
+.assistant-thread-region{position:relative;display:flex;flex:1 1 auto;flex-direction:column;min-height:0}
+.assistant-thread{display:flex;flex:1 1 auto;flex-direction:column;gap:12px;min-width:0;min-height:0;padding:2px 4px 52px 0;overflow:auto;scrollbar-width:thin;scrollbar-color:#c9d2dc transparent}
 .assistant-message{display:flex}
 .assistant-message.is-user{justify-content:flex-end}
 .assistant-bubble{max-width:min(88%,74ch);padding:10px 14px;border-radius:12px 12px 12px 4px;background:#f2f5f8;color:#18212b;font-size:14px;line-height:1.75;white-space:pre-wrap;word-break:break-word}
 .assistant-message.is-user .assistant-bubble{border-radius:12px 12px 4px 12px;background:#0e7a5f;color:#fff}
 .assistant-expand{display:block;margin-top:4px;padding:0;border:0;background:none;color:inherit;font:inherit;font-size:12px;opacity:.8;text-decoration:underline;cursor:pointer}
-.assistant-thinking::after{content:"...";display:inline-block;width:0;overflow:hidden;vertical-align:bottom;animation:assistant-dots 1.2s steps(4,end) infinite}
+.assistant-bubble.is-thinking{width:min(88%,32ch)}
+.assistant-thinking{display:flex;align-items:center;min-height:1.75em;white-space:nowrap}
+.assistant-thinking>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.assistant-thinking::after{content:"...";flex:none;width:1.3em;height:1.75em;overflow:hidden;animation:assistant-dots 1.2s ease-in-out infinite}
+.assistant-stopped{display:block;color:#5b6776;font-size:12px}
 .assistant-bubble.is-failed{border:1px solid #f0c9c3;background:#fdf5f3;color:#c4402f}
-.assistant-jump{align-self:center;flex:none;padding:4px 14px;border:1px solid #cfd8e1;border-radius:999px;background:#fff;color:#0e7a5f;font:inherit;font-size:12px;cursor:pointer;box-shadow:0 6px 14px -10px rgba(18,38,63,.6)}
+.assistant-jump{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);min-height:44px;max-width:100%;padding:4px 14px;border:1px solid #cfd8e1;border-radius:999px;background:#fff;color:#0e7a5f;font:inherit;font-size:12px;white-space:nowrap;cursor:pointer;box-shadow:0 6px 14px -10px rgba(18,38,63,.6)}
 .assistant-jump:hover{border-color:#0e7a5f;background:#f0f9f5}
 .assistant-jump:focus-visible{outline:2px solid #0e7a5f;outline-offset:2px}
-@keyframes assistant-dots{to{width:1.3em}}
+@keyframes assistant-dots{0%,100%{opacity:.35}50%{opacity:1}}
 
 .assistant-pending{flex:none;padding:10px 14px;border:1px solid #f1d9a8;border-radius:10px;background:#fffaf0}
 .assistant-pending>b{display:block;margin-bottom:4px;color:#8a5a00;font-size:13px}
@@ -59,8 +66,9 @@
 
 .assistant-composer{display:flex;flex:none;align-items:flex-end;gap:10px;padding:8px 8px 8px 18px;border:1px solid #cfd8e1;border-radius:14px;background:#fbfcfd;transition:border-color .15s,box-shadow .15s,background .15s}
 .assistant-composer:focus-within{border-color:#0e7a5f;background:#fff;box-shadow:0 0 0 3px rgba(14,122,95,.14)}
-.assistant-composer textarea.ant-input{padding:8px 0;font-size:15px;line-height:1.6;resize:none}
-.assistant-send{flex:none}
+.assistant-composer textarea.ant-input{min-width:0;padding:8px 0;font-size:15px;line-height:1.6;resize:none}
+.assistant-composer-actions{display:flex;flex:none;align-items:center;gap:8px}
+.assistant-send{flex:none;min-width:44px;min-height:44px}
 
 .assistant-chips{display:flex;flex:none;flex-wrap:wrap;gap:8px}
 .assistant.is-empty .assistant-chips{display:none}
@@ -79,16 +87,22 @@
 .assistant-status.is-down::before{background:#c4402f}
 
 @media(max-width:1100px){
+  .assistant-thread-region{flex:none}
   .assistant-thread{flex:none;max-height:min(50vh,420px)}
   .assistant-start{flex:none}
 }
 @media(max-width:720px){
   .assistant{padding:16px 14px 12px}
+  .assistant-bar .workspace-conversation-controls{flex:1;justify-content:flex-end}
+  .assistant-bar .workspace-conversation-controls .ant-btn{min-height:44px}
   .assistant-bubble{max-width:94%}
+  .assistant-composer{flex-wrap:wrap;gap:4px}
+  .assistant-composer textarea.ant-input{flex:1 1 100%}
+  .assistant-composer-actions{margin-left:auto}
   .assistant-start{display:none}
   .assistant.is-empty .assistant-chips{display:flex}
 }
 @media(prefers-reduced-motion:reduce){
-  .assistant-thinking::after{width:1.3em;animation:none}
+  .assistant-thinking::after{animation:none}
   .assistant-composer,.assistant-chips button,.assistant-card{transition:none}
 }

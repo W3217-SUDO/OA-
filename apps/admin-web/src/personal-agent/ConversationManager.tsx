@@ -17,6 +17,7 @@ type Props = {
   listClassName?: string;
   rowClassName?: string;
   selectClassName?: string;
+  showHistoryLabel?: boolean;
 };
 
 export function ConversationManager({ items, activeId, busy, runningIds, onCreate, onSelect, onDelete,
@@ -24,6 +25,7 @@ export function ConversationManager({ items, activeId, busy, runningIds, onCreat
   listClassName = "workspace-conversation-list",
   rowClassName = "workspace-conversation-row",
   selectClassName = "workspace-conversation-select",
+  showHistoryLabel = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [modal, contextHolder] = Modal.useModal();
@@ -44,7 +46,7 @@ export function ConversationManager({ items, activeId, busy, runningIds, onCreat
     {contextHolder}
     <div className="workspace-conversation-controls">
       <Tooltip title="新建对话"><Button size="small" icon={<PlusOutlined />} aria-label="新建对话" disabled={busy} onClick={() => void run(onCreate)}><span className="workspace-conversation-label">新建对话</span></Button></Tooltip>
-      <Tooltip title="对话列表"><Button size="small" type="text" icon={<HistoryOutlined />} aria-label="对话列表" onClick={() => setOpen(true)} /></Tooltip>
+      <Tooltip title="对话列表"><Button size="small" type="text" icon={<HistoryOutlined />} aria-label="对话列表" onClick={() => setOpen(true)}>{showHistoryLabel && <span className="workspace-conversation-label">对话列表</span>}</Button></Tooltip>
     </div>
     <Drawer title="我的对话" placement="right" width={360} open={open} onClose={() => setOpen(false)} className={drawerClassName} extra={<Button icon={<PlusOutlined />} disabled={busy} onClick={() => void run(onCreate, true)}>新建对话</Button>}>
       {!items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />}

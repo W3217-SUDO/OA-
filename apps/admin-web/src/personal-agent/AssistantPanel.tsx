@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
-import { Alert, Button, Input, List } from "antd";
+import { Alert, Button, Input, List, Tooltip } from "antd";
 import { ArrowUpOutlined, CheckOutlined, CloseOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import { ConversationManager } from "./ConversationManager";
@@ -44,37 +44,43 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const { status, state, loading, loadError, sending, stopping, input, setInput, send, stop, decide, load } = workspace;
   const threadRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
   const inputRef = useRef<ComponentRef<typeof Input.TextArea>>(null);
+  const [composing, setComposing] = useState(false);
   const lastMessage = state.messages[state.messages.length - 1];
+  const sendBlocked = loading || !!loadError || !status?.ready || workspace.conversationBusy || workspace.uploading || !!workspace.decisionId || stopping || composing;
+  const progressText = (workspace.progress || "正在思考").replace(/[.\u2026]+$/, "");
   const followBottom = useCallback(() => {
     const element = threadRef.current;
     stickToBottom.current = true;
+    setAwayFromBottom(false);
     // 流式输出期间直接跟随，不做平滑动画，避免每个分片重启滚动动画造成跳动。
     if (element) element.scrollTop = element.scrollHeight;
   }, []);
 
   useEffect(() => {
+    stickToBottom.current = true;
+    setAwayFromBottom(false);
+  }, [state.conversation_id]);
+  useEffect(() => {
     if (!stickToBottom.current) return;
     const element = threadRef.current;
     if (element) element.scrollTop = element.scrollHeight;
-  }, [state.messages.length, lastMessage?.content.length]);
-  useEffect(() => { stickToBottom.current = true; }, [state.conversation_id]);
+  }, [state.conversation_id, state.messages.length, lastMessage?.content.length]);
   useEffect(() => {
     if (!focusRequested) return;
     inputRef.current?.focus({ preventScroll: true });
     onFocusHandled();
   }, [focusRequested, onFocusHandled]);
 
-  const submit = (text: string) => {
-    const content = text.trim();
-    if (!content) return;
-    // 快捷问题与提醒直接带上内容；输入框发送沿用工作区里按会话保存的草稿。
-    setInput("");
+  const submit = (text?: string) => {
+    const content = (text ?? input).trim();
+    if (!content || sendBlocked) return;
+    // 草稿的清空和失败恢复交给工作区，避免拒绝发送或停止失败时丢失输入。
     followBottom();
-    void send(content);
+    void send(text === undefined ? undefined : content);
   };
 
-  // 允许同一账号下多个会话同时回答；当前会话正在回答只禁用当前会话的输入。
   const runningIds = workspace.runningIds;
 
   return (
@@ -93,6 +99,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           listClassName="assistant-conversation-list"
           rowClassName="assistant-conversation-row"
           selectClassName="assistant-conversation-select"
+          showHistoryLabel
         />
       </div>
       {loadError && (
@@ -103,28 +110,35 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       )}
       {state.messages.length === 0 && <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} />}
       {state.messages.length > 0 && (
-        <div
-          className="assistant-thread"
-          ref={threadRef}
-          aria-live="polite"
-          onScroll={() => {
-            const element = threadRef.current;
-            if (element) stickToBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_THRESHOLD;
-          }}
-        >
-          {state.messages.map((item, index) => (
-            <div key={`${item.created_at || "message"}-${index}`} className={`assistant-message is-${item.role}`}>
-              <div className={`assistant-bubble${item.failed ? " is-failed" : ""}`}>
-                {item.content
-                  ? (item.role === "user" ? <MessageText content={item.content} /> : item.content)
-                  : (sending && index === state.messages.length - 1 ? <span className="assistant-thinking">{workspace.progress || "正在思考"}</span> : "")}
-              </div>
-            </div>
-          ))}
+        <div className="assistant-thread-region">
+          <div
+            className="assistant-thread"
+            ref={threadRef}
+            aria-live="polite"
+            onScroll={() => {
+              const element = threadRef.current;
+              if (!element) return;
+              const following = element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_THRESHOLD;
+              stickToBottom.current = following;
+              setAwayFromBottom(!following);
+            }}
+          >
+            {state.messages.map((item, index) => {
+              const thinking = !item.content && !item.stopped && sending && index === state.messages.length - 1;
+              return (
+                <div key={`${item.created_at || "message"}-${index}`} className={`assistant-message is-${item.role}`}>
+                  <div className={`assistant-bubble${item.failed ? " is-failed" : ""}${thinking ? " is-thinking" : ""}`}>
+                    {item.content
+                      ? (item.role === "user" ? <MessageText content={item.content} /> : item.content)
+                      : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><span>{progressText}</span></span> : "")}
+                    {item.stopped && <span className="assistant-stopped">{item.content ? "已停止，已保留生成内容" : "已停止"}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {awayFromBottom && <button type="button" className="assistant-jump" onClick={followBottom}>回到最新回答</button>}
         </div>
-      )}
-      {!stickToBottom.current && state.messages.length > 0 && (
-        <button type="button" className="assistant-jump" onClick={followBottom}>回到最新回答</button>
       )}
       {!!state.pending_actions.length && (
         <div className="assistant-pending">
@@ -145,21 +159,34 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           />
         </div>
       )}
-      <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); submit(input); }}>
+      <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); submit(); }}>
         <Input.TextArea
           ref={inputRef}
           variant="borderless"
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); submit(input); } }}
+          onCompositionStart={() => setComposing(true)}
+          onCompositionEnd={() => setComposing(false)}
+          onPressEnter={(event) => {
+            if (event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229 || composing) return;
+            event.preventDefault();
+            submit();
+          }}
           autoSize={{ minRows: 1, maxRows: 5 }}
           placeholder="告诉智能体你要完成的 OA 工作"
           disabled={loading || !status?.ready}
           aria-label="给智能体的指令"
         />
-        {sending
-          ? <Button className="assistant-send" shape="circle" danger icon={<StopOutlined />} loading={stopping} aria-label="停止回答" onClick={() => void stop()} />
-          : <Button className="assistant-send" shape="circle" type="primary" icon={<ArrowUpOutlined />} aria-label="发送" htmlType="submit" disabled={workspace.conversationBusy || !input.trim()} />}
+        <div className="assistant-composer-actions">
+          {sending && <Tooltip title={stopping ? "正在停止回答" : "停止回答"}>
+            <Button className="assistant-send" shape="circle" danger icon={<StopOutlined />} loading={stopping} disabled={stopping} aria-label="停止回答" onClick={() => void stop()} />
+          </Tooltip>}
+          {(!sending || !!input.trim()) && <Tooltip title={sending ? "打断并发送" : "发送"}>
+            <Button className="assistant-send" shape={sending ? undefined : "circle"} type="primary" icon={<ArrowUpOutlined />} aria-label={sending ? "打断并发送" : "发送"} htmlType="submit" disabled={sendBlocked || !input.trim()}>
+              {sending ? "打断并发送" : null}
+            </Button>
+          </Tooltip>}
+        </div>
       </form>
       <div className="assistant-chips">
         {suggestions.map((item) => (

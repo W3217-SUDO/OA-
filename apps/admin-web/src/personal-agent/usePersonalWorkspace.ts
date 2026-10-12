@@ -21,6 +21,7 @@ export function usePersonalWorkspace() {
   const [uploading, setUploading] = useState(false);
   const [decisionId, setDecisionId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const draftsRef = useRef<Record<string, Draft>>({});
   const uploadLock = useRef(false);
   const decisionLock = useRef(false);
   const sendStarts = useRef(new Set<string>());
@@ -33,11 +34,11 @@ export function usePersonalWorkspace() {
   const stopping = !!runtime.activities[id]?.stopping;
   const conversations = usePersonalConversations(runtime.activate);
   const updateDraft = <K extends keyof Draft>(target: string, key: K, value: SetStateAction<Draft[K]>) => {
-    setDrafts((current) => {
-      const previous = current[target] || EMPTY_DRAFT;
-      const next = typeof value === "function" ? (value as (old: Draft[K]) => Draft[K])(previous[key]) : value;
-      return { ...current, [target]: { ...previous, [key]: next } };
-    });
+    const current = draftsRef.current;
+    const previous = current[target] || EMPTY_DRAFT;
+    const next = typeof value === "function" ? (value as (old: Draft[K]) => Draft[K])(previous[key]) : value;
+    draftsRef.current = { ...current, [target]: { ...previous, [key]: next } };
+    setDrafts(draftsRef.current);
   };
   const setInput = (value: SetStateAction<string>) => updateDraft(id, "input", value);
   const setSkillId = (value: string) => updateDraft(id, "skillId", value);
@@ -53,7 +54,8 @@ export function usePersonalWorkspace() {
   const refreshSkills = async () => {
     const { data } = await api.get<{ items: WorkspaceSkill[] }>("/agent/skills");
     setSkills(data.items);
-    setDrafts((current) => Object.fromEntries(Object.entries(current).map(([key, value]) => [key, { ...value, skillId: data.items.some((item) => item.id === value.skillId && item.available) ? value.skillId : DEFAULT_AGENT_SKILL }])));
+    draftsRef.current = Object.fromEntries(Object.entries(draftsRef.current).map(([key, value]) => [key, { ...value, skillId: data.items.some((item) => item.id === value.skillId && item.available) ? value.skillId : DEFAULT_AGENT_SKILL }]));
+    setDrafts(draftsRef.current);
   };
   const load = async () => {
     if (runtime.anyRunning()) { message.warning("请先停止正在运行的对话再刷新"); return; }
@@ -93,31 +95,53 @@ export function usePersonalWorkspace() {
   // override 用于工作台提醒和快捷问题：它们把完整问题直接交给智能体，不经过输入框。
   // target 用于把问题发给一条刚建的对话，避免沿用闭包里的旧会话。
   const send = async (override?: string, target?: WorkspaceState) => {
-    const content = (override ?? input).trim();
     const targetId = target?.conversation_id || id;
-    if (!content || stopping || sendStarts.current.has(targetId) || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
+    const targetDraft = draftsRef.current[targetId] || EMPTY_DRAFT;
+    const { skillId, responseMode, materials, caseMaterials, selectedCase } = targetDraft;
+    const content = (override ?? targetDraft.input).trim();
+    if (!content || runtime.stopping(targetId) || sendStarts.current.has(targetId) || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
     const skill = skills.find((item) => item.id === skillId && item.available);
     if (!skill) { message.error("所选技能已停用或不存在，请重新选择"); return; }
     // 只锁住启动阶段；模型生成期间允许其他对话独立发送。
     sendStarts.current.add(targetId);
     let written = targetId;
+    let starting = true;
+    let beforeSend: Draft | undefined;
+    let consumedDraft: Draft | undefined;
     try {
-      if (!target && runtime.running(id)) await runtime.stop(id);
-      const conversation = target || (id ? runtime.get(id) : await conversations.create());
+      if (runtime.running(targetId)) await runtime.stop(targetId);
+      const conversation = targetId ? runtime.get(targetId) : await conversations.create();
       written = conversation.conversation_id!;
-      updateDraft(written, "input", "");
+      if (!targetId) {
+        const current = { ...draftsRef.current, [written]: draftsRef.current[""] || targetDraft };
+        delete current[""];
+        draftsRef.current = current;
+        setDrafts(current);
+      }
       const metadata = { skill_name: skill.name, case_id: selectedCase?.id, case_no: selectedCase?.serial_no };
       const generation = runtime.generate(conversation, { content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: selectedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast" }, { role: "user", content, ...metadata, attachments: [...materials, ...caseMaterials] }, metadata);
-      updateDraft(written, "materials", []); updateDraft(written, "caseMaterials", []);
+      beforeSend = draftsRef.current[written] || EMPTY_DRAFT;
+      // 只消费本轮快照，停止等待期间的新输入和新材料留给下一轮。
+      if (override === undefined) updateDraft(written, "input", (current) => current === targetDraft.input ? "" : current);
+      updateDraft(written, "materials", (current) => current.filter((item) => !materials.some((sent) => sent.id === item.id)));
+      updateDraft(written, "caseMaterials", (current) => current.filter((item) => !caseMaterials.some((sent) => sent.id === item.id)));
+      consumedDraft = draftsRef.current[written];
       sendStarts.current.delete(targetId);
+      starting = false;
       const completedState = await generation;
       const finalMessage = completedState?.messages.at(-1);
       if (finalMessage?.can_save_document && isAiWordGenerationRequest(content) && isUsableAiDocumentContent(finalMessage.content) && !completedState?.pending_actions.some((action) => action.preview?.path?.endsWith("/ai-space/files"))) saveWord(finalMessage, completedState!.messages.length - 1, written);
     } catch (error) {
-      updateDraft(written, "input", (current) => current || content);
+      if (beforeSend && consumedDraft) {
+        const previous = beforeSend;
+        const consumed = consumedDraft;
+        updateDraft(written, "input", (current) => current === consumed.input ? previous.input : current);
+        updateDraft(written, "materials", (current) => current === consumed.materials ? previous.materials : current);
+        updateDraft(written, "caseMaterials", (current) => current === consumed.caseMaterials ? previous.caseMaterials : current);
+      }
       message.error(errorText(error, "智能体处理失败"));
     } finally {
-      sendStarts.current.delete(targetId);
+      if (starting) sendStarts.current.delete(targetId);
       try { await conversations.refresh(); } catch (error) { message.error(errorText(error, "对话列表刷新失败")); }
     }
   };
@@ -136,6 +160,6 @@ export function usePersonalWorkspace() {
   return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, stop, refreshSkills, saveWord, savedDocuments,
     conversations: conversations.items, conversationBusy: conversations.busy, runningIds: Object.keys(runtime.activities),
     createConversation: () => changeConversation(conversations.create), selectConversation: (target: string) => target === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(target)),
-    deleteConversation: (target: string) => changeConversation(async () => { const next = await conversations.remove(target); runtime.forget(target); setDrafts((current) => { const updated = { ...current }; delete updated[target]; return updated; }); return next; }),
+    deleteConversation: (target: string) => changeConversation(async () => { const next = await conversations.remove(target); runtime.forget(target); const updated = { ...draftsRef.current }; delete updated[target]; draftsRef.current = updated; setDrafts(updated); return next; }),
   };
 }
