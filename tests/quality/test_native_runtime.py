@@ -23,9 +23,14 @@ import quality_gate
 import runtime_package
 
 
+def temporary_directory(prefix: str) -> tempfile.TemporaryDirectory:
+    """Windows 无法删除临时目录里的目录符号链接，清理失败不应让用例失败。"""
+    return tempfile.TemporaryDirectory(prefix=prefix, ignore_cleanup_errors=True)
+
+
 class NativeRuntimeTest(unittest.TestCase):
     def setUp(self):
-        temporary = tempfile.TemporaryDirectory(prefix="oa-test-native-runtime-")
+        temporary = temporary_directory("oa-test-native-runtime-")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.package, self.manifest = self.make_package("old", "a" * 40)
@@ -238,7 +243,7 @@ class SourceQualityGateTest(unittest.TestCase):
     """发布前源码门禁不能被构建、旧报告或不同提交替代。"""
 
     def test_github_actions_rejects_default_and_explicit_full_before_checks(self):
-        with tempfile.TemporaryDirectory(prefix="oa-test-github-full-rejection-") as directory:
+        with temporary_directory("oa-test-github-full-rejection-") as directory:
             for profile_args in ([], ["--profile", "full"]):
                 with self.subTest(profile_args=profile_args):
                     errors = io.StringIO()
@@ -278,7 +283,7 @@ class SourceQualityGateTest(unittest.TestCase):
         return report, backend
 
     def test_receipt_rejects_zero_execution_and_incomplete_file_results(self):
-        with tempfile.TemporaryDirectory(prefix="oa-test-receipt-counts-") as temporary:
+        with temporary_directory("oa-test-receipt-counts-") as temporary:
             report_dir = Path(temporary).resolve()
             _, backend = self.source_evidence(report_dir)
             quality_gate.validate_source_backend({**backend, "passed": 0, "partial": 1,
@@ -297,7 +302,7 @@ class SourceQualityGateTest(unittest.TestCase):
                         quality_gate.receipt_evidence(report_dir, "a" * 40)
 
     def test_cached_report_retains_original_steps_and_pending_scope(self):
-        with tempfile.TemporaryDirectory(prefix="oa-test-cache-scope-") as temporary:
+        with temporary_directory("oa-test-cache-scope-") as temporary:
             root = Path(temporary).resolve()
             original = root / "original"
             report, _ = self.source_evidence(original)
@@ -326,7 +331,7 @@ class SourceQualityGateTest(unittest.TestCase):
             execute.assert_not_called()
 
     def invoke_gate(self, profile: str, failed_output: str = "", failed_command: str = "tests/run-unit.mjs") -> tuple[int, dict, list[str], str]:
-        with tempfile.TemporaryDirectory(prefix="oa-test-source-gate-") as temporary:
+        with temporary_directory("oa-test-source-gate-") as temporary:
             report = Path(temporary)
             commands = []
 
@@ -427,7 +432,7 @@ class SourceQualityGateTest(unittest.TestCase):
             self.assertLess(len(errors.getvalue()), 13000)
 
     def test_receipt_requires_same_inputs_and_complete_success_evidence(self):
-        with tempfile.TemporaryDirectory(prefix="oa-test-quality-receipt-") as temporary:
+        with temporary_directory("oa-test-quality-receipt-") as temporary:
             root = Path(temporary).resolve()
             report_dir = root / "evidence"
             report_dir.mkdir()
@@ -474,8 +479,9 @@ class SourceQualityGateTest(unittest.TestCase):
                 receipt.write_text(unknown, encoding="utf-8")
                 self.assertIsNone(quality_gate.reusable_source_receipt(receipt, fingerprint))
 
+    @unittest.skipIf(os.name == "nt", "Windows 无法创建悬空文件符号链接；目录联接判定须在 Linux CI 验证")
     def test_receipt_refuses_directory_and_file_links(self):
-        with tempfile.TemporaryDirectory(prefix="oa-test-receipt-links-") as temporary:
+        with temporary_directory("oa-test-receipt-links-") as temporary:
             root = Path(temporary).resolve()
             actual = root / "actual"
             actual.mkdir()
@@ -490,7 +496,7 @@ class SourceQualityGateTest(unittest.TestCase):
             self.assertFalse((actual / "missing.json").exists())
 
     def test_fingerprint_binds_parameters_environment_and_dependency_files(self):
-        with tempfile.TemporaryDirectory(prefix="oa-test-gate-fingerprint-") as temporary:
+        with temporary_directory("oa-test-gate-fingerprint-") as temporary:
             root = Path(temporary).resolve()
             subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
             api, web = root / "api", root / "web"
@@ -521,8 +527,9 @@ class SourceQualityGateTest(unittest.TestCase):
                 files[-1].write_text("changed installed dependency lock\n", encoding="utf-8")
                 self.assertNotEqual(fingerprint, quality_gate.source_fingerprint("a" * 40, "node", "v22.20.0", 2))
 
+    @unittest.skipIf(os.name == "nt", "Windows PowerShell 输出编码与 pwsh 行为不同；钩子安装须在 Linux CI 验证")
     def test_hook_installer_preserves_external_hooks_and_updates_managed_templates(self):
-        with tempfile.TemporaryDirectory(prefix="oa-test-hook-installer-") as temporary:
+        with temporary_directory("oa-test-hook-installer-") as temporary:
             root = Path(temporary).resolve()
             subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
             template = root / ".githooks/pre-push"
@@ -561,7 +568,7 @@ class SourceQualityGateTest(unittest.TestCase):
             self.assertIn("core.hooksPath", install(1).stderr)
 
     def test_hook_selects_remote_targets_and_requires_explicit_runtimes(self):
-        with tempfile.TemporaryDirectory(prefix="oa-test-push-hook-") as temporary:
+        with temporary_directory("oa-test-push-hook-") as temporary:
             root = Path(temporary).resolve()
             subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
             template = SCRIPTS.parent / ".githooks/pre-push"
@@ -587,7 +594,7 @@ class SourceQualityGateTest(unittest.TestCase):
                     self.assertIn(diagnostic, completed.stderr)
 
     def test_hook_forwards_explicit_jobs_and_rejects_invalid_values(self):
-        with tempfile.TemporaryDirectory(prefix="oa-test-hook-jobs-") as temporary:
+        with temporary_directory("oa-test-hook-jobs-") as temporary:
             root = Path(temporary).resolve()
             subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
             hook = root / ".git/hooks/pre-push"
@@ -619,7 +626,7 @@ class SourceQualityGateTest(unittest.TestCase):
                         self.assertIn("OA_QUALITY_JOBS", completed.stderr)
 
     def test_push_checks_real_git_head_and_clean_source(self):
-        with tempfile.TemporaryDirectory(prefix="oa-test-push-source-") as temporary:
+        with temporary_directory("oa-test-push-source-") as temporary:
             root = Path(temporary).resolve()
 
             def git(*arguments):
