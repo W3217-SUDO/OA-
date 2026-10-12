@@ -77,8 +77,11 @@ async def fee_export_values(rows, identity, db, internal=False):
             refund, data.get("cashed_date"), data.get("cashed_amount"), data.get("received_payer_name"),
             data.get("paid_date"), data.get("paid_amount"), data.get("paid_organization"),
             data.get("payment_status"), data.get("contract_no"),
-            joined(case_data.get(key) for key in ("first_instance_case_no", "second_instance_case_no", "execution_case_no", "retrial_case_no")) or data.get("court_case_no"),
-            joined(case_data.get(key) for key in ("first_instance_court", "second_instance_court", "execution_court", "retrial_court")) or data.get("court_name")])
+            joined((case_data.get("first_instance_case_no") or case_data.get("court_case_no"),
+                case_data.get("second_instance_case_no") or case_data.get("second_court_case_no"),
+                case_data.get("execution_instance_case_no") or case_data.get("execution_case_no"),
+                case_data.get("last_instance_case_no") or case_data.get("retrial_case_no"))) or data.get("court_case_no"),
+            joined(case_data.get(key) for key in ("first_instance_court", "second_instance_court", "execution_instance_court", "last_instance_court")) or data.get("court_name")])
     return values
 
 
