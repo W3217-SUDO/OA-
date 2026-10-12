@@ -38,7 +38,7 @@ export function usePersonalAgent() {
 
   const decide = async (action: PendingAction, decision: "approved" | "rejected") => {
     try {
-      const { data } = await api.post(`/personal-agent/actions/${action.id}/decision`, { decision });
+      const { data } = await api.post(`/personal-agent/actions/${action.id}/decision`, { decision }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
       setState(data.state || state);
       message.success(decision === "approved" ? "操作已完成" : "已取消操作");
     } catch (error: any) {
