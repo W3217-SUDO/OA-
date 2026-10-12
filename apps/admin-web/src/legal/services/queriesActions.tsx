@@ -12,9 +12,11 @@ import { buildCaseOrdinarySearchPayload, parseOrdinarySearchResult } from "../..
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "../../customerDetailNavigation";
 import { type FeeTypeCatalogItem } from "../../feeTypeHierarchy.mjs";
 import { noCaseDetailWriteCapability, noCaseEventCapabilities } from "../constants";
+import type { CaseInvoiceBatch } from "../hooks/useCaseInvoiceBatch";
 import type { AttachmentRow, CaseDetailCapabilities, CaseEventCapabilities, CaseEventRow, CaseFileTypeOption, CaseLitigantCandidate, CaseRelationCatalog, CaseRow, CaseTaskAttachment, CaseTaskHistoryItem, CaseTaskPageState, ContractRow, Hearing, ParameterRelation, Profile, TaskRow, WarehouseCatalogOption } from "../types";
 /** legal queries operations; dependencies are read when each operation runs. */
 export interface CaseQueriesDependencies {
+    readonly invoiceBatch: CaseInvoiceBatch;
     readonly setCaseActionCapabilities: React.Dispatch<React.SetStateAction<Record<number, CaseDetailCapabilities>>>;
     readonly setCaseRelations: React.Dispatch<React.SetStateAction<CaseRelationCatalog | null>>;
     readonly setLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -38,7 +40,6 @@ export interface CaseQueriesDependencies {
     }>>;
     readonly setProfile: React.Dispatch<React.SetStateAction<Profile>>;
     readonly setFinanceRows: React.Dispatch<React.SetStateAction<CaseRow[]>>;
-    readonly setAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;
     readonly setCaseTypeOptions: React.Dispatch<React.SetStateAction<{
         value: string;
         label: string;
@@ -150,6 +151,43 @@ export interface CaseQueriesDependencies {
     readonly selectedCaseKeys: React.Key[];
 }
 export function createCaseQueriesActions(context: CaseQueriesDependencies) {
+    const loadCaseInvoiceBatch = async (attachmentIds = context.invoiceBatch.current.current.attachmentIds, requestId?: number) => {
+        const { invoiceBatch } = context;
+        if (!attachmentIds.length) return;
+        const ownRequest = requestId === undefined;
+        const currentRequest = requestId ?? invoiceBatch.begin();
+        if (currentRequest === undefined || !invoiceBatch.isCurrent(currentRequest)) return;
+        try {
+            const ids = new Set(attachmentIds);
+            if (ids.size !== attachmentIds.length || attachmentIds.some(id => !Number.isSafeInteger(id) || id <= 0))
+                throw new Error("当前批次附件编号无效，请重新上传");
+            const items: AttachmentRow[] = [];
+            // ZIP 逐费副本可能很多，分块限定 URL 长度，整批读完后才更新结果。
+            for (let offset = 0; offset < attachmentIds.length; offset += 200) {
+                const chunk = attachmentIds.slice(offset, offset + 200);
+                const params = new URLSearchParams({ page: "1", page_size: "200" });
+                chunk.forEach(id => params.append("attachment_ids", String(id)));
+                const { data } = await api.get("/cases/invoice-files", { params });
+                if (!invoiceBatch.isCurrent(currentRequest)) return;
+                if (!Array.isArray(data.items) || data.pages !== 1 || data.items.length !== chunk.length ||
+                    data.items.some((row: AttachmentRow) => !chunk.includes(row.id) || (row.record_id !== null && (!Number.isSafeInteger(row.record_id) || row.record_id <= 0))))
+                    throw new Error("当前批次文件查询响应不完整，请重试查询");
+                items.push(...data.items);
+            }
+            if (items.length !== ids.size || new Set(items.map(row => row.id)).size !== ids.size || items.some(row => !ids.has(row.id)))
+                throw new Error("当前批次部分文件不存在或无权查看，请重试查询");
+            invoiceBatch.update(currentRequest, { rows: items, attachmentIds: [...attachmentIds], error: "" });
+        }
+        catch (error: any) {
+            if (!invoiceBatch.isCurrent(currentRequest)) return;
+            const detail = error?.response?.data?.detail || error?.message || "当前批次文件查询失败";
+            invoiceBatch.update(currentRequest, { error: typeof detail === "string" ? detail : "当前批次文件查询失败，请核对附件范围后重试" });
+            message.error(typeof detail === "string" ? detail : "当前批次文件查询失败，请核对附件范围后重试");
+        }
+        finally {
+            if (ownRequest) invoiceBatch.update(currentRequest, { loading: false });
+        }
+    };
     const loadCaseCapabilities = async (rows: CaseRow[]) => {
         const { setCaseActionCapabilities } = context;
         const uniqueRows = Array.from(new Map(rows.map((row) => [row.id, row])).values());
@@ -185,7 +223,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         setCaseRelations(null);
     };
     const load = async () => {
-        const { setLoading, initialView, setCases, isCreateView, openCounselDetail, isCaseDetailView, detailRouteId, setWarehouseCatalog, setContracts, setHearings, setSummary, setProfile, setFinanceRows, setAttachments, setCaseTypeOptions, setCauseOptions, setCaseFileTypeCatalog, setCaseFileTypeOptions, setCaseUploadCategory, setCounselUploadCategory, setCourtOptions, setCourtOfficerOptions, setCaseLawyerOptions, setCaseAssistantOptions, setRightTypeOptions, setCaseCustomers, setCaseClues, setFeeTypeCatalog, contractPrefill, createForm, resolveCasePersonValue } = context;
+        const { setLoading, initialView, setCases, isCreateView, openCounselDetail, isCaseDetailView, detailRouteId, setWarehouseCatalog, setContracts, setHearings, setSummary, setProfile, setFinanceRows, setCaseTypeOptions, setCauseOptions, setCaseFileTypeCatalog, setCaseFileTypeOptions, setCaseUploadCategory, setCounselUploadCategory, setCourtOptions, setCourtOfficerOptions, setCaseLawyerOptions, setCaseAssistantOptions, setRightTypeOptions, setCaseCustomers, setCaseClues, setFeeTypeCatalog, contractPrefill, createForm, resolveCasePersonValue } = context;
         setLoading(true);
         try {
             if (context.dashboardQueue) {
@@ -267,20 +305,10 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             } else {
                 setFinanceRows([]);
             }
-            const [contractRes, hearingRes, summaryRes, attachmentRes, referenceRes, customerRes, clueRes, feeTypeRes] = await Promise.all([
+            const [contractRes, hearingRes, summaryRes, referenceRes, customerRes, clueRes, feeTypeRes] = await Promise.all([
                 api.get("/cases/eligible-contracts"),
                 api.get("/hearings"),
                 api.get("/cases/summary"),
-                // 附件状态仅供发票文件页使用，普通列表无需读取全站附件目录。
-                initialView === "case-files-invoice" ? (async () => {
-                    const first = await api.get("/cases/invoice-files", { params: { page_size: 200 } });
-                    const items = [...first.data.items];
-                    for (let page = 2; page <= first.data.pages; page += 1) {
-                        const next = await api.get("/cases/invoice-files", { params: { page, page_size: 200 } });
-                        items.push(...next.data.items);
-                    }
-                    return { data: { items } };
-                })() : undefined,
                 api.get("/cases/reference-options"),
                 api.get("/records", { params: { module: "customer", page_size: 100 } }),
                 api.get("/records", { params: { module: "clue", page_size: 100 } }),
@@ -289,7 +317,6 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             setContracts(contractRes.data.items);
             setHearings(hearingRes.data.items);
             setSummary(summaryRes.data);
-            if (attachmentRes) setAttachments(attachmentRes.data.items);
             setCaseTypeOptions(referenceRes.data.case_types || []);
             setCauseOptions(referenceRes.data.causes || []);
             if ((referenceRes.data.case_file_types || []).length) {
@@ -628,5 +655,5 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             message.error("数据导出失败");
         }
     };
-    return { loadCaseCapabilities, loadCaseRelations, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportCurrentOrdinaryCasesExcel, exportSpecialRecords };
+    return { loadCaseInvoiceBatch, loadCaseCapabilities, loadCaseRelations, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportCurrentOrdinaryCasesExcel, exportSpecialRecords };
 }

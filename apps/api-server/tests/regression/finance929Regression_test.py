@@ -9,6 +9,7 @@ from unittest.mock import patch
 from zipfile import ZipFile
 
 import httpx
+from fastapi import HTTPException, Request
 from sqlalchemy import delete, event, func, select, text
 
 if not os.environ.get("OA_FINANCE_TEST_DB") or not os.environ.get("UPLOAD_ROOT"):
@@ -23,7 +24,8 @@ from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models import (BusinessRecord, ContractApprovalStep, ContractObject, FileAttachment, FinanceTransaction, IncomingPayment,
                         LegacyOfficialDocument, JobRole, SystemParameter, User, WorkflowEvent)
-from app.security import create_token
+from app.security import create_token, current_identity
+from app.core.case_invoice_files import invoice_file_rows
 from app.core.constants import FIELD_KEYS, UPLOAD_ROOT
 
 PREFIX = "CODEX-929-"
@@ -123,7 +125,7 @@ class Finance929Regression(unittest.IsolatedAsyncioTestCase):
         invoice = await self.record("invoice", status="已开票", owner="applicant",
             data={"invoice_no": "929001", "case_fee_ids": [fee.id, second.id], "amount": 300})
         uploaded = await self.upload("929001.pdf")
-        result = (await self.api("POST", "/cases/invoice-files/import")).json()
+        result = (await self.api("POST", "/cases/invoice-files/import", json={"attachment_ids": [uploaded["id"]]})).json()
         self.assertEqual((result["matched"], result["unmatched"]), (1, 0))
         async with SessionLocal() as db:
             files = list((await db.scalars(select(FileAttachment))).all())
@@ -133,14 +135,17 @@ class Finance929Regression(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(all(Path(item.path).read_bytes() == b"%PDF-1.4 CODEX-929" for item in files))
             self.assertEqual((await db.get(BusinessRecord, fee.id)).data["invoice_amount"], 0)
             self.assertEqual(await db.scalar(select(func.count()).select_from(FinanceTransaction)), 0)
+        self.assertEqual(set(result["result_attachment_ids"]), {item.id for item in files})
+        self.assertEqual(result["items"][0]["source_attachment_id"], uploaded["id"])
+        self.assertEqual(result["items"][0]["result_attachment_ids"], result["result_attachment_ids"])
         for item in files:
             listed = (await self.api("GET", "/attachments", params={"record_id": item.record_id, "category": "案件发票文件"})).json()
             self.assertEqual([row["id"] for row in listed["items"]], [item.id])
             self.assertEqual((await self.api("GET", f"/attachments/{item.id}/download")).content, b"%PDF-1.4 CODEX-929")
-        rows = (await self.api("GET", "/cases/invoice-files")).json()["items"]
+        rows = (await self.api("GET", "/cases/invoice-files", params={"attachment_ids": result["result_attachment_ids"]})).json()["items"]
         self.assertEqual({row["invoice_no"] for row in rows}, {"929001"})
         self.assertEqual({row["applicant"] for row in rows}, {PREFIX + "applicant"})
-        self.assertEqual((await self.api("POST", "/cases/invoice-files/import")).json()["processed"], 0)
+        await self.api("POST", "/cases/invoice-files/import", code=409, json={"attachment_ids": [uploaded["id"]]})
         await self.api("DELETE", f"/attachments/{uploaded['id']}", code=204)
         remaining = next(item for item in files if item.id != uploaded["id"])
         self.assertEqual((await self.api("GET", f"/attachments/{remaining.id}/download")).content, b"%PDF-1.4 CODEX-929")
@@ -151,8 +156,8 @@ class Finance929Regression(unittest.IsolatedAsyncioTestCase):
         await self.record("finance", data={**fee.data, "legacy_source": "source-B"})
         invoice = await self.record("invoice", status="已开票", data={"invoice_no": "929002", "legacy_source": "source-A",
             "legacy_objects": [{"CaseFeeId": 42911, "CaseNo": "OLD-929", "InvoicedAmount": 100, "IsActived": "T"}]})
-        await self.upload("929002.pdf")
-        self.assertEqual((await self.api("POST", "/cases/invoice-files/import")).json()["matched"], 1)
+        uploaded = await self.upload("929002.pdf")
+        self.assertEqual((await self.api("POST", "/cases/invoice-files/import", json={"attachment_ids": [uploaded["id"]]})).json()["matched"], 1)
         async with SessionLocal() as db:
             attachment = await db.scalar(select(FileAttachment))
             self.assertEqual((attachment.record_id, attachment.invoice_record_id), (fee.id, invoice.id))
@@ -165,19 +170,27 @@ class Finance929Regression(unittest.IsolatedAsyncioTestCase):
             archive.writestr("929003.pdf", b"invoice")
             archive.writestr("unknown.pdf", b"unknown")
         uploaded = await self.upload("invoices.zip", stream.getvalue())
-        result = (await self.api("POST", "/cases/invoice-files/import")).json()
+        result = (await self.api("POST", "/cases/invoice-files/import", json={"attachment_ids": [uploaded["id"]]})).json()
         self.assertEqual((result["matched"], result["unmatched"]), (0, 1))
+        self.assertEqual(result["result_attachment_ids"], [uploaded["id"]])
+        self.assertEqual(result["items"][0]["result_attachment_ids"], [uploaded["id"]])
+        failed_rows = (await self.api("GET", "/cases/invoice-files", params={"attachment_ids": result["result_attachment_ids"]})).json()["items"]
+        self.assertEqual([row["id"] for row in failed_rows], [uploaded["id"]])
+        self.assertIn("unknown.pdf", failed_rows[0]["match_status"])
         async with SessionLocal() as db:
             attachment = await db.get(FileAttachment, uploaded["id"])
             self.assertIsNone(attachment.record_id)
             self.assertIn("unknown.pdf", attachment.remark)
             self.assertEqual(len(list(UPLOAD_ROOT.iterdir())), 1)
         await self.record("invoice", status="已开票", data={"invoice_no": "929003", "case_fee_ids": [fee.id]})
-        await self.upload("929003.pdf")
-        result = (await self.api("POST", "/cases/invoice-files/import")).json()
+        ambiguous = await self.upload("929003.pdf")
+        batch = {"attachment_ids": [uploaded["id"], ambiguous["id"]]}
+        result = (await self.api("POST", "/cases/invoice-files/import", json=batch)).json()
         self.assertEqual(result["matched"], 0)
+        self.assertEqual(result["processed"], 2)
+        self.assertEqual(set(result["result_attachment_ids"]), set(batch["attachment_ids"]))
         self.actor("viewer")
-        await self.api("POST", "/cases/invoice-files/import", code=403)
+        await self.api("POST", "/cases/invoice-files/import", code=403, json=batch)
 
     async def test_r02_partial_disk_failure_rolls_back_and_removes_partial_file(self):
         _, _, fee = await self.sources()
@@ -189,7 +202,7 @@ class Finance929Regression(unittest.IsolatedAsyncioTestCase):
             raise OSError("CODEX simulated disk failure")
         with patch.object(Path, "write_bytes", fail_after_partial):
             with self.assertRaises(OSError):
-                await self.client.post("/api/v1/cases/invoice-files/import")
+                await self.client.post("/api/v1/cases/invoice-files/import", json={"attachment_ids": [uploaded["id"]]})
         async with SessionLocal() as db:
             attachment = await db.get(FileAttachment, uploaded["id"])
             self.assertIsNone(attachment.record_id)
@@ -206,16 +219,166 @@ class Finance929Regression(unittest.IsolatedAsyncioTestCase):
         with ZipFile(stream, "w") as archive:
             archive.writestr("one/929005.pdf", b"invoice-A")
             archive.writestr("two/929006.pdf", b"invoice-B")
-        await self.upload("valid.zip", stream.getvalue())
-        responses = await asyncio.gather(self.client.post("/api/v1/cases/invoice-files/import"),
-                                         self.client.post("/api/v1/cases/invoice-files/import"))
-        self.assertTrue(all(response.status_code == 200 for response in responses), [r.text for r in responses])
-        self.assertEqual(sum(response.json()["processed"] for response in responses), 1)
+        uploaded = await self.upload("valid.zip", stream.getvalue())
+        batch = {"attachment_ids": [uploaded["id"]]}
+        responses = await asyncio.gather(self.client.post("/api/v1/cases/invoice-files/import", json=batch),
+                                         self.client.post("/api/v1/cases/invoice-files/import", json=batch))
+        self.assertEqual(sorted(response.status_code for response in responses), [200, 409], [r.text for r in responses])
+        result = next(response.json() for response in responses if response.status_code == 200)
+        self.assertEqual(result["processed"], 1)
         async with SessionLocal() as db:
             files = list((await db.scalars(select(FileAttachment))).all())
             self.assertEqual(len(files), 2)
             self.assertEqual({item.record_id for item in files}, {fee.id})
             self.assertEqual({Path(item.path).read_bytes() for item in files}, {b"invoice-A", b"invoice-B"})
+        self.assertEqual(set(result["result_attachment_ids"]), {item.id for item in files})
+        self.assertEqual(result["items"][0]["result_attachment_ids"], result["result_attachment_ids"])
+        rows = (await self.api("GET", "/cases/invoice-files", params={"attachment_ids": result["result_attachment_ids"]})).json()["items"]
+        self.assertEqual({row["invoice_no"] for row in rows}, {"929005", "929006"})
+
+    async def test_r02_explicit_batch_excludes_history_and_all_other_pending_files(self):
+        _, _, fee = await self.sources()
+        await self.record("invoice", status="已开票", data={"invoice_no": "929007", "case_fee_ids": [fee.id]})
+        history = await self.upload("929007.pdf", b"historical-content")
+        await self.api("POST", "/cases/invoice-files/import", json={"attachment_ids": [history["id"]]})
+        old_pending = await self.upload("929007.pdf", b"previous-tab-content")
+        self.actor("applicant")
+        other_pending = await self.upload("929007.pdf", b"other-user-content")
+        self.actor("admin")
+        current = await self.upload("929007.pdf", b"current-tab-content")
+        await self.api("GET", "/cases/invoice-files", code=422)
+        current_rows = (await self.api("GET", "/cases/invoice-files", params={"attachment_ids": [current["id"]]})).json()
+        self.assertEqual([row["id"] for row in current_rows["items"]], [current["id"]])
+        self.assertEqual(current_rows["total"], 1)
+        result = (await self.api("POST", "/cases/invoice-files/import", json={"attachment_ids": [current["id"]]})).json()
+        self.assertEqual((result["processed"], result["matched"], result["result_attachment_ids"]), (1, 1, [current["id"]]))
+        rows = (await self.api("GET", "/cases/invoice-files", params={"attachment_ids": result["result_attachment_ids"]})).json()["items"]
+        self.assertEqual([row["id"] for row in rows], [current["id"]])
+        async with SessionLocal() as db:
+            for upload, content in [(old_pending, b"previous-tab-content"), (other_pending, b"other-user-content")]:
+                item = await db.get(FileAttachment, upload["id"])
+                self.assertIsNone(item.record_id)
+                self.assertIsNone(item.invoice_record_id)
+                self.assertEqual(item.remark, upload["remark"])
+                self.assertEqual(Path(item.path).read_bytes(), content)
+            item = await db.get(FileAttachment, history["id"])
+            self.assertEqual((item.record_id, Path(item.path).read_bytes()), (fee.id, b"historical-content"))
+            self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent).where(WorkflowEvent.action == "导入案件发票文件")), 2)
+        ids = [history["id"], current["id"]]
+        pages = [(await self.api("GET", "/cases/invoice-files", params={"attachment_ids": ids, "page": page, "page_size": 1})).json()
+                 for page in (1, 2)]
+        self.assertTrue(all(page["total"] == 2 and page["pages"] == 2 for page in pages))
+        self.assertEqual({row["id"] for page in pages for row in page["items"]}, set(ids))
+
+    async def test_r02_invalid_or_mixed_source_ids_reject_whole_request(self):
+        _, _, fee = await self.sources()
+        await self.record("invoice", status="已开票", data={"invoice_no": "929008", "case_fee_ids": [fee.id]})
+        current = await self.upload("929008.pdf")
+        wrong_category = await self.upload("929008.pdf", category="普通附件")
+        self.actor("applicant")
+        other = await self.upload("929008.pdf")
+        self.actor("admin")
+        linked = await self.upload("929008.pdf")
+        await self.api("POST", "/cases/invoice-files/import", json={"attachment_ids": [linked["id"]]})
+        invoice_linked = await self.upload("929008.pdf")
+        async with SessionLocal() as db:
+            source = await db.get(FileAttachment, invoice_linked["id"])
+            source.invoice_record_id = (await db.get(FileAttachment, linked["id"])).invoice_record_id
+            await db.commit()
+        await self.api("POST", "/cases/invoice-files/import", code=422)
+        for body in [{}, {"attachment_ids": []}, {"attachment_ids": [0]}, {"attachment_ids": [-1]},
+                     {"attachment_ids": [True]}, {"attachment_ids": [1.5]}, {"attachment_ids": [str(current["id"])]},
+                     {"attachment_ids": [current["id"], current["id"]]}]:
+            with self.subTest(body=body):
+                await self.api("POST", "/cases/invoice-files/import", code=422, json=body)
+        for bad_id, code in [(999999, 404), (wrong_category["id"], 409), (other["id"], 403),
+                             (linked["id"], 409), (invoice_linked["id"], 409)]:
+            with self.subTest(bad_id=bad_id):
+                await self.api("POST", "/cases/invoice-files/import", code=code,
+                               json={"attachment_ids": [current["id"], bad_id]})
+        for ids, code in [([current["id"], 999999], 404), ([current["id"], other["id"]], 403),
+                          ([current["id"], wrong_category["id"]], 409), ([current["id"], current["id"]], 422),
+                          ([0], 422), (["invalid"], 422)]:
+            with self.subTest(get_ids=ids):
+                await self.api("GET", "/cases/invoice-files", code=code, params={"attachment_ids": ids})
+        async with SessionLocal() as db:
+            for upload in [current, other, wrong_category]:
+                item = await db.get(FileAttachment, upload["id"])
+                self.assertIsNone(item.record_id)
+                self.assertEqual(item.remark, upload["remark"])
+                self.assertEqual(Path(item.path).read_bytes(), b"%PDF-1.4 CODEX-929")
+            self.assertEqual(await db.scalar(select(func.count()).select_from(FileAttachment)), 5)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent).where(WorkflowEvent.action == "导入案件发票文件")), 1)
+
+    async def test_r02_result_mapping_keeps_all_zip_copies_and_failed_sources(self):
+        _, _, fee = await self.sources()
+        second = await self.record("finance", data=fee.data)
+        for number, fees in [("929009", [fee.id, second.id]), ("929010", [fee.id])]:
+            await self.record("invoice", status="已开票", data={"invoice_no": number, "case_fee_ids": fees})
+        stream = io.BytesIO()
+        with ZipFile(stream, "w") as archive:
+            archive.writestr("first/929009.pdf", b"multi-fee")
+            archive.writestr("second/929010.pdf", b"single-fee")
+        good = await self.upload("mapped.zip", stream.getvalue())
+        failed = await self.upload("unmatched.pdf")
+        result = (await self.api("POST", "/cases/invoice-files/import", json={"attachment_ids": [good["id"], failed["id"]]})).json()
+        self.assertEqual((result["processed"], result["matched"], result["unmatched"]), (2, 1, 1))
+        per_source = {item["source_attachment_id"]: item for item in result["items"]}
+        self.assertEqual(len(per_source[good["id"]]["result_attachment_ids"]), 3)
+        self.assertEqual(per_source[failed["id"]]["result_attachment_ids"], [failed["id"]])
+        self.assertEqual(result["result_attachment_ids"], [value for item in result["items"] for value in item["result_attachment_ids"]])
+        async with SessionLocal() as db:
+            files = list((await db.scalars(select(FileAttachment))).all())
+            self.assertEqual(len(files), 4)
+            self.assertEqual(set(result["result_attachment_ids"]), {item.id for item in files})
+            copies = [item for item in files if item.id in per_source[good["id"]]["result_attachment_ids"]]
+            self.assertEqual(sorted(Path(item.path).read_bytes() for item in copies), [b"multi-fee", b"multi-fee", b"single-fee"])
+            self.assertIsNone((await db.get(FileAttachment, failed["id"])).record_id)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent).where(WorkflowEvent.action == "导入案件发票文件")), 3)
+        rows = (await self.api("GET", "/cases/invoice-files", params={"attachment_ids": result["result_attachment_ids"]})).json()["items"]
+        self.assertEqual({row["id"] for row in rows}, set(result["result_attachment_ids"]))
+
+    async def test_r02_explicit_results_preserve_record_scope_and_field_permissions(self):
+        _, _, private_fee = await self.sources()
+        await self.record("invoice", status="已开票", data={"invoice_no": "929011", "case_fee_ids": [private_fee.id]})
+        private_file = await self.upload("929011.pdf")
+        await self.api("POST", "/cases/invoice-files/import", json={"attachment_ids": [private_file["id"]]})
+        own_fee = await self.record("finance", owner="applicant", data={"fee_type": "官方费用", "amount": 37})
+        await self.record("invoice", status="已开票", owner="applicant",
+                          data={"invoice_no": "929012", "case_fee_ids": [own_fee.id], "amount": 37})
+        self.actor("applicant")
+        own_file = await self.upload("929012.pdf")
+        result = (await self.api("POST", "/cases/invoice-files/import", json={"attachment_ids": [own_file["id"]]})).json()
+        params = {"attachment_ids": result["result_attachment_ids"]}
+        row = (await self.api("GET", "/cases/invoice-files", params=params)).json()["items"][0]
+        self.assertEqual((row["fee_amount"], row["invoice_amount"], row["invoice_no"]), (37, 37, "929012"))
+        visible = (await self.api("GET", "/cases/invoice-files",
+                       params={"attachment_ids": [own_file["id"], private_file["id"]]})).json()
+        self.assertEqual({item["id"] for item in visible["items"]}, {own_file["id"], private_file["id"]})
+        # 页面菜单能力原本扩大查询范围；核心读取器仍须保留未提升身份的数据及字段权限。
+        request = Request({"type": "http", "path": "/api/v1/auth/me", "headers": []})
+        token = create_token(PREFIX + "applicant", "user")
+        async with SessionLocal() as db:
+            identity = await current_identity(request, token, db)
+            self.assertFalse(identity["_page_menu_capability"])
+            self.assertNotIn("admin", identity["role_ids"])
+            rows = await invoice_file_rows(identity, db, 1, 200, [own_file["id"]])
+            self.assertEqual(rows["items"][0]["fee_amount"], 37)
+            with self.assertRaises(HTTPException) as denied:
+                await invoice_file_rows(identity, db, 1, 200, [own_file["id"], private_file["id"]])
+            self.assertEqual(denied.exception.status_code, 403)
+        async with SessionLocal() as db:
+            role = await db.scalar(select(JobRole).where(JobRole.code == "applicant929"))
+            role.field_keys = [key for key in FIELD_KEYS if key != "finance.amount"]
+            await db.commit()
+        async with SessionLocal() as db:
+            identity = await current_identity(request, token, db)
+            row = (await invoice_file_rows(identity, db, 1, 200, [own_file["id"]]))["items"][0]
+        self.assertIsNone(row["fee_amount"])
+        self.assertIsNone(row["invoice_amount"])
+        self.assertEqual(row["invoice_no"], "929012")
+        self.actor("viewer")
+        await self.api("GET", "/cases/invoice-files", code=403, params=params)
 
     async def test_r03_default_and_manual_contract_selection_persist_as_fee_contract(self):
         contract, case, _ = await self.sources()

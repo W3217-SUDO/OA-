@@ -5,6 +5,7 @@ from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
 from fastapi import HTTPException
+from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import select, update
 
 from app.models import BusinessRecord, FileAttachment, User, WorkflowEvent
@@ -15,6 +16,25 @@ from app.core.invoice_sources import invoice_source_fees
 CATEGORY = "案件发票文件"
 MAX_BYTES = 20 * 1024 * 1024
 FILE_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".ofd", ".xlsx", ".xls", ".csv"}
+
+
+class InvoiceFileImportInput(BaseModel):
+    attachment_ids: list[StrictInt] = Field(min_length=1)
+
+
+def _requested_attachment_ids(attachment_ids):
+    if not attachment_ids or any(type(value) is not int or value <= 0 for value in attachment_ids):
+        raise HTTPException(422, "请明确提供本次上传的有效附件ID")
+    if len(set(attachment_ids)) != len(attachment_ids):
+        raise HTTPException(422, "附件ID不能重复")
+    return attachment_ids
+
+
+def _require_complete_invoice_batch(items, attachment_ids):
+    if {item.id for item in items} != set(attachment_ids):
+        raise HTTPException(404, "本批次中有附件不存在，请重新上传")
+    if any(item.category != CATEGORY for item in items):
+        raise HTTPException(409, "本批次包含非案件发票文件，不能处理")
 
 
 async def require_invoice_file_access(identity, db):
@@ -52,18 +72,29 @@ def _invoice_file_entries(attachment):
         raise HTTPException(422, "压缩包无法读取，请检查文件格式") from exc
 
 
-async def import_invoice_files(identity, db):
+async def import_invoice_files(identity, db, attachment_ids):
     from app.core.permissions import _record_scope_conditions
     await require_invoice_file_access(identity, db)
+    attachment_ids = _requested_attachment_ids(attachment_ids)
     # 更新锁在 SQLite 和 PostgreSQL 均串行化同一批待导入附件，重试不会再次复制。
     await db.execute(update(FileAttachment).where(
+        FileAttachment.id.in_(attachment_ids),
         FileAttachment.category == CATEGORY, FileAttachment.uploader == identity["username"],
-        FileAttachment.record_id.is_(None),
+        FileAttachment.record_id.is_(None), FileAttachment.invoice_record_id.is_(None),
     ).values(remark=FileAttachment.remark))
     pending = list((await db.scalars(select(FileAttachment).where(
-        FileAttachment.category == CATEGORY, FileAttachment.uploader == identity["username"],
-        FileAttachment.record_id.is_(None),
+        FileAttachment.id.in_(attachment_ids),
     ).order_by(FileAttachment.id).execution_options(populate_existing=True))).all())
+    # 锁定后核对完整集合，不能静默跳过他人、已导入或缺失的源文件。
+    try:
+        _require_complete_invoice_batch(pending, attachment_ids)
+        if any(item.uploader != identity["username"] for item in pending):
+            raise HTTPException(403, "只能导入本人上传的案件发票文件")
+        if any(item.record_id is not None or item.invoice_record_id is not None for item in pending):
+            raise HTTPException(409, "本批次中有附件已关联或已导入，请勿重复导入")
+    except HTTPException:
+        await db.rollback()
+        raise
     invoices = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "invoice", BusinessRecord.status == "已开票",
         *(await _record_scope_conditions(identity, db)),
@@ -73,7 +104,7 @@ async def import_invoice_files(identity, db):
         number = str((invoice.data or {}).get("invoice_no") or "").strip()
         if number:
             by_number.setdefault(number, []).append(invoice)
-    results, created_paths, obsolete_paths = [], [], []
+    results, created_paths, obsolete_paths, output_attachments = [], [], [], []
     try:
         for attachment in pending:
             try:
@@ -95,9 +126,11 @@ async def import_invoice_files(identity, db):
                     plans.extend((name, content, invoice, fee) for fee in fees)
             except HTTPException as exc:
                 attachment.remark = f"导入失败：{exc.detail}"
-                results.append({"id": attachment.id, "matched": False, "message": str(exc.detail)})
+                results.append({"id": attachment.id, "source_attachment_id": attachment.id,
+                                "result_attachment_ids": [attachment.id], "matched": False, "message": str(exc.detail)})
                 continue
             # 全部成员与费用先验证，再在同一事务中创建独立文件与关系。
+            copies = []
             for index, (name, content, invoice, fee) in enumerate(plans):
                 target = UPLOAD_ROOT / f"{uuid4().hex}{Path(name).suffix.lower()}"
                 created_paths.append(target)
@@ -113,10 +146,17 @@ async def import_invoice_files(identity, db):
                 item.size = len(content)
                 item.remark = f"按发票号 {invoice.data['invoice_no']} 导入费用 {fee.serial_no}"
                 db.add(item)
+                copies.append(item)
                 db.add(WorkflowEvent(record_id=fee.id, action="导入案件发票文件", from_status=fee.status,
                                      to_status=fee.status, operator=identity["username"], comment=f"{name}｜申请 {invoice.serial_no}"))
             obsolete_paths.append(source_path)
-            results.append({"id": attachment.id, "matched": True, "fee_files": len(plans)})
+            result = {"id": attachment.id, "source_attachment_id": attachment.id,
+                      "matched": True, "fee_files": len(plans)}
+            results.append(result)
+            output_attachments.append((result, copies))
+        await db.flush()
+        for result, copies in output_attachments:
+            result["result_attachment_ids"] = [item.id for item in copies]
         await db.commit()
     except Exception:
         await db.rollback()
@@ -126,20 +166,25 @@ async def import_invoice_files(identity, db):
     for path in obsolete_paths:
         path.unlink(missing_ok=True)
     matched = sum(bool(item["matched"]) for item in results)
-    return {"processed": len(results), "matched": matched, "unmatched": len(results) - matched, "items": results}
+    return {"processed": len(results), "matched": matched, "unmatched": len(results) - matched, "items": results,
+            "result_attachment_ids": [value for result in results for value in result["result_attachment_ids"]]}
 
 
-async def invoice_file_rows(identity, db, page, page_size):
+async def invoice_file_rows(identity, db, page, page_size, attachment_ids):
     from app.core.formatters import _person_display_name, _user_display_map
     from app.core.permissions import _filter_visible_attachments, _record_scope_conditions
     from app.core.storage import _attachment_dict
     from app.core.system import _allowed_field_keys, _record_dict
     await require_invoice_file_access(identity, db)
-    items = list((await db.scalars(select(FileAttachment).where(FileAttachment.category == CATEGORY)
+    attachment_ids = _requested_attachment_ids(attachment_ids)
+    items = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids))
                                   .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc()))).all())
+    _require_complete_invoice_batch(items, attachment_ids)
     items = await _filter_visible_attachments(items, identity, db)
     # 未匹配文件仅由上传人处理，不能因页面能力扩张而暴露其他人的待导入文件。
     items = [item for item in items if item.record_id or item.uploader == identity["username"]]
+    if len(items) != len(attachment_ids):
+        raise HTTPException(403, "本批次中有附件无权查看")
     total = len(items)
     items = items[(page - 1) * page_size:page * page_size]
     ids = {value for item in items for value in (item.record_id, item.invoice_record_id) if value}

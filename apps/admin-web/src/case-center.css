@@ -265,6 +265,23 @@
 .case-original-layout .case-mine-list-actions { position:relative; z-index:1; }
 .case-original-layout .case-company-list-actions { position:relative; z-index:1; }
 
+/* 归档队列固定筛选和操作区，只有桌面表体使用剩余高度；窄屏保留整页滚动。 */
+@media(min-width:768px){
+  .page-workbench:has(>.case-archive-page){overflow:hidden}
+  .page-workbench>.case-archive-page{height:100%;min-height:0}
+  .case-archive-page>.case-archive-panel{display:flex;height:100%;min-height:0;flex-direction:column;overflow:hidden}
+  .case-archive-panel>.ant-card-head{flex:0 0 auto}
+  .case-archive-panel>.ant-card-body{display:flex;min-height:0;flex:1 1 auto;flex-direction:column;overflow:auto}
+  .case-archive-panel .case-archive-query,
+  .case-archive-panel>.ant-card-body>.ant-alert,
+  .case-archive-panel .case-bottom-actions{flex:0 0 auto}
+  .case-archive-table-viewport{min-width:0;min-height:0;flex:1 1 0;overflow:hidden}
+  .case-archive-table-viewport .ant-table-body{overscroll-behavior:contain}
+}
+@media(min-width:768px) and (max-width:1200px){
+  .case-archive-panel .case-archive-query{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
 /* 8.12 row 2 rework: keep detail controls and summaries fixed; scroll records only. */
 .page-workbench:has(.case-detail-static-root){overflow:hidden}
 .page-workbench > .case-center-page:has(.case-detail-static-root){height:100%;min-height:0}

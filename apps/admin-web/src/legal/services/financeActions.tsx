@@ -17,9 +17,12 @@ import { buildCasePaymentContext } from "../../caseSecondBatchParity";
 import { feeTypeSelection, initialFeeTypeId, type FeeTypeCatalogItem } from "../../feeTypeHierarchy.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { caseReceiptFiles } from "../caseReceiptFiles";
-import type { AttachmentRow, CaseAssistedFee, CaseCommissionPreview, CaseCommissionPreviewRow, CaseCommissionResult, CaseDetailCapabilities, CaseFileTypeOption, CasePaymentTypeOption, CaseRow, ContractRow, PaymentTypeCreateTarget, Profile, TaskRow } from "../types";
+import type { CaseAssistedFee, CaseCommissionPreview, CaseCommissionPreviewRow, CaseCommissionResult, CaseDetailCapabilities, CaseFileTypeOption, CasePaymentTypeOption, CaseRow, ContractRow, PaymentTypeCreateTarget, Profile, TaskRow } from "../types";
+import type { CaseInvoiceBatch, CaseInvoiceImportResult, LoadCaseInvoiceBatch } from "../hooks/useCaseInvoiceBatch";
 /** legal finance operations; dependencies are read when each operation runs. */
 export interface CaseFinanceDependencies {
+    readonly invoiceBatch: CaseInvoiceBatch;
+    readonly loadCaseInvoiceBatch: LoadCaseInvoiceBatch;
     readonly counselDetailAssistedFeePage: number;
     readonly counselDetailAssistedFeePageSize: number;
     readonly counselDetailAssistedFeeRequestRef: React.RefObject<number>;
@@ -105,7 +108,6 @@ export interface CaseFinanceDependencies {
     readonly setPaymentPackagePreview: React.Dispatch<any>;
     readonly paymentPackagePreview: any;
     readonly paymentPackageLoading: boolean;
-    readonly invoiceRows: AttachmentRow[];
     readonly refundCompleting: CaseRow | null;
     readonly refundCompleteForm: FormInstance<any>;
     readonly setRefundCompleting: React.Dispatch<React.SetStateAction<CaseRow | null>>;
@@ -684,19 +686,45 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         }
     };
     const startCaseInvoiceImport = async () => {
-        const { invoiceRows, load } = context;
-        if (!invoiceRows.length)
+        const { invoiceBatch, loadCaseInvoiceBatch } = context;
+        const batch = invoiceBatch.current.current;
+        if (batch.loading) return;
+        const sourceIds = batch.sourceAttachmentIds.filter(id => batch.rows.some(row => row.id === id && row.record_id === null));
+        if (batch.resultUnconfirmed)
+            return message.warning("导入结果尚未确认，不能重复提交；源文件查询不能恢复完整结果清单");
+        if (batch.error || !sourceIds.length)
             return message.warning("请先上传发票文件");
+        const requestId = invoiceBatch.begin();
+        if (requestId === undefined) return;
+        let confirmedResult = false;
         try {
-            const { data } = await api.post("/cases/invoice-files/import");
+            const { data } = await api.post<CaseInvoiceImportResult>("/cases/invoice-files/import", { attachment_ids: sourceIds });
+            if (!invoiceBatch.isCurrent(requestId)) return;
+            if (data.processed !== sourceIds.length || !Number.isSafeInteger(data.matched) || data.matched < 0 ||
+                !Number.isSafeInteger(data.unmatched) || data.unmatched < 0 || data.matched + data.unmatched !== data.processed ||
+                !Array.isArray(data.result_attachment_ids) || !data.result_attachment_ids.length ||
+                data.result_attachment_ids.some(id => !Number.isSafeInteger(id) || id <= 0) ||
+                sourceIds.some(id => !data.result_attachment_ids.includes(id)) ||
+                new Set(data.result_attachment_ids).size !== data.result_attachment_ids.length)
+                throw new Error("导入响应缺少有效结果附件编号，请查询当前批次状态，勿重复提交");
+            confirmedResult = true;
+            invoiceBatch.update(requestId, { attachmentIds: data.result_attachment_ids });
             if (data.unmatched)
                 message.warning(`已处理 ${data.processed} 个文件，匹配发票申请 ${data.matched} 个，${data.unmatched} 个导入失败，请查看导入状态`);
             else
                 message.success(`已完成 ${data.processed} 个发票文件导入并关联申请费用`);
-            await load();
+            await loadCaseInvoiceBatch(data.result_attachment_ids, requestId);
         }
         catch (error: any) {
-            message.error(error?.response?.data?.detail || "发票文件导入失败");
+            if (!invoiceBatch.isCurrent(requestId)) return;
+            const detail = error?.response?.data?.detail || error?.message || "发票文件导入失败，请先查询当前批次状态";
+            const errorMessage = typeof detail === "string" ? detail : "发票文件导入失败，请先查询当前批次状态";
+            const rejectedBeforeImport = [400, 401, 403, 404, 409, 422].includes(error?.response?.status);
+            invoiceBatch.update(requestId, { error: errorMessage, resultUnconfirmed: !confirmedResult && !rejectedBeforeImport });
+            message.error(errorMessage);
+        }
+        finally {
+            invoiceBatch.update(requestId, { loading: false });
         }
     };
     const completeRefund = async () => {

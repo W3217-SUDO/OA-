@@ -7,9 +7,12 @@ import { openAttachmentOnlinePreview } from "../../attachmentOnlinePreview.mjs";
 import { getCaseAttachmentUploadValidationError, getCaseFileRenameValidationError, hasCaseFileTypeOption } from "../../caseFileFrontendParity.mjs";
 import { DEFAULT_CASE_ATTACHMENT_CATEGORY } from "../constants";
 import type { LibreOfficeEditorTarget } from "../../office/types";
+import type { CaseInvoiceBatch, LoadCaseInvoiceBatch } from "../hooks/useCaseInvoiceBatch";
 import type { AttachmentPreview, AttachmentRow, CaseAiDraftEditor, CaseDetailCapabilities, CaseDocumentFolderEditor, CaseFileTypeOption, CaseRow, CaseTaskAttachment, CaseWordEditor, CaseWordEditorBlock, ContractRow } from "../types";
 /** legal documents operations; dependencies are read when each operation runs. */
 export interface CaseDocumentsDependencies {
+    readonly invoiceBatch: CaseInvoiceBatch;
+    readonly loadCaseInvoiceBatch: LoadCaseInvoiceBatch;
     readonly applyCounselDocumentFolderPayload: (payload: any) => CaseFileTypeOption[];
     readonly setCounselDetailAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;
     readonly viewingCounselCase: CaseRow | null;
@@ -78,7 +81,6 @@ export interface CaseDocumentsDependencies {
     readonly caseUploadCategory: string;
     readonly fileTypeOptionsForCase: (caseType: unknown) => CaseFileTypeOption[];
     readonly caseUploadRef: React.RefObject<HTMLInputElement | null>;
-    readonly load: () => Promise<void>;
 }
 export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
     const refreshCounselDocumentFolderTree = async (caseId: number): Promise<CaseFileTypeOption[]> => {
@@ -635,24 +637,37 @@ export function createCaseDocumentsActions(context: CaseDocumentsDependencies) {
         }
     };
     const uploadCaseInvoiceFile = async (file?: File) => {
-        const { load, caseUploadRef } = context;
+        const { invoiceBatch, loadCaseInvoiceBatch, caseUploadRef } = context;
         if (!file)
             return;
+        const requestId = invoiceBatch.begin(true);
+        if (requestId === undefined) return;
         const data = new FormData();
         data.append("file", file);
         data.append("category", "案件发票文件");
         data.append("remark", "案件发票文件导入");
         try {
-            await api.post("/attachments", data);
+            const response = await api.post<AttachmentRow>("/attachments", data);
+            if (!invoiceBatch.isCurrent(requestId)) return;
+            const attachmentId = response.data.id;
+            if (!Number.isSafeInteger(attachmentId) || attachmentId <= 0)
+                throw new Error("上传响应缺少有效附件编号，无法开始导入");
+            invoiceBatch.update(requestId, { sourceAttachmentIds: [attachmentId], attachmentIds: [attachmentId] });
             message.success("发票文件已上传，请点击开始导入按发票号匹配申请费用");
-            await load();
+            await loadCaseInvoiceBatch([attachmentId], requestId);
         }
         catch (error: any) {
-            message.error(error?.response?.data?.detail || "发票文件上传失败");
+            if (!invoiceBatch.isCurrent(requestId)) return;
+            const detail = error?.response?.data?.detail || error?.message || "发票文件上传失败";
+            const errorMessage = typeof detail === "string" ? detail : "发票文件上传失败，请检查文件后重试";
+            invoiceBatch.update(requestId, { error: errorMessage });
+            message.error(errorMessage);
         }
         finally {
-            if (caseUploadRef.current)
-                caseUploadRef.current.value = "";
+            if (invoiceBatch.isCurrent(requestId)) {
+                invoiceBatch.update(requestId, { loading: false });
+                if (caseUploadRef.current) caseUploadRef.current.value = "";
+            }
         }
     };
     return { refreshCounselDocumentFolderTree, refreshCounselDetailAttachments, downloadCaseTaskAttachment, generateCaseDocument, openCounselAttachmentSeal, submitCounselAttachmentSeal, uploadCounselDetailAttachment, downloadCounselDetailAttachment, unlockCounselDetailAttachment, previewCounselDetailAttachment, loadAttachmentPdfPage, moveCounselAttachments, renameCounselAttachment, openEditAiDraft, releaseCaseWordEditorLock, finishClosingCaseWordEditor, openCaseWordEditor, saveCaseWordEditor, saveAiDraft, openPromoteAiDraft, promoteAiDraft, saveCaseDocumentFolder, generateSelectedCaseDocuments, uploadCaseFile, uploadCaseInvoiceFile };

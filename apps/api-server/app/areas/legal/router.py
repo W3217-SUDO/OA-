@@ -1,5 +1,6 @@
 """普通案件与法律业务路由编排。"""
 from app.core.case_archive import ArchiveSearchInput, ArchiveBatchReviewInput, ArchiveExportInput, search_archive_cases
+from app.core.case_invoice_files import InvoiceFileImportInput
 from app.core.constants import (
     ADMINISTRATIVE_CLIENT_POSITIONS, CASE_CLIENT_POSITIONS_BY_TYPE, CASE_CREATABLE_TYPES,
     CASE_CREATE_PERMISSION_BY_TYPE, CASE_CREATE_STATUS_ALIASES, CASE_DOCUMENT_CATEGORY, CASE_DOCUMENT_TYPES,
@@ -881,16 +882,17 @@ async def list_pending_execution_cases(
 @router.get(f"{settings.api_prefix}/cases/invoice-files")
 async def list_case_invoice_files(
     page: int = Query(1, ge=1), page_size: int = Query(200, ge=1, le=200),
+    attachment_ids: list[int] = Query(...),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.case_invoice_files import invoice_file_rows
-    return await invoice_file_rows(identity, db, page, page_size)
+    return await invoice_file_rows(identity, db, page, page_size, attachment_ids)
 
 
 @router.post(f"{settings.api_prefix}/cases/invoice-files/import")
-async def import_case_invoice_files(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def import_case_invoice_files(body: InvoiceFileImportInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.case_invoice_files import import_invoice_files
-    return await import_invoice_files(identity, db)
+    return await import_invoice_files(identity, db, body.attachment_ids)
 
 
 @router.post(f"{settings.api_prefix}/cases/counsel/search")
