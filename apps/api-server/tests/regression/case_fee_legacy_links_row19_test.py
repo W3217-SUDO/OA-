@@ -84,5 +84,63 @@ class CaseFeeLegacyLinksRow19Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fee["data"]["invoice_date"], "2026-08-31")
 
 
+    async def test_old_payment_voucher_is_projected_separately_without_rewriting_rows(self) -> None:
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            voucher = BusinessRecord(module="invoice", serial_no="CODEX-831-19-VOUCHER", title="付款凭证",
+                customer=fee.customer, owner=fee.owner, department=fee.department, status="已开票",
+                data={"purpose": "付款凭证", "case_fee_ids": [fee.id], "invoice_no": "公告费", "invoice_date": "2026-10-12"})
+            db.add(voucher); await db.flush()
+            fee.data = {**fee.data, "invoice_record_id": voucher.id, "invoice_no": "公告费", "invoice_date": "2026-10-12", "paid_date": "2026-10-12"}
+            before = dict(fee.data)
+            voucher_id = voucher.id
+            await db.commit()
+        response = await self.client.get(f"{API}/cases/{self.case_id}/relations")
+        self.assertEqual(response.status_code, 200, response.text)
+        data = next(row for row in response.json()["fees"] if row["id"] == self.fee_id)["data"]
+        self.assertEqual((data["invoice_record_id"], data["invoice_no"], data["invoice_date"]), (self.invoice_id, "FP-831-19", "2026-08-31"))
+        self.assertEqual((data["writeoff_voucher_record_id"], data["writeoff_voucher_no"]), (voucher_id, "公告费"))
+        self.assertEqual(data["paid_date"], "2026-10-12")
+        response = await self.client.get(f"{API}/finance/invoices", params={"scope": "company"})
+        self.assertEqual(response.status_code, 200, response.text)
+        invoice_ids = {row["id"] for row in response.json()["items"]}
+        self.assertIn(self.invoice_id, invoice_ids)
+        self.assertNotIn(voucher_id, invoice_ids)
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(BusinessRecord, self.fee_id)).data, before)
+            invoice = await db.get(BusinessRecord, self.invoice_id)
+            invoice.status = "已作废"
+            await db.commit()
+        response = await self.client.get(f"{API}/cases/{self.case_id}/relations")
+        self.assertEqual(response.status_code, 200, response.text)
+        data = next(row for row in response.json()["fees"] if row["id"] == self.fee_id)["data"]
+        self.assertIsNone(data["invoice_record_id"])
+        self.assertEqual((data["invoice_no"], data["invoice_date"]), ("", ""))
+        self.assertEqual(data["writeoff_voucher_record_id"], voucher_id)
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(BusinessRecord, self.fee_id)).data, before)
+
+    async def test_third_party_applicability_matches_real_allocation_gate(self) -> None:
+        for label in ("公告费", "公证服务费", "担保费", "鉴定费", "检索费"):
+            async with self.sessions() as db:
+                fee = await db.get(BusinessRecord, self.fee_id)
+                fee.data = {**fee.data, "expense_subtype": label}
+                await db.commit()
+            response = await self.client.get(f"{API}/cases/{self.case_id}/relations")
+            self.assertEqual(response.status_code, 200, response.text)
+            data = next(row for row in response.json()["fees"] if row["id"] == self.fee_id)["data"]
+            self.assertIs(data["receipt_allocation_applicable"], False)
+            response = await self.client.post(f"{API}/finance/incoming-payments/{self.payment_ids[0]}/allocate",
+                json={"allocations": [{"fee_record_id": self.fee_id, "amount": 1}]})
+            self.assertEqual(response.status_code, 422, response.text)
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            fee.data = {**fee.data, "expense_subtype": "一审诉讼费"}
+            await db.commit()
+        response = await self.client.get(f"{API}/cases/{self.case_id}/relations")
+        data = next(row for row in response.json()["fees"] if row["id"] == self.fee_id)["data"]
+        self.assertIs(data["receipt_allocation_applicable"], True)
+
+
 if __name__ == "__main__":
     unittest.main()

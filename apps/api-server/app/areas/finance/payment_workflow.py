@@ -180,9 +180,9 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
                 raise HTTPException(409, '合同付款费用关联无效')
             linked_fees.append(fee)
     invoice = BusinessRecord(module='invoice', serial_no=f'FP{uuid4().hex}', title=f'付款凭证 {invoice_no.strip()}',
-        customer=row.customer, owner=row.owner, department=row.department, status='已开票',
-        data={'invoice_no': invoice_no.strip(), 'amount': amount, 'case_no': data.get('case_no', ''),
-              'finance_record_id': row.id, 'invoice_date': str(paid_date), 'purpose': '付款凭证'})
+        customer=row.customer, owner=row.owner, department=row.department, status='已付款',
+        data={'writeoff_voucher_no': invoice_no.strip(), 'amount': amount, 'case_no': data.get('case_no', ''),
+              'finance_record_id': row.id, 'paid_date': str(paid_date), 'purpose': '付款凭证'})
     db.add(invoice)
     await db.flush()
     paths = []
@@ -202,11 +202,11 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
         row.data = {**data, 'payment_status': '已付款', 'writeoff_status': '已核销', 'paid_amount': amount,
                     'payment_remark': remark,
                     'payment_date': str(paid_date), 'paid_date': str(paid_date), 'payment_method': payment_method,
-                    'invoice_no': invoice_no.strip(), 'writeoff_voucher_no': invoice_no.strip(),
-                    'invoice_record_id': invoice.id, 'written_off_at': datetime.now().isoformat(),
+                    'writeoff_voucher_no': invoice_no.strip(),
+                    'writeoff_voucher_record_id': invoice.id, 'written_off_at': datetime.now().isoformat(),
                     'written_off_by': identity['username']}
         for fee in linked_fees:
-            fee.data = {**(fee.data or {}), 'invoice_no': invoice_no.strip(), 'invoice_record_id': invoice.id}
+            fee.data = {**(fee.data or {}), 'writeoff_voucher_no': invoice_no.strip(), 'writeoff_voucher_record_id': invoice.id}
             if row.module == 'finance_package':
                 direct_fee = is_external_case_fee(fee)
                 paid_total = package_amounts[fee.id] + direct_paid[fee.id] if direct_fee else fee.data.get('actual_commission', fee.data.get('amount', 0))
@@ -217,7 +217,7 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
                             'writeoff_voucher_no': invoice_no.strip()}
                 db.add(WorkflowEvent(record_id=fee.id, action='付款包核销', from_status='待核销', to_status=fee.status, operator=identity['username'], comment=row.serial_no))
         for target in invoice_targets:
-            target.data = {**(target.data or {}), 'invoice_no':invoice_no.strip(), 'invoice_record_id':invoice.id}
+            target.data = {**(target.data or {}), 'writeoff_voucher_no':invoice_no.strip(), 'writeoff_voucher_record_id':invoice.id}
         for target in linked_fees if row.module == 'finance_package' else [row]:
             tx_amount = amount
             if row.module == 'finance_package':

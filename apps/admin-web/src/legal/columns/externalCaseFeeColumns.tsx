@@ -1,6 +1,6 @@
-import { Button, Space } from "antd";
+import { Button } from "antd";
 import { caseFeeRefundLabel } from "../../caseFeeLegacyProjection.mjs";
-import { caseReceiptFiles } from "../caseReceiptFiles";
+import { caseFeeReceiptApplicable, caseReceiptFiles } from "../caseReceiptFiles";
 import type { CaseRow } from "../types";
 export function createExternalCaseFeeColumns(context: {
     readonly viewingCounselCase: CaseRow | null;
@@ -23,8 +23,10 @@ export function createExternalCaseFeeColumns(context: {
         { title: "提交日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.submitted_at || row.created_at || row.data.created_at || "").slice(0, 10) || "—" },
         { title: "核销日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.paid_date || row.data.payment_date || row.data.written_off_at || "").slice(0, 10) || "—" },
         { title: "通知日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.inform_date || row.data.notice_date || "").slice(0, 10) || "—" },
-        { title: "回款日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.received_at || row.data.cashed_date || "").slice(0, 10) || "—" },
+        { title: "回款日期", width: 120, render: (_: unknown, row: CaseRow) => caseFeeReceiptApplicable(row.data, row.title)
+            ? String(row.data.received_at || row.data.cashed_date || "").slice(0, 10) || "—" : "/" },
         { title: "回款金额", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => {
+                if (!caseFeeReceiptApplicable(row.data, row.title)) return "/";
                 const rawValue = row.data.received_amount ?? row.data.cashed_amount;
                 const normalizedValue = String(rawValue ?? "").trim();
                 const value = normalizedValue && normalizedValue !== "/" && normalizedValue !== "\\"
@@ -35,27 +37,16 @@ export function createExternalCaseFeeColumns(context: {
                     : 0;
             } },
         { title: "开票日期", width: 160, render: (_: unknown, row: CaseRow) => {
-                const receipts = caseReceiptFiles(row.data);
                 const invoiceDate = String(row.data.invoice_date || "").slice(0, 10);
-                if (!receipts.length) return invoiceDate || "—";
-                return <Space direction="vertical" size={0}>
-                    {invoiceDate && <span>开票：{invoiceDate}</span>}
-                    {receipts.map((receipt, index) => <span key={`${receipt.attachmentId}-${index}`}>{receipt.billDate || "—"}</span>)}
-                </Space>;
+                return invoiceDate || "—";
             } },
         { title: "发票号", width: 220, render: (_: unknown, row: CaseRow) => {
-                const receipts = caseReceiptFiles(row.data);
-                if (!row.data.invoice_no && !receipts.length) return "—";
-                return <Space direction="vertical" size={0}>
-                    {row.data.invoice_no && <Button type="link" className="case-cell-link" onClick={() => context.openRelatedInvoice(row)}>{row.data.invoice_no}</Button>}
-                    {receipts.map((receipt, index) => receipt.attachmentId > 0
-                        ? <Button key={`${receipt.attachmentId}-${index}`} type="link" className="case-cell-link" onClick={() => context.openCaseReceiptFiles(row)}>{receipt.billNo || `文件${index + 1}`}</Button>
-                        : <span key={`missing-${index}`}>{receipt.billNo || `文件${index + 1}`}（附件缺失）</span>)}
-                </Space>;
+                return row.data.invoice_no
+                    ? <Button type="link" className="case-cell-link" onClick={() => context.openRelatedInvoice(row)}>{row.data.invoice_no}</Button> : "—";
             } },
         { title: "缴费凭证", width: 130, render: (_: unknown, row: CaseRow) => {
                 const receipts = caseReceiptFiles(row.data);
-                const hasWriteoffRecord = Number(row.data.invoice_record_id || 0) > 0;
+                const hasWriteoffRecord = Number(row.data.writeoff_voucher_record_id || 0) > 0;
                 if (!receipts.length && !hasWriteoffRecord) return "—";
                 return <Button type="link" className="case-cell-link" onClick={() => context.openCaseReceiptFiles(row)}>查看凭证</Button>;
             } },

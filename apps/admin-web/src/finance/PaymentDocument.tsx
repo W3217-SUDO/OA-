@@ -61,7 +61,7 @@ export function PaymentDocument({ row, printing, onCase, onContract }: {row:any;
       ["申请编号",show(row.serial_no)],["案源人",show(d.case_source || d.source_person)],["客户名称",show(row.customer)],["备注",show(d.remark || row.description)],
       ["收款单位",show(d.payee_display_name || d.payee)],["开户行",show(d.account_bank || d.bank_name || d.payee_bank || d.bank)],["账号信息",show(d.account || d.bank_account || d.payee_account)],
     ])}
-    {!internal && meta([["审批意见",show(d.approval_comment || d.review_comment)],["付款日期",date(d.paid_date || d.payment_date)],["单据号",show(d.invoice_no || d.writeoff_voucher_no)],["付款金额",amount(d.paid_amount ?? d.amount)],["付款备注",show(d.payment_remark || d.writeoff_remark)]])}
+    {!internal && meta([["审批意见",show(d.approval_comment || d.review_comment)],["付款日期",date(d.paid_date || d.payment_date)],["单据号",show(d.writeoff_voucher_no || d.invoice_no)],["付款金额",amount(d.paid_amount ?? d.amount)],["付款备注",show(d.payment_remark || d.writeoff_remark)]])}
     <div className="payment-info-tab">付款信息</div>
     <Table className="payment-detail-items" rowKey="key" columns={columns} dataSource={details} size="small" pagination={false} scroll={{ x: "max-content" }} locale={{ emptyText: "暂无明细" }} />
   </div>;

@@ -134,7 +134,7 @@ def _payment_package_docx_bytes(
         ("属性", package_data.get("fee_type") or package_data.get("attribute") or ""),
         ("付款日期", package_data.get("paid_date") or package_data.get("payment_date") or ""),
         ("付款方式", package_data.get("payment_method") or ""),
-        ("付款单据号", package_data.get("invoice_no") or package_data.get("writeoff_voucher_no") or ""),
+        ("付款单据号", package_data.get("writeoff_voucher_no") or package_data.get("invoice_no") or ""),
         ("制单人", package_data.get("submitted_by") or package.owner or ""),
         ("备注", package_data.get("remark") or package_data.get("comment") or package.description or ""),
     ]

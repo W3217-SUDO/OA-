@@ -75,7 +75,14 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             fee=await db.get(BusinessRecord,self.fee_id)
             self.assertEqual(fee.status,'已付款')
-            invoice_id=fee.data['invoice_record_id']
+            invoice_id=fee.data['writeoff_voucher_record_id']
+            self.assertEqual(fee.data['writeoff_voucher_no'], 'TEST-VOUCHER')
+            self.assertNotIn('invoice_no', fee.data)
+            self.assertNotIn('invoice_record_id', fee.data)
+            voucher = await db.get(BusinessRecord, invoice_id)
+            self.assertEqual(voucher.data['purpose'], '付款凭证')
+            self.assertNotIn('invoice_date', voucher.data)
+            self.assertNotIn('invoice_no', voucher.data)
             attachment=await db.scalar(select(FileAttachment).where(FileAttachment.record_id==invoice_id))
             self.assertEqual(Path(attachment.path).read_bytes(),b'CODEX-0915-proof')
         response=await self.client.post(path+'/writeoff',data=values,files=[('files',('proof.txt',b'proof'))])
@@ -146,7 +153,7 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             rows=[await db.get(BusinessRecord,i) for i in [self.fee_id,second_id]]
             self.assertTrue(all(row.status=='已付款' for row in rows))
-            self.assertEqual(rows[0].data['invoice_record_id'],rows[1].data['invoice_record_id'])
+            self.assertEqual(rows[0].data['writeoff_voucher_record_id'],rows[1].data['writeoff_voucher_record_id'])
 
     async def test_payment_amount_rejection(self):
         await self.client.post(f'{API}/finance/payment-workflow/{self.fee_id}/submit')
@@ -158,13 +165,35 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
     async def test_user_payment_submit_permission(self):
         username='CODEX-0915-user'
         async with self.sessions() as db:
-            db.add(User(username=username,display_name='普通用户',role='user',department='Test',password_hash='test-only',is_active=True))
+            user=User(username=username,display_name='普通用户',role='user',department='Test',password_hash='test-only',is_active=True,
+                must_change_password=False)
+            db.add(user)
             fee=await db.get(BusinessRecord,self.fee_id)
             fee.owner=username
+            await db.flush()
+            from app.core.permissions import _permission_payload_for_identity
+            permission=await _permission_payload_for_identity({'username':username,'role':'user','department':'Test'},db)
+            self.assertIn('finance-payment-waiting',permission['menu_keys'])
+            # 默认普通角色有财务父菜单；拒权用例必须显式撤销办理菜单。
+            user.profile={'permission_overrides':{'menu_keys':[]}}
             await db.commit()
-        self.app.dependency_overrides[current_identity]=lambda:{'username':username,'role':'user','department':'Test'}
-        response=await self.client.post(f'{API}/finance/payment-workflow/{self.fee_id}/submit')
+        from app.security import create_token
+        self.app.dependency_overrides.pop(current_identity)
+        headers={'Authorization':'Bearer '+create_token(username,'user')}
+        response=await self.client.post(f'{API}/finance/payment-workflow/{self.fee_id}/submit',headers=headers)
         self.assertEqual(response.status_code,403,response.text)
+        async with self.sessions() as db:
+            fee=await db.get(BusinessRecord,self.fee_id)
+            self.assertEqual(fee.status,'已审批')
+            self.assertEqual(list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module=='finance_package'))).all()),[])
+            user=await db.scalar(select(User).where(User.username==username))
+            permission=await _permission_payload_for_identity({'username':username,'role':'user','department':'Test'},db)
+            self.assertNotIn('finance-payment-waiting',permission['menu_keys'])
+            user.profile={'permission_overrides':{'menu_keys':['finance-payment-waiting']}}
+            await db.commit()
+        response=await self.client.post(f'{API}/finance/payment-workflow/{self.fee_id}/submit',headers=headers)
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['status'],'待核销')
 
     async def test_workflow_list_and_document_follow_single_package(self):
         submitted=await self.client.post(f'{API}/finance/payment-workflow/{self.fee_id}/submit')
@@ -225,8 +254,44 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code,200,response.text)
         async with self.sessions() as db:
             fee=await db.get(BusinessRecord,self.fee_id)
-            self.assertEqual(fee.data['invoice_no'],'CONTRACT-PROOF')
-            self.assertTrue(fee.data['invoice_record_id'])
+            self.assertEqual(fee.data['writeoff_voucher_no'],'CONTRACT-PROOF')
+            self.assertTrue(fee.data['writeoff_voucher_record_id'])
+            self.assertNotIn('invoice_no', fee.data)
+
+    async def test_writeoff_preserves_existing_real_invoice_fields(self):
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            invoice = self.record('invoice', 'real-invoice', {'invoice_no': 'REAL-INVOICE', 'invoice_date': '2026-10-01',
+                'case_fee_ids': [fee.id], 'amount': 100}, '已开票')
+            db.add(invoice); await db.flush()
+            invoice_id = invoice.id
+            fee.data = {**fee.data, 'invoice_no': 'REAL-INVOICE', 'invoice_date': '2026-10-01', 'invoice_record_id': invoice_id}
+            await db.commit()
+        path = f'{API}/finance/payment-workflow/{self.fee_id}'
+        submitted = await self.client.post(path+'/submit')
+        self.assertEqual(submitted.status_code, 200, submitted.text)
+        response = await self.client.post(path+'/writeoff', data={
+            'paid_date': '2026-10-12', 'amount': '100', 'payment_method': '银行卡', 'invoice_no': 'PAYMENT-ONLY'},
+            files=[('files', ('proof.txt', b'CODEX-0915-proof'))])
+        self.assertEqual(response.status_code, 200, response.text)
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            self.assertEqual(fee.data['invoice_no'], 'REAL-INVOICE')
+            self.assertEqual(fee.data['invoice_date'], '2026-10-01')
+            self.assertEqual(fee.data['invoice_record_id'], invoice_id)
+            self.assertEqual(fee.data['writeoff_voucher_no'], 'PAYMENT-ONLY')
+        document_response = await self.client.get(f'{API}/finance/payment-workflow/{response.json()["id"]}/document')
+        self.assertEqual(document_response.status_code, 200, document_response.text)
+        document_data = document_response.json()['data']
+        self.assertEqual(document_data['writeoff_voucher_no'], 'PAYMENT-ONLY')
+        from app.core.storage import _payment_package_docx_bytes
+        from docx import Document
+        from io import BytesIO
+        document_row = self.record('finance_package', 'print', {**document_data, 'invoice_no': 'REAL-INVOICE'}, '已付款')
+        _, content = _payment_package_docx_bytes(document_row, [], scope='case_fee')
+        printed = Document(BytesIO(content))
+        row = next(row for row in printed.tables[0].rows if row.cells[0].text == '付款单据号')
+        self.assertEqual(row.cells[1].text, 'PAYMENT-ONLY')
 
 
 if __name__=='__main__': unittest.main()

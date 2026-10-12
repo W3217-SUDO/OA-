@@ -908,9 +908,11 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 api.get("/attachments", { params: { record_id: row.id, category: "案件票据文件", page_size: 200 } }),
                 api.get("/attachments", { params: { record_id: row.id, category: "案件发票文件", page_size: 200 } }),
                 api.get(`/finance/fees/${row.id}/informs`),
-                Number(row.data.invoice_record_id || 0) > 0
-                    ? api.get("/attachments", { params: { record_id: Number(row.data.invoice_record_id), page_size: 200 } })
-                    : Promise.resolve({ data: { items: [] } }),
+                Promise.all([...new Set([
+                    Number(row.data.writeoff_voucher_record_id || 0), Number(row.data.invoice_record_id || 0),
+                ].filter(id => id > 0))].map(recordId =>
+                    api.get("/attachments", { params: { record_id: recordId, page_size: 200 } }),
+                )).then(responses => ({ data: { items: responses.flatMap(response => response.data?.items || []) } })),
                 api.get("/finance/transactions", { params: { finance_record_id: row.id, page_size: 200 } }),
             ]);
             const attachments = new Map((attachmentsResponse.data?.items || []).map((item: any) => [Number(item.id), item]));

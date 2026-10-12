@@ -439,7 +439,7 @@ async def list_case_relations(
         _case_fee_link_maps, _incoming_payment_legacy_summary, _invoice_linked_fee_ids, _resolve_case_fee_link_id, _round_fee_amount,
     )
     from app.core.formatters import (
-        _person_reference_display, _user_display_map,
+        _case_fee_display_type, _person_reference_display, _user_display_map,
     )
     from app.core.legacy_sync import (
         _legacy_case_fee_projection,
@@ -529,12 +529,16 @@ async def list_case_relations(
     fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
     fees_by_id = {item.id: item for item in fees}
     active_invoices_by_fee: dict[int, BusinessRecord] = {}
+    payment_vouchers_by_id: dict[int, BusinessRecord] = {}
     if fee_ids:
         invoices = list((await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "invoice",
             BusinessRecord.status.not_in(INVOICE_RELEASED_STATUSES),
         ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
         for invoice in invoices:
+            if (invoice.data or {}).get("purpose") == "付款凭证":
+                payment_vouchers_by_id[invoice.id] = invoice
+                continue
             for fee_id in _invoice_linked_fee_ids(invoice.data or {}):
                 if fee_id in fee_ids:
                     active_invoices_by_fee.setdefault(fee_id, invoice)
@@ -604,14 +608,29 @@ async def list_case_relations(
         result = _record_dict(item)
         result["owner_display_name"] = _person_reference_display(item.owner, users_by_username)[0]
         result_data = dict(fee_source_data[item.id]) if item.module == "finance" else dict(result.get("data") or {})
+        if item.module == "finance":
+            from app.core.finance_batch_parity import is_non_allocatable_third_party_fee
+            result_data["receipt_allocation_applicable"] = not is_non_allocatable_third_party_fee(result_data, label=_case_fee_display_type(item))
+            # 旧核销将凭证写在发票关联中，只在读投影拆分，不改历史行或附件。
+            old_invoice_id = str(result_data.get("invoice_record_id") or "")
+            voucher_id = str(result_data.get("writeoff_voucher_record_id") or old_invoice_id)
+            voucher = payment_vouchers_by_id.get(int(voucher_id)) if voucher_id.isdigit() else None
+            if voucher:
+                voucher_data = voucher.data or {}
+                result_data["writeoff_voucher_record_id"] = voucher.id
+                result_data["writeoff_voucher_no"] = voucher_data.get("writeoff_voucher_no") or voucher_data.get("invoice_no") or ""
+            if old_invoice_id.isdigit() and int(old_invoice_id) in payment_vouchers_by_id:
+                for key in ("invoice_no", "invoice_date", "invoice_status", "invoice_application_no"):
+                    result_data[key] = ""
+                result_data["invoice_record_id"] = None
         linked_invoice = active_invoices_by_fee.get(item.id)
         if linked_invoice:
             invoice_data = linked_invoice.data or {}
             result_data["invoice_status"] = "已开票" if linked_invoice.status == "已开票" else "已申请"
             result_data["invoice_application_no"] = linked_invoice.serial_no
             result_data["invoice_record_id"] = linked_invoice.id
-            result_data["invoice_no"] = invoice_data.get("invoice_no") or result_data.get("invoice_no") or ""
-            result_data["invoice_date"] = invoice_data.get("invoice_date") or result_data.get("invoice_date") or ""
+            result_data["invoice_no"] = invoice_data.get("invoice_no") or ""
+            result_data["invoice_date"] = invoice_data.get("invoice_date") or ""
         linked_incoming = incoming_by_fee.get(item.id)
         if linked_incoming:
             result_data.update(linked_incoming)

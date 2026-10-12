@@ -1049,6 +1049,7 @@ async def _validate_invoice_source_links(
             raise HTTPException(status_code=409, detail="关联案件或合同必须属于发票客户")
     active_invoices = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "invoice",
+        or_(BusinessRecord.data["purpose"].as_string().is_(None), BusinessRecord.data["purpose"].as_string() != "付款凭证"),
         BusinessRecord.status.not_in(INVOICE_RELEASED_STATUSES),
         _invoice_json_fee_condition(BusinessRecord.data, set(case_fee_ids)),
     ))).all())
@@ -1254,7 +1255,9 @@ async def _invoice_list_rows(
     from app.core.system import (
         _allowed_field_keys, _record_dict,
     )
-    record_conditions = [BusinessRecord.module == "invoice", *(await _record_scope_conditions(identity, db))]
+    record_conditions = [BusinessRecord.module == "invoice",
+        or_(BusinessRecord.data["purpose"].as_string().is_(None), BusinessRecord.data["purpose"].as_string() != "付款凭证"),
+        *(await _record_scope_conditions(identity, db))]
     if ids is not None:
         record_conditions.append(BusinessRecord.id.in_(ids))
     records = list((await db.scalars(select(BusinessRecord).where(
@@ -1457,6 +1460,7 @@ async def _invoice_case_fee_rows(
     )] if ids is not None else []
     invoice_query = select(BusinessRecord).where(
         BusinessRecord.module == "invoice", *related_invoice_conditions,
+        or_(BusinessRecord.data["purpose"].as_string().is_(None), BusinessRecord.data["purpose"].as_string() != "付款凭证"),
         *(scope_conditions if ids is None else []),
     )
     visible_invoice_ids = set((await db.scalars(invoice_query.with_only_columns(BusinessRecord.id).where(

@@ -48,7 +48,7 @@ export function PaymentApplicationPage({ record, onClose, onChange, onCase, onCo
       const response = await api.post(`/finance/payment-workflow/${row.id}/writeoff`, body);
       setRow((await api.get(`/finance/payment-workflow/${response.data.id}/document`)).data); setWriting(false); setFiles([]);
       await onChange();
-      message.success("已付款，凭证已关联案件费用发票号");
+      message.success("已付款，缴费凭证已关联案件费用");
     } catch (error: any) { message.error(error?.response?.data?.detail || "核销失败"); }
     finally { setBusy(false); }
   };
