@@ -20,8 +20,6 @@ from app.models_shared import (
 from fastapi import APIRouter
 
 router = APIRouter()
-from app.areas.contract.template_exports import router as template_exports_router
-router.include_router(template_exports_router)
 
 
 @router.get(f"{settings.api_prefix}/contracts/approver-settings")
