@@ -1893,3 +1893,8 @@ async def list_unified_finance_transactions_projection(
         keyword=keyword,
         source=source,
     )
+
+
+from app.areas.finance.incoming_payments import template_export_router
+
+router.include_router(template_export_router)

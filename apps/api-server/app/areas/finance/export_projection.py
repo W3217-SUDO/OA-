@@ -230,10 +230,14 @@ async def enrich_settlement_exports(rows, identity, db):
     payments = {payment.id: payment for payment in (await db.scalars(await _visible_incoming_payment_statement(identity, db))).all()}
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     for row in rows:
-        payment = payments.get(int(row["data"].get("receipt_id") or row["id"]))
+        receipt_id = row["data"].get("receipt_id")
+        if not receipt_id:
+            raise HTTPException(409, "结算申请缺少原回款关系，不能把申请编号作为回款编号导出")
+        payment = payments.get(int(receipt_id))
         if not payment:
             raise HTTPException(409, "结算关联回款不存在或无权导出")
         row["data"]["bank_source"] = _incoming_payment_legacy_summary(payment)["payment_method"]
+        row["data"]["amount_visible"] = show_amount
         for detail in row["data"].get("allocation_details") or []:
             case = by_id.get(int(detail.get("case_id") or 0)) or by_number.get(str(detail.get("case_no") or ""))
             if not case:

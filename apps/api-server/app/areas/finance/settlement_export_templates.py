@@ -71,7 +71,7 @@ def render_general_settlement_export(kind, records, export_date):
                 for fee_kind, label in (("official", "代收代付（官费）"), ("agency", "收入（代理费）"), ("other", "权利人分成（其他）")):
                     values = list(common)
                     values[1] = label
-                    values[5] = amount_sum([item for item in group if item.get("kind") == fee_kind], "current_amount")
+                    values[5] = amount_sum([item for item in group if item.get("kind") == fee_kind], "current_amount") if data["amount_visible"] else None
                     workbook.row(index, values, 1 + index - start)
                     index += 1
                 workbook.merge(start, index - 1, (0, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12), common)

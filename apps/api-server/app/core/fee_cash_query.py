@@ -67,7 +67,7 @@ def fee_paid_amount(data, payments):
     return max(transaction_paid, round(float(data.get("paid_amount") or 0), 2))
 
 
-async def read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, *, filter_related, binding=None):
+async def read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, *, filter_related, binding=None, incoming=None):
     if binding is None:
         fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
         case_nos_by_fee = {item.id: str((item.data or {}).get("case_no") or "") for item in fees}
@@ -75,7 +75,8 @@ async def read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, *, fil
     else:
         fee_ids, legacy_fee_ids = binding.fee_ids, binding.legacy_fee_ids
         case_nos_by_fee, case_nos = binding.case_nos_by_fee, binding.case_nos
-    incoming = await scoped_incoming_payments(db)
+    if incoming is None:
+        incoming = await scoped_incoming_payments(db)
     if incoming is None:
         conditions = []
         if filter_related:
