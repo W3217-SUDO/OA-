@@ -48,15 +48,23 @@ test('initial ordinary table renders loading feedback before effects, never empt
   assert.equal(tableValue('loading', state), true);
   assert.equal(tableValue('locale', state).emptyText, '案件加载中…');
 });
-test('special table uses receipt loading only for receipt mode', () => {
+test('special table isolates receipt and stage loading from unrelated feeds', () => {
   const otherTable = tableForDataSource('specialRows');
   const loading = otherTable.attributes.properties.find(attr => ts.isJsxAttribute(attr) && attr.name.getText(page) === 'loading');
   assert.ok(loading);
-  const evaluate = (specialMode, sharedLoading, receiptLoading) => runExpression(loading.initializer.expression, page, { specialMode, loading: sharedLoading, receiptList: { loading: receiptLoading } });
-  assert.equal(evaluate('receipt', false, true), true);
-  assert.equal(evaluate('receipt', true, false), false);
-  assert.equal(evaluate('stage', false, true), false);
-  assert.equal(evaluate('stage', true, false), true);
+  const evaluate = (specialMode, sharedLoading, receiptLoading, stageLoading) => runExpression(loading.initializer.expression, page, { specialMode, loading: sharedLoading, receiptList: { loading: receiptLoading }, stageStatistics: { loading: stageLoading } });
+  assert.equal(evaluate('receipt', false, true, false), true);
+  assert.equal(evaluate('receipt', true, false, true), false);
+  assert.equal(evaluate('receipt', true, true, true), true);
+  assert.equal(evaluate('receipt', false, false, false), false);
+  assert.equal(evaluate('stage', false, false, true), true);
+  assert.equal(evaluate('stage', true, true, false), false);
+  assert.equal(evaluate('stage', true, false, true), true);
+  assert.equal(evaluate('stage', false, true, false), false);
+  for (const mode of ['schedule', 'execution', 'unclaimed', 'refund', 'invoice']) {
+    assert.equal(evaluate(mode, false, true, true), false);
+    assert.equal(evaluate(mode, true, false, false), true);
+  }
   const locale = otherTable.attributes.properties.find(attr => ts.isJsxAttribute(attr) && attr.name.getText(page) === 'locale');
   assert.equal(locale, undefined, 'ordinary-query empty/error text must not leak into other tables');
 });
