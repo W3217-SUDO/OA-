@@ -97,14 +97,19 @@ async def stage_statistics_rows(identity, db, *, action="导出"):
                     rows[username][column] += 1
     customers = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer", *conditions))).all())
     customer_by_id = {item.id: item for item in customers}
-    customer_by_no = {item.serial_no: item for item in customers}
     clues = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "clue", BusinessRecord.status != "已删除", *conditions,
     ))).all())
+    from app.core.clue_audit_scope import _customer_relations
+    relations, clue_source, customer_source = _customer_relations()
+    customer_links = dict((await db.execute(relations.where(
+        scalar_in_values(clue_source.id, {clue.id for clue in clues}),
+        scalar_in_values(customer_source.id, customer_by_id),
+    ))).all()) if clues and customer_by_id else {}
     for clue in clues:
         data = clue.data or {}
         legacy = data.get("legacy_record") or {}
-        customer = customer_by_id.get(int(data.get("customer_record_id") or data.get("customer_id") or 0)) or customer_by_no.get(data.get("customer_no"))
+        customer = customer_by_id.get(customer_links.get(clue.id))
         if not customer:
             continue
         status_value = clue.status

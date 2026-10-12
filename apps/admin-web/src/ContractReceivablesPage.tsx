@@ -46,7 +46,6 @@ type Contract = {
   department: string;
   data: Record<string, any>;
 };
-type Profile = { username: string; display_name: string; department: string };
 export type ReceivableDetailAmountFilter = "official-unreceived" | "official-loss" | "agency-due";
 type ReceivableDetailContext = { contract_no: string; return_view: string; amount_filter?: ReceivableDetailAmountFilter; owner?: string };
 
@@ -121,7 +120,6 @@ const readReceivableDetailContext = (): ReceivableDetailContext | null => {
 export default function ContractReceivablesPage({ initialView, dashboardQueue = "", onNavigate }: { initialView: string; dashboardQueue?: string; onNavigate?: (route: string) => void }) {
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
-  const [profile, setProfile] = useState<Profile>({ username: "", display_name: "", department: "" });
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState<Record<string, any>>({});
   const [creating, setCreating] = useState(false);
@@ -147,36 +145,27 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
   const load = async () => {
     setLoading(true);
     try {
-      const [receivableRes, contractRes, profileRes] = await Promise.all([
+      const [receivableRes, contractRes] = await Promise.all([
         api.get("/receivables/detail", { params: { dashboard_queue: dashboardQueue || undefined } }),
-        dashboardQueue ? Promise.resolve(null) : api.get("/records", { params: { module: "contract", page_size: 100 } }),
-        api.get("/auth/me"),
+        dashboardQueue ? Promise.resolve(null) : api.get("/contracts/receivables/contracts", { params: {
+          scope: detailView ? "all" : initialView === "contract-receivable-mine" ? "mine" : initialView === "contract-receivable-dept" ? "department" : "company",
+          contract_no: query.contract_no, customer: query.customer, case_no: detailView ? undefined : query.case_no,
+          contract_body: query.contract_body, source_person: query.source_person,
+          signed_at_start: query.contract_date?.[0]?.format("YYYY-MM-DD"),
+          signed_at_end: query.contract_date?.[1]?.format("YYYY-MM-DD"),
+        } }),
       ]);
       setReceivables(receivableRes.data.items || []);
       setContracts(contractRes?.data.items || []);
-      setProfile(profileRes.data);
     } catch {
       message.error("合同应收加载失败");
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => { void load(); }, [initialView]);
+  useEffect(() => { void load(); }, [initialView, query]);
 
-  const visibleContracts = useMemo(() => {
-    const names = [profile.username, profile.display_name].filter(Boolean);
-    let rows = contracts;
-    if (initialView === "contract-receivable-mine") rows = rows.filter((row) => names.includes(row.owner));
-    if (initialView === "contract-receivable-dept") rows = rows.filter((row) => row.department === profile.department);
-    const text = (value: unknown) => String(value || "").toLowerCase();
-    if (query.contract_body) rows = rows.filter((row) => (row.data.contract_body || "律所") === query.contract_body);
-    if (query.contract_no) rows = rows.filter((row) => text(row.serial_no).includes(text(query.contract_no)));
-    if (query.customer) rows = rows.filter((row) => text(row.customer).includes(text(query.customer)));
-    if (query.case_no) rows = rows.filter((row) => text(row.data.case_no).includes(text(query.case_no)));
-    if (query.source_person) rows = rows.filter((row) => text(row.data.source_person || row.owner).includes(text(query.source_person)));
-    if (query.contract_date?.length === 2) rows = rows.filter((row) => row.data.signed_at && dayjs(row.data.signed_at).isAfter(query.contract_date[0].subtract(1, "day")) && dayjs(row.data.signed_at).isBefore(query.contract_date[1].add(1, "day")));
-    return rows;
-  }, [contracts, initialView, profile, query]);
+  const visibleContracts = contracts;
 
   const contractById = useMemo(() => new Map(contracts.map((row) => [row.id, row])), [contracts]);
   const openContract = (contract: { id?: number | string; serial_no?: string; contract_no?: string; contract_record_id?: number }) => {

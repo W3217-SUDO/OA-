@@ -45,6 +45,7 @@ def render_workbook(template: str, rows: list[list], *, summary: float | None = 
         sheet.cell_xf_index(row, column) for row in range(sheet.nrows) for column in range(sheet.ncols)
     }}
     number_style = xlwt.easyxf("font: name SimSun, height 200; borders: left thin, right thin, top thin, bottom thin; alignment: horiz right, vert center", num_format_str="0.00")
+    count_style = xlwt.easyxf("font: name SimSun, height 200; borders: left thin, right thin, top thin, bottom thin; alignment: horiz right, vert center", num_format_str="0")
     for column in range(sheet.ncols):
         output.col(column).width = sheet.colinfo_map[column].width
     template_merged = {(row, column) for start, end, left, right in sheet.merged_cells
@@ -65,8 +66,9 @@ def render_workbook(template: str, rows: list[list], *, summary: float | None = 
         output.row(offset + index).height = 360
         for column, value in enumerate(values):
             if (index, column) not in merged:
+                numeric_style = count_style if template == "case-stage-statistics" else number_style
                 output.write(offset + index, column, "" if value is None else value,
-                             number_style if isinstance(value, (int, float)) else body_style)
+                             numeric_style if isinstance(value, (int, float)) else body_style)
     for start, end, column in groups or []:
         value = rows[start][column]
         output.write_merge(offset + start, offset + end, column, column,

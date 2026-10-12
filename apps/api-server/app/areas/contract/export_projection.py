@@ -10,6 +10,7 @@ from app.core.constants import _INVALID_RECEIVABLE_FEE_STATUSES
 from app.core.permissions import _require_record_module_menu
 from app.core.system import _allowed_field_keys
 from app.core.finance_summary_query import receivable_payment_projection
+from app.core.invoice_sources import is_external_case_fee
 from app.areas.contract.export_workbooks import render_workbook
 
 
@@ -19,17 +20,15 @@ def contract_signed_date(data):
     return str(data.get("signed_at") or legacy.get("AuditDate") or "")[:10]
 
 
-async def contract_export_rows(identity, db, **filters):
+async def contract_export_rows(identity, db, *, action="导出", **filters):
     from app.areas.legal.record_queries import list_records
-    await _require_record_module_menu("contract", identity, db, action="导出")
+    await _require_record_module_menu("contract", identity, db, action=action)
     result = await list_records(
         module="contract", record_type=filters.pop("record_type", ""),
         scope=filters.pop("scope", "all"), customer_id=None,
-        finance_view="", investigation_view="", archive_view="", page=1, page_size=65536,
+        finance_view="", investigation_view="", archive_view="", page=1, page_size=2147483647,
         identity=identity, db=db, **filters,
     )
-    if result["total"] > len(result["items"]):
-        raise HTTPException(422, "导出行数超过 XLS 上限，请缩小查询范围")
     return result["items"]
 
 
@@ -46,6 +45,7 @@ async def contract_export_amounts(contracts, identity, db):
             scalar_in_values(BusinessRecord.data["contract_record_id"].as_integer(), contract_ids),
             scalar_in_values(BusinessRecord.data["contract_no"].as_string(), contract_nos)),
     ))).all())
+    fees = [fee for fee in fees if is_external_case_fee(fee)]
     cash = await receivable_payment_projection(fees, identity, db, receipts_only=True)
     by_no = {row["serial_no"]: row["id"] for row in contracts}
     fee_contracts = set()
@@ -69,7 +69,10 @@ async def contract_export_amounts(contracts, identity, db):
         scalar_in_values(ContractObject.contract_record_id, contract_ids - fee_contracts),
     ))).all() if contract_ids - fee_contracts else []
     for item in objects:
-        totals[item.contract_record_id][0] += float(item.amount or 0)
+        if item.amount is None:
+            totals[item.contract_record_id][0] = None
+        elif totals[item.contract_record_id][0] is not None:
+            totals[item.contract_record_id][0] += float(item.amount)
     for values in totals.values():
         values[0] = round(values[0], 2) if values[0] is not None else None
         values[1] = round(values[1], 2)
