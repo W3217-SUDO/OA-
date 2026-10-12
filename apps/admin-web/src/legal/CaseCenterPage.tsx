@@ -2412,8 +2412,8 @@ export default function CaseCenterPage({
   const exportHandoverManifest = () => void downloadCaseExport(
     "/cases/export/handover-manifest", "民事争议-交接清单.xls", selectedCaseKeys, "请选择需要导出交接清单的案件",
   );
-  const exportCasePrintTable = () => void downloadCaseExport(
-    "/cases/export/print-table", "案件打印表.docx", selectedCaseKeys, "请选择需要导出打印表的案件",
+  const exportCasePrintTable = (caseIds: Key[] = selectedCaseKeys) => void downloadCaseExport(
+    "/cases/export/print-table", "案件打印表.docx", caseIds, "请选择需要导出打印表的案件",
   );
   const exportCaseQrWord = () => void downloadCaseExport(
     "/cases/export/qr-word", "案件二维码清单.docx", selectedCaseKeys, "请选择需要生成二维码清单的案件",
@@ -2582,6 +2582,26 @@ export default function CaseCenterPage({
     showTotal: (total: number) => `共有${total}条`,
   };
   const selectedSpecialRow:any=specialRows.find(row=>selectedCaseKeySet.has(String(row.id)));
+
+  const exportRefundCasePrintTable = () => {
+    if (!selectedCaseKeys.length) return message.warning("请选择需要导出案件打印表的退费记录");
+    const rows = specialRows.filter(row => selectedCaseKeySet.has(String(row.id)));
+    if (rows.length !== selectedCaseKeys.length) return message.error("选中的退费记录已不在当前列表，请重新选择");
+    const caseIds = new Set<number>();
+    for (const row of rows) {
+      // 退费记录与案件分别拥有独立主键，打印只接受真实案件关联。
+      const references = [row.data.case_record_id, row.data.case_id].filter(
+        value => value !== undefined && value !== null && value !== "" && value !== 0 && value !== "0",
+      );
+      const linkedIds = references.map(Number);
+      if (!linkedIds.length || linkedIds.some(id => !Number.isSafeInteger(id) || id <= 0)) {
+        return message.error("选中的退费记录缺少有效案件关联，请先修正关联资料");
+      }
+      if (new Set(linkedIds).size !== 1) return message.error("选中的退费记录关联了不同案件，请先修正关联资料");
+      caseIds.add(linkedIds[0]);
+    }
+    exportCasePrintTable([...caseIds]);
+  };
 
   const markCommissionPaid=()=>{
     if(!selectedSpecialRow)return message.warning("请先选择一条到账案件");
@@ -2915,7 +2935,7 @@ export default function CaseCenterPage({
         {specialMode!=="invoice"&&specialMode!=="stage"&&shouldShowCompanyScheduleActions(initialView,specialRows.length)&&<div className="case-bottom-actions"><Space>
           {(specialMode==="schedule"||specialMode==="execution"||specialMode==="unclaimed")&&<Button onClick={exportCases}>导出{specialMode==="schedule"?"案件":""}</Button>}
           {specialMode==="refund"&&<Button onClick={()=>void exportSpecialRecords("refund","退费查询.csv")}>导出</Button>}
-          {specialMode==="refund"&&<Dropdown menu={{items:[{key:"view",label:"案件任务"},{key:"export",label:"导出案件打印表"}],onClick:({key})=>{if(key==="export")void exportCases();else if(selectedSpecialRow)void openSpecialCaseTasks({case_record_id:selectedSpecialRow.data.case_record_id||selectedSpecialRow.data.case_id,case_no:selectedSpecialRow.data.case_no||selectedSpecialRow.serial_no});else message.warning("请先选择退费记录")}}}><Button>更多操作</Button></Dropdown>}
+          {specialMode==="refund"&&<Dropdown menu={{items:[{key:"view",label:"案件任务"},{key:"export",label:"导出案件打印表"}],onClick:({key})=>{if(key==="export")exportRefundCasePrintTable();else if(selectedSpecialRow)void openSpecialCaseTasks({case_record_id:selectedSpecialRow.data.case_record_id||selectedSpecialRow.data.case_id,case_no:selectedSpecialRow.data.case_no||selectedSpecialRow.serial_no});else message.warning("请先选择退费记录")}}}><Button>更多操作</Button></Dropdown>}
           {specialMode==="refund"&&<Button onClick={operateRefund}>退费操作</Button>}
           {specialMode==="unclaimed"&&<Button onClick={markCommissionPaid}>标识提成已发</Button>}
           {specialMode==="schedule"&&<Button onClick={()=>void openSelectedScheduleHearing()}>更多操作</Button>}

@@ -141,6 +141,10 @@ def render_case_print_tables(records, projections: list[dict]) -> bytes:
         })))
         if document is None:
             document = item
+            # 原件节属性位于表格前，合并时移至文档末尾，保留每案卡片与空白间隔表的顺序。
+            section = document.element.body.find("{" + WORD_NS["w"] + "}sectPr")
+            document.element.body.remove(section)
+            document.element.body.append(section)
         else:
             for element in item.element.body:
                 if element.tag != "{" + WORD_NS["w"] + "}sectPr":
