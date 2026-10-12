@@ -20,6 +20,8 @@ from app.models_shared import (
 from fastapi import APIRouter
 
 router = APIRouter()
+from app.areas.contract.template_exports import router as template_exports_router
+router.include_router(template_exports_router)
 
 
 @router.get(f"{settings.api_prefix}/contracts/approver-settings")
@@ -103,13 +105,13 @@ async def export_contract_detail_excel(
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
-    """Export exactly one visible contract as a SpreadsheetML workbook."""
+    """按合同列表模板导出单份可见合同。"""
     from app.core.permissions import (
         _record_scope_conditions, _require_record_module_menu,
     )
-    from app.core.system import (
-        _allowed_field_keys, _excel_response, _record_dict,
-    )
+    from app.core.system import _allowed_field_keys
+    from app.core.contracts import _contract_customer_record_dicts
+    from app.areas.contract.export_projection import render_contract_list
     await _require_record_module_menu("contract", identity, db, action="导出")
     contract = await db.scalar(
         select(BusinessRecord).where(
@@ -121,15 +123,8 @@ async def export_contract_detail_excel(
     if not contract:
         raise HTTPException(status_code=404, detail="合同不存在或当前账号无权导出")
 
-    visible = _record_dict(contract, await _allowed_field_keys(identity, db))
-    headers = ["业务编号", "标题", "客户/主体", "状态", "负责人", "部门", "说明", "扩展数据", "创建时间", "更新时间"]
-    row = [
-        visible["serial_no"], visible["title"], visible["customer"], visible["status"],
-        visible["owner"], visible["department"], visible["description"],
-        json.dumps(visible.get("data") or {}, ensure_ascii=False), visible["created_at"], visible["updated_at"],
-    ]
-    filename = f'{contract.serial_no or contract.id}-合同详情.xls'
-    return _excel_response(filename, headers, [row])
+    visible = await _contract_customer_record_dicts([contract], await _allowed_field_keys(identity, db), db, identity)
+    return await render_contract_list(visible, identity, db)
 
 
 @router.post(f"{settings.api_prefix}/contracts", status_code=status.HTTP_201_CREATED)

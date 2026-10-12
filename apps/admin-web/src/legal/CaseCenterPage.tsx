@@ -4,6 +4,7 @@ import { CaseLitigantAgentDataError, normalizeCaseLitigantAgentFields } from "./
 import { useConflictReview } from "../conflict-review/useConflictReview";
 import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 import { caseContractDocuments } from "./services/caseDocuments";
+import { useStageStatistics } from "./services/stageStatistics";
 import { filterLegacyCaseFolder, findCaseDocumentFolder, flattenLegacyCaseFolders, type CaseDocumentTreeItem } from "./services/legacyCaseDocumentFolders";
 import { CommissionPerson } from "./CommissionPerson";
 import {
@@ -268,6 +269,7 @@ export default function CaseCenterPage({
   onNavigate?: (route: string) => void;
 }) {
   const isCreateView = initialView === "case-new" || initialView.startsWith("case-new-");
+  const stageStatistics = useStageStatistics(initialView.endsWith("-stage"));
   const isCaseDetailView = initialView.startsWith("case-detail-");
   const detailRouteMatch = initialView.match(/^case-detail-(\d+)-(.+)$/);
   const detailRouteId = Number(detailRouteMatch?.[1] || 0);
@@ -2414,15 +2416,14 @@ export default function CaseCenterPage({
     "/cases/export/qr-word", "案件二维码清单.docx", selectedCaseKeys, "请选择需要生成二维码清单的案件",
   );
 
-  const exportStageStatistics = () => {
-    const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
-    const lines = [
-      ["姓名", "日期", "立案进度", "退费进度", "执行进度", "线索进度"],
-      ...phaseRows.map((row) => [row.name, row.date, row.filing, row.refund, row.execution, row.clue]),
-    ].map((row) => row.map(escape).join(","));
-    const blob = new Blob([`\ufeff${lines.join("\r\n")}`], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob), link = document.createElement("a");
-    link.href = url; link.download = "案件阶段统计.csv"; link.click(); URL.revokeObjectURL(url);
+  const exportStageStatistics = async () => {
+    try {
+      const response = await api.get("/cases/stage-statistics/export", { responseType: "blob" });
+      const url = URL.createObjectURL(response.data), link = document.createElement("a");
+      link.href = url; link.download = "案件阶段统计.xls"; link.click(); URL.revokeObjectURL(url);
+    } catch {
+      message.error("案件阶段统计导出失败");
+    }
   };
 
   const openCaseFileUpload = () => {
@@ -2543,7 +2544,7 @@ export default function CaseCenterPage({
   };
   const caseMatches=(row:CaseRow)=>Object.entries(caseQuery).every(([key,value])=>{if(!value||Array.isArray(value))return true;const map:Record<string,unknown>={serial_no:row.serial_no,customer:row.customer,status:row.status,plaintiff:row.data.plaintiff||row.customer,defendant:row.data.opponent,keyword:`${row.serial_no}${row.title}${row.customer}${row.data.opponent||""}`,handling_lawyer:(row.data.handling_lawyers||[]).join(","),...row.data};return String(map[key]||"").toLowerCase().includes(String(value).toLowerCase())});
   const specialCases=(specialMode==="execution"?pendingExecutionCases:scopedCases).filter(caseMatches);
-  const phaseRows:any[]=Object.values(specialCases.reduce((acc:Record<string,any>,row)=>{const name=row.owner||"未分配";if(!acc[name])acc[name]={id:name,name,date:dayjs().format("YYYY-MM-DD"),filing:0,refund:0,execution:0,clue:0};if(String(row.status).includes("立案"))acc[name].filing++;if(String(row.status).includes("退费"))acc[name].refund++;if(String(row.status).includes("执行"))acc[name].execution++;if(row.data.investigation_clue)acc[name].clue++;return acc},{}));
+  const phaseRows = stageStatistics.rows;
   const relatedCase=(id:number)=>cases.find(row=>row.id===id);
   const scheduleRows=hearings.filter(row=>{const c=relatedCase(row.case_record_id);return c?caseMatches(c):true}).map(row=>({...row,case:relatedCase(row.case_record_id)}));
   const receiptRows=receiptList.rows;
@@ -2902,10 +2903,11 @@ export default function CaseCenterPage({
           {(specialFilters[specialMode]||[]).map(([key,label,type,placeholder])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker placeholder={placeholder!==undefined?[placeholder,placeholder]:undefined}/>:type==="select"?<Select allowClear placeholder={placeholder} options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input placeholder={placeholder}/>}</Form.Item>)}
           <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button>{specialMode==="receipt"&&receiptList.canUpload&&<Button type="primary" onClick={()=>{const rows=receiptRows.filter(row=>selectedCaseKeySet.has(String(row.id)));if(!rows.length)return message.warning("请选择费用记录");if(new Set(rows.map(row=>row.customer)).size>1)return message.warning("批量上传的费用必须属于同一客户");setReceiptUploadRows(rows);}}>批量上传</Button>}<Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});if(specialMode==="receipt"){setSelectedCaseKeys([]);void receiptList.search({},1,receiptList.pageSize);}}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>
         </ListFilterBar>}
-        {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
+        {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void stageStatistics.load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
+        {specialMode==="stage"&&stageStatistics.error&&<Alert type="error" showIcon message={stageStatistics.error}/>}
         {specialMode!=="invoice"&&specialMode!=="receipt"&&<input ref={caseUploadRef} hidden type="file" onChange={event=>{const file=event.target.files?.[0];event.target.value="";void uploadCaseFile(file);}}/>}
         {specialMode==="receipt"&&receiptList.error&&<Alert type="error" showIcon title={receiptList.error} action={<Button onClick={()=>void receiptList.reload()}>重试</Button>}/>}
-        <Table className="case-original-table" rowKey="id" size="small" loading={specialMode==="receipt"?receiptList.loading:loading} columns={specialColumns[specialMode]} dataSource={specialRows} rowSelection={specialMode==="invoice"||specialMode==="stage"?undefined:{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:specialMode==="stage"?800:1500}} pagination={specialPagination} />
+        <Table className="case-original-table" rowKey="id" size="small" loading={specialMode==="stage"?stageStatistics.loading:specialMode==="receipt"?receiptList.loading:loading} columns={specialColumns[specialMode]} dataSource={specialRows} rowSelection={specialMode==="invoice"||specialMode==="stage"?undefined:{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:specialMode==="stage"?800:1500}} pagination={specialPagination} />
         {shouldShowCompanyScheduleSinglePageJumper(initialView,specialRows.length,companySchedulePageSize)&&<Space style={{display:"flex",justifyContent:"flex-end",marginTop:8}}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={()=>setCompanySchedulePage(1)}>GO</Button></Space>}
         {specialMode!=="invoice"&&specialMode!=="stage"&&shouldShowCompanyScheduleActions(initialView,specialRows.length)&&<div className="case-bottom-actions"><Space>
           {(specialMode==="schedule"||specialMode==="execution"||specialMode==="unclaimed")&&<Button onClick={exportCases}>导出{specialMode==="schedule"?"案件":""}</Button>}

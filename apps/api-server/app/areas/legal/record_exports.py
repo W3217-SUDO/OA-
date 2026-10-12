@@ -51,9 +51,19 @@ async def export_records_excel(
     title: str = "", serial_no: str = "", record_type: str = Query("", alias="type"),
     customer: str = "", case_no: str = "", fee_type: str = "", contract_body: str = "",
     source_person: str = "", signed_at_start: str = "", signed_at_end: str = "",
+    scope: str = Query("all", pattern="^(all|mine|recycle|department|company|audit)$"), statuses: str = "",
+    pending_approver_only: bool = False,
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """按可见范围导出兼容既有 Excel 格式的工作簿。"""
+    if module == "contract":
+        from app.areas.contract.export_projection import contract_export_rows, render_contract_list
+        records = await contract_export_rows(identity, db, title=title, serial_no=serial_no,
+            record_type=record_type, customer=customer, case_no=case_no, fee_type=fee_type,
+            contract_body=contract_body, source_person=source_person,
+            signed_at_start=signed_at_start, signed_at_end=signed_at_end, scope=scope,
+            statuses=statuses, pending_approver_only=pending_approver_only)
+        return await render_contract_list(records, identity, db)
     from app.core.permissions import (
         _record_scope_conditions, _require_record_module_menu,
     )

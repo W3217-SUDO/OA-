@@ -489,6 +489,7 @@ from app.areas.tp.router import router as tp_router
 from app.areas.wms.router import router as wms_router
 from app.areas.personal_agent.router import router as personal_agent_router
 from app.areas.legal.statistics import router as case_statistics_router
+from app.areas.legal.stage_export import router as stage_export_router
 from app.routing import include_route_slice as include_route_slice, verify_route_coverage as verify_route_coverage
 
 
@@ -501,6 +502,7 @@ app.add_middleware(RequestMetricsMiddleware, api_prefix=settings.api_prefix,
 app.include_router(feedback_router)
 app.include_router(personal_agent_router)
 app.include_router(case_statistics_router)
+app.include_router(stage_export_router)
 app.exception_handler(RequestValidationError)(request_validation_error_handler)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost", "http://127.0.0.1"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 include_route_slice(app, system_router, 0, 1)

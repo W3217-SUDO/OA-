@@ -308,24 +308,34 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
     { title: "应收", dataIndex: "remaining_amount", width: 105, align: "right" as const, render: money },
   ];
 
-  const exportExcel = () => {
-    const header = detailView
-      ? ["合同号", "合同名称", "官费支付金额", "官费到账金额", "官费未到金额", "官费亏损金额", "代理费总金额", "代理费到账金额", "代理费待收金额", "案号", "案件阶段", "案件类型", "费用类型", "费用金额", "已收", "应收"]
-      : ["合同号", "合同名称", "合同状态", "官费支付金额", "官费到账金额", "官费未到金额", "官费亏损金额", "代理费总金额", "代理费到账金额", "代理费待收金额", "案源人", "客户管理人", "签订日期", "客户名称"];
-    const body = detailView
-      ? detailRows.map((row) => {
-          const totals = receivableDetailAmounts(row);
-          return [row.contract_no, row.contract_title, totals.official_paid, totals.official_received, totals.official_unreceived, totals.official_loss, totals.agency_total, totals.agency_received, totals.agency_due, row.case_no, row.case_stage, row.case_type, row.fee_type, row.amount, row.received_amount, row.remaining_amount];
-        })
-      : visibleContracts.map((row) => [row.serial_no, row.title, row.status, row.data.official_paid, row.data.official_received, row.data.official_unreceived, row.data.official_loss, row.data.agency_total, row.data.agency_received, row.data.agency_due, personDisplayName(row.data.source_person_display_name || row.owner_display_name), peopleDisplayNames(row.data.customer_manager_display_names || row.data.customer_manager_display_name), row.data.signed_at || "", row.customer]);
-    const quote = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
-    const csv = `\ufeff${[header, ...body].map((row) => row.map(quote).join(",")).join("\r\n")}`;
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${detailView ? "应收款明细" : "应收账款统计"}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+  const exportExcel = async () => {
+    try {
+      const response = await api.get("/contracts/receivables/export-excel", {
+        responseType: "blob",
+        params: {
+          detail: detailView,
+          scope: initialView === "contract-receivable-mine" ? "mine" : initialView === "contract-receivable-dept" ? "department" : "company",
+          contract_no: query.contract_no, customer: query.customer, case_no: query.case_no,
+          contract_body: query.contract_body, source_person: query.source_person,
+          signed_at_start: query.contract_date?.[0]?.format("YYYY-MM-DD"),
+          signed_at_end: query.contract_date?.[1]?.format("YYYY-MM-DD"),
+          detail_contract_no: detailContext?.contract_no, amount_filter: detailContext?.amount_filter,
+          owner: detailContext?.owner, dashboard_queue: dashboardQueue || undefined,
+        },
+      });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${detailView ? "应收款明细" : "应收账款统计"}.xls`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      let detail = "合同应收导出失败";
+      if (error?.response?.data instanceof Blob) {
+        try { detail = JSON.parse(await error.response.data.text()).detail || detail; } catch { /* 非 JSON 响应保留导出失败提示。 */ }
+      }
+      message.error(detail);
+    }
   };
 
   return <Card className="panel contract-original-panel" title={dashboardQueue ? "未到官费" : detailView ? "应收账款明细" : "应收账款统计"}>
