@@ -168,6 +168,22 @@ export async function openAttachmentOnlinePreview(api, attachment, options = {})
       throw error;
     }
     if (data.kind === "image" || data.kind === "pdf") {
+      if (data.kind === "pdf" && !options.openWindow && window.matchMedia("(max-width: 767px)").matches) {
+        if (target.closed) return "pdf";
+        const controller = new AbortController();
+        target.addEventListener("beforeunload", () => controller.abort(), { once: true });
+        try {
+          const response = await api.get(`/attachments/${attachment.id}/download`, { ...caseParams, responseType: "blob", signal: controller.signal });
+          const preview = await import("./attachmentPdfPreview.mjs");
+          if (target.closed) return "pdf";
+          writePage(target, page(name, preview.pdfPreviewBody, preview.pdfPreviewStyle));
+          await preview.renderAttachmentPdfPreview(target, response.data);
+          return "pdf";
+        } catch (error) {
+          if (controller.signal.aborted) return "pdf";
+          throw error;
+        }
+      }
       const response = await api.get(`/attachments/${attachment.id}/download`, { ...caseParams, responseType: "blob" });
       const url = createObjectURL(response.data);
       const body = data.kind === "image"

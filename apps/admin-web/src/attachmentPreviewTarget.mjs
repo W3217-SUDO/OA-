@@ -21,6 +21,9 @@ function createInlinePreviewTarget() {
   const cleanupListeners = [];
   let closed = false;
   const target = {
+    get closed() {
+      return closed;
+    },
     get document() {
       return frame.contentDocument;
     },
