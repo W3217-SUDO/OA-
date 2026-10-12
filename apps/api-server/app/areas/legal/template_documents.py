@@ -137,7 +137,7 @@ def render_case_print_tables(records, projections: list[dict]) -> bytes:
             "case_no": record.serial_no, "plaintiff": data["plaintiff"], "defendant": data["defendant"],
             "notary_no": data["notary_no"].replace("（", "(").replace("）", ")").replace("，", ",").replace(",", "\n"),
             "lawyer": data["lawyer"], "assistant": data["assistant"],
-            "court_lawyer": data["court_lawyer"], "brand_managers": data["business_owner"],
+            "court_lawyer": data["court_lawyer"], "brand_managers": data["brand_managers"],
         })))
         if document is None:
             document = item

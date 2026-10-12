@@ -34,9 +34,17 @@ def _people(value: str, users: dict) -> str:
 async def case_export_projections(records, identity: dict, db) -> list[dict]:
     from app.core.permissions import _record_scope_conditions
     from app.core.query_batches import _scalars_in_batches
+    from app.core.system import _dashboard_people
 
     scope = await _record_scope_conditions(identity, db)
-    users = {user.username: user.display_name for user in (await db.scalars(select(User))).all()}
+    loaded_users = list((await db.scalars(select(User))).all())
+    users = {user.username: user.display_name for user in loaded_users}
+    users_by_username = {user.username.lower(): user for user in loaded_users}
+    customer_refs = {record.id: int((record.data or {}).get("customer_id") or (record.data or {}).get("customer_record_id") or 0) for record in records}
+    customers_by_id = {item.id: item for item in await _scalars_in_batches(
+        db, {customer_id for customer_id in customer_refs.values() if customer_id},
+        lambda batch: select(BusinessRecord).where(BusinessRecord.module == "customer", BusinessRecord.id.in_(batch), *scope),
+    )}
     clue_refs = []
     for record in records:
         data = record.data or {}
@@ -57,6 +65,9 @@ async def case_export_projections(records, identity: dict, db) -> list[dict]:
         data = record.data or {}
         clue = clues_by_no.get(first_clue_no) if first_clue_no else clues_by_id.get(clue_id)
         clue_data = clue.data or {} if clue else {}
+        customer = customers_by_id.get(customer_refs[record.id])
+        customer_data = customer.data or {} if customer else {}
+        customer_legacy = customer_data.get("legacy_record") if isinstance(customer_data.get("legacy_record"), dict) else {}
         product = clue_data.get("product") if isinstance(clue_data.get("product"), dict) else {}
         first_court = case_value(data, "first_court_name", "first_instance_court", "court", legacy="FirstIntanceCourtName")
         projections.append({
@@ -71,6 +82,7 @@ async def case_export_projections(records, identity: dict, db) -> list[dict]:
             "assistant": _people(case_value(data, "assistant", "case_assistant", legacy="CaseAssistantName"), users),
             "court_lawyer": _people(case_value(data, "hearing_lawyer", "court_lawyer", legacy="CourtLawyerName"), users),
             "business_owner": _people(case_value(data, "business_owner_display_name", "business_owner", "source_person", legacy="BusinessOwnerName"), users),
+            "brand_managers": _dashboard_people(users_by_username, customer_data.get("customer_managers"), customer_legacy.get("CoordinatorName")),
             "clue_no": clue_no,
             "notary_no": case_value(data, "notary_nos", "notary_no", legacy="NotarialNos"),
             "deposit_address": case_value(data, "deposit_address", "evidence_location", legacy="DepositAddress"),
