@@ -3316,7 +3316,7 @@ export default function FinanceCenterPage({
     170, 160, 160, 110, 160, 110, 130, 120, 130, 130, 130, 130, 130, 110,
   ];
   const generalSettlementColumnWidths = [
-    88, 212, 176, 264, 141, 106, 106, 106, 106, 106, 106, 106, 106, 106,
+    80, 160, 104, 176, 104, 96, 96, 96, 96, 96, 96, 96, 96, 96,
     17,
   ];
   const archiveSettlementColumnWidths = [

@@ -114,18 +114,19 @@ export function GeneralSettlementExpandedRow({
           className="finance-settlement-detail-table"
           rowKey={(detail: SettlementAllocationDetail) => detail.detail_id}
           size="small"
+          tableLayout="fixed"
           pagination={false}
           dataSource={row.data?.allocation_details || []}
-          scroll={{ x: "max-content" }}
+          scroll={{ x: 1504 }}
           columns={[
             {
               title: <span className="finance-stacked-header"><span>序</span><span>号</span></span>,
-              width: 43,
+              width: 48,
               render: (_v, _detail, index) => index + 1,
             },
             {
               title: <span className="finance-stacked-header"><span>操</span><span>作</span></span>,
-              width: 115,
+              width: 96,
               render: (_v, detail: SettlementAllocationDetail) => (
                 <Space size={0}>
                   <Button type="link" title="新建案件任务" onClick={() => openCaseTaskCreate(detail)}>✉</Button>
@@ -134,19 +135,19 @@ export function GeneralSettlementExpandedRow({
                 </Space>
               ),
             },
-            { title: "案号", dataIndex: "case_no", width: 144, render: (value) => value ? <Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button> : "—" },
-            { title: "阶段", dataIndex: "case_stage", width: 115 },
-            { title: <span className="finance-stacked-header"><span>费用</span><span>类型</span></span>, dataIndex: "fee_type", width: 115 },
-            { title: <span className="finance-stacked-header"><span>费用</span><span>总金额</span></span>, dataIndex: "fee_total_amount", width: 115, align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
-            { title: <span className="finance-stacked-header"><span>费用</span><span>分配金额</span></span>, dataIndex: "fee_allocated_amount", width: 115, align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
-            { title: <span className="finance-stacked-header"><span>本笔</span><span>分配金额</span></span>, dataIndex: "current_amount", width: 115, align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
-            { title: <span className="finance-stacked-header"><span>本笔</span><span>分配日期</span></span>, dataIndex: "allocated_at", width: 173, render: (value) => String(value || "").replace("T", " ") || "—" },
-            { title: <span className="finance-stacked-header"><span>本笔</span><span>结算金额</span></span>, dataIndex: "settlement_amount", width: 115, align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
-            { title: <span className="finance-stacked-header"><span>本笔</span><span>归档费</span></span>, dataIndex: "archive_fee", width: 115, align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
-            { title: "客户", dataIndex: "customer", width: 216, render: (value, detail: SettlementAllocationDetail) => value ? <Button type="link" onClick={() => openCustomerDetail(value, detail.customer_no)}>{value}</Button> : "—" },
-            { title: <span className="finance-stacked-header"><span>经办</span><span>律师</span></span>, dataIndex: "handling_lawyer", width: 115, render: (value, detail: SettlementAllocationDetail) => financePersonDisplayNames(detail.handling_lawyers || value, detail.handling_lawyer_display_names || detail.handling_lawyer_display_name) },
-            { title: <span className="finance-stacked-header"><span>律师</span><span>助理</span></span>, dataIndex: "assistant", width: 115, render: (value, detail: SettlementAllocationDetail) => financePersonDisplayName(value, detail.assistant_display_name || detail.lawyer_assistant_display_name) },
-            { title: "合同号", dataIndex: "contract_no", width: 144, render: (value) => value ? <Button type="link" onClick={() => openContractDetail(value)}>{value}</Button> : "—" },
+            { title: "案号", dataIndex: "case_no", width: 132, render: (value) => value ? <Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button> : "—" },
+            { title: "阶段", dataIndex: "case_stage", width: 80 },
+            { title: <span className="finance-stacked-header"><span>费用</span><span>类型</span></span>, dataIndex: "fee_type", width: 88 },
+            { title: <span className="finance-stacked-header"><span>费用</span><span>总金额</span></span>, dataIndex: "fee_total_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
+            { title: <span className="finance-stacked-header"><span>费用</span><span>分配金额</span></span>, dataIndex: "fee_allocated_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
+            { title: <span className="finance-stacked-header"><span>本笔</span><span>分配金额</span></span>, dataIndex: "current_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
+            { title: <span className="finance-stacked-header"><span>本笔</span><span>分配日期</span></span>, dataIndex: "allocated_at", width: 128, render: (value) => String(value || "").replace("T", " ") || "—" },
+            { title: <span className="finance-stacked-header"><span>本笔</span><span>结算金额</span></span>, dataIndex: "settlement_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
+            { title: <span className="finance-stacked-header"><span>本笔</span><span>归档费</span></span>, dataIndex: "archive_fee", width: 96, className: "finance-money-column", align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
+            { title: "客户", dataIndex: "customer", width: 144, render: (value, detail: SettlementAllocationDetail) => value ? <Button type="link" onClick={() => openCustomerDetail(value, detail.customer_no)}>{value}</Button> : "—" },
+            { title: <span className="finance-stacked-header"><span>经办</span><span>律师</span></span>, dataIndex: "handling_lawyer", width: 96, render: (value, detail: SettlementAllocationDetail) => financePersonDisplayNames(detail.handling_lawyers || value, detail.handling_lawyer_display_names || detail.handling_lawyer_display_name) },
+            { title: <span className="finance-stacked-header"><span>律师</span><span>助理</span></span>, dataIndex: "assistant", width: 80, render: (value, detail: SettlementAllocationDetail) => financePersonDisplayName(value, detail.assistant_display_name || detail.lawyer_assistant_display_name) },
+            { title: "合同号", dataIndex: "contract_no", width: 132, render: (value) => value ? <Button type="link" onClick={() => openContractDetail(value)}>{value}</Button> : "—" },
           ]}
         />
       )}

@@ -89,13 +89,11 @@ export function createConfiguredColumns(context: {
         ...(context.isFeeQueryRoute && header in feeQueryColumnWidths
             ? { width: feeQueryColumnWidths[header] }
             : {}),
-        fixed: header === "操作" &&
+        fixed: !context.isGeneralSettlementRoute && header === "操作" &&
             ![
                 "finance-internal-refused",
                 "finance-internal-void",
                 "finance-internal-query",
-                "finance-settlement-pending",
-                "finance-settlement-audit",
                 "finance-archive-fee-pending",
                 "finance-archive-fee-payment",
                 "finance-archive-fee-paid",

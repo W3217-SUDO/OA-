@@ -219,7 +219,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
   return (
     <>
           <section
-            className={`finance-original-panel${
+            className={`finance-original-panel${isGeneralSettlementRoute ? " finance-general-settlement" : ""}${
               initialView === "finance-internal-mine"
                 ? " finance-original-internal-mine"
                 : isInvoiceMineRoute
@@ -276,7 +276,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
               <Table
                 rowKey="id"
                 size="small"
-                tableLayout={isFeeQueryRoute || isInvoiceUnissuedRoute || activeRouteConfig?.source === "incoming" ? "fixed" : undefined}
+                tableLayout={isGeneralSettlementRoute || isFeeQueryRoute || isInvoiceUnissuedRoute || activeRouteConfig?.source === "incoming" ? "fixed" : undefined}
                 loading={loading}
                 columns={originalColumns}
                 dataSource={configuredRows}
@@ -665,6 +665,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                   initialView === "finance-payment-writeoff" ||
                   initialView === "finance-payment-query"
                     ? {
+                        ...(isGeneralSettlementRoute ? { columnWidth: 36 } : {}),
                         selectedRowKeys: selectedOriginalRows,
                         onChange: (keys) =>
                           setSelectedOriginalRows(
@@ -702,7 +703,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                     ? originalColumns.reduce((total, column) => total + Number(column.width || 120), 48)
                     : activeRouteConfig
                     ? isGeneralSettlementRoute
-                      ? 1904
+                      ? originalColumns.reduce((total, column) => total + Number(column.width), 36)
                     : isArchiveSettlementActiveRoute
                       ? 1904
                     : initialView === "finance-internal-settle"

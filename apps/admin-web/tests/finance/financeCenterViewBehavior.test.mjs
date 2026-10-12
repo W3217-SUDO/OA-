@@ -19,7 +19,7 @@ const ui = {
   message: { warning: (text) => warnings.push(text) },
 };
 
-function loadFinanceModule(name, dependencies = {}) {
+function loadFinanceModule(name, dependencies = {}, globals = {}) {
   const source = fs.readFileSync(new URL(name, sourceRoot), "utf8");
   const output = ts.transpileModule(source, {
     compilerOptions: {
@@ -41,6 +41,7 @@ function loadFinanceModule(name, dependencies = {}) {
     module,
     exports: module.exports,
     require: (specifier) => specifier in mocks ? mocks[specifier] : require(specifier),
+    ...globals,
   }, { filename: name });
   return module.exports;
 }
@@ -239,4 +240,172 @@ test("settlement allocation row actions retain task and export targets", () => {
   assert.equal(calls[1][1], "settlement");
   assert.equal(calls[1][2][0], 8);
   assert.equal(calls[2][1], "case");
+});
+
+test("all settlement states retain readable allocation columns, amounts and linked targets", () => {
+  const { GeneralSettlementExpandedRow } = loadFinanceModule("GeneralSettlementExpandedRow.tsx");
+  const states = ["pending", "audit", "payment", "paid", "refused"];
+  for (const state of states) {
+    const calls = [];
+    const detail = { detail_id: "CODEX-layout-detail", case_no: "CODEX-CASE", customer: "CODEX 客户",
+      customer_no: "CODEX-CUSTOMER", contract_no: "CODEX-CONTRACT" };
+    const row = { id: 8, data: { allocation_details: [detail] } };
+    const view = GeneralSettlementExpandedRow({ row, detailsExpanded: true,
+      isAuditRoute: state === "audit", isPaymentRoute: state === "payment",
+      isPaidRoute: state === "paid", isRejectedRoute: state === "refused",
+      displayPersonName: (value) => value || "—", displayPersonNames: () => "CODEX 律师",
+      openTask: (value) => calls.push(["task", value]), exportSettlement: () => Promise.resolve(),
+      openCase: (value) => calls.push(["case", value]),
+      openCustomer: (...args) => calls.push(["customer", ...args]),
+      openContract: (value) => calls.push(["contract", value]),
+    });
+    const table = nodes(view).find((node) => node.type === Table);
+    assert.equal(table.props.columns.length, 15, state);
+    assert.equal(table.props.tableLayout, "fixed", state);
+    assert.equal(table.props.scroll.x, table.props.columns.reduce((sum, column) => sum + column.width, 0));
+    assert.ok(table.props.scroll.x <= 1541, state);
+    assert.equal(table.props.dataSource[0], detail);
+    const byField = (name) => table.props.columns.find((column) => column.dataIndex === name);
+    for (const field of ["fee_total_amount", "fee_allocated_amount", "current_amount", "settlement_amount", "archive_fee"]) {
+      const column = byField(field);
+      assert.equal(column.render(43166062.63), "43166062.63", field);
+      assert.equal(column.render(0), "0.00", field);
+      assert.equal(column.render(null), "—", field);
+      assert.equal(column.align, "right");
+      assert.equal(column.className, "finance-money-column");
+      assert.ok(column.width >= 96, field);
+    }
+    nodes(byField("case_no").render(detail.case_no, detail)).find((node) => node.type === Button).props.onClick();
+    nodes(byField("customer").render(detail.customer, detail)).find((node) => node.type === Button).props.onClick();
+    nodes(byField("contract_no").render(detail.contract_no, detail)).find((node) => node.type === Button).props.onClick();
+    assert.deepEqual(calls, [["case", detail.case_no], ["customer", detail.customer, detail.customer_no], ["contract", detail.contract_no]]);
+  }
+});
+
+test("settlement parent layout uses its full column budget for five states only", () => {
+  const constants = loadFinanceModule("constants.ts");
+  const { createConfiguredColumns } = loadFinanceModule("columns/configuredColumns.tsx", {
+    "../moneyColumns": loadFinanceModule("moneyColumns.ts"),
+  });
+  const noView = () => null;
+  const { FinanceOriginalRoutesView } = loadFinanceModule("FinanceOriginalRoutesView.tsx", {
+    "./constants": constants, "./financeErrors": { financeErrorDetail: String },
+    "./IncomingTotalsBody": { IncomingTotalsBody: noView },
+    "./FinanceOriginalQueryView": { FinanceOriginalQueryView: noView },
+    "./GeneralSettlementExpandedRow": { GeneralSettlementExpandedRow: noView },
+    "./FinanceOriginalTotals": {}, "./FinanceFeeQueryActions": { FinanceFeeQueryActions: noView },
+    "./RefundCaseFeeActions": { RefundCaseFeeOperationMenu: noView, RefundCaseFeeMarkButton: noView },
+  });
+  const source = fs.readFileSync(new URL("FinanceCenterPage.tsx", sourceRoot), "utf8");
+  const tree = ts.createSourceFile("FinanceCenterPage.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let widths;
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(tree) === "generalSettlementColumnWidths") {
+      assert.ok(ts.isArrayLiteralExpression(node.initializer));
+      widths = node.initializer.elements.map((item) => Number(item.getText(tree)));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  const headers = ["操作", "客户名称", "客户管理人", "回款单位", "回款日期", "回款金额", "已分金额", "未分金额",
+    "已分官费", "已分代理费", "已分其他费用", "代理费结算金额", "扣归档费", "实际结算金额", ""];
+  const config = { source: "generalSettlements", selectable: true, headers };
+  const columnsContext = { activeRouteConfig: config, isGeneralSettlementRoute: true,
+    generalSettlementColumnWidths: widths, cellValue: () => "CODEX-value", generalSettlementOperation: noView };
+  for (const state of ["pending", "audit", "payment", "paid", "refused"]) {
+    const initialView = "finance-settlement-" + state;
+    const originalColumns = createConfiguredColumns({ ...columnsContext, initialView });
+    assert.equal(originalColumns.length, headers.length);
+    assert.ok(originalColumns.every((column) => column.fixed === undefined));
+    const view = FinanceOriginalRoutesView({ initialView, activeRouteConfig: config, originalColumns,
+      configuredRows: [], originalQueryView: {}, isGeneralSettlementRoute: true,
+      isGeneralSettlementPaidRoute: state === "paid", isGeneralSettlementRejectedRoute: state === "refused",
+      isGeneralSettlementAuditRoute: state === "audit", isGeneralSettlementPaymentRoute: state === "payment",
+      generalSettlementMeta: { page: 1, pageSize: 15, total: 0, totals: {} },
+      generalSettlementDetails: [], selectedOriginalRows: [], setSelectedOriginalRows: noView,
+    });
+    const panel = nodes(view).find((node) => node.type === "section");
+    const table = nodes(view).find((node) => node.type === Table);
+    assert.match(panel.props.className, /finance-general-settlement/);
+    assert.equal(table.props.tableLayout, "fixed");
+    assert.equal(table.props.rowSelection.columnWidth, 36);
+    assert.equal(table.props.scroll.x, 36 + widths.reduce((sum, width) => sum + width, 0));
+    assert.ok(table.props.scroll.x <= 1600);
+    assert.equal(table.props.columns, originalColumns);
+  }
+  const unrelated = FinanceOriginalRoutesView({ initialView: "finance-archive-fee-pending",
+    activeRouteConfig: { source: "archiveSettlements", headers: [] }, originalColumns: [], configuredRows: [],
+    originalQueryView: {}, isArchiveSettlementActiveRoute: true,
+    archiveSettlementMeta: { page: 1, pageSize: 15, total: 0 },
+  });
+  assert.doesNotMatch(nodes(unrelated).find((node) => node.type === "section").props.className, /finance-general-settlement/);
+  assert.equal(nodes(unrelated).find((node) => node.type === Table).props.scroll.x, 1904);
+});
+
+test("saved allocation widths retain their existing route keys and override defaults honestly", async () => {
+  const React = require("react");
+  const { create, act } = require("react-test-renderer");
+  const { GeneralSettlementExpandedRow } = loadFinanceModule("GeneralSettlementExpandedRow.tsx");
+  const columns = nodes(GeneralSettlementExpandedRow({ row: { id: 8, data: {} }, detailsExpanded: true,
+    displayPersonName: String, displayPersonNames: String,
+  })).find((node) => node.type === Table).props.columns;
+  const signature = "0:|1:|2:case_no|3:case_stage|4:fee_type|5:fee_total_amount|6:fee_allocated_amount|7:current_amount|8:allocated_at|9:settlement_amount|10:archive_fee|11:customer|12:handling_lawyer|13:assistant|14:contract_no";
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  try {
+  for (const state of ["pending", "audit", "payment", "paid", "refused"]) {
+    const route = "finance-settlement-" + state;
+    const key = "sunhold:table-widths:" + route + ":finance-settlement-detail-table:" + signature;
+    const reads = [];
+    const { default: ResizableTable } = loadFinanceModule("../components/ResizableTable.tsx", {
+      "./resizable-table.css": {},
+    }, { URLSearchParams, window: { location: { search: "?page=" + route, pathname: "/" } },
+      sessionStorage: { getItem: (value) => { reads.push(value); return value === key ? '{"2":220}' : null; } },
+    });
+    let rendered;
+    await act(async () => { rendered = create(React.createElement(ResizableTable, {
+      columns, className: "finance-settlement-detail-table", scroll: { x: 1504 }, tableLayout: "fixed",
+    })); });
+    const table = rendered.root.findByType(Table);
+    assert.deepEqual(reads, [key]);
+    assert.equal(table.props.columns[2].width, 220);
+    assert.equal(table.props.scroll.x, "max-content");
+    await act(async () => rendered.unmount());
+  }
+  } finally {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+  }
+});
+
+test("settlement CSS preserves numeric readability and honest narrow-screen scrolling", () => {
+  const postcss = require("postcss");
+  const source = fs.readFileSync(new URL("../../src/finance-center.css", import.meta.url), "utf8");
+  const root = postcss.parse(source);
+  const declarations = (selector) => {
+    const matches = [];
+    root.walkRules((rule) => {
+      if (rule.selectors.includes(selector)) matches.push(rule);
+    });
+    assert.equal(matches.length, 1, selector);
+    return Object.fromEntries(matches[0].nodes.filter((node) => node.type === "decl").map((node) => [node.prop, node.value]));
+  };
+  const numeric = declarations(".finance-general-settlement .ant-table-tbody > tr > td.finance-money-column");
+  assert.equal(numeric["white-space"], "nowrap");
+  assert.equal(numeric["overflow-wrap"], "normal");
+  assert.equal(numeric["font-variant-numeric"], "tabular-nums");
+  assert.equal(declarations(".finance-general-settlement .ant-table-content")["overflow-x"], "auto");
+  assert.equal(declarations(".finance-general-settlement .ant-table-tbody .ant-btn-link")["white-space"], "normal");
+  assert.equal(declarations(".finance-general-settlement .finance-settlement-detail-table .ant-table")["min-width"], "0");
+  for (const name of ["context", "audit-context", "payment-context", "rejected-context"]) {
+    const grid = declarations(".finance-general-settlement .finance-settlement-" + name);
+    assert.equal(grid.display, "grid");
+    assert.ok(grid["grid-template-columns"].includes("minmax(0,"));
+  }
+  root.walkRules((rule) => {
+    if (!rule.selector.includes("finance-general-settlement")) return;
+    rule.walkDecls((declaration) => {
+      assert.ok(!(declaration.prop.startsWith("overflow") && declaration.value === "hidden"));
+      assert.ok(!(declaration.prop === "font-size" && declaration.value.includes("vw")));
+    });
+  });
 });

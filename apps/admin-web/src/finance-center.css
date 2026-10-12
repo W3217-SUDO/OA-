@@ -268,6 +268,12 @@
     max-width: 220px !important;
     flex: 0 0 220px !important;
   }
+  .app-body:has(.finance-original-panel.finance-general-settlement) > .sidebar.ant-layout-sider:not(.ant-layout-sider-collapsed) {
+    width: 200px !important;
+    min-width: 200px !important;
+    max-width: 200px !important;
+    flex: 0 0 200px !important;
+  }
 }
 .finance-original-table-wrap .ant-btn-link {
   height: auto;
@@ -588,9 +594,9 @@
 .finance-settlement-expanded {
   width: 100%;
 }
-.finance-settlement-context {
+.finance-general-settlement .finance-settlement-context {
   display: grid;
-  grid-template-columns: 260px minmax(600px, 1fr);
+  grid-template-columns: minmax(180px, 0.65fr) minmax(0, 2fr);
   min-height: 25px;
   border-bottom: 1px solid #ddd;
 }
@@ -606,9 +612,9 @@
   min-height: 25px;
   border-bottom: 1px solid #ddd;
 }
-.finance-settlement-audit-context {
+.finance-general-settlement .finance-settlement-audit-context {
   display: grid;
-  grid-template-columns: 260px 350px minmax(600px, 1fr);
+  grid-template-columns: minmax(200px, 0.8fr) minmax(180px, 0.8fr) minmax(0, 1.4fr);
   min-height: 50px;
   border-bottom: 1px solid #ddd;
 }
@@ -620,18 +626,18 @@
 .finance-settlement-audit-context > span:last-child {
   border-right: 0;
 }
-.finance-settlement-payment-context {
+.finance-general-settlement .finance-settlement-payment-context {
   display: grid;
-  grid-template-columns: 260px 220px 430px minmax(600px, 1fr);
+  grid-template-columns: minmax(200px, 1fr) minmax(120px, 0.6fr) minmax(180px, 1.3fr) minmax(0, 1.5fr);
   min-height: 50px;
   border-bottom: 1px solid #ddd;
 }
-.finance-original-settlement-paid .finance-settlement-payment-context {
-  grid-template-columns: 260px 220px 430px 220px minmax(600px, 1fr);
+.finance-general-settlement.finance-original-settlement-paid .finance-settlement-payment-context {
+  grid-template-columns: minmax(200px, 1fr) minmax(120px, 0.6fr) minmax(180px, 1.3fr) minmax(180px, 0.9fr) minmax(0, 1.5fr);
 }
-.finance-settlement-rejected-context {
+.finance-general-settlement .finance-settlement-rejected-context {
   display: grid;
-  grid-template-columns: 260px 220px 520px minmax(600px, 1fr);
+  grid-template-columns: minmax(200px, 1fr) minmax(120px, 0.6fr) minmax(180px, 1.3fr) minmax(0, 1.5fr);
   min-height: 50px;
   border-bottom: 1px solid #ddd;
 }
@@ -668,8 +674,8 @@
   min-width: 0;
   padding: 0;
 }
-.finance-settlement-detail-table .ant-table {
-  min-width: max-content;
+.finance-general-settlement .finance-settlement-detail-table .ant-table {
+  min-width: 0;
 }
 .finance-settlement-detail-table .ant-table-container {
   border-top: 0 !important;
@@ -705,6 +711,72 @@
 }
 .finance-original-settlement-audit .finance-settlement-footer {
   width: 530px;
+}
+/* 仅结算父子表按列的内容预算排布，窄屏保留真实横向滚动。 */
+.finance-general-settlement {
+  min-width: 0;
+  max-width: 100%;
+}
+.finance-general-settlement .finance-original-table-wrap,
+.finance-general-settlement .finance-settlement-expanded,
+.finance-general-settlement .finance-settlement-detail-table {
+  min-width: 0;
+  max-width: 100%;
+}
+.finance-general-settlement .ant-table-content {
+  overflow-x: auto;
+}
+.finance-general-settlement .ant-table-thead > tr > th,
+.finance-general-settlement .ant-table-tbody > tr > td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.finance-general-settlement .ant-table-tbody > tr > td.finance-money-column,
+.finance-general-settlement .finance-settlement-grand-total > td {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  font-variant-numeric: tabular-nums;
+}
+.finance-general-settlement .ant-table-tbody .ant-btn-link {
+  display: inline-block;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.finance-general-settlement .finance-settlement-expanded > div > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.finance-general-settlement .finance-original-query-grid {
+  width: 100%;
+  height: auto;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  grid-auto-rows: auto;
+  gap: 4px 8px;
+  padding: 8px;
+}
+.finance-general-settlement .finance-original-field:nth-child(n) {
+  grid-template-columns: 89px minmax(0, 1fr);
+  grid-column: auto;
+  grid-row: auto;
+  margin-top: 0;
+}
+.finance-general-settlement .finance-original-query-actions {
+  position: static;
+  min-height: 28px;
+  padding: 0 8px 6px;
+}
+.finance-general-settlement .ant-pagination {
+  margin-left: 0;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.finance-general-settlement .finance-settlement-footer {
+  width: auto;
+  height: auto;
+  margin-top: 0;
+  padding: 4px 8px 8px;
 }
 .finance-settlement-review-field {
   display: grid;
