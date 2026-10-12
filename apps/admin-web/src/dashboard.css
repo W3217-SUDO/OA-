@@ -2,6 +2,125 @@
 
 .dashboard-content{padding:0 10px 12px;background:#f2f2f2}.reference-dashboard{min-width:0;padding-top:0}.dashboard-legacy-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(300px,1fr);grid-template-areas:"metrics todo" "hearing trend" "latest civil";gap:10px 12px;align-items:stretch}.dashboard-metrics-panel{grid-area:metrics}.reference-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0}.reference-metrics .metric{height:84px;padding:11px 14px;justify-content:flex-start;gap:12px;color:#fff;cursor:pointer;box-shadow:none;transition:filter .15s}.reference-metrics .metric:hover,.reference-metrics .metric:focus-visible{filter:brightness(1.06);outline:2px solid rgba(255,255,255,.75);outline-offset:-2px}.reference-metrics .metric-icon{order:2;width:58px;margin-left:auto;font-size:44px;text-align:center;opacity:.30;line-height:1}.reference-metrics .metric strong{font-size:20px;margin-bottom:3px}.reference-metrics .metric span{font-size:12px}.reference-metrics .target-0{background:#5a92c4}.reference-metrics .target-1{background:#49bbb7}.reference-metrics .target-2{background:#e9585b}.reference-metrics .target-3{background:#7d6bae}.reference-metrics .target-4{background:#4f5d66}.reference-metrics .target-5{background:#18a8df}.reference-metrics .target-6{background:#9daabe}.reference-metrics .target-7{background:#f29a06}
 
+/* 工作台：顶部是八个提醒色块，下面左侧是智能体，右侧栏是开庭排期和审批驳回提醒。桌面端撑满可视区域，各区块在内部滚动。 */
+.workbench{--wb-ink:#18212b;--wb-slate:#5b6776;--wb-mute:#8793a3;--wb-line:#dde3ea;--wb-jade:#0e7a5f;--wb-red:#c4402f;display:flex;flex-direction:column;height:100%;min-height:600px;color:var(--wb-ink)}
+.wb-shell{display:flex;flex:1;flex-direction:column;gap:14px;min-height:0}
+.wb-grid{display:grid;flex:1;grid-template-columns:minmax(0,1fr) minmax(340px,410px);gap:14px;min-height:0}
+.wb-main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.wb-main>.assistant{flex:1}
+.wb-side{display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0}
+.wb-side>.wb-docket{flex:1 1 auto;min-height:200px}
+.wb-side>.wb-rail{flex:1 1 auto;min-height:170px}
+.wb-metrics{position:relative;display:flex;flex-direction:column;gap:8px;container-type:inline-size}
+.wb-metric-bar{display:flex;align-items:center;gap:8px}
+.wb-metric-toggle{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 6px;color:var(--wb-slate);font-size:12px}
+.wb-metric-toggle .anticon{font-size:10px;transition:transform .18s}
+.wb-metrics:not(.is-collapsed) .wb-metric-toggle .anticon{transform:rotate(180deg)}
+.wb-metric-summary{color:var(--wb-mute);font-size:12px}
+
+/* 提醒指标：八个小色块，底色取自各自的主色；容器够宽时排成一行。 */
+.wb-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@container (min-width:980px){.wb-metric-grid{grid-template-columns:repeat(8,minmax(0,1fr))}}
+@container (max-width:479px){.wb-metric-grid{gap:6px}.wb-metric{min-height:48px;padding:6px 8px;gap:7px}.wb-metric-icon{width:26px;height:26px;font-size:13px}.wb-metric-text strong{font-size:15px}}
+.wb-metric{display:flex;align-items:center;gap:9px;min-width:0;min-height:56px;padding:8px 11px;border:1px solid transparent;border-radius:12px;background:var(--tone-bg);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}
+.wb-metric:hover{border-color:var(--tone);box-shadow:0 6px 16px -12px rgba(18,38,63,.5);transform:translateY(-1px)}
+.wb-metric:focus-visible{outline:2px solid var(--tone);outline-offset:2px}
+.wb-metric-icon{display:grid;flex:none;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--tone);color:#fff;font-size:15px}
+.wb-metric-text{display:flex;flex-direction:column;min-width:0}
+.wb-metric-text strong{overflow:hidden;color:var(--tone);font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.25;text-overflow:ellipsis;white-space:nowrap}
+.wb-metric-text span{overflow:hidden;color:var(--wb-slate);font-size:12px;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}
+.tone-0{--tone:#2f6fb0;--tone-bg:#eaf2fb}
+.tone-1{--tone:#17766f;--tone-bg:#e6f5f3}
+.tone-2{--tone:#c4402f;--tone-bg:#fbebe8}
+.tone-3{--tone:#6d56a8;--tone-bg:#f0ecf8}
+.tone-4{--tone:#4b5a66;--tone-bg:#eceff2}
+.tone-5{--tone:#16729f;--tone-bg:#e5f3fa}
+.tone-6{--tone:#5d6b80;--tone-bg:#edf0f5}
+.tone-7{--tone:#9a6208;--tone-bg:#fbf1de}
+
+/* 右栏两张卡片：标题固定，列表在卡片内滚动。 */
+.wb-docket,.wb-rail{position:relative;display:flex;flex-direction:column;min-height:0;border:1px solid var(--wb-line);border-radius:14px;background:#fff;box-shadow:0 12px 32px -24px rgba(18,38,63,.5)}
+.wb-section-head{display:flex;flex:none;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px 10px;border-bottom:1px solid #edf0f4}
+.wb-section-head h3{margin:0;color:var(--wb-ink);font-size:15px;font-weight:600}
+.wb-section-head .wb-title-link{height:auto;padding:0;color:var(--wb-ink);font-size:15px;font-weight:600}
+.wb-title-link .anticon{margin-left:4px;color:var(--wb-mute);font-size:11px}
+.wb-count{min-width:22px;padding:1px 8px;border-radius:999px;background:#e3f4ec;color:#0b5e49;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center}
+.wb-count.is-alert{background:#fbeae7;color:var(--wb-red)}
+.wb-docket-body,.wb-rejection-list{flex:1;min-height:0;margin:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#c9d2dc transparent}
+.wb-docket-body{padding:0 16px 4px}
+.wb-rejection-list{padding:0;list-style:none}
+
+/* 开庭排期：日程表，左侧是日期，右侧是当天的每一场开庭。 */
+.wb-day{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:10px 0;border-top:1px solid #edf0f4}
+.wb-day:first-of-type{border-top:0}
+.wb-day-date{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 0;color:var(--wb-slate);font-size:11px}
+.wb-day-date strong{color:var(--wb-ink);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
+.wb-day-date em{padding:1px 7px;border-radius:999px;background:#f1f4f7;color:var(--wb-slate);font-size:10px;font-style:normal;white-space:nowrap}
+.wb-day-date em.is-today{background:var(--wb-red);color:#fff}
+.wb-day-list{margin:0;padding:0;list-style:none}
+.wb-hearing{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:10px;padding:9px 0}
+.wb-hearing-main{display:flex;align-items:flex-start;gap:9px;min-width:0}
+.wb-hearing+.wb-hearing{border-top:1px dashed #edf0f4}
+.wb-hearing-time{display:inline-block;flex:none;min-width:46px;padding:1px 7px;border-radius:6px;background:#eef8f3;color:#0b5e49;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center;white-space:nowrap}
+.wb-hearing-body{display:flex;flex-direction:column;gap:3px;min-width:0}
+.wb-hearing-body>b{overflow:hidden;font-size:13px;font-weight:600;line-height:1.5;text-overflow:ellipsis;white-space:nowrap}
+.wb-hearing-case{display:flex;flex-wrap:wrap;gap:0 12px}
+.wb-hearing-case .ant-btn{height:auto;padding:0;font-size:12px}
+.wb-hearing-people{display:flex;flex-wrap:wrap;gap:2px 10px;color:var(--wb-slate);font-size:11px;line-height:1.6}
+.wb-hearing-people>span{display:inline-flex;gap:4px;min-width:0}
+.wb-hearing-people label{color:var(--wb-mute)}
+
+/* 交给智能体：把当前这条提醒连同关键信息发给工作台里的智能体。 */
+.wb-ask{display:inline-flex;align-items:center;gap:5px;flex:none;padding:4px 9px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--wb-jade);font:inherit;font-size:12px;white-space:nowrap;cursor:pointer;transition:background .15s,border-color .15s}
+.wb-ask:hover{border-color:#cfe9de;background:#eef8f3}
+.wb-ask:focus-visible{outline:2px solid var(--wb-jade);outline-offset:1px}
+
+/* 审批驳回提醒：当前账号提交后被驳回的单据。 */
+.wb-rejection{padding:12px 16px;border-bottom:1px solid #edf0f4}
+.wb-rejection-top{display:flex;align-items:center;gap:8px;font-size:12px}
+.wb-rejection-type{flex:none;padding:0 7px;border-radius:4px;background:#f1f4f7;color:var(--wb-slate);line-height:20px;white-space:nowrap}
+.wb-rejection-top b{min-width:0;overflow:hidden;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+.wb-rejection-title{display:block;width:100%;margin-top:6px;padding:0;overflow:hidden;border:0;background:none;color:var(--wb-ink);font:inherit;font-size:14px;font-weight:500;text-align:left;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.wb-rejection-title:hover{color:var(--wb-jade)}
+.wb-rejection-title:focus-visible{outline:2px solid var(--wb-jade);outline-offset:2px}
+.wb-rejection-reason{display:-webkit-box;margin:6px 0 0;padding:6px 10px;overflow:hidden;border-left:2px solid var(--wb-red);border-radius:0 6px 6px 0;background:#fdf3f1;color:#7c2d22;font-size:12px;line-height:1.55;-webkit-box-orient:vertical;-webkit-line-clamp:3}
+.wb-rejection-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;color:var(--wb-mute);font-size:12px}
+.wb-rejection-by{display:flex;flex-wrap:wrap;gap:0 8px;min-width:0}
+.wb-rejection-by time{font-variant-numeric:tabular-nums;white-space:nowrap}
+.wb-rail-more{margin:0;padding:10px 16px;color:var(--wb-mute);font-size:12px;text-align:center}
+
+@media(max-width:1100px){
+  .workbench{height:auto;min-height:0}
+  .wb-grid{display:flex;flex-direction:column}
+  .wb-main>.assistant,.wb-side>.wb-docket,.wb-side>.wb-rail{flex:none}
+  .wb-docket-body,.wb-rejection-list{max-height:460px}
+}
+@media(max-width:720px){
+  .dashboard-content{padding:0 10px calc(72px + env(safe-area-inset-bottom))}
+  .wb-metrics{gap:6px}
+  .wb-metric{flex-direction:column;justify-content:center;gap:0;min-height:46px;padding:6px 4px;text-align:center}
+  .wb-metric-icon{display:none}
+  .wb-metric-text{align-items:center;width:100%}
+  .wb-metric-text strong{font-size:14px;line-height:1.2}
+  .wb-metric-text span{width:100%;overflow:visible;font-size:11px;line-height:1.25;white-space:normal;word-break:break-all}
+  .wb-shell{gap:10px}
+  .wb-grid{gap:10px}
+  /* 手机上以对话为中心：智能体排在最前，提醒指标和排期都在它下面。 */
+  .wb-side{order:2}
+  .wb-metric-grid{gap:6px}
+  .wb-metric{min-height:50px;padding:7px 9px}
+  .wb-metric-icon{width:26px;height:26px;font-size:13px}
+  .wb-metric-text strong{font-size:15px}
+  .wb-docket-body,.wb-rejection-list{max-height:none}
+  .wb-docket-body{padding:0 12px 4px}
+  .wb-hearing{grid-template-columns:minmax(0,1fr)}
+  .wb-hearing .wb-ask{justify-self:start;padding-left:0}
+  /* 手机上日期从竖排日历改成横排小标签，省下的高度留给开庭内容。 */
+  .wb-day{grid-template-columns:minmax(0,1fr);gap:6px;padding:10px 0}
+  .wb-day-date{flex-direction:row;align-items:center;gap:6px;padding:0}
+  .wb-day-date strong{font-size:15px}
+  .wb-day-date em{padding:1px 6px}
+
 .dashboard-card{border:1px solid #e1e4e7;border-radius:0;box-shadow:none;background:#fff;overflow:hidden}.dashboard-card .ant-card-head{min-height:34px;padding:0 10px;border-bottom:1px solid #e1e4e7}.dashboard-card .ant-card-head-title{padding:6px 0;color:#47545c;font-size:13px;font-weight:600}.dashboard-card .ant-card-body{padding:8px}.compact-todo-card{grid-area:todo;height:178px}.compact-todo-card .ant-card-body{padding:7px 8px}.todo-table{width:100%;border-collapse:collapse;font-size:11px}.todo-table td{height:27px;padding:3px 6px;border:1px solid #e5e5e5;white-space:nowrap}.todo-table td:nth-child(1),.todo-table td:nth-child(4){width:38%}.todo-table .count{width:30px;color:#009fe3;font-weight:600;text-align:center}.todo-table .count-2{color:#f29a06}.todo-link{width:100%;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:inherit;cursor:pointer}.todo-link:hover,.todo-link:focus-visible{color:#18a98f;text-decoration:underline;outline:none}
 .mobile-todo-list{display:none}
 

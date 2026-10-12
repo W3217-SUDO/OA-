@@ -1240,7 +1240,7 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
 async def dashboard_http(
     request: Request,
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
-    section: str | None = Query(default=None, pattern="^(metrics|metrics_finance|metrics_cases|todos|cases)$"),
+    section: str | None = Query(default=None, pattern="^(metrics|metrics_finance|metrics_cases|todos|cases|rejections)$"),
 ):
     from app.core.dashboard_request import run_dashboard_read
     from app.core.dashboard_metrics_cache import cached_dashboard_query, read_dashboard_metrics
@@ -1256,14 +1256,16 @@ async def dashboard_http(
 
 async def dashboard(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
-    section: str | None = Query(default=None, pattern="^(metrics|metrics_finance|metrics_cases|todos|cases)$"),
+    section: str | None = Query(default=None, pattern="^(metrics|metrics_finance|metrics_cases|todos|cases|rejections)$"),
 ):
     from app.core.dashboard_metrics import dashboard_case_metrics, dashboard_finance_metrics, dashboard_metrics
     from app.core.dashboard_todos import dashboard_todos
     from app.core.dashboard_cases import dashboard_cases
+    from app.core.dashboard_rejections import dashboard_rejections
 
     loaders = {"metrics": dashboard_metrics, "metrics_cases": dashboard_case_metrics,
-               "metrics_finance": dashboard_finance_metrics, "todos": dashboard_todos, "cases": dashboard_cases}
+               "metrics_finance": dashboard_finance_metrics, "todos": dashboard_todos, "cases": dashboard_cases,
+               "rejections": dashboard_rejections}
     if section is not None:
         return await loaders[section](identity, db)
     # 保留全量接口供原有调用方使用，各分区请求独立持有数据库会话。

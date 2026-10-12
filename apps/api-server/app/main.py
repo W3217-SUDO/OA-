@@ -488,6 +488,7 @@ from app.areas.system.feedback import router as feedback_router
 from app.areas.tp.router import router as tp_router
 from app.areas.wms.router import router as wms_router
 from app.areas.personal_agent.router import router as personal_agent_router
+from app.areas.agent_admin.router import router as agent_admin_router
 from app.areas.legal.statistics import router as case_statistics_router
 from app.areas.legal.stage_export import router as stage_export_router
 from app.areas.contract.template_exports import router as contract_template_exports_router
@@ -502,6 +503,7 @@ app.add_middleware(RequestMetricsMiddleware, api_prefix=settings.api_prefix,
                    threshold_seconds=settings.slow_request_log_seconds)
 app.include_router(feedback_router)
 app.include_router(personal_agent_router)
+app.include_router(agent_admin_router)
 app.include_router(case_statistics_router)
 app.include_router(stage_export_router)
 app.include_router(contract_template_exports_router)

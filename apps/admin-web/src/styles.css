@@ -418,20 +418,6 @@ body {
 .panel .ant-card-head-title {
   font-size: 14px;
 }
-.todo-table {
-  border-collapse: collapse;
-  width: 100%;
-}
-.todo-table td {
-  border: 1px solid #eee;
-  padding: 9px;
-}
-.todo-table .count {
-  width: 42px;
-  text-align: center;
-  color: #00a65a;
-  font-weight: bold;
-}
 .chart-placeholder {
   height: 205px;
   display: flex;

@@ -1,0 +1,84 @@
+/* 工作台里的个人智能体：晨报、对话和输入框合在同一张纸面上，顶部的绿色细线标明它是智能体。 */
+.assistant{display:flex;flex-direction:column;gap:14px;min-height:0;padding:20px 24px 14px;border:1px solid #dde3ea;border-top:3px solid #0e7a5f;border-radius:14px;background:#fff;box-shadow:0 12px 32px -24px rgba(18,38,63,.5);color:#18212b}
+.assistant-head{display:grid;flex:none;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:16px}
+.assistant-mark{display:grid;flex:none;place-items:center;width:60px;height:60px;border:1px solid #cfe9de;border-radius:50%;background:radial-gradient(circle at 32% 26%,#fff,#e4f6ee 72%)}
+.assistant-greeting h2{margin:0;color:#18212b;font-size:26px;font-weight:600;line-height:1.3;letter-spacing:.01em}
+.assistant-greeting p{margin:4px 0 0;color:#5b6776;font-size:15px;line-height:1.6}
+.assistant-greeting p b{font-weight:600;font-variant-numeric:tabular-nums}
+.assistant-greeting p b.is-hearing{color:#0e7a5f}
+.assistant-greeting p b.is-rejection{color:#c4402f}
+.assistant-alert{flex:none;padding:6px 12px;border-radius:10px;font-size:13px}
+
+/* 还没有对话时：今天最值得问的几件事排成卡片，占满面板中间。 */
+.assistant-start{display:flex;flex:1;flex-direction:column;justify-content:center;gap:10px;min-height:0;overflow:auto}
+.assistant-cards{display:grid;gap:10px}
+.assistant-cards.is-context{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.assistant-cards.is-shortcut{grid-template-columns:repeat(auto-fit,minmax(176px,1fr))}
+.assistant-card{display:flex;align-items:center;gap:12px;min-width:0;padding:12px 14px;border:1px solid #dde3ea;border-radius:12px;background:#fff;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s}
+.assistant-card:hover:not(:disabled){border-color:#0e7a5f;background:#f6fbf9;box-shadow:0 8px 18px -14px rgba(14,122,95,.8)}
+.assistant-card:focus-visible{outline:2px solid #0e7a5f;outline-offset:2px}
+.assistant-card:disabled{opacity:.5;cursor:not-allowed}
+.assistant-card-icon{display:grid;flex:none;place-items:center;width:36px;height:36px;border-radius:10px;background:#eef2f6;color:#455468;font-size:18px}
+.assistant-card.is-hearing{border-color:#b9dfd0;background:#f1faf6}
+.assistant-card.is-hearing .assistant-card-icon{background:#d9f0e5;color:#0e7a5f}
+.assistant-card.is-rejection{border-color:#f0c9c3;background:#fdf5f3}
+.assistant-card.is-rejection .assistant-card-icon{background:#fadfda;color:#c4402f}
+.assistant-card-body{display:flex;flex:1;flex-direction:column;gap:1px;min-width:0}
+.assistant-card-body b{overflow:hidden;font-size:14px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+.assistant-card-body span{overflow:hidden;color:#6b7788;font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.assistant-card em{flex:none;min-width:22px;padding:0 7px;border-radius:999px;background:#0e7a5f;color:#fff;font-size:12px;font-style:normal;font-variant-numeric:tabular-nums;line-height:22px;text-align:center}
+.assistant-card.is-rejection em{background:#c4402f}
+
+.assistant-thread{display:flex;flex:1 1 auto;flex-direction:column;gap:12px;min-height:0;padding:2px 4px 2px 0;overflow:auto;scrollbar-width:thin;scrollbar-color:#c9d2dc transparent}
+.assistant-message{display:flex}
+.assistant-message.is-user{justify-content:flex-end}
+.assistant-bubble{max-width:min(88%,74ch);padding:10px 14px;border-radius:12px 12px 12px 4px;background:#f2f5f8;color:#18212b;font-size:14px;line-height:1.75;white-space:pre-wrap;word-break:break-word}
+.assistant-message.is-user .assistant-bubble{border-radius:12px 12px 4px 12px;background:#0e7a5f;color:#fff}
+.assistant-expand{display:block;margin-top:4px;padding:0;border:0;background:none;color:inherit;font:inherit;font-size:12px;opacity:.8;text-decoration:underline;cursor:pointer}
+.assistant-thinking::after{content:"...";display:inline-block;width:0;overflow:hidden;vertical-align:bottom;animation:assistant-dots 1.2s steps(4,end) infinite}
+@keyframes assistant-dots{to{width:1.3em}}
+
+.assistant-pending{flex:none;padding:10px 14px;border:1px solid #f1d9a8;border-radius:10px;background:#fffaf0}
+.assistant-pending>b{display:block;margin-bottom:4px;color:#8a5a00;font-size:13px}
+.assistant-pending .ant-list-item{padding:8px 0}
+
+.assistant-composer{display:flex;flex:none;align-items:flex-end;gap:10px;padding:8px 8px 8px 18px;border:1px solid #cfd8e1;border-radius:14px;background:#fbfcfd;transition:border-color .15s,box-shadow .15s,background .15s}
+.assistant-composer:focus-within{border-color:#0e7a5f;background:#fff;box-shadow:0 0 0 3px rgba(14,122,95,.14)}
+.assistant-composer textarea.ant-input{padding:8px 0;font-size:15px;line-height:1.6;resize:none}
+.assistant-send{flex:none}
+
+.assistant-chips{display:flex;flex:none;flex-wrap:wrap;gap:8px}
+.assistant.is-empty .assistant-chips{display:none}
+.assistant-chips button{display:inline-flex;align-items:center;gap:6px;padding:5px 13px;border:1px solid #dde3ea;border-radius:999px;background:#fff;color:#344054;font:inherit;font-size:13px;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+.assistant-chips button:hover:not(:disabled){border-color:#0e7a5f;background:#f0f9f5;color:#0e7a5f}
+.assistant-chips button:focus-visible{outline:2px solid #0e7a5f;outline-offset:2px}
+.assistant-chips button:disabled{opacity:.5;cursor:not-allowed}
+.assistant-chips button.is-context{border-color:#b9dfd0;background:#eef8f3;color:#0b5e49;font-weight:500}
+.assistant-chips button.is-context em{min-width:18px;padding:0 5px;border-radius:999px;background:#0e7a5f;color:#fff;font-size:11px;font-style:normal;font-variant-numeric:tabular-nums;line-height:18px;text-align:center}
+
+.assistant-meta{display:flex;flex:none;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 16px;color:#8793a3;font-size:12px}
+.assistant-tools{display:inline-flex;align-items:center;gap:4px;color:#5b6776}
+.assistant-status{display:inline-flex;align-items:center;gap:6px;margin-right:2px}
+.assistant-status::before{content:"";width:7px;height:7px;border-radius:50%;background:#98a2b3}
+.assistant-status.is-ready::before{background:#12a150}
+.assistant-status.is-down::before{background:#c4402f}
+
+@media(max-width:1100px){
+  .assistant-thread{flex:none;max-height:min(50vh,420px)}
+  .assistant-start{flex:none}
+}
+@media(max-width:720px){
+  .assistant{padding:16px 14px 12px}
+  .assistant-head{gap:12px}
+  .assistant-mark{width:48px;height:48px}
+  .assistant-mark svg{width:34px;height:34px}
+  .assistant-greeting h2{font-size:20px}
+  .assistant-greeting p{font-size:14px}
+  .assistant-bubble{max-width:94%}
+  .assistant-start{display:none}
+  .assistant.is-empty .assistant-chips{display:flex}
+}
+@media(prefers-reduced-motion:reduce){
+  .assistant-thinking::after{width:1.3em;animation:none}
+  .assistant-composer,.assistant-chips button,.assistant-card{transition:none}
+}

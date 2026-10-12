@@ -32,7 +32,7 @@ const PHASE_SHORT_NAMES: Record<string, string> = {
   enforcement: "执行",
   archive: "归档",
 };
-export default function AgentCenterPage() {
+export default function AgentCenterPage({ onOpenPersonalAgent }: { onOpenPersonalAgent: () => void }) {
   const [cases, setCases] = useState<CaseOption[]>([]);
   const [selected, setSelected] = useState<CaseOption | null>(null);
   const [keyword, setKeyword] = useState("");
@@ -418,7 +418,7 @@ export default function AgentCenterPage() {
     <header className="agent-center-header">
       <div><h2>案件智能体中心</h2><span>案件业务空间</span></div>
       <Space wrap>
-        <Button size="small" onClick={() => { window.location.href = "?page=agent-center"; }}>个人智能体</Button>
+        <Button size="small" onClick={onOpenPersonalAgent}>个人智能体</Button>
         <Tag>客户</Tag><Tag>合同</Tag><Tag>案件</Tag><Tag>线索</Tag><Tag>调查</Tag><Tag>财务</Tag>
       </Space>
     </header>

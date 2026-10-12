@@ -11,7 +11,7 @@ export default function FeedbackPage({ onNavigate }: Props) {
   const returnToSource = () => onNavigate(sourceRoute || "dashboard");
 
   return <Card className="panel" title="问题反馈"
-    extra={<Button onClick={returnToSource}>{sourceRoute ? "返回原页面" : "返回控制台"}</Button>}>
+    extra={<Button onClick={returnToSource}>{sourceRoute ? "返回原页面" : "返回工作台"}</Button>}>
     <FeedbackManager sourcePage={sourcePage} />
   </Card>;
 }

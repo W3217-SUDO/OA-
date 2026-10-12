@@ -17,6 +17,8 @@ from docx.text.paragraph import Paragraph
 from .agent_skills import AgentSkill
 
 
+USER_SKILL_CONFIG_GROUP = "智能体"
+USER_SKILL_CONFIG_PREFIX = "agent_skills_"
 CUSTOM_SKILL_SOURCE = "user-custom"
 CUSTOM_SKILL_FILE_LIMIT = 2 * 1024 * 1024
 CUSTOM_SKILL_LIMIT = 30
@@ -24,7 +26,7 @@ CUSTOM_SKILL_LIMIT = 30
 
 def user_skill_config_key(username: str) -> str:
     digest = hashlib.sha256(str(username or "").strip().casefold().encode("utf-8")).hexdigest()[:32]
-    return f"agent_skills_{digest}"
+    return f"{USER_SKILL_CONFIG_PREFIX}{digest}"
 
 
 def _text(value: object, field: str, *, minimum: int, maximum: int) -> str:

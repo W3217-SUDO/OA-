@@ -50,6 +50,7 @@ import {
   QrcodeOutlined,
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
+import AgentAvatar from "./personal-agent/AgentAvatar";
 import { bindDingTalkWebLogin, clearDingTalkWebCallback, consumeDingTalkWebCallback, startDingTalkWebLogin } from "./auth/dingtalkWebLogin";
 import {
   PERMISSIONS_UPDATED_EVENT,
@@ -160,7 +161,7 @@ const ContractCenterPage = lazyWithVersionRecovery("contract", () => import("./c
 const AuditLogPage = lazyWithVersionRecovery("audit-log", () => import("./AuditLogPage"));
 const AgentDocumentPage = lazyWithVersionRecovery("agent-document", () => import("./AgentDocumentPage"));
 const CaseAgentCenterPage = lazyWithVersionRecovery("case-agent-center", () => import("./AgentCenterPage"));
-const PersonalAgentCenterPage = lazyWithVersionRecovery("personal-agent-center", () => import("./PersonalAgentCenterPage"));
+const AgentAdminPage = lazyWithVersionRecovery("agent-admin", () => import("./AgentAdminPage"));
 const SealCenterPage = lazyWithVersionRecovery("seal", () => import("./seal"));
 const UserCenterPage = lazyWithVersionRecovery("user", () => import("./UserCenterPage"));
 const MessageCenterPage = lazyWithVersionRecovery("message", () => import("./MessageCenterPage"));
@@ -203,7 +204,7 @@ const menuItems: NavItem[] = [
   {
     key: "dashboard",
     icon: <DashboardOutlined />,
-    label: "控制台",
+    label: "工作台",
     badge: "hot",
   },
   {
@@ -901,7 +902,7 @@ const routePageLabels: Record<string, string> = {
 
 function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): string {
   const normalizedKey = normalizeWorkspaceRoute(key);
-  if (normalizedKey === "dashboard") return "控制台";
+  if (normalizedKey === "dashboard") return "工作台";
   const workspace = dashboardWorkspace(normalizedKey);
   if (workspace) return workspace.label;
   if (normalizedKey.startsWith("case-new-")) return "新建案件";
@@ -1230,6 +1231,7 @@ export default function App() {
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
   const [taskUnreadCount, setTaskUnreadCount] = useState(0);
+  const [assistantFocusRequested, setAssistantFocusRequested] = useState(false);
   const effectiveMenuItems = useMemo(
     () => configuredMenuItems(menuConfig),
     [menuConfig],
@@ -1239,7 +1241,8 @@ export default function App() {
   const grantedMenuKeys = useMemo(() => new Set(
     !permissionsReady ? ["dashboard"] : permissionAdministrator
       ? flattenMenu(effectiveMenuItems).map((item) => item.key)
-      : ["user-center", ...(sessionUser?.menu_keys || [])],
+      // 智能体中心是管理员管理页，非管理员即使保留该菜单权限也不进入；个人智能体在工作台使用。
+      : ["user-center", ...(sessionUser?.menu_keys || [])].filter((key) => key !== "agent-center"),
   ), [permissionsReady, permissionAdministrator, effectiveMenuItems, sessionUser?.menu_keys]);
   const active = permissionsReady
     ? resolveGrantedMenuRoute(requestedRoute, effectiveMenuItems, grantedMenuKeys, permissionAdministrator)
@@ -1254,7 +1257,7 @@ export default function App() {
     ? !mobileSidebarOpen
     : collapsed && !sidebarHoverExpanded;
   const resetWorkspaceForSession = () => {
-    const dashboard = [{ key: "dashboard", label: "控制台" }];
+    const dashboard = [{ key: "dashboard", label: "工作台" }];
     setContractDetailTarget(null);
     setOpenMenuKeys([]);
     setOpenPages(dashboard);
@@ -1458,6 +1461,10 @@ export default function App() {
     }
     setActive(normalizedRoute);
   };
+  const openPersonalAgent = () => {
+    setAssistantFocusRequested(true);
+    navigate("dashboard");
+  };
   const openLegacyMenuItem = (item: NavItem) => {
     const rawUrl = String(item.link_url || "").trim();
     if (!rawUrl) return;
@@ -1550,11 +1557,18 @@ export default function App() {
           ? <ContractReceivablesPage key={active} initialView={dashboardTarget.view} dashboardQueue={dashboardTarget.key} onNavigate={navigate} />
           : <CaseCenterPage key={active} initialView={dashboardTarget.view} dashboardQueue={dashboardTarget.key} onNavigate={navigate} />
     ) : route === "dashboard" ? (
-      <Dashboard onNavigate={navigate} grantedMenuKeys={grantedMenuKeys} permissionAdministrator={permissionAdministrator} />
+      <Dashboard
+        onNavigate={navigate}
+        grantedMenuKeys={grantedMenuKeys}
+        permissionAdministrator={permissionAdministrator}
+        onOpenCaseAgent={() => navigate("case-agent-center")}
+        assistantFocusRequested={assistantFocusRequested}
+        onAssistantFocusHandled={() => setAssistantFocusRequested(false)}
+      />
     ) : route === "agent-center" ? (
-      <PersonalAgentCenterPage onNavigate={navigate} />
+      <AgentAdminPage />
     ) : route === "case-agent-center" ? (
-      <CaseAgentCenterPage />
+      <CaseAgentCenterPage onOpenPersonalAgent={openPersonalAgent} />
     ) : route === FEEDBACK_ROUTE ? (
       <FeedbackPage onNavigate={navigate} />
     ) : route.startsWith("seal-") ? (
@@ -1709,10 +1723,10 @@ export default function App() {
           />
         </div>
         <Space className="top-actions">
-          <Tooltip title="返回控制台">
+          <Tooltip title="返回工作台">
             <Button
               type="text"
-              aria-label="返回控制台"
+              aria-label="返回工作台"
               icon={<HomeOutlined />}
               onClick={() => navigate("dashboard")}
             />
@@ -1948,11 +1962,9 @@ export default function App() {
         </button>
         <button
           type="button"
-          className={active === "agent-center" ? "active" : ""}
-          aria-current={active === "agent-center" ? "page" : undefined}
-          onClick={() => navigate("agent-center")}
+          onClick={openPersonalAgent}
         >
-          <RobotOutlined />
+          <AgentAvatar size={21} />
           <span>智能体</span>
         </button>
         <button
