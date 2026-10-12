@@ -12,6 +12,14 @@ SCRIPT = REPOSITORY_ROOT / "scripts" / "verify-delivery.ps1"
 POWERSHELL = shutil.which("pwsh") or shutil.which("powershell.exe")
 
 
+def output_text(payload: bytes) -> str:
+    """Windows PowerShell 在中文环境按本地代码页输出，诊断文本需容忍非 UTF-8 字节。
+
+    被断言的 stdout 内容均为 ASCII，替换非法字节不会放宽任何断言。
+    """
+    return payload.decode("utf-8", errors="replace")
+
+
 @unittest.skipUnless(POWERSHELL, "需要 PowerShell 执行交付门禁函数")
 class VerifyDeliveryGateTests(unittest.TestCase):
     def run_script(self, statement: str) -> subprocess.CompletedProcess[bytes]:
@@ -24,8 +32,8 @@ class VerifyDeliveryGateTests(unittest.TestCase):
 
     def test_source_commit_requires_full_lowercase_sha(self) -> None:
         valid = self.run_script("Assert-FullSourceCommit -Commit ('a' * 40); 'VALID'")
-        self.assertEqual(valid.returncode, 0, valid.stderr.decode("utf-8", errors="strict"))
-        self.assertIn("VALID", valid.stdout.decode("utf-8", errors="strict"))
+        self.assertEqual(valid.returncode, 0, output_text(valid.stderr))
+        self.assertIn("VALID", output_text(valid.stdout))
         for candidate in ("abc123", "A" * 40):
             with self.subTest(candidate=candidate):
                 rejected = self.run_script(f"Assert-FullSourceCommit -Commit '{candidate}'")
@@ -36,8 +44,8 @@ class VerifyDeliveryGateTests(unittest.TestCase):
             "$web = [pscustomobject]@{Publishers = @([pscustomobject]@{TargetPort=80; Protocol='tcp'; PublishedPort=15192})}; "
             "Get-WebHealthEndpoint -WebService $web"
         )
-        self.assertEqual(success.returncode, 0, success.stderr.decode("utf-8", errors="strict"))
-        self.assertIn("http://127.0.0.1:15192/health", success.stdout.decode("utf-8", errors="strict"))
+        self.assertEqual(success.returncode, 0, output_text(success.stderr))
+        self.assertIn("http://127.0.0.1:15192/health", output_text(success.stdout))
         rejected = self.run_script("$web = [pscustomobject]@{Publishers = @()}; Get-WebHealthEndpoint -WebService $web")
         self.assertNotEqual(rejected.returncode, 0)
 

@@ -619,7 +619,11 @@ class SourceQualityGateTest(unittest.TestCase):
                         lines = [line.removeprefix("HOOK_ARGUMENTS=") for line in (completed.stdout + completed.stderr).splitlines() if line.startswith("HOOK_ARGUMENTS=")]
                         self.assertEqual(len(lines), 1)
                         arguments = json.loads(lines[0])
-                        self.assertEqual(arguments[arguments.index("--jobs") + 1], jobs or "2")
+                        if jobs is None:
+                            # 未显式设置并发时不传 --jobs，交由门禁按 CPU 自适应。
+                            self.assertNotIn("--jobs", arguments)
+                        else:
+                            self.assertEqual(arguments[arguments.index("--jobs") + 1], jobs)
                         Path(arguments[arguments.index("--report-dir") + 1]).rmdir()
                     else:
                         self.assertNotEqual(completed.returncode, 0)

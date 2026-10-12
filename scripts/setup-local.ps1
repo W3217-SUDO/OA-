@@ -54,7 +54,7 @@ function Install-QualityPrePushHook {
         & test -x $destination
         if ($LASTEXITCODE -ne 0) { throw 'pre-push 不具备可执行权限。' }
     }
-    Write-Host "已安装 OA pre-push：$destination；推送 dev/main 必须设置 OA_QUALITY_PYTHON 与 OA_QUALITY_NODE；OA_QUALITY_JOBS 默认 2。"
+    Write-Host "已安装 OA pre-push：$destination；推送 dev/main 必须设置 OA_QUALITY_PYTHON 与 OA_QUALITY_NODE；OA_QUALITY_JOBS 可覆盖并发数，默认按 CPU 自适应（上限 10）。"
 }
 
 if ($MyInvocation.InvocationName -eq '.') { return }

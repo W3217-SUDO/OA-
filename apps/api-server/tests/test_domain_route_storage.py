@@ -367,6 +367,7 @@ class DomainRouteStorageAssertions:
         self.assertEqual(downloaded.status_code, 200, downloaded.text)
         self.assertEqual(downloaded.content, b"real lock extension payload")
 
+    @unittest.skipIf(os.name == "nt", "Windows 无法在既有文件上创建悬空符号链接，链接判定须在 Linux CI 验证")
     async def test_restore_rejects_broken_original_and_staged_symlinks(self):
         original = self.upload_root / f"enterprise-restore-{uuid4().hex}.txt"
         original.write_bytes(b"preserved attachment")

@@ -235,7 +235,9 @@ def main() -> int:
     parser.add_argument("--profile", choices=("full", "static", "source"), default="full")
     parser.add_argument("--push-commit", help="pre-push 传入的实际完整提交号，仅用于 source 检查")
     parser.add_argument("--refresh-receipt", action="store_true", help="强制重新执行推送提交的 source 检查")
-    parser.add_argument("--jobs", type=int, default=2)
+    parser.add_argument("--jobs", type=int,
+                        default=min(10, max(2, os.cpu_count() or 2)),
+                        help="后端回归的并发文件数，默认按 CPU 数自适应（上限 10）")
     args = parser.parse_args()
     if os.environ.get("GITHUB_ACTIONS") == "true" and args.profile == "full":
         parser.error("GitHub Actions 禁止运行 full；完整验证仅允许在本地或独立隔离测试环境手动执行")
