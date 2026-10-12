@@ -974,25 +974,26 @@ def _case_document_value(data: dict, *keys: str) -> str:
 
 
 def _case_document_required_fields(record: BusinessRecord, document_type: str, context: dict) -> list[str]:
+    from app.areas.legal.case_export_projection import case_value
     data = record.data or {}
     common = [
         ("客户名称", record.customer),
         ("经办律师", context.get("case_lawyer")),
-        ("被告", _case_document_value(data, "opponent", "defendant", "appellee", "respondent")),
-        ("案由", _case_document_value(data, "cause_or_charge", "cause", "charge")),
+        ("被告", case_value(data, "opponent", "defendant", "defendants", "appellee", "respondent", legacy="AppelleeNames")),
+        ("案由", case_value(data, "cause_or_charge", "cause", "charge", legacy="CauseName")),
     ]
     if document_type == "authorization-letter":
         return [label for label, value in common if not str(value or "").strip()]
     if document_type not in CASE_LEGACY_LAW_FIRM_LETTER_TYPES:
         return []
     if document_type.startswith("first-instance"):
-        court = _case_document_value(data, "first_court_name", "first_instance_court", "court")
+        court = case_value(data, "first_court_name", "first_instance_court", "court", legacy="FirstIntanceCourtName")
         court_label = "一审法院"
     elif document_type.startswith("second-instance"):
-        court = _case_document_value(data, "second_court_name", "second_instance_court")
+        court = case_value(data, "second_court_name", "second_instance_court", legacy="SecondIntanceCourtName")
         court_label = "二审法院"
     else:
-        court = _case_document_value(data, "execution_court_name", "execution_court")
+        court = case_value(data, "execution_court_name", "execution_court", "execution_instance_court", legacy="ExecutionIntanceCourtName")
         court_label = "执行法院"
     required = [
         (court_label, court),
@@ -1000,19 +1001,20 @@ def _case_document_required_fields(record: BusinessRecord, document_type: str, c
         ("开庭律师", context.get("court_lawyer")),
         ("经办律师", context.get("case_lawyer")),
         ("律师助理", context.get("assistant")),
-        ("原告", _case_document_value(data, "plaintiff", "appellant", "applicant")),
-        ("被告", _case_document_value(data, "opponent", "defendant", "appellee", "respondent")),
-        ("案由", _case_document_value(data, "cause_or_charge", "cause", "charge")),
+        ("原告", case_value(data, "plaintiff", "plaintiffs", "appellant", "applicant", legacy="AppellantNames")),
+        ("被告", case_value(data, "opponent", "defendant", "defendants", "appellee", "respondent", legacy="AppelleeNames")),
+        ("案由", case_value(data, "cause_or_charge", "cause", "charge", legacy="CauseName")),
     ]
     return [label for label, value in required if not str(value or "").strip()]
 
 
 async def _case_document_context(record: BusinessRecord, db: AsyncSession) -> dict:
+    from app.areas.legal.case_export_projection import case_value
     data = record.data or {}
     company_config = await db.scalar(select(SystemConfig).where(SystemConfig.key == "company_profile"))
     company = dict(company_config.value or {}) if company_config else {}
     customer_record = None
-    customer_id = data.get("customer_id")
+    customer_id = data.get("customer_id") or data.get("customer_record_id")
     if customer_id:
         customer_record = await db.get(BusinessRecord, int(customer_id))
         if customer_record and customer_record.module != "customer":
@@ -1030,18 +1032,21 @@ async def _case_document_context(record: BusinessRecord, db: AsyncSession) -> di
     handling_usernames = data.get("handling_lawyer_usernames") or []
     if isinstance(handling_usernames, str):
         handling_usernames = [handling_usernames]
-    case_lawyer = _case_document_value(data, "handling_lawyers", "handling_lawyer")
-    assistant = _case_document_value(data, "assistant", "case_assistant")
-    court_lawyer = _case_document_value(data, "hearing_lawyer", "court_lawyer", "court_lawyer_name")
+    case_lawyer = case_value(data, "handling_lawyers", "handling_lawyer", legacy="CaseLawyerName")
+    assistant = case_value(data, "assistant", "case_assistant", legacy="CaseAssistantName")
+    court_lawyer = case_value(data, "hearing_lawyer", "court_lawyer", "court_lawyer_name", legacy="CourtLawyerName")
     username_keys = {str(value).strip() for value in [*(handling_usernames or []), data.get("assistant_username"), data.get("hearing_lawyer_username")] if str(value or "").strip()}
     users = list((await db.scalars(select(User).where(User.username.in_(username_keys)))).all()) if username_keys else []
     users_by_name = {user.username: user for user in users}
     primary_user = users_by_name.get(str(handling_usernames[0])) if handling_usernames else None
     assistant_user = users_by_name.get(str(data.get("assistant_username") or ""))
+    hearing_user = users_by_name.get(str(data.get("hearing_lawyer_username") or ""))
     if not case_lawyer and primary_user:
         case_lawyer = primary_user.display_name
     if not assistant and assistant_user:
         assistant = assistant_user.display_name
+    if not court_lawyer and hearing_user:
+        court_lawyer = hearing_user.display_name
     case_lawyer_phone = _case_document_value(data, "handling_lawyer_mobile", "case_lawyer_mobile")
     assistant_phone = _case_document_value(data, "assistant_mobile")
     if not case_lawyer_phone and primary_user:
@@ -1075,7 +1080,10 @@ def _case_document_paragraph(document: Document, text: str = "", *, center: bool
 
 
 def _case_document_bytes(record: BusinessRecord, document_type: str, context: dict) -> tuple[str, bytes]:
-    """Generate the formal legacy-equivalent case document, not a generic case summary."""
+    """已提供模板的文书沿用原件版式，其余文书保留既有生成逻辑。"""
+    from app.areas.legal.template_documents import TEMPLATE_TYPES, render_case_document
+    if document_type in TEMPLATE_TYPES:
+        return CASE_DOCUMENT_TYPES[document_type], render_case_document(record, document_type, context)
     from app.core.formatters import (
         _format_case_document,
     )
@@ -1083,93 +1091,14 @@ def _case_document_bytes(record: BusinessRecord, document_type: str, context: di
     data = record.data or {}
     company = context["company"]
     case_lawyer = context.get("case_lawyer") or "（未填写）"
-    assistant = context.get("assistant") or "（未填写）"
-    plaintiff = _case_document_value(data, "plaintiff", "appellant", "applicant") or "（未填写）"
-    defendant = _case_document_value(data, "opponent", "defendant", "appellee", "respondent") or "（未填写）"
-    cause = _case_document_value(data, "cause_or_charge", "cause", "charge") or "（未填写）"
     today_cn = f"{datetime.now():%Y年%m月%d日}"
     document = Document()
     _format_case_document(document)
     document.core_properties.title = title
     document.core_properties.subject = f"案件 {record.serial_no} 系统生成文书"
 
-    if document_type == "authorization-letter":
-        _case_document_paragraph(document, "授权委托书", center=True, bold=True, size=22)
-        _case_document_paragraph(document, f"委托人：{record.customer}")
-        _case_document_paragraph(document, f"受委托人：{case_lawyer}")
-        _case_document_paragraph(document, f"地址：{company.get('address') or '（公司设置未填写）'}")
-        phones = "、".join(dict.fromkeys(value for value in [context.get("case_lawyer_phone"), context.get("assistant_phone")] if value)) or "（员工档案未填写）"
-        _case_document_paragraph(document, f"联系电话：{phones}")
-        third_party = _case_document_value(data, "third_party", "third_person", "the_third_names")
-        opponents = "、".join(value for value in [defendant, third_party] if value)
-        _case_document_paragraph(document, f"委托人兹委托{case_lawyer}为本委托人与{opponents}{cause}一案诉讼代理人。")
-        _case_document_paragraph(document, "代理权限为特别授权，包括但不限于：", bold=True)
-        for item in [
-            "代为进行协商、谈判和签署有关和解协议；", "代为起草、签署、递交起诉状、财产保全申请书；", "代为申请撤诉；",
-            "代为提起反诉；", "代为起草、签署、递交答辩状，提出答辩；", "代为起草、签署、递交上诉状，提出上诉；",
-            "代为收集、提供有关证据材料，代为申请法院调查令；", "代为申请回避；", "出庭陈述事实，进行法庭辩论；",
-            "提出、接受调解或和解；", "代为接受、放弃或变更诉讼请求；", "代为申请执行并收取执行款项；",
-            "代为收取诉讼费退费、保全费退费、调解款、判赔款、执行款等；", "签收与本案有关的法律文件。",
-        ]:
-            _case_document_paragraph(document, item, size=12)
-        _case_document_paragraph(document, "上述代理权限自本委托书签署之日起至本案纠纷全部处理结束之日止。代理人在上述授权范围内的一切行为、所签署的文件，委托人均予以承认并对委托人具有约束力。受托人有转委托权。", size=12)
-        _case_document_paragraph(document, "")
-        _case_document_paragraph(document, f"委托人：{record.customer}")
-        _case_document_paragraph(document, f"日期：{today_cn}")
-    elif document_type == "archive-cover":
-        _case_document_paragraph(document, "案件卷宗", center=True, bold=True, size=28)
-        _case_document_paragraph(document, f"案号：{record.serial_no}", center=True, size=18)
-        _case_document_paragraph(document, f"案件名称：{record.title}", center=True, size=18)
-        _case_document_paragraph(document, f"客户：{record.customer}", center=True, size=16)
-        _case_document_paragraph(document, f"案件类型：{_case_document_value(data, 'case_type') or '（未填写）'}", center=True, size=16)
-        _case_document_paragraph(document, f"经办律师：{case_lawyer}", center=True, size=16)
-        _case_document_paragraph(document, f"归档日期：{_case_document_value(data, 'archive_date', 'archived_at') or today_cn}", center=True, size=16)
-    elif document_type == "compensation-payment-application":
-        _case_document_paragraph(document, "代收代付赔偿款申请单", center=True, bold=True, size=22)
-        _case_document_paragraph(document, f"案件编号：{record.serial_no}")
-        _case_document_paragraph(document, f"案件名称：{record.title}")
-        _case_document_paragraph(document, f"客户名称：{record.customer}")
-        _case_document_paragraph(document, f"收款/付款对象：{_case_document_value(data, 'compensation_counterparty', 'opponent', 'defendant') or '（未填写）'}")
-        _case_document_paragraph(document, f"赔偿款金额：{_case_document_value(data, 'compensation_amount', 'settlement_amount') or '（未填写）'}")
-        _case_document_paragraph(document, f"收款账户：{_case_document_value(data, 'compensation_account', 'payment_account') or '（未填写）'}")
-        _case_document_paragraph(document, f"经办律师：{case_lawyer}")
-        _case_document_paragraph(document, f"申请日期：{today_cn}")
-        _case_document_paragraph(document, "申请说明：本申请依据案件已保存的赔偿、和解或执行回款信息生成，请财务审核后办理代收代付。")
-    elif document_type in CASE_LEGACY_LAW_FIRM_LETTER_TYPES:
-        if document_type.startswith("first-instance"):
-            court = _case_document_value(data, "first_court_name", "first_instance_court", "court")
-        elif document_type.startswith("second-instance"):
-            court = _case_document_value(data, "second_court_name", "second_instance_court")
-        else:
-            court = _case_document_value(data, "execution_court_name", "execution_court")
-        if document_type == "first-instance-appellant-lawyer-letter":
-            parties = f"原告{plaintiff}与被告{defendant}"
-            client_role = "原告"
-        elif document_type == "first-instance-appellee-lawyer-letter":
-            parties = f"原告{plaintiff}诉被告{defendant}"
-            client_role = "被告"
-        elif document_type == "second-instance-appellant-lawyer-letter":
-            parties = f"上诉人{plaintiff}与被上诉人{defendant}"
-            client_role = "上诉人"
-        elif document_type == "second-instance-appellee-lawyer-letter":
-            parties = f"上诉人{plaintiff}与被上诉人{defendant}"
-            client_role = "被上诉人"
-        else:
-            parties = f"申请执行人{plaintiff}与被执行人{defendant}"
-            client_role = "当事人"
-        _case_document_paragraph(document, f"{company['name']} 函", center=True, bold=True, size=22)
-        _case_document_paragraph(document, f"案号：{record.serial_no}")
-        _case_document_paragraph(document, f"{court}：")
-        _case_document_paragraph(document, f"{parties}{cause}一案贵院已受理，现{client_role}{record.customer}已委托本所{case_lawyer}律师为其代理人。")
-        _case_document_paragraph(document, "特此函告！")
-        _case_document_paragraph(document, "")
-        _case_document_paragraph(document, company["name"])
-        _case_document_paragraph(document, today_cn)
-        phone_parts = [value for value in [context.get("case_lawyer_phone"), context.get("assistant_phone")] if value]
-        phone_text = "、".join(dict.fromkeys(phone_parts)) or "（员工档案未填写）"
-        _case_document_paragraph(document, f"附：经办律师{case_lawyer}，开庭律师{context.get('court_lawyer') or case_lawyer}，律师助理{assistant}；联系电话：{phone_text}", size=12)
-    elif document_type == "identification_letter":
-        # Basic editable letter until a dedicated approved template is supplied.
+    if document_type == "identification_letter":
+        # 鉴定函沿用既有办理逻辑，不属于本次沪知身份证明模板。
         _case_document_paragraph(document, title, center=True, bold=True, size=22)
         _case_document_paragraph(document, f"案件编号：{record.serial_no}")
         _case_document_paragraph(document, f"案件名称：{record.title}")
@@ -1181,18 +1110,6 @@ def _case_document_bytes(record: BusinessRecord, document_type: str, context: di
         _case_document_paragraph(document, company["name"])
         _case_document_paragraph(document, today_cn)
         _case_document_paragraph(document, f"经办律师：{case_lawyer}；联系电话：{context.get('case_lawyer_phone') or '（未填写）'}", size=12)
-    elif document_type == "identity-certificate":
-        customer = context.get("customer") or {}
-        legal_name = _case_document_value(customer, "legal_representative", "legal_agent_name") or "（客户档案未填写）"
-        legal_id = _case_document_value(customer, "legal_agent_id_no", "legal_representative_id_no") or "（客户档案未填写）"
-        legal_title = _case_document_value(customer, "legal_agent_title", "legal_representative_title") or "（客户档案未填写）"
-        _case_document_paragraph(document, "法定代表人身份证明", center=True, bold=True, size=22)
-        _case_document_paragraph(document, "")
-        _case_document_paragraph(document, f"兹证明{legal_name}（身份证号码：{legal_id}）在我单位担任{legal_title}职务，系我单位法定代表人。")
-        _case_document_paragraph(document, "特此证明！")
-        _case_document_paragraph(document, "")
-        _case_document_paragraph(document, record.customer)
-        _case_document_paragraph(document, f"日期：{today_cn}")
     else:
         document.add_heading(title, level=0)
         document.add_paragraph(f"案件编号：{record.serial_no}")

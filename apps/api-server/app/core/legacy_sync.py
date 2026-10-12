@@ -207,7 +207,7 @@ async def _legacy_finance_scope_conditions(identity: dict, db: AsyncSession) -> 
     if identity.get("role") in {"admin", "auditor"}:
         return []
     visible_ids = list((await db.scalars(select(BusinessRecord.id).where(
-        await _record_scope_conditions(identity, db)
+        *(await _record_scope_conditions(identity, db))
     ))).all())
     if not visible_ids:
         return [false()]

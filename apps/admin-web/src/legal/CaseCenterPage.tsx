@@ -936,7 +936,7 @@ export default function CaseCenterPage({
     if (viewingCounselCase?.id === row.id) return counselDetailCapabilities;
     return caseActionCapabilities[row.id] || noCaseDetailWriteCapability;
   };
-  const { loadCaseCapabilities, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportSpecialRecords } = createCaseQueriesActions({
+  const { loadCaseCapabilities, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportCurrentOrdinaryCasesExcel, exportSpecialRecords } = createCaseQueriesActions({
     get setCaseActionCapabilities() { return setCaseActionCapabilities; },
     get setCaseRelations() { return setCaseRelations; },
     get setLoading() { return setLoading; },
@@ -2380,12 +2380,9 @@ export default function CaseCenterPage({
   const canCreateSelectedCaseFees = selectedCases.length > 0 && selectedCases.every((row) => getCaseCapability(row).can_create_finance);
   const isArchiveManager = ["admin", "manager"].includes(profile.role || "");
 
-  const exportSelectedCasesExcel = (selectedOnly: boolean) => void downloadCaseExport(
-    "/cases/export/excel",
-    selectedOnly ? "普通案件-选中.xls" : "普通案件-当前查询.xls",
-    selectedOnly ? selectedCaseKeys : originalCases.map((row) => row.id),
-    selectedOnly ? "请选择需要导出的案件" : "当前查询没有可导出的案件",
-  );
+  const exportSelectedCasesExcel = (selectedOnly: boolean) => selectedOnly
+    ? void downloadCaseExport("/cases/export/excel", "普通案件-选中.xls", selectedCaseKeys, "请选择需要导出的案件")
+    : void exportCurrentOrdinaryCasesExcel();
   const exportArchiveManifest = async (selectedOnly: boolean, format: "excel" | "csv" = "excel") => {
     if (archiveExporting) return;
     const currentArchiveIds = originalArchiveRows.map((row) => row.id);
@@ -2411,6 +2408,12 @@ export default function CaseCenterPage({
   };
   const exportCaseReceipts = () => void downloadCaseExport(
     "/cases/export/receipts", "案件到账清单.xls", selectedCaseKeys, "请选择需要导出到账清单的案件",
+  );
+  const exportHandoverManifest = () => void downloadCaseExport(
+    "/cases/export/handover-manifest", "民事争议-交接清单.xls", selectedCaseKeys, "请选择需要导出交接清单的案件",
+  );
+  const exportCasePrintTable = () => void downloadCaseExport(
+    "/cases/export/print-table", "案件打印表.docx", selectedCaseKeys, "请选择需要导出打印表的案件",
   );
   const exportCaseQrWord = () => void downloadCaseExport(
     "/cases/export/qr-word", "案件二维码清单.docx", selectedCaseKeys, "请选择需要生成二维码清单的案件",
@@ -3013,9 +3016,10 @@ export default function CaseCenterPage({
                     { key: "current-excel", label:"导出当前查询（CSV）", disabled: !counselCases.length },
                   ] : [
                     { key: "selected-excel", label:"导出选中（Excel）", disabled: !selectedCaseKeys.length },
-                    { key: "current-excel", label:"导出当前查询（Excel）", disabled: !originalCases.length },
+                    { key: "current-excel", label:"导出当前查询全部（Excel）", disabled: !ordinaryTotal },
                   ]),
                   { key: "selected-manifest", label: "导出选中归档清单（Excel）", disabled: !selectedCaseKeys.length },
+                  ...(!counselListMode && initialView.includes("civil") ? [{ key: "selected-handover", label: "导出交接清单（Excel）", disabled: !selectedCaseKeys.length }] : []),
                   { key: "selected-qr-word", label: "导出选中二维码（Word）", disabled: !selectedCaseKeys.length },
                   { key: "selected-receipts", label: "导出到账清单（Excel）", disabled: !selectedCaseKeys.length },
                 ],
@@ -3023,6 +3027,7 @@ export default function CaseCenterPage({
                   if (key === "selected-excel") counselListMode ? void exportCounselCases(true) : exportSelectedCasesExcel(true);
                   if (key === "current-excel") counselListMode ? void exportCounselCases(false) : exportSelectedCasesExcel(false);
                   if (key === "selected-manifest") exportArchiveManifest(true);
+                  if (key === "selected-handover") exportHandoverManifest();
                   if (key === "selected-qr-word") exportCaseQrWord();
                   if (key === "selected-receipts") exportCaseReceipts();
                 },
@@ -3088,7 +3093,7 @@ export default function CaseCenterPage({
                   if (key.startsWith("document-")) void generateSelectedCaseDocuments(key.slice("document-".length));
                   if (key === "case-tasks") openCaseTasks(selectedCase);
                   if (key === "case-logs") void openCounselDetail(selectedCase);
-                  if (key === "export-print-table") exportSelectedCasesExcel(true);
+                  if (key === "export-print-table") exportCasePrintTable();
                 },
               }}
             ><Button aria-label="更多案件操作">更多操作 ▾</Button></Dropdown>

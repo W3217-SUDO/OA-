@@ -601,6 +601,20 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             message.error(error?.response?.data?.detail || "法律顾问案件导出失败");
         }
     };
+    const exportCurrentOrdinaryCasesExcel = async () => {
+        const { caseQuery, ordinaryCaseQueue, ordinaryScope, ordinaryCaseTypes, dashboardQueue } = context;
+        const payload = buildCaseOrdinarySearchPayload({ ...caseQuery, case_queue: ordinaryCaseQueue }, ordinaryScope, ordinaryCaseTypes, 1, 200);
+        try {
+            const response = await api.post("/cases/export/excel", { ...payload, dashboard_queue: dashboardQueue }, { responseType: "blob" });
+            const url = URL.createObjectURL(response.data), link = document.createElement("a");
+            link.href = url;
+            link.download = "普通案件-当前查询全部.xls";
+            link.click();
+            URL.revokeObjectURL(url);
+        } catch (error: any) {
+            message.error(error?.response?.data?.detail || "当前查询全部案件导出失败");
+        }
+    };
     const exportSpecialRecords = async (module: string, filename: string) => {
         try {
             const res = await api.get("/records/export", { params: { module }, responseType: "blob" });
@@ -614,5 +628,5 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             message.error("数据导出失败");
         }
     };
-    return { loadCaseCapabilities, loadCaseRelations, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportSpecialRecords };
+    return { loadCaseCapabilities, loadCaseRelations, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportCurrentOrdinaryCasesExcel, exportSpecialRecords };
 }

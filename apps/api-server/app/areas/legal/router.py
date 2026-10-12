@@ -56,20 +56,28 @@ from app.areas.legal.record_exports import (
 router.include_router(record_exports_router)
 
 
-@router.get(f"{settings.api_prefix}/cases/export/excel")
-async def export_selected_ordinary_cases_excel(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.cases import (
-        _ordinary_case_export_rows, _selected_ordinary_case_export_records,
-    )
-    from app.core.system import (
-        _excel_response,
-    )
-    records = await _selected_ordinary_case_export_records(ids, identity, db)
+async def _ordinary_cases_excel_response(records: list[BusinessRecord], identity: dict, db: AsyncSession) -> Response:
+    from app.core.cases import _ordinary_case_export_rows
+    from app.core.system import _excel_response
+    from app.areas.legal.case_export_projection import case_export_projections, civil_export_rows
+    from app.areas.legal.civil_case_workbook import civil_case_workbook
+    if records and all((record.data or {}).get("case_type") in CIVIL_CASE_TYPES for record in records):
+        projections = await case_export_projections(records, identity, db)
+        filename = f"民事争议-{date.today()}.xls"
+        return Response(content=civil_case_workbook(civil_export_rows(projections)), media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=civil-cases.xls; filename*=UTF-8''{quote(filename)}"})
     return _excel_response(
         f"普通案件导出-{date.today()}.xls",
         ["案号", "案件名称", "案件类型", "案件阶段", "客户", "合同编号", "案由/罪名", "经办律师", "律师助理", "开庭律师", "法院/机构", "立案日期", "创建日期"],
         _ordinary_case_export_rows(records),
     )
+
+
+@router.get(f"{settings.api_prefix}/cases/export/excel")
+async def export_selected_ordinary_cases_excel(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.cases import _selected_ordinary_case_export_records
+
+    records = await _selected_ordinary_case_export_records(ids, identity, db)
+    return await _ordinary_cases_excel_response(records, identity, db)
 
 
 @router.get(f"{settings.api_prefix}/cases/export/archive-manifest")
@@ -686,6 +694,17 @@ async def download_case_document_template(
         _ensure_record_module,
     )
     case_record = await _ensure_record_module(case_id, "case", identity, db)
+    if doc_type in {"authorization", "identity"}:
+        from app.core.documents import _case_document_bytes, _case_document_context, _case_document_required_fields
+
+        document_type = "authorization-letter" if doc_type == "authorization" else "identity-certificate"
+        context = await _case_document_context(case_record, db)
+        missing_fields = _case_document_required_fields(case_record, document_type, context)
+        if missing_fields:
+            raise HTTPException(status_code=422, detail=f"{case_record.serial_no} 缺少{'、'.join(missing_fields)}，不能生成{CASE_DOCUMENT_TYPES[document_type]}")
+        title, content = _case_document_bytes(case_record, document_type, context)
+        filename = f"{title}-{case_record.serial_no}.docx"
+        return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f"attachment; filename=case-document.docx; filename*=UTF-8''{quote(filename)}"})
     template = _BUILTIN_DOCUMENT_TEMPLATES.get(doc_type)
     if not template:
         raise HTTPException(status_code=400, detail="不支持的文档类型")
@@ -3578,6 +3597,7 @@ async def generate_case_document(case_id: int, document_type: str, identity: dic
     if record.status in {"已合并", "已归档"}:
         raise HTTPException(status_code=409, detail="已合并或已归档案件不能再生成办理文书")
     context = await _case_document_context(record, db)
+    context["file_maker"] = identity.get("display_name") or identity["username"]
     missing_fields = _case_document_required_fields(record, document_type, context)
     if missing_fields:
         raise HTTPException(status_code=422, detail=f"{record.serial_no} 缺少{'、'.join(missing_fields)}，不能生成{CASE_DOCUMENT_TYPES[document_type]}")
@@ -4019,3 +4039,46 @@ async def list_dashboard_personal_queue(queue_key: str, identity: dict = Depends
     if queue_key not in queues:
         raise HTTPException(404, "提醒队列不存在")
     return {"items": queues[queue_key], "total": len(queues[queue_key])}
+
+
+@router.post(f"{settings.api_prefix}/cases/export/excel")
+async def export_current_ordinary_cases_excel(body: CounselCaseSearchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.cases import _query_counsel_cases
+    from app.core.permissions import _require_record_module_menu
+
+    await _require_record_module_menu("case", identity, db, action="导出")
+    query = body.model_copy(update={"selected_only": False, "selected_ids": []})
+    records = await _query_counsel_cases(query, identity, db, counsel_only=False)
+    if not records:
+        raise HTTPException(status_code=422, detail="当前查询没有可导出的案件")
+    return await _ordinary_cases_excel_response(records, identity, db)
+
+
+@router.get(f"{settings.api_prefix}/cases/export/handover-manifest")
+async def export_selected_case_handover_manifest(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.cases import _selected_ordinary_case_export_records
+    from app.core.system import _allowed_field_keys
+    from app.areas.legal.case_export_projection import case_export_projections
+    from app.areas.legal.handover_projection import handover_export_rows
+    from app.areas.legal.handover_workbook import handover_workbook
+
+    records = await _selected_ordinary_case_export_records(ids, identity, db)
+    if "finance.amount" not in await _allowed_field_keys(identity, db):
+        raise HTTPException(status_code=403, detail="当前账号无权导出交接清单中的财务金额")
+    projections = await case_export_projections(records, identity, db)
+    content = handover_workbook(await handover_export_rows(records, projections, identity, db))
+    filename = f"民事争议-交接清单-{date.today()}.xls"
+    return Response(content=content, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=handover.xls; filename*=UTF-8''{quote(filename)}"})
+
+
+@router.get(f"{settings.api_prefix}/cases/export/print-table")
+async def export_selected_case_print_table(ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.cases import _selected_ordinary_case_export_records
+    from app.areas.legal.case_export_projection import case_export_projections
+    from app.areas.legal.template_documents import render_case_print_tables
+
+    records = await _selected_ordinary_case_export_records(ids, identity, db)
+    projections = await case_export_projections(records, identity, db)
+    content = render_case_print_tables(records, projections)
+    filename = f"案件打印表-{date.today()}.docx"
+    return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f"attachment; filename=case-print-table.docx; filename*=UTF-8''{quote(filename)}"})
