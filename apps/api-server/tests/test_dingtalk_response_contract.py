@@ -17,7 +17,7 @@ from app.dingtalk import (
     DingTalkUnknownResultError,
     dingtalk_client,
 )
-from app.models import Notification, NotificationDelivery, User
+from app.models import BusinessRecord, Notification, NotificationDelivery, User
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -107,7 +107,7 @@ class DingTalkResponseContractTest(unittest.IsolatedAsyncioTestCase):
             try:
                 async with engine.begin() as connection:
                     await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=[
-                        User.__table__, Notification.__table__, NotificationDelivery.__table__,
+                        User.__table__, BusinessRecord.__table__, Notification.__table__, NotificationDelivery.__table__,
                     ]))
                 async with sessions() as db:
                     db.add(User(username="staff", display_name="测试员工", role="user", role_ids=["user"],
