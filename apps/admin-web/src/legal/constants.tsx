@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { getLegacyCaseDocumentGenerationItems } from "../caseDocumentGenerationActions.mjs";
+import { normalizeCaseLitigantAgents } from "./caseLitigantAgents";
 import {
 LEGACY_CASE_PHASE_GROUPS,
 LEGACY_CIVIL_PHASE_ROOTS,
@@ -13,7 +14,6 @@ CaseAgentDocument,
 CaseAgentDocumentTreeNode,
 CaseDetailCapabilities,
 CaseEventCapabilities,
-CaseLitigantAgent,
 CaseLitigantAgentField,
 CaseLitigantPartyField,
 CasePhaseOption,
@@ -24,6 +24,7 @@ TaskRow,
 } from "./types";
 
 export { getLegacyCaseDocumentGenerationItems };
+export { normalizeCaseLitigantAgents };
 
 export const CASE_LITIGANT_PARTY_LABELS: Record<CaseLitigantPartyField, string> = {
   plaintiffs: "原告",
@@ -39,20 +40,6 @@ export const CASE_LITIGANT_AGENT_LABELS: Record<CaseLitigantAgentField, string> 
 
 export const LEGACY_PHASE_GROUPS = new Set(LEGACY_CASE_PHASE_GROUPS);
 export const CASE_PHASE_ROOT_LABELS = LEGACY_CIVIL_PHASE_ROOTS;
-
-export const normalizeCaseLitigantAgents = (value: unknown): CaseLitigantAgent[] => Array.isArray(value)
-  ? value.map((item) => {
-    if (typeof item === "string") return { name: item, law_firm: "", position: "", phone: "", authority: "" };
-    const agent = item && typeof item === "object" ? item as Record<string, unknown> : {};
-    return {
-      name: String(agent.name || "").trim(),
-      law_firm: String(agent.law_firm || "").trim(),
-      position: String(agent.position || "").trim(),
-      phone: String(agent.phone || "").trim(),
-      authority: String(agent.authority || "").trim(),
-    };
-  }).filter((agent) => agent.name)
-  : [];
 
 export const renderCaseLitigantAgentSummary = (value: unknown) => {
   const agents = normalizeCaseLitigantAgents(value);
