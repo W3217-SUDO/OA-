@@ -1,0 +1,4 @@
+interface:
+  display_name: "OA 问题整改"
+  short_description: "逐行读取问题与截图，对照旧系统完整整改、验收并更新台账"
+  default_prompt: "使用 $problem-remediation 按任务类型读取当前问题原文和全部截图，完整定位并整改新系统，完成必要本地核验及台账记录后提交已验证候选。按 $oa-fast-deploy 无冲突各会话直接推送、发布，仅 Codex 冲突合批，涉及 Claude 的冲突串行排队；版本分配和激活仍互斥，Excel 整批不拆分，部署后仍待用户验收。"

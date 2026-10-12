@@ -76,7 +76,7 @@ export default function DashboardOverview({ todos, cases, todoStatus, caseStatus
               const category = route?.startsWith("finance-") ? "finance" : route === "case-archive-pending" ? "archive" : "workflow";
               const className = `wb-todo-entry todo-${category}${Number(count) > 0 ? " has-pending" : ""}`;
               const content = <>
-                <span className="wb-todo-label"><span aria-hidden="true">{todoIcons[route]}</span>{label}</span>
+                <span className="wb-todo-label"><span className="wb-todo-icon" aria-hidden="true">{todoIcons[route]}</span><span className="wb-todo-title">{label}</span></span>
                 <span className="wb-todo-value"><strong>{count}</strong>{clickable && <RightOutlined aria-hidden="true" />}</span>
               </>;
               return clickable
