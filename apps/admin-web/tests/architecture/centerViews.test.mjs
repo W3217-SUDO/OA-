@@ -11,6 +11,18 @@ const Card = () => null;
 const Space = () => null;
 const Table = () => null;
 
+// 工作台的子区块由被测页面渲染，测试只记录收到哪些属性，便于断言权限与跳转是否透传。
+function RecordingComponent(name) {
+  const Recording = (props) => null;
+  Recording.displayName = name;
+  return Recording;
+}
+
+const MetricTilesStub = RecordingComponent("DashboardMetricTiles");
+const HearingScheduleStub = RecordingComponent("DashboardHearingSchedule");
+const RejectionReminderStub = RecordingComponent("DashboardRejectionReminder");
+const AssistantPanelStub = RecordingComponent("AssistantPanel");
+
 function loadComponent(path, dependencies, globals = {}) {
   const source = fs.readFileSync(new URL(path, import.meta.url), "utf8");
   const output = ts.transpileModule(source, {
@@ -94,7 +106,7 @@ test("dashboard split metrics merge both arrival orders without cancelling cases
   for (const first of ["metrics_finance", "metrics_cases"]) {
     const harness = dashboardDataHarness();
     try {
-      assert.deepEqual(harness.requests.map((request) => request.config.params.section), ["metrics_cases", "metrics_finance", "todos", "cases"]);
+      assert.deepEqual(harness.requests.map((request) => request.config.params.section), ["metrics_cases", "metrics_finance", "todos", "cases", "rejections"]);
       const firstKeys = first === "metrics_finance" ? financeMetricKeys : caseMetricKeys;
       const second = first === "metrics_finance" ? "metrics_cases" : "metrics_finance";
       harness.request(first).resolve(metricResponse(firstKeys));
@@ -104,7 +116,7 @@ test("dashboard split metrics merge both arrival orders without cancelling cases
       assert.equal(harness.request("metrics_cases").config.signal.aborted, false);
       assert.equal(harness.request("metrics_finance").config.signal.aborted, false);
       harness.view.retry("metrics");
-      assert.equal(harness.requests.length, 4);
+      assert.equal(harness.requests.length, 5);
       harness.request(second).resolve(metricResponse(second === "metrics_cases" ? caseMetricKeys : financeMetricKeys));
       await settleDashboard();
       assert.deepEqual(Array.from(harness.view.data.metrics, (metric) => metric.key).sort(), [...financeMetricKeys, ...caseMetricKeys].sort());
@@ -130,9 +142,9 @@ test("dashboard split errors survive the other group's success and retry merges 
       assert.equal(harness.view.loading.metrics, false);
       assert.equal(harness.view.caseMetricsError, failed === "metrics_cases" ? "案件统计加载失败：真实分区错误" : undefined);
       assert.equal(harness.view.errors.metrics, failed === "metrics_finance" ? "真实分区错误" : undefined);
-      assert.equal(harness.requests.length, 4);
+      assert.equal(harness.requests.length, 5);
       harness.view.retry("metrics");
-      assert.equal(harness.requests.length, 6);
+      assert.equal(harness.requests.length, 7);
       assert.equal(harness.view.caseMetricsError, undefined);
       assert.equal(harness.view.errors.metrics, undefined);
       harness.request("metrics_finance", 1).resolve(metricResponse(financeMetricKeys, "2件"));
@@ -225,11 +237,9 @@ test("dashboard approved entries keep their destinations and unapproved entries 
   let relatedRecords = [{ id: 17, serial_no: "CASE-1", title: "案件" }];
   const data = {
     metrics: [{ key: "official-fee-unpaid", label: "待收费用", value: "2", route: "finance-fee-query", query: { scope: "mine" }, detail_context: { contract_no: "HT-1", return_view: "dashboard" } }],
-    todos: [["待处理任务", 2, 1, "待审批用印", 3, 0]],
-    hearings: [{ case_no: "CASE-1", time: "09:00" }],
-    latest_cases: [{ case_no: "CASE-2" }],
-    case_trend: [{ date: "10-01", value: 2 }],
-    civil_distribution: [{ label: "民事", value: 1, color: "blue" }],
+    hearings: [{ case_no: "CASE-1", client: "客户", time: "09:00", date: "2026-10-12", weekday: "星期一" }],
+    rejections: [{ id: 5, type: "task", serial_no: "RW-1", title: "被驳回的任务", reason: "材料不全", rejected_by: "管理员", rejected_at: "2026-10-11", route: "task-my-created" }],
+    rejection_total: 1,
   };
   const permissions = loadComponent("../../src/workspacePermissions.ts", {
     "./dashboardWorkspace": loadComponent("../../src/dashboardWorkspace.ts", {}),
@@ -251,10 +261,17 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     antd: { Button, Card, message: { warning: (value) => warnings.push(value), error: (value) => errors.push(value) } },
     "./components/ResizableTable": Table,
     "./DashboardPersonCell": () => null,
-    "./dashboardData": { useDashboardData: () => ({ data, loading: { metrics: false, todos: false, cases: false }, errors: {}, retry: (section) => calls.push(["retry", section]) }) },
+    "./DashboardHearingSchedule": HearingScheduleStub,
+    "./DashboardMetricTiles": MetricTilesStub,
+    "./DashboardRejectionReminder": RejectionReminderStub,
+    "./dashboardPrompts": { hearingPrompt: (item) => `开庭 ${item.case_no}`, rejectionsPrompt: () => "驳回", todayHearingsPrompt: () => "今日开庭" },
+    dayjs: () => ({ format: () => "2026-10-12", day: () => 1, hour: () => 14 }),
+    "./dashboardData": { useDashboardData: () => ({ data, loading: { metrics: false, todos: false, cases: false, rejections: false }, errors: {}, retry: (section) => calls.push(["retry", section]) }) },
     "./dashboardFeeNavigation.mjs": { rememberDashboardFeeQuery: (query) => calls.push(["fee-query", query.scope]) },
     "./caseDetailNavigation": { rememberCaseDetailTarget: (target) => calls.push(["case", target.serial_no]) },
     "./customerDetailNavigation": { rememberCustomerDetailTarget: (target) => calls.push(["customer", target.title]) },
+    "./personal-agent/AssistantPanel": AssistantPanelStub,
+    "./personal-agent/usePersonalAgent": { usePersonalAgent: () => ({ status: { ready: true }, state: { messages: [], pending_actions: [] }, loading: false, sending: false, send: (prompt) => calls.push(["agent", prompt]), stop: () => {}, decide: () => {}, reload: () => {} }) },
     "./detailRelationResolver": detailResolver,
     "./workspacePermissions": permissions,
   }, { AbortController, sessionStorage: { setItem: (key, value) => storage.set(key, value) } }).default;
@@ -264,13 +281,17 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     permissionAdministrator: false,
   };
   const rendered = nodes(Dashboard(props));
-  rendered.find((node) => node.props.className === "metric target-0").props.onClick();
+  const metrics = rendered.find((node) => node.type === MetricTilesStub);
+  const schedule = rendered.find((node) => node.type === HearingScheduleStub);
+  const reminders = rendered.find((node) => node.type === RejectionReminderStub);
+  const panel = rendered.find((node) => node.type === AssistantPanelStub);
+  assert.ok(metrics && schedule && reminders && panel);
+
+  // 已授权时指标可点，并且带上请款上下文。
+  metrics.props.onOpen(data.metrics[0]);
   assert.equal(JSON.parse(storage.get("sunhold:receivable-detail-context")).contract_no, "HT-1");
-  rendered.find((node) => node.type === "button" && node.props.children === 2).props.onClick();
-  assert.equal(storage.get("sunhold:dashboard-task-tab"), "pending");
-  const tables = rendered.filter((node) => node.type === Table);
-  const caseLink = tables[0].props.columns.find((column) => column.dataIndex === "case_no").render("CASE-1");
-  caseLink.props.onClick();
+  assert.equal(schedule.props.canOpenCase, true);
+  const caseLink = schedule.props.onOpenCase("CASE-1");
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(requests[0][0], "/records");
   assert.equal(requests[0][1].params.module, "case");
@@ -278,30 +299,30 @@ test("dashboard approved entries keep their destinations and unapproved entries 
   assert.equal(requests[0][1].signal.aborted, false);
   assert.deepEqual(calls, [
     ["fee-query", "mine"], ["route", "finance-fee-query"],
-    ["route", "task-my-accepted"], ["case", "CASE-1"], ["route", "case-detail-17-CASE-1"],
+    ["case", "CASE-1"], ["route", "case-detail-17-CASE-1"],
   ]);
+  assert.equal(caseLink, undefined);
+
+  // 提醒里的“交给智能体”与输入框共用同一条对话。
+  schedule.props.onAsk("开庭 CASE-1");
+  assert.equal(calls.at(-1)[0], "agent");
+  assert.equal(calls.at(-1)[1], "开庭 CASE-1");
+
   const successfulCallCount = calls.length;
   relatedRecords = [];
-  caseLink.props.onClick();
+  schedule.props.onOpenCase("CASE-1");
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(requests[0][1].signal.aborted, true);
   assert.equal(calls.length, successfulCallCount);
   assert.equal(warnings.at(-1), "未找到关联案件或当前账号无权查看");
   assert.equal(errors.length, 0);
 
+  // 未授权时不再出现可点的入口，链接降级为纯文本。
   const denied = nodes(Dashboard({ ...props, grantedMenuKeys: new Set() }));
-  const deniedMetric = denied.find((node) => node.props.className === "metric target-0");
-  assert.equal(deniedMetric.props.role, undefined);
-  assert.equal(deniedMetric.props.tabIndex, undefined);
-  assert.equal(deniedMetric.props.onClick, undefined);
-  assert.equal(deniedMetric.props.onKeyDown, undefined);
-  assert.ok(denied.some((node) => node.type === "span" && node.props.className === "todo-link" && node.props.children === 2));
-  assert.equal(denied.some((node) => node.type === "button" && node.props.children === 2), false);
-  const deniedTables = denied.filter((node) => node.type === Table);
-  assert.equal(deniedTables[0].props.columns.find((column) => column.dataIndex === "case_no").render("CASE-1"), "CASE-1");
-  assert.equal(deniedTables[1].props.columns.find((column) => column.dataIndex === "case_no").render("CASE-2"), "CASE-2");
-  assert.equal(deniedTables[0].props.columns.find((column) => column.dataIndex === "client").render("客户"), "客户");
-  assert.ok(denied.some((node) => node.type === Card && node.props.title === "开庭排期"));
+  const deniedSchedule = denied.find((node) => node.type === HearingScheduleStub);
+  assert.equal(deniedSchedule.props.canOpenSchedule, false);
+  assert.equal(deniedSchedule.props.canOpenCase, false);
+  assert.equal(deniedSchedule.props.canOpenCustomer, false);
   assert.equal(calls.length, successfulCallCount);
   cleanups.forEach((cleanup) => cleanup());
   assert.equal(requests.at(-1)[1].signal.aborted, true);

@@ -11,7 +11,11 @@ export type DashboardData = {
     query?: { scope?: "mine" | "company"; unpaid_official?: boolean };
     detail_context?: { contract_no: string; return_view: string; amount_filter?: string; owner?: string };
   }[];
+  todos: (string | number)[][];
   hearings: Record<string, string>[];
+  latest_cases: Record<string, string>[];
+  case_trend: { date: string; value: number }[];
+  civil_distribution: { label: string; value: number; color: string }[];
   rejections: DashboardRejection[];
   rejection_total: number;
 };
@@ -27,13 +31,13 @@ export type DashboardRejection = {
   route: string;
 };
 
-export type DashboardSection = "metrics" | "cases" | "rejections";
-const sections: DashboardSection[] = ["metrics", "cases", "rejections"];
+export type DashboardSection = "metrics" | "todos" | "cases" | "rejections";
+const sections: DashboardSection[] = ["metrics", "todos", "cases", "rejections"];
 const refreshIntervalMs = 5 * 60_000;
 
 export function useDashboardData() {
   const [data, setData] = useState<Partial<DashboardData>>({});
-  const [loading, setLoading] = useState<Record<DashboardSection, boolean>>({ metrics: true, cases: true, rejections: true });
+  const [loading, setLoading] = useState<Record<DashboardSection, boolean>>({ metrics: true, todos: true, cases: true, rejections: true });
   const [errors, setErrors] = useState<Partial<Record<DashboardSection, string>>>({});
   const [caseMetricsError, setCaseMetricsError] = useState<string>();
   const loader = useRef<(section: DashboardSection) => void>(() => {});

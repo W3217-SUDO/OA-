@@ -24,7 +24,7 @@ async function load(path, api = {}, messages = []) {
     name: 'isolated-clue-ui', setup(builder) {
       builder.onResolve({ filter: /\/api$/ }, () => ({ path: 'api', namespace: 'verification' }));
       builder.onResolve({ filter: /^antd$/ }, () => ({ path: 'antd', namespace: 'verification' }));
-      builder.onLoad({ filter: /.*/, namespace: 'verification' }, ({ path }) => ({ contents: path === 'api' ? 'export const api=globalThis.__clueApi;' : 'export const message=globalThis.__clueMessages; export const Button="button"; export const Modal="modal"; export const Select="select"; export const Alert="alert"; export const Spin="spin"; export const Descriptions="descriptions"; export const Tag="tag";' }));
+      builder.onLoad({ filter: /.*/, namespace: 'verification' }, ({ path }) => ({ contents: path === 'api' ? 'export const api=globalThis.__clueApi;' : 'export const message=globalThis.__clueMessages; export const Button="button"; export const Empty="empty"; export const Modal="modal"; export const Select="select"; export const Alert="alert"; export const Spin="spin"; export const Descriptions="descriptions"; export const Tag="tag"; export const Tooltip="tooltip";' }));
     },
   }] });
   const target = new Module(fileURLToPath(import.meta.url));
@@ -135,20 +135,28 @@ test('R25 退款长文本保留全文提示、原链接动作及操作列，其�
 });
 
 test('R26 已授权开庭排期标题实际点击跳到我的案件开庭排期，未授权不显示跳转入口', async () => {
-  const page = source('../src/Dashboard.tsx');
-  const title = find(page, item => ts.isJsxAttribute(item) && item.name.getText(page) === 'title' && item.initializer?.getText(page).includes('case-mine-schedule'));
-  assert.ok(title);
+  // 排期标题已移入工作台右侧栏的排期卡片，权限由 canOpenSchedule 控制。
   const routes = [];
-  const { isWorkspaceRouteGranted } = await load('../src/workspacePermissions.ts');
-  const renderTitle = granted => expression(title.initializer.expression.getText(page), {
-    React, Button: 'button', onNavigate: route => routes.push(route),
-    canNavigate: route => isWorkspaceRouteGranted(route, granted),
-  });
-  const button = renderTitle(new Set(['case-mine-schedule']));
-  assert.equal(button.props.children, '开庭排期');
-  button.props.onClick();
+  const renderSchedule = async (canOpenSchedule) => {
+    const { default: DashboardHearingSchedule } = await load('../src/DashboardHearingSchedule.tsx');
+    let renderer;
+    await act(async () => {
+      renderer = create(React.createElement(DashboardHearingSchedule, {
+        hearings: [], loading: false, status: null,
+        canOpenSchedule, canOpenCase: false, canOpenCustomer: false,
+        onOpenSchedule: () => routes.push('case-mine-schedule'),
+        onOpenCase: () => {}, onOpenCustomer: () => {}, onAsk: () => {},
+      }));
+    });
+    return renderer;
+  };
+  const granted = await renderSchedule(true);
+  await act(async () => { granted.root.findByType('button').props.onClick(); });
   assert.deepEqual(routes, ['case-mine-schedule']);
-  assert.equal(renderTitle(new Set()), '开庭排期');
-  assert.equal(renderTitle(new Set(['case-mine-civil'])), '开庭排期');
+  await act(async () => granted.unmount());
+
+  const denied = await renderSchedule(false);
+  assert.equal(denied.root.findAllByType('button').length, 0);
   assert.deepEqual(routes, ['case-mine-schedule']);
+  await act(async () => denied.unmount());
 });
