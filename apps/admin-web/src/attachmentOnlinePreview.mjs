@@ -38,6 +38,17 @@ const page = (title, body, extraStyle = "") => `<!doctype html>
     .xlsx-empty{padding:40px;text-align:center;color:#86909c}
     .xlsx-info{padding:8px 12px;background:#f5f7fa;border-top:1px solid #dfe2e7;font-size:12px;color:#4e5969}
     .render-error{max-width:900px;margin:0 auto 12px;padding:16px 20px;background:#fff7e8;border:1px solid #ffd591;color:#d46b08;border-radius:4px}
+    @media (max-width:767px){
+      html{height:100%;overflow:hidden}
+      body{height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+      header{position:static;flex-shrink:0;padding:12px}
+      main{flex:1;min-height:0;padding:12px;overflow:auto;display:flex;flex-direction:column}
+      main>iframe{flex:1;min-height:0;height:100%}
+      img{flex-shrink:0;max-height:none}
+      pre,.status{padding:12px}
+      .docx-layout-preview{min-height:0;flex-shrink:0}
+      .xlsx-preview{flex-shrink:0;max-height:none}
+    }
     ${extraStyle}
   </style>
 </head>

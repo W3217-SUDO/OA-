@@ -4,16 +4,19 @@ function createInlinePreviewTarget() {
   const backdrop = document.createElement("div");
   backdrop.setAttribute("role", "dialog");
   backdrop.setAttribute("aria-label", "附件在线预览");
-  backdrop.style.cssText = "position:fixed;inset:0;z-index:10000;background:#fff";
+  backdrop.style.cssText = "position:fixed;inset:0;height:100dvh;display:flex;flex-direction:column;overflow:hidden;z-index:10000;background:#fff";
+
+  const toolbar = document.createElement("div");
+  toolbar.style.cssText = "display:flex;justify-content:flex-end;flex-shrink:0;padding:calc(8px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));border-bottom:1px solid #dfe2e7";
 
   const frame = document.createElement("iframe");
   frame.title = "附件在线预览内容";
-  frame.style.cssText = "display:block;width:100%;height:100%;border:0";
+  frame.style.cssText = "display:block;width:100%;flex:1;min-height:0;border:0";
 
   const closeButton = document.createElement("button");
   closeButton.type = "button";
   closeButton.textContent = "关闭预览";
-  closeButton.style.cssText = "position:absolute;top:8px;right:12px;z-index:1;padding:6px 12px;border:1px solid #dfe2e7;border-radius:4px;background:#fff;color:#1f2329;cursor:pointer";
+  closeButton.style.cssText = "box-sizing:border-box;min-width:44px;min-height:44px;padding:8px 12px;border:1px solid #dfe2e7;border-radius:4px;background:#fff;color:#1f2329;font:inherit;cursor:pointer";
 
   const cleanupListeners = [];
   let closed = false;
@@ -37,7 +40,8 @@ function createInlinePreviewTarget() {
     if (event.key === "Escape") target.close();
   };
   closeButton.addEventListener("click", target.close);
-  backdrop.append(frame, closeButton);
+  toolbar.append(closeButton);
+  backdrop.append(toolbar, frame);
   document.body.append(backdrop);
   document.addEventListener("keydown", onKeyDown);
   window.addEventListener("pagehide", target.close);
@@ -51,6 +55,8 @@ export function isInlineAttachmentPreviewEnvironment() {
 
 export function createAttachmentPreviewTarget(openWindow) {
   if (openWindow) return openWindow();
-  if (isInlineAttachmentPreviewEnvironment()) return createInlinePreviewTarget();
+  if (isInlineAttachmentPreviewEnvironment() || window.matchMedia("(max-width: 767px)").matches) {
+    return createInlinePreviewTarget();
+  }
   return window.open("about:blank", "_blank");
 }
