@@ -1,4 +1,4 @@
-import { Checkbox,Space,Typography } from "antd";
+import { Checkbox,Space } from "antd";
 import dayjs from "dayjs";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -47,7 +47,7 @@ export const renderCaseLitigantAgentSummary = (value: unknown) => {
   try {
     agents = normalizeCaseLitigantAgents(value);
   } catch (error) {
-    if (error instanceof CaseLitigantAgentDataError) return <Typography.Text type="danger" role="alert">{error.message}</Typography.Text>;
+    if (error instanceof CaseLitigantAgentDataError) return <span className="case-agent-data-error" role="alert">{error.message}</span>;
     throw error;
   }
   if (!agents.length) return "—";

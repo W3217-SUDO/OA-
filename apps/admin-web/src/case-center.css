@@ -92,6 +92,7 @@
 .case-legacy-summary th,.case-legacy-summary td{height:21px;padding:2px 5px;border-right:1px solid #dce2e8;border-bottom:1px solid #dce2e8;line-height:16px;vertical-align:middle;overflow-wrap:anywhere}
 .case-legacy-summary th{background:#fafbfc;text-align:right;white-space:nowrap;font-weight:400}
 .case-legacy-summary td{background:#fff}
+.case-legacy-summary .case-agent-data-error{color:#ff4d4f}
 .case-legacy-summary .ant-btn-link{height:auto;padding:0;line-height:16px;white-space:normal;text-align:left}
 .case-counsel-detail-card .form-grid{grid-template-columns:repeat(4,minmax(150px,1fr))}
 .case-counsel-detail-card .form-grid p{padding:2px 6px;line-height:16px}
