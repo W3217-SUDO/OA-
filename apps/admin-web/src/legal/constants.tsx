@@ -1,9 +1,9 @@
-import { Checkbox,Space } from "antd";
+import { Checkbox,Space,Typography } from "antd";
 import dayjs from "dayjs";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { getLegacyCaseDocumentGenerationItems } from "../caseDocumentGenerationActions.mjs";
-import { normalizeCaseLitigantAgents } from "./caseLitigantAgents";
+import { CaseLitigantAgentDataError, normalizeCaseLitigantAgents } from "./caseLitigantAgents";
 import {
 LEGACY_CASE_PHASE_GROUPS,
 LEGACY_CIVIL_PHASE_ROOTS,
@@ -14,6 +14,7 @@ CaseAgentDocument,
 CaseAgentDocumentTreeNode,
 CaseDetailCapabilities,
 CaseEventCapabilities,
+CaseLitigantAgent,
 CaseLitigantAgentField,
 CaseLitigantPartyField,
 CasePhaseOption,
@@ -42,7 +43,13 @@ export const LEGACY_PHASE_GROUPS = new Set(LEGACY_CASE_PHASE_GROUPS);
 export const CASE_PHASE_ROOT_LABELS = LEGACY_CIVIL_PHASE_ROOTS;
 
 export const renderCaseLitigantAgentSummary = (value: unknown) => {
-  const agents = normalizeCaseLitigantAgents(value);
+  let agents: CaseLitigantAgent[];
+  try {
+    agents = normalizeCaseLitigantAgents(value);
+  } catch (error) {
+    if (error instanceof CaseLitigantAgentDataError) return <Typography.Text type="danger" role="alert">{error.message}</Typography.Text>;
+    throw error;
+  }
   if (!agents.length) return "—";
   return <Space direction="vertical" size={2}>
     {agents.map((agent, index) => <span key={`${agent.name}-${index}`}>

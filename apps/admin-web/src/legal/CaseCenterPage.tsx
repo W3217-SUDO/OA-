@@ -1,5 +1,6 @@
 import { CaseClueContextPanel } from "./CaseClueContextPanel";
 import { CaseClueSelect } from "./CaseClueSelect";
+import { CaseLitigantAgentDataError, normalizeCaseLitigantAgentFields } from "./caseLitigantAgents";
 import { useConflictReview } from "../conflict-review/useConflictReview";
 import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 import { caseContractDocuments } from "./services/caseDocuments";
@@ -217,7 +218,6 @@ isNormalCaseBasicType,
 LEGACY_PHASE_GROUPS,
 noCaseDetailWriteCapability,
 noCaseEventCapabilities,
-normalizeCaseLitigantAgents,
 normalizeCaseTaskPageState,
 renderCaseLitigantAgentSummary,
 shouldShowCaseListActions,
@@ -1889,13 +1889,23 @@ export default function CaseCenterPage({
 
   const isNormalEditableCase = (row: CaseRow) => isNormalCaseBasicType(row.data.case_type);
 
+  const prepareCaseLitigantAgentFormValues = (data: Record<string, unknown>) => {
+    try {
+      return normalizeCaseLitigantAgentFields(data);
+    } catch (error) {
+      if (!(error instanceof CaseLitigantAgentDataError)) throw error;
+      message.error(error.message);
+      return null;
+    }
+  };
+
   const openCriminalMaintenance = (row:CaseRow, kind:"litigants"|"public-security"|"procuratorates"|"courts") => {
+    const agentFields = kind === "litigants" ? prepareCaseLitigantAgentFormValues(row.data) : {};
+    if (!agentFields) return;
     const dateFields=["first_court_filing_date","first_court_hearing_date","second_court_filing_date","second_court_hearing_date","execution_court_filing_date","execution_court_hearing_date","retrial_court_filing_date","retrial_court_hearing_date"];
     criminalMaintenanceForm.setFieldsValue({
       ...row.data,
-      plaintiff_agents: normalizeCaseLitigantAgents(row.data.plaintiff_agents),
-      defendant_agents: normalizeCaseLitigantAgents(row.data.defendant_agents),
-      third_party_agents: normalizeCaseLitigantAgents(row.data.third_party_agents),
+      ...agentFields,
       ...Object.fromEntries(dateFields.map(key=>[key,row.data[key]?dayjs(row.data[key]):undefined])),
       comment:"",
     }); setCriminalMaintenance({row,kind});
@@ -1965,13 +1975,13 @@ export default function CaseCenterPage({
   );
   const openCaseLitigants = (row: CaseRow) => {
     if (ARCHIVE_LOCKED_STATUSES.includes(row.status)) return message.warning("归档中的案件不能修改当事人");
+    const agentFields = prepareCaseLitigantAgentFormValues(row.data);
+    if (!agentFields) return;
     caseLitigantsForm.setFieldsValue({
       plaintiffs: row.data.plaintiffs || (row.data.plaintiff ? [row.data.plaintiff] : row.customer ? [row.customer] : []),
-      plaintiff_agents: normalizeCaseLitigantAgents(row.data.plaintiff_agents),
+      ...agentFields,
       defendants: row.data.defendants || (row.data.opponent ? [row.data.opponent] : []),
-      defendant_agents: normalizeCaseLitigantAgents(row.data.defendant_agents),
       third_parties: row.data.third_parties || [],
-      third_party_agents: normalizeCaseLitigantAgents(row.data.third_party_agents),
       party_identities: casePartyIdentityFormValues(row.data),
       comment: "",
     });
