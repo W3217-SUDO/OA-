@@ -232,6 +232,7 @@ async def enrich_settlement_exports(rows, identity, db):
     ids = {int(detail["fee_id"]) for detail in details if detail.get("fee_id")}
     fees = {fee["id"]: fee for fee in await _invoice_fee_details(identity, db, ids=ids)} if ids else {}
     invoices = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "invoice",
+        or_(BusinessRecord.data["purpose"].as_string().is_(None), BusinessRecord.data["purpose"].as_string() != "付款凭证"),
         *(await _record_scope_conditions(identity, db)), BusinessRecord.status.notin_(("已作废", "已撤回")),
     ))).all())
     invoices_by_case_id, invoices_by_case_no = {}, {}

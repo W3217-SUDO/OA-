@@ -168,6 +168,81 @@ class SelectedQueryAssertions:
 class SQLiteSelectedQueryTest(SelectedQueryAssertions, unittest.IsolatedAsyncioTestCase):
     database_url = ""
 
+    async def test_settlement_export_ignores_payment_vouchers_but_requires_invoice_amounts(self):
+        async with self.engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with self.sessions() as db:
+            case = BusinessRecord(module="case", serial_no="CODEX-ROW4-MIXED-CASE",
+                                  title="混合凭证导出案件", customer="CODEX-ROW4-CUSTOMER",
+                                  status="一审", owner="selected-query-admin", data={})
+            db.add(case)
+            await db.flush()
+            fee = BusinessRecord(module="finance", serial_no="CODEX-ROW4-MIXED-FEE",
+                                 title="律师代理费", customer=case.customer, status="已核销",
+                                 owner="selected-query-admin", data={"case_id": case.id,
+                                     "case_no": case.serial_no, "fee_type": "律师代理费",
+                                     "expense_scope": "律所", "amount": 25, "cashed_amount": 25})
+            db.add(fee)
+            await db.flush()
+            payment = IncomingPayment(receipt_no="CODEX-ROW4-MIXED-RECEIPT",
+                                      received_date=date(2026, 10, 12), amount=25, allocated_amount=25,
+                                      payer_name="CODEX-ROW4-PAYER", claimed_customer=case.customer,
+                                      operator="selected-query-admin", allocations=[{
+                                          "case_id": case.id, "case_no": case.serial_no, "amount": 25,
+                                          "settlement_items": [{"fee_record_id": fee.id, "amount": 25}],
+                                      }])
+            invoice_data = {"case_id": case.id, "case_no": case.serial_no, "amount": 20, "extra_amount": 3,
+                            "invoice_date": "2026-10-12", "invoice_title": "CODEX-ROW4-REAL-TITLE",
+                            "invoice_no": "CODEX-ROW4-REAL-INVOICE", "case_fee_ids": [fee.id],
+                            "case_fee_allocations": [{"fee_id": fee.id, "amount": 20}]}
+            issued = BusinessRecord(module="invoice", serial_no="CODEX-ROW4-ISSUED",
+                                    title="真实已开发票", customer=case.customer, status="已开票",
+                                    owner="selected-query-admin", data=invoice_data)
+            voucher = BusinessRecord(module="invoice", serial_no="CODEX-ROW4-VOUCHER",
+                                     title="历史付款凭证", customer=case.customer, status="已开票",
+                                     owner="selected-query-admin", data={"case_id": case.id,
+                                         "case_no": case.serial_no, "purpose": "付款凭证", "amount": 25,
+                                         "invoice_title": "CODEX-ROW4-VOUCHER-TITLE", "invoice_no": "CODEX-ROW4-VOUCHER-NUMBER"})
+            db.add_all([payment, issued, voucher])
+            await db.commit()
+            payment_id, issued_id, voucher_id = payment.id, issued.id, voucher.id
+
+        async def database():
+            async with self.sessions() as db:
+                yield db
+
+        application = FastAPI()
+        application.include_router(router)
+        application.dependency_overrides[get_db] = database
+        application.dependency_overrides[current_identity] = self.identity
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url="http://row4.test") as client:
+            for voucher_extra in (None, 99):
+                if voucher_extra is not None:
+                    async with self.sessions() as db:
+                        voucher = await db.get(BusinessRecord, voucher_id)
+                        voucher.data = {**voucher.data, "extra_amount": voucher_extra}
+                        await db.commit()
+                for kind in ("case", "settlement", "receipt"):
+                    with self.subTest(kind=kind, voucher_extra=voucher_extra):
+                        response = await client.get("/api/v1/finance/general-settlements/export", params={"kind": kind, "ids": payment_id})
+                        self.assertEqual(response.status_code, 200, response.text if response.status_code != 200 else "")
+                        self.assertTrue(response.content.startswith(bytes.fromhex("d0cf11e0a1b11ae1")))
+                        sheet = xlrd.open_workbook(file_contents=response.content).sheet_by_index(0)
+                        if kind == "receipt":
+                            self.assertEqual(sheet.cell_value(1, 16), "CODEX-ROW4-REAL-TITLE")
+                            self.assertEqual(sheet.cell_value(1, 17), "CODEX-ROW4-REAL-INVOICE")
+                            self.assertEqual(sheet.cell_value(1, 18), 20)
+                            self.assertEqual(sheet.cell_value(1, 19), 3)
+
+            async with self.sessions() as db:
+                issued = await db.get(BusinessRecord, issued_id)
+                issued.data = {key: value for key, value in invoice_data.items() if key != "extra_amount"}
+                await db.commit()
+            for kind in ("case", "settlement", "receipt"):
+                response = await client.get("/api/v1/finance/general-settlements/export", params={"kind": kind, "ids": payment_id})
+                self.assertEqual(response.status_code, 409, response.text)
+                self.assertEqual(response.json()["detail"], "结算关联发票金额未映射完整")
+
     async def test_selected_receipt_exports_real_workbooks(self):
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
