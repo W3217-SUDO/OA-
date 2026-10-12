@@ -359,7 +359,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
                     ? isGeneralSettlementPendingRoute
                         ? { kind, ids: selectedIds.join(",") }
                         : { kind, application_ids: selectedIds.join(",") }
-                    : { kind },
+                    : { ...context.generalSettlementParams(context.originalQuery), kind },
                 responseType: "blob",
             });
             const names = {

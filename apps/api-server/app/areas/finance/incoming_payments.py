@@ -307,6 +307,79 @@ async def export_incoming_payments(payment_status: str = "", keyword: str = "", 
     return _excel_response(f"银行到账-{date.today()}.xls", headers, rows)
 
 
+@router.get(f"{settings.api_prefix}/finance/incoming-payments/query/export")
+async def export_incoming_fee_query(
+    ids: str = "", filters: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    from urllib.parse import quote
+    from app.areas.finance.incoming_query import parse_incoming_filters
+    from app.areas.finance.excel_templates import render_rows
+    from app.areas.finance.export_projection import fee_export_values
+    from app.core.finance import _invoice_case_fee_rows, _visible_incoming_payment_statement
+    from app.core.fee_cash_query import _case_fee_link_maps, _resolve_case_fee_link_id
+    from app.core.permissions import _record_scope_conditions
+    from app.core.query_batches import _scalars_in_batches
+    from app.core.system import _export_ids
+    from sqlalchemy import String, cast
+    query = parse_incoming_filters("finance-receipts-query", filters)
+    def field(index):
+        value = query.get(f"routeField{index}")
+        return "" if value in (None, "全部", "请选择") else value
+    selected_ids = set(_export_ids(ids)) if ids.strip() else None
+    fee_ids = None
+    if selected_ids is not None:
+        payments = list((await db.scalars((await _visible_incoming_payment_statement(identity, db)).where(IncomingPayment.id.in_(selected_ids)))).all())
+        if len(payments) != len(selected_ids):
+            raise HTTPException(409, "部分回款不存在或无权导出")
+        links = [nested for payment in payments for part in payment.allocations or []
+            for nested in (part.get("settlement_items") or [part])]
+        source_ids = {int(part[key]) for part in links
+            for key in ("fee_record_id", "fee_id", "legacy_case_fee_id", "legacy_fee_id", "finance_record_id") if str(part.get(key) or "").isdigit()}
+        scope = await _record_scope_conditions(identity, db)
+        candidates = await _scalars_in_batches(db, source_ids, lambda batch: select(BusinessRecord).where(
+            BusinessRecord.module == "finance", BusinessRecord.id.in_(batch), *scope))
+        candidates.extend(await _scalars_in_batches(db, source_ids, lambda batch: select(BusinessRecord).where(
+            BusinessRecord.module == "finance", or_(
+                cast(BusinessRecord.data["legacy_case_fee_id"].as_string(), String).in_([str(value) for value in batch]),
+                cast(BusinessRecord.data["legacy_fee_id"].as_string(), String).in_([str(value) for value in batch])), *scope)))
+        candidates = list({fee.id: fee for fee in candidates}.values())
+        candidate_ids, legacy_ids = _case_fee_link_maps(candidates)
+        fee_ids = {_resolve_case_fee_link_id(part, candidate_ids, legacy_ids) or int(part.get("finance_record_id") or 0) for part in links} & candidate_ids
+        if not fee_ids:
+            raise HTTPException(409, "所选回款未关联案件费用，不能生成费用模板")
+    dates = field(9) or [None, None]
+    if dates[0] and dates[1] and dates[0] > dates[1]:
+        raise HTTPException(422, "到账开始日期不能晚于结束日期")
+    fee_types = field(10)
+    fee_types = fee_types if isinstance(fee_types, str) else ",".join(fee_types or [])
+    rows = await _invoice_case_fee_rows(identity, db, scope="company", ids=fee_ids, include_all_fee_types=True,
+        case_no=field(0), hearing_lawyer=field(1), assistant=field(2), customer=field(6), payer_name=field(7),
+        fee_types=fee_types,
+        cashed_from=date.fromisoformat(dates[0]) if dates[0] else None, cashed_to=date.fromisoformat(dates[1]) if dates[1] else None)
+    values = await fee_export_values(rows, identity, db)
+    category = {"官费": "官方费用", "代理费": "律师代理费", "其他费用": "其他费用", "第三方费用": "第三方费用"}.get(field(8))
+    filtered = []
+    for row, value in zip(rows, values):
+        data = row["data"]
+        if any(field(index) and str(field(index)).casefold() not in str(value[column] or "").casefold() for index, column in ((3, 5), (4, 6), (5, 10))):
+            continue
+        if category and category not in {data.get("base_fee_type"), data.get("fee_type")}:
+            continue
+        amount = data.get("cashed_amount")
+        if field(11) and amount is None:
+            raise HTTPException(403, "没有金额权限，不能按分配状态导出")
+        if (field(11) == "已分配" and amount == 0) or (field(11) == "未分配" and amount != 0):
+            continue
+        filtered.append(value)
+    if not filtered:
+        raise HTTPException(422, "当前条件没有可导出的到账费用")
+    for index, value in enumerate(filtered, 1):
+        value[0] = index
+    filename = f"到账查询-{date.today()}.xls"
+    return Response(content=render_rows("F27", filtered), media_type="application/vnd.ms-excel",
+        headers={"Content-Disposition": f"attachment; filename=incoming-fees.xls; filename*=UTF-8''{quote(filename)}"})
+
+
 @router.get(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}")
 async def get_incoming_payment(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (

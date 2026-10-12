@@ -326,33 +326,30 @@ async def export_invoice_applications(
     rows = await _invoice_list_rows(identity, db, scope=scope, customer=customer, application_no=application_no, invoice_type=invoice_type, invoice_title=invoice_title, invoice_no=invoice_no, invoice_status=invoice_status, invoiced_from=invoiced_from, invoiced_to=invoiced_to, case_no=case_no, applicant_filter=applicant, ids=selected_ids)
     if selected_ids is not None and not rows:
         raise HTTPException(status_code=422, detail="请选择需要导出的发票")
-    headers = (
-        ["请票单号", "申请人", "客户名称", "开票金额", "高开金额", "开票抬头", "备注"]
-        if scope == "pending"
-        else ["请票单号", "客户名称", "开票金额", "高开金额", "开票抬头", "发票号码", "申请人", "领票人", "开票日期", "状态"]
-        if scope == "company"
-        else ["请票单号", "客户名称", "开票金额", "高开金额", "发票编号", "领票人", "开票日期", "票据状态", "备注"]
-    )
-    def cell(value: object, *, number: bool = False) -> str:
-        text_value = f"{float(value or 0):.2f}" if number else str(value or "")
-        return f'<Cell><Data ss:Type="{"Number" if number else "String"}">{xml_escape(text_value)}</Data></Cell>'
-    sheet_rows = ["<Row>" + "".join(cell(value) for value in headers) + "</Row>"]
-    for row in rows:
-        data = row.get("data") or {}
-        values = (
-            [row.get("serial_no"), data.get("applicant"), row.get("customer"), data.get("amount"), data.get("extra_amount"), data.get("invoice_title"), data.get("remark") or row.get("description")]
-            if scope == "pending"
-            else [row.get("serial_no"), row.get("customer"), data.get("amount"), data.get("extra_amount"), data.get("invoice_title"), data.get("invoice_no"), data.get("applicant"), data.get("recipient"), data.get("invoice_date"), row.get("status")]
-            if scope == "company"
-            else [row.get("serial_no"), row.get("customer"), data.get("amount"), data.get("extra_amount"), data.get("invoice_no"), data.get("recipient"), data.get("invoice_date"), row.get("status"), data.get("remark") or row.get("description")]
-        )
-        number_indexes = {3, 4} if scope == "pending" else {2, 3}
-        sheet_rows.append("<Row>" + "".join(cell(value, number=index in number_indexes) for index, value in enumerate(values)) + "</Row>")
-    sheet_name = "待处理开票" if scope == "pending" else "公司开票" if scope == "company" else "我的开票"
-    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="' + sheet_name + '"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
-    filename = f"{sheet_name}-{date.today()}.xls"
-    disposition = f"attachment; filename=my-invoices.xls; filename*=UTF-8''{quote(filename)}"
-    return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+    if scope == "mine":
+        headers = ["请票单号", "客户名称", "开票金额", "高开金额", "发票编号", "领票人", "开票日期", "票据状态", "备注"]
+        def cell(value: object, *, number: bool = False) -> str:
+            text_value = f"{float(value or 0):.2f}" if number else str(value or "")
+            return f'<Cell><Data ss:Type="{"Number" if number else "String"}">{xml_escape(text_value)}</Data></Cell>'
+        sheet_rows = ["<Row>" + "".join(cell(value) for value in headers) + "</Row>"]
+        for row in rows:
+            data = row.get("data") or {}
+            values = [row.get("serial_no"), row.get("customer"), data.get("amount"), data.get("extra_amount"), data.get("invoice_no"), data.get("recipient"), data.get("invoice_date"), row.get("status"), data.get("remark") or row.get("description")]
+            number_indexes = {2, 3}
+            sheet_rows.append("<Row>" + "".join(cell(value, number=index in number_indexes) for index, value in enumerate(values)) + "</Row>")
+        sheet_name = "我的开票"
+        workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="' + sheet_name + '"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
+        filename = f"{sheet_name}-{date.today()}.xls"
+        disposition = f"attachment; filename=my-invoices.xls; filename*=UTF-8''{quote(filename)}"
+        return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+    from app.areas.finance.excel_templates import render_rows
+    from app.areas.finance.export_projection import invoice_export_values
+    if selected_ids is not None and len(rows) != len(selected_ids):
+        raise HTTPException(409, "部分发票不存在或无权导出")
+    values = await invoice_export_values(rows, identity, db)
+    workbook = render_rows("F33" if scope == "pending" else "F29", values)
+    filename = f"{'待处理开票' if scope == 'pending' else '公司开票'}-{date.today()}.xls"
+    return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=invoices.xls; filename*=UTF-8''{quote(filename)}"})
 
 
 @router.get(f"{settings.api_prefix}/finance/case-fees/invoice-status")
@@ -435,21 +432,29 @@ async def export_invoice_case_fees(
     )
     if selected_ids is not None and not rows:
         raise HTTPException(status_code=422, detail="请选择需要导出的费用.")
-    headers = ["案号", "客户", "案件阶段", "助理", "开庭律师", "法院案号", "费用类型", "金额", "开票日期", "开票金额", "发票查看", "到账时间", "到账金额", "到账单位", "付款时间", "付款金额", "法院名称", "付款状态", "合同号"]
-    keys = ["case_no", "customer", "case_stage", "assistant", "hearing_lawyer", "court_case_no", "fee_type", "amount", "invoice_date", "invoice_amount", "invoice_no", "cashed_date", "cashed_amount", "received_payer_name", "paid_date", "paid_amount", "court_name", "payment_status", "contract_no"]
-    number_keys = {"amount", "invoice_amount", "cashed_amount", "paid_amount"}
-    def cell(value: object, *, number: bool = False) -> str:
-        text_value = f"{float(value or 0):.2f}" if number else str(value or "")
-        return f'<Cell><Data ss:Type="{"Number" if number else "String"}">{xml_escape(text_value)}</Data></Cell>'
-    sheet_rows = ["<Row>" + "".join(cell(value) for value in headers) + "</Row>"]
-    for row in rows:
-        data = row.get("data") or {}
-        values = {**data, "customer": row.get("customer", "")}
-        sheet_rows.append("<Row>" + "".join(cell(values.get(key), number=key in number_keys) for key in keys) + "</Row>")
-    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="未开票"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
-    filename = f"{'公司未开票' if scope == 'company' else '未开票'}-{date.today()}.xls"
-    disposition = f"attachment; filename=invoice-case-fees.xls; filename*=UTF-8''{quote(filename)}"
-    return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+    if scope == "mine":
+        headers = ["案号", "客户", "案件阶段", "助理", "开庭律师", "法院案号", "费用类型", "金额", "开票日期", "开票金额", "发票查看", "到账时间", "到账金额", "到账单位", "付款时间", "付款金额", "法院名称", "付款状态", "合同号"]
+        keys = ["case_no", "customer", "case_stage", "assistant", "hearing_lawyer", "court_case_no", "fee_type", "amount", "invoice_date", "invoice_amount", "invoice_no", "cashed_date", "cashed_amount", "received_payer_name", "paid_date", "paid_amount", "court_name", "payment_status", "contract_no"]
+        number_keys = {"amount", "invoice_amount", "cashed_amount", "paid_amount"}
+        def cell(value: object, *, number: bool = False) -> str:
+            text_value = f"{float(value or 0):.2f}" if number else str(value or "")
+            return f'<Cell><Data ss:Type="{"Number" if number else "String"}">{xml_escape(text_value)}</Data></Cell>'
+        sheet_rows = ["<Row>" + "".join(cell(value) for value in headers) + "</Row>"]
+        for row in rows:
+            data = row.get("data") or {}
+            values = {**data, "customer": row.get("customer", "")}
+            sheet_rows.append("<Row>" + "".join(cell(values.get(key), number=key in number_keys) for key in keys) + "</Row>")
+        workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="未开票"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
+        filename = f"未开票-{date.today()}.xls"
+        disposition = f"attachment; filename=invoice-case-fees.xls; filename*=UTF-8''{quote(filename)}"
+        return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+    from app.areas.finance.excel_templates import render_rows
+    from app.areas.finance.export_projection import fee_export_values
+    if selected_ids is not None and len(rows) != len(selected_ids):
+        raise HTTPException(409, "部分费用不存在或无权导出")
+    workbook = render_rows("F31", await fee_export_values(rows, identity, db))
+    filename = f"公司未开票-{date.today()}.xls"
+    return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=invoice-case-fees.xls; filename*=UTF-8''{quote(filename)}"})
 
 
 @router.get(f"{settings.api_prefix}/finance/case-fees/refunds")
@@ -756,21 +761,11 @@ async def export_finance_fee_query(
         raise HTTPException(status_code=422, detail="部分费用不存在或无权导出")
     if not rows:
         raise HTTPException(status_code=422, detail="当前没有可导出的费用")
-    headers = ["案号", "客户", "案件阶段", "助理", "开庭律师", "法院案号", "费用类型", "金额", "退费金额", "已退金额", "到账时间", "到账金额", "付款时间", "付款金额", "法院名称", "付款状态"]
-    keys = ["case_no", "customer", "case_stage", "assistant", "hearing_lawyer", "court_case_no", "fee_type", "amount", "refund_requested_amount", "refunded_amount", "cashed_date", "cashed_amount", "paid_date", "paid_amount", "court_name", "payment_status"]
-    number_keys = {"amount", "refund_requested_amount", "refunded_amount", "cashed_amount", "paid_amount"}
-    def cell(value: object, *, number: bool = False) -> str:
-        text_value = f"{float(value):.2f}" if number and value is not None else str(value or "")
-        return f'<Cell><Data ss:Type="{"Number" if number and value is not None else "String"}">{xml_escape(text_value)}</Data></Cell>'
-    sheet_rows = ["<Row>" + "".join(cell(value) for value in headers) + "</Row>"]
-    for row in rows:
-        data = row.get("data") or {}
-        values = {**data, "customer": row.get("customer", "")}
-        sheet_rows.append("<Row>" + "".join(cell(values.get(key), number=key in number_keys) for key in keys) + "</Row>")
-    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="费用查询"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
+    from app.areas.finance.excel_templates import render_rows
+    from app.areas.finance.export_projection import fee_export_values
+    workbook = render_rows("F57", await fee_export_values(rows, identity, db))
     filename = f"费用查询-{date.today()}.xls"
-    disposition = f"attachment; filename=finance-fee-query.xls; filename*=UTF-8''{quote(filename)}"
-    return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+    return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=finance-fee-query.xls; filename*=UTF-8''{quote(filename)}"})
 
 
 from app.areas.finance.invoice_operations import (
@@ -882,20 +877,13 @@ async def export_internal_fees(
     rows = await _internal_fee_rows(identity, db, scope=scope, case_no=case_no, handling_lawyer=handling_lawyer, assistant=assistant, source_person=source_person, customer=customer, customer_manager=customer_manager, investigator=investigator, payment_status=payment_status, paid_from=paid_from, paid_to=paid_to, payee=payee, case_stages=case_stages, fee_types=fee_types, ids=selected_ids)
     if selected_ids is not None and not rows:
         raise HTTPException(status_code=422, detail="请选择需要导出的费用")
-    headers = ["案号", "案件阶段", "原告", "被告", "经办律师", "律师助理", "案源人", "调查人", "归档时间", "申请时间", "内部费用类型", "金额", "收款人", "支付状态"]
-    keys = ["case_no", "case_stage", "plaintiff", "defendant", "handling_lawyer", "lawyer_assistant", "case_source", "investigator", "archive_date", "application_date", "internal_fee_type", "amount", "payee", "payment_status"]
-    def cell(value: object, *, number: bool = False) -> str:
-        text_value = f"{float(value or 0):.2f}" if number else str(value or "")[:10] if isinstance(value, (date, datetime)) else str(value or "")
-        data_type = "Number" if number else "String"
-        return f'<Cell><Data ss:Type="{data_type}">{xml_escape(text_value)}</Data></Cell>'
-    sheet_rows = ["<Row>" + "".join(cell(value) for value in headers) + "</Row>"]
-    for row in rows:
-        data = row.get("data") or {}
-        sheet_rows.append("<Row>" + "".join(cell(data.get(key), number=key == "amount") for key in keys) + "</Row>")
-    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="内部费用明细"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
+    from app.areas.finance.excel_templates import render_rows
+    from app.areas.finance.export_projection import fee_export_values
+    if selected_ids is not None and len(rows) != len(selected_ids):
+        raise HTTPException(409, "部分内部费用不存在或无权导出")
+    workbook = render_rows("F21", await fee_export_values(rows, identity, db, internal=True))
     filename = f"内部费用明细-{date.today()}.xls"
-    disposition = f"attachment; filename=internal-fees.xls; filename*=UTF-8''{quote(filename)}"
-    return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+    return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=internal-fees.xls; filename*=UTF-8''{quote(filename)}"})
 
 
 @router.get(f"{settings.api_prefix}/finance/legacy-history")

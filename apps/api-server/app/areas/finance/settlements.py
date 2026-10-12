@@ -134,23 +134,11 @@ async def export_pending_archive_settlements(
     rows = await _pending_archive_settlement_rows(identity, db, selected_ids=selected_ids)
     if len(rows) != len(selected_ids):
         raise HTTPException(status_code=409, detail="部分归档费不存在、已进入下一环节或无权导出")
-    headers = ["案号", "客户", "案件阶段", "律师助理", "开庭律师", "客户管理人", "费用类型", "回款方式", "回款时间", "回款金额", "归档费金额", "结算时间"]
-    numeric = {9, 10}
-    values = [[
-        row["data"].get("case_no"), row.get("customer"), row["data"].get("case_stage"),
-        row["data"].get("assistant"), row["data"].get("hearing_lawyer"), row["data"].get("customer_manager"),
-        row["data"].get("fee_type"), row["data"].get("payment_method"), row["data"].get("received_date"),
-        row["data"].get("receipt_amount"), row["data"].get("archive_fee_amount"), row["data"].get("settlement_paid_at"),
-    ] for row in rows]
-    def cell(value: object, *, number: bool = False) -> str:
-        value_text = f"{float(value or 0):.2f}" if number else str(value or "")
-        return f'<Cell><Data ss:Type="{"Number" if number else "String"}">{xml_escape(value_text)}</Data></Cell>'
-    sheet_rows = ["<Row>" + "".join(cell(value) for value in headers) + "</Row>"]
-    sheet_rows.extend("<Row>" + "".join(cell(value, number=index in numeric and value is not None) for index, value in enumerate(row)) + "</Row>" for row in values)
-    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="待归档"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
+    from app.areas.finance.excel_templates import render_rows
+    from app.areas.finance.export_projection import archive_export_values
+    workbook = render_rows("F37", await archive_export_values(rows, identity, db))
     filename = f"待归档-{date.today()}.xls"
-    disposition = f"attachment; filename=archive-settlement-pending.xls; filename*=UTF-8''{quote(filename)}"
-    return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+    return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=archive-settlement.xls; filename*=UTF-8''{quote(filename)}"})
 
 
 @router.get(f"{settings.api_prefix}/finance/archive-settlements/payment")
@@ -291,24 +279,11 @@ async def export_archive_settlement_payments(
     rows = await _pending_archive_settlement_rows(identity, db, require_archived=True, selected_ids=selected_ids)
     if len(rows) != len(selected_ids):
         raise HTTPException(status_code=409, detail="部分归档费不存在、已处理或无权导出")
-    headers = ["案号", "客户", "案件阶段", "律师助理", "开庭律师", "客户管理人", "费用类型", "回款方式", "回款时间", "回款金额", "归档费金额", "支付时间", "归档号", "归档日期"]
-    numeric = {9, 10}
-    values = [[
-        row["data"].get("case_no"), row.get("customer"), row["data"].get("case_stage"),
-        row["data"].get("assistant"), row["data"].get("hearing_lawyer"), row["data"].get("customer_manager"),
-        row["data"].get("fee_type"), row["data"].get("payment_method"), row["data"].get("received_date"),
-        row["data"].get("receipt_amount"), row["data"].get("archive_fee_amount"), row["data"].get("settlement_paid_at"),
-        row["data"].get("archive_no"), row["data"].get("archive_date"),
-    ] for row in rows]
-    def cell(value: object, *, number: bool = False) -> str:
-        value_text = f"{float(value or 0):.2f}" if number else str(value or "")
-        return f'<Cell><Data ss:Type="{"Number" if number else "String"}">{xml_escape(value_text)}</Data></Cell>'
-    sheet_rows = ["<Row>" + "".join(cell(value) for value in headers) + "</Row>"]
-    sheet_rows.extend("<Row>" + "".join(cell(value, number=index in numeric) for index, value in enumerate(row)) + "</Row>" for row in values)
-    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="待支付"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
+    from app.areas.finance.excel_templates import render_rows
+    from app.areas.finance.export_projection import archive_export_values
+    workbook = render_rows("F39", await archive_export_values(rows, identity, db))
     filename = f"待支付归档费-{date.today()}.xls"
-    disposition = f"attachment; filename=archive-settlement-payment.xls; filename*=UTF-8''{quote(filename)}"
-    return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+    return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=archive-settlement.xls; filename*=UTF-8''{quote(filename)}"})
 
 
 @router.get(f"{settings.api_prefix}/finance/archive-settlements/paid")
@@ -405,24 +380,11 @@ async def export_paid_archive_settlements(
     rows = await _archive_settlement_decision_rows(identity, db, statuses={"已支付"}, selected_ids=selected_ids)
     if len(rows) != len(selected_ids):
         raise HTTPException(status_code=409, detail="部分归档费不存在、已回滚或无权导出")
-    headers = ["案号", "客户", "案件阶段", "律师助理", "开庭律师", "客户管理人", "费用类型", "回款方式", "回款时间", "回款金额", "归档费金额", "结算时间", "归档费支付日期"]
-    numeric = {9, 10}
-    values = [[
-        row["data"].get("case_no"), row.get("customer"), row["data"].get("case_stage"),
-        row["data"].get("assistant"), row["data"].get("hearing_lawyer"), row["data"].get("customer_manager"),
-        row["data"].get("fee_type"), row["data"].get("payment_method"), row["data"].get("received_date"),
-        row["data"].get("receipt_amount"), row["data"].get("archive_fee_amount"), row["data"].get("settlement_paid_at"),
-        row["data"].get("archive_payment_reviewed_at"),
-    ] for row in rows]
-    def cell(value: object, *, number: bool = False) -> str:
-        value_text = f"{float(value or 0):.2f}" if number else str(value or "")
-        return f'<Cell><Data ss:Type="{"Number" if number else "String"}">{xml_escape(value_text)}</Data></Cell>'
-    sheet_rows = ["<Row>" + "".join(cell(value) for value in headers) + "</Row>"]
-    sheet_rows.extend("<Row>" + "".join(cell(value, number=index in numeric and value is not None) for index, value in enumerate(row)) + "</Row>" for row in values)
-    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="已支付"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
+    from app.areas.finance.excel_templates import render_rows
+    from app.areas.finance.export_projection import archive_export_values
+    workbook = render_rows("F35", await archive_export_values(rows, identity, db))
     filename = f"已支付归档费-{date.today()}.xls"
-    disposition = f"attachment; filename=archive-settlement-paid.xls; filename*=UTF-8''{quote(filename)}"
-    return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
+    return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=archive-settlement.xls; filename*=UTF-8''{quote(filename)}"})
 
 
 @router.get(f"{settings.api_prefix}/finance/archive-settlements/rejected")
@@ -880,6 +842,9 @@ async def pay_or_rollback_general_settlement_applications(body: FinanceSettlemen
 @router.get(f"{settings.api_prefix}/finance/general-settlements/export")
 async def export_general_settlements(
     kind: str = Query("settlement", pattern="^(settlement|receipt|case)$"), ids: str = "", application_ids: str = "",
+    customer: str = "", case_no: str = "", received_from: date | None = None, received_to: date | None = None,
+    payer: str = "", payment_method: str = "", case_customer: str = "", hearing_lawyer: str = "",
+    assistant: str = "", customer_manager: str = "", source_person: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import _general_settlement_rows
@@ -911,11 +876,18 @@ async def export_general_settlements(
         selected_ids = set(_export_ids(ids)) if ids.strip() else None
         if selected_ids is not None and not selected_ids:
             raise HTTPException(status_code=422, detail="请选择需要导出的回款.")
-        rows = await _general_settlement_rows(identity, db, receipt_ids=selected_ids)
+        if received_from and received_to and received_from > received_to:
+            raise HTTPException(422, "回款开始日期不能晚于结束日期")
+        rows = await _general_settlement_rows(identity, db, receipt_ids=selected_ids,
+            customer=customer, case_no=case_no, received_from=received_from, received_to=received_to,
+            payer=payer, payment_method=payment_method, case_customer=case_customer,
+            hearing_lawyer=hearing_lawyer, assistant=assistant, customer_manager=customer_manager, source_person=source_person)
         if selected_ids is not None and len({int(row["id"]) for row in rows}) != len(selected_ids):
             raise HTTPException(status_code=409, detail="部分回款已申请结算、尚未分配或无权导出")
     if not rows:
         raise HTTPException(status_code=422, detail="没有可导出的待结算记录")
+    from app.areas.finance.export_projection import enrich_settlement_exports
+    rows = await enrich_settlement_exports(rows, identity, db)
     workbook, filename, _sheet_name = render_general_settlement_export(kind, rows, date.today())
     disposition = f"attachment; filename=settlement-export.xls; filename*=UTF-8''{quote(filename)}"
     return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})

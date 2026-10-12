@@ -1038,6 +1038,29 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
         const { activeRouteConfig, initialView, isInternalDetailRoute, selectedOriginalRows, originalQuery, displayedOriginalTitle, configuredRows, cellValue } = context;
         if (!activeRouteConfig)
             return;
+        if (initialView === "finance-receipts-query") {
+            if (selectedOnly && !selectedOriginalRows.length) {
+                message.warning("请先选择需要导出的回款");
+                return;
+            }
+            try {
+                const response = await api.get("/finance/incoming-payments/query/export", {
+                    params: {
+                        filters: incomingPaymentQueryParams(initialView, originalQuery).filters,
+                        ids: selectedOnly ? selectedOriginalRows.join(",") : undefined,
+                    }, responseType: "blob",
+                });
+                const url = URL.createObjectURL(response.data);
+                const anchor = document.createElement("a");
+                anchor.href = url;
+                anchor.download = `到账查询-${dayjs().format("YYYY-MM-DD")}.xls`;
+                anchor.click();
+                URL.revokeObjectURL(url);
+            } catch (error: unknown) {
+                message.error(financeErrorDetail(error) || "到账查询导出失败");
+            }
+            return;
+        }
         if (activeRouteConfig.source === "fees" &&
             initialView.startsWith("finance-internal") &&
             !isInternalDetailRoute) {
