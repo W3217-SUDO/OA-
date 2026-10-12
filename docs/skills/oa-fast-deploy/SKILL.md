@@ -69,6 +69,20 @@ Do not reserve a version, create a release tag, activate the server, or move Git
 
 When a quality failure is caused by a changed business rule, update the affected regression fixture or implementation together with a focused test, rerun the exact failing test locally, and rerun the full CI quality gate. Never skip or weaken a regression assertion merely to make the workflow green.
 
+### Fast local source gate
+
+The `source` profile is already scoped: it runs the frontend unit suite, backend static and structural checks, the API/menu audits and only the fixed related regression files, and records every other file as `deferred` for CI `full`. Do not "scope it further" by selecting only the files a change touched; a changed shared helper must still be exercised by the checks that consume it.
+
+Make it fast without weakening it:
+
+1. Concurrency is `--jobs`, which parallelises the backend regression files. The gate defaults to the workstation CPU count capped at 10; override with `OA_QUALITY_JOBS` only when a machine needs a lower bound. The default is defined once in `quality_gate.py`; the pre-push hook forwards it only when you set it explicitly.
+2. A passing run writes a source receipt bound to the commit, runtimes, lock files, installed dependency set and `--jobs`. Re-running the same commit within the receipt's validity window reuses that report instantly, so a retry after an unrelated failure does not re-run the whole gate.
+3. Changing the commit, the runtime, a lock file, an installed dependency or `--jobs` invalidates the receipt by design and forces a fresh run. Expect that and do not treat it as a regression.
+4. Run the gate once per final commit. Squash staging-only tidy-ups before it, so a cosmetic follow-up commit does not force a second full pass.
+5. The backend regression is dominated by a single storage test file. Raising `--jobs` improves the wall clock until the longest single file becomes the floor; that file, not the gate, is where further optimisation belongs.
+
+A known-failing platform test is not a reason to disable the gate: fix or skip the specific test with a documented reason, keep the assertion in effect where the capability exists, and never bypass the hook.
+
 ## 3. Formal Release Gate
 
 For a direct standalone OA issue, the user's request includes authorization to release immediately after the code change and required production build; do not run local or online business tests and do not wait for a second "deploy" message. For an Excel batch, wait until every included row passes the local verification defined by `problem-remediation`, then release the batch once. Browser testing is left to the user. Immediately before every release, read all of the following from authoritative sources:
