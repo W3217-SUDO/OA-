@@ -1,7 +1,6 @@
-import { forwardRef, useEffect, useRef, useState, type ComponentRef, type ReactNode } from "react";
+import { forwardRef, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Input, List } from "antd";
 import { ArrowUpOutlined, CheckOutlined, CloseOutlined, ReloadOutlined, StopOutlined } from "@ant-design/icons";
-import AgentAvatar from "./AgentAvatar";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import { actionLabel, type PersonalAgent } from "./usePersonalAgent";
 import "./assistant-panel.css";
@@ -26,17 +25,15 @@ function MessageText({ content }: { content: string }) {
 
 type Props = {
   agent: PersonalAgent;
-  greeting: string;
-  briefing: ReactNode;
   suggestions: AssistantSuggestion[];
   focusRequested: boolean;
   onFocusHandled: () => void;
   onOpenCaseAgent: () => void;
 };
 
-// 工作台里的个人智能体：晨报、对话和输入框合在一个面板内。
+// 工作台里的个人智能体：对话和输入框合在一个面板内，问候语放在工作台顶部。
 const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
-  { agent, greeting, briefing, suggestions, focusRequested, onFocusHandled, onOpenCaseAgent },
+  { agent, suggestions, focusRequested, onFocusHandled, onOpenCaseAgent },
   ref,
 ) {
   const { status, state, loading, sending, send, stop, decide, reload } = agent;
@@ -59,17 +56,9 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     setInput("");
     void send(content);
   };
-  const name = status?.identity?.display_name;
 
   return (
     <section className={`assistant${state.messages.length ? "" : " is-empty"}`} aria-label="个人智能体" ref={ref}>
-      <header className="assistant-head">
-        <div className="assistant-mark"><AgentAvatar size={42} /></div>
-        <div className="assistant-greeting">
-          <h2>{greeting}{name ? `，${name}` : ""}</h2>
-          <p>{briefing}</p>
-        </div>
-      </header>
       {status && !status.ready && (
         <Alert className="assistant-alert" type="warning" showIcon title="个人智能体暂未就绪，请检查当前 OA 配置的大模型服务" />
       )}

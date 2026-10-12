@@ -1,12 +1,5 @@
-/* 工作台里的个人智能体：晨报、对话和输入框合在同一张纸面上，顶部的绿色细线标明它是智能体。 */
+/* 工作台里的个人智能体：对话和输入框合在同一张纸面上，顶部的绿色细线标明它是智能体。 */
 .assistant{display:flex;flex-direction:column;gap:14px;min-height:0;padding:20px 24px 14px;border:1px solid #dde3ea;border-top:3px solid #0e7a5f;border-radius:14px;background:#fff;box-shadow:0 12px 32px -24px rgba(18,38,63,.5);color:#18212b}
-.assistant-head{display:grid;flex:none;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:16px}
-.assistant-mark{display:grid;flex:none;place-items:center;width:60px;height:60px;border:1px solid #cfe9de;border-radius:50%;background:radial-gradient(circle at 32% 26%,#fff,#e4f6ee 72%)}
-.assistant-greeting h2{margin:0;color:#18212b;font-size:26px;font-weight:600;line-height:1.3;letter-spacing:.01em}
-.assistant-greeting p{margin:4px 0 0;color:#5b6776;font-size:15px;line-height:1.6}
-.assistant-greeting p b{font-weight:600;font-variant-numeric:tabular-nums}
-.assistant-greeting p b.is-hearing{color:#0e7a5f}
-.assistant-greeting p b.is-rejection{color:#c4402f}
 .assistant-alert{flex:none;padding:6px 12px;border-radius:10px;font-size:13px}
 
 /* 还没有对话时：今天最值得问的几件事排成卡片，占满面板中间。 */
@@ -69,11 +62,6 @@
 }
 @media(max-width:720px){
   .assistant{padding:16px 14px 12px}
-  .assistant-head{gap:12px}
-  .assistant-mark{width:48px;height:48px}
-  .assistant-mark svg{width:34px;height:34px}
-  .assistant-greeting h2{font-size:20px}
-  .assistant-greeting p{font-size:14px}
   .assistant-bubble{max-width:94%}
   .assistant-start{display:none}
   .assistant.is-empty .assistant-chips{display:flex}

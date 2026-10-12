@@ -1932,12 +1932,9 @@ export default function App() {
             if (isNarrowViewport && mobileSidebarOpen) setMobileSidebarOpen(false);
           }}
         >
-          {active !== "agent-center" && <div className="page-head">
+          {active !== "agent-center" && active !== "dashboard" && <div className="page-head">
             <div>
-              <h1>
-                {currentPageLabel}
-                {active === "dashboard" && <sup className="dashboard-hot">hot</sup>}
-              </h1>
+              <h1>{currentPageLabel}</h1>
               <span>首页 / {currentPageLabel}</span>
             </div>
           </div>}

@@ -264,6 +264,7 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     antd: { Button, Card, message: { warning: (value) => warnings.push(value), error: (value) => errors.push(value) } },
     "./components/ResizableTable": Table,
     "./DashboardPersonCell": () => null,
+    "./DashboardGreeting": () => null,
     "./DashboardHearingSchedule": HearingScheduleStub,
     "./DashboardMetricTiles": MetricTilesStub,
     "./DashboardRejectionReminder": RejectionReminderStub,

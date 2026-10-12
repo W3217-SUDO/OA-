@@ -3,6 +3,7 @@ import { Button, message } from "antd";
 import dayjs from "dayjs";
 import AssistantPanel, { type AssistantSuggestion } from "./personal-agent/AssistantPanel";
 import { usePersonalAgent } from "./personal-agent/usePersonalAgent";
+import DashboardGreeting from "./DashboardGreeting";
 import DashboardHearingSchedule from "./DashboardHearingSchedule";
 import DashboardMetricTiles from "./DashboardMetricTiles";
 import DashboardRejectionReminder from "./DashboardRejectionReminder";
@@ -149,6 +150,7 @@ export default function Dashboard({
   );
   const metrics = (
     <DashboardMetricTiles
+      leading={<DashboardGreeting greeting={greetingByHour(now.hour())} name={agent.status?.identity?.display_name} briefing={briefing} />}
       metrics={data.metrics || []}
       status={sectionStatus("metrics")}
       onOpen={navigateMetric}
@@ -176,8 +178,6 @@ export default function Dashboard({
             </div>
             {showConversation ? <AssistantPanel
               agent={agent}
-              greeting={greetingByHour(now.hour())}
-              briefing={briefing}
               suggestions={suggestions}
               focusRequested={assistantFocusRequested}
               onFocusHandled={onAssistantFocusHandled}

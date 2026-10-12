@@ -29,6 +29,7 @@ const metricIcons: Record<string, ReactNode> = {
 const COLLAPSE_KEY = "sunhold:workbench-metrics-collapsed";
 
 type Props = {
+  leading: ReactNode;
   metrics: Metric[];
   status: ReactNode;
   onOpen: (metric: Metric) => void;
@@ -45,8 +46,8 @@ function readCollapsed() {
   return window.innerWidth < 721;
 }
 
-// 提醒指标：八个色块加一个折叠开关，收起来时只留一行摘要。
-export default function DashboardMetricTiles({ metrics, status, onOpen }: Props) {
+// 提醒指标：八个色块加一个折叠开关，收起来时只留一行摘要；开关行左侧放工作台问候语。
+export default function DashboardMetricTiles({ leading, metrics, status, onOpen }: Props) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   useEffect(() => {
     try {
@@ -59,6 +60,7 @@ export default function DashboardMetricTiles({ metrics, status, onOpen }: Props)
   return (
     <section className={`wb-metrics${collapsed ? " is-collapsed" : ""}`} aria-label="案件与费用提醒">
       <div className="wb-metric-bar">
+        {leading}
         {status}
         <Button
           type="text"

@@ -1,9 +1,9 @@
-.topbar{background:#00a65a}.logo{width:200px;background:#008d4c;cursor:pointer}.global-search{width:320px;margin-left:12px}.top-actions{margin-left:auto;margin-right:8px}.sidebar{min-height:calc(100vh - 50px)}.sidebar .ant-menu-item,.sidebar .ant-menu-submenu-title{height:41px!important;line-height:41px!important;margin:0!important;border-radius:0!important;font-size:12px}.support-tools{padding:0 0 14px;background:#222d32}.support-tools-title{padding:7px 14px;background:#1e282c;color:#60747d;font-size:12px}.support-tools a{display:flex;align-items:center;gap:8px;min-height:41px;padding:8px 14px 8px 20px;color:#c8d5dc;font-size:12px;border-bottom:1px solid rgba(255,255,255,.025)}.support-tools a:hover{color:#fff;background:#1e282c}.support-tools a .anticon{color:#67c9dd}.dashboard-hot{margin-left:8px;color:#f33;font-size:11px;font-weight:400;vertical-align:top}
+.topbar{background:#00a65a}.logo{width:200px;background:#008d4c;cursor:pointer}.global-search{width:320px;margin-left:12px}.top-actions{margin-left:auto;margin-right:8px}.sidebar{min-height:calc(100vh - 50px)}.sidebar .ant-menu-item,.sidebar .ant-menu-submenu-title{height:41px!important;line-height:41px!important;margin:0!important;border-radius:0!important;font-size:12px}.support-tools{padding:0 0 14px;background:#222d32}.support-tools-title{padding:7px 14px;background:#1e282c;color:#60747d;font-size:12px}.support-tools a{display:flex;align-items:center;gap:8px;min-height:41px;padding:8px 14px 8px 20px;color:#c8d5dc;font-size:12px;border-bottom:1px solid rgba(255,255,255,.025)}.support-tools a:hover{color:#fff;background:#1e282c}.support-tools a .anticon{color:#67c9dd}
 
 .dashboard-content{padding:0 10px 12px;background:#f2f2f2}.reference-dashboard{min-width:0;padding-top:0}.dashboard-legacy-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(300px,1fr);grid-template-areas:"metrics todo" "hearing trend" "latest civil";gap:10px 12px;align-items:stretch}.dashboard-metrics-panel{grid-area:metrics}.reference-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0}.reference-metrics .metric{height:84px;padding:11px 14px;justify-content:flex-start;gap:12px;color:#fff;cursor:pointer;box-shadow:none;transition:filter .15s}.reference-metrics .metric:hover,.reference-metrics .metric:focus-visible{filter:brightness(1.06);outline:2px solid rgba(255,255,255,.75);outline-offset:-2px}.reference-metrics .metric-icon{order:2;width:58px;margin-left:auto;font-size:44px;text-align:center;opacity:.30;line-height:1}.reference-metrics .metric strong{font-size:20px;margin-bottom:3px}.reference-metrics .metric span{font-size:12px}.reference-metrics .target-0{background:#5a92c4}.reference-metrics .target-1{background:#49bbb7}.reference-metrics .target-2{background:#e9585b}.reference-metrics .target-3{background:#7d6bae}.reference-metrics .target-4{background:#4f5d66}.reference-metrics .target-5{background:#18a8df}.reference-metrics .target-6{background:#9daabe}.reference-metrics .target-7{background:#f29a06}
 
-/* 工作台：顶部是八个提醒色块，下面左侧是智能体，右侧栏是开庭排期和审批驳回提醒。桌面端撑满可视区域，各区块在内部滚动。 */
-.workbench{--wb-ink:#18212b;--wb-slate:#5b6776;--wb-mute:#8793a3;--wb-line:#dde3ea;--wb-jade:#0e7a5f;--wb-red:#c4402f;display:flex;flex-direction:column;height:100%;min-height:600px;color:var(--wb-ink)}
+/* 工作台：不显示通用页面标题，顶部一行是问候语和提醒指标开关，其下是八个提醒色块，再下面左侧是智能体，右侧栏是开庭排期和审批驳回提醒。桌面端撑满可视区域，各区块在内部滚动。 */
+.workbench{padding-top:10px;--wb-ink:#18212b;--wb-slate:#5b6776;--wb-mute:#8793a3;--wb-line:#dde3ea;--wb-jade:#0e7a5f;--wb-red:#c4402f;display:flex;flex-direction:column;height:100%;min-height:600px;color:var(--wb-ink)}
 .wb-shell{display:flex;flex:1;flex-direction:column;gap:14px;min-height:0}
 .wb-grid{display:grid;flex:1;grid-template-columns:minmax(0,1fr) minmax(340px,410px);gap:14px;min-height:0}
 .wb-main{display:flex;flex-direction:column;min-width:0;min-height:0}
@@ -38,6 +38,17 @@ button.wb-todo-entry:hover{color:var(--wb-jade)}
 .wb-side>.wb-rail{flex:1 1 auto;min-height:170px}
 .wb-metrics{position:relative;display:flex;flex-direction:column;gap:8px;container-type:inline-size}
 .wb-metric-bar{display:flex;align-items:center;gap:8px}
+.wb-metric-bar>.dashboard-section-status{position:static;flex:none;padding:0;background:none}
+
+/* 问候语：头像、称呼和今天的开庭与驳回概况，占满开关左侧的空间。 */
+.wb-greeting{display:flex;flex:1;align-items:center;gap:12px;min-width:0}
+.wb-greeting-mark{display:grid;flex:none;place-items:center;width:44px;height:44px;border:1px solid #cfe9de;border-radius:50%;background:radial-gradient(circle at 32% 26%,#fff,#e4f6ee 72%)}
+.wb-greeting-text{min-width:0}
+.wb-greeting-text h2{margin:0;color:var(--wb-ink);font-size:20px;font-weight:600;line-height:1.3;letter-spacing:.01em}
+.wb-greeting-text p{margin:2px 0 0;color:var(--wb-slate);font-size:13px;line-height:1.5}
+.wb-greeting-text p b{font-weight:600;font-variant-numeric:tabular-nums}
+.wb-greeting-text p b.is-hearing{color:var(--wb-jade)}
+.wb-greeting-text p b.is-rejection{color:var(--wb-red)}
 .wb-metric-toggle{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 6px;color:var(--wb-slate);font-size:12px}
 .wb-metric-toggle .anticon{font-size:10px;transition:transform .18s}
 .wb-metrics:not(.is-collapsed) .wb-metric-toggle .anticon{transform:rotate(180deg)}
@@ -123,6 +134,11 @@ button.wb-todo-entry:hover{color:var(--wb-jade)}
 @media(max-width:720px){
   .dashboard-content{padding:0 10px calc(72px + env(safe-area-inset-bottom))}
   .wb-metrics{gap:6px}
+  .wb-greeting{gap:10px}
+  .wb-greeting-mark{width:38px;height:38px}
+  .wb-greeting-mark svg{width:26px;height:26px}
+  .wb-greeting-text h2{font-size:17px}
+  .wb-greeting-text p{font-size:12px}
   .wb-metric{flex-direction:column;justify-content:center;gap:0;min-height:46px;padding:6px 4px;text-align:center}
   .wb-metric-icon{display:none}
   .wb-metric-text{align-items:center;width:100%}
