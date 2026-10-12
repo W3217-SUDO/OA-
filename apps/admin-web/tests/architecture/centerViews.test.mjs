@@ -253,6 +253,14 @@ test("dashboard approved entries keep their destinations and unapproved entries 
       return { data: { items: relatedRecords } };
     } } },
   });
+  // 工作台沿用智能体中心那套会话工作区：桩只要暴露面板读取的字段并记录发问。
+  const workspace = {
+    status: { ready: true },
+    state: { messages: [], pending_actions: [] },
+    loading: false,
+    sending: false,
+    send: (prompt) => calls.push(["agent", prompt]),
+  };
   const Dashboard = loadComponent("../../src/Dashboard.tsx", {
     react: {
       useMemo: (factory) => factory(),
@@ -276,7 +284,7 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     "./caseDetailNavigation": { rememberCaseDetailTarget: (target) => calls.push(["case", target.serial_no]) },
     "./customerDetailNavigation": { rememberCustomerDetailTarget: (target) => calls.push(["customer", target.title]) },
     "./personal-agent/AssistantPanel": AssistantPanelStub,
-    "./personal-agent/usePersonalAgent": { usePersonalAgent: () => ({ status: { ready: true }, state: { messages: [{ role: "assistant", content: "已有历史对话" }], pending_actions: [] }, loading: false, sending: false, send: (prompt) => calls.push(["agent", prompt]), stop: () => {}, decide: () => {}, reload: () => {} }) },
+    "./personal-agent/usePersonalWorkspace": { usePersonalWorkspace: () => workspace },
     "./detailRelationResolver": detailResolver,
     "./workspacePermissions": permissions,
   }, { AbortController, sessionStorage: { setItem: (key, value) => storage.set(key, value) } }).default;

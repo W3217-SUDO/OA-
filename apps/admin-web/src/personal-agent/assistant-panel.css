@@ -2,6 +2,24 @@
 .assistant{display:flex;flex-direction:column;gap:14px;min-height:0;padding:20px 24px 14px;border:1px solid #dde3ea;border-top:3px solid #0e7a5f;border-radius:14px;background:#fff;box-shadow:0 12px 32px -24px rgba(18,38,63,.5);color:#18212b}
 .assistant-alert{flex:none;padding:6px 12px;border-radius:10px;font-size:13px}
 
+/* 会话控件在面板顶部一条窄工具栏里；抽屉样式在智能体中心已有，这里只补工作台需要的作用域规则。 */
+.assistant-bar{display:flex;flex:none;align-items:center;justify-content:space-between;gap:10px}
+.assistant-bar-title{color:#5b6776;font-size:13px}
+.assistant-bar .workspace-conversation-controls{display:flex;flex:none;align-items:center;gap:6px}
+.assistant-conversation-drawer .ant-drawer-content-wrapper{max-width:100vw}
+.assistant-conversation-drawer .ant-drawer-body{padding:12px}
+.assistant-conversation-list{display:flex;flex-direction:column;gap:4px}
+.assistant-conversation-row{display:flex;align-items:center;gap:4px;padding:4px;border-radius:6px}
+.assistant-conversation-row:hover{background:#f5f7f8}
+.assistant-conversation-row.active{background:#e8f5ef}
+.assistant-conversation-select{display:flex;flex:1;align-items:flex-start;gap:10px;min-width:0;padding:8px;border:0;background:none;color:#263c48;font:inherit;text-align:left;cursor:pointer}
+.assistant-conversation-select>.anticon{margin-top:3px;color:#78908c}
+.assistant-conversation-select>span:last-child{min-width:0}
+.assistant-conversation-select b{display:block;overflow:hidden;font-size:13px;font-weight:500;text-overflow:ellipsis;white-space:nowrap}
+.assistant-conversation-select small{display:block;margin-top:4px;color:#788590;font-size:11px}
+.assistant-conversation-select:focus-visible{border-radius:4px;outline:2px solid #0e7a5f;outline-offset:-2px}
+.assistant-conversation-select:disabled{cursor:default;opacity:.55}
+
 /* 还没有对话时：今天最值得问的几件事排成卡片，占满面板中间。 */
 .assistant-start{display:flex;flex:1;flex-direction:column;justify-content:center;gap:10px;min-height:0;overflow:auto}
 .assistant-cards{display:grid;gap:10px}
@@ -29,6 +47,10 @@
 .assistant-message.is-user .assistant-bubble{border-radius:12px 12px 4px 12px;background:#0e7a5f;color:#fff}
 .assistant-expand{display:block;margin-top:4px;padding:0;border:0;background:none;color:inherit;font:inherit;font-size:12px;opacity:.8;text-decoration:underline;cursor:pointer}
 .assistant-thinking::after{content:"...";display:inline-block;width:0;overflow:hidden;vertical-align:bottom;animation:assistant-dots 1.2s steps(4,end) infinite}
+.assistant-bubble.is-failed{border:1px solid #f0c9c3;background:#fdf5f3;color:#c4402f}
+.assistant-jump{align-self:center;flex:none;padding:4px 14px;border:1px solid #cfd8e1;border-radius:999px;background:#fff;color:#0e7a5f;font:inherit;font-size:12px;cursor:pointer;box-shadow:0 6px 14px -10px rgba(18,38,63,.6)}
+.assistant-jump:hover{border-color:#0e7a5f;background:#f0f9f5}
+.assistant-jump:focus-visible{outline:2px solid #0e7a5f;outline-offset:2px}
 @keyframes assistant-dots{to{width:1.3em}}
 
 .assistant-pending{flex:none;padding:10px 14px;border:1px solid #f1d9a8;border-radius:10px;background:#fffaf0}

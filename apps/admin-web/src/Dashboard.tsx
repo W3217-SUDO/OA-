@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, message } from "antd";
 import dayjs from "dayjs";
 import AssistantPanel, { type AssistantSuggestion } from "./personal-agent/AssistantPanel";
-import { usePersonalAgent } from "./personal-agent/usePersonalAgent";
+import { usePersonalWorkspace } from "./personal-agent/usePersonalWorkspace";
 import DashboardGreeting from "./DashboardGreeting";
 import DashboardHearingSchedule from "./DashboardHearingSchedule";
 import DashboardMetricTiles from "./DashboardMetricTiles";
@@ -42,7 +42,8 @@ export default function Dashboard({
   onAssistantFocusHandled: () => void;
 }) {
   const { data, loading, errors, retry } = useDashboardData();
-  const agent = usePersonalAgent();
+  // 工作台与智能体中心共用同一套会话运行时，因此这里可以列出会话并让多个会话同时回答。
+  const workspace = usePersonalWorkspace();
   const [showConversation, setShowConversation] = useState(false);
   const detailRequest = useRef<AbortController | null>(null);
   const navigation = useRef({ onNavigate, grantedMenuKeys, permissionAdministrator });
@@ -99,14 +100,22 @@ export default function Dashboard({
     if (item.route === "task-my-created") sessionStorage.setItem("sunhold:dashboard-task-tab", "rejected");
     onNavigate(item.route);
   };
-  // 提醒里的“交给智能体”和输入框共用同一条对话，发出后回到智能体面板查看回答。
+  // 提醒里的“交给智能体”和输入框共用当前对话；当前对话忙碌时另开一条对话并行回答。
   const askAgent = (prompt: string) => {
-    if (agent.sending) {
-      message.info("智能体正在回答上一个问题，请稍候");
+    // 面板按需挂载，直接切到对话视图即可，不再滚动定位。
+    setShowConversation(true);
+    if (!workspace.sending) {
+      void workspace.send(prompt);
       return;
     }
-    setShowConversation(true);
-    void agent.send(prompt);
+    void (async () => {
+      try {
+        const created = await workspace.createConversation();
+        await workspace.send(prompt, created);
+      } catch (error: any) {
+        message.error(error?.response?.data?.detail || error?.message || "智能体暂时无法接受新的提醒");
+      }
+    })();
   };
 
   const now = dayjs();
@@ -150,7 +159,7 @@ export default function Dashboard({
   );
   const metrics = (
     <DashboardMetricTiles
-      leading={<DashboardGreeting greeting={greetingByHour(now.hour())} name={agent.status?.identity?.display_name} briefing={briefing} />}
+      leading={<DashboardGreeting greeting={greetingByHour(now.hour())} name={workspace.status?.identity?.display_name} briefing={briefing} />}
       metrics={data.metrics || []}
       status={sectionStatus("metrics")}
       onOpen={navigateMetric}
@@ -177,14 +186,14 @@ export default function Dashboard({
               <button type="button" aria-pressed={showConversation} onClick={() => setShowConversation(true)}>助手对话</button>
             </div>
             {showConversation ? <AssistantPanel
-              agent={agent}
+              workspace={workspace}
               suggestions={suggestions}
               focusRequested={assistantFocusRequested}
               onFocusHandled={onAssistantFocusHandled}
               onOpenCaseAgent={onOpenCaseAgent}
             /> : <DashboardOverview
               greeting={greetingByHour(now.hour())}
-              name={agent.status?.identity?.display_name}
+              name={workspace.status?.identity?.display_name}
               briefing={briefing}
               todos={data.todos}
               cases={data.latest_cases}

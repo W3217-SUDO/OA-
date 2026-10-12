@@ -46,7 +46,8 @@ export function usePersonalWorkspace() {
   const setCaseMaterials = (value: SetStateAction<Material[]>) => updateDraft(id, "caseMaterials", value);
   const changeConversation = async (operation: () => Promise<WorkspaceState>) => {
     if (uploadLock.current || decisionLock.current || loading || sendStarts.current.has("")) throw new Error("请先完成当前文件或确认操作，再切换对话");
-    await operation();
+    // 返回切换后的会话，便于调用方紧接着把问题发给这条对话。
+    return await operation();
   };
 
   const refreshSkills = async () => {
@@ -89,32 +90,34 @@ export function usePersonalWorkspace() {
     const name = aiWordDocumentName("", item.content);
     confirmCaseAgentDocument({ caseId: item.case_id, serialNo: item.case_no || "", name, content: item.content, onSaved: async () => { updateDraft(target, "savedDocuments", (current) => ({ ...current, [index]: name })); } });
   };
-  const send = async () => {
-    const content = input.trim();
-    if (!content || stopping || sendStarts.current.has(id) || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
+  // override 用于工作台提醒和快捷问题：它们把完整问题直接交给智能体，不经过输入框。
+  // target 用于把问题发给一条刚建的对话，避免沿用闭包里的旧会话。
+  const send = async (override?: string, target?: WorkspaceState) => {
+    const content = (override ?? input).trim();
+    const targetId = target?.conversation_id || id;
+    if (!content || stopping || sendStarts.current.has(targetId) || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
     const skill = skills.find((item) => item.id === skillId && item.available);
     if (!skill) { message.error("所选技能已停用或不存在，请重新选择"); return; }
     // 只锁住启动阶段；模型生成期间允许其他对话独立发送。
-    sendStarts.current.add(id);
-    let target = id;
+    sendStarts.current.add(targetId);
+    let written = targetId;
     try {
-      if (runtime.running(id)) await runtime.stop(id);
-      const conversation = id ? runtime.get(id) : await conversations.create();
-      target = conversation.conversation_id!;
-      if (!id) setDrafts((current) => ({ ...current, [target]: { ...draft, input: "" } }));
-      else setInput("");
+      if (!target && runtime.running(id)) await runtime.stop(id);
+      const conversation = target || (id ? runtime.get(id) : await conversations.create());
+      written = conversation.conversation_id!;
+      updateDraft(written, "input", "");
       const metadata = { skill_name: skill.name, case_id: selectedCase?.id, case_no: selectedCase?.serial_no };
       const generation = runtime.generate(conversation, { content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: selectedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast" }, { role: "user", content, ...metadata, attachments: [...materials, ...caseMaterials] }, metadata);
-      updateDraft(target, "materials", []); updateDraft(target, "caseMaterials", []);
-      sendStarts.current.delete(id);
+      updateDraft(written, "materials", []); updateDraft(written, "caseMaterials", []);
+      sendStarts.current.delete(targetId);
       const completedState = await generation;
       const finalMessage = completedState?.messages.at(-1);
-      if (finalMessage?.can_save_document && isAiWordGenerationRequest(content) && isUsableAiDocumentContent(finalMessage.content) && !completedState?.pending_actions.some((action) => action.preview?.path?.endsWith("/ai-space/files"))) saveWord(finalMessage, completedState!.messages.length - 1, target);
+      if (finalMessage?.can_save_document && isAiWordGenerationRequest(content) && isUsableAiDocumentContent(finalMessage.content) && !completedState?.pending_actions.some((action) => action.preview?.path?.endsWith("/ai-space/files"))) saveWord(finalMessage, completedState!.messages.length - 1, written);
     } catch (error) {
-      updateDraft(target, "input", (current) => current || content);
+      updateDraft(written, "input", (current) => current || content);
       message.error(errorText(error, "智能体处理失败"));
     } finally {
-      sendStarts.current.delete(id);
+      sendStarts.current.delete(targetId);
       try { await conversations.refresh(); } catch (error) { message.error(errorText(error, "对话列表刷新失败")); }
     }
   };

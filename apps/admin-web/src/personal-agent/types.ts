@@ -18,3 +18,8 @@ export type WorkOverview = { todos: [string, number, number, string, number, num
 export function errorText(error: unknown, label: string): string {
   return agentOperationError(error, label);
 }
+
+// 待确认操作的标题：已知类型给中文名，其余沿用后端给出的摘要。
+export function actionLabel(action: PendingAction): string {
+  return action.type === "create_task" ? "新建任务" : action.type === "approve_contract" ? "合同审批" : action.summary;
+}

@@ -8,15 +8,26 @@ type Props = {
   activeId?: string | null;
   busy: boolean;
   runningIds: string[];
-  onCreate: () => Promise<void>;
-  onSelect: (id: string) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  // 调用方只等待这些操作完成，不消费返回值，因此对返回的会话状态保持宽松。
+  onCreate: () => Promise<unknown>;
+  onSelect: (id: string) => Promise<unknown>;
+  onDelete: (id: string) => Promise<unknown>;
+  // 抽屉样式类由调用方给出：智能体中心与工作台的样式作用域不同。
+  drawerClassName?: string;
+  listClassName?: string;
+  rowClassName?: string;
+  selectClassName?: string;
 };
 
-export function ConversationManager({ items, activeId, busy, runningIds, onCreate, onSelect, onDelete }: Props) {
+export function ConversationManager({ items, activeId, busy, runningIds, onCreate, onSelect, onDelete,
+  drawerClassName = "workspace-conversation-drawer",
+  listClassName = "workspace-conversation-list",
+  rowClassName = "workspace-conversation-row",
+  selectClassName = "workspace-conversation-select",
+}: Props) {
   const [open, setOpen] = useState(false);
   const [modal, contextHolder] = Modal.useModal();
-  const run = async (operation: () => Promise<void>, close = false) => {
+  const run = async (operation: () => Promise<unknown>, close = false) => {
     try { await operation(); if (close) setOpen(false); }
     catch (error) { message.error(errorText(error, "对话操作失败")); }
   };
@@ -35,10 +46,10 @@ export function ConversationManager({ items, activeId, busy, runningIds, onCreat
       <Tooltip title="新建对话"><Button size="small" icon={<PlusOutlined />} aria-label="新建对话" disabled={busy} onClick={() => void run(onCreate)}><span className="workspace-conversation-label">新建对话</span></Button></Tooltip>
       <Tooltip title="对话列表"><Button size="small" type="text" icon={<HistoryOutlined />} aria-label="对话列表" onClick={() => setOpen(true)} /></Tooltip>
     </div>
-    <Drawer title="我的对话" placement="right" width={360} open={open} onClose={() => setOpen(false)} className="workspace-conversation-drawer" extra={<Button icon={<PlusOutlined />} disabled={busy} onClick={() => void run(onCreate, true)}>新建对话</Button>}>
+    <Drawer title="我的对话" placement="right" width={360} open={open} onClose={() => setOpen(false)} className={drawerClassName} extra={<Button icon={<PlusOutlined />} disabled={busy} onClick={() => void run(onCreate, true)}>新建对话</Button>}>
       {!items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />}
-      <div className="workspace-conversation-list">{items.map((item) => <div className={`workspace-conversation-row${item.id === activeId ? " active" : ""}`} key={item.id}>
-        <button className="workspace-conversation-select" aria-current={item.id === activeId ? "true" : undefined} disabled={busy} onClick={() => void run(() => onSelect(item.id), true)}>
+      <div className={listClassName}>{items.map((item) => <div className={`${rowClassName}${item.id === activeId ? " active" : ""}`} key={item.id}>
+        <button className={selectClassName} aria-current={item.id === activeId ? "true" : undefined} disabled={busy} onClick={() => void run(() => onSelect(item.id), true)}>
           {runningIds.includes(item.id) ? <LoadingOutlined /> : <MessageOutlined />}<span><b title={item.title}>{item.title}</b><small>{runningIds.includes(item.id) ? "正在回答" : `${item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " · " : ""}${item.message_count} 条消息`}</small></span>
         </button>
         <Tooltip title={runningIds.includes(item.id) ? "请先停止该对话的回答" : "删除对话"}><Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除对话：${item.title}`} disabled={busy || runningIds.includes(item.id)} onClick={() => remove(item)} /></Tooltip>
