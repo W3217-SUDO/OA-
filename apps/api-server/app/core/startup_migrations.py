@@ -10,6 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from app.database import Base
 from app.core.notification_schema_migration import upgrade_notification_delivery_schema
 from app.core.record_read_model_migration import upgrade_record_read_model
+from app.core.dashboard_finance_read_model_migration import (
+    MIGRATION_REVISION as DASHBOARD_FINANCE_REVISION,
+    upgrade_dashboard_finance_read_model, validate_dashboard_finance_read_model,
+)
 from app.core.dashboard_revision import MIGRATION_REVISION as DASHBOARD_REVISION
 from app.core.dashboard_revision_migration import upgrade_dashboard_revision, validate_dashboard_revision
 from app.legacy_schema import (
@@ -55,6 +59,10 @@ def _apply_dashboard_revision(connection: Connection, _upgrade_schema: Callable[
     upgrade_dashboard_revision(connection)
 
 
+def _apply_dashboard_finance(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    upgrade_dashboard_finance_read_model(connection)
+
+
 def _run_versioned_schema_migrations(
     connection: Connection,
     upgrade_schema: Callable[[Connection], None],
@@ -65,6 +73,7 @@ def _run_versioned_schema_migrations(
         (SCHEMA_BOOTSTRAP_REVISION, _apply_schema_bootstrap),
         (NOTIFICATION_DELIVERY_REVISION, _apply_notification_delivery),
         (RECORD_READ_MODEL_REVISION, _apply_record_read_model),
+        (DASHBOARD_FINANCE_REVISION, _apply_dashboard_finance),
         (DASHBOARD_REVISION, _apply_dashboard_revision),
     )
     for revision, migration in revisions:
@@ -78,6 +87,7 @@ def _run_versioned_schema_migrations(
             text("INSERT INTO schema_migrations (key) VALUES (:key)"),
             {"key": revision},
         )
+    validate_dashboard_finance_read_model(connection)
     validate_dashboard_revision(connection)
 
 

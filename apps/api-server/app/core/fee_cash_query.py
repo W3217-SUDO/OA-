@@ -5,25 +5,15 @@ from app.models import BusinessRecord, FinanceTransaction, IncomingPayment
 from app.core.json_relation_query import json_scalar_overlap, scalar_in_values
 from app.core.query_batches import _scalars_in_batches
 from app.core.finance_read_scope import scoped_incoming_payments
+from app.core.fee_receipt_pool import unique_legacy_fee_ids
 
 
 def _case_fee_link_maps(fees: list[BusinessRecord]) -> tuple[set[int], dict[int, int]]:
     fee_ids = {item.id for item in fees}
-    legacy_candidates: dict[int, set[int]] = {}
-    for item in fees:
-        data = item.data or {}
-        for key in ("legacy_case_fee_id", "legacy_fee_id"):
-            try:
-                legacy_id = int(data.get(key) or 0)
-            except (TypeError, ValueError):
-                legacy_id = 0
-            if legacy_id:
-                legacy_candidates.setdefault(legacy_id, set()).add(item.id)
-    return fee_ids, {
-        legacy_id: next(iter(candidate_ids))
-        for legacy_id, candidate_ids in legacy_candidates.items()
-        if len(candidate_ids) == 1
-    }
+    return fee_ids, unique_legacy_fee_ids(
+        (item.id, ((item.data or {}).get("legacy_case_fee_id"), (item.data or {}).get("legacy_fee_id")))
+        for item in fees
+    )
 
 
 def _resolve_case_fee_link_id(link: dict, fee_ids: set[int], legacy_fee_ids: dict[int, int]) -> int:
@@ -77,10 +67,14 @@ def fee_paid_amount(data, payments):
     return max(transaction_paid, round(float(data.get("paid_amount") or 0), 2))
 
 
-async def read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, *, filter_related):
-    fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
-    fees_by_id = {item.id: item for item in fees}
-    case_nos = {str((item.data or {}).get("case_no") or "") for item in fees if (item.data or {}).get("case_no")}
+async def read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, *, filter_related, binding=None):
+    if binding is None:
+        fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
+        case_nos_by_fee = {item.id: str((item.data or {}).get("case_no") or "") for item in fees}
+        case_nos = {str((item.data or {}).get("case_no") or "") for item in fees if (item.data or {}).get("case_no")}
+    else:
+        fee_ids, legacy_fee_ids = binding.fee_ids, binding.legacy_fee_ids
+        case_nos_by_fee, case_nos = binding.case_nos_by_fee, binding.case_nos
     incoming = await scoped_incoming_payments(db)
     if incoming is None:
         conditions = []
@@ -103,8 +97,7 @@ async def read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, *, fil
                 if not isinstance(settlement_item, dict):
                     continue
                 nested_fee_id = _resolve_case_fee_link_id(settlement_item, fee_ids, legacy_fee_ids)
-                linked_fee = fees_by_id.get(nested_fee_id)
-                linked_case_no = str(((linked_fee.data or {}) if linked_fee else {}).get("case_no") or "").strip()
+                linked_case_no = case_nos_by_fee.get(nested_fee_id, "").strip()
                 if nested_fee_id in fee_ids and (not allocation_case_no or allocation_case_no == linked_case_no):
                     nested_amount = float(settlement_item.get("amount") or settlement_item.get("settlement_amount") or 0)
                     receipts_by_fee.setdefault(nested_fee_id, []).append((payment, nested_amount))
@@ -121,9 +114,8 @@ async def read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, *, fil
                 legacy_case_no = str(allocation.get("case_no") or "")
                 candidates = fees_by_case.get(legacy_case_no, []) if legacy_case_no in unambiguous_case_nos else []
                 if len(candidates) == 1:
-                    fee_id = candidates[0].id
-            linked_fee = fees_by_id.get(fee_id)
-            linked_case_no = str(((linked_fee.data or {}) if linked_fee else {}).get("case_no") or "").strip()
+                    fee_id = candidates[0].id if binding is None else candidates[0]
+            linked_case_no = case_nos_by_fee.get(fee_id, "").strip()
             if fee_id in fee_ids and (not allocation_case_no or allocation_case_no == linked_case_no):
                 receipts_by_fee.setdefault(fee_id, []).append((payment, float(allocation.get("amount") or 0)))
     return receipts_by_fee

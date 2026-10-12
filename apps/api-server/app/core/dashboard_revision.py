@@ -15,7 +15,7 @@ DEPENDENCY_TABLES = (
     "business_records", "business_record_read_models", "users", "job_roles",
     "role_permissions", "workflow_events", "contract_objects", "contract_approval_steps",
     "file_attachments", "incoming_payments", "finance_transactions", "hearing_schedules",
-    "departments", "system_parameters",
+    "departments", "system_parameters", "dashboard_finance_relations",
 )
 ROW_TRIGGER = "oa_dashboard_revision_row"
 TRUNCATE_TRIGGER = "oa_dashboard_revision_truncate"
@@ -62,6 +62,7 @@ def _sql_literal(value):
 
 def integrity_sql():
     """逐表核对触发器事件、时机、函数、启用状态及无条件执行。"""
+    from app.core.dashboard_finance_read_model_migration import finance_integrity_sql
     dependencies = ",".join(f"('{name}')" for name in DEPENDENCY_TABLES)
     touch_body = _sql_literal(FUNCTION_BODIES[TOUCH_FUNCTION].format(table=f'"%s"."{REVISION_TABLE}"'))
     own_body = _sql_literal(FUNCTION_BODIES[OWN_FUNCTION])
@@ -78,7 +79,7 @@ def integrity_sql():
                 AND primary_key.contype = 'p' AND primary_key.convalidated
                 AND NOT primary_key.condeferrable
                 AND primary_key.conkey = ARRAY[attribute.attnum]::smallint[]
-        ) AND NOT EXISTS (
+        ) AND ({finance_integrity_sql()}) AND NOT EXISTS (
             SELECT 1 FROM (VALUES {dependencies}) AS dependency(name)
             CROSS JOIN (VALUES ('{ROW_TRIGGER}', 29), ('{TRUNCATE_TRIGGER}', 32)) AS expected(name, kind)
             WHERE NOT EXISTS (

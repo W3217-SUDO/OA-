@@ -1,6 +1,7 @@
 import unittest
 import asyncio
 import json
+import os
 from contextlib import ExitStack, nullcontext
 from collections import OrderedDict
 from datetime import date, datetime, time, timedelta
@@ -18,7 +19,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import ResponseError as RedisResponseError
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from app.database import Base
 from app.main import dashboard, list_pending_execution_cases
@@ -516,6 +517,122 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(matching[0]["lawyer"], "开庭律师")
         self.assertEqual(matching[0]["agent"], "经办律师")
         self.assertEqual(matching[0]["assistant"], "律师助理")
+
+
+class DashboardFinanceReadModelContractTest(unittest.IsolatedAsyncioTestCase):
+    @unittest.skipUnless(os.environ.get("OA_TEST_POSTGRES_URL"), "需要任务专属 PostgreSQL 测试库")
+    async def test_core_stream_uses_session_transaction_and_autoflush(self):
+        from sqlalchemy import text
+        from app.core.dashboard_finance_read_model import read_dashboard_finance_fee_pool
+        url = os.environ["OA_TEST_POSTGRES_URL"]
+        schema = os.environ.get("OA_TEST_POSTGRES_SCHEMA", "")
+        database = make_url(url).database or ""
+        self.assertTrue(database.startswith("CODEX-"))
+        self.assertRegex(schema, r"^oa_test_[a-z0-9_]+$")
+        engine = create_async_engine(url, poolclass=NullPool,
+                                     connect_args={"server_settings": {"search_path": schema}})
+        self.addAsyncCleanup(engine.dispose)
+        connection = await engine.connect()
+        self.addAsyncCleanup(connection.close)
+        transaction = await connection.begin()
+        self.addAsyncCleanup(transaction.rollback)
+        target = (await connection.execute(text("SELECT current_database(), current_schema(), pg_backend_pid()"))).one()
+        self.assertEqual(tuple(target[:2]), (database, schema))
+        async with AsyncSession(bind=connection, expire_on_commit=False,
+                                join_transaction_mode="create_savepoint") as db:
+            fee = BusinessRecord(module="finance", serial_no="CODEX-CORE-STREAM-AUTOFLUSH", title="官费",
+                                 status="草稿", owner="admin", data={"fee_type": "官方费用", "amount": 2})
+            db.add(fee)
+            conditions = [BusinessRecord.serial_no == fee.serial_no]
+            rows, rich = await read_dashboard_finance_fee_pool(db, conditions)
+            self.assertEqual([row.id for row in rows], [fee.id])
+            self.assertEqual(rich[0].data["amount"], 2)
+            fee.status = "待审批"
+            fee.data = {"fee_type": "官方费用", "amount": 9}
+            with db.no_autoflush:
+                rows, rich = await read_dashboard_finance_fee_pool(db, conditions)
+            self.assertEqual(rows[0].status, "草稿")
+            self.assertEqual(rich[0].data["amount"], 2)
+            rows, rich = await read_dashboard_finance_fee_pool(db, conditions)
+            self.assertEqual(rows[0].status, "待审批")
+            self.assertEqual(rich[0].data["amount"], 9)
+            self.assertIs(await db.connection(), connection)
+            self.assertEqual(await db.scalar(text("SELECT pg_backend_pid()")), target[2])
+            await db.delete(fee)
+            rows, rich = await read_dashboard_finance_fee_pool(db, conditions)
+            self.assertEqual((rows, rich), ([], []))
+            await db.rollback()
+        self.assertEqual(await connection.scalar(text("SELECT count(*) FROM business_records WHERE serial_no = 'CODEX-CORE-STREAM-AUTOFLUSH'")), 0)
+
+    async def test_thin_pool_retains_raw_values_and_supplement_filter_fields(self):
+        from app.core import dashboard_finance_read_model as model
+        from app.core.dashboard_receivable_input import dashboard_receivable_supplement_condition
+        from sqlalchemy.dialects import postgresql
+
+        links = [True, 1.25, " AJ ", "0001", 9007199254740997, None, "１２", False]
+        raw = [(1, None, links, False, True, 1), (2, "已删除", [None] * 8, True, True, 2)]
+        async def batches():
+            yield raw
+        cursor = SimpleNamespace(partitions=batches, close=AsyncMock())
+        connection = SimpleNamespace(stream=AsyncMock(return_value=cursor))
+        db = SimpleNamespace(get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="postgresql")),
+                             connection=AsyncMock(return_value=connection), autoflush=True, flush=AsyncMock())
+        observed_keys = []
+        def condition(data):
+            observed_keys.extend(data)
+            return [dashboard_receivable_supplement_condition(data), data["case_id"].as_integer() == 1]
+        fee = model.FinanceMetricFee(2, "finance", "F2", "官费", "已删除", datetime(2026, 1, 1), {"amount": 2})
+        with patch.object(model, "read_record_projections", AsyncMock(return_value=[fee])) as reader:
+            rows, fees = await model.read_dashboard_finance_fee_pool(db, [BusinessRecord.module == "finance"],
+                                                                    where_data=condition)
+        self.assertEqual(set(observed_keys), set(model.RAW_FIELDS))
+        self.assertEqual(rows[0].links, links)
+        self.assertIs(rows[0].links[0], True)
+        self.assertIs(rows[0].links[7], False)
+        self.assertEqual(rows[0].status, None)
+        self.assertEqual(fees, [fee])
+        self.assertEqual([row.id for row in rows], [1, 2])
+        self.assertEqual(reader.await_count, 1)
+        self.assertNotIn("where_data", reader.await_args.kwargs)
+        query = str(connection.stream.await_args.args[0].compile(dialect=postgresql.dialect()))
+        for name in model.RAW_FIELDS:
+            if name in ("case_id", *model.TYPE_FIELDS, "contract_object_id"):
+                self.assertIn(name, query)
+        self.assertNotIn("json_to_record", query)
+        cursor.close.assert_awaited_once()
+        db.flush.assert_awaited_once()
+        db.connection.assert_awaited_once()
+
+    async def test_missing_relation_or_rich_row_is_explicit_failure(self):
+        from app.core import dashboard_finance_read_model as model
+        row = [1, None, [None] * 8, True, True, None]
+        async def batches():
+            yield [row]
+        cursor = SimpleNamespace(partitions=batches, close=AsyncMock())
+        connection = SimpleNamespace(stream=AsyncMock(return_value=cursor))
+        db = SimpleNamespace(get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="postgresql")),
+                             connection=AsyncMock(return_value=connection), autoflush=False, flush=AsyncMock())
+        with self.assertRaises(HTTPException) as caught:
+            await model.read_dashboard_finance_fee_pool(db, [])
+        self.assertEqual(caught.exception.status_code, 503)
+        row[5] = 1
+        with patch.object(model, "read_record_projections", AsyncMock(return_value=[])):
+            with self.assertRaises(HTTPException) as caught:
+                await model.read_dashboard_finance_fee_pool(db, [])
+        self.assertEqual(caught.exception.status_code, 503)
+        self.assertEqual(cursor.close.await_count, 2)
+        db.flush.assert_not_awaited()
+
+    def test_refund_thin_prefilter_preserves_conservative_type_handling(self):
+        from app.core.dashboard_scope import _possible_refund_links
+        for links, expected in (([1, None, None], True), ([2, None, None], False),
+                                (["+001", None, None], True), ([None, "2", " AJ "], False),
+                                ([None, None, "AJ"], True), ([True, None, None], True),
+                                ([1.2, None, None], True), (["１", None, None], True),
+                                ([[], None, None], True), ([None, None, False], True),
+                                ([None, None, None], False)):
+            with self.subTest(links=links):
+                self.assertEqual(_possible_refund_links(links, {1}, {"AJ"}), expected)
 
 
 class DashboardSharedMetricsCacheTest(unittest.IsolatedAsyncioTestCase):
@@ -1170,9 +1287,9 @@ class DashboardRevisionContractTest(unittest.IsolatedAsyncioTestCase):
                                      scalar=Mock(side_effect=[False, 'tenant"schema', True, True]))
         self.migration.upgrade_dashboard_revision(connection)
         statements = [str(call.args[0]) for call in connection.execute.call_args_list]
-        self.assertEqual(len([s for s in statements if "AFTER INSERT OR UPDATE OR DELETE" in s]), 14)
-        self.assertEqual(len([s for s in statements if "AFTER TRUNCATE" in s]), 14)
-        self.assertEqual(len([s for s in statements if "ENABLE ALWAYS TRIGGER" in s]), 30)
+        self.assertEqual(len([s for s in statements if "AFTER INSERT OR UPDATE OR DELETE" in s]), 15)
+        self.assertEqual(len([s for s in statements if "AFTER TRUNCATE" in s]), 15)
+        self.assertEqual(len([s for s in statements if "ENABLE ALWAYS TRIGGER" in s]), 32)
         ddl = "\n".join(statements)
         self.assertIn('"tenant""schema"."dashboard_change_revisions"', ddl)
         self.assertIn("ON CONFLICT (txid) DO NOTHING", ddl)
@@ -1181,13 +1298,20 @@ class DashboardRevisionContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("NEW.txid <> pg_current_xact_id()", ddl)
         for name in self.revision.DEPENDENCY_TABLES:
             self.assertIn(f'ON "{name}"', ddl)
-            self.assertIn(name, Base.metadata.tables)
+            if name == "dashboard_finance_relations":
+                from app.core.dashboard_finance_read_model import finance_relations
+                self.assertEqual(name, finance_relations.name)
+                self.assertNotIn(name, Base.metadata.tables)
+            else:
+                self.assertIn(name, Base.metadata.tables)
         for excluded in ("notification_sync_schedules", "notification_deliveries", "notifications"):
             self.assertNotIn(excluded, ddl)
         self.assertFalse(any(s.lstrip().startswith(("UPDATE ", "DELETE ", "TRUNCATE ")) for s in statements))
         integrity = self.revision.integrity_sql()
         for check in ("procedure.prosrc", "procedure.proconfig", "trigger.tgenabled = 'A'",
-                      "primary_key.conkey", "attribute.attnotnull", "trigger.tgqual IS NULL"):
+                      "primary_key.conkey", "attribute.attnotnull", "trigger.tgqual IS NULL",
+                      "oa_dashboard_finance_sync_row", "oa_dashboard_finance_clear_all",
+                      "p.prosrc = format", "a.attnotnull = expected.required"):
             self.assertIn(check, integrity)
         body = self.revision.function_body(self.revision.TOUCH_FUNCTION, 'tenant"schema')
         self.assertTrue(any(body in s for s in statements))

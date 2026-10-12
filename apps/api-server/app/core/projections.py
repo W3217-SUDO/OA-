@@ -75,6 +75,7 @@ async def _contract_customer_projection_context(records: list[BusinessRecord], d
 async def _receivable_detail_projection(
     identity: dict, db: AsyncSession, records: list[BusinessRecord] | None = None,
     *, summary_only: bool = False, official_only: bool = False, dashboard_finance_only: bool = False,
+    receipt_pool=None,
 ) -> list[dict]:
     """Project the legacy contract-object receivable detail from visible data."""
     from functools import cache
@@ -95,6 +96,8 @@ async def _receivable_detail_projection(
         summary_only and official_only and records is not None and "_dashboard_case_ids" in identity
     ):
         raise ValueError("控制台补读筛选必须使用已授权的财务三卡范围")
+    if receipt_pool is not None and not dashboard_finance_only:
+        raise ValueError("轻量费用关联池只能用于控制台财务三卡")
 
     # 仅在本次财务三卡计算内复用相同类型文本的纯分类结果。
     classify_fee_type = cache(_receivable_fee_category) if dashboard_finance_only else _receivable_fee_category
@@ -176,18 +179,27 @@ async def _receivable_detail_projection(
         return filters
 
     if any(values for _, values in (*related_ids, *related_numbers)):
-        # 初始可见费用已经读取，只补充原有关系允许访问的其它费用。
-        related_finances = await read_fee_summaries(db, [
+        # 排除完整已授权池，不能把未携带金额的非候选费用重新补成富对象。
+        loaded_ids = receipt_pool.all_record_ids if receipt_pool is not None else finances_by_id
+        related_conditions = [
             BusinessRecord.module == "finance",
-            ~scalar_in_values(BusinessRecord.id, finances_by_id),
-        ], where_data=related_fee_conditions)
+            ~scalar_in_values(BusinessRecord.id, loaded_ids),
+        ]
+        if receipt_pool is None:
+            related_finances = await read_fee_summaries(db, related_conditions, where_data=related_fee_conditions)
+        else:
+            from app.core.dashboard_finance_read_model import read_dashboard_finance_fee_pool
+            related_rows, related_finances = await read_dashboard_finance_fee_pool(
+                db, related_conditions, where_data=related_fee_conditions,
+            )
+            receipt_pool = receipt_pool.with_rows(related_rows)
         finances_by_id.update((item.id, item) for item in related_finances)
     finances = list(finances_by_id.values())
 
     # 仅复用本次无写入读取的范围；外部传入记录时仍按原逻辑重新解析。
     finance_data_by_id = await receivable_payment_projection(
         finances, identity, db, record_scope=record_scope, receipts_only=summary_only,
-        compact_receipts=dashboard_finance_only,
+        compact_receipts=dashboard_finance_only, receipt_pool=receipt_pool,
     )
     # 合同编号是原匹配函数的首个必要条件，先归组避免明细逐条扫描全部费用。
     finances_by_contract: dict[int, list[BusinessRecord]] = {}

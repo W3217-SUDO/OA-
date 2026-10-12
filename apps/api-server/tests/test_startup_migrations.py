@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import settings
 from app.core.lifecycle import _backfill_clue_generated_case_register_dates, _upgrade_schema
 from app.core.startup_data import initialize_startup_data
-from app.core.startup_migrations import migrate_startup_schema
+from app.core.startup_migrations import DASHBOARD_FINANCE_REVISION, migrate_startup_schema
 from app.models import BusinessRecord
 from scripts.seed_demo_data import seed_demo_data
 
@@ -80,6 +80,31 @@ class StartupMigrationTests(unittest.IsolatedAsyncioTestCase):
             raise RuntimeError("已登记的结构迁移不应重跑")
 
         await migrate_startup_schema(self.engine, fail_if_revision_repeats)
+
+    async def test_finance_projection_revision_failure_is_atomic_on_sqlite(self) -> None:
+        from app.core.startup_migrations import upgrade_dashboard_finance_read_model
+
+        def fail_finance_upgrade(connection) -> None:
+            upgrade_dashboard_finance_read_model(connection)
+            raise RuntimeError("模拟费用关系迁移中断")
+
+        with patch("app.core.startup_migrations.upgrade_dashboard_finance_read_model", fail_finance_upgrade):
+            with self.assertRaisesRegex(RuntimeError, "模拟费用关系迁移中断"):
+                await migrate_startup_schema(self.engine, _upgrade_schema)
+        async with self.engine.connect() as connection:
+            self.assertEqual((await connection.execute(text(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table'"
+            ))).scalar_one(), 0)
+
+        await migrate_startup_schema(self.engine, _upgrade_schema)
+        await migrate_startup_schema(self.engine, _upgrade_schema)
+        async with self.engine.connect() as connection:
+            self.assertEqual((await connection.execute(text(
+                "SELECT count(*) FROM schema_migrations WHERE key = :revision"
+            ), {"revision": DASHBOARD_FINANCE_REVISION})).scalar_one(), 1)
+            self.assertEqual((await connection.execute(text(
+                "SELECT count(*) FROM sqlite_master WHERE name = 'dashboard_finance_relations'"
+            ))).scalar_one(), 0)
 
     async def test_data_failure_rolls_back_then_repeat_is_idempotent(self) -> None:
         await migrate_startup_schema(self.engine, _upgrade_schema)

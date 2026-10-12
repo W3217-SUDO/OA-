@@ -1,6 +1,7 @@
 """控制台业务入口的数据边界；不授予额外写权限。"""
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import chain
 from typing import NamedTuple
 import re
 
@@ -11,6 +12,8 @@ from app.core.record_projection_query import read_record_projections
 from app.core.finance_summary_query import FEE_SUMMARY_FIELDS
 from app.core.json_relation_query import scalar_in_values
 from app.core.request_metrics import measure_phase
+from app.core.dashboard_finance_read_model import read_dashboard_finance_fee_pool
+from app.core.fee_receipt_pool import FeeReceiptPool
 from app.core.permissions import (
     CASE_MINE_TEXT_FIELDS,
     _case_mine_scope_condition, _configured_user_job_role_name,
@@ -77,6 +80,7 @@ class DashboardScopeData:
     contracts: list
     all_cases: bool
     personal_case_ids: set[int] | None = None
+    finance_pool: FeeReceiptPool | None = None
 
 
 async def company_hearing_conditions(identity, db):
@@ -164,28 +168,42 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
                     scalar_in_values(data["case_record_id"].as_integer(), case_ids),
                     scalar_in_values(data["case_no"].as_string(), case_nos))]
 
+    finance_pool = None
     with measure_phase("dashboard.scope.fees"):
-        fees = await read_record_projections(db, [
+        fee_conditions = [
             BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
-        ], FEE_SUMMARY_FIELDS if include_summaries else (*relation_fields, "case_id", "case_record_id", "case_no"),
-            where_data=related_fee,
-            filter_fields=("case_id", "case_record_id", "case_no") if finance_metrics else None,
-            record_factory=(DashboardFinanceFeeProjection if finance_metrics else
-                            DashboardFeeProjection if include_summaries else None),
-            metadata_fields=("id", "module", "serial_no", "title", "status", "updated_at")
-            if finance_metrics else None) if case_ids else []
+        ]
+        if finance_metrics and db.get_bind().dialect.name == "postgresql":
+            binding_rows, fees = await read_dashboard_finance_fee_pool(
+                db, fee_conditions, where_data=related_fee,
+            ) if case_ids else ([], [])
+            finance_pool = FeeReceiptPool.from_rows(binding_rows)
+        else:
+            fees = await read_record_projections(
+                db, fee_conditions,
+                FEE_SUMMARY_FIELDS if include_summaries else (*relation_fields, "case_id", "case_record_id", "case_no"),
+                where_data=related_fee,
+                filter_fields=("case_id", "case_record_id", "case_no") if finance_metrics else None,
+                record_factory=(DashboardFinanceFeeProjection if finance_metrics else
+                                DashboardFeeProjection if include_summaries else None),
+                metadata_fields=("id", "module", "serial_no", "title", "status", "updated_at")
+                if finance_metrics else None,
+            ) if case_ids else []
     contract_ids = set((await db.scalars(select(ContractObject.contract_record_id).where(
         scalar_in_values(ContractObject.case_record_id, case_ids),
     ))).all()) if case_ids else set()
     contract_nos = set()
-    for item in [*cases, *fees]:
-        data = item.data or {}
-        for key in ("contract_id", "contract_record_id"):
-            value = str(data.get(key) or "")
+    # 合同范围消费全量关系池，不能仅从金额候选费用推断合同集合。
+    contract_links = (row.links[3:6] for row in finance_pool.rows) if finance_pool is not None else ()
+    record_links = (tuple((item.data or {}).get(key) for key in relation_fields)
+                    for item in chain(cases, () if finance_pool is not None else fees))
+    for first_id, second_id, number in chain(record_links, contract_links):
+        for raw_id in (first_id, second_id):
+            value = str(raw_id or "")
             if value.isdigit():
                 contract_ids.add(int(value))
-        if data.get("contract_no"):
-            contract_nos.add(str(data["contract_no"]))
+        if number:
+            contract_nos.add(str(number))
     contract_conditions = [
         BusinessRecord.module == "contract",
         or_(scalar_in_values(BusinessRecord.id, contract_ids), scalar_in_values(BusinessRecord.serial_no, contract_nos)),
@@ -200,13 +218,15 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         visible_contract_ids = set((await db.scalars(select(BusinessRecord.id).where(
             *contract_conditions,
         ))).all()) if contract_ids or contract_nos else set()
+    fee_ids = finance_pool.all_record_ids if finance_pool is not None else {item.id for item in fees}
     scoped_identity = {
         **identity, "role": roles[0], "role_ids": roles, "_page_menu_capability": False,
         "_dashboard_case_ids": case_ids,
-        "_dashboard_fee_ids": {item.id for item in fees},
-        "_dashboard_record_ids": case_ids | {item.id for item in fees} | visible_contract_ids,
+        "_dashboard_fee_ids": fee_ids,
+        "_dashboard_record_ids": case_ids | fee_ids | visible_contract_ids,
     }
-    return DashboardScopeData(scoped_identity, cases, fees, contracts, all_cases and not personal_cases, personal_ids)
+    return DashboardScopeData(scoped_identity, cases, fees, contracts, all_cases and not personal_cases,
+                              personal_ids, finance_pool)
 
 
 async def dashboard_request_identity(queue, expected, identity, db):
@@ -226,14 +246,18 @@ async def dashboard_request_identity(queue, expected, identity, db):
 def _possible_refund_fee(fee, case_ids, case_nos):
     """已读字段只缩小候选编号，最终权限与类型转换仍交给原 SQL 确认。"""
     data = fee.data or {}
-    number = data.get("case_no")
+    return _possible_refund_links((data.get("case_id"), data.get("case_record_id"), data.get("case_no")),
+                                  case_ids, case_nos)
+
+
+def _possible_refund_links(links, case_ids, case_nos):
+    number = links[2]
     if isinstance(number, str):
         if number in case_nos:
             return True
     elif number is not None:
         return True
-    for key in ("case_id", "case_record_id"):
-        value = data.get(key)
+    for value in links[:2]:
         if value is None:
             continue
         if type(value) is int:
@@ -261,8 +285,12 @@ async def personal_refund_identity(scoped_identity, db, *, scope_data=None):
     case_nos = {case.serial_no for case in cases}
     candidate_ids = scoped_identity["_dashboard_fee_ids"]
     if scope_data is not None:
-        candidate_ids = {fee.id for fee in scope_data.fees if fee.id in candidate_ids
-                         and _possible_refund_fee(fee, case_ids, case_nos)}
+        if scope_data.finance_pool is not None:
+            candidate_ids = {row.id for row in scope_data.finance_pool.rows if row.id in candidate_ids
+                             and _possible_refund_links(row.links, case_ids, case_nos)}
+        else:
+            candidate_ids = {fee.id for fee in scope_data.fees if fee.id in candidate_ids
+                             and _possible_refund_fee(fee, case_ids, case_nos)}
     fee_ids = set((await db.scalars(select(BusinessRecord.id).where(
         scalar_in_values(BusinessRecord.id, candidate_ids),
         or_(scalar_in_values(BusinessRecord.data["case_id"].as_integer(), case_ids),
@@ -296,11 +324,13 @@ async def dashboard_queue_cases(db, conditions):
     )
 
 
-async def dashboard_receivables(identity, db, *, records=None, summary_only=False, finance_metrics=False):
+async def dashboard_receivables(identity, db, *, records=None, summary_only=False, finance_metrics=False,
+                                 receipt_pool=None):
     from app.core.projections import _receivable_detail_projection
     rows = await _receivable_detail_projection(
         identity, db, records=records, summary_only=summary_only, official_only=summary_only,
         dashboard_finance_only=finance_metrics,
+        receipt_pool=receipt_pool,
     )
     return [row for row in rows if row["fee_category"] == "official" and row["remaining_amount"] > 0]
 

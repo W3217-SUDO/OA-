@@ -31,6 +31,7 @@ async def read_fee_summaries(db, conditions, *, where_data=None):
 
 async def receivable_payment_projection(
     finances, identity, db, *, record_scope=None, receipts_only=False, compact_receipts=False,
+    receipt_pool=None,
 ):
     """应收只计算收付款，复用已读取费用，不构造发票、退款和提成明细。"""
     from app.core.formatters import _case_fee_display_type
@@ -38,11 +39,19 @@ async def receivable_payment_projection(
 
     if compact_receipts and not receipts_only:
         raise ValueError("精简收款投影只能用于只读收款统计")
+    if receipt_pool is not None and not (receipts_only and compact_receipts):
+        raise ValueError("轻量费用关联池只能用于控制台收款统计")
     fees = [item for item in finances if item.status != "已删除"]
-    if not fees:
-        return {}
-    case_ids = {int((item.data or {}).get("case_id") or 0) for item in fees if (item.data or {}).get("case_id")}
-    case_nos = {str((item.data or {}).get("case_no") or "") for item in fees if (item.data or {}).get("case_no")}
+    binding = receipt_pool.receipt_binding() if receipt_pool is not None else None
+    if binding is None:
+        if not fees:
+            return {}
+        case_ids = {int((item.data or {}).get("case_id") or 0) for item in fees if (item.data or {}).get("case_id")}
+        case_nos = {str((item.data or {}).get("case_no") or "") for item in fees if (item.data or {}).get("case_no")}
+    else:
+        if not binding.fee_ids:
+            return {}
+        case_ids, case_nos = binding.case_ids, binding.case_nos
     conditions = await _record_scope_conditions(identity, db) if record_scope is None else record_scope
     cases = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(
         BusinessRecord.module.in_(("case", "ipr_case")),
@@ -51,13 +60,16 @@ async def receivable_payment_projection(
     ))).all() if case_ids or case_nos else []
     by_id = {item.id: item for item in cases}
     by_no = {item.serial_no: item for item in cases}
-    fees_by_case = {}
-    for fee in fees:
-        data = fee.data or {}
-        case = by_id.get(int(data.get("case_id") or 0)) or by_no.get(str(data.get("case_no") or ""))
-        linked_no = case.serial_no if case else str(data.get("case_no") or "")
-        if linked_no:
-            fees_by_case.setdefault(linked_no, []).append(fee)
+    if binding is None:
+        fees_by_case = {}
+        for fee in fees:
+            data = fee.data or {}
+            case = by_id.get(int(data.get("case_id") or 0)) or by_no.get(str(data.get("case_no") or ""))
+            linked_no = case.serial_no if case else str(data.get("case_no") or "")
+            if linked_no:
+                fees_by_case.setdefault(linked_no, []).append(fee)
+    else:
+        fees_by_case = binding.group_by_case(by_id, by_no)
     unambiguous_case_nos = set(fees_by_case)
     if case_nos:
         # 与明细一致：全库同案只有一笔费用，才允许没有费用编号的旧收款归属。
@@ -65,7 +77,9 @@ async def receivable_payment_projection(
     # 控制台未收金额不依赖付款；收款的全集关联和旧编号歧义判断仍保持不变。
     if not receipts_only:
         payments = await read_fee_payments({fee.id for fee in fees}, db)
-    receipts = await read_fee_receipts(fees, fees_by_case, unambiguous_case_nos, db, filter_related=True)
+    receipts = await read_fee_receipts(
+        fees, fees_by_case, unambiguous_case_nos, db, filter_related=True, binding=binding,
+    )
     if compact_receipts:
         # 先用完整费用池绑定，之后仅构造有收款记录的金额；保留零金额及原累加顺序。
         return {
