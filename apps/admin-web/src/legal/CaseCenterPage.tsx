@@ -1700,7 +1700,7 @@ export default function CaseCenterPage({
     if(!viewingCounselCase)return message.warning("请先打开案件详情");
     Modal.confirm({title:"批量删除案件文件",content:`确认删除选中的 ${selectedCounselAttachmentKeys.length} 个文件吗？该操作会记录审计日志。`,okText:"删除",okButtonProps:{danger:true},onOk:async()=>{
       try{
-        const {data}=await api.post("/cases/attachments/delete",{attachment_ids:selectedCounselAttachmentKeys.map(Number),case_id:isRelatedDocumentFolder?viewingCounselCase.id:undefined});message.success(`已删除 ${data.deleted} 个文件`);await openCounselDetail(viewingCounselCase);
+        const {data}=await api.post("/cases/attachments/delete",{attachment_ids:selectedCounselAttachmentKeys.map(Number),case_id:viewingCounselCase.id});message.success(`已删除 ${data.deleted} 个文件`);await openCounselDetail(viewingCounselCase);
       }catch(error:any){message.error(error?.response?.data?.detail||"案件文件删除失败");}
     }});
   };
@@ -2665,7 +2665,6 @@ export default function CaseCenterPage({
           ? !nonCaseDocumentCategories.includes(String(row.document_category||row.category||""))
           : activeCounselDocCategories.some(category=>String(row.document_category||row.category||"")===category))
     : counselDetailAttachments);
-  const isRelatedDocumentFolder=activeCounselDocCategory==="客户文档"||activeCounselDocCategory==="合同文档"||activeLegacyFolder?.legacy_type_id===1||activeLegacyFolder?.legacy_type_id===2;
   const isAiSpaceFolder=activeCounselDocCategory==="AI空间";
   const activeCounselDocLabel=counselDocTree.find(item=>item.category===activeCounselDocCategory)?.label||activeCounselDocCategory;
   const firmFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope!=="平台"&&row.data.expense_scope!=="内部"&&!String(row.data.fee_type||"").includes("内部"));

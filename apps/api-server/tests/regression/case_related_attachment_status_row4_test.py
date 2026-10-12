@@ -2,13 +2,14 @@ import unittest
 from pathlib import Path
 
 import httpx
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, FileAttachment
+from app.models import BusinessRecord, FileAttachment, WorkflowEvent
 from app.security import current_identity
 
 
@@ -81,15 +82,21 @@ class CaseRelatedAttachmentStatusRow4Test(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides.clear()
         await self.engine.dispose()
 
-    async def upload(self, record_id: int, *, source_case_id: int | None = None, name: str = "row4.txt"):
-        data = {"record_id": str(record_id), "category": "合同文档"}
+    async def upload(self, record_id: int, *, source_case_id: int | None = None, name: str = "row4.txt", category: str = "合同文档"):
+        data = {"record_id": str(record_id), "category": category}
         if source_case_id:
             data["source_case_id"] = str(source_case_id)
-        return await self.client.post(
+        response = await self.client.post(
             f"{settings.api_prefix}/attachments",
             data=data,
             files={"file": (name, b"row4 case document", "text/plain")},
         )
+        if response.status_code == 201:
+            async with self.sessions() as db:
+                attachment = await db.get(FileAttachment, response.json()["id"])
+                self.assertIsNotNone(attachment)
+                self.paths.append(Path(attachment.path))
+        return response
 
     async def test_case_workbench_bypasses_only_related_contract_status_lock(self):
         generic = await self.upload(self.contract_id, name="generic-blocked.txt")
@@ -102,7 +109,6 @@ class CaseRelatedAttachmentStatusRow4Test(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             attachment = await db.get(FileAttachment, attachment_id)
             self.assertEqual(attachment.record_id, self.contract_id)
-            self.paths.append(Path(attachment.path))
 
         deleted = await self.client.post(
             f"{settings.api_prefix}/cases/attachments/delete",
@@ -119,14 +125,61 @@ class CaseRelatedAttachmentStatusRow4Test(unittest.IsolatedAsyncioTestCase):
 
         scoped = await self.upload(self.contract_id, source_case_id=self.case_id, name="archived-related.txt")
         self.assertEqual(scoped.status_code, 201, scoped.text)
-        attachment_id = scoped.json()["id"]
-        async with self.sessions() as db:
-            attachment = await db.get(FileAttachment, attachment_id)
-            self.paths.append(Path(attachment.path))
 
         unrelated = await self.upload(self.unrelated_id, source_case_id=self.case_id, name="unrelated.txt")
         self.assertEqual(unrelated.status_code, 409, unrelated.text)
         self.assertIn("不属于当前案件关联", unrelated.json()["detail"])
+
+    async def test_context_case_deletes_own_and_direct_contract_attachments_together(self):
+        own = await self.upload(self.case_id, category="普通附件", name="CODEX-selection-own.txt")
+        self.assertEqual(own.status_code, 201, own.text)
+        related = await self.upload(self.contract_id, source_case_id=self.case_id, name="CODEX-selection-related.txt")
+        self.assertEqual(related.status_code, 201, related.text)
+        attachment_ids = [own.json()["id"], related.json()["id"]]
+        deleted = await self.client.post(
+            f"{settings.api_prefix}/cases/attachments/delete",
+            json={"attachment_ids": attachment_ids, "case_id": self.case_id},
+        )
+        self.assertEqual(deleted.status_code, 200, deleted.text)
+        self.assertEqual(deleted.json(), {"deleted": 2})
+        async with self.sessions() as db:
+            for attachment_id in attachment_ids:
+                self.assertIsNone(await db.get(FileAttachment, attachment_id))
+            events = list((await db.scalars(select(WorkflowEvent).where(
+                WorkflowEvent.action == "批量删除案件文件",
+            ))).all())
+            self.assertEqual(len(events), 2)
+            self.assertTrue(all(event.record_id == self.case_id for event in events))
+            self.assertTrue(all(event.operator == IDENTITY["username"] for event in events))
+        self.assertTrue(all(not path.exists() for path in self.paths))
+
+    async def test_unrelated_contract_rejects_mixed_delete_and_preserves_every_attachment(self):
+        async with self.sessions() as db:
+            unrelated = await db.get(BusinessRecord, self.unrelated_id)
+            unrelated.status = "草稿"
+            await db.commit()
+        own = await self.upload(self.case_id, category="普通附件", name="CODEX-selection-own.txt")
+        self.assertEqual(own.status_code, 201, own.text)
+        related = await self.upload(self.contract_id, source_case_id=self.case_id, name="CODEX-selection-related.txt")
+        self.assertEqual(related.status_code, 201, related.text)
+        unrelated = await self.upload(self.unrelated_id, name="CODEX-selection-unrelated.txt")
+        self.assertEqual(unrelated.status_code, 201, unrelated.text)
+        attachment_ids = [own.json()["id"], related.json()["id"], unrelated.json()["id"]]
+        rejected = await self.client.post(
+            f"{settings.api_prefix}/cases/attachments/delete",
+            json={"attachment_ids": attachment_ids, "case_id": self.case_id},
+        )
+        self.assertEqual(rejected.status_code, 409, rejected.text)
+        self.assertIn("不属于当前案件关联", rejected.json()["detail"])
+        async with self.sessions() as db:
+            for attachment_id, record_id in zip(attachment_ids, [self.case_id, self.contract_id, self.unrelated_id]):
+                attachment = await db.get(FileAttachment, attachment_id)
+                self.assertIsNotNone(attachment)
+                self.assertEqual(attachment.record_id, record_id)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent).where(
+                WorkflowEvent.action == "批量删除案件文件",
+            )), 0)
+        self.assertTrue(all(path.is_file() for path in self.paths))
 
 
 if __name__ == "__main__":

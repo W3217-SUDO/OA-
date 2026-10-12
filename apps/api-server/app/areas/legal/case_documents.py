@@ -574,7 +574,8 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
             raise HTTPException(status_code=403, detail=f"只能删除本人上传的文件：{item.original_name}")
         record = await _ensure_attachment_record_visible(item.record_id, identity, db)
         if context_case:
-            await _require_case_related_attachment_target(context_case, record)
+            if record.id != context_case.id:
+                await _require_case_related_attachment_target(context_case, record)
             record = context_case
         else:
             if record.module != "case":
