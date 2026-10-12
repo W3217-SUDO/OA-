@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, message } from "antd";
 import dayjs from "dayjs";
 import AssistantPanel, { type AssistantSuggestion } from "./personal-agent/AssistantPanel";
@@ -6,6 +6,7 @@ import { usePersonalAgent } from "./personal-agent/usePersonalAgent";
 import DashboardHearingSchedule from "./DashboardHearingSchedule";
 import DashboardMetricTiles from "./DashboardMetricTiles";
 import DashboardRejectionReminder from "./DashboardRejectionReminder";
+import DashboardOverview from "./DashboardOverview";
 import { useDashboardData, type DashboardData, type DashboardRejection, type DashboardSection } from "./dashboardData";
 import { rejectionsPrompt, todayHearingsPrompt } from "./dashboardPrompts";
 import { rememberDashboardFeeQuery } from "./dashboardFeeNavigation.mjs";
@@ -41,11 +42,14 @@ export default function Dashboard({
 }) {
   const { data, loading, errors, retry } = useDashboardData();
   const agent = usePersonalAgent();
-  const panelRef = useRef<HTMLElement>(null);
+  const [showConversation, setShowConversation] = useState(false);
   const detailRequest = useRef<AbortController | null>(null);
   const navigation = useRef({ onNavigate, grantedMenuKeys, permissionAdministrator });
   navigation.current = { onNavigate, grantedMenuKeys, permissionAdministrator };
   useEffect(() => () => detailRequest.current?.abort(), []);
+  useEffect(() => {
+    if (assistantFocusRequested) setShowConversation(true);
+  }, [assistantFocusRequested]);
   const canNavigate = (route: string) => isWorkspaceRouteGranted(
     normalizeWorkspaceRoute(route), grantedMenuKeys, permissionAdministrator,
   );
@@ -100,7 +104,7 @@ export default function Dashboard({
       message.info("智能体正在回答上一个问题，请稍候");
       return;
     }
-    panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setShowConversation(true);
     void agent.send(prompt);
   };
 
@@ -166,8 +170,11 @@ export default function Dashboard({
         {metrics}
         <div className="wb-grid">
           <div className="wb-main">
-            <AssistantPanel
-              ref={panelRef}
+            <div className="wb-view-switch" aria-label="工作台视图">
+              <button type="button" aria-pressed={!showConversation} onClick={() => setShowConversation(false)}>工作概览</button>
+              <button type="button" aria-pressed={showConversation} onClick={() => setShowConversation(true)}>助手对话</button>
+            </div>
+            {showConversation ? <AssistantPanel
               agent={agent}
               greeting={greetingByHour(now.hour())}
               briefing={briefing}
@@ -175,7 +182,24 @@ export default function Dashboard({
               focusRequested={assistantFocusRequested}
               onFocusHandled={onAssistantFocusHandled}
               onOpenCaseAgent={onOpenCaseAgent}
-            />
+            /> : <DashboardOverview
+              greeting={greetingByHour(now.hour())}
+              name={agent.status?.identity?.display_name}
+              briefing={briefing}
+              todos={data.todos}
+              cases={data.latest_cases}
+              todoStatus={sectionStatus("todos")}
+              caseStatus={sectionStatus("cases")}
+              todosLoading={loading.todos}
+              casesLoading={loading.cases}
+              todosError={Boolean(errors.todos)}
+              casesError={Boolean(errors.cases)}
+              canNavigate={canNavigate}
+              canOpenCase={canOpenCase}
+              onNavigate={onNavigate}
+              onOpenCase={(caseNo) => void openDashboardDetail("case", caseNo)}
+              onRefresh={() => { retry("todos"); retry("cases"); retry("rejections"); retry("metrics"); }}
+            />}
           </div>
           <div className="wb-side">
             {schedule}

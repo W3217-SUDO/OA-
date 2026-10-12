@@ -22,6 +22,7 @@ const MetricTilesStub = RecordingComponent("DashboardMetricTiles");
 const HearingScheduleStub = RecordingComponent("DashboardHearingSchedule");
 const RejectionReminderStub = RecordingComponent("DashboardRejectionReminder");
 const AssistantPanelStub = RecordingComponent("AssistantPanel");
+const OverviewStub = RecordingComponent("DashboardOverview");
 
 function loadComponent(path, dependencies, globals = {}) {
   const source = fs.readFileSync(new URL(path, import.meta.url), "utf8");
@@ -234,6 +235,7 @@ test("dashboard approved entries keep their destinations and unapproved entries 
   const warnings = [];
   const errors = [];
   const cleanups = [];
+  let conversationVisible = false;
   let relatedRecords = [{ id: 17, serial_no: "CASE-1", title: "案件" }];
   const data = {
     metrics: [{ key: "official-fee-unpaid", label: "待收费用", value: "2", route: "finance-fee-query", query: { scope: "mine" }, detail_context: { contract_no: "HT-1", return_view: "dashboard" } }],
@@ -256,7 +258,8 @@ test("dashboard approved entries keep their destinations and unapproved entries 
       useMemo: (factory) => factory(),
       useCallback: (callback) => callback,
       useRef: (value) => ({ current: value }),
-      useEffect: (effect) => cleanups.push(effect()),
+      useState: () => [conversationVisible, (value) => { conversationVisible = value; }],
+      useEffect: (effect) => { const cleanup = effect(); if (typeof cleanup === "function") cleanups.push(cleanup); },
     },
     antd: { Button, Card, message: { warning: (value) => warnings.push(value), error: (value) => errors.push(value) } },
     "./components/ResizableTable": Table,
@@ -264,6 +267,7 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     "./DashboardHearingSchedule": HearingScheduleStub,
     "./DashboardMetricTiles": MetricTilesStub,
     "./DashboardRejectionReminder": RejectionReminderStub,
+    "./DashboardOverview": OverviewStub,
     "./dashboardPrompts": { hearingPrompt: (item) => `开庭 ${item.case_no}`, rejectionsPrompt: () => "驳回", todayHearingsPrompt: () => "今日开庭" },
     dayjs: () => ({ format: () => "2026-10-12", day: () => 1, hour: () => 14 }),
     "./dashboardData": { useDashboardData: () => ({ data, loading: { metrics: false, todos: false, cases: false, rejections: false }, errors: {}, retry: (section) => calls.push(["retry", section]) }) },
@@ -271,7 +275,7 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     "./caseDetailNavigation": { rememberCaseDetailTarget: (target) => calls.push(["case", target.serial_no]) },
     "./customerDetailNavigation": { rememberCustomerDetailTarget: (target) => calls.push(["customer", target.title]) },
     "./personal-agent/AssistantPanel": AssistantPanelStub,
-    "./personal-agent/usePersonalAgent": { usePersonalAgent: () => ({ status: { ready: true }, state: { messages: [], pending_actions: [] }, loading: false, sending: false, send: (prompt) => calls.push(["agent", prompt]), stop: () => {}, decide: () => {}, reload: () => {} }) },
+    "./personal-agent/usePersonalAgent": { usePersonalAgent: () => ({ status: { ready: true }, state: { messages: [{ role: "assistant", content: "已有历史对话" }], pending_actions: [] }, loading: false, sending: false, send: (prompt) => calls.push(["agent", prompt]), stop: () => {}, decide: () => {}, reload: () => {} }) },
     "./detailRelationResolver": detailResolver,
     "./workspacePermissions": permissions,
   }, { AbortController, sessionStorage: { setItem: (key, value) => storage.set(key, value) } }).default;
@@ -284,8 +288,10 @@ test("dashboard approved entries keep their destinations and unapproved entries 
   const metrics = rendered.find((node) => node.type === MetricTilesStub);
   const schedule = rendered.find((node) => node.type === HearingScheduleStub);
   const reminders = rendered.find((node) => node.type === RejectionReminderStub);
-  const panel = rendered.find((node) => node.type === AssistantPanelStub);
-  assert.ok(metrics && schedule && reminders && panel);
+  const overview = rendered.find((node) => node.type === OverviewStub);
+  assert.ok(metrics && schedule && reminders && overview);
+  assert.equal(rendered.some((node) => node.type === AssistantPanelStub), false);
+  assert.equal(conversationVisible, false);
 
   // 已授权时指标可点，并且带上请款上下文。
   metrics.props.onOpen(data.metrics[0]);
@@ -305,6 +311,12 @@ test("dashboard approved entries keep their destinations and unapproved entries 
 
   // 提醒里的“交给智能体”与输入框共用同一条对话。
   schedule.props.onAsk("开庭 CASE-1");
+  assert.equal(conversationVisible, true);
+  assert.ok(nodes(Dashboard(props)).some((node) => node.type === AssistantPanelStub));
+  const overviewButton = nodes(Dashboard(props)).find((node) => node.type === "button" && node.props.children === "工作概览");
+  overviewButton.props.onClick();
+  assert.equal(conversationVisible, false);
+  assert.ok(nodes(Dashboard(props)).some((node) => node.type === OverviewStub));
   assert.equal(calls.at(-1)[0], "agent");
   assert.equal(calls.at(-1)[1], "开庭 CASE-1");
 

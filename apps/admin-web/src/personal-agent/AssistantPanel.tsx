@@ -49,7 +49,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   }, [state.messages.length, sending]);
   useEffect(() => {
     if (!focusRequested) return;
-    inputRef.current?.focus();
+    inputRef.current?.focus({ preventScroll: true });
     onFocusHandled();
   }, [focusRequested, onFocusHandled]);
 
