@@ -592,11 +592,18 @@ async def list_case_relations(
                         **payment_summary,
                     })
     users_by_username = await _user_display_map({item.owner for item in [*fees, *clues]}, db)
+    from app.core.case_fee_payments import apply_fee_payment_projection, fee_payment_totals
+    from app.core.system import _allowed_field_keys
+    allowed_fields = await _allowed_field_keys(identity, db)
+    fee_source_data = {item.id: _legacy_case_fee_projection(item.data or {}) for item in fees}
+    payment_totals = await fee_payment_totals(
+        fees, db, source_data_by_id=fee_source_data,
+    ) if allowed_fields is None or "finance.amount" in allowed_fields else {}
 
     def related_dict(item: BusinessRecord) -> dict:
         result = _record_dict(item)
         result["owner_display_name"] = _person_reference_display(item.owner, users_by_username)[0]
-        result_data = _legacy_case_fee_projection(result.get("data") or {}) if item.module == "finance" else dict(result.get("data") or {})
+        result_data = dict(fee_source_data[item.id]) if item.module == "finance" else dict(result.get("data") or {})
         linked_invoice = active_invoices_by_fee.get(item.id)
         if linked_invoice:
             invoice_data = linked_invoice.data or {}
@@ -625,7 +632,7 @@ async def list_case_relations(
                 max(float(result_data.get("refunded_amount") or 0), float((item.data or {}).get("refunded_amount") or 0)),
             )
         result["data"] = result_data
-        return result
+        return apply_fee_payment_projection(result, payment_totals, allowed_fields)
 
     from app.core.case_relations import case_source_projection
     return {

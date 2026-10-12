@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
+let moduleSequence = 0;
 async function loadActualModule(relative) {
   const compiled = await build({ entryPoints: [fileURLToPath(new URL(relative, import.meta.url))],
     bundle: true, write: false, platform: "node", format: "esm", logLevel: "silent",
@@ -16,12 +17,12 @@ async function loadActualModule(relative) {
       plugin.onLoad({ filter: /.*/, namespace: "vite-asset" }, (args) => ({ contents: readFileSync(args.path), loader: "dataurl" }));
       plugin.onResolve({ filter: /\.css$/ }, (args) => ({ path: args.path, namespace: "test-style" }));
       plugin.onLoad({ filter: /.*/, namespace: "test-style" }, () => ({ contents: "", loader: "js" }));
-      plugin.onResolve({ filter: /^antd$|^\.\.\/\.\.\/api$/ }, (args) => ({ path: args.path, namespace: "test-adapter" }));
+      plugin.onResolve({ filter: /^antd$|^(?:\.\.\/|\.\/)+api$/ }, (args) => ({ path: args.path, namespace: "test-adapter" }));
       plugin.onLoad({ filter: /.*/, namespace: "test-adapter" }, (args) => ({ contents: args.path === "antd"
         ? "export const message=globalThis.__paymentReworkMessages; export const Button=()=>null; export const Dropdown=()=>null; export const Modal={}; export const Table=()=>null; export const Space=()=>null;"
         : "export const api=globalThis.__paymentReworkApi;", loader: "js" }));
     } }] });
-  return import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
+  return import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}#${++moduleSequence}`);
 }
 
 test("实际案件请款入口使用跨入口可申请余额，零余额不打开申请，驳回后可按释放余额重提", async () => {
@@ -61,4 +62,58 @@ test("实际请款列表显示本轮申请金额，保留合同请款及隐藏�
   assert.equal(render({ amount: 100, payment_request_amount: 30 }), render({ amount: 30 }));
   assert.equal(render({ amount: 60 }), render({ amount: 100, payment_request_amount: 60 }));
   assert.equal(render({ payment_request_amount: 30 }), "—");
+});
+
+test("实际审批入口先服务端筛选，完整读取超过200条待办并分离普通费用与合同单", async () => {
+  const calls = [];
+  const contracts = Array.from({ length: 205 }, (_, id) => ({ id: id + 1, module: "contract_payment", status: "待审批", data: { applicant: "同一申请人", amount: 50, lines: [{ fee_type: "官方费用", case_no: "独立测试案件" }] } }));
+  const direct = { id: 206, module: "finance", status: "待审批", data: { applicant: "同一申请人", amount: 30 } };
+  const rows = [...contracts, direct];
+  globalThis.__paymentReworkMessages = { error: (value) => { throw new Error(value); } };
+  globalThis.__paymentReworkApi = { get: async (path, options) => {
+    calls.push([path, options?.params]);
+    if (path === "/finance/payment-applications/query") {
+      assert.equal(options.params.scope, "audit");
+      const start = (options.params.page - 1) * options.params.page_size;
+      return { data: { items: rows.slice(start, start + options.params.page_size), total: rows.length } };
+    }
+    if (path === "/auth/me") return { data: { username: "审批人", display_name: "审批人", role: "admin" } };
+    return { data: { items: [] } };
+  } };
+  const { createFinanceQueriesActions } = await loadActualModule("../src/finance/services/queriesActions.tsx");
+  let fees, payments, ready;
+  const context = {
+    initialView: "finance-payment-audit", contractPaymentSource: { active: false },
+    financeTransactionMeta: { pageSize: 100 }, setFinanceDataReady: value => { ready = value; },
+    setFees: value => { fees = value; }, setContractPayments: value => { payments = value; },
+    setLoading() {}, setFinanceFeeListMeta() {}, setTransactions() {}, setFinanceTransactionMeta() {},
+    setRole() {}, setCurrentUser() {}, setFinancePeople() {}, setCases() {},
+  };
+  await createFinanceQueriesActions(context).loadForTab("fees");
+  assert.equal(payments.length, 205);
+  assert.deepEqual(fees, [direct]);
+  assert.equal(new Set(payments.map(row => row.id)).size, 205);
+  assert.equal(payments[204].data.amount, 50);
+  assert.equal(ready, true);
+  assert.equal(calls.filter(([path]) => path === "/finance/payment-applications/query").length, 2);
+  assert.ok(!calls.some(([path, params]) => path === "/records" && ["finance", "contract_payment"].includes(params?.module)));
+  delete globalThis.__paymentReworkApi;
+  delete globalThis.__paymentReworkMessages;
+});
+
+test("实际审批分页缺失不能静默显示不完整待办", async () => {
+  const errors = [];
+  let replaced = false, ready;
+  globalThis.__paymentReworkMessages = { error: value => errors.push(value) };
+  globalThis.__paymentReworkApi = { get: async () => ({ data: { items: [], total: 1 } }) };
+  const { createFinanceQueriesActions } = await loadActualModule("../src/finance/services/queriesActions.tsx");
+  await createFinanceQueriesActions({ initialView: "finance-payment-audit", contractPaymentSource: { active: false },
+    setLoading() {}, setFinanceDataReady: value => { ready = value; }, setFees: () => { replaced = true; },
+  }).loadForTab("fees");
+  assert.equal(replaced, false);
+  assert.equal(ready, true);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /数据未完整返回/);
+  delete globalThis.__paymentReworkApi;
+  delete globalThis.__paymentReworkMessages;
 });

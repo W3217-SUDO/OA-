@@ -146,6 +146,9 @@ class Rework10(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(next(row for row in listing["items"] if row["id"] == own.id)["data"]["payment_requested_amount"], 60)
         context = await self.api("GET", f"/case-spaces/{master.id}/context")
         self.assertEqual(next(row for row in context["finances"]["fees"] if row["id"] == own.id)["data"]["payment_requested_amount"], 60)
+        relations = await self.api("GET", f"/cases/{master.id}/relations", params={"clue_page": 1, "clue_page_size": 10})
+        related_fee = next(row for row in relations["fees"] if row["id"] == own.id)
+        self.assertEqual((related_fee["data"]["payment_requested_amount"], related_fee["data"]["payment_remaining_amount"]), (60, 40))
         async with SessionLocal() as db:
             self.assertNotIn("payment_requested_amount", (await db.get(BusinessRecord, own.id)).data)
         self.actor("hidden")
@@ -202,15 +205,38 @@ class Rework10(unittest.IsolatedAsyncioTestCase):
         payment = await self.create_payment(head, own, 60)
         for page, actor in [("finance-payment-mine", "applicant"), ("finance-payment-audit", "admin")]:
             self.actor(actor)
-            fees = await self.api("GET", "/records", params={"module": "finance", "page_size": 100}, headers={"X-Page-Key": page})
-            cps = await self.api("GET", "/records", params={"module": "contract_payment", "page_size": 100}, headers={"X-Page-Key": page})
-            rows = [*fees["items"], *cps["items"]]
-            rows = [r for r in rows if (r["data"].get("applicant") or r["owner"]) == PREFIX + "applicant"] if actor == "applicant" else [r for r in rows if r["status"] == "待审批"]
+            result = await self.api("GET", "/finance/payment-applications/query", params={"scope": "mine" if actor == "applicant" else "audit", "page_size": 200}, headers={"X-Page-Key": page})
+            rows = result["items"]
             found = [row for row in rows if row["id"] == payment["id"]]
             self.assertEqual(len(found), 1)
             self.assertEqual((found[0]["data"]["amount"], found[0]["data"]["applicant"]), (60, PREFIX + "applicant"))
         async with SessionLocal() as db:
             self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == "finance")), 2)
+
+    async def test_relations_keep_legacy_requested_amount_and_never_write_projection(self):
+        head, _, master, _, own, _ = await self.setup_sources()
+        await self.change(own, legacy_case_fee_id=42, legacy_record={"PaidAmount": 25}, invoice_no="保留原发票")
+        await self.create_payment(head, own, 60)
+        result = await self.api("GET", f"/cases/{master.id}/relations")
+        fee = next(row for row in result["fees"] if row["id"] == own.id)
+        self.assertEqual(fee["data"]["payment_requested_amount"], 85)
+        self.assertEqual(fee["data"]["direct_payment_requested_amount"], 25)
+        self.assertEqual(fee["data"]["contract_payment_requested_amount"], 60)
+        self.assertEqual(fee["data"]["invoice_no"], "保留原发票")
+        async with SessionLocal() as db:
+            self.assertNotIn("payment_requested_amount", (await db.get(BusinessRecord, own.id)).data)
+
+    async def test_audit_filters_before_paging_past_newer_settled_payments(self):
+        head, _, _, _, own, _ = await self.setup_sources(owner="applicant")
+        self.actor("applicant")
+        payment = await self.create_payment(head, own, 60)
+        self.actor("admin")
+        for index in range(105):
+            await self.record("contract_payment", {"amount": index + 1, "applicant": PREFIX + "admin"}, status="已付款")
+        response = await self.api("GET", "/finance/payment-applications/query", params={"scope": "audit", "page_size": 200}, headers={"X-Page-Key": "finance-payment-audit"})
+        self.assertEqual(response["total"], 1)
+        self.assertEqual([row["id"] for row in response["items"]], [payment["id"]])
+        self.assertEqual(response["items"][0]["data"]["amount"], 60)
 
     async def test_read_projection_echo_is_not_written_and_batch_has_constant_queries(self):
         head, _, _, _, own, _ = await self.setup_sources()

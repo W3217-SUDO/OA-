@@ -13,7 +13,7 @@ import type { ArchiveSettlementRow, ContractPaymentSourceState, Fee, FinancePers
 import { financeRouteResources, loadFinanceQueryResources } from "./queryResources";
 import { incomingPaymentQueryParams } from "./incomingQuery";
 import type { IncomingPaymentPage } from "../hooks/useIncomingPaymentQuery";
-import { financeErrorDetail } from "../financeErrors";
+import { financeErrorDetail, financeErrorMessageText } from "../financeErrors";
 
 const projectionNumericId = (value: unknown) => {
     const raw = String(value ?? "");
@@ -94,6 +94,28 @@ async function loadMyInternalApplications() {
         page += 1;
     } while (items.length < total);
     return { data: { items, total: items.length, page: 1, page_size: items.length || 15 } };
+}
+
+async function loadPaymentApprovalApplications() {
+    // 待审批筛选在服务端分页前完成，不让历史终态单据挤掉真正待办。
+    const items: Fee[] = [];
+    let page = 1;
+    let total = 0;
+    do {
+        const { data } = await api.get("/finance/payment-applications/query", {
+            params: { scope: "audit", page, page_size: 200 },
+        });
+        if (!Array.isArray(data.items) || !Number.isInteger(data.total) || data.total < 0) {
+            throw new Error("请款单审批分页响应无效");
+        }
+        items.push(...data.items);
+        total = data.total;
+        if (!data.items.length && items.length < total) {
+            throw new Error("请款单审批数据未完整返回，请刷新后重试");
+        }
+        page += 1;
+    } while (items.length < total);
+    return { data: { items, total, page: 1, page_size: items.length || 15 } };
 }
 /** finance queries operations; dependencies are read when each operation runs. */
 export interface FinanceQueriesDependencies {
@@ -655,12 +677,14 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                 setCurrentUser({ username: profile.data.username, displayName: profile.data.display_name });
                 return;
             }
-            if (initialView === "finance-payment-mine") {
+            if (initialView === "finance-payment-mine" || initialView === "finance-payment-audit") {
                 const paymentRequest = contractPaymentSource.active
                     ? contractPaymentSource.ok
                         ? loadContractPaymentRecords()
                         : Promise.resolve({ data: { items: [] } })
-                    : api.get("/finance/payment-applications/query", {
+                    : initialView === "finance-payment-audit"
+                        ? loadPaymentApprovalApplications()
+                        : api.get("/finance/payment-applications/query", {
                         params: { scope: "mine", page: 1, page_size: 100 },
                     });
                 const transactionRequest = paymentRequest.then((response) => {
@@ -945,7 +969,9 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
         catch (error: unknown) {
             message.error(context.activeRouteConfig?.source === "incoming"
                 ? financeErrorDetail(error) || "回款查询失败"
-                : "财务中心数据加载失败");
+                : initialView === "finance-payment-audit"
+                    ? financeErrorDetail(error) || financeErrorMessageText(error) || "请款单审批加载失败"
+                    : "财务中心数据加载失败");
         }
         finally {
             setLoading(false);

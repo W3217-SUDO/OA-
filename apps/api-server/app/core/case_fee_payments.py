@@ -62,8 +62,8 @@ async def contract_fee_reservations(fee_ids, db, *, contract=None):
     return amounts
 
 
-async def fee_payment_totals(records, db):
-    """每批费用查询一次申请和一次流水，原始直接请款字段始终不改写。"""
+async def fee_payment_totals(records, db, *, source_data_by_id=None):
+    """批量汇总；入口可传已规范化的历史字段，原始费用始终不改写。"""
     from app.core.finance import _round_fee_amount
     from app.core.invoice_sources import is_external_case_fee
     fees = [item for item in records if is_external_case_fee(item)]
@@ -74,7 +74,7 @@ async def fee_payment_totals(records, db):
     paid_amounts = await direct_fee_paid_amounts(fees, db)
     result = {}
     for fee in fees:
-        data = fee.data or {}
+        data = source_data_by_id[fee.id] if source_data_by_id is not None else fee.data or {}
         direct = _round_fee_amount(float(data.get("payment_requested_amount") or 0))
         paid = paid_amounts[fee.id]
         contract = contract_amounts.get(fee.id, 0)
