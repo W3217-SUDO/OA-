@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Alert, Button, Input, Modal, Segmented, Select, Skeleton, Space, Tag, Tooltip, message } from "antd";
+import { Alert, Button, Input, Segmented, Select, Skeleton, Space, Tag, Tooltip, message } from "antd";
 import { AppstoreAddOutlined, ArrowDownOutlined, ArrowUpOutlined, AuditOutlined, BulbOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, FolderOpenOutlined, LockOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, ScheduleOutlined, StopOutlined, TeamOutlined, ThunderboltOutlined, WalletOutlined } from "@ant-design/icons";
-import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "./AgentOperationPreview";
+import { agentOperationName } from "./AgentOperationPreview";
 import { AgentToolRequests } from "./AgentToolRequests";
 import { AgentToolResult } from "./AgentToolResult";
 import { CaseMaterialsPicker } from "./personal-agent/CaseMaterialsPicker";
@@ -11,6 +11,7 @@ import { WorkPanel } from "./personal-agent/WorkPanel";
 import { ConversationMessage } from "./personal-agent/ConversationMessage";
 import { ConversationManager } from "./personal-agent/ConversationManager";
 import { MobileComposerOptions } from "./personal-agent/MobileComposerOptions";
+import { ActionConfirmation } from "./personal-agent/ActionConfirmation";
 import { MATERIAL_ACCEPT, usePersonalWorkspace } from "./personal-agent/usePersonalWorkspace";
 import { errorText, type Material, type PendingAction, type ResponseMode, type WorkspaceCommand } from "./personal-agent/types";
 import "./personal-agent-center.css";
@@ -108,9 +109,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
       </main>
     </div>
     <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} skills={skills} refresh={workspace.refreshSkills} onSelect={workspace.setSkillId} />
-    <Modal open={!!activeAction} title="智能体操作确认" width={760} maskClosable={!workspace.decisionId} onCancel={() => { if (!workspace.decisionId) setActiveAction(null); }} footer={activeAction && <Space><Button icon={<CloseOutlined />} disabled={!!workspace.decisionId} onClick={async () => { if (await workspace.decide(activeAction, "rejected")) setActiveAction(null); }}>取消操作</Button><Button type="primary" icon={<CheckOutlined />} loading={!!workspace.decisionId} disabled={!!workspace.decisionId || !hasAgentOperationPreview(activeAction)} onClick={async () => { if (await workspace.decide(activeAction, "approved")) setActiveAction(null); }}>确认并执行</Button></Space>}>
-      {activeAction && <div style={{ maxHeight: "60dvh", overflowY: "auto" }}><AgentOperationPreview action={activeAction} /></div>}
-    </Modal>
+    <ActionConfirmation action={activeAction} deciding={!!workspace.decisionId} onDecide={workspace.decide} onClose={() => setActiveAction(null)} />
     <MaterialPreview item={previewMaterial} onClose={() => setPreviewMaterial(null)} />
     <CaseMaterialsPicker mode={pickerMode} onClose={() => setPickerMode(null)} selectedCase={selectedCase} onCase={workspace.chooseCase} selectedMaterials={workspace.caseMaterials} onMaterials={workspace.setCaseMaterials} privateCount={workspace.materials.length} />
   </div>;

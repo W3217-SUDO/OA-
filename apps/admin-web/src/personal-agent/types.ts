@@ -1,5 +1,5 @@
 import type { AgentSkill } from "../agentSkillRouting";
-import type { AgentActionPreview } from "../AgentOperationPreview";
+import { agentOperationError, type AgentActionPreview } from "../AgentOperationPreview";
 
 export type WorkspaceSkill = AgentSkill & { custom?: boolean; enabled?: boolean; instruction?: string };
 export type ResponseMode = "fast" | "deep";
@@ -16,6 +16,5 @@ export type WorkRecord = WorkspaceCase & { module?: string; customer: string; st
 export type WorkOverview = { todos: [string, number, number, string, number, number][]; my_tasks: WorkRecord[]; pending_contract_approvals: WorkRecord[]; pending_other_approvals: WorkRecord[]; visible_cases: WorkRecord[] };
 
 export function errorText(error: unknown, label: string): string {
-  const value = error as { response?: { data?: { detail?: string } }; message?: string };
-  return value.response?.data?.detail || value.message || label;
+  return agentOperationError(error, label);
 }

@@ -127,8 +127,7 @@ export function usePersonalWorkspace() {
       const { data } = await api.post<{ state: WorkspaceState; result?: unknown }>(`/personal-agent/actions/${action.id}/decision`, { conversation_id: state.conversation_id, decision }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
       runtime.replace(data.state); updateDraft(id, "decisionResult", data.result);
       message.success(decision === "approved" ? "操作已完成" : "已取消操作"); return true;
-    } catch (error) { message.error(errorText(error, "操作未完成，请查看真实执行状态")); return false; }
-    finally { decisionLock.current = false; setDecisionId(""); }
+    } finally { decisionLock.current = false; setDecisionId(""); }
   };
 
   return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, stop, refreshSkills, saveWord, savedDocuments,

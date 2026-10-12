@@ -55,10 +55,21 @@ const parameterLabel = (field: string) => ACTION_FIELD_NAMES[field] ? `${ACTION_
 
 export const agentOperationName = (action: AgentApprovalAction) => action.preview?.operation_name || ACTION_TYPE_NAMES[action.type] || action.summary;
 
+export const agentOperationMessage = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(agentOperationMessage).join("；");
+  if (value !== null && typeof value === "object") {
+    const details = value as Record<string, unknown>;
+    for (const field of ["error", "detail", "message", "msg"]) {
+      if (details[field] !== undefined && details[field] !== null) return agentOperationMessage(details[field]);
+    }
+  }
+  return JSON.stringify(value) ?? String(value);
+};
+
 export const agentOperationError = (error: unknown, defaultMessage: string): string => {
   if (isAxiosError(error) && error.response?.data?.detail !== undefined) {
-    const detail = error.response.data.detail;
-    return typeof detail === "string" ? detail : JSON.stringify(detail);
+    return agentOperationMessage(error.response.data.detail);
   }
   return error instanceof Error ? error.message : defaultMessage;
 };

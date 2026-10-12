@@ -2,10 +2,10 @@ import { useRef, useState } from "react";
 import { Alert, Button, List, message, Modal, Pagination, Select, Space, Spin, Tag } from "antd";
 import { ArrowLeftOutlined, CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api } from "./api";
-import { AgentOperationPreview, agentOperationError, hasAgentOperationPreview, type AgentActionPreview } from "./AgentOperationPreview";
+import { AgentOperationPreview, agentOperationError, agentOperationMessage, hasAgentOperationPreview, type AgentActionPreview } from "./AgentOperationPreview";
 import { AgentToolResult } from "./AgentToolResult";
 
-type ToolRequest = {
+export type ToolRequest = {
   request_id: string;
   status: "pending" | "executing" | "succeeded" | "failed" | "rejected";
   summary: string;
@@ -70,7 +70,7 @@ export function AgentToolRequests({ buttonLabel = "MCP 待确认", titlePrefix =
       setActive(data);
       if (data.status === "succeeded") message.success("操作已执行");
       else if (data.status === "rejected") message.success("操作已取消");
-      else if (data.status === "failed") setError(typeof data.error === "string" ? data.error : JSON.stringify(data.error));
+      else if (data.status === "failed") setError(agentOperationMessage(data.error));
     } catch (failure: unknown) {
       setError(agentOperationError(failure, "操作未完成，请刷新查看执行状态"));
     } finally {
@@ -108,7 +108,7 @@ export function AgentToolRequests({ buttonLabel = "MCP 待确认", titlePrefix =
         <div style={{ maxHeight: "60dvh", overflowY: "auto", overflowWrap: "anywhere" }}>
           {active ? <>
             <AgentOperationPreview action={requestAction(active)} />
-            {active.error !== undefined && active.error !== null && <Alert type="error" showIcon title={typeof active.error === "string" ? active.error : JSON.stringify(active.error)} style={{ marginTop: 12 }} />}
+            {active.error !== undefined && active.error !== null && <Alert type="error" showIcon title={agentOperationMessage(active.error)} style={{ marginTop: 12 }} />}
             <AgentToolResult result={active.result} showDetails />
           </> : requests && !error && <List size="small" dataSource={requests.items} locale={{ emptyText: "暂无待确认操作" }} renderItem={(item) => <List.Item
             actions={[<Button key="view" size="small" disabled={loading} onClick={() => void viewRequest(item.request_id)}>查看并确认</Button>]}

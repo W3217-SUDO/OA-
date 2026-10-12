@@ -795,8 +795,8 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     # selection never creates a partial lifecycle result.
     for task in ordered_tasks:
         data = task.data or {}
-        if requires_phase_completion(task) and body.action not in {"accept"}:
-            raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 由案件阶段自动完成，人工只能变更期限")
+        if requires_phase_completion(task) and body.action not in {"accept", "withdraw"}:
+            raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 须由上传文书或案件阶段变化自动完成，不能手动完成、验收或交接；发起人可以撤回")
         if body.action == "accept":
             if identity.get("role") != "admin" and task.owner != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅负责人可接收")
