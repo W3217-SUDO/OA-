@@ -36,7 +36,7 @@ async def list_incoming_payments(
     payment_status: str = "", keyword: str = "", bank_source: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
     page: Annotated[int | None, Query(ge=1)] = None,
-    page_size: Annotated[int | None, Query(ge=1, le=100)] = None,
+    page_size: Annotated[int | None, Query(ge=1, le=200)] = None,
     view: str = "",
     filters: Annotated[str, Query(max_length=16384)] = "",
 ):
@@ -335,6 +335,7 @@ async def get_incoming_payment(payment_id: int, identity: dict = Depends(current
         db,
         receipt_ids={payment_id},
         include_active_receipts=True,
+        receipt_detail=True,
     )
     if settlement_rows:
         settlement_data = settlement_rows[0]["data"]

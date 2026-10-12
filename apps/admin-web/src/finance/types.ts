@@ -15,6 +15,7 @@ export type Fee = {
   customer: string;
   status: string;
   owner: string;
+  owner_display_name?: string;
   description?: string;
   data: Record<string, any>;
   created_at?: string;
@@ -39,6 +40,12 @@ export type FinanceSummary = {
 
 export type FinancePageMeta = { total: number; page: number; pageSize: number };
 export type FinanceAmountPageMeta = FinancePageMeta & { totalAmount: number };
+export type FinanceInternalQueueMeta = FinancePageMeta & {
+  amountVisible: boolean;
+  totalAmount: number | null;
+  totalActualCommission?: number | null;
+  totalCashedAmount?: number | null;
+};
 export type FinanceInvoicePageMeta = FinanceAmountPageMeta & { totalExtraAmount: number };
 export type FinanceUnissuedPageMeta = FinanceAmountPageMeta & {
   totalInvoiceAmount: number;
@@ -168,6 +175,7 @@ export type PaymentPackagePreview = {
   package_no: string;
   print_date: string;
   payee: string;
+  payee_display_name?: string;
   total_amount: number;
   items: Array<{
     fee_id: number;
@@ -177,6 +185,7 @@ export type PaymentPackagePreview = {
     amount: number;
     commission_type: string;
     payee: string;
+    payee_display_name?: string;
     remark: string;
   }>;
   submitted?: boolean;

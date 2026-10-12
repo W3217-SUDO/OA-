@@ -440,7 +440,6 @@ const menuItems: NavItem[] = [
           { key: "finance-payment-audit", label: "请款单审批" },
           { key: "finance-payment-waiting", label: "待付款列表" },
           { key: "finance-payment-print", label: "付款单打印" },
-          { key: "finance-payment-package-manage", label: "付款打包-管理" },
           { key: "finance-payment-writeoff", label: "待核销列表" },
           { key: "finance-payment-query", label: "付款单查询" },
         ],
@@ -572,6 +571,8 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
       item.key !== "task-reminders" &&
       item.key !== "vip-tasks" &&
       item.key !== "finance-jar" &&
+      item.key !== "finance-payment-package-manage" &&
+      item.key !== "finance-internal-void" &&
       item.key !== "system-users" &&
       (item.parent_key !== "documents" || ["documents-official", "documents-my", "documents-company"].includes(item.key)),
   ).sort(

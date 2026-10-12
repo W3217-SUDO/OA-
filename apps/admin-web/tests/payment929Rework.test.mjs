@@ -119,27 +119,29 @@ test("实际审批分页缺失不能静默显示不完整待办", async () => {
   delete globalThis.__paymentReworkMessages;
 });
 
-test("案件费用只在发票列显示真实开票，票据和核销仍保留独立入口", async () => {
+test("案件费用合并票据展示但不改真实发票和付款凭证数据分类", async () => {
   const { createExternalCaseFeeColumns } = await loadActualModule("../src/legal/columns/externalCaseFeeColumns.tsx");
+  const { caseFeeBillDisplay } = await loadActualModule("../src/legal/caseReceiptFiles.ts");
   const opened = [];
   const columns = createExternalCaseFeeColumns({
     openRelatedInvoice: row => opened.push(["invoice", row.id]),
     openCaseReceiptFiles: row => opened.push(["voucher", row.id]),
   });
-  const cell = (name, row) => columns.find(column => column.title === name).render(undefined, row);
-  const row = { id: 3, title: "一审诉讼费", data: { paid_date: "2026-10-12",
-    writeoff_voucher_record_id: 9,
-    receipt_files: [{ attachment_id: 7, bill_no: "公告费", bill_date: "2026-10-11" }] } };
-  assert.equal(cell("开票日期", row), "—");
-  assert.equal(cell("发票号", row), "—");
-  assert.equal(cell("核销日期", row), "2026-10-12");
-  cell("缴费凭证", row).props.onClick();
-  const invoiced = { ...row, data: { ...row.data, invoice_no: "FP-REAL", invoice_date: "2026-10-10", invoice_record_id: 10 } };
-  assert.equal(cell("开票日期", invoiced), "2026-10-10");
-  assert.equal(cell("发票号", invoiced).props.children, "FP-REAL");
-  cell("发票号", invoiced).props.onClick();
-  assert.deepEqual(opened, [["voucher", 3], ["invoice", 3]]);
-  assert.equal(cell("缴费凭证", { ...row, data: { writeoff_voucher_record_id: 9 } }).props.children, "查看凭证");
+  for (const title of ["核销日期", "通知日期", "缴费凭证"]) assert.ok(!columns.some(column => column.title === title));
+  const data = { paid_date: "2026-10-12", written_off_at: "2026-10-13T01:00:00",
+    invoice_no: "FP-REAL", invoice_date: "2026-10-10", invoice_record_id: 10,
+    case_fee_files: [{ attachment_id: 90, kind: "payment", original_name: "CODEX-命名凭证.pdf", bill_date: "2026-10-12" },
+      { attachment_id: 91, kind: "receipt", original_name: "CODEX-票据.pdf", bill_date: "2026-10-11" }] };
+  const before = JSON.stringify(data);
+  const projected = caseFeeBillDisplay(data);
+  assert.deepEqual(projected.dates, ["2026-10-10", "2026-10-12", "2026-10-11"]);
+  assert.deepEqual(projected.entries.map(item => item.label), ["FP-REAL", "CODEX-命名凭证.pdf", "CODEX-票据.pdf"]);
+  const cell = columns.find(column => column.title === "发票号").render(undefined, { id: 3, data });
+  for (const item of cell.props.children) item.props.children.props.onClick();
+  assert.deepEqual(opened, [["invoice", 3], ["voucher", 3], ["voucher", 3]]);
+  assert.equal(JSON.stringify(data), before);
+  assert.deepEqual(caseFeeBillDisplay({ written_off_at: "2026-10-13T01:00:00" }).dates, []);
+  assert.deepEqual(caseFeeBillDisplay({ case_fee_files: [], writeoff_voucher_record_id: 9 }).entries, []);
 });
 
 test("五类第三方回款日期和金额为斜杠，官费代理费未到账为零并保留真实回款链接", async () => {
@@ -169,36 +171,122 @@ test("五类第三方回款日期和金额为斜杠，官费代理费未到账�
   assert.equal(cell("回款日期", row), "2026-10-12");
 });
 
-test("凭证弹窗读取专属核销关联并保留同时存在的真实发票附件及操作", async () => {
-  let dialog;
-  const requested = [];
-  globalThis.__paymentReworkModal = { info: value => { dialog = value; } };
-  globalThis.__paymentReworkMessages = { warning: assert.fail, error: assert.fail };
-  globalThis.__paymentReworkApi = { get: async (url, options) => {
-    requested.push([url, options?.params]);
-    const recordId = options?.params?.record_id;
-    const items = url === "/attachments" && recordId === 9
-      ? [{ id: 90, category: "付款凭证", original_name: "CODEX-proof.pdf" }]
-      : url === "/attachments" && recordId === 10
-        ? [{ id: 100, category: "案件发票文件", original_name: "CODEX-invoice.pdf" }] : [];
-    return { data: { items } };
-  } };
-  const { createCaseFinanceActions } = await loadActualModule("../src/legal/services/financeActions.tsx");
-  const actions = createCaseFinanceActions({});
-  await actions.openCaseReceiptFiles({ id: 3, serial_no: "CODEX-FEE", data: { writeoff_voucher_record_id: 9, invoice_record_id: 10 } });
-  assert.deepEqual(requested.filter(([url, params]) => url === "/attachments" && !params.category).map(([, params]) => params.record_id), [9, 10]);
-  assert.deepEqual(dialog.content.props.dataSource.map(row => [row.attachmentId, row.source, row.path]),
-    [[90, "缴费凭证", "/attachments/90/download"], [100, "发票文件", "/attachments/100/download"]]);
-  const operation = dialog.content.props.columns.find(column => column.title === "操作");
-  assert.deepEqual(operation.render(undefined, dialog.content.props.dataSource[0]).props.children.map(button => button.props.children), ["查看", "下载"]);
-  requested.length = 0;
-  await actions.openCaseReceiptFiles({ id: 3, serial_no: "CODEX-FEE", data: { writeoff_voucher_record_id: 9 } });
-  assert.equal(dialog.content.props.dataSource[0].source, "缴费凭证");
-  await actions.openCaseReceiptFiles({ id: 3, serial_no: "CODEX-FEE", data: { invoice_record_id: 9 } });
-  assert.equal(dialog.content.props.dataSource[0].attachmentId, 90);
+test("费用票据前端确认后才DELETE，取消不写，失败明确且保留真实行", async () => {
+  let dialog, confirm;
+  const requested = [], errors = [];
+  let refreshes = 0, shouldFail = false;
+  globalThis.__paymentReworkModal = {
+    info: value => { dialog = value; return { update: next => { Object.assign(dialog, next); } }; },
+    confirm: value => { confirm = value; },
+  };
+  globalThis.__paymentReworkMessages = { warning: assert.fail, error: value => errors.push(value), success() {} };
+  globalThis.__paymentReworkApi = {
+    get: async url => { requested.push(["GET", url]); return { data: { can_delete: true, items: [
+      { attachment_id: 90, kind: "payment", source: "缴费凭证", original_name: "CODEX-proof.pdf", bill_date: "2026-10-12" },
+      { attachment_id: 100, kind: "invoice", source: "发票文件", original_name: "CODEX-invoice.pdf", bill_date: "2026-10-11" },
+    ] } }; },
+    delete: async url => { requested.push(["DELETE", url]); if (shouldFail) throw { response: { data: { detail: "当前账号没有删除权限" } } }; },
+  };
+  const { openCaseFeeFilesDialog } = await loadActualModule("../src/legal/services/caseFeeFilesDialog.tsx");
+  await openCaseFeeFilesDialog({ caseId: 7, feeId: 3, serialNo: "CODEX-FEE", download: async () => {}, onChanged: async () => { refreshes++; } });
+  const remove = () => dialog.content.props.columns.find(column => column.title === "操作").render(undefined, dialog.content.props.dataSource[0]).props.children[2];
+  assert.deepEqual(dialog.content.props.dataSource.map(row => [row.attachment_id, row.kind]), [[90, "payment"], [100, "invoice"]]);
+  remove().props.onClick();
+  assert.equal(requested.length, 1);
+  confirm.onCancel();
+  assert.equal(requested.length, 1);
+  remove().props.onClick();
+  shouldFail = true;
+  await assert.rejects(confirm.onOk());
+  assert.equal(dialog.content.props.dataSource.length, 2);
+  assert.match(errors[0], /没有删除权限/);
+  shouldFail = false;
+  remove().props.onClick();
+  await confirm.onOk();
+  assert.deepEqual(requested.at(-1), ["DELETE", "/cases/7/fees/3/files/90"]);
+  assert.deepEqual(dialog.content.props.dataSource.map(row => row.attachment_id), [100]);
+  assert.equal(refreshes, 1);
   delete globalThis.__paymentReworkModal;
   delete globalThis.__paymentReworkMessages;
   delete globalThis.__paymentReworkApi;
+});
+
+test("案件票据操作调用专用费用接口，无删除授权不生成按钮", async () => {
+  let dialog;
+  const requests = [];
+  globalThis.__paymentReworkModal = { info: value => { dialog = value; return { update() {} }; } };
+  globalThis.__paymentReworkMessages = { error: assert.fail };
+  globalThis.__paymentReworkApi = { get: async url => { requests.push(url); return { data: { can_delete: false,
+    items: [{ attachment_id: 90, kind: "payment", source: "缴费凭证", original_name: "CODEX-proof.pdf", remark: "CODEX-真实导入说明" }] } }; } };
+  const { createCaseFinanceActions } = await loadActualModule("../src/legal/services/financeActions.tsx");
+  await createCaseFinanceActions({ viewingCounselCase: { id: 7 } }).openCaseReceiptFiles({ id: 3, serial_no: "CODEX-FEE", data: {} });
+  assert.deepEqual(requests, ["/cases/7/fees/3/files"]);
+  const remarkColumn = dialog.content.props.columns.find(column => column.title === "导入说明");
+  assert.equal(remarkColumn.dataIndex, "remark");
+  assert.equal(dialog.content.props.dataSource[0][remarkColumn.dataIndex], "CODEX-真实导入说明");
+  const operation = dialog.content.props.columns.find(column => column.title === "操作");
+  assert.deepEqual(operation.render(undefined, dialog.content.props.dataSource[0]).props.children.filter(Boolean).map(button => button.props.children), ["查看", "下载"]);
+  delete globalThis.__paymentReworkModal;
+  delete globalThis.__paymentReworkMessages;
+  delete globalThis.__paymentReworkApi;
+});
+
+test("无上传附件仍从真实费用通知下载票据，空通知和拒绝保持真实提示", async () => {
+  const requests = [], downloads = [], errors = [], warnings = [];
+  let mode = "download", dialog, currentInform;
+  const originalDocument = globalThis.document;
+  globalThis.document = { createElement: tag => {
+    assert.equal(tag, "a");
+    return { click() { downloads.push({ href: this.href, filename: this.download }); } };
+  } };
+  globalThis.__paymentReworkModal = { info: value => { dialog = value; return { update() {} }; } };
+  globalThis.__paymentReworkMessages = { error: value => errors.push(value), warning: value => warnings.push(value) };
+  globalThis.__paymentReworkApi = { get: async (url, options) => {
+    requests.push([url, options]);
+    if (url === "/finance/fees/3/informs") return { data: { items: mode === "empty" ? [] : [{ id: 12 }] } };
+    if (url === "/finance/fee-informs/12/bill/download") {
+      if (mode === "denied") throw { response: { data: { detail: "费用通知票据不可下载" } } };
+      assert.equal(options.responseType, "blob");
+      return { data: new Blob(["CODEX-notice"], { type: "application/pdf" }) };
+    }
+    assert.equal(url, "/cases/7/fees/3/files");
+    return { data: { can_delete: false, items: [{ attachment_id: 90, kind: "payment", original_name: "CODEX-proof.pdf" }] } };
+  } };
+  try {
+    const { createCaseFinanceActions } = await loadActualModule("../src/legal/services/financeActions.tsx");
+    const actions = createCaseFinanceActions({ viewingCounselCase: { id: 7 }, requireSingleFee: () => true,
+      setFeeInformTarget() {}, setFeeInformRecord: value => { currentInform = value; } });
+    const fee = { id: 3, serial_no: "CODEX-FEE", data: { case_fee_files: [], receipt_files: [{ attachment_id: 99 }] } };
+    const before = JSON.stringify(fee);
+    await actions.handleExternalFeeOperation([3], fee, "download-bill");
+    assert.deepEqual(requests.map(([url]) => url), ["/finance/fees/3/informs", "/finance/fee-informs/12/bill/download"]);
+    assert.equal(currentInform.id, 12);
+    assert.equal(downloads.length, 1);
+    assert.equal(downloads[0].filename, "费用通知票据");
+    assert.match(downloads[0].href, /^blob:/);
+    assert.equal(dialog, undefined);
+    assert.equal(JSON.stringify(fee), before);
+    assert.equal(fee.data.invoice_no, undefined);
+    mode = "denied";
+    await actions.handleExternalFeeOperation([3], fee, "download-bill");
+    assert.deepEqual(errors, ["费用通知票据不可下载"]);
+    assert.equal(downloads.length, 1);
+    mode = "empty";
+    const count = requests.length;
+    await actions.handleExternalFeeOperation([3], fee, "download-bill");
+    assert.equal(requests.length, count + 1);
+    assert.deepEqual(warnings, ["请先新建费用通知"]);
+    assert.equal(downloads.length, 1);
+    await actions.handleExternalFeeOperation([3], { ...fee, data: { case_fee_files: [{ attachment_id: 90 }] } }, "download-bill");
+    assert.equal(requests.at(-1)[0], "/cases/7/fees/3/files");
+    assert.equal(dialog.content.props.dataSource[0].kind, "payment");
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+    delete globalThis.__paymentReworkModal;
+    delete globalThis.__paymentReworkMessages;
+    delete globalThis.__paymentReworkApi;
+  }
 });
 
 test("付款单显示核销单据号，不以并存的真实发票号替代，旧付款字段仍可读", async () => {

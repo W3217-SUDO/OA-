@@ -47,7 +47,7 @@ export function createInternalOriginalColumns(context: {
             width: 105,
             render: (_: unknown, row: Fee) => row.data.case_stage || "—",
         },
-        { title: "案件名称", ...moneyColumnStyle("案件名称"), dataIndex: "title", width: 190 },
+        { title: "案件名称", ...moneyColumnStyle("案件名称"), width: 190, render: (_: unknown, row: Fee) => row.data.case_name || "—" },
         {
             title: "付款日期", ...moneyColumnStyle("付款日期"),
             width: 110,

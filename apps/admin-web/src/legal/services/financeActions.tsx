@@ -1,12 +1,10 @@
 import type { UploadFile } from "antd";
-import { Button, message, Modal, Space } from "antd";
-import Table from "../../components/ResizableTable";
+import { message, Modal } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import type { MessageType } from "antd/es/message/interface";
 import dayjs from "dayjs";
 import type { Key } from "react";
 import { api } from "../../api";
-import { openAttachmentOnlinePreview } from "../../attachmentOnlinePreview.mjs";
 import { rememberBusinessRecordDetailTarget } from "../../businessRecordDetailNavigation";
 import { buildCaseFeeContractOptions, defaultCaseFeeContractId } from "../../caseFeeContractOptions.mjs";
 import { resolveCaseFeeInvoiceEligibility } from "../../caseFeeInvoiceEligibility.mjs";
@@ -17,6 +15,7 @@ import { buildCasePaymentContext } from "../../caseSecondBatchParity";
 import { feeTypeSelection, initialFeeTypeId, type FeeTypeCatalogItem } from "../../feeTypeHierarchy.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { caseReceiptFiles } from "../caseReceiptFiles";
+import { openCaseFeeFilesDialog } from "./caseFeeFilesDialog";
 import type { CaseAssistedFee, CaseCommissionPreview, CaseCommissionPreviewRow, CaseCommissionResult, CaseDetailCapabilities, CaseFileTypeOption, CasePaymentTypeOption, CaseRow, ContractRow, PaymentTypeCreateTarget, Profile, TaskRow } from "../types";
 import type { CaseInvoiceBatch, CaseInvoiceImportResult, LoadCaseInvoiceBatch } from "../hooks/useCaseInvoiceBatch";
 /** legal finance operations; dependencies are read when each operation runs. */
@@ -901,123 +900,26 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             message.error(error?.response?.data?.detail || "查看票据文件失败");
         }
     };
-    const openCaseReceiptFiles = async (row: CaseRow) => {
-        try {
-            const receipts = caseReceiptFiles(row.data);
-            const [attachmentsResponse, invoiceFileResponse, informsResponse, invoiceAttachmentsResponse, transactionsResponse] = await Promise.all([
-                api.get("/attachments", { params: { record_id: row.id, category: "案件票据文件", page_size: 200 } }),
-                api.get("/attachments", { params: { record_id: row.id, category: "案件发票文件", page_size: 200 } }),
-                api.get(`/finance/fees/${row.id}/informs`),
-                Promise.all([...new Set([
-                    Number(row.data.writeoff_voucher_record_id || 0), Number(row.data.invoice_record_id || 0),
-                ].filter(id => id > 0))].map(recordId =>
-                    api.get("/attachments", { params: { record_id: recordId, page_size: 200 } }),
-                )).then(responses => ({ data: { items: responses.flatMap(response => response.data?.items || []) } })),
-                api.get("/finance/transactions", { params: { finance_record_id: row.id, page_size: 200 } }),
-            ]);
-            const attachments = new Map((attachmentsResponse.data?.items || []).map((item: any) => [Number(item.id), item]));
-            const rows = receipts.flatMap((receipt, index) => {
-                const attachment = attachments.get(receipt.attachmentId) as { original_name?: string } | undefined;
-                if (!attachment) return [];
-                return [{
-                    key: `receipt-${receipt.attachmentId}-${index}`,
-                    attachmentId: receipt.attachmentId,
-                    source: "案件票据",
-                    billNo: receipt.billNo,
-                    billDate: receipt.billDate,
-                    filename: attachment.original_name || receipt.originalName || "票据文件",
-                    path: `/attachments/${receipt.attachmentId}/download`,
-                }];
-            });
-            for (const item of invoiceFileResponse.data?.items || []) {
-                if (!item?.id) continue;
-                rows.push({
-                    key: `case-invoice-attachment-${item.id}`,
-                    attachmentId: Number(item.id),
-                    source: "发票文件",
-                    billNo: "",
-                    billDate: String(item.document_date || "").slice(0, 10),
-                    filename: String(item.original_name || "发票文件"),
-                    path: `/attachments/${item.id}/download`,
-                });
-            }
-            for (const item of invoiceAttachmentsResponse.data?.items || []) {
-                if (!item?.id || !["付款凭证", "案件发票文件"].includes(String(item.category || ""))) continue;
-                rows.push({
-                    key: `invoice-attachment-${item.id}`,
-                    attachmentId: Number(item.id),
-                    source: item.category === "付款凭证" ? "缴费凭证" : "发票文件",
-                    billNo: "",
-                    billDate: String(item.document_date || "").slice(0, 10),
-                    filename: String(item.original_name || "缴费凭证"),
-                    path: `/attachments/${item.id}/download`,
-                });
-            }
-            for (const transaction of transactionsResponse.data?.items || []) {
-                for (const voucher of transaction.vouchers || []) {
-                    if (!voucher?.id) continue;
-                    rows.push({
-                        key: `transaction-voucher-${voucher.id}`,
-                        attachmentId: Number(voucher.id),
-                        source: "缴费凭证",
-                        billNo: String(transaction.voucher_no || ""),
-                        billDate: String(transaction.transaction_date || "").slice(0, 10),
-                        filename: String(voucher.original_name || "缴费凭证"),
-                        path: `/attachments/${voucher.id}/download`,
-                    });
-                }
-            }
-            for (const inform of informsResponse.data?.items || []) {
-                if (!inform.receipt_attachment?.id) continue;
-                rows.push({
-                    key: `inform-${inform.id}`,
-                    attachmentId: Number(inform.receipt_attachment.id),
-                    source: "费用通知票据",
-                    billNo: String(inform.data?.bill_no || ""),
-                    billDate: String(inform.data?.bill_date || "").slice(0, 10),
-                    filename: String(inform.receipt_attachment.original_name || "费用通知票据"),
-                    path: `/finance/fee-informs/${inform.id}/bill/download`,
-                });
-            }
-            if (!rows.length) {
-                message.warning(receipts.length ? "票据附件不存在或当前账号无权查看" : "该费用尚无票据文件");
-                return;
-            }
-            Modal.info({
-                title: `票据文件：${row.serial_no}`,
-                width: 760,
-                okText: "关闭",
-                content: <Table size="small" rowKey="key" pagination={false} scroll={{ x: 700 }} dataSource={rows} columns={[
-                    { title: "来源", dataIndex: "source", width: 110 },
-                    { title: "票据号", dataIndex: "billNo", width: 150, render: (value: string) => value || "—" },
-                    { title: "日期", dataIndex: "billDate", width: 110, render: (value: string) => value || "—" },
-                    { title: "文件", dataIndex: "filename", ellipsis: true },
-                    { title: "操作", width: 140, render: (_: unknown, item: { attachmentId: number; path: string; filename: string }) => <Space size={0}>
-                        <Button type="link" onClick={() => void openAttachmentOnlinePreview(api, { id: item.attachmentId, original_name: item.filename }).catch((error: any) => message.error(error?.response?.data?.detail || error?.message || "查看票据失败"))}>查看</Button>
-                        <Button type="link" onClick={() => void downloadBillFile(item.path, item.filename).catch((error: any) => message.error(error?.response?.data?.detail || "下载票据失败"))}>下载</Button>
-                    </Space> },
-                ]} />,
-            });
+    const showCaseFeeFiles = async (row: CaseRow, invoicesOnly = false) => {
+        const caseId = context.viewingCounselCase?.id;
+        if (!caseId) {
+            message.error("请先打开所属案件再查看票据");
+            return;
         }
-        catch (error: any) {
+        try {
+            await openCaseFeeFilesDialog({
+                caseId, feeId: row.id, serialNo: row.serial_no, invoicesOnly,
+                download: downloadBillFile,
+                onChanged: async () => {
+                    if (context.viewingCounselCase?.id === caseId) await refreshCaseFeeDetail();
+                },
+            });
+        } catch (error: any) {
             message.error(error?.response?.data?.detail || "加载票据文件失败");
         }
     };
-    const openCaseInvoiceFiles = async (row: CaseRow) => {
-        try {
-            const { data } = await api.get("/attachments", { params: { record_id: row.id, category: "案件发票文件", page_size: 200 } });
-            if (!data.items.length) return message.info("该费用尚无发票文件");
-            Modal.info({ title: `发票文件：${row.serial_no}`, width: 700, okText: "关闭",
-                content: <Table size="small" rowKey="id" dataSource={data.items} pagination={{ pageSize: 10 }} columns={[
-                    { title: "文件名", dataIndex: "original_name" }, { title: "导入说明", dataIndex: "remark" },
-                    { title: "操作", width: 140, render: (_: unknown, item: { id: number; original_name: string }) => <Space size={0}>
-                        <Button type="link" onClick={() => void openAttachmentOnlinePreview(api, item).catch((error: any) => message.error(error?.response?.data?.detail || error?.message || "查看发票文件失败"))}>查看</Button>
-                        <Button type="link" onClick={() => void downloadBillFile(`/attachments/${item.id}/download`, item.original_name).catch((error: any) => message.error(error?.response?.data?.detail || "下载发票文件失败"))}>下载</Button>
-                    </Space> },
-                ]} />,
-            });
-        } catch (error: any) { message.error(error?.response?.data?.detail || "查看发票文件失败"); }
-    };
+    const openCaseReceiptFiles = (row: CaseRow) => showCaseFeeFiles(row);
+    const openCaseInvoiceFiles = (row: CaseRow) => showCaseFeeFiles(row, true);
     const unlockFeeInform = async (row: CaseRow) => {
         try {
             const inform = await loadLatestFeeInform(row);
@@ -1087,8 +989,11 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         if (key === "bill")
             return void openFeeInformBill(selectedFee!);
         if (key === "invoice-files") return void openCaseInvoiceFiles(selectedFee!);
-        if (key === "download-bill")
-            return void (caseReceiptFiles(selectedFee!.data).length ? openCaseReceiptFiles(selectedFee!) : downloadFeeInformBill(selectedFee!));
+        if (key === "download-bill") {
+            const files = selectedFee!.data.case_fee_files;
+            const hasFiles = Array.isArray(files) ? files.length > 0 : caseReceiptFiles(selectedFee!.data).length > 0;
+            return hasFiles ? openCaseReceiptFiles(selectedFee!) : downloadFeeInformBill(selectedFee!);
+        }
         if (key === "unlock-inform")
             return void unlockFeeInform(selectedFee!);
         if (key === "link-inform")

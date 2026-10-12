@@ -1690,6 +1690,9 @@ async def _invoice_case_fee_rows(
         })
         result["data"] = result_data
         rows.append(result)
+    if not summary_only:
+        from app.core.finance_person_projection import apply_finance_person_displays
+        await apply_finance_person_displays(rows, db)
     return rows
 
 
@@ -2317,14 +2320,22 @@ async def _internal_fee_rows(
     if scope == "applications":
         fee_conditions = [BusinessRecord.data["applicant"].as_string() == identity["username"]]
     else:
-        fee_conditions = scope_conditions
+        fee_conditions = list(scope_conditions)
     imported_kind = BusinessRecord.data["legacy_kind"].as_string()
-    if scope in {"applications", "review"}:
+    if scope in {"applications", "review", "queue", "payment"}:
         fee_conditions.append(or_(imported_kind.is_(None), imported_kind != "internal_fee_source"))
     else:
         fee_conditions.append(or_(imported_kind.is_(None), imported_kind != "internal_payment_line"))
     if scope == "review":
         fee_conditions.append(BusinessRecord.status.in_(_CASE_COMMISSION_PENDING_STATUSES))
+    if scope == "payment":
+        fee_conditions.extend([
+            BusinessRecord.status == "已审批",
+            or_(imported_kind.is_(None), imported_kind != "internal_payment_line",
+                BusinessRecord.data["relation_status"].as_string() == "已关联"),
+        ])
+    if ids is not None and scope != "applications":
+        fee_conditions.append(BusinessRecord.id.in_(ids))
     fees = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance",
         BusinessRecord.data["fee_type"].as_string() == "内部费用",
@@ -2455,8 +2466,9 @@ async def _internal_fee_rows(
                 return ("imported", int(d["internal_application_id"]))
             return (d.get("payment_application_no"), d.get("case_no"), d.get("source_fee_id"), d.get("applicant")) if d.get("payment_application_no") else (row["id"],)
         matched = {group_key(row) for row in rows}
-        return group_commission_applications([row for row in complete_applications if group_key(row) in matched])
-    return rows
+        rows = group_commission_applications([row for row in complete_applications if group_key(row) in matched])
+    from app.core.finance_person_projection import apply_finance_person_displays
+    return await apply_finance_person_displays(rows, db)
 
 
 def _settlement_fee_kind(fee_type: str) -> str:
@@ -2556,8 +2568,10 @@ async def _general_settlement_rows(
     source_person: str = "",
     receipt_ids: set[int] | None = None,
     include_active_receipts: bool = False,
+    receipt_detail: bool = False,
 ) -> list[dict]:
     """Build the original settlement candidates from bank receipts and their case allocations."""
+    from app.core.incoming_allocation_projection import allocation_fee_id, normalize_incoming_allocation
     from app.core.formatters import (
         _case_fee_display_type,
     )
@@ -2574,7 +2588,12 @@ async def _general_settlement_rows(
         IncomingPayment.received_date.asc(), IncomingPayment.id.asc(),
     ))).all())
 
-    allocations = [allocation for payment in payments for allocation in (payment.allocations or [])]
+    allocations_by_payment = {
+        payment.id: [normalize_incoming_allocation(allocation, receipt_no=payment.receipt_no)
+                     for allocation in (payment.allocations or [])]
+        for payment in payments
+    }
+    allocations = [allocation for values in allocations_by_payment.values() for allocation in values]
     case_ids = {int(row.get("case_id") or 0) for row in allocations if row.get("case_id")}
     case_nos = {str(row.get("case_no") or "").strip() for row in allocations if str(row.get("case_no") or "").strip()}
     cases = list((await db.scalars(select(BusinessRecord).where(
@@ -2597,10 +2616,10 @@ async def _general_settlement_rows(
     # 历史分配有时只保留费用编号，allocation 根节点没有案件编号。仅从
     # 本次到账明确引用的费用记录补齐案件索引，不按客户、合同或金额猜测。
     referenced_fee_ids = {
-        int(value.get("fee_record_id") or 0)
+        allocation_fee_id(value)
         for allocation in allocations if isinstance(allocation, dict)
         for value in [allocation, *(allocation.get("settlement_items") or [])]
-        if isinstance(value, dict) and str(value.get("fee_record_id") or "").isdigit()
+        if isinstance(value, dict) and allocation_fee_id(value) is not None
     }
     referenced_fees = [fees_by_id[fee_id] for fee_id in referenced_fee_ids if fee_id in fees_by_id]
     fee_case_ids = {
@@ -2675,26 +2694,36 @@ async def _general_settlement_rows(
         return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
 
     for payment in payments:
-        payment_allocations = list(payment.allocations or [])
+        payment_allocations = allocations_by_payment[payment.id]
         if (
             not payment_allocations
-            or _round_fee_amount(payment.allocated_amount) + 0.001 < _round_fee_amount(payment.amount)
+            or (not receipt_detail and _round_fee_amount(payment.allocated_amount) + 0.001 < _round_fee_amount(payment.amount))
             or (not include_active_receipts and payment.id in active_receipt_ids)
         ):
             continue
         details: list[dict] = []
         for allocation in payment_allocations:
             linked_case = cases_by_id.get(int(allocation.get("case_id") or 0)) or cases_by_no.get(str(allocation.get("case_no") or ""))
-            if not linked_case and identity.get("role") not in {"admin", "auditor"}:
+            reference_id = allocation_fee_id(allocation)
+            allocation_fee = fees_by_id.get(reference_id)
+            if reference_id is not None and allocation_fee is None:
+                continue
+            linked_case = case_for_fee(allocation_fee, linked_case)
+            explicit_items = list(allocation.get("settlement_items") or [])
+            if not linked_case and not explicit_items and identity.get("role") not in {"admin", "auditor"}:
                 continue
             case_data = (linked_case.data or {}) if linked_case else {}
             remaining = _round_fee_amount(float(allocation.get("amount") or 0))
-            explicit_items = list(allocation.get("settlement_items") or [])
             if explicit_items:
                 for explicit in explicit_items:
                     current_amount = _round_fee_amount(float(explicit.get("amount") or explicit.get("settlement_amount") or 0))
-                    explicit_fee = fees_by_id.get(int(explicit.get("fee_record_id") or 0))
+                    explicit_id = allocation_fee_id(explicit)
+                    explicit_fee = fees_by_id.get(explicit_id)
+                    if explicit_id is not None and explicit_fee is None:
+                        continue
                     detail_case = case_for_fee(explicit_fee, linked_case)
+                    if not detail_case and identity.get("role") not in {"admin", "auditor"}:
+                        continue
                     fee_type = _case_fee_display_type(explicit_fee) if explicit_fee else str(explicit.get("fee_type") or "其他费用")
                     explicit_fee_total = abs(_round_fee_amount(float(((explicit_fee.data or {}) if explicit_fee else {}).get("amount") or current_amount)))
                     if explicit_fee:
@@ -2705,7 +2734,7 @@ async def _general_settlement_rows(
                         settlement_amount = _round_fee_amount(float(explicit.get("settlement_amount") or 0))
                         archive_fee = _round_fee_amount(float(explicit.get("archive_fee") or 0))
                     details.append({
-                        "fee_id": explicit.get("fee_record_id"),
+                        "fee_id": explicit_id,
                         "case_id": detail_case.id if detail_case else allocation.get("case_id"),
                         "case_no": detail_case.serial_no if detail_case else allocation.get("case_no", ""),
                         "case_type": ((detail_case.data or {}).get("case_type") if detail_case else "") or ((detail_case.data or {}).get("case_kind") if detail_case else "") or ((detail_case.data or {}).get("type") if detail_case else ""),
@@ -2715,7 +2744,8 @@ async def _general_settlement_rows(
                         "fee_total_amount": explicit_fee_total,
                         "fee_allocated_amount": current_amount,
                         "current_amount": current_amount,
-                        "allocated_at": allocation.get("allocated_at", ""),
+                        "allocated_at": explicit.get("allocated_at") or allocation.get("allocated_at", ""),
+                        "allocation_source_id": explicit.get("allocation_source_id") or allocation.get("allocation_source_id"),
                         "settlement_amount": settlement_amount,
                         "archive_fee": archive_fee,
                         "customer": detail_case.customer if detail_case else payment.claimed_customer,
@@ -2726,7 +2756,6 @@ async def _general_settlement_rows(
                     })
                 continue
             case_key = str((linked_case.id if linked_case else 0) or allocation.get("case_no") or "")
-            allocation_fee = fees_by_id.get(int(allocation.get("fee_record_id") or 0))
             candidates = [allocation_fee] if allocation_fee else fees_by_case.get(case_key, [])
             for fee in candidates:
                 if remaining <= 0.001:
@@ -2734,6 +2763,8 @@ async def _general_settlement_rows(
                 fee_data = fee.data or {}
                 fee_total = abs(_round_fee_amount(float(fee_data.get("amount") or 0)))
                 available = max(_round_fee_amount(fee_total - consumed_by_fee.get(fee.id, 0)), 0)
+                if receipt_detail and allocation_fee:
+                    available = remaining
                 current_amount = min(remaining, available)
                 if current_amount <= 0.001:
                     continue
@@ -2755,6 +2786,7 @@ async def _general_settlement_rows(
                     "fee_allocated_amount": current_amount,
                     "current_amount": current_amount,
                     "allocated_at": allocation.get("allocated_at", ""),
+                    "allocation_source_id": allocation.get("allocation_source_id"),
                     "settlement_amount": settlement_amount,
                     "archive_fee": archive_fee,
                     "customer": detail_case.customer if detail_case else payment.claimed_customer,
@@ -2778,6 +2810,7 @@ async def _general_settlement_rows(
                     "fee_allocated_amount": remaining,
                     "current_amount": remaining,
                     "allocated_at": allocation.get("allocated_at", ""),
+                    "allocation_source_id": allocation.get("allocation_source_id"),
                     "settlement_amount": remaining,
                     "archive_fee": 0.0,
                     "customer": linked_case.customer if linked_case else payment.claimed_customer,
@@ -2789,6 +2822,8 @@ async def _general_settlement_rows(
         if not details:
             continue
         for detail_index, detail in enumerate(details, start=1):
+            if detail.get("allocation_source_id") is None:
+                detail.pop("allocation_source_id", None)
             detail["detail_id"] = f"{payment.id}-{detail_index}"
         detail_cases = [cases_by_id.get(int(item.get("case_id") or 0)) for item in details]
         detail_cases = [item for item in detail_cases if item]
@@ -3269,7 +3304,9 @@ async def _payment_package_for_word(
         raise HTTPException(status_code=409, detail="费用付款包关联不一致：" + "、".join(missing_links))
     if not package_data.get("items"):
         raise HTTPException(status_code=409, detail="付款包缺少可导出的付款明细")
-    return package, fees, normalized_scope
+    from app.core.finance_person_projection import finance_print_records
+    print_records = await finance_print_records([package, *fees], db)
+    return print_records[0], print_records[1:], normalized_scope
 
 
 def _finance_payment_type_dict(item: SystemParameter) -> dict:

@@ -102,13 +102,15 @@ export function FeeDetailModal({
                 "—"}
             </Descriptions.Item>
             <Descriptions.Item label="案件名称" span={2}>
-              {linkedCaseForFee(feeDetail)?.title || feeDetail.title || "—"}
+              {feeDetail.data.case_name || linkedCaseForFee(feeDetail)?.title || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="客户名称">
               {feeDetail.customer ? <Button type="link" onClick={() => openCustomerDetail(feeDetail.customer, feeDetail.data.customer_no)}>{feeDetail.customer}</Button> : "—"}
             </Descriptions.Item>
             <Descriptions.Item label="收款单位">
-              {feeDetail.data.payee || "—"}
+              {initialView.startsWith("finance-internal")
+                ? financePersonDisplayName(feeDetail.data.payee_username || feeDetail.data.payee, feeDetail.data.payee_display_name)
+                : feeDetail.data.payee_display_name || feeDetail.data.payee || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="付款日期">
               {latestTransaction(feeDetail)?.transaction_date || "—"}

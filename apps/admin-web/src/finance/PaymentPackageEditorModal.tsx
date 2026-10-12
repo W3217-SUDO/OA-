@@ -13,6 +13,7 @@ export interface PaymentPackageEditorModalProps {
   onSelectedFeeIdsChange: (ids: number[]) => void;
   form: FormInstance<PaymentPackageEditorFormValues>;
   candidates: Fee[];
+  financePersonDisplayName: (identity: unknown, displayName?: unknown) => string;
   onSubmit: () => Promise<void>;
   onClose: () => void;
 }
@@ -25,6 +26,7 @@ export function PaymentPackageEditorModal({
   onSelectedFeeIdsChange: setPaymentPackageSelectedFeeIds,
   form: paymentPackageEditForm,
   candidates: paymentPackageCandidates,
+  financePersonDisplayName,
   onSubmit: submitPaymentPackageEditor,
   onClose,
 }: PaymentPackageEditorModalProps) {
@@ -57,7 +59,11 @@ export function PaymentPackageEditorModal({
           }}
           columns={[
             { title: "请款单号", dataIndex: "serial_no", width: 180 },
-            { title: "收款人", render: (_: unknown, fee: Fee) => fee.data?.payee || fee.data?.applicant || fee.owner || "—" },
+            { title: "收款人", render: (_: unknown, fee: Fee) => fee.data?.payee != null
+              ? financePersonDisplayName(fee.data.payee_username || fee.data.payee, fee.data.payee_display_name)
+              : fee.data?.applicant != null
+                ? financePersonDisplayName(fee.data.applicant, fee.data.applicant_display_name)
+                : financePersonDisplayName(fee.owner, fee.owner_display_name) },
             { title: "金额", render: (_: unknown, fee: Fee) => money(Number(fee.data?.actual_commission ?? fee.data?.amount ?? 0)) },
             { title: "状态", dataIndex: "status", width: 100 },
           ]}

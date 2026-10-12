@@ -147,6 +147,12 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
         BusinessRecord.module == "finance",
     ))).all())
     members = await _application_members(anchors, db, lock=False)
+    from app.core.permissions import _record_scope_conditions
+    scope_conditions = await _record_scope_conditions(identity, db)
+    visible_ids = set((await db.scalars(select(BusinessRecord.id).where(
+        BusinessRecord.id.in_([item.id for item in members]), *scope_conditions,
+    ))).all())
+    members = [item for item in members if item.id in visible_ids]
     projected = {row["id"]: row for row in rows}
     missing = [item for item in members if item.id not in projected]
     if missing:
@@ -156,7 +162,7 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
         case_ids = {int((item.data or {}).get("case_id")) for item in missing
                     if str((item.data or {}).get("case_id") or "").isdigit()}
         cases = {item.id: item for item in (await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "case", BusinessRecord.id.in_(case_ids),
+            BusinessRecord.module == "case", BusinessRecord.id.in_(case_ids), *scope_conditions,
         ))).all()} if case_ids else {}
         paid = (await db.execute(select(
             FinanceTransaction.finance_record_id, func.sum(FinanceTransaction.amount),
@@ -178,7 +184,8 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
         if row["id"] in refund_ids and row["status"] in {"待到账", "待分配", "待结算", "待归档", "待审批"}:
             row["status"] = "待审批"
             row["data"] = {**(row.get("data") or {}), "is_refund": True}
-    return group_commission_applications(full)
+    from app.core.finance_person_projection import apply_finance_person_displays
+    return await apply_finance_person_displays(group_commission_applications(full), db)
 
 
 async def review_internal_applications(
@@ -273,10 +280,10 @@ async def pending_case_fee_settlements(identity: dict, db: AsyncSession) -> list
             if legacy_source and data.get("cashed_amount") is not None else data.get("cashed_amount"),
             "case_source": data.get("case_source") or case_data.get("case_source") or case_data.get("business_owner") or "",
             "quality_manager": data.get("quality_manager") or case_data.get("quality_manager") or case_data.get("quality_control") or "",
-            "settlement_status": "待结算" if row["id"] in legacy_source_ids
-            else data.get("settlement_status") or data.get("payment_status") or "",
+            "settlement_status": data.get("settlement_status") or data.get("payment_status") or "",
         }
-    return rows
+    from app.core.finance_person_projection import apply_finance_person_displays
+    return await apply_finance_person_displays(rows, db)
 
 
 async def change_internal_application(

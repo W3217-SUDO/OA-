@@ -64,13 +64,14 @@ test("fee query grand totals and current-page totals use their distinct data sou
   assert.equal(totals.FeeQueryPageSummary({ rows: [], headers }), null);
 });
 
-test("internal payment and payment-package totals keep nullish amount precedence", () => {
-  const internal = totals.InternalPaymentPageSummary({
-    rows: [{ id: 1, data: { actual_commission: 0, amount: 8 } }, { id: 2, data: { amount: 3.2 } }],
-    headers: ["申请编号", "实际提成"],
+test("internal grand total preserves exact server zero and payment-package totals keep nullish precedence", () => {
+  const internal = totals.InternalQueueSummary({
+    meta: { amountVisible: true, totalAmount: 100, totalActualCommission: 0 },
+    headers: ["申请编号", "实际提成"], selectable: true,
   });
   const internalCells = nodes(internal).filter((node) => node.type === SummaryCell);
-  assert.equal(internalCells[2].props.children, "3.20");
+  assert.equal(internalCells[2].props.children, "0.00");
+  assert.throws(() => totals.InternalQueueSummary({ meta: { amountVisible: true, totalAmount: 100 }, headers: ["实际提成"], selectable: false }), /汇总响应无效/);
   const rows = [{ id: 1, data: { total_amount: 0, amount: 10 } }, { id: 2, data: { amount: 7.5 } }];
   const body = totals.PaymentPackageTotalBody({ rows, headers: ["付款编号", "付款总金额"], children: "rows" });
   assert.equal(nodes(body).filter((node) => node.type === "td")[1].props.children, "7.50");

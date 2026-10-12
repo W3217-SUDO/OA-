@@ -802,38 +802,76 @@ from app.areas.finance.refund_operations import (
 router.include_router(refund_operations_router)
 
 
+from app.core.internal_finance_query import InternalApplicationFilters
+
+
 @router.get(f"{settings.api_prefix}/finance/internal-fees")
 async def list_internal_fees(
-    scope: str = Query("company", pattern="^(mine|company|applications)$"),
+    scope: str = Query("company", pattern="^(mine|company|applications|archive|refused|payment)$"),
     case_no: str = "", handling_lawyer: str = "", assistant: str = "", source_person: str = "",
     customer: str = "", customer_manager: str = "", investigator: str = "", payment_status: str = Query("", pattern="^(|已付|未付)$"),
     paid_from: date | None = None, paid_to: date | None = None, payee: str = "", case_stages: str = "", fee_types: str = "",
     page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
+    applicant: str = "", application_no: str = "",
+    application_from: date | None = None, application_to: date | None = None,
+    audit_from: date | None = None, audit_to: date | None = None,
+    request_status: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import (
         _internal_fee_rows,
     )
+    from app.core.internal_finance_query import enrich_internal_audit_dates, filter_internal_rows, internal_application_queue, internal_page
+    from app.core.system import _allowed_field_keys
+    amount_visible = "finance.amount" in await _allowed_field_keys(identity, db)
+    extra_filters = InternalApplicationFilters(applicant, application_no, application_from,
+                                              application_to, audit_from, audit_to, request_status).values()
     if paid_from and paid_to and paid_from > paid_to:
         raise HTTPException(status_code=422, detail="付款开始日期不能晚于结束日期")
+    if scope in {"archive", "refused"}:
+        rows = await internal_application_queue(
+            identity, db, scope, case_no=case_no, handling_lawyer=handling_lawyer,
+            assistant=assistant, source_person=source_person, customer=customer,
+            customer_manager=customer_manager, investigator=investigator,
+            payment_status=payment_status, paid_from=paid_from, paid_to=paid_to,
+            payee=payee, case_stages=case_stages, fee_types=fee_types,
+            **extra_filters,
+        )
+        return internal_page(rows, page, page_size, amount_visible=amount_visible)
     rows = await _internal_fee_rows(identity, db, scope=scope, case_no=case_no, handling_lawyer=handling_lawyer, assistant=assistant, source_person=source_person, customer=customer, customer_manager=customer_manager, investigator=investigator, payment_status=payment_status, paid_from=paid_from, paid_to=paid_to, payee=payee, case_stages=case_stages, fee_types=fee_types)
-    total = len(rows)
-    total_amount = round(sum(float((row.get("data") or {}).get("amount", 0) or 0) for row in rows), 2)
-    start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": total, "total_amount": total_amount, "page": page, "page_size": page_size}
+    if audit_from or audit_to:
+        await enrich_internal_audit_dates(rows, identity, db)
+    rows = filter_internal_rows(rows, **extra_filters)
+    return internal_page(rows, page, page_size, amount_visible=amount_visible)
 
 
 @router.get(f"{settings.api_prefix}/finance/internal-review-requests")
 async def list_internal_review_requests(
     kind: str = Query(pattern="^(commission|other|refund)$"),
+    page: int = Query(1, ge=1), page_size: int = Query(200, ge=1, le=200),
+    case_no: str = "", customer: str = "", case_stages: str = "", payee: str = "", fee_types: str = "",
+    paid_from: date | None = None, paid_to: date | None = None,
+    applicant: str = "", application_no: str = "",
+    application_from: date | None = None, application_to: date | None = None,
+    audit_from: date | None = None, audit_to: date | None = None,
+    request_status: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.internal_requests import internal_review_rows
+    from app.core.internal_finance_query import enrich_internal_audit_dates, filter_internal_rows, internal_page
+    from app.core.system import _allowed_field_keys
 
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(403, "当前角色没有内部请款审批权限")
     rows = await internal_review_rows(identity, db, kind)
-    return {"items": rows, "total": len(rows)}
+    if audit_from or audit_to:
+        await enrich_internal_audit_dates(rows, identity, db)
+    rows = filter_internal_rows(rows, case_no=case_no, customer=customer, case_stages=case_stages,
+                                payee=payee, fee_types=fee_types, paid_from=paid_from, paid_to=paid_to,
+                                **InternalApplicationFilters(applicant, application_no, application_from,
+                                                             application_to, audit_from, audit_to, request_status).values())
+    amount_visible = "finance.amount" in await _allowed_field_keys(identity, db)
+    return internal_page(rows, page, page_size, amount_visible=amount_visible)
 
 
 @router.post(f"{settings.api_prefix}/finance/internal-applications/{{fee_id}}/{{action}}")

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 import httpx
 from fastapi import status
-from sqlalchemy import event
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -215,6 +215,86 @@ class CaseOrdinarySearchD12Contract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(serials, ["CASE-D12-204", "CASE-D12-203", "CASE-D12-202"])
         await self._search({"page_size": 201}, status.HTTP_422_UNPROCESSABLE_ENTITY)
         await self._search({"sort_order": "not-a-sort"}, status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    async def test_pending_execution_accepts_200_and_keeps_scope(self):
+        async with self.sessions() as db:
+            rows = list((await db.scalars(select(BusinessRecord))).all())
+            for row in rows:
+                row.status = "一审待执行"
+            await db.commit()
+        first = await self.client.get(f"{API}/cases/pending-execution", params={"page_size": 200})
+        second = await self.client.get(f"{API}/cases/pending-execution", params={"page_size": 200, "page": 2})
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual((first.json()["total"], len(first.json()["items"]), len(second.json()["items"])), (205, 200, 5))
+        items = first.json()["items"] + second.json()["items"]
+        self.assertEqual(len({row["id"] for row in items}), 205)
+        self.assertNotIn("CASE-D12-HIDDEN", {row["serial_no"] for row in items})
+        invalid = await self.client.get(f"{API}/cases/pending-execution", params={"page_size": 201})
+        self.assertEqual(invalid.status_code, 422)
+
+    async def test_special_unclaimed_database_paging_and_filters_beyond_preload(self):
+        async with self.sessions() as db:
+            applied = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == "CASE-D12-000"))
+            applied.data = {**applied.data, "commission_applied": True}
+            target = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == "CASE-D12-001"))
+            target.data = {**target.data, "court_case_no": "CODEX-court", "notary_no": "CODEX-notary",
+                "hearing_lawyer": "CODEX-lawyer", "assistant": "CODEX-assistant", "investigator": "CODEX-investigator", "source_person": "CODEX-source"}
+            await db.commit()
+        params = {"kind": "unclaimed", "scope": "mine", "page_size": 200}
+        first = await self.client.get(f"{API}/cases/special-records", params=params)
+        self.assertEqual(first.status_code, 200, first.text)
+        second = await self.client.get(f"{API}/cases/special-records", params={**params, "page": 2})
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual((first.json()["total"], len(first.json()["items"]), len(second.json()["items"])), (204, 200, 4))
+        ids = [row["id"] for row in first.json()["items"] + second.json()["items"]]
+        self.assertEqual(len(set(ids)), 204)
+        filtered = await self.client.get(f"{API}/cases/special-records", params={**params,
+            "serial_no": "D12-001", "customer": "Customer 1", "status": "CLOSED", "court_case_no": "CODEX-court",
+            "notary_no": "CODEX-notary", "hearing_lawyer": "CODEX-lawyer", "assistant": "CODEX-assistant",
+            "investigator": "CODEX-investigator", "source_person": "CODEX-source"})
+        self.assertEqual(filtered.status_code, 200, filtered.text)
+        self.assertEqual(filtered.json()["total"], 1)
+        self.assertEqual(filtered.json()["items"][0]["serial_no"], "CASE-D12-001")
+        invalid = await self.client.get(f"{API}/cases/special-records", params={**params, "page_size": 201})
+        self.assertEqual(invalid.status_code, 422)
+        self.assertTrue(any("LIMIT" in sql and "OFFSET" in sql and "business_records" in sql for sql in self.sql_statements))
+
+    async def test_special_refund_union_paging_filters_and_menu_scope(self):
+        denied = await self.client.get(f"{API}/cases/special-records", params={"kind": "refund"})
+        self.assertEqual(denied.status_code, 403, denied.text)
+        async with self.sessions() as db:
+            role = await db.scalar(select(RolePermission).where(RolePermission.role == "user"))
+            role.menu_keys = ["case", "finance"]
+            for index in range(205):
+                db.add(BusinessRecord(module="finance" if index < 101 else "refund",
+                    serial_no=f"CODEX-D-special-refund-{index}", title="退费申请", status="待审批",
+                    owner=IDENTITY["username"], department=IDENTITY["department"], customer="CODEX-customer",
+                    updated_at=datetime(2026, 1, 1) + timedelta(minutes=index),
+                    data={"fee_type": "诉讼退费", "case_no": f"CODEX-CASE-{index}", "case_stage": "一审",
+                        "court_case_no": "CODEX-court-no", "court": "CODEX-court", "payee": "CODEX-unit",
+                        "refund_status": "待办理", "refund_amount": 25, "assistant": "CODEX-assistant",
+                        "hearing_lawyer": "CODEX-lawyer", "paid_date": "2026-01-15"}))
+            db.add(BusinessRecord(module="refund", serial_no="CODEX-D-special-hidden", title="退费", status="待审批",
+                owner="other-user", department="Other department", data={"fee_type": "退费"}))
+            await db.commit()
+        params = {"kind": "refund", "page_size": 200}
+        first = await self.client.get(f"{API}/cases/special-records", params=params)
+        second = await self.client.get(f"{API}/cases/special-records", params={**params, "page": 2})
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual((first.json()["total"], len(first.json()["items"]), len(second.json()["items"])), (205, 200, 5))
+        self.assertEqual(len({row["id"] for row in first.json()["items"] + second.json()["items"]}), 205)
+        filtered = await self.client.get(f"{API}/cases/special-records", params={**params,
+            "serial_no": "CODEX-CASE-101", "customer": "CODEX-customer", "status": "一审", "court_case_no": "CODEX-court-no",
+            "court": "CODEX-court", "payee": "CODEX-unit", "refund_status": "待办理", "refund_amount": "25",
+            "assistant": "CODEX-assistant", "hearing_lawyer": "CODEX-lawyer", "fee_type": "诉讼退费",
+            "paid_from": "2026-01-15", "paid_to": "2026-01-15"})
+        self.assertEqual(filtered.status_code, 200, filtered.text)
+        self.assertEqual(filtered.json()["total"], 1)
+        self.assertEqual(filtered.json()["items"][0]["serial_no"], "CODEX-D-special-refund-101")
+        invalid = await self.client.get(f"{API}/cases/special-records", params={**params, "paid_from": "2026-02-01", "paid_to": "2026-01-01"})
+        self.assertEqual(invalid.status_code, 422)
 
 
 if __name__ == "__main__":

@@ -2,21 +2,21 @@ import {IncomingTotalsBody} from "./IncomingTotalsBody";
 
 import {financeErrorDetail} from "./financeErrors";
 
-import {Button, Dropdown, Input, Space, message} from "antd";
+import {Alert, Button, Dropdown, Input, Space, message} from "antd";
 import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 
 import {FinanceOriginalQueryView, type FinanceOriginalQueryViewProps} from "./FinanceOriginalQueryView";
 
 import {GeneralSettlementExpandedRow} from "./GeneralSettlementExpandedRow";
-import {FeeQueryPageSummary, FeeQueryTotalBody, InternalPaymentPageSummary, PaymentPackagePageSummary, PaymentPackageTotalBody, PaymentQueryPageSummary, PaymentQueryTotalBody} from "./FinanceOriginalTotals";
+import {FeeQueryPageSummary, FeeQueryTotalBody, InternalQueueSummary, PaymentPackagePageSummary, PaymentPackageTotalBody, PaymentQueryPageSummary, PaymentQueryTotalBody} from "./FinanceOriginalTotals";
 import {FinanceFeeQueryActions} from "./FinanceFeeQueryActions";
 
 import type {ComponentProps} from "react";
 
 import {RefundCaseFeeOperationMenu, RefundCaseFeeMarkButton, type RefundCaseFeeOperationMenuProps, type RefundCaseFeeMarkButtonProps} from "./RefundCaseFeeActions";
 import {internalApprovalRoutes, paymentPackagePageSizeOptions, paymentQueryControlledPageSize, paymentQueryDefaultPageSize, paymentQueryPageSizeOptions, paymentQueryQuickJumper, paymentQueryShowsSinglePageGo} from "./constants";
-import type {ArchiveSettlementTarget, Fee, FinancePageMeta, FinanceAmountPageMeta, FinanceInvoicePageMeta, FinanceUnissuedPageMeta, FinanceSettlementPageMeta, FinanceFeeQueryMeta, OriginalFinanceRow, OriginalRouteConfig} from "./types";
+import type {ArchiveSettlementTarget, Fee, FinancePageMeta, FinanceAmountPageMeta, FinanceInternalQueueMeta, FinanceInvoicePageMeta, FinanceUnissuedPageMeta, FinanceSettlementPageMeta, FinanceFeeQueryMeta, OriginalFinanceRow, OriginalRouteConfig} from "./types";
 
 export interface FinanceOriginalRoutesViewProps {
   originalQueryView: FinanceOriginalQueryViewProps;
@@ -38,6 +38,10 @@ export interface FinanceOriginalRoutesViewProps {
   isFeeQueryRoute: boolean;
   isInternalDetailRoute: boolean;
   isInternalApprovalRoute: boolean;
+  isInternalQueueRoute?: boolean;
+  internalQueueMeta?: FinanceInternalQueueMeta;
+  internalQueueError?: string | null;
+  loadInternalQueue?: (query: Record<string, unknown>, page?: number, pageSize?: number) => Promise<unknown>;
   isRefundCaseFeeRoute: boolean;
   activeRouteConfig: OriginalRouteConfig | undefined;
   loading: boolean;
@@ -60,6 +64,8 @@ export interface FinanceOriginalRoutesViewProps {
   setPaymentQueryPageSize: (size: number) => void;
   paymentAuditPageSize: number;
   setPaymentAuditPageSize: (size: number) => void;
+  localListPage?: { page: number; pageSize: number };
+  setLocalListPage?: (value: { page: number; pageSize: number }) => void;
   paymentQueryQuickPage: string;
   setPaymentQueryQuickPage: (value: string) => void;
   feeQueryMeta: FinanceFeeQueryMeta;
@@ -135,6 +141,10 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
     isFeeQueryRoute,
     isInternalDetailRoute,
     isInternalApprovalRoute,
+    isInternalQueueRoute,
+    internalQueueMeta,
+    internalQueueError,
+    loadInternalQueue,
     isRefundCaseFeeRoute,
     activeRouteConfig,
     loading,
@@ -157,6 +167,8 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
     setPaymentQueryPageSize,
     paymentAuditPageSize,
     setPaymentAuditPageSize,
+    localListPage = { page: 1, pageSize: 15 },
+    setLocalListPage,
     paymentQueryQuickPage,
     setPaymentQueryQuickPage,
     feeQueryMeta,
@@ -216,10 +228,11 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
       typeof column.title === "string" ? column.title : "",
     );
   const settlementRouteRows = configuredRows as Fee[];
+  if (isInternalQueueRoute && (!internalQueueMeta || !loadInternalQueue)) throw new Error("内部费用分页配置缺失");
   return (
     <>
           <section
-            className={`finance-original-panel${isGeneralSettlementRoute ? " finance-general-settlement" : ""}${
+            className={`finance-original-panel${initialView.startsWith("finance-internal") ? " finance-internal-queues" : ""}${isGeneralSettlementRoute ? " finance-general-settlement" : ""}${
               initialView === "finance-internal-mine"
                 ? " finance-original-internal-mine"
                 : isInvoiceMineRoute
@@ -272,11 +285,12 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
             }`}
           >
             <FinanceOriginalQueryView {...originalQueryView} />
+            {internalQueueError && <Alert type="error" showIcon message={internalQueueError} />}
             <div className="finance-original-table-wrap">
               <Table
                 rowKey="id"
                 size="small"
-                tableLayout={isGeneralSettlementRoute || isFeeQueryRoute || isInvoiceUnissuedRoute || activeRouteConfig?.source === "incoming" ? "fixed" : undefined}
+                tableLayout={initialView.startsWith("finance-internal") || isGeneralSettlementRoute || isFeeQueryRoute || isInvoiceUnissuedRoute || activeRouteConfig?.source === "incoming" ? "fixed" : undefined}
                 loading={loading}
                 columns={originalColumns}
                 dataSource={configuredRows}
@@ -513,12 +527,14 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                     : undefined
                 }
                 summary={
-                  initialView === "finance-payment-query"
+                  isInternalQueueRoute
+                    ? () => !loading && !internalQueueError && internalQueueMeta!.total > 0
+                      ? <InternalQueueSummary meta={internalQueueMeta!} headers={originalHeaders} selectable={Boolean(activeRouteConfig?.selectable)} />
+                      : null
+                    : initialView === "finance-payment-query"
                     ? (pageData) => <PaymentQueryPageSummary rows={pageData} columnCount={paymentOriginalColumns.length} />
                     : isFeeQueryRoute
                     ? (pageData) => <FeeQueryPageSummary rows={pageData} headers={originalHeaders} />
-                  : initialView === "finance-internal-payment"
-                    ? (pageData) => <InternalPaymentPageSummary rows={pageData} headers={originalHeaders} />
                     : [
                           "finance-internal-writeoff",
                           "finance-internal-done",
@@ -677,8 +693,8 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                             : {},
                         getCheckboxProps: (row) => ({
                           disabled:
-                            initialView === "finance-internal-refund-audit" &&
-                            row.status !== "待审批",
+                            Boolean(isInternalQueueRoute && row.data?.read_only) ||
+                            (initialView === "finance-internal-refund-audit" && row.status !== "待审批"),
                         }),
                         ...(isArchiveSettlementActiveRoute
                           ? {
@@ -701,6 +717,8 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                     ? originalColumns.reduce((total, column) => total + Number(column.width), 36)
                     : activeRouteConfig?.source === "incoming"
                     ? originalColumns.reduce((total, column) => total + Number(column.width || 120), 48)
+                    : initialView.startsWith("finance-internal")
+                      ? originalColumns.reduce((total, column) => total + Number(column.width || 120), 48)
                     : activeRouteConfig
                     ? isGeneralSettlementRoute
                       ? originalColumns.reduce((total, column) => total + Number(column.width), 36)
@@ -723,6 +741,11 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                 }}
                 pagination={{
                   size: "small",
+                  current: localListPage.page,
+                  onChange: (page: number, pageSize: number) => {
+                    setSelectedOriginalRows([]);
+                    setLocalListPage?.({ page: pageSize === localListPage.pageSize ? page : 1, pageSize });
+                  },
                   pageSize: activeRouteConfig?.source === "incoming"
                     ? incomingMeta.pageSize
                     : isGeneralSettlementRoute
@@ -751,7 +774,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                     "finance-internal-done",
                     ...internalApprovalRoutes,
                     ].includes(initialView)
-                      ? 15
+                      ? localListPage.pageSize
                       : isInvoiceMineRoute
                       ? invoiceMineMeta.pageSize
                     : isInvoicePendingRoute
@@ -765,7 +788,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                       : 20),
                   pageSizeOptions:
                     activeRouteConfig?.source === "incoming"
-                      ? [10, 20, 50, 100]
+                      ? [10, 20, 50, 100, 200]
                       : activeRouteConfig?.source === "paymentPackages"
                       ? paymentPackagePageSizeOptions
                       : paymentQueryPageSizeOptions(initialView) ??
@@ -843,7 +866,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                         total: feeQueryMeta.total,
                         onChange: (page: number, pageSize: number) => {
                           setSelectedOriginalRows([]);
-                          void loadFeeQuery(originalQuery, page, pageSize).catch(
+                          void loadFeeQuery(originalQuery, pageSize === feeQueryMeta.pageSize ? page : 1, pageSize).catch(
                             (error: unknown) =>
                               message.error(
                                 financeErrorDetail(error) ||
@@ -858,7 +881,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                           total: paymentPackageMeta.total,
                           onChange: (page: number, pageSize: number) => {
                             setSelectedOriginalRows([]);
-                            void loadPaymentPackages(originalQuery, page, pageSize).catch(
+                            void loadPaymentPackages(originalQuery, pageSize === paymentPackageMeta.pageSize ? page : 1, pageSize).catch(
                               () => message.error("付款包查询失败"),
                             );
                           },
@@ -880,7 +903,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                           setSelectedOriginalRows([]);
                           void loadInternalDetails(
                             originalQuery,
-                            page,
+                            pageSize === internalDetailMeta.pageSize ? page : 1,
                             pageSize,
                           ).catch((error: unknown) =>
                             message.error(
@@ -899,7 +922,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                           setSelectedOriginalRows([]);
                           void loadInvoiceMine(
                             originalQuery,
-                            page,
+                            pageSize === invoiceMineMeta.pageSize ? page : 1,
                             pageSize,
                           ).catch((error: unknown) =>
                             message.error(
@@ -918,7 +941,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                           setSelectedOriginalRows([]);
                           void loadInvoicePending(
                             originalQuery,
-                            page,
+                            pageSize === invoicePendingMeta.pageSize ? page : 1,
                             pageSize,
                           ).catch((error: unknown) =>
                             message.error(
@@ -937,7 +960,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                           setSelectedOriginalRows([]);
                           void loadInvoiceCompany(
                             originalQuery,
-                            page,
+                            pageSize === invoiceCompanyMeta.pageSize ? page : 1,
                             pageSize,
                           ).catch((error: unknown) =>
                             message.error(
@@ -956,7 +979,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                           setSelectedOriginalRows([]);
                           void loadInvoiceUnissued(
                             originalQuery,
-                            page,
+                            pageSize === invoiceUnissuedMeta.pageSize ? page : 1,
                             pageSize,
                           ).catch((error: unknown) =>
                             message.error(
@@ -976,7 +999,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                           setGeneralSettlementDetails([]);
                           void loadGeneralSettlements(
                             originalQuery,
-                            page,
+                            pageSize === generalSettlementMeta.pageSize ? page : 1,
                             pageSize,
                           ).catch((error: unknown) =>
                             message.error(
@@ -995,7 +1018,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                           setSelectedOriginalRows([]);
                           void loadArchiveSettlements(
                             originalQuery,
-                            page,
+                            pageSize === archiveSettlementMeta.pageSize ? page : 1,
                             pageSize,
                           ).catch((error: unknown) =>
                             message.error(
@@ -1010,6 +1033,18 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                         },
                       }
                     : {}),
+                  ...(isInternalQueueRoute ? {
+                    current: internalQueueMeta!.page,
+                    pageSize: internalQueueMeta!.pageSize,
+                    total: internalQueueMeta!.total,
+                    pageSizeOptions: [10, 15, 20, 50, 100, 200],
+                    onChange: (page: number, pageSize: number) => {
+                      setSelectedOriginalRows([]);
+                      void loadInternalQueue!(originalQuery, pageSize === internalQueueMeta!.pageSize ? page : 1, pageSize).catch(
+                        (error: unknown) => message.error(financeErrorDetail(error) || "内部费用翻页失败"),
+                      );
+                    },
+                  } : {}),
                   showTotal: (total) =>
                     [
                       "finance-settlement-pending",
@@ -1044,7 +1079,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                 }}
                 locale={{
                   emptyText:
-                    isInternalDetailRoute ||
+                    internalQueueError ? "查询失败，请重试" : isInternalDetailRoute ||
                     isFeeQueryRoute ||
                     initialView === "finance-payment-query"
                     ? "没有查询到符合条件的记录 。"

@@ -17,6 +17,11 @@ const feeQueryColumnWidths: Record<string, number> = {
     费用类型: 150,
 };
 
+const internalColumnWidths: Record<string, number> = {
+    案件名称: 240, 客户名称: 200, 案件编号: 160, 案号: 160, 请款单号: 180,
+    申请人: 110, 收款人: 110, 案件阶段: 120,
+};
+
 export function createConfiguredColumns(context: {
     readonly activeRouteConfig: OriginalRouteConfig;
     readonly initialView: string;
@@ -88,6 +93,9 @@ export function createConfiguredColumns(context: {
                                     : Math.max(90, Math.min(190, header.length * 17 + 45)),
         ...(context.isFeeQueryRoute && header in feeQueryColumnWidths
             ? { width: feeQueryColumnWidths[header] }
+            : {}),
+        ...(context.initialView.startsWith("finance-internal") && header in internalColumnWidths
+            ? { width: internalColumnWidths[header] }
             : {}),
         fixed: !context.isGeneralSettlementRoute && header === "操作" &&
             ![

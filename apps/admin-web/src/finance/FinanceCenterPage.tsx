@@ -105,6 +105,7 @@ import { useRefundCaseFeeActionState } from "./hooks/useRefundCaseFeeActionState
 import { useFinanceDocumentWorkspaceState } from "./hooks/useFinanceDocumentWorkspaceState";
 import { useFinanceIncomingState } from "./hooks/useFinanceIncomingState";
 import { useIncomingPaymentQuery } from "./hooks/useIncomingPaymentQuery";
+import { isInternalFinanceQuery, useInternalFinanceQuery } from "./hooks/useInternalFinanceQuery";
 import { useFinanceLinkedDetail, type FinanceLinkedDetailResult } from "./hooks/useFinanceLinkedDetail";
 import { useInvoiceApplicationState } from "./hooks/useInvoiceApplicationState";
 import { usePaymentPackageWorkspaceState } from "./hooks/usePaymentPackageWorkspaceState";
@@ -264,6 +265,8 @@ export default function FinanceCenterPage({
     get setCustomers() { return setCustomers; },
     get setIncoming() { return setIncoming; },
     get loadIncomingPayments() { return loadIncomingPayments; },
+    get isInternalQueueRoute() { return isInternalQueueRoute; },
+    get loadInternalQueue() { return loadInternalQueue; },
     get setSelectedIncomingRows() { return setSelectedIncomingRows; },
     get setTransactions() { return setTransactions; },
     get setReconciliations() { return setReconciliations; },
@@ -419,12 +422,12 @@ export default function FinanceCenterPage({
       const displayName = String(person.label || person.value || "").trim();
       if (!displayName) return;
       [person.username, person.value, person.label].forEach((identity) => {
-        const key = String(identity || "").trim();
+        const key = String(identity || "").trim().toLowerCase();
         if (key) names.set(key, displayName);
       });
     });
     if (currentUser.username && currentUser.displayName) {
-      names.set(currentUser.username, currentUser.displayName);
+      names.set(currentUser.username.toLowerCase(), currentUser.displayName);
     }
     return names;
   }, [financePeople, currentUser]);
@@ -433,7 +436,7 @@ export default function FinanceCenterPage({
     if (explicitName) return explicitName;
     const key = String(identity || "").trim();
     if (!key) return "—";
-    return financePersonNameMap.get(key) || (/[㐀-鿿]/.test(key) ? key : "—");
+    return financePersonNameMap.get(key.toLowerCase()) || (/[㐀-鿿]/.test(key) ? key : "姓名待维护");
   };
   const financePersonDisplayNames = (identities: unknown, displayNames?: unknown) => {
     const values = Array.isArray(identities) ? identities : [identities];
@@ -454,6 +457,7 @@ export default function FinanceCenterPage({
     aliases: {},
   });
   const [paymentAuditPageSize, setPaymentAuditPageSize] = useState(15);
+  const [localListPage, setLocalListPage] = useState({ page: 1, pageSize: 15 });
   const [paymentQueryQuickPage, setPaymentQueryQuickPage] = useState("1");
   const [paymentQueryPageSize, setPaymentQueryPageSize] = useState(
     paymentQueryDefaultPageSize(initialView) ?? 15,
@@ -559,6 +563,8 @@ export default function FinanceCenterPage({
     (string | number)[]
   >([]);
   const { meta: incomingMeta, loading: incomingLoading, load: loadIncomingPayments } = useIncomingPaymentQuery(initialView, setIncoming, setSelectedOriginalRows);
+  const isInternalQueueRoute = isInternalFinanceQuery(initialView);
+  const { rows: internalQueueRows, meta: internalQueueMeta, loading: internalQueueLoading, error: internalQueueError, load: loadInternalQueue } = useInternalFinanceQuery(initialView, setSelectedOriginalRows);
   const [paymentPrintPreview, setPaymentPrintPreview] =
     useState<PaymentPrintDocumentData | null>(null);
   const [paymentWordExportLoading, setPaymentWordExportLoading] = useState(false);
@@ -813,6 +819,7 @@ export default function FinanceCenterPage({
     claimTarget, setClaimTarget, claimCustomers, setClaimCustomers,
     claimCustomersLoading, setClaimCustomersLoading, claimCustomerSearchRequest,
     incomingAllocationTarget, setIncomingAllocationTarget, incomingDetailTarget, setIncomingDetailTarget,
+    incomingDetailLoading, incomingDetailError, retryIncomingDetail,
     incomingForm, claimForm,
   } = useFinanceIncomingState(initialView);
   const {
@@ -1144,11 +1151,7 @@ export default function FinanceCenterPage({
           : "",
       paid_from: paidRange?.[0]?.format?.("YYYY-MM-DD") || undefined,
       paid_to: paidRange?.[1]?.format?.("YYYY-MM-DD") || undefined,
-      payee:
-        query.routeField9 ||
-        (initialView === "finance-internal-detail"
-          ? currentUser.displayName || "姓名待维护"
-          : ""),
+      payee: query.routeField9 || "",
       case_stages: listValue(query.routeField10),
       fee_types: listValue(query.routeField11),
       page,
@@ -1289,7 +1292,7 @@ export default function FinanceCenterPage({
                   ? {
                       routeField7: "全部",
                       routeField9:
-                        currentUser.displayName || "姓名待维护",
+                        currentUser.displayName || "",
                     }
                   : initialView === "finance-internal-company"
                     ? { routeField7: "全部" }
@@ -1306,11 +1309,12 @@ export default function FinanceCenterPage({
     setOriginalQueryDraft(defaults);
     setOriginalQuery(defaults);
     setSelectedOriginalRows([]);
+    setLocalListPage({ page: 1, pageSize: 15 });
     setPaymentPrintPreview(null);
     resetPaymentPackageRoute();
     setPaymentPackageMeta({ total: 0, page: 1, pageSize: 15 });
     setGeneralSettlementDetails([]);
-    if (initialView !== "finance-legacy-history") void loadForTab(initialTab);
+    if (initialView !== "finance-legacy-history" && !/^finance-incoming-payment-\d+$/.test(initialView)) void loadForTab(initialTab, defaults);
   }, [initialView, contractPaymentSourceSearch]);
   const { createIncoming, claimIncoming, openIncomingAllocation, allocateIncoming, deleteIncoming, createTransaction, createReconciliation, confirmReconciliation } = createFinanceAccountingActions({
     get incomingForm() { return incomingForm; },
@@ -1672,14 +1676,11 @@ export default function FinanceCenterPage({
     const data = fee.data || {};
     return cases.find(
       (item) =>
-        (data.case_id && Number(data.case_id) === item.id) ||
+        ((data.case_id || data.case_record_id) && Number(data.case_id || data.case_record_id) === item.id) ||
         (data.case_no && data.case_no === item.serial_no),
     );
   };
   const paymentStatus = (fee: Fee) => paymentLifecycleStatus(fee);
-  const isInternalRefundFee = (fee: Fee) =>
-    fee.data?.fee_type === "内部费用" &&
-    (fee.data?.is_refund === true || Number(fee.data?.amount || 0) < 0);
   const originalFinanceRows = useMemo(() => {
     if (initialView === "finance-payment-query") return fees;
     let result = [
@@ -1995,7 +1996,9 @@ export default function FinanceCenterPage({
     queryField("费用类型", "feeType", "feeType"),
   ];
   const originalOperation = (_: unknown, row: Fee) => (
-    initialView === "finance-payment-print" ? (
+    isInternalQueueRoute && row.data?.read_only ? (
+      <Button type="link" onClick={() => void openPaymentDetail(row)}>查看</Button>
+    ) : initialView === "finance-payment-print" ? (
       <Space size={0}>
         {["待核销", "已付款"].includes(paymentStatus(row)) && (
           <Button type="link" onClick={() => void openPaymentDetail({...row, data: {...row.data, _open_print: true}})}>
@@ -2346,7 +2349,9 @@ export default function FinanceCenterPage({
       </Button>
     );
   const internalListOperation = (_: unknown, row: Fee) =>
-    initialView === "finance-internal-refused" ? (
+    row.data?.read_only ? (
+      <Button type="link" onClick={() => void openPaymentDetail(row)}>查看</Button>
+    ) : initialView === "finance-internal-refused" ? (
       <Button type="link" onClick={() => voidRejectedInternalFee(row)}>
         作废
       </Button>
@@ -3069,6 +3074,7 @@ export default function FinanceCenterPage({
       法院案号: data.court_case_no,
       法院名称: data.court_name,
       案件名称:
+        data.case_name ||
         (isInternalApprovalRoute ||
         initialView === "finance-internal-settle" ||
         [
@@ -3077,7 +3083,7 @@ export default function FinanceCenterPage({
           "finance-internal-query",
         ].includes(initialView)
           ? linkedCase?.title
-          : "") || row.title,
+          : row.title),
       原告:
         data.plaintiff ||
         linkedCaseData.plaintiff ||
@@ -3167,7 +3173,9 @@ export default function FinanceCenterPage({
       回款单位: data.received_payer_name || row.payer_name || data.payer_name || data.payee,
       到账单位:
         data.received_payer_name || row.payer_name || data.payee,
-      收款人: data.payee || tx?.counterparty,
+      收款人: initialView.startsWith("finance-internal")
+        ? financePersonDisplayName(data.payee_username || data.payee, data.payee_display_name)
+        : data.payee || tx?.counterparty,
       收款单位: data.paid_organization || data.payee || tx?.counterparty,
       提成类型: data.commission_type || row.title || data.fee_type,
       来源代理费编号: data.source_fee_no,
@@ -3374,6 +3382,7 @@ export default function FinanceCenterPage({
     get openPaymentPackageDetail() { return openPaymentPackageDetail; },
   });
   const configuredRows = useMemo(() => {
+    if (isInternalQueueRoute) return internalQueueRows;
     if (!activeRouteConfig) return originalFinanceRows;
     if (activeRouteConfig.source === "incoming") return incoming as OriginalFinanceRow[];
     let rows: OriginalFinanceRow[] = initialView === "finance-payment-print"
@@ -3424,28 +3433,8 @@ export default function FinanceCenterPage({
         identities.includes(row.data?.applicant || row.owner || ""),
       );
     }
-    if (
-      [
-        "finance-internal-archive",
-        "finance-internal-audit",
-        "finance-internal-fee-audit",
-      ].includes(initialView)
-    )
-      rows = rows.filter((row) =>
-        initialView === "finance-internal-archive"
-          ? row.status === "待归档"
-          : row.status === "待审批",
-      );
-    if (initialView === "finance-internal-refund-audit")
-      rows = rows.filter((row) => isInternalRefundFee(row as Fee));
-    if (initialView === "finance-internal-refused")
-      rows = rows.filter((row) =>
-        ["已拒绝", "已退回", "已驳回"].includes(row.status || ""),
-      );
     if (initialView === "finance-internal-void")
       rows = rows.filter((row) => row.status === "已作废");
-    if (initialView === "finance-internal-payment")
-      rows = rows.filter((row) => row.status === "已审批");
     if (initialView === "finance-internal-writeoff")
       rows = rows.filter((row) => row.status === "待核销");
     const statusByRoute: Record<string, string[]> = {
@@ -3510,6 +3499,8 @@ export default function FinanceCenterPage({
       }),
     );
   }, [
+    isInternalQueueRoute,
+    internalQueueRows,
     activeRouteConfig,
     originalFinanceRows,
     incoming,
@@ -3591,11 +3582,15 @@ export default function FinanceCenterPage({
             fee.title ??
             fee.data?.fee_type,
           payee:
-            detail.payee ??
-            detail.payment_target ??
-            fee.data?.payee ??
-            fee.data?.handler ??
-            fee.owner,
+            detail.payee != null
+              ? financePersonDisplayName(detail.payee, detail.payee_display_name)
+              : detail.payment_target != null
+                ? financePersonDisplayName(detail.payment_target, detail.payment_target_display_name)
+                : fee.data?.payee != null
+                  ? financePersonDisplayName(fee.data.payee_username || fee.data.payee, fee.data.payee_display_name)
+                  : fee.data?.handler != null
+                    ? financePersonDisplayName(fee.data.handler, fee.data.handler_display_name)
+                    : financePersonDisplayName(fee.owner, fee.owner_display_name),
           base_amount:
             detail.base_amount ?? fee.data?.commission_base ?? fee.data?.amount,
           base_commission: detail.base_commission ?? fee.data?.base_commission,
@@ -3611,7 +3606,7 @@ export default function FinanceCenterPage({
         }));
         });
       }),
-    [feeReviewTargets],
+    [feeReviewTargets, financePersonNameMap],
   );
   const paymentReviewRows = useMemo(
     () =>
@@ -3678,6 +3673,7 @@ export default function FinanceCenterPage({
       .filter(([, value]) => value !== undefined),
   );
   const submitConfiguredQuery = () => {
+    setLocalListPage((value) => ({ ...value, page: 1 }));
     const next = effectivePaymentQuery(
       initialView,
       { ...configuredDefaults, ...originalQueryDraft },
@@ -3685,6 +3681,11 @@ export default function FinanceCenterPage({
     );
     setOriginalQuery(next);
     setSelectedOriginalRows([]);
+    if (isInternalQueueRoute) {
+      void loadInternalQueue(next, 1, internalQueueMeta.pageSize).catch((error: unknown) =>
+        message.error(financeErrorDetail(error) || "内部费用查询失败"));
+      return;
+    }
     if (activeRouteConfig?.source === "incoming") {
       void loadIncomingPayments(next, 1, incomingMeta.pageSize).catch((error: unknown) =>
         message.error(financeErrorDetail(error) || "回款查询失败"),
@@ -3774,6 +3775,15 @@ export default function FinanceCenterPage({
     }
   };
   const clearConfiguredQuery = () => {
+    setLocalListPage((value) => ({ ...value, page: 1 }));
+    setSelectedOriginalRows([]);
+    if (isInternalQueueRoute) {
+      setOriginalQueryDraft({});
+      setOriginalQuery({});
+      void loadInternalQueue({}, 1, internalQueueMeta.pageSize).catch((error: unknown) =>
+        message.error(financeErrorDetail(error) || "内部费用查询失败"));
+      return;
+    }
     if (activeRouteConfig?.source === "incoming") {
       const next = paymentWriteoffClearQuery(initialView);
       setOriginalQueryDraft(next);
@@ -3892,7 +3902,7 @@ export default function FinanceCenterPage({
         ...(initialView === "finance-internal-detail"
           ? {
               routeField9:
-                currentUser.displayName || "姓名待维护",
+                currentUser.displayName || "",
             }
           : {}),
       };
@@ -4160,7 +4170,7 @@ export default function FinanceCenterPage({
             {feeDetail.data.case_no ? <Button type="link" onClick={() => openCaseDetail(feeDetail.data.case_no)}>{feeDetail.data.case_no}</Button> : "—"}
           </Descriptions.Item>
           <Descriptions.Item label="案件名称">
-            {linkedCaseForFee(feeDetail)?.title || feeDetail.title || "—"}
+            {feeDetail.data.case_name || linkedCaseForFee(feeDetail)?.title || "—"}
           </Descriptions.Item>
           <Descriptions.Item label="合同编号">
             {feeDetail.data.contract_no ? <Button type="link" onClick={() => openContractDetail(feeDetail.data.contract_no)}>{feeDetail.data.contract_no}</Button> : "—"}
@@ -4234,16 +4244,10 @@ export default function FinanceCenterPage({
                     {
                       index: 1,
                       payee:
-                        feeDetail.data.payee && !feeDetail.data.payee_username
-                          ? feeDetail.data.payee
-                          : financePersonDisplayName(
-                              feeDetail.data.payee_username ||
-                                feeDetail.data.applicant ||
-                                feeDetail.owner,
-                              feeDetail.data.payee_display_name ||
-                                feeDetail.data.applicant_display_name ||
-                                feeDetail.data.owner_display_name,
-                            ),
+                        financePersonDisplayName(
+                          feeDetail.data.payee_username || feeDetail.data.payee,
+                          feeDetail.data.payee_display_name,
+                        ),
                       fee_type: feeDetail.data.fee_type || "—",
                       base: Number(
                         feeDetail.data.commission_base || 0,
@@ -4637,7 +4641,7 @@ export default function FinanceCenterPage({
                   <td>{item.case_name || "—"}</td>
                   <td>￥{Number(item.amount).toFixed(2)}</td>
                   <td>{item.commission_type || "—"}</td>
-                  <td>{item.payee || "—"}</td>
+                  <td>{financePersonDisplayName(item.payee, item.payee_display_name)}</td>
                   <td>{item.remark || "—"}</td>
                 </tr>,
                 <tr key={`${item.fee_id}-subtotal`} className="finance-payment-print-subtotal">
@@ -4662,8 +4666,8 @@ export default function FinanceCenterPage({
         <h2>已分配回款</h2>
         <Button onClick={() => {
           setIncomingDetailTarget(null);
-          onNavigate?.("finance-incoming-company");
-        }}>返回回款列表</Button>
+          onNavigate?.("dashboard");
+        }}>返回控制台</Button>
       </div>
       <div className="finance-incoming-applied-heading">回款信息</div>
       <Descriptions
@@ -4704,6 +4708,16 @@ export default function FinanceCenterPage({
           { title: "待收", width: 110, align: "right" as const, render: (_: unknown, row) => row.fee_total_amount == null || row.fee_allocated_amount == null ? "无权限" : money(Math.max(row.fee_total_amount - row.fee_allocated_amount, 0)) },
           { title: "本次回款", dataIndex: "current_amount", width: 120, align: "right" as const, render: (value: number | null) => value == null ? "无权限" : money(value) },
         ]}
+      />
+    </section>
+  ) : /^finance-incoming-payment-\d+$/.test(initialView) ? (
+    <section className="finance-original-panel finance-incoming-applied-page">
+      <h2>回款关联详情</h2>
+      <Alert
+        showIcon
+        type={incomingDetailError ? "error" : "info"}
+        message={incomingDetailError || (incomingDetailLoading ? "正在加载回款详情" : "正在读取回款详情")}
+        action={incomingDetailError ? <Button onClick={retryIncomingDetail}>重试</Button> : undefined}
       />
     </section>
   ) : null;
@@ -4981,6 +4995,7 @@ export default function FinanceCenterPage({
     onSelectedFeeIdsChange: setPaymentPackageSelectedFeeIds,
     form: paymentPackageEditForm,
     candidates: paymentPackageCandidates,
+    financePersonDisplayName,
     onSubmit: submitPaymentPackageEditor,
     onClose: closePaymentPackageEditor,
   } satisfies PaymentPackageEditorModalProps;
@@ -5057,7 +5072,11 @@ export default function FinanceCenterPage({
     isInternalApprovalRoute,
     isRefundCaseFeeRoute,
     activeRouteConfig,
-    loading: activeRouteConfig?.source === "incoming" ? loading || incomingLoading : loading,
+    loading: loading || (activeRouteConfig?.source === "incoming" ? incomingLoading : isInternalQueueRoute && internalQueueLoading),
+    isInternalQueueRoute,
+    internalQueueMeta,
+    internalQueueError,
+    loadInternalQueue,
     paymentPackageLoading,
     invoiceExportLoading,
     feeQueryExportLoading,
@@ -5077,6 +5096,8 @@ export default function FinanceCenterPage({
     setPaymentQueryPageSize,
     paymentAuditPageSize,
     setPaymentAuditPageSize,
+    localListPage,
+    setLocalListPage,
     paymentQueryQuickPage,
     setPaymentQueryQuickPage,
     feeQueryMeta,

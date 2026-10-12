@@ -15,8 +15,8 @@ function find(node, predicate) {
 }
 const variable = (root, name) => find(root, node => ts.isVariableDeclaration(node) && node.name.getText(root) === name);
 function runExpression(node, root, bindings) {
-  const js = ts.transpileModule(`const result = ${node.getText(root)};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  return new Function(...Object.keys(bindings), js + '\nreturn result;')(...Object.values(bindings));
+  const js = ts.transpileModule(`const result = ${node.getText(root)};`, { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText;
+  return new Function('React', ...Object.keys(bindings), js + '\nreturn result;')(React, ...Object.values(bindings));
 }
 function initialValue(name) {
   const node = find(page, node => ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name) && node.name.elements[0].name?.getText(page) === name);
@@ -50,11 +50,32 @@ test('initial ordinary table renders loading feedback before effects, never empt
   assert.equal(tableValue('loading', state), true);
   assert.equal(tableValue('locale', state).emptyText, '案件加载中…');
 });
+
+test('batch execution and receipt pagination accepts 200 and resets changed size to page one', async () => {
+  const requests = [], selected = [];
+  const bindings = {
+    pendingExecutionPage: 6, pendingExecutionPageSize: 20, pendingExecutionTotal: 201,
+    loadPendingExecutionCases: (...args) => requests.push(args),
+    setSelectedCaseKeys: value => selected.push(value),
+    receiptList: { page: 6, pageSize: 20, total: 201, search: (...args) => requests.push(args) },
+    specialCaseList: { active: false, page: 6, pageSize: 20, total: 201, search: (...args) => requests.push(args) },
+  };
+  for (const mode of ['execution', 'receipt', 'unclaimed', 'refund']) {
+    const value = runExpression(variable(page, 'specialPagination').initializer, page, { ...bindings, specialMode: mode,
+      specialCaseList: { ...bindings.specialCaseList, active: ['unclaimed', 'refund'].includes(mode) } });
+    assert.ok(value.pageSizeOptions.includes(200));
+    value.onChange(6, 200);
+    assert.deepEqual(requests.at(-1), mode === 'execution' ? [1, 200] : [undefined, 1, 200]);
+    assert.deepEqual(selected.at(-1), []);
+    value.onChange(2, 20);
+    assert.deepEqual(requests.at(-1), mode === 'execution' ? [2, 20] : [undefined, 2, 20]);
+  }
+});
 test('special table isolates receipt and stage loading from unrelated feeds', () => {
   const otherTable = tableForDataSource('specialRows');
   const loading = otherTable.attributes.properties.find(attr => ts.isJsxAttribute(attr) && attr.name.getText(page) === 'loading');
   assert.ok(loading);
-  const evaluate = (specialMode, sharedLoading, receiptLoading, stageLoading, invoiceLoading = false) => runExpression(loading.initializer.expression, page, { specialMode, loading: sharedLoading, receiptList: { loading: receiptLoading }, stageStatistics: { loading: stageLoading }, invoiceBatch: { loading: invoiceLoading } });
+  const evaluate = (specialMode, sharedLoading, receiptLoading, stageLoading, invoiceLoading = false) => runExpression(loading.initializer.expression, page, { specialMode, loading: sharedLoading, specialCaseList: { active: false }, receiptList: { loading: receiptLoading }, stageStatistics: { loading: stageLoading }, invoiceBatch: { loading: invoiceLoading } });
   assert.equal(evaluate('receipt', false, true, false), true);
   assert.equal(evaluate('receipt', true, false, true), false);
   assert.equal(evaluate('receipt', true, true, true), true);
@@ -71,6 +92,96 @@ test('special table isolates receipt and stage loading from unrelated feeds', ()
   }
   const locale = otherTable.attributes.properties.find(attr => ts.isJsxAttribute(attr) && attr.name.getText(page) === 'locale');
   assert.equal(locale, undefined, 'ordinary-query empty/error text must not leak into other tables');
+});
+
+async function specialCaseSetup(t, route) {
+  const requests = [];
+  const compiled = ts.transpileModule(fs.readFileSync(new URL('../src/legal/hooks/useSpecialCaseRecords.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const loaded = { exports: {} };
+  const api = { get: (url, options) => {
+    assert.equal(url, '/cases/special-records');
+    const pending = deferred();
+    requests.push({ params: options.params, ...pending });
+    return pending.promise;
+  } };
+  new Function('require', 'module', 'exports', compiled)(name => {
+    if (name === 'react') return React;
+    assert.equal(name, '../../api');
+    return { api };
+  }, loaded, loaded.exports);
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  let current, renderer;
+  function Host({ route }) { current = loaded.exports.useSpecialCaseRecords(route); return null; }
+  await act(async () => { renderer = create(React.createElement(Host, { route })); });
+  t.after(async () => { await act(async () => renderer.unmount()); delete globalThis.IS_REACT_ACT_ENVIRONMENT; });
+  return { requests, get current() { return current; }, changeRoute: async route => {
+    await act(async () => renderer.update(React.createElement(Host, { route })));
+  } };
+}
+
+test('special case query forwards filters and page size, retries exact query, ignores stale results', async t => {
+  const env = await specialCaseSetup(t, 'case-company-no-refund');
+  let first, second;
+  const day = value => ({ format: pattern => { assert.equal(pattern, 'YYYY-MM-DD'); return value; } });
+  await act(async () => { first = env.current.search({ serial_no: 'CODEX-201', refund_amount: 0,
+    payment_range: [day('2026-01-01'), day('2026-01-31')] }, 1, 200); });
+  assert.deepEqual(env.requests[0].params, { kind: 'refund', scope: 'company', serial_no: 'CODEX-201',
+    refund_amount: 0, paid_from: '2026-01-01', paid_to: '2026-01-31', page: 1, page_size: 200 });
+  await act(async () => { second = env.current.search(undefined, 2, 200); });
+  await act(async () => { env.requests[1].resolve({ data: { items: [{ id: 201 }], total: 201 } }); await second; });
+  await act(async () => { env.requests[0].resolve({ data: { items: [{ id: 1 }], total: 201 } }); await first; });
+  assert.equal(env.current.page, 2);
+  assert.deepEqual(env.current.rows, [{ id: 201 }]);
+  let failed, retry;
+  await act(async () => { failed = env.current.search(undefined, 1, 50); });
+  await act(async () => { env.requests[2].reject({ response: { data: { detail: 'CODEX查询失败' } } }); await failed; });
+  assert.equal(env.current.error, 'CODEX查询失败');
+  assert.deepEqual(env.current.rows, []);
+  await act(async () => { retry = env.current.reload(); });
+  assert.deepEqual(env.requests[3].params, env.requests[2].params);
+  await act(async () => { env.requests[3].resolve({ data: { items: [], total: 0 } }); await retry; });
+  assert.equal(env.current.error, '');
+  let leaving;
+  await act(async () => { leaving = env.current.search({}, 1, 200); });
+  await env.changeRoute('case-mine-unclaimed');
+  await act(async () => { env.requests[4].resolve({ data: { items: [{ id: 99 }], total: 1 } }); await leaving; });
+  assert.deepEqual(env.current.rows, []);
+  let mine;
+  await act(async () => { mine = env.current.reload(); });
+  assert.deepEqual(env.requests[5].params, { kind: 'unclaimed', scope: 'mine', page: 1, page_size: 20 });
+  await act(async () => { env.requests[5].resolve({ data: { items: [], total: 0 } }); await mine; });
+});
+
+test('special list initial load does not request a 100-row side feed or locally re-filter server rows', async () => {
+  const calls = [];
+  const rows = [{ id: 201, data: { commission_applied: false } }];
+  const specialCaseList = { active: true, rows, reload: async () => { calls.push('special'); return true; } };
+  const context = { specialCaseList, initialView: 'case-mine-unclaimed', setLoading: () => {}, setProfile: () => {},
+    setSelectedCaseKeys: keys => assert.deepEqual(keys, []) };
+  const load = runExpression(variable(service, 'load').initializer, service, { context,
+    api: { get: async url => { calls.push(url); assert.equal(url, '/auth/me'); return { data: {} }; } }, message: { error: text => assert.fail(text) } });
+  await load();
+  assert.deepEqual(calls, ['/auth/me', 'special']);
+  assert.equal(runExpression(variable(page, 'specialRows').initializer, page, { specialCaseList }), rows);
+});
+
+test('special query submit and reset clear selected rows and start filtered server page one', () => {
+  const calls = [], selected = [];
+  const bindings = { setCaseQuery: query => calls.push(['query', query]), setSelectedCaseKeys: keys => selected.push(keys),
+    setCompanySchedulePage: value => calls.push(['local-page', value]), specialCaseList: { active: true, pageSize: 200,
+      search: (...args) => calls.push(['search', ...args]) }, caseQueryForm: { resetFields: () => calls.push(['reset']) } };
+  const bar = find(page, node => ts.isJsxOpeningElement(node) && node.tagName.getText(page) === 'ListFilterBar'
+    && node.attributes.properties.some(attr => ts.isJsxAttribute(attr) && attr.name.getText(page) === 'className' && attr.initializer?.text === 'case-special-query'));
+  const finish = bar.attributes.properties.find(attr => attr.name?.getText(page) === 'onFinish').initializer.expression;
+  runExpression(finish, page, bindings)({ customer: 'CODEX' });
+  assert.deepEqual(calls.at(-1), ['search', { customer: 'CODEX' }, 1, 200]);
+  const reset = find(page, node => ts.isJsxAttribute(node) && node.name.getText(page) === 'onClick'
+    && node.initializer?.expression?.getText(page).startsWith('()=>{caseQueryForm.resetFields();setCaseQuery({});'));
+  runExpression(reset.initializer.expression, page, bindings)();
+  assert.deepEqual(calls.at(-1), ['search', {}, 1, 200]);
+  assert.deepEqual(selected, [[], []]);
 });
 
 const documentsService = parse('../src/legal/services/documentsActions.tsx');

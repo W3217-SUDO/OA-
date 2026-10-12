@@ -1,6 +1,6 @@
 """系统管理路由编排。"""
 from app.core.constants import (
-    DEFAULT_ROLE_PERMISSIONS,
+    DEFAULT_HIDDEN_MENU_KEYS, DEFAULT_ROLE_PERMISSIONS,
     DEFAULT_SYSTEM_MENUS, FIELD_KEYS, MENU_KEYS, ROLE_DATA_SCOPES, SYSTEM_ACTION_BY_CODE,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_CACHE_META, SYSTEM_CACHE_REGISTRY, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_PARAMETER_CACHE,
     SYSTEM_PARAMETER_CATEGORIES, _LEGACY_CASE_TASK_HISTORY_ENTITIES, logger,
@@ -1143,10 +1143,10 @@ async def reset_system_menus(identity: dict = Depends(current_identity), db: Asy
     for key, (parent_key, label, icon, sort_order) in defaults.items():
         item = by_key.get(key)
         if not item:
-            db.add(SystemMenu(key=key, parent_key=parent_key, label=label, icon=icon, sort_order=sort_order, updated_by=identity["username"]))
+            db.add(SystemMenu(key=key, parent_key=parent_key, label=label, icon=icon, sort_order=sort_order, is_visible=key not in DEFAULT_HIDDEN_MENU_KEYS, updated_by=identity["username"]))
             continue
         item.parent_key = parent_key; item.label = label; item.icon = icon; item.sort_order = sort_order
-        item.is_visible = True; item.is_active = True; item.updated_by = identity["username"]
+        item.is_visible = key not in DEFAULT_HIDDEN_MENU_KEYS; item.is_active = True; item.updated_by = identity["username"]
     await _system_audit(db, identity, "重置系统菜单", "系统菜单:重置", {"count": len(defaults)})
     await db.commit()
     refreshed = (await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all()
@@ -1314,8 +1314,10 @@ async def list_notifications(
     from app.core.tasks import (
         _notification_dict,
     )
+    from app.core.notification_policy import visible_notification_condition
     if date_from and date_to and date_from > date_to: raise HTTPException(status_code=422, detail="开始日期不能晚于结束日期")
     conditions = [Notification.sender == identity["username"], Notification.sender_deleted.is_(False)] if sent_only else [Notification.recipient == identity["username"], Notification.recipient_deleted.is_(False)]
+    conditions.append(visible_notification_condition())
     if unread_only or read_status == "未读": conditions.append(Notification.is_read.is_(False))
     elif read_status == "已读": conditions.append(Notification.is_read.is_(True))
     elif read_status not in {"", "全部"}: raise HTTPException(status_code=422, detail="消息状态无效")
@@ -1342,7 +1344,7 @@ async def list_notifications(
     if date_to: conditions.append(Notification.created_at <= datetime.combine(date_to, datetime.max.time()))
     total = int(await db.scalar(select(func.count()).select_from(Notification).where(*conditions)) or 0)
     items = (await db.scalars(select(Notification).where(*conditions).order_by(Notification.created_at.desc(), Notification.id.desc()).offset((page - 1) * page_size).limit(page_size))).all()
-    unread = int(await db.scalar(select(func.count()).select_from(Notification).where(Notification.recipient == identity["username"], Notification.recipient_deleted.is_(False), Notification.is_read.is_(False))) or 0)
+    unread = int(await db.scalar(select(func.count()).select_from(Notification).where(Notification.recipient == identity["username"], Notification.recipient_deleted.is_(False), Notification.is_read.is_(False), visible_notification_condition())) or 0)
     source_ids = {item.source_id for item in items if item.source_type in {"task", "case", "feedback"} and item.source_id}
     source_records = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module.in_(("task", "case", "bug_feedback")), BusinessRecord.id.in_(source_ids),

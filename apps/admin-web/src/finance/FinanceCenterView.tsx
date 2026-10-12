@@ -211,7 +211,7 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
   if (incomingAllocationTarget) {
     return <IncomingAllocationRecordsPage key={incomingAllocationTarget.id} paymentId={incomingAllocationTarget.id} onClose={() => setIncomingAllocationTarget(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
   }
-  if (feeDetail && !isInternalHistoryList && (feeDetail.data?.application_items || initialView.startsWith("finance-payment-") && (feeDetail.module === "contract_payment" || feeDetail.data?.expense_scope !== "内部" && feeDetail.data?.fee_type !== "内部费用"))) {
+  if (feeDetail && (feeDetail.data?.application_items || !isInternalHistoryList && initialView.startsWith("finance-payment-") && (feeDetail.module === "contract_payment" || feeDetail.data?.expense_scope !== "内部" && feeDetail.data?.fee_type !== "内部费用"))) {
     return <PaymentApplicationPage key={feeDetail.id} record={feeDetail} onClose={() => setFeeDetail(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
   }
   return (

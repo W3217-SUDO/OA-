@@ -169,6 +169,10 @@ export function FeeReviewDrawer({
         },
       ];
 
+  const readableColumns = isPaymentAudit ? columns : columns.map((column) => ({
+    ...column,
+    width: column.dataIndex === "case_no" ? 160 : column.dataIndex === "payee" ? 110 : 100,
+  }));
   const dataSource = (isPaymentAudit ? paymentReviewRows : feeReviewRows) as any;
 
   return (
@@ -177,7 +181,7 @@ export function FeeReviewDrawer({
       title={
         <h5>{initialView === "finance-payment-audit" ? "付款审批" : "提成审批"}</h5>
       }
-      width={580}
+      width={isPaymentAudit ? 580 : 960}
       placement="right"
       mask={false}
       closable={{ placement: "end" }}
@@ -213,7 +217,8 @@ export function FeeReviewDrawer({
         size="small"
         pagination={false}
         tableLayout="fixed"
-        columns={columns}
+        columns={readableColumns}
+        scroll={{ x: readableColumns.reduce((sum, column) => sum + column.width, 0) }}
         dataSource={dataSource}
       />
     </Drawer>

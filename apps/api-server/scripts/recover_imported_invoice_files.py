@@ -61,6 +61,7 @@ async def _manifest(path: Path, source_dir: Path) -> list[dict]:
 
 
 async def recover(*, manifest_path: Path, source_dir: Path, apply: bool) -> dict[str, int]:
+    from app.areas.legal.case_fee_file_deletions import fee_file_was_deleted
     from app.core.constants import UPLOAD_ROOT
     from app.database import SessionLocal
     from app.models import BusinessRecord, FileAttachment, LegacyFinanceFile, LegacyFinanceRecord
@@ -118,6 +119,7 @@ async def recover(*, manifest_path: Path, source_dir: Path, apply: bool) -> dict
 
         plans = []
         reused = 0
+        deleted_links_skipped = 0
         for entry in manifest:
             ledger = ledger_by_key[entry["key"]]
             if not ledger.is_active or ledger.filename != entry["filename"] or ledger.size_bytes != entry["size"]:
@@ -128,6 +130,9 @@ async def recover(*, manifest_path: Path, source_dir: Path, apply: bool) -> dict
                 raise RuntimeError(f"来源附件 {entry['key']} 的案件费用关联不完整")
             for source_id in source_ids:
                 fee = fee_by_source[source_id]
+                if fee_file_was_deleted(fee.data or {}, legacy_file_key=ledger.legacy_key):
+                    deleted_links_skipped += 1
+                    continue
                 matches = attachments_by_fee_name[(fee.id, ledger.filename)]
                 if entry.get("object_key"):
                     source_location = f"oss://{entry['oss_bucket']}/{entry['object_key']}"
@@ -144,6 +149,7 @@ async def recover(*, manifest_path: Path, source_dir: Path, apply: bool) -> dict
                   "oss_objects": sum(bool(row.get("object_key")) for row in manifest),
                   "local_files": sum(not row.get("object_key") for row in manifest),
                   "existing_verified_links": reused,
+                  "deleted_links_skipped": deleted_links_skipped,
                   "attachments_to_create": len(plans),
                   "ledger_files_to_verify": sum(not ledger_by_key[row["key"]].physical_file_verified
                                                 for row in manifest)}

@@ -7,9 +7,138 @@ import React from "react";
 import { act, create } from "react-test-renderer";
 import ts from "typescript";
 
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const require = createRequire(import.meta.url);
 const sourceRoot = new URL("../../src/finance/", import.meta.url);
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+test("internal queues request real 200-row pages, retain server status and expose denied access", async () => {
+  const requests = [];
+  const cleared = [];
+  const fixtures = Array.from({ length: 201 }, (_, index) => ({ id: index + 1, status: "已付款", data: { fee_type: "代理费", amount: index + 1, cashed_amount: (index + 1) * 2 } }));
+  let denied = false;
+  const { useInternalFinanceQuery, internalFinanceQueryRequest } = loadModule("hooks/useInternalFinanceQuery.ts", {
+    "../../api": { api: { get: async (path, options) => {
+      requests.push({ path, ...options });
+      if (denied) throw new Error("无权查询内部费用");
+      const { page, page_size } = options.params;
+      return { data: { items: fixtures.slice((page - 1) * page_size, page * page_size), total: fixtures.length, page, page_size, amount_visible: true, total_amount: 20301, total_cashed_amount: 40602 } };
+    } } },
+    "../financeErrors": { financeErrorDetail: (error) => error.message },
+  });
+  let state;
+  const clear = (keys) => cleared.push(keys);
+  const Probe = () => { state = useInternalFinanceQuery("finance-internal-settle", clear); return null; };
+  let tree;
+  await act(async () => { tree = create(React.createElement(Probe)); });
+  await act(async () => state.load({ routeField1: "CODEX-CASE" }, 1, 200));
+  assert.equal(state.rows.length, 200);
+  assert.equal(state.rows[0].status, "已付款");
+  assert.equal(state.meta.total, 201);
+  assert.equal(state.meta.pageSize, 200);
+  assert.equal(state.meta.totalAmount, 20301);
+  assert.equal(state.meta.totalCashedAmount, 40602);
+  assert.equal(requests[0].path, "/finance/settlements/pending");
+  assert.equal(requests[0].params.case_no, "CODEX-CASE");
+  await act(async () => state.load({ routeField1: "CODEX-CASE" }, 2, 200));
+  assert.deepEqual(state.rows.map((row) => row.id), [201]);
+  assert.equal(state.rows[0].data.amount, 201);
+  assert.equal(state.rows[0].data.cashed_amount, 402);
+  assert.equal(state.meta.totalAmount, 20301);
+  assert.equal(state.meta.totalCashedAmount, 40602);
+  denied = true;
+  await act(async () => { await assert.rejects(state.load({}, 1, 50), /无权/); });
+  assert.equal(state.error, "无权查询内部费用");
+  assert.equal(state.rows.length, 0);
+  assert.equal(state.loading, false);
+  assert.equal(cleared.length, 3);
+  const archive = internalFinanceQueryRequest("finance-internal-archive", {
+    routeField2: "CODEX-APPLICANT", routeField5: "CODEX-CASE", routeField6: "CODEX-REQUEST",
+  }, 1, 200);
+  assert.equal(archive.params.scope, "archive");
+  assert.equal(archive.params.application_no, "CODEX-REQUEST");
+  assert.equal(archive.params.applicant, "CODEX-APPLICANT");
+  const review = internalFinanceQueryRequest("finance-internal-fee-audit", {}, 1, 200);
+  assert.equal(review.params.kind, "other");
+  await act(async () => tree.unmount());
+});
+
+test("internal queue late response cannot overwrite a newer page or route", async () => {
+  const pending = [];
+  const { useInternalFinanceQuery } = loadModule("hooks/useInternalFinanceQuery.ts", {
+    "../../api": { api: { get: (_path, options) => new Promise((resolve, reject) => pending.push({ ...options, resolve, reject })) } },
+    "../financeErrors": { financeErrorDetail: (error) => error.message },
+  });
+  let state;
+  const clear = () => {};
+  const Probe = ({ route }) => { state = useInternalFinanceQuery(route, clear); return null; };
+  let tree, first, second;
+  await act(async () => { tree = create(React.createElement(Probe, { route: "finance-internal-audit" })); });
+  await act(async () => { first = state.load({}, 1, 15); });
+  await act(async () => { second = state.load({}, 1, 200); });
+  assert.equal(pending[0].signal.aborted, true);
+  await act(async () => { pending[1].resolve({ data: { items: [{ id: 2 }], total: 1, page: 1, page_size: 200, amount_visible: true, total_amount: 200 } }); await second; });
+  await act(async () => { pending[0].resolve({ data: { items: [{ id: 1 }], total: 1, page: 1, page_size: 15, amount_visible: true, total_amount: 15 } }); await first; });
+  assert.equal(state.rows[0].id, 2);
+  assert.equal(state.meta.totalAmount, 200);
+  await act(async () => tree.update(React.createElement(Probe, { route: "finance-internal-refused" })));
+  assert.equal(state.rows.length, 0);
+  assert.equal(state.meta.page, 1);
+  await act(async () => tree.unmount());
+});
+
+test("internal queue grand totals survive unequal pages and preserve zero, hidden amounts and errors", async () => {
+  const fixtures = [{ id: 1, data: { amount: 10, actual_commission: 0 } }, { id: 2, data: { amount: 90 } }];
+  let mode = "visible";
+  const { useInternalFinanceQuery } = loadModule("hooks/useInternalFinanceQuery.ts", {
+    "../../api": { api: { get: async (_path, { params }) => ({ data: {
+      items: mode === "empty" ? [] : mode === "hidden" ? [{ id: params.page, data: {} }] : fixtures.slice(params.page - 1, params.page),
+      total: mode === "empty" ? 0 : 2, page: params.page, page_size: params.page_size,
+      amount_visible: mode === "missing" ? undefined : mode !== "hidden",
+      total_amount: mode === "hidden" ? null : mode === "empty" ? 0 : 100,
+      total_actual_commission: mode === "hidden" ? null : mode === "empty" ? 0 : mode === "invalid" ? undefined : 90,
+    } }) } },
+    "../financeErrors": { financeErrorDetail: (error) => error.message },
+  });
+  let state, tree;
+  const clear = () => {};
+  const Probe = () => { state = useInternalFinanceQuery("finance-internal-payment", clear); return null; };
+  await act(async () => { tree = create(React.createElement(Probe)); });
+  for (const page of [1, 2]) {
+    await act(async () => state.load({ routeField2: "CODEX-PAYEE" }, page, 1));
+    assert.equal(state.rows[0].data.amount, page === 1 ? 10 : 90);
+    assert.equal(state.meta.totalAmount, 100);
+    assert.equal(state.meta.totalActualCommission, 90);
+    assert.equal(state.meta.amountVisible, true);
+  }
+  mode = "empty";
+  await act(async () => state.load({}, 1, 200));
+  assert.equal(state.meta.totalAmount, 0);
+  assert.equal(state.meta.totalActualCommission, 0);
+  mode = "hidden";
+  await act(async () => state.load({}, 1, 200));
+  assert.equal(state.meta.amountVisible, false);
+  assert.equal(state.meta.totalAmount, null);
+  assert.equal(state.meta.totalActualCommission, null);
+  for (mode of ["missing", "invalid"]) {
+    await act(async () => { await assert.rejects(state.load({}, 1, 200), /汇总响应无效/); });
+    assert.equal(state.error, "内部费用汇总响应无效");
+    assert.equal(state.rows.length, 0);
+  }
+  await act(async () => tree.unmount());
+});
+
+test("case readers can open a receipt detail without gaining the company list or write route", () => {
+  const { isWorkspaceRouteGranted } = loadModule("../workspacePermissions.ts", {
+    "./dashboardWorkspace": { dashboardWorkspace: () => null },
+    "./feedback/navigation": { FEEDBACK_ROUTE: "feedback" },
+  });
+  const granted = new Set(["case-company", "finance-internal-audit"]);
+  assert.equal(isWorkspaceRouteGranted("finance-incoming-payment-824", granted), true);
+  assert.equal(isWorkspaceRouteGranted("finance-incoming-company", granted), false);
+  assert.equal(isWorkspaceRouteGranted("finance-receipts-new", granted), false);
+  assert.equal(isWorkspaceRouteGranted("finance-incoming-payment-824", new Set(["hr-all"])), false);
+  assert.equal(isWorkspaceRouteGranted("finance-incoming-payment-invalid", granted), false);
+});
 const host = (name) => ({ children, ...props }) => React.createElement(name, props, children);
 const Form = host("form");
 Form.Item = host("form-item");
@@ -207,16 +336,28 @@ test("incoming detail discards a route's late response and shows a current reque
   let tree;
   await act(async () => { tree = create(React.createElement(Probe, { route: "detail-1" })); });
   assert.equal(pending[0].id, 1);
+  assert.equal(current.incomingDetailLoading, true);
   await act(async () => tree.update(React.createElement(Probe, { route: "detail-2" })));
   assert.equal(pending[0].signal.aborted, true);
   await act(async () => pending[0].resolve({ id: 1 }));
   assert.equal(current.incomingDetailTarget, null);
   await act(async () => pending[1].resolve({ id: 2 }));
   assert.equal(current.incomingDetailTarget.id, 2);
+  assert.equal(current.incomingDetailLoading, false);
   await act(async () => tree.update(React.createElement(Probe, { route: "detail-3" })));
   assert.equal(current.incomingDetailTarget, null);
   await act(async () => pending[2].reject(new Error("回款网络中断")));
-  assert.equal(errors.at(-1), "回款网络中断");
+  assert.equal(current.incomingDetailError, "回款网络中断");
+  assert.equal(current.incomingDetailLoading, false);
+  assert.equal(current.incomingDetailTarget, null);
+  await act(async () => current.retryIncomingDetail());
+  assert.equal(current.incomingDetailError, null);
+  assert.equal(current.incomingDetailLoading, true);
+  assert.equal(pending[3].id, 3);
+  await act(async () => pending[3].resolve({ id: 3 }));
+  assert.equal(current.incomingDetailTarget.id, 3);
+  assert.equal(current.incomingDetailError, null);
+  assert.deepEqual(errors, []);
   await act(async () => tree.unmount());
 });
 

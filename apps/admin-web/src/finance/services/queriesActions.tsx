@@ -119,6 +119,8 @@ async function loadPaymentApprovalApplications() {
 }
 /** finance queries operations; dependencies are read when each operation runs. */
 export interface FinanceQueriesDependencies {
+    readonly isInternalQueueRoute: boolean;
+    readonly loadInternalQueue: (query: Record<string, unknown>, page?: number, pageSize?: number) => Promise<any>;
     readonly onNavigate: ((route: string) => void) | undefined;
     readonly internalDetailMeta: {
         total: number;
@@ -649,7 +651,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             context.setLoading(false);
         }
     };
-    const loadForTab = async (selectedTab: string) => {
+    const loadForTab = async (selectedTab: string, query?: Record<string, unknown>) => {
         const { setLoading, setFinanceDataReady, initialView, loadPaymentQueryPage, paymentQueryPageSize, contractPaymentSource, loadRefunds, refundMeta, activeRefundStatus, isRefundNotRequiredRoute, paymentPackageMeta, isInternalDetailRoute, internalDetailParams, currentUser, isInvoiceMineRoute, invoiceMineParams, isInvoicePendingRoute, invoicePendingParams, isInvoiceCompanyRoute, invoiceCompanyParams, isInvoiceUnissuedRoute, invoiceUnissuedParams, isGeneralSettlementRoute, isGeneralSettlementPendingRoute, generalSettlementParams, isArchiveSettlementActiveRoute, isArchiveSettlementPaymentRoute, isArchiveSettlementPaidRoute, isArchiveSettlementRejectedRoute, archiveSettlementParams, isFeeQueryRoute, isRefundCaseFeeRoute, feeQueryParams, dashboardFeeQuerySeed, setFees, setFinanceFeeListMeta, setPaymentQueryMeta, setContractPayments, setInvoices, setRefunds, setRefundMeta, setSelectedRefundRows, setCases, setCustomers, setIncoming, setSelectedIncomingRows, setTransactions, setReconciliations, setSummary, setRole, setCurrentUser, setFinancePeople, setPendingSettlements, setRefundReviewFees, setPaymentPackages, setPaymentPackageMeta, setInternalDetailRows, setInternalDetailMeta, setInvoiceMineRows, setInvoiceMineMeta, setInvoicePendingRows, setInvoicePendingMeta, setInvoiceCompanyRows, setInvoiceCompanyMeta, setInvoiceUnissuedRows, setInvoiceUnissuedMeta, setGeneralSettlementRows, setGeneralSettlementMeta, setArchiveSettlementRows, setArchiveSettlementMeta, setFeeQueryRows, setFeeQueryMeta } = context;
         const loadContractPaymentRecords = () => contractPaymentSource.active && contractPaymentSource.ok
             ? api.get(`/finance/payment-source/${contractPaymentSource.sourceId}`, {
@@ -726,15 +728,15 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                 setCases(caseRes.data.items || []);
                 return;
             }
-            const resources = financeRouteResources(initialView, selectedTab, context.activeRouteConfig?.source);
-            const feeRequest = !resources.includes("feeRes") ? null : initialView === "finance-payment-query"
+            const resources: ReturnType<typeof financeRouteResources> = context.isInternalQueueRoute
+                ? ["feeRes", "profileRes", "peopleRes"]
+                : financeRouteResources(initialView, selectedTab, context.activeRouteConfig?.source);
+            const feeRequest = !resources.includes("feeRes") ? null : context.isInternalQueueRoute
+                    ? context.loadInternalQueue(query ?? context.originalQuery)
+                    : initialView === "finance-payment-query"
                     ? loadPaymentQueryPage({}, 1, paymentQueryPageSize)
                     : initialView === "finance-internal-mine"
                         ? loadMyInternalApplications()
-                    : ["finance-internal-audit", "finance-internal-fee-audit"].includes(initialView)
-                        ? api.get("/finance/internal-review-requests", {
-                            params: { kind: initialView === "finance-internal-audit" ? "commission" : "other" },
-                        })
                     : ["finance-payment-waiting", "finance-payment-print", "finance-payment-writeoff"].includes(initialView)
                         ? api.get("/finance/payment-workflow/list", {params:{stage:initialView.replace("finance-payment-", "")}})
                     : context.financeProjectionEnabled
@@ -789,7 +791,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                         params: internalDetailParams(initialView === "finance-internal-detail"
                             ? {
                                 routeField7: "全部",
-                                routeField9: currentUser.displayName || "姓名待维护",
+                                routeField9: currentUser.displayName || "",
                             }
                             : { routeField7: "全部" }, 1, 15),
                     }),

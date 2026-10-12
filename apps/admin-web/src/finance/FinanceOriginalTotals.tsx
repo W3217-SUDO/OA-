@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react";
 import Table from "../components/ResizableTable";
 import { paymentQueryPageTotal } from "./constants";
-import type { FinanceFeeQueryMeta, OriginalFinanceRow } from "./types";
+import type { FinanceFeeQueryMeta, FinanceInternalQueueMeta, OriginalFinanceRow } from "./types";
 
 type TotalBodyProps = ComponentProps<"tbody">;
 type TotalRows = readonly OriginalFinanceRow[];
@@ -72,14 +72,19 @@ export function FeeQueryPageSummary({ rows, headers }: { rows: TotalRows; header
   </Table.Summary.Row>;
 }
 
-export function InternalPaymentPageSummary({ rows, headers }: { rows: TotalRows; headers: string[] }) {
+export function InternalQueueSummary({ meta, headers, selectable }: { meta: FinanceInternalQueueMeta; headers: string[]; selectable: boolean }) {
+  const amounts: Record<string, number | null | undefined> = {
+    金额: meta.totalAmount, 申请金额: meta.totalAmount, 实际提成: meta.totalActualCommission, 到账金额: meta.totalCashedAmount,
+  };
   return <Table.Summary.Row className="finance-internal-list-summary">
-    <Table.Summary.Cell index={0} />
-    {headers.map((header, index) => <Table.Summary.Cell key={header} index={index + 1}>
-      {header === "实际提成"
-        ? rows.reduce((sum, row) => sum + Number(row.data?.actual_commission ?? row.data?.amount ?? 0), 0).toFixed(2)
-        : null}
-    </Table.Summary.Cell>)}
+    {selectable && <Table.Summary.Cell index={0} />}
+    {headers.map((header, index) => {
+      const amount = amounts[header];
+      if (header in amounts && meta.amountVisible && !Number.isFinite(amount)) throw new Error("内部费用汇总响应无效");
+      return <Table.Summary.Cell key={`${header}-${index}`} index={index + Number(selectable)}>
+        {header in amounts ? meta.amountVisible ? amount!.toFixed(2) : "无权限" : index === 0 ? "合计" : null}
+      </Table.Summary.Cell>;
+    })}
   </Table.Summary.Row>;
 }
 

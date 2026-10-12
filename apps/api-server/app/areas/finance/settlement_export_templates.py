@@ -14,7 +14,7 @@ def case_values(detail):
     values = [detail.get(key) for key in ("case_no", "case_stage", "fee_type", "fee_total_amount", "fee_allocated_amount",
         "current_amount", "allocated_at", "settlement_amount", "archive_fee", "customer", "hearing_lawyer", "assistant", "contract_no")]
     if values[6]:
-        values[6] = str(values[6])[:10]
+        values[6] = str(values[6]).replace("T", " ")
     return values
 
 

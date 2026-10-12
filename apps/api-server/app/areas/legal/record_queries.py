@@ -3,8 +3,10 @@ from app.core.dependencies import (
     AsyncSession, BusinessRecord, ContractApprovalStep, Depends, Query, User, and_, current_identity, false, func, get_db, or_, select, settings,
 )
 from fastapi import APIRouter
+from app.areas.legal.case_special_queries import router as case_special_queries_router
 
 router = APIRouter()
+router.include_router(case_special_queries_router)
 
 
 @router.get(f"{settings.api_prefix}/records")

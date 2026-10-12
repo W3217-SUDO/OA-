@@ -163,6 +163,63 @@ class NotificationRows11And12Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["total"], 4)
         self.assertEqual(body["unread_messages"], 5)
 
+    async def test_case_fee_reminders_hidden_without_deleting_approvals_or_history(self):
+        self.identity = {"username": self.admin, "role": "admin"}
+        async with self.sessions() as db:
+            fees = []
+            for index, relation in enumerate(({"case_id": self.case_id}, {"case_record_id": self.case_id}, {"case_no": "CODEX-922-NOTICE-CASE"}, {})):
+                fee = BusinessRecord(module="finance", serial_no=f"CODEX-1012-D-FEE-{index}",
+                    title="费用申请", owner=self.admin, status="待审批", data={**relation, "amount": 25})
+                db.add(fee)
+                await db.flush()
+                fees.append(fee.id)
+                if index < 3:
+                    db.add(Notification(source_key=f"finance-approval-{fee.id}-{self.admin}",
+                        source_type="finance", source_id=fee.id, recipient=self.admin, title="旧费用提醒"))
+            db.add(Notification(source_key="CODEX-1012-D-manual", source_type="finance", source_id=fees[0],
+                recipient=self.admin, title="人工费用沟通", notification_type="用户通知"))
+            await db.commit()
+            await _sync_notifications(self.identity, db)
+            stored = (await db.scalars(select(Notification).where(Notification.source_type == "finance"))).all()
+            self.assertEqual(len(stored), 5)
+            for fee_id in fees:
+                self.assertEqual((await db.get(BusinessRecord, fee_id)).status, "待审批")
+        response = await self.client.get(f"{settings.api_prefix}/notifications", params={"source_type": "finance"})
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["total"], 2)
+        self.assertEqual(body["unread"], 2)
+        self.assertEqual({item["title"] for item in body["items"]}, {"人工费用沟通", "费用待审批"})
+
+    async def test_case_fee_policy_keeps_zero_relations_and_null_manual_key(self):
+        from sqlalchemy import literal
+        from sqlalchemy.sql.visitors import replacement_traverse
+        from app.core.notification_policy import case_fee_condition, visible_notification_condition
+
+        async with self.sessions() as db:
+            records = []
+            for index, data in enumerate(({}, {"case_id": 0}, {"case_record_id": "0", "case_no": " "}, {"case_id": self.case_id})):
+                fee = BusinessRecord(module="finance", serial_no=f"CODEX-1012-D-policy-{index}", title="费用", owner=self.admin, status="待审批", data=data)
+                db.add(fee)
+                await db.flush()
+                records.append(fee.id)
+            notice = Notification(source_key="CODEX-1012-D-manual-null-key", source_type="finance", source_id=records[-1], recipient=self.admin, title="人工消息")
+            db.add(notice)
+            await db.commit()
+            selected = set((await db.scalars(select(BusinessRecord.id).where(case_fee_condition(), BusinessRecord.id.in_(records)))).all())
+            self.assertEqual(selected, {records[-1]})
+            # 用真实SQL空值表达式覆盖旧消息键，避免放宽正式模型的非空约束。
+            replacements = []
+            def replace_source_key(node):
+                if getattr(node, "name", None) == "source_key" and node.shares_lineage(Notification.__table__.c.source_key):
+                    replacements.append(node)
+                    return literal(None)
+                return None
+            condition = replacement_traverse(visible_notification_condition(), {}, replace_source_key)
+            self.assertEqual(len(replacements), 1)
+            visible = await db.scalar(select(Notification.id).where(Notification.id == notice.id, condition))
+            self.assertEqual(visible, notice.id)
+
     async def test_admin_receives_only_own_contract_approvals(self):
         self.identity = {"username": self.admin, "role": "admin"}
         async with self.sessions() as db:

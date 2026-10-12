@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
 from app.core.constants import (
-    DEFAULT_DEPARTMENTS, DEFAULT_JOB_ROLES, DEFAULT_ROLE_PERMISSIONS,
+    DEFAULT_DEPARTMENTS, DEFAULT_HIDDEN_MENU_KEYS, DEFAULT_JOB_ROLES, DEFAULT_ROLE_PERMISSIONS,
     DEFAULT_SYSTEM_CONFIGS, DEFAULT_SYSTEM_MENUS, DEFAULT_SYSTEM_PARAMETERS,
     FIELD_KEYS, LEGACY_ADMIN_MENU_KEYS, LEGACY_FINANCE_MENU_KEYS,
     LEGACY_INVESTIGATION_MENU_KEYS, LEGACY_TASK_MENU_KEYS, MENU_KEYS,
@@ -119,7 +119,7 @@ async def initialize_startup_data(
         existing_menus = {item.key: item for item in (await db.scalars(select(SystemMenu))).all()}
         for key, parent_key, label, icon, sort_order in DEFAULT_SYSTEM_MENUS:
             if key not in existing_menus:
-                db.add(SystemMenu(key=key, parent_key=parent_key, label=label, icon=icon, sort_order=sort_order, updated_by="system"))
+                db.add(SystemMenu(key=key, parent_key=parent_key, label=label, icon=icon, sort_order=sort_order, is_visible=key not in DEFAULT_HIDDEN_MENU_KEYS, updated_by="system"))
             elif key in ORIGINAL_FINANCE_MENU_KEYS or key in ORIGINAL_ADMIN_MENU_KEYS or key in ORIGINAL_INVESTIGATION_MENU_KEYS or (
                 key.startswith("customer-") and existing_menus[key].updated_by == "system"
             ) or (
@@ -130,7 +130,7 @@ async def initialize_startup_data(
                 existing_menus[key].label = label
                 existing_menus[key].icon = icon
                 existing_menus[key].sort_order = sort_order
-                existing_menus[key].is_visible = True
+                existing_menus[key].is_visible = key not in DEFAULT_HIDDEN_MENU_KEYS
                 existing_menus[key].is_active = True
         for key in LEGACY_FINANCE_MENU_KEYS:
             if key in existing_menus:

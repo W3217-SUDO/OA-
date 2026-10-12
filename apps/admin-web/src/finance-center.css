@@ -1461,7 +1461,6 @@
   font-size: 12px;
 }
 .finance-review-drawer .ant-table-content table {
-  width: 549px !important;
   border-bottom: 1px solid #ddd;
 }
 .finance-review-drawer .ant-table-wrapper {
@@ -1859,7 +1858,21 @@
 
 /* Keep dense legacy-style queries usable at common notebook and tablet widths. */
 .finance-review-drawer .ant-table-wrapper { width: 100%; margin-left: 0; overflow-x: auto; }
-.finance-review-drawer .ant-table-content table { width: 100% !important; min-width: 549px; }
+.finance-review-drawer .ant-table-content table { min-width: 100%; }
+
+.finance-internal-queues .ant-table-cell,
+.finance-internal-queues .ant-table-cell .ant-btn-link {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.finance-internal-queues .ant-table-cell .ant-btn-link {
+  max-width: 100%;
+  height: auto;
+}
+.finance-internal-queues .ant-table-cell.finance-money-column {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
 
 @media (max-width: 1080px) {
   .finance-original-fee-query .finance-original-query-grid {

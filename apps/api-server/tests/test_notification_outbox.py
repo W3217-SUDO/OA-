@@ -126,6 +126,41 @@ class NotificationOutboxTest(unittest.IsolatedAsyncioTestCase):
             ))
             await db.commit()
 
+    async def test_case_fee_not_enqueued_and_old_delivery_cancelled_before_send(self):
+        await self._add_user()
+        await self._add_notice("CODEX-1012-D-unrelated-task")
+        async with self.sessions() as db:
+            fee = BusinessRecord(module="finance", serial_no="CODEX-1012-D-fee", title="案件费用", owner="staff",
+                status="待审批", data={"case_id": 123, "amount": 25})
+            db.add(fee)
+            await db.flush()
+            notice = Notification(source_key=f"finance-approval-{fee.id}-staff", source_type="finance",
+                source_id=fee.id, recipient="staff", title="案件费用待审批")
+            db.add(notice)
+            await db.commit()
+            self.assertEqual(await notification_delivery.enqueue_dingtalk_notifications(db), 1)
+            self.assertIsNone(await db.scalar(select(NotificationDelivery).where(NotificationDelivery.notification_id == notice.id)))
+            delivery_id = await notification_delivery.insert_delivery(db, {
+                "channel": "dingtalk", "business_key": notice.source_key, "notification_id": notice.id,
+                "destination": "ding-staff", "payload": {"title": notice.title, "content": ""},
+                "state": "pending", "available_at": datetime.now(timezone.utc),
+            })
+            await db.commit()
+        sent = []
+
+        async def sender(delivery):
+            sent.append(delivery.notification_id)
+            return "CODEX-1012-D-provider-result"
+
+        self.assertTrue(await notification_delivery.dispatch_one("dingtalk", sender))
+        self.assertTrue(await notification_delivery.dispatch_one("dingtalk", sender))
+        self.assertEqual(len(sent), 1)
+        self.assertNotIn(notice.id, sent)
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(NotificationDelivery, delivery_id)).state, "cancelled")
+            self.assertIsNotNone(await db.get(Notification, notice.id))
+            self.assertEqual((await db.get(BusinessRecord, fee.id)).status, "待审批")
+
     async def test_dingtalk_claim_is_atomic_and_sent_once(self):
         await self._add_user()
         await self._add_notice()

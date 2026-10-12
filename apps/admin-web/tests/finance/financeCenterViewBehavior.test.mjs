@@ -282,6 +282,116 @@ test("all settlement states retain readable allocation columns, amounts and link
   }
 });
 
+test("internal server pagination changes size to 200, resets page, and clears selection", async () => {
+  const noView = () => null;
+  const calls = [];
+  const { FinanceOriginalRoutesView } = loadFinanceModule("FinanceOriginalRoutesView.tsx", {
+    "./constants": loadFinanceModule("constants.ts"), "./financeErrors": { financeErrorDetail: String },
+    "./IncomingTotalsBody": { IncomingTotalsBody: noView },
+    "./FinanceOriginalQueryView": { FinanceOriginalQueryView: noView },
+    "./GeneralSettlementExpandedRow": { GeneralSettlementExpandedRow: noView },
+    "./FinanceOriginalTotals": {}, "./FinanceFeeQueryActions": { FinanceFeeQueryActions: noView },
+    "./RefundCaseFeeActions": { RefundCaseFeeOperationMenu: noView, RefundCaseFeeMarkButton: noView },
+  });
+  const base = {
+    initialView: "finance-internal-audit", originalQueryView: {}, activeRouteConfig: { source: "fees", selectable: true, headers: [] },
+    isInternalQueueRoute: true, originalColumns: [], configuredRows: [], originalQuery: { routeField5: "CODEX-CASE" },
+    selectedOriginalRows: [1], setSelectedOriginalRows: (keys) => calls.push(["selected", ...keys]),
+    internalQueueMeta: { page: 8, pageSize: 15, total: 201, amountVisible: true, totalAmount: 100 },
+    loadInternalQueue: async (...args) => calls.push(["load", ...args]),
+  };
+  const table = nodes(FinanceOriginalRoutesView(base)).find((node) => node.type === Table);
+  table.props.pagination.onChange(8, 200);
+  assert.equal(table.props.pagination.total, 201);
+  assert.equal(table.props.pagination.pageSizeOptions.includes(200), true);
+  assert.equal(calls[1][2], 1);
+  assert.equal(calls[1][3], 200);
+  assert.deepEqual(calls[0], ["selected"]);
+  assert.equal(calls[1][1].routeField5, "CODEX-CASE");
+  const after = nodes(FinanceOriginalRoutesView({ ...base, internalQueueMeta: { page: 1, pageSize: 200, total: 201, amountVisible: true, totalAmount: 100 } })).find((node) => node.type === Table);
+  assert.equal(after.props.pagination.pageSize, 200);
+  after.props.pagination.onChange(2, 200);
+  assert.equal(calls[3][2], 2);
+  assert.equal(after.props.rowSelection.getCheckboxProps({ data: { read_only: true } }).disabled, true);
+});
+
+test("all seven internal queue footers show filtered grand totals instead of the current page", () => {
+  const noView = () => null;
+  const SummaryRow = () => null;
+  const SummaryCell = () => null;
+  const totals = loadFinanceModule("FinanceOriginalTotals.tsx", {
+    "../components/ResizableTable": { Summary: { Row: SummaryRow, Cell: SummaryCell } },
+    "./constants": loadFinanceModule("constants.ts"),
+  });
+  const { FinanceOriginalRoutesView } = loadFinanceModule("FinanceOriginalRoutesView.tsx", {
+    "./constants": loadFinanceModule("constants.ts"), "./financeErrors": { financeErrorDetail: String },
+    "./IncomingTotalsBody": { IncomingTotalsBody: noView },
+    "./FinanceOriginalQueryView": { FinanceOriginalQueryView: noView },
+    "./GeneralSettlementExpandedRow": { GeneralSettlementExpandedRow: noView },
+    "./FinanceOriginalTotals": totals, "./FinanceFeeQueryActions": { FinanceFeeQueryActions: noView },
+    "./RefundCaseFeeActions": { RefundCaseFeeOperationMenu: noView, RefundCaseFeeMarkButton: noView },
+  });
+  for (const route of ["settle", "archive", "refused", "payment", "audit", "fee-audit", "refund-audit"]) {
+    const header = route === "payment" ? "实际提成" : route === "settle" ? "金额" : "申请金额";
+    const headers = route === "settle" ? ["操作", header, "到账金额"] : ["操作", header];
+    const props = {
+      initialView: `finance-internal-${route}`, originalQueryView: {}, originalHeaders: headers,
+      activeRouteConfig: { source: "fees", selectable: route !== "refused", headers },
+      isInternalQueueRoute: true, originalColumns: [], configuredRows: [], originalQuery: {}, selectedOriginalRows: [],
+      internalQueueMeta: { page: 1, pageSize: 1, total: 2, amountVisible: true, totalAmount: 100, totalActualCommission: 90, totalCashedAmount: 70 },
+      loadInternalQueue: async () => {},
+    };
+    for (const [index, amount] of [10, 90].entries()) {
+      const table = nodes(FinanceOriginalRoutesView({ ...props, internalQueueMeta: { ...props.internalQueueMeta, page: index + 1 } })).find((node) => node.type === Table);
+      const summary = table.props.summary([{ id: index + 1, data: { amount, actual_commission: index === 0 ? 0 : 90, cashed_amount: index === 0 ? 10 : 60 } }]);
+      const cells = nodes(summary.type(summary.props)).filter((node) => node.type === SummaryCell);
+      const amountIndex = route === "refused" ? 1 : 2;
+      assert.equal(cells[amountIndex].props.children, route === "payment" ? "90.00" : "100.00");
+      assert.equal(cells[amountIndex].props.index, amountIndex);
+      if (route === "settle") assert.equal(cells[3].props.children, "70.00");
+    }
+    const hidden = nodes(FinanceOriginalRoutesView({ ...props, internalQueueMeta: { ...props.internalQueueMeta, amountVisible: false, totalAmount: null, totalActualCommission: null, totalCashedAmount: null } })).find((node) => node.type === Table).props.summary([]);
+    assert.equal(nodes(hidden.type(hidden.props)).filter((node) => node.type === SummaryCell).at(-1).props.children, "无权限");
+    const failed = nodes(FinanceOriginalRoutesView({ ...props, internalQueueError: "查询失败" })).find((node) => node.type === Table);
+    assert.equal(failed.props.summary([]), null);
+  }
+});
+
+test("internal case columns and review payees consume exact server names, including inactive employees", () => {
+  const { createInternalOriginalColumns } = loadFinanceModule("columns/internalOriginalColumns.tsx", {
+    "../moneyColumns": loadFinanceModule("moneyColumns.ts"), "../constants": loadFinanceModule("constants.ts"),
+  });
+  const columns = createInternalOriginalColumns({ internalMineOperation: () => null });
+  assert.equal(columns.find((column) => column.title === "案件名称").render(null, {
+    title: "CODEX-费用标题", data: { case_name: "CODEX-关联案件" },
+  }), "CODEX-关联案件");
+  const source = fs.readFileSync(new URL("FinanceCenterPage.tsx", sourceRoot), "utf8");
+  const tree = ts.createSourceFile("FinanceCenterPage.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let initializer;
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(tree) === "feeReviewRows") initializer = node.initializer.getText(tree);
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  assert.ok(initializer);
+  const code = ts.transpileModule(`const rows = ${initializer}; result(rows);`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  let result;
+  vm.runInNewContext(code, {
+    useMemo: (read) => read(), financePersonNameMap: new Map(),
+    financePersonDisplayName: (identity, name) => name || `未解析:${identity}`,
+    feeReviewTargets: [{ data: { application_items: [
+      { id: 1, owner: "parent", data: { payee: "disabled-user", payee_display_name: "历史员工", commission_details: [
+        { payee: "child-a", payee_display_name: "子项甲" },
+        { payment_target: "child-b", payment_target_display_name: "子项乙" },
+        {},
+      ] } },
+    ] } }], result: (value) => { result = value; },
+  });
+  assert.equal(result.map((row) => row.payee).join(","), "子项甲,子项乙,历史员工");
+});
+
 test("settlement parent layout uses its full column budget for five states only", () => {
   const constants = loadFinanceModule("constants.ts");
   const { createConfiguredColumns } = loadFinanceModule("columns/configuredColumns.tsx", {

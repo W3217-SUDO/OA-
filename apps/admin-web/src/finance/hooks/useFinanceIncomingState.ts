@@ -1,4 +1,4 @@
-import { Form, message } from "antd";
+import { Form } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { resolveIncomingPaymentDetailTarget } from "../../incomingPaymentDetailNavigation";
 import { financeErrorDetail } from "../financeErrors";
@@ -16,27 +16,35 @@ export function useFinanceIncomingState(initialView: string) {
   const claimCustomerSearchRequest = useRef(0);
   const [incomingAllocationTarget, setIncomingAllocationTarget] = useState<IncomingPayment | null>(null);
   const [incomingDetailTarget, setIncomingDetailTarget] = useState<IncomingPayment | null>(null);
+  const [incomingDetailLoading, setIncomingDetailLoading] = useState(false);
+  const [incomingDetailError, setIncomingDetailError] = useState<string | null>(null);
+  const [incomingDetailAttempt, setIncomingDetailAttempt] = useState(0);
   const [incomingForm] = Form.useForm<IncomingPaymentFormValues>();
   const [claimForm] = Form.useForm<IncomingClaimFormValues>();
 
   useEffect(() => {
     const paymentId = resolveIncomingPaymentDetailTarget(initialView);
     setIncomingDetailTarget(null);
+    setIncomingDetailError(null);
+    setIncomingDetailLoading(Boolean(paymentId));
     if (!paymentId) return;
     const controller = new AbortController();
     void loadIncomingPaymentDetail(paymentId, controller.signal)
       .then((payment) => { if (!controller.signal.aborted) setIncomingDetailTarget(payment); })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) message.error(financeErrorDetail(error) || "回款详情加载失败");
-      });
+        if (!controller.signal.aborted) setIncomingDetailError(financeErrorDetail(error) || "回款详情加载失败");
+      })
+      .finally(() => { if (!controller.signal.aborted) setIncomingDetailLoading(false); });
     return () => controller.abort();
-  }, [initialView]);
+  }, [initialView, incomingDetailAttempt]);
 
   return {
     incomingOpen, setIncomingOpen, editingIncoming, setEditingIncoming,
     claimTarget, setClaimTarget, claimCustomers, setClaimCustomers,
     claimCustomersLoading, setClaimCustomersLoading, claimCustomerSearchRequest,
     incomingAllocationTarget, setIncomingAllocationTarget, incomingDetailTarget, setIncomingDetailTarget,
+    incomingDetailLoading, incomingDetailError,
+    retryIncomingDetail: () => setIncomingDetailAttempt((value) => value + 1),
     incomingForm, claimForm,
   };
 }

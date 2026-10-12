@@ -307,7 +307,9 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
         BusinessRecord.module == "task", BusinessRecord.owner == username,
         or_(BusinessRecord.status.is_(None), BusinessRecord.status.not_in(task_terminal_statuses)),
     ))).all())
-    stale = (await db.scalars(select(Notification).where(Notification.recipient == username, Notification.source_type.in_(["task", "finance", "contract", "case", "ipr_warning"])))).all()
+    from app.core.notification_policy import case_fee_condition, visible_notification_condition
+
+    stale = (await db.scalars(select(Notification).where(Notification.recipient == username, Notification.source_type.in_(["task", "finance", "contract", "case", "ipr_warning"]), visible_notification_condition()))).all()
     records_by_id = {
         record.id: record
         for record in await _scalars_in_batches(
@@ -401,7 +403,7 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
         info = _task_dict(task)
         if info["reminder_due"]:
             candidates.append({"source_key": f"task-{task.id}-{today}-{username}", "source_type": "task", "source_id": task.id, "title": info["reminder_text"], "content": f"{task.serial_no}｜{task.title}｜负责人：{task.owner}", "level": "error" if info["status"] == "已逾期" else "warning"})
-    fees = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", BusinessRecord.status == "待审批", *(await _record_scope_conditions(identity, db))))).all()
+    fees = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", BusinessRecord.status == "待审批", ~case_fee_condition(), *(await _record_scope_conditions(identity, db))))).all()
     fees = [fee for fee in fees if username in {
         fee.owner,
         str((fee.data or {}).get("approver") or "").strip(),

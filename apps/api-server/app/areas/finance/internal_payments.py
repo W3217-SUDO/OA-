@@ -3,16 +3,30 @@ from fastapi import APIRouter
 from app.core.dependencies import AsyncSession, BusinessRecord, Depends, HTTPException, Query, Response, User, WorkflowEvent, current_identity, date, datetime, delete, func, get_db, quote, select, settings, status
 from app.models_shared import FinancePaymentPackageCreateInput, FinancePaymentPackagePreviewInput, FinancePaymentPackageUpdateInput, FinancePaymentPackageWriteoffInput, FinanceSettlementMarkInput
 from app.core.constants import PAYMENT_METHOD_OPTIONS
+from app.core.finance_person_projection import apply_finance_person_displays
 
 router = APIRouter()
 
 
 @router.get(f"{settings.api_prefix}/finance/settlements/pending")
-async def list_pending_finance_settlements(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_pending_finance_settlements(
+    page: int = Query(1, ge=1), page_size: int = Query(200, ge=1, le=200),
+    case_no: str = "", customer: str = "", case_stages: str = "",
+    court_case_no: str = "", certificate_no: str = "", hearing_lawyer: str = "",
+    assistant: str = "", investigator: str = "", source_person: str = "",
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
     from app.core.internal_requests import pending_case_fee_settlements
+    from app.core.internal_finance_query import filter_internal_rows, internal_page
+    from app.core.system import _allowed_field_keys
 
     rows = await pending_case_fee_settlements(identity, db)
-    return {"items": rows, "total": len(rows)}
+    rows = filter_internal_rows(rows, case_no=case_no, customer=customer, case_stages=case_stages,
+                                court_case_no=court_case_no, certificate_no=certificate_no,
+                                hearing_lawyer=hearing_lawyer, assistant=assistant,
+                                investigator=investigator, source_person=source_person)
+    amount_visible = "finance.amount" in await _allowed_field_keys(identity, db)
+    return internal_page(rows, page, page_size, amount_visible=amount_visible)
 
 @router.post(f"{settings.api_prefix}/finance/settlements/mark-commission-paid")
 async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
@@ -151,7 +165,7 @@ async def list_internal_payment_packages(
         query = query.offset((page - 1) * page_size).limit(page_size)
     items = (await db.scalars(query)).all()
     return {
-        "items": await _record_dicts_for_identity(items, identity, db),
+        "items": await apply_finance_person_displays(await _record_dicts_for_identity(items, identity, db), db),
         "total": int(total),
         "page": page,
         "page_size": page_size if page_size is not None else len(items),
@@ -178,7 +192,7 @@ async def list_internal_payment_package_candidates(
              or (row.data or {}).get("relation_status") == "已关联")
         and (row.status == "已审批" or (package_id is not None and row.status == "待核销" and int((row.data or {}).get("payment_package_id") or 0) == package_id))
     ]
-    return {"items": await _record_dicts_for_identity(items, identity, db), "total": len(items)}
+    return {"items": await apply_finance_person_displays(await _record_dicts_for_identity(items, identity, db), db), "total": len(items)}
 
 @router.post(f"{settings.api_prefix}/finance/payment-packages/preview")
 async def preview_internal_payment_package(body: FinancePaymentPackagePreviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
@@ -186,13 +200,15 @@ async def preview_internal_payment_package(body: FinancePaymentPackagePreviewInp
         _new_internal_payment_package_no, _prepare_internal_payment_package,
     )
     _fees, details, payee, total_amount = await _prepare_internal_payment_package(body.fee_ids, identity, db)
-    return {
+    result = {
         "package_no": _new_internal_payment_package_no(),
         "print_date": str(date.today()),
         "payee": payee,
         "total_amount": total_amount,
         "items": details,
     }
+    await apply_finance_person_displays([result, *details], db)
+    return result
 
 @router.post(f"{settings.api_prefix}/finance/payment-packages", status_code=status.HTTP_201_CREATED)
 async def create_internal_payment_package(body: FinancePaymentPackageCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
@@ -259,7 +275,9 @@ async def get_internal_payment_package(package_id: int, identity: dict = Depends
         _ensure_record_module, _record_dict_for_identity,
     )
     package = await _ensure_record_module(package_id, "finance_package", identity, db)
-    return await _record_dict_for_identity(package, identity, db)
+    result = await _record_dict_for_identity(package, identity, db)
+    await apply_finance_person_displays([result], db)
+    return result
 
 @router.put(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}")
 async def update_internal_payment_package(package_id: int, body: FinancePaymentPackageUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):

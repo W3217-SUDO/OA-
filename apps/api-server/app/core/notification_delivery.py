@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import SessionLocal
+from app.core.notification_policy import visible_notification_condition
 from app.dingtalk import DingTalkError, DingTalkRejectedError, dingtalk_client
 from app.models import (
     BusinessRecord, HearingSchedule, Notification, NotificationDelivery, User, WorkflowEvent,
@@ -62,6 +63,7 @@ async def enqueue_dingtalk_notifications(db: AsyncSession) -> int:
                 Notification.dingtalk_attempts < 5,
                 User.is_active.is_(True),
                 NotificationDelivery.id.is_(None),
+                visible_notification_condition(),
             ).order_by(Notification.id).limit(200)
         )).all()
         if not rows:
@@ -227,6 +229,10 @@ async def dispatch_one(channel: str, sender=None) -> bool:
                 or str((user.profile or {}).get("dingtalk_user_id") or "").strip() != delivery.destination
             ):
                 cancelled_reason = "通知或收件人已变更"
+            elif not await db.scalar(select(Notification.id).where(
+                Notification.id == notice.id, visible_notification_condition(),
+            )):
+                cancelled_reason = "案件费用自动提醒已停用"
         else:
             record = await db.get(BusinessRecord, delivery.source_record_id) if delivery.source_record_id else None
             hearing_id = delivery.payload.get("hearing_id")

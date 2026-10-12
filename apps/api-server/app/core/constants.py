@@ -202,6 +202,9 @@ DEFAULT_SYSTEM_MENUS += [
 ]
 
 
+# 仅隐藏导航，路由和业务授权继续保留。
+DEFAULT_HIDDEN_MENU_KEYS = {"finance-payment-package-manage", "finance-internal-void"}
+
 SYSTEM_MENU_ROUTE_KEYS = {key for key, *_ in DEFAULT_SYSTEM_MENUS}
 
 

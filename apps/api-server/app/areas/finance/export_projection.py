@@ -223,6 +223,7 @@ async def archive_export_values(rows, identity, db):
 
 
 async def enrich_settlement_exports(rows, identity, db):
+    from app.core.incoming_allocation_projection import normalize_settlement_allocation_times
     from app.core.finance import _invoice_fee_details, _visible_incoming_payment_statement, _incoming_payment_legacy_summary
     from app.core.permissions import _record_scope_conditions
     from app.core.system import _allowed_field_keys
@@ -251,6 +252,9 @@ async def enrich_settlement_exports(rows, identity, db):
         payment = payments.get(int(receipt_id))
         if not payment:
             raise HTTPException(409, "结算关联回款不存在或无权导出")
+        row["data"] = normalize_settlement_allocation_times(
+            row["data"], payment.allocations or [], receipt_no=payment.receipt_no,
+        )
         row["data"]["bank_source"] = _incoming_payment_legacy_summary(payment)["payment_method"]
         row["data"]["amount_visible"] = show_amount
         for detail in row["data"].get("allocation_details") or []:

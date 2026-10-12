@@ -1,6 +1,6 @@
 import { Button } from "antd";
 import { caseFeeRefundLabel } from "../../caseFeeLegacyProjection.mjs";
-import { caseFeeReceiptApplicable, caseReceiptFiles } from "../caseReceiptFiles";
+import { caseFeeBillDisplay, caseFeeReceiptApplicable } from "../caseReceiptFiles";
 import type { CaseRow } from "../types";
 export function createExternalCaseFeeColumns(context: {
     readonly viewingCounselCase: CaseRow | null;
@@ -21,8 +21,6 @@ export function createExternalCaseFeeColumns(context: {
         { title: "退费", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => caseFeeRefundLabel(row.data) },
         { title: "提交人", width: 120, render: (_: unknown, row: CaseRow) => row.data.submitter_display_name || row.data.submitted_by_display_name || row.data.handler_display_name || row.owner_display_name || context.casePersonDisplayName(row.owner) },
         { title: "提交日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.submitted_at || row.created_at || row.data.created_at || "").slice(0, 10) || "—" },
-        { title: "核销日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.paid_date || row.data.payment_date || row.data.written_off_at || "").slice(0, 10) || "—" },
-        { title: "通知日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.inform_date || row.data.notice_date || "").slice(0, 10) || "—" },
         { title: "回款日期", width: 120, render: (_: unknown, row: CaseRow) => caseFeeReceiptApplicable(row.data, row.title)
             ? String(row.data.received_at || row.data.cashed_date || "").slice(0, 10) || "—" : "/" },
         { title: "回款金额", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => {
@@ -37,18 +35,16 @@ export function createExternalCaseFeeColumns(context: {
                     : 0;
             } },
         { title: "开票日期", width: 160, render: (_: unknown, row: CaseRow) => {
-                const invoiceDate = String(row.data.invoice_date || "").slice(0, 10);
-                return invoiceDate || "—";
+                const { dates } = caseFeeBillDisplay(row.data);
+                return dates.length ? <div>{dates.map(date => <div key={date}>{date}</div>)}</div> : "—";
             } },
         { title: "发票号", width: 220, render: (_: unknown, row: CaseRow) => {
-                return row.data.invoice_no
-                    ? <Button type="link" className="case-cell-link" onClick={() => context.openRelatedInvoice(row)}>{row.data.invoice_no}</Button> : "—";
-            } },
-        { title: "缴费凭证", width: 130, render: (_: unknown, row: CaseRow) => {
-                const receipts = caseReceiptFiles(row.data);
-                const hasWriteoffRecord = Number(row.data.writeoff_voucher_record_id || 0) > 0;
-                if (!receipts.length && !hasWriteoffRecord) return "—";
-                return <Button type="link" className="case-cell-link" onClick={() => context.openCaseReceiptFiles(row)}>查看凭证</Button>;
+                const { entries } = caseFeeBillDisplay(row.data);
+                return entries.length ? <div>{entries.map(entry => <div key={entry.key}>
+                    <Button type="link" className="case-cell-link" title={entry.label}
+                        style={{ maxWidth: "100%", height: "auto", whiteSpace: "normal", overflowWrap: "anywhere", textAlign: "left" }}
+                        onClick={() => entry.kind === "invoice" ? context.openRelatedInvoice(row) : context.openCaseReceiptFiles(row)}>{entry.label}</Button>
+                </div>)}</div> : "—";
             } },
         { title: "申请付款金额", width: 130, align: "right" as const, render: (_: unknown, row: CaseRow) => row.data.payment_requested_amount ?? 0 },
     ];

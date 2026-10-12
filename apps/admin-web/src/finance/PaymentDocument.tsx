@@ -23,7 +23,7 @@ export function PaymentDocument({ row, printing, onCase, onContract }: {row:any;
       {groups.map((g:any, index:number) => <Fragment key={g.request_no || index}>
         <tr className="payment-group"><th>请款单号</th><td>{show(g.request_no)}</td><th>合同编号</th><td>{show(g.contract_no)}</td><th>合同名称</th><td colSpan={3}>{show(g.contract_name)}</td></tr>
         <tr className="payment-group"><th>案号</th><th>付款金额</th><th>官费类型</th><th>其他费用类型</th><th>申请人</th><th colSpan={3}>交款人</th></tr>
-        {(g.items || []).map((item:any,i:number)=><tr key={item.id || i}><td>{show(item.case_no)}</td><td>{amount(item.current_payment ?? item.amount)}</td><td>{["官方费用","官费"].includes(item.fee_type) ? show(item.expense_subtype || item.fee_type) : "—"}</td><td>{["官方费用","官费"].includes(item.fee_type) ? "—" : show(item.expense_subtype || item.fee_type)}</td><td>{show(item.applicant || g.applicant)}</td><td colSpan={3}>{show(item.payer || g.payer)}</td></tr>)}
+        {(g.items || []).map((item:any,i:number)=><tr key={item.id || i}><td>{show(item.case_no)}</td><td>{amount(item.current_payment ?? item.amount)}</td><td>{["官方费用","官费"].includes(item.fee_type) ? show(item.expense_subtype || item.fee_type) : "—"}</td><td>{["官方费用","官费"].includes(item.fee_type) ? "—" : show(item.expense_subtype || item.fee_type)}</td><td>{show(item.applicant ? item.applicant_display_name || item.applicant : g.applicant_display_name || g.applicant)}</td><td colSpan={3}>{show(item.payer ? item.payer_display_name || item.payer : g.payer_display_name || g.payer)}</td></tr>)}
         <tr><th>备注</th><td colSpan={7}>{show(g.remark || g.description)}</td></tr>
         <tr><th colSpan={3}>小计</th><td colSpan={5}>{amount(g.amount)}</td></tr>
       </Fragment>)}
@@ -53,12 +53,12 @@ export function PaymentDocument({ row, printing, onCase, onContract }: {row:any;
     <div className="payment-progress">{[internal ? "付款信息查看" : "付款信息填写","提交申请","财务审批","财务付款"].map((step,i)=><div key={step} className={i === (row.status === "待审批" ? 2 : 3) ? "active" : ""}>{step}</div>)}</div>
     {internal ? meta([
       ["案件编号",link(d.case_no,onCase)],["案件名称",show(d.case_name || d.case_title)],["合同编号",link(d.contract_no,onContract)],["合同名称",show(d.contract_name)],
-      ["客户编号",show(d.customer_no)],["客户名称",show(row.customer)],["客户管理人",show(d.customer_manager)],
+      ["客户编号",show(d.customer_no)],["客户名称",show(row.customer)],["客户管理人",show(d.customer_manager_display_name || d.customer_manager)],
       ...["调查提成","案源提成","文书提成","开庭提成"].map(role => [`${role}(已付)`, d.paid_by_role ? amount(d.paid_by_role[role] || 0) : "—"] as [string,any]),
       ["申请编号",show(row.serial_no)],["申请日期",date(d.application_date || row.created_at)],["审批意见",show(d.approval_comment || d.review_comment)],
     ]) : meta([
-      ["合同编号",link(d.contract_no,onContract)],["申请日期",date(d.application_date || row.created_at)],["合同名称",show(d.contract_name)],["交款人",show(d.payer_name || d.payer)],
-      ["申请编号",show(row.serial_no)],["案源人",show(d.case_source || d.source_person)],["客户名称",show(row.customer)],["备注",show(d.remark || row.description)],
+      ["合同编号",link(d.contract_no,onContract)],["申请日期",date(d.application_date || row.created_at)],["合同名称",show(d.contract_name)],["交款人",show(d.payer_display_name || d.payer_name || d.payer)],
+      ["申请编号",show(row.serial_no)],["案源人",show(d.case_source ? d.case_source_display_name || d.case_source : d.source_person_display_name || d.source_person)],["客户名称",show(row.customer)],["备注",show(d.remark || row.description)],
       ["收款单位",show(d.payee_display_name || d.payee)],["开户行",show(d.account_bank || d.bank_name || d.payee_bank || d.bank)],["账号信息",show(d.account || d.bank_account || d.payee_account)],
     ])}
     {!internal && meta([["审批意见",show(d.approval_comment || d.review_comment)],["付款日期",date(d.paid_date || d.payment_date)],["单据号",show(d.writeoff_voucher_no || d.invoice_no)],["付款金额",amount(d.paid_amount ?? d.amount)],["付款备注",show(d.payment_remark || d.writeoff_remark)]])}

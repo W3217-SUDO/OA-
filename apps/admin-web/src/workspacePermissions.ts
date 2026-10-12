@@ -44,7 +44,8 @@ export function isWorkspaceRouteGranted(
   if (["contract-detail-", "contract-change-", "contract-payment-apply-", "contract-invoice-apply-", "contract-investigation-"].some((prefix) => route.startsWith(prefix))) {
     return hasFamily("contract");
   }
-  if (route.startsWith("finance-incoming-payment-")) return hasFamily("finance-incoming-company");
+  // 关联详情只授予进入只读页的资格，具体回款范围仍由详情接口校验。
+  if (/^finance-incoming-payment-\d+$/.test(route)) return hasCaseRead() || hasFamily("finance");
   const workspace = dashboardWorkspace(route);
   if (workspace?.kind === "case") return hasCaseRead();
   if (workspace?.kind === "receivable") return hasFamily("contract-receivable");

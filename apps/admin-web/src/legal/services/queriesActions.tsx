@@ -39,7 +39,7 @@ export interface CaseQueriesDependencies {
         archived: number;
     }>>;
     readonly setProfile: React.Dispatch<React.SetStateAction<Profile>>;
-    readonly setFinanceRows: React.Dispatch<React.SetStateAction<CaseRow[]>>;
+    readonly specialCaseList: { active: boolean; total: number; reload: () => Promise<boolean> };
     readonly setCaseTypeOptions: React.Dispatch<React.SetStateAction<{
         value: string;
         label: string;
@@ -223,9 +223,16 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         setCaseRelations(null);
     };
     const load = async () => {
-        const { setLoading, initialView, setCases, isCreateView, openCounselDetail, isCaseDetailView, detailRouteId, setWarehouseCatalog, setContracts, setHearings, setSummary, setProfile, setFinanceRows, setCaseTypeOptions, setCauseOptions, setCaseFileTypeCatalog, setCaseFileTypeOptions, setCaseUploadCategory, setCounselUploadCategory, setCourtOptions, setCourtOfficerOptions, setCaseLawyerOptions, setCaseAssistantOptions, setRightTypeOptions, setCaseCustomers, setCaseClues, setFeeTypeCatalog, contractPrefill, createForm, resolveCasePersonValue } = context;
+        const { setLoading, initialView, setCases, isCreateView, openCounselDetail, isCaseDetailView, detailRouteId, setWarehouseCatalog, setContracts, setHearings, setSummary, setProfile, setCaseTypeOptions, setCauseOptions, setCaseFileTypeCatalog, setCaseFileTypeOptions, setCaseUploadCategory, setCounselUploadCategory, setCourtOptions, setCourtOfficerOptions, setCaseLawyerOptions, setCaseAssistantOptions, setRightTypeOptions, setCaseCustomers, setCaseClues, setFeeTypeCatalog, contractPrefill, createForm, resolveCasePersonValue } = context;
         setLoading(true);
         try {
+            if (context.specialCaseList?.active) {
+                context.setSelectedCaseKeys([]);
+                const profileRes = await api.get("/auth/me");
+                setProfile(profileRes.data);
+                await context.specialCaseList.reload();
+                return;
+            }
             if (context.dashboardQueue) {
                 const [profileRes, referenceRes, feeTypeRes] = await Promise.all([
                     api.get("/auth/me"), api.get("/cases/reference-options"),
@@ -295,15 +302,6 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                 setWarehouseCatalog(warehouseResponse.data.items || []);
             } else {
                 setWarehouseCatalog([]);
-            }
-            if (initialView.endsWith("-no-refund") && (hasModule("finance") || hasModule("platform-finance"))) {
-                const [financeRes, refundRes] = await Promise.all([
-                    api.get("/records", { params: { module: "finance", page_size: 100 } }),
-                    api.get("/records", { params: { module: "refund", page_size: 100 } }),
-                ]);
-                setFinanceRows([...financeRes.data.items, ...refundRes.data.items]);
-            } else {
-                setFinanceRows([]);
             }
             const [contractRes, hearingRes, summaryRes, referenceRes, customerRes, clueRes, feeTypeRes] = await Promise.all([
                 api.get("/cases/eligible-contracts"),
@@ -598,7 +596,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
     };
     const exportCases = async () => {
         const { originalCases } = context;
-        if (!originalCases.length)
+        if (!(context.specialCaseList?.active ? context.specialCaseList.total : originalCases.length))
             return message.warning("当前查询没有可导出的案件");
         try {
             const res = await api.get("/records/export", { params: { module: "case" }, responseType: "blob" });

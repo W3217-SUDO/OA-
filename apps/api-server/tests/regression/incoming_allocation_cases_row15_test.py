@@ -130,5 +130,71 @@ class IncomingAllocationCasesRow15Test(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(plan.status, "已收款")
 
 
+class IncomingAllocationProjectionTest(unittest.TestCase):
+    def setUp(self):
+        from app.core.incoming_allocation_projection import normalize_incoming_allocation, normalize_settlement_allocation_times
+        self.normalize = normalize_incoming_allocation
+        self.snapshot = normalize_settlement_allocation_times
+
+    def legacy(self, **extra):
+        return {"fee_id": 101, "case_fee_id": 101, "finance_record_id": 101, "amount": 25,
+                "source_object": {"PaymentId": 2134, "SeqId": 6165, "CreateTime": "2023-03-20T09:19:54.027000"}, **extra}
+
+    def test_public_fee_id_resolver_has_one_alias_contract(self):
+        from fastapi import HTTPException
+        from app.core.incoming_allocation_projection import allocation_fee_id
+        for key in ("fee_record_id", "fee_id", "case_fee_id", "finance_record_id"):
+            self.assertEqual(allocation_fee_id({key: "101"}), 101)
+            for empty in (None, "", 0, "0"):
+                self.assertIsNone(allocation_fee_id({key: empty}))
+            for invalid in (True, -1, "1.2", "abc", "²"):
+                with self.assertRaises(HTTPException):
+                    allocation_fee_id({key: invalid})
+        with self.assertRaises(HTTPException):
+            allocation_fee_id({"fee_id": 101, "finance_record_id": 102})
+
+    def test_aliases_and_precise_legacy_time_do_not_mutate_source(self):
+        source = self.legacy()
+        result = self.normalize(source, receipt_no="HZ-RCPT-2134")
+        self.assertEqual(result["fee_record_id"], 101)
+        self.assertEqual(result["allocated_at"], "2023-03-20T09:19:54.027000")
+        self.assertEqual(result["allocation_source_id"], 6165)
+        self.assertNotIn("allocated_at", source)
+        self.assertNotIn("fee_record_id", source)
+
+    def test_conflicting_fee_keys_and_receipt_are_rejected(self):
+        from fastapi import HTTPException
+        for source, number in ((self.legacy(fee_record_id=102), "HZ-RCPT-2134"), (self.legacy(), "HZ-RCPT-999")):
+            with self.assertRaises(HTTPException) as failure:
+                self.normalize(source, receipt_no=number)
+            self.assertEqual(failure.exception.status_code, 409)
+
+    def test_missing_source_never_uses_receipt_date(self):
+        for source in ({"amount": 12}, {"fee_record_id": 101, "received_date": "2023-03-09"}):
+            result = self.normalize(source, receipt_no="HZ-RCPT-2134")
+            self.assertFalse(result.get("allocated_at"))
+
+    def test_existing_timestamp_keeps_its_timezone_and_precision(self):
+        stamp = "2026-10-12T09:01:02.123456+08:00"
+        result = self.normalize(self.legacy(allocated_at=stamp), receipt_no="HZ-RCPT-2134")
+        self.assertEqual(result["allocated_at"], stamp)
+
+    def test_snapshot_is_idempotent_and_never_guesses_duplicate_fee_events(self):
+        source = self.legacy()
+        data = {"allocation_details": [{"fee_id": 101, "current_amount": 25, "allocated_at": ""}]}
+        normalized = self.snapshot(data, [source], receipt_no="HZ-RCPT-2134")
+        self.assertEqual(normalized["allocation_details"][0]["allocated_at"], source["source_object"]["CreateTime"])
+        self.assertEqual(normalized, self.snapshot(normalized, [source], receipt_no="HZ-RCPT-2134"))
+        self.assertEqual(data["allocation_details"][0]["allocated_at"], "")
+        ambiguous = self.snapshot(data, [source, source], receipt_no="HZ-RCPT-2134")
+        self.assertEqual(ambiguous["allocation_details"][0]["allocated_at"], "")
+        wrong_fee = {"allocation_details": [{"fee_id": 102, "allocation_source_id": 6165}]}
+        self.assertNotIn("allocated_at", self.snapshot(wrong_fee, [source], receipt_no="HZ-RCPT-2134")["allocation_details"][0])
+
+    def test_export_preserves_allocation_seconds(self):
+        from app.areas.finance.settlement_export_templates import case_values
+        self.assertEqual(case_values({"allocated_at": "2023-03-20T09:19:54.027000"})[6], "2023-03-20 09:19:54.027000")
+
+
 if __name__ == "__main__":
     unittest.main()

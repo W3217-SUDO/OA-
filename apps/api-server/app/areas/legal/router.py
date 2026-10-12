@@ -35,6 +35,8 @@ from fastapi.responses import FileResponse
 
 router = APIRouter()
 
+from app.areas.legal.case_fee_files import router as case_fee_files_router, visible_case_fee_file_rows
+
 
 from app.areas.legal.communications import (
     router as communications_router,
@@ -603,12 +605,14 @@ async def list_case_relations(
     payment_totals = await fee_payment_totals(
         fees, db, source_data_by_id=fee_source_data,
     ) if allowed_fields is None or "finance.amount" in allowed_fields else {}
+    file_rows = await visible_case_fee_file_rows(fees, identity, db)
 
     def related_dict(item: BusinessRecord) -> dict:
         result = _record_dict(item)
         result["owner_display_name"] = _person_reference_display(item.owner, users_by_username)[0]
         result_data = dict(fee_source_data[item.id]) if item.module == "finance" else dict(result.get("data") or {})
         if item.module == "finance":
+            result_data["case_fee_files"] = file_rows.get(item.id, [])
             from app.core.finance_batch_parity import is_non_allocatable_third_party_fee
             result_data["receipt_allocation_applicable"] = not is_non_allocatable_third_party_fee(result_data, label=_case_fee_display_type(item))
             # 旧核销将凭证写在发票关联中，只在读投影拆分，不改历史行或附件。
@@ -867,7 +871,7 @@ async def case_summary(identity: dict = Depends(current_identity), db: AsyncSess
 @router.get(f"{settings.api_prefix}/cases/pending-execution")
 async def list_pending_execution_cases(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=200),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
@@ -4110,3 +4114,6 @@ async def export_selected_case_print_table(ids: str = "", identity: dict = Depen
     content = render_case_print_tables(records, projections)
     filename = f"案件打印表-{date.today()}.docx"
     return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f"attachment; filename=case-print-table.docx; filename*=UTF-8''{quote(filename)}"})
+
+
+router.include_router(case_fee_files_router)

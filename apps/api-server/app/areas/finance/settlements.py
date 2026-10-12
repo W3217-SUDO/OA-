@@ -12,6 +12,7 @@ from app.models_shared import (
 )
 from fastapi import APIRouter
 from app.core.incoming_settlement import (_active_settlements_by_receipt, _settlement_financial_snapshot)
+from app.core.incoming_allocation_projection import normalize_settlement_allocation_times
 
 router = APIRouter()
 
@@ -608,8 +609,17 @@ async def list_general_settlement_applications(
         filtered.append(record)
 
     items = await _record_dicts_for_identity(filtered, identity, db)
+    receipt_ids = {int((item.get("data") or {}).get("receipt_id") or 0) for item in items}
+    payments = {payment.id: payment for payment in (await db.scalars(select(IncomingPayment).where(
+        IncomingPayment.id.in_(receipt_ids),
+    ))).all()} if receipt_ids else {}
     for item in items:
         item["data"] = {**item.get("data", {}), "customer_manager": current_managers[item["id"]]}
+        payment = payments.get(int(item["data"].get("receipt_id") or 0))
+        if payment:
+            item["data"] = normalize_settlement_allocation_times(
+                item["data"], payment.allocations or [], receipt_no=payment.receipt_no,
+            )
     amount_keys = ["receipt_amount", "allocated_amount", "remaining_amount", "assigned_official_fee", "assigned_agency_fee", "assigned_other_fee", "agency_settlement_amount", "archive_fee", "actual_settlement_amount"]
     totals = {key: _round_fee_amount(sum(float((item.get("data") or {}).get(key) or 0) for item in items)) for key in amount_keys}
     start = (page - 1) * page_size
@@ -718,11 +728,18 @@ async def review_general_settlement_applications(body: FinanceSettlementReviewIn
             identity, db, receipt_ids=receipt_ids, include_active_receipts=True,
         )
         current_by_receipt = {int(row["id"]): row for row in current_rows}
+        payments = {payment.id: payment for payment in (await db.scalars(select(IncomingPayment).where(
+            IncomingPayment.id.in_(receipt_ids),
+        ))).all()}
         stale = []
         for record in records:
             receipt_id = int((record.data or {}).get("receipt_id") or 0)
             current = current_by_receipt.get(receipt_id)
-            if not current or _settlement_financial_snapshot(record.data or {}) != _settlement_financial_snapshot(current.get("data") or {}):
+            payment = payments.get(receipt_id)
+            original_data = normalize_settlement_allocation_times(
+                record.data or {}, payment.allocations or [], receipt_no=payment.receipt_no,
+            ) if payment else record.data or {}
+            if not current or _settlement_financial_snapshot(original_data) != _settlement_financial_snapshot(current.get("data") or {}):
                 stale.append(record.serial_no)
         if stale:
             raise HTTPException(status_code=409, detail="结算来源金额或分配已变化，请退回后重新申请：" + "、".join(stale))
