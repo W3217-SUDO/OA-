@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import { api } from "../../api";
 import type { FinanceActionGate } from "../../financeActionGate.mjs";
 import { normalizeSettlementContextRows, settlementContextPageSize, settlementContextTasksRequest } from "../constants";
+import { financeDownloadErrorDetail, financeErrorMessageText } from "../financeErrors";
 import type { ArchiveSettlementRow, ArchiveSettlementTarget, Fee, SettlementContext, SettlementContextRow, SettlementTaskForm } from "../types";
 
 export async function markSettlementCommissionPaid(feeIds: number[]): Promise<void> {
@@ -376,7 +377,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
             message.success("导出成功.");
         }
         catch (error: any) {
-            message.error(error?.response?.data?.detail || "导出失败");
+            message.error(await financeDownloadErrorDetail(error) || financeErrorMessageText(error) || "导出失败");
         }
         finally {
             setGeneralSettlementBusy(false);

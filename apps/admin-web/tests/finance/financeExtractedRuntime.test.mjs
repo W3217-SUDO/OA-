@@ -23,7 +23,7 @@ const antd = {
   Space: host("space"), Steps: host("steps"),
 };
 
-function loadModule(name, dependencies) {
+function loadModule(name, dependencies, globals = {}) {
   const source = fs.readFileSync(new URL(name, sourceRoot), "utf8");
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
@@ -32,10 +32,63 @@ function loadModule(name, dependencies) {
   vm.runInNewContext(output, {
     module, exports: module.exports,
     require: (specifier) => specifier in dependencies ? dependencies[specifier] : require(specifier),
-    AbortController,
+    AbortController, Blob, ...globals,
   }, { filename: name });
   return module.exports;
 }
+
+test("settlement downloads decode JSON Blob details without changing the selected receipt contract", async () => {
+  const errors = loadModule("financeErrors.ts", {});
+  const notices = [];
+  const requests = [];
+  const downloads = [];
+  const busy = [];
+  let failure;
+  const document = { createElement: () => ({ click() { downloads.push(this.download); } }) };
+  const { createFinanceSettlementsActions } = loadModule("services/settlementsActions.tsx", {
+    antd: { message: { error: (value) => notices.push(value), success: () => {} }, Modal: { info: (value) => notices.push(value.content) } },
+    "../../api": { api: { get: async (path, options) => {
+      requests.push({ path, options });
+      if (failure) throw failure;
+      return { data: new Blob(["binary"], { type: "application/vnd.ms-excel" }) };
+    } } },
+    "../financeErrors": errors,
+    "../constants": {},
+  }, { document, URL: { createObjectURL: () => "blob:CODEX-row4", revokeObjectURL: () => {} } });
+  const context = { selectedOriginalRows: [], isGeneralSettlementPendingRoute: true, setGeneralSettlementBusy: (value) => busy.push(value) };
+  const actions = createFinanceSettlementsActions(context);
+  for (const kind of ["case", "settlement"]) {
+    await actions.exportGeneralSettlement(kind, [17]);
+    assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1))), {
+      path: "/finance/general-settlements/export", options: { params: { kind, ids: "17" }, responseType: "blob" },
+    });
+  }
+  assert.match(downloads[0], /^案件清单-.*\.xls$/);
+  assert.match(downloads[1], /^结算清单-.*\.xls$/);
+  context.isGeneralSettlementPendingRoute = false;
+  await actions.exportGeneralSettlement("case", [71]);
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).options.params)), { kind: "case", application_ids: "71" });
+  for (const [status, detail] of [[403, "无权导出"], [409, "部分回款已申请结算、尚未分配或无权导出"], [422, "请选择需要导出的回款."]]) {
+    failure = { response: { status, data: new Blob([JSON.stringify({ detail })], { type: "application/json" }) } };
+    await actions.exportGeneralSettlement("case", [17]);
+    assert.equal(notices.at(-1), detail);
+    assert.equal(busy.at(-1), false);
+  }
+  failure = { response: { data: new Blob([JSON.stringify({ detail: [{ loc: ["query", "kind"], msg: "invalid kind" }] })], { type: "application/json" }) } };
+  await actions.exportGeneralSettlement("case", [17]);
+  assert.equal(notices.at(-1), "query.kind：invalid kind");
+  failure = { response: { data: new Blob(["{broken"], { type: "application/json" }) } };
+  await actions.exportGeneralSettlement("case", [17]);
+  assert.equal(notices.at(-1), "服务器返回的导出错误信息格式无效");
+  failure = { message: "Request failed with status code 500", response: { data: new Blob(["private server detail"], { type: "text/plain" }) } };
+  await actions.exportGeneralSettlement("case", [17]);
+  assert.equal(notices.at(-1), "Request failed with status code 500");
+  assert.equal(downloads.length, 3, "failed requests must never create a fake workbook download");
+  await actions.exportGeneralSettlement("case", []);
+  assert.equal(notices.at(-1), "请选择需要导出的回款.");
+  assert.equal(errors.financeErrorDetail({ response: { data: { detail: "原有 JSON 详情" } } }), "原有 JSON 详情");
+  assert.equal(await errors.financeDownloadErrorDetail({ response: { data: { detail: "原有 JSON 详情" } } }), "原有 JSON 详情");
+});
 
 test("extracted incoming and settlement forms render scoped data and submit or close through the original callbacks", async () => {
   const { IncomingRegistrationModal, IncomingClaimModal } = loadModule("FinanceIncomingModals.tsx", {
