@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Input, List, Tooltip } from "antd";
-import { ArrowUpOutlined, CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import { ConversationManager } from "./ConversationManager";
 import { AssistantWorkspaceTools } from "./AssistantWorkspaceTools";
@@ -34,11 +34,15 @@ type Props = {
   suggestions: AssistantSuggestion[];
   focusRequested: boolean;
   onFocusHandled: () => void;
+  onReturnOverview?: () => void;
+  name?: string;
+  logoSrc?: string;
+  returnLabel?: string;
 };
 
 // 工作台里的个人智能体：对话和输入框合在一个面板内，会话可并行进行；问候语放在工作台顶部。
 const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
-  { workspace, suggestions, focusRequested, onFocusHandled },
+  { workspace, suggestions, focusRequested, onFocusHandled, onReturnOverview, name, logoSrc, returnLabel = "返回工作概况" },
   ref,
 ) {
   const { status, state, loading, loadError, sending, stopping, input, setInput, send, stop, decide, load } = workspace;
@@ -47,6 +51,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const [awayFromBottom, setAwayFromBottom] = useState(false);
   const inputRef = useRef<ComponentRef<typeof Input.TextArea>>(null);
   const [composing, setComposing] = useState(false);
+  const hasMessages = state.messages.length > 0;
   const lastMessage = state.messages[state.messages.length - 1];
   const sendBlocked = loading || !!loadError || !status?.ready || workspace.conversationBusy || workspace.uploading || !!workspace.decisionId || stopping || composing;
   const progressText = (workspace.progress || "正在思考").replace(/[.\u2026]+$/, "");
@@ -68,6 +73,17 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     if (element) element.scrollTop = element.scrollHeight;
   }, [state.conversation_id, state.messages.length, lastMessage?.content.length]);
   useEffect(() => {
+    const element = threadRef.current;
+    if (!element) return;
+    const mobileViewport = window.matchMedia("(max-width: 991px)");
+    // 键盘或输入框改变消息区高度时，只延续已有的底部跟随，不打断用户查看历史。
+    const observer = new ResizeObserver(() => {
+      if (mobileViewport.matches && stickToBottom.current) element.scrollTop = element.scrollHeight;
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [state.conversation_id, hasMessages]);
+  useEffect(() => {
     if (!focusRequested) return;
     inputRef.current?.focus({ preventScroll: true });
     onFocusHandled();
@@ -82,24 +98,38 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   };
 
   const runningIds = workspace.runningIds;
+  const conversationTitle = state.conversation_title || name || "沪知助手";
 
   return (
-    <section className={`assistant${state.messages.length ? "" : " is-empty"}`} aria-label="个人智能体" ref={ref}>
+    <section className={`assistant${hasMessages ? "" : " is-empty"}`} aria-label={name || "个人智能体"} ref={ref}>
       <div className="assistant-bar">
+        {onReturnOverview && <Tooltip title={returnLabel}>
+          <Button className="assistant-mobile-control" type="text" icon={<ArrowLeftOutlined />} aria-label={returnLabel} onClick={onReturnOverview} />
+        </Tooltip>}
         <span className="assistant-bar-summary">
-          <span className="assistant-bar-title">助手对话</span>
+          {logoSrc && <img className="assistant-brand-logo" src={logoSrc} alt="" width={24} height={24} />}
+          <span className="assistant-bar-title">{name || "助手对话"}</span>
+          {name && state.conversation_title && <span className="assistant-selected-title" title={state.conversation_title}>{state.conversation_title}</span>}
           {runningIds.length > 1 && <span className="assistant-running">{runningIds.length} 个对话正在回答</span>}
         </span>
+        <span className={`assistant-mobile-title${name || logoSrc ? " is-branded" : ""}`} title={conversationTitle}>
+          {logoSrc && <img className="assistant-brand-logo" src={logoSrc} alt="" width={24} height={24} />}
+          {name || logoSrc ? <span className="assistant-title-body">
+            <span>{name || conversationTitle}</span>
+            {name && state.conversation_title && <small>{state.conversation_title}</small>}
+          </span> : conversationTitle}
+        </span>
         <div className="assistant-bar-actions">
-          <Button
-            className="assistant-refresh"
-            type="text"
-            icon={<ReloadOutlined />}
-            aria-label="刷新智能体"
-            title="刷新智能体"
-            disabled={loading || !!runningIds.length}
-            onClick={() => void load()}
-          />
+          <Tooltip title="刷新智能体">
+            <Button
+              className="assistant-refresh"
+              type="text"
+              icon={<ReloadOutlined />}
+              aria-label="刷新智能体"
+              disabled={loading || !!runningIds.length}
+              onClick={() => void load()}
+            />
+          </Tooltip>
           <ConversationManager
             items={workspace.conversations}
             activeId={state.conversation_id}
@@ -122,8 +152,20 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       {!loadError && status && !status.ready && (
         <Alert className="assistant-alert" type="warning" showIcon title="个人智能体暂未就绪，请检查当前 OA 配置的大模型服务" />
       )}
-      {state.messages.length === 0 && <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} />}
-      {state.messages.length > 0 && (
+      {!hasMessages && <div className={`assistant-empty-state${logoSrc ? " has-logo" : ""}`}>
+        {logoSrc && <img className="assistant-empty-logo" src={logoSrc} alt="" width={56} height={56} />}
+        <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} />
+        <div className="assistant-mobile-empty">
+          <h2>今天想处理什么？</h2>
+          <div className="assistant-mobile-suggestions">
+            {suggestions.slice(0, 1).map((item) => <button key={item.kind} type="button" disabled={sendBlocked} onClick={() => submit(item.prompt)}>
+              {item.label}<em>{item.count}</em>
+            </button>)}
+            {shortcuts.slice(0, 2).map((item) => <button key={item.label} type="button" disabled={sendBlocked} onClick={() => submit(item.prompt)}>{item.label}</button>)}
+          </div>
+        </div>
+      </div>}
+      {hasMessages && (
         <div className="assistant-thread-region">
           <div
             className="assistant-thread"

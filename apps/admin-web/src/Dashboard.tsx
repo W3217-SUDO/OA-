@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { Button, message } from "antd";
 import dayjs from "dayjs";
 import AssistantPanel, { type AssistantSuggestion } from "./personal-agent/AssistantPanel";
-import { usePersonalWorkspace } from "./personal-agent/usePersonalWorkspace";
+import { usePersonalWorkspaceContext } from "./personal-agent/PersonalWorkspaceProvider";
 import DashboardHearingSchedule from "./DashboardHearingSchedule";
 import DashboardMetricTiles from "./DashboardMetricTiles";
 import DashboardRejectionReminder from "./DashboardRejectionReminder";
@@ -45,8 +45,8 @@ export default function Dashboard({
   onAssistantFocusHandled: () => void;
 }) {
   const { data, loading, errors, retry } = useDashboardData();
-  // 工作台与智能体中心共用同一套会话运行时，因此这里可以列出会话并让多个会话同时回答。
-  const workspace = usePersonalWorkspace();
+  // 运行时由路由外的容器持有，提醒切到独立 Ai 页面后仍保留当前对话和草稿。
+  const workspace = usePersonalWorkspaceContext();
   const detailRequest = useRef<AbortController | null>(null);
   const navigation = useRef({ onNavigate, grantedMenuKeys, permissionAdministrator });
   navigation.current = { onNavigate, grantedMenuKeys, permissionAdministrator };
@@ -106,6 +106,11 @@ export default function Dashboard({
   const askAgent = (prompt: string) => {
     // 面板按需挂载，直接切到对话视图即可，不再滚动定位。
     onViewChange("conversation");
+    if (workspace.loading || workspace.loadError || !workspace.status?.ready || workspace.conversationBusy || workspace.uploading || workspace.decisionId || workspace.stopping) {
+      // 当前无法发送时保留完整问题，也不覆盖用户已输入的草稿。
+      workspace.setInput((current) => current.trim() ? `${current}\n\n${prompt}` : prompt);
+      return;
+    }
     if (!workspace.sending) {
       void workspace.send(prompt);
       return;
@@ -177,7 +182,7 @@ export default function Dashboard({
     />
   );
   return (
-    <div className="reference-dashboard workbench">
+    <div className={`reference-dashboard workbench${view === "conversation" ? " is-conversation" : ""}`}>
       <div className="wb-shell">
         {metrics}
         <div className="wb-grid">
@@ -191,6 +196,7 @@ export default function Dashboard({
               suggestions={suggestions}
               focusRequested={assistantFocusRequested}
               onFocusHandled={onAssistantFocusHandled}
+              onReturnOverview={() => onViewChange("overview")}
             /> : <DashboardOverview
               greeting={greetingByHour(now.hour())}
               name={workspace.status?.identity?.display_name}

@@ -6,9 +6,19 @@
 .assistant-bar{display:flex;flex:none;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 10px}
 .assistant-bar-summary{display:flex;align-items:center;gap:10px;min-width:0}
 .assistant-bar-title{min-width:0;color:#5b6776;font-size:13px}
+.assistant-brand-logo{flex:none;width:24px;height:24px;object-fit:contain}
+.assistant-selected-title{min-width:0;max-width:26ch;overflow:hidden;color:#5b6776;font-size:12px;text-overflow:ellipsis;white-space:nowrap}
+.assistant-title-body{display:flex;flex:1;flex-direction:column;min-width:0}
+.assistant-title-body>span,.assistant-title-body>small{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.assistant-title-body>small{color:#5b6776;font-size:12px;font-weight:400;line-height:16px}
 .assistant-running{color:#0e7a5f;font-size:12px;white-space:nowrap}
 .assistant-bar-actions{display:flex;align-items:center;gap:4px;max-width:100%}
 .assistant-refresh.ant-btn{width:44px;height:44px;padding:0}
+.assistant .assistant-mobile-control,.assistant-mobile-title,.assistant-mobile-empty{display:none}
+.assistant-empty-state{display:contents}
+.assistant-empty-state.has-logo{display:flex;flex:1 1 0;flex-direction:column;align-items:center;justify-content:center;gap:20px;min-height:0;overflow:auto}
+.assistant-empty-state.has-logo .assistant-start{flex:none;width:100%}
+.assistant-empty-logo{flex:none;align-self:center;width:56px;height:56px;object-fit:contain}
 .assistant-bar .workspace-conversation-controls{display:flex;flex:none;align-items:center;gap:8px;max-width:100%}
 .assistant-bar .workspace-conversation-controls .ant-btn{min-height:32px}
 .assistant-bar .workspace-conversation-controls .ant-btn[aria-label="对话列表"]{width:auto;padding-inline:10px;color:#0e7a5f}
@@ -105,17 +115,56 @@
   .assistant-thread{flex:none;max-height:min(50vh,420px)}
   .assistant-start{flex:none}
 }
-@media(max-width:720px){
-  .assistant{padding:16px 14px 12px}
-  .assistant-bar .workspace-conversation-controls{flex:1;justify-content:flex-end}
-  .assistant-bar .workspace-conversation-controls .ant-btn{min-height:44px}
-  .assistant-composer-input{flex-wrap:wrap}
-  .assistant-bubble{max-width:94%}
-  .assistant-composer{gap:4px}
-  .assistant-composer textarea.ant-input{flex:1 1 100%}
-  .assistant-composer-actions{margin-left:auto}
-  .assistant-start{display:none}
-  .assistant.is-empty .assistant-chips{display:flex}
+/* 手机对话独占父级视口：顶栏和输入不滚动，消息与确认操作各自保留可达的滚动区域。 */
+@media(max-width:991px){
+  .assistant{gap:0;min-width:0;width:100%;padding:0 0 calc(8px + env(safe-area-inset-bottom));border:0;border-radius:0;background:#fff;box-shadow:none;overflow:hidden}
+  .assistant .assistant-bar{flex-wrap:nowrap;justify-content:flex-start;gap:8px;min-height:52px;padding:calc(4px + env(safe-area-inset-top)) 8px 4px}
+  .assistant .assistant-bar-summary{display:none}
+  .assistant .assistant-bar-actions{display:contents}
+  .assistant .assistant-refresh{order:1}
+  .assistant .assistant-mobile-title{display:block;flex:1;min-width:0;overflow:hidden;color:#18212b;font-size:15px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+  .assistant .assistant-mobile-title.is-branded{display:flex;align-items:center;gap:8px;line-height:20px}
+  .assistant .assistant-mobile-control,.assistant .assistant-refresh,.assistant .assistant-bar .workspace-conversation-controls .ant-btn{display:inline-flex;flex:none;align-items:center;justify-content:center;width:44px;height:44px;min-height:44px;padding:0;border-radius:8px;font-size:18px}
+  .assistant .assistant-bar .workspace-conversation-controls{flex:none;gap:8px;max-width:none}
+  .assistant .assistant-bar .workspace-conversation-controls .workspace-conversation-label{display:none}
+  .assistant .assistant-bar .workspace-conversation-controls .ant-btn[aria-label="新建对话"]{border-color:transparent;background:transparent;box-shadow:none;color:#0e7a5f}
+  .assistant .assistant-bar .workspace-conversation-controls .ant-btn[aria-label="对话列表"]{width:44px;padding:0}
+  .assistant .assistant-alert{flex:0 1 auto;min-height:0;max-height:25%;margin:6px 12px 0;padding:8px 10px;border-radius:8px;overflow:auto}
+  .assistant .assistant-alert .ant-btn{min-width:44px;min-height:44px}
+  .assistant .assistant-empty-state{display:flex;flex:1 1 0;flex-direction:column;justify-content:center;min-height:0;padding:20px 16px;overflow:auto;overscroll-behavior:contain}
+  .assistant .assistant-empty-state .assistant-start{display:none}
+  .assistant .assistant-mobile-empty{display:flex;flex:none;flex-direction:column;align-items:center;gap:20px;width:100%;max-width:32rem;margin:auto}
+  .assistant .assistant-empty-state.has-logo .assistant-mobile-empty{margin:0}
+  .assistant-mobile-empty h2{margin:0;font-size:22px;font-weight:600;line-height:1.5;text-align:center}
+  .assistant-mobile-suggestions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:100%}
+  .assistant-mobile-suggestions button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;max-width:100%;padding:8px 12px;border:1px solid #dde3ea;border-radius:8px;background:#f7faf9;color:#344054;font:inherit;font-size:14px;overflow-wrap:anywhere;cursor:pointer}
+  .assistant-mobile-suggestions button:disabled{opacity:.5;cursor:not-allowed}
+  .assistant-mobile-suggestions em{flex:none;padding:0 6px;border-radius:4px;background:#e7f3ee;color:#0e7a5f;font-size:12px;font-style:normal;font-variant-numeric:tabular-nums;line-height:20px}
+  .assistant .assistant-thread-region{flex:1 1 0;min-width:0;min-height:0}
+  .assistant .assistant-thread{flex:1 1 0;gap:20px;max-height:none;padding:16px 16px 52px;overscroll-behavior:contain}
+  .assistant .assistant-message{min-width:0}
+  .assistant .assistant-bubble{max-width:90%;font-size:15px}
+  .assistant .assistant-message.is-assistant .assistant-bubble{width:100%;max-width:none;padding:0;border:0;border-radius:0;background:transparent}
+  .assistant .assistant-message.is-user .assistant-bubble{border-radius:8px}
+  .assistant .assistant-message.is-user .assistant-stopped{color:inherit}
+  .assistant .assistant-expand{min-height:44px;text-align:left}
+  .assistant .assistant-pending{flex:0 1 auto;min-height:0;max-height:min(28%,240px);margin:8px 12px;padding:8px 10px;border-radius:8px;overflow:auto;overscroll-behavior:contain}
+  .assistant .assistant-pending .ant-list-item{flex-wrap:wrap;gap:8px;align-items:flex-start}
+  .assistant .assistant-pending .ant-list-item-meta{min-width:0;flex-basis:100%}
+  .assistant .assistant-pending .ant-list-item-meta-title,.assistant .assistant-pending .ant-list-item-meta-description{overflow-wrap:anywhere}
+  .assistant .assistant-pending .ant-list-item-action{margin-inline-start:0}
+  .assistant .assistant-pending .ant-btn{min-width:44px;min-height:44px}
+  .assistant .assistant-composer{display:grid;grid-template-columns:44px minmax(0,1fr);gap:6px 8px;margin:8px 10px 0;padding:8px;background:#fff}
+  .assistant .assistant-tools-trigger{grid-column:1;grid-row:1;align-self:end}
+  .assistant .assistant-composer-input{grid-column:2;grid-row:1;flex-wrap:nowrap;gap:8px;min-width:0}
+  .assistant .assistant-composer textarea.ant-input{flex:1 1 0;min-width:0;padding:8px 0;font-size:16px;line-height:1.5}
+  .assistant .assistant-composer-actions{gap:8px;margin-left:0}
+  .assistant .assistant-send{width:44px;height:44px;padding:0;border-radius:50%;gap:0}
+  .assistant .assistant-context-items{grid-column:1 / -1;max-height:88px;overflow:auto;overscroll-behavior:contain}
+  .assistant .assistant-chips,.assistant.is-empty .assistant-chips{display:none}
+  .assistant .assistant-mobile-control:focus-visible,.assistant .assistant-mobile-suggestions button:focus-visible{outline:2px solid #0e7a5f;outline-offset:-2px}
+  .assistant-conversation-drawer .ant-drawer-header .ant-btn,.assistant-conversation-row>.ant-btn{min-width:44px;min-height:44px}
+  .assistant-conversation-select{min-height:44px}
 }
 @media(prefers-reduced-motion:reduce){
   .assistant-thinking::after{animation:none}

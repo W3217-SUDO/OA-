@@ -32,7 +32,7 @@ export function isWorkspaceRouteGranted(
   administrator = false,
 ): boolean {
   route = normalizeWorkspaceRoute(route);
-  if (administrator || route === "dashboard" || route === FEEDBACK_ROUTE || grantedKeys.has(route)) return true;
+  if (administrator || route === "dashboard" || route === "ai-chat" || route === FEEDBACK_ROUTE || grantedKeys.has(route)) return true;
   const hasFamily = (...prefixes: string[]) => Array.from(grantedKeys).some((key) =>
     prefixes.some((prefix) => key === prefix || key.startsWith(`${prefix}-`)),
   );

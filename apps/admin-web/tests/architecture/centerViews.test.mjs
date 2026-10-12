@@ -283,7 +283,7 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     "./caseDetailNavigation": { rememberCaseDetailTarget: (target) => calls.push(["case", target.serial_no]) },
     "./customerDetailNavigation": { rememberCustomerDetailTarget: (target) => calls.push(["customer", target.title]) },
     "./personal-agent/AssistantPanel": AssistantPanelStub,
-    "./personal-agent/usePersonalWorkspace": { usePersonalWorkspace: () => workspace },
+    "./personal-agent/PersonalWorkspaceProvider": { usePersonalWorkspaceContext: () => workspace },
     "./detailRelationResolver": detailResolver,
     "./workspacePermissions": permissions,
   }, { AbortController, sessionStorage: { setItem: (key, value) => storage.set(key, value) } }).default;

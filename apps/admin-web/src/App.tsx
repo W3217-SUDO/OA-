@@ -77,6 +77,10 @@ import {
 } from "./contractCreateContext";
 import { clearDashboardFeeQuery } from "./dashboardFeeNavigation.mjs";
 import { resolveSiteBrand } from "./siteBranding";
+import { useMobileChatViewport } from "./personal-agent/useMobileChatViewport";
+import AiChatPage from "./personal-agent/AiChatPage";
+import { PersonalWorkspaceProvider } from "./personal-agent/PersonalWorkspaceProvider";
+import "./personal-agent/mobile-chat-layout.css";
 
 function reloadAppShell() {
   const url = new URL(window.location.href);
@@ -903,6 +907,7 @@ const routePageLabels: Record<string, string> = {
 function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): string {
   const normalizedKey = normalizeWorkspaceRoute(key);
   if (normalizedKey === "dashboard") return "工作台";
+  if (normalizedKey === "ai-chat") return "Ai";
   const workspace = dashboardWorkspace(normalizedKey);
   if (workspace) return workspace.label;
   if (normalizedKey.startsWith("case-new-")) return "新建案件";
@@ -1242,12 +1247,14 @@ export default function App() {
   const grantedMenuKeys = useMemo(() => new Set(
     !permissionsReady ? ["dashboard"] : permissionAdministrator
       ? flattenMenu(effectiveMenuItems).map((item) => item.key)
-      // 智能体中心是管理员管理页，非管理员即使保留该菜单权限也不进入；个人智能体在工作台使用。
+      // 智能体中心仍是管理员管理页，个人智能体只使用工作台与独立 Ai 入口。
       : ["user-center", ...(sessionUser?.menu_keys || [])].filter((key) => key !== "agent-center"),
   ), [permissionsReady, permissionAdministrator, effectiveMenuItems, sessionUser?.menu_keys]);
   const active = permissionsReady
     ? resolveGrantedMenuRoute(requestedRoute, effectiveMenuItems, grantedMenuKeys, permissionAdministrator)
     : requestedRoute;
+  const isChatWorkspace = active === "ai-chat" || (active === "dashboard" && dashboardView === "conversation");
+  const chatViewportRef = useMobileChatViewport(loggedIn && permissionsReady && isChatWorkspace);
   const visibleOpenPages = openPages.filter((item) => isWorkspaceRouteGranted(
     normalizeWorkspaceRoute(item.key), grantedMenuKeys, permissionAdministrator,
   ));
@@ -1465,8 +1472,12 @@ export default function App() {
     setActive(normalizedRoute);
   };
   const openPersonalAgent = () => {
-    setDashboardView("conversation");
     setAssistantFocusRequested(true);
+    navigate("ai-chat");
+  };
+  const returnToWorkbench = () => {
+    setDashboardView("overview");
+    setAssistantFocusRequested(false);
     navigate("dashboard");
   };
   const openLegacyMenuItem = (item: NavItem) => {
@@ -1563,12 +1574,21 @@ export default function App() {
     ) : route === "dashboard" ? (
       <Dashboard
         view={dashboardView}
-        onViewChange={setDashboardView}
+        onViewChange={(view) => {
+          if (view === "conversation" && isNarrowViewport) openPersonalAgent();
+          else setDashboardView(view);
+        }}
         onNavigate={navigate}
         grantedMenuKeys={grantedMenuKeys}
         permissionAdministrator={permissionAdministrator}
         assistantFocusRequested={assistantFocusRequested}
         onAssistantFocusHandled={() => setAssistantFocusRequested(false)}
+      />
+    ) : route === "ai-chat" ? (
+      <AiChatPage
+        onReturnWorkbench={returnToWorkbench}
+        focusRequested={assistantFocusRequested}
+        onFocusHandled={() => setAssistantFocusRequested(false)}
       />
     ) : route === "agent-center" ? (
       <AgentAdminPage />
@@ -1655,7 +1675,7 @@ export default function App() {
     );
   const currentPage = requestedPage;
   return (
-    <Layout className="app-shell">
+    <Layout ref={chatViewportRef} className={`app-shell${isChatWorkspace ? " is-chat-workspace" : ""}`}>
       <ConflictReviewHost key={sessionUser?.username || ""} />
       <Header className="topbar">
         <div
@@ -1728,6 +1748,9 @@ export default function App() {
           />
         </div>
         <Space className="top-actions">
+          <Tooltip title="Ai">
+            <Button type="text" aria-label="Ai" icon={<RobotOutlined />} onClick={openPersonalAgent} />
+          </Tooltip>
           <Tooltip title="返回工作台">
             <Button
               type="text"
@@ -1932,47 +1955,36 @@ export default function App() {
           />
         )}
         <Content
-          className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active === "agent-center" ? "agent-workspace-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") || active.startsWith("contract-investigation-") ? "case-detail-content" : ""} ${active.startsWith("clue-audit-") ? "clue-audit-content" : ""}`}
+          className={`content ${active === "dashboard" ? "dashboard-content" : ""} ${active === "ai-chat" ? "ai-chat-content" : ""} ${active === "agent-center" ? "agent-workspace-content" : ""} ${active.startsWith("case-detail-") || active.startsWith("contract-detail-") || active.startsWith("contract-investigation-") ? "case-detail-content" : ""} ${active.startsWith("clue-audit-") ? "clue-audit-content" : ""}`}
           onClick={() => {
             if (isNarrowViewport && mobileSidebarOpen) setMobileSidebarOpen(false);
           }}
         >
-          {active !== "agent-center" && active !== "dashboard" && <div className="page-head">
+          {active !== "agent-center" && active !== "dashboard" && active !== "ai-chat" && <div className="page-head">
             <div>
               <h1>{currentPageLabel}</h1>
               <span>首页 / {currentPageLabel}</span>
             </div>
           </div>}
           <main className="page-workbench">
-            <PageLoadBoundary key={`${active}:${workspaceReloadKey}`}>
-              <Suspense fallback={<div className="loading">正在加载页面...</div>}>
-                {currentPage}
-              </Suspense>
-            </PageLoadBoundary>
+            <PersonalWorkspaceProvider key={sessionUser?.username || ""}>
+              <PageLoadBoundary key={`${active}:${workspaceReloadKey}`}>
+                <Suspense fallback={<div className="loading">正在加载页面...</div>}>
+                  {currentPage}
+                </Suspense>
+              </PageLoadBoundary>
+            </PersonalWorkspaceProvider>
           </main>
         </Content>
       </Layout>
       <nav className="mobile-bottom-nav" aria-label="移动端主导航">
         <button
           type="button"
-          className={active === "dashboard" && dashboardView === "overview" ? "active" : ""}
-          aria-current={active === "dashboard" && dashboardView === "overview" ? "page" : undefined}
-          onClick={() => {
-            setDashboardView("overview");
-            setAssistantFocusRequested(false);
-            navigate("dashboard");
-          }}
+          className={active === "dashboard" ? "active" : ""}
+          aria-current={active === "dashboard" ? "page" : undefined}
+          onClick={returnToWorkbench}
         >
           <HomeOutlined />
-          <span>首页</span>
-        </button>
-        <button
-          type="button"
-          className={active === "dashboard" && dashboardView === "conversation" ? "active" : ""}
-          aria-current={active === "dashboard" && dashboardView === "conversation" ? "page" : undefined}
-          onClick={openPersonalAgent}
-        >
-          <DashboardOutlined />
           <span>工作台</span>
         </button>
         <button
@@ -1982,6 +1994,15 @@ export default function App() {
         >
           <UnorderedListOutlined />
           <span>待办</span>
+        </button>
+        <button
+          type="button"
+          className={active === "ai-chat" ? "active" : ""}
+          aria-current={active === "ai-chat" ? "page" : undefined}
+          onClick={openPersonalAgent}
+        >
+          <img className="mobile-ai-logo" src="/assets/ai-assistant-logo.png" alt="" width={32} height={32} />
+          <span>Ai</span>
         </button>
         <button
           type="button"
