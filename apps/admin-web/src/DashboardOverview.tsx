@@ -18,9 +18,6 @@ const todoRoutes: Record<string, string> = {
 };
 
 type Props = {
-  greeting: string;
-  name?: string;
-  briefing: ReactNode;
   todos?: DashboardData["todos"];
   cases?: DashboardData["latest_cases"];
   todoStatus: ReactNode;
@@ -36,7 +33,7 @@ type Props = {
   onRefresh: () => void;
 };
 
-export default function DashboardOverview({ greeting, name, briefing, todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh }: Props) {
+export default function DashboardOverview({ todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh }: Props) {
   const items = (todos || []).flatMap((row) => [
     { label: String(row[0]), count: row[1] },
     { label: String(row[3]), count: row[4] },
@@ -50,10 +47,7 @@ export default function DashboardOverview({ greeting, name, briefing, todos, cas
   return (
     <section className="wb-overview" aria-label="工作概览">
       <header className="wb-overview-head">
-        <div>
-          <h2>{greeting}{name ? `，${name}` : ""}</h2>
-          <p>{briefing}</p>
-        </div>
+        {/* 问候语由顶部提醒指标那一行统一展示，这里只保留刷新入口，避免重复。 */}
         <Button icon={<ReloadOutlined />} onClick={onRefresh}>刷新概览</Button>
       </header>
       <div className="wb-overview-body">

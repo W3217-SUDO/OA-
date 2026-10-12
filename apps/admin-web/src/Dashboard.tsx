@@ -192,9 +192,6 @@ export default function Dashboard({
               onFocusHandled={onAssistantFocusHandled}
               onOpenCaseAgent={onOpenCaseAgent}
             /> : <DashboardOverview
-              greeting={greetingByHour(now.hour())}
-              name={workspace.status?.identity?.display_name}
-              briefing={briefing}
               todos={data.todos}
               cases={data.latest_cases}
               todoStatus={sectionStatus("todos")}
