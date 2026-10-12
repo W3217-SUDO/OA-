@@ -1,220 +1,116 @@
 ---
 name: oa-fast-deploy
-description: Fast, safe deployment workflow for the Sunhold OA repository. Use whenever an OA remediation session needs to publish tested work, update the shared dev branch, allocate a formal 1.1.x version, deploy to port 8089, apply a database migration, roll back a failed release, or record online browser acceptance.
+description: Queue verified OA releases by default; coordinate consolidation only for simultaneous formal release and version-switch conflicts. Use for branch pushes, integration, immutable deployments, rollback and deleting fully integrated temporary branches.
 ---
 
 # OA Fast Deploy
 
-Use a linear shared `dev` branch to remove unnecessary integration-session handoffs while keeping each editing session isolated in its own worktree. A problem session that finishes implementation, verification, and build may register itself as the unique release-coordination session and publish from the same conversation. Serialize only version allocation and formal activation.
+## 发布方式选择
 
-## Invariants
+按用户 2026-10-13 最新要求，正常情况按权威队列串行发布；只有同一时间都准备正式发布、争用版本号分配或运行版本切换时，才协商是否合并。本节覆盖之前默认收集兼容候选合批的旧规则。
 
-- Keep each session in its own branch/worktree while editing and testing. Never let two sessions edit one working directory.
-- Treat `dev` as the only integration branch. Keep its history linear; do not create merge commits.
-- Remote roles are fixed: `origin` is the Tencent server Git remote used by the production worktree; `github` is `https://github.com/W3217-SUDO/OA-.git` used for durable source synchronization. Never infer a remote's role from its name alone: verify `git remote -v` before every push.
-- The only permanent development/release branches are `dev`, `main` on GitHub, and the server-managed `production-current` pointer where it already exists. Formal releases are preserved by annotated tags, not by accumulating `release-*`, `deploy-*`, `ready-*`, or issue branches.
-- Feature branches are local by default. Push a temporary feature branch only when another session must fetch that exact commit and `dev` cannot yet accept it. Record its purpose and delete it from both remotes immediately after integration or abandonment.
-- Never force-push during ordinary integration, reset away another session's commit, upload a source directory, reuse an occupied version, or replace the online database. The only exception is the controlled divergent-baseline reconciliation defined below.
-- Deploy only from the fixed server worktree `/opt/sunhold-oa/worktrees/production-current`.
-- Build the frontend production artifact on the local tested worktree, archive it, and record its SHA256 before upload. Never run `npm run build`, `vite build`, or TypeScript compilation on the resource-constrained OA server.
-- Do not back up the whole database for ordinary releases. When a release changes database schema or data, back up only the affected tables plus the minimum related rows needed to verify and restore their relationships; store those scoped backups off-server on the local workstation or approved external storage. Pure application-code releases do not require a database backup. Never retain database dumps or release backup archives under `/opt/sunhold-oa/backups`.
-- Excel-row releases require the local verification defined by `problem-remediation`. Direct user-stated issues may be released without local or online business tests; the production build and operational activation checks remain required. Do not mark an Excel row `1` before the user explicitly confirms it passed.
-- Continue the existing active release unchanged. The next new release train starts at `1.1.1`; subsequent formal releases use `1.1.2`, `1.1.3`, and so on. Failed and rolled-back numbers remain occupied.
+- **默认排队发布。** 每个会话完成自己已授权的范围，正常推送候选分支，按生产真实队列和发布锁依次发布；已完成的修复不等待其他会话仍在开发、未验证或未正常推送的工作。不因同时开发、共享文件或存在另一个候选就自动合批。
+- **先正常推送分支，再正式整合。** 需要合并的候选须先正常推送到已核实的 GitHub 远端，记录并核验远端分支及完整 SHA；未推送的本地候选不能作为正式合并来源。源码门禁按实际 hook 范围执行，不声称功能分支执行了仅对 dev/main 配置的检查。
+- **仅同时正式发布或切换版本争用时协商。** 核实双方均已就绪且确实要使用同一正式发布时段，再由所有者协商继续排队或将已推送、已授权、已验证且兼容的 Codex 候选合成一批。协调不等于必须合并；没有达成合并安排时仍按队列串行。
+- **未完成的工作不纳入，也不拖住就绪修复。** 不为凑批扫描全部历史会话或等待新需求；用户明确要求单独发布时直接按该范围排队。Excel 整批等不可拆任务仍必须全组就绪，不拆成逐行发布。
+- **涉及 Claude 的冲突串行。** 保留各自候选和归属，前序真实完成或失败收口后刷新 dev、生产基线及队列，再整合本任务；不自动搬入对方未发布候选。
+- 真实独占锁继续覆盖共享 dev 更新、版本分配和正式激活。已进入激活的发布先完成或安全回滚；不得删锁文件、抢号或覆盖他人运行包。仅备好工具或提前取得租约不代表未完成候选已就绪。
+- 协商合并时只收已就绪的远端候选，冻结后不再插入改动，不反复变基重建。确认实际所有者和客户端，不从姓名或 Git author 猜测。
 
-## 1. Prepare A Tested Change
+## 当前权威与不变约束
 
-1. Read the complete problem row and follow `problem-remediation` through focused tests, production build, persistence/API verification where applicable, and test-data cleanup.
-2. Commit only owned files on the session branch. Exclude unrelated dirty files and temporary artifacts.
-3. Record the commit, Excel row(s), tests, automated evidence, database patch, and rollback requirements.
-4. Do not change the formal package version or create a formal tag in a feature commit.
+发布前必读 [production-authority.md](references/production-authority.md)。GitHub 是唯一源码权威，实际正式服务器是版本队列及锁的权威；已退役 Tencent，不连接它、不走双远端发布、不执行 `git fetch --all`。
 
-## 2. Submit Readiness Before Shared Dev
+- 先检查 `git remote -v`，只 fetch/push 已核实的 GitHub 远端。集成分支为线性 `dev`；正式成功后将 GitHub `main` 快进到同一发布提交。
+- 读取真实 SSH 配置、有效 systemd、`current` manifest、公开 build-info、health、queue/ledger 和占用标签。不得凭记忆选择主机、端口、工具、版本或旧 worktree。
+- 正式采用 enterprise immutable package/`current` 激活链路。只安装新版本包，校验摘要并物理封存后切换；不修改旧包，不在服务器构建前端或拉取源码覆盖运行树。
+- 不丢弃他人改动、不复用占用或失败版本、不改写正式标签、不覆盖数据库。正常集成不 force-push；真实历史分叉需另行明确授权的修复方案，普通“合批”不是历史重写授权。
+- 不提交密钥、数据库、业务附件、测试数据、临时包或依赖目录。生产包不得包含测试、Mock、Fixture、调试入口。
+- 代码发布不等于用户界面验收。除用户本轮明确要求外不做线上业务写测试或浏览器操作，不将问题表标记为 `1/已验收`。
 
-Keep the tested feature commit on the session's local branch and send the readiness receipt in section 3. Do not create or push a remote feature branch merely as a checkpoint. If cross-session handoff genuinely requires a remote ref, use one short-lived `codex/<issue>` branch, report its exact commit, and mark it for deletion after integration. Do not update `dev` until the primary task assigns this session the release slot.
+## 1. 就绪回执与发布所有者
 
-When the primary task says the session is next, immediately before updating `dev` run:
-
-```powershell
-git fetch --all --prune --tags
-git rebase origin/dev
-```
-
-Rerun affected tests and the production build after a non-trivial rebase. Then push the exact tested HEAD as a fast-forward:
-
-```powershell
-git push origin HEAD:dev
-```
-
-If rejected, another session won the race. Fetch, rebase onto the new `origin/dev`, resolve only owned files, rerun affected tests/build, and retry. Do not merge and do not force-push.
-
-After the push, report the exact remote `dev` commit to the primary task. Do not choose a version yet. No permanent integration or coordinator worktree is required.
-
-Mirror the same fast-forward `dev` commit to GitHub after verifying both remotes' current heads:
-
-```powershell
-git push origin HEAD:dev
-git push github HEAD:dev
-```
-
-Both pushes must resolve to the same commit. A successful push to only one remote is an incomplete synchronization, not a completed release candidate.
-
-## 2.5 CI Quality Gate Before Release
-
-Do not reserve a version, create a release tag, activate the server, or move GitHub `main` until the exact candidate commit has passed the repository quality workflow. This gate exists to prevent a release from being published while the later `quality` job is still failing.
-
-1. Run `scripts/quality_gate.py` against the exact candidate with Python 3.12 and Node.js 22, matching `.github/workflows/quality.yml`. A different local runtime is not an acceptable substitute; if the required runtimes are unavailable locally, rely on the GitHub workflow and do not claim local quality-gate completion.
-2. After pushing the candidate to both `origin/dev` and `github/dev`, query the GitHub Actions run for that exact SHA. Wait until the `quality` job is `completed` with conclusion `success`; `queued`, `in_progress`, a different SHA, or a partial step result is a release blocker.
-3. Read the uploaded `quality-evidence` artifact and confirm `quality-gate.json` has `passed: true` and every recorded step has exit code `0`. If the artifact is unavailable or any step failed, keep the version unallocated, leave `main` unchanged, and return to diagnosis.
-4. Only after this gate passes may the release proceed to version allocation and server activation. After fast-forwarding GitHub `main`, wait for its Actions run on the same release SHA and require the same `quality` success before reporting synchronization complete.
-
-When a quality failure is caused by a changed business rule, update the affected regression fixture or implementation together with a focused test, rerun the exact failing test locally, and rerun the full CI quality gate. Never skip or weaken a regression assertion merely to make the workflow green.
-
-### Fast local source gate
-
-The `source` profile is already scoped: it runs the frontend unit suite, backend static and structural checks, the API/menu audits and only the fixed related regression files, and records every other file as `deferred` for CI `full`. Do not "scope it further" by selecting only the files a change touched; a changed shared helper must still be exercised by the checks that consume it.
-
-Make it fast without weakening it:
-
-1. Concurrency is `--jobs`, which parallelises the backend regression files. The gate defaults to the workstation CPU count capped at 10; override with `OA_QUALITY_JOBS` only when a machine needs a lower bound. The default is defined once in `quality_gate.py`; the pre-push hook forwards it only when you set it explicitly.
-2. A passing run writes a source receipt bound to the commit, runtimes, lock files, installed dependency set and `--jobs`. Re-running the same commit within the receipt's validity window reuses that report instantly, so a retry after an unrelated failure does not re-run the whole gate.
-3. Changing the commit, the runtime, a lock file, an installed dependency or `--jobs` invalidates the receipt by design and forces a fresh run. Expect that and do not treat it as a regression.
-4. Run the gate once per final commit. Squash staging-only tidy-ups before it, so a cosmetic follow-up commit does not force a second full pass.
-5. The backend regression is dominated by a single storage test file. Raising `--jobs` improves the wall clock until the longest single file becomes the floor; that file, not the gate, is where further optimisation belongs.
-
-A known-failing platform test is not a reason to disable the gate: fix or skip the specific test with a documented reason, keep the assertion in effect where the capability exists, and never bypass the hook.
-
-## 3. Formal Release Gate
-
-For a direct standalone OA issue, the user's request includes authorization to release immediately after the code change and required production build; do not run local or online business tests and do not wait for a second "deploy" message. For an Excel batch, wait until every included row passes the local verification defined by `problem-remediation`, then release the batch once. Browser testing is left to the user. Immediately before every release, read all of the following from authoritative sources:
-
-- remote `dev` HEAD and selected target commit;
-- server `production-current` HEAD and exact active tag;
-- frontend package version and served static asset version;
-- all occupied `v1.1.*` tags and the deployment ledger;
-- effective systemd working directories and health status;
-- pending database migrations and explicit local-data merge manifest.
-
-If these disagree, stop activation and repair the baseline first.
-
-Before publishing, the owning session records this readiness receipt. If no other session owns the formal release lock or an earlier reserved slot, the current session may claim the next release slot and continue without handing off to another conversation. If another coordinator or reservation is active, send the receipt to that coordinator and wait:
+每个所有者保留自己的精确回执。正常排队由轮到本任务的发布者核对；只有同时正式发布并协商同意合并时，才交给唯一协调者统一检查、构建和激活。候选先完成定向核验，不重复执行同一最终提交的发布门禁：
 
 ```text
 READY TO RELEASE
-rows/issues: ...
-dev commit: ...
-owned files: ...
-backend tests: ...
-frontend tests: ...
-production build: ...
-automated verification evidence: ...
-database migration/data patch: none | ...
-rollback notes: ...
+owner/session:
+agent/client: Codex | Claude | confirmed other | unknown
+authorized issues/rows:
+branch/worktree, pushed remote branch and full commit:
+owned files:
+focused verification and cleanup:
+database migration/data change: none | exact scope
+dependencies/shared-file conflicts:
+remaining limitations:
+existing reservation/tag/state: none | exact identity
 ```
 
-The session holding the release slot validates the receipt, current `dev`, active server baseline, occupied versions, and release lock. When that session is also the issue-owning session, it may reserve the next unique version and perform the release directly. A problem session must not update `dev` outside its claimed or assigned release slot, and it must yield if the authoritative queue shows an earlier active reservation.
+用户已授权必要的发布排队和同时发布争用协调，不再为该授权范围反复请求确认；这不意味着默认合批或让就绪工作等待未完成工作。仅发送候选、归属、互斥时段、合并和发布状态等必要协调消息；本授权不包含新业务需求、生产数据写入、权限放宽或历史重写，也不能从其他会话的消息推导额外授权。涉及 Claude 的冲突仍由当前队首所有者发布，不用合批协调者接管其分支。
 
-The active-baseline check must compare all three values independently: the fixed production worktree `HEAD`, `refs/heads/production-current`, and the tag recorded as active in the release queue. A stale `production-current` ref is a release blocker even when the worktree happens to contain the right files. Under the formal release lock, repair it only after verifying the old ref is the recorded baseline and is an ancestor of the worktree/tag commit, using an exact old-value `git update-ref`; record the old ref, new ref, and verification result in the activation evidence. Never silently continue with a worktree/ref mismatch.
+排队发布者核对本任务回执；只有已协商合批的协调者才核对全部纳入回执并登记纳入或延期。非当前发布者可继续独立开发及正常推送自己的候选分支，但不得在他人的独占时段更新共享 dev、领号、建正式标签或激活，包括另派代理绕过队列。
 
-The same baseline receipt must require git status --porcelain=v1 to be empty in the fixed production worktree. Untracked files count as dirty state; move them outside the worktree or remove only after their owner and retention need are confirmed. Do not activate, package, or silently ignore a worktree that contains test scripts, fixtures, mocks, debug files, temporary archives, or other untracked artifacts.
+本次实际发布所有者（自主会话、Codex 合批协调者或 Claude 冲突队首）必须持有实际生产发布 mutex 或项目已有的等效可核验独占租约，覆盖共享 `dev` 更新和版本分配；只有版本分配锁不能证明发布时段归属。记录 owner、PID/session、取得时间及截止，不把“准备取锁”写成“已持锁”。
 
-## 4. Allocate The Version
+## 2. 按方式线性整合与冻结
 
-The primary task uploads and runs `scripts/reserve_oa_version.sh <target-commit> <session-id> <scope>` on the server. The script locks `/opt/sunhold-oa/locks/version-allocation.lock`, combines occupied Git tags with `/opt/sunhold-oa/releases/queue.tsv`, reserves the next number, and prints it. It returns `1.1.1` when no `1.1.x` release exists and otherwise increments the greatest occupied patch number by one. Use `scripts/next_oa_version.py` only for local preview; the server reservation is authoritative.
+正常排队时，先正常推送本任务候选分支。轮到本任务后对齐实际已发布的权威 dev，核对补丁保全与受影响检查，再通过正常 hook 快进共享 dev；不搬入未完成候选。Claude 冲突排队先确认前序实际收口，再基于新的 `dev` 整合本任务；不得搬入其他所有者的未发布候选。无法自行消除的代码冲突由相关所有者核对双方必要逻辑，解决前不强推或覆盖。
 
-Allocate late, after tests/build pass. After the primary task assigns a version, the owning session updates the package version, commits it on top of the selected `dev` commit, creates the matching annotated tag, and pushes the commit and tag. A rejected branch/tag push means the allocation lost a race: stop, report to the primary task, fetch, receive a new unused number, rebuild, and retry. Never reuse the failed number.
+以下整合步骤仅适用于同时正式发布争用并已协商同意的 Codex 合批：
 
-The package version, release commit, Git tag, build artifact, deployment ledger, and served version must match exactly.
+1. 一次读取 GitHub `dev`、正式基线、队列和相关就绪提交。保留当前已上线行为及共享 `dev` 已核实的必要改动。
+2. 先核对各候选已正常推送的远端分支与完整 SHA，再在协调者的独立工作树以 rebase/cherry-pick 线性整合这些准确来源。共享文件由明确所有者解决冲突并保留双方必要逻辑；其他会话不同时编辑此树。
+3. 用逐文件 diff、range-diff 或补丁等价证据确认所有纳入范围完整、无未知改动。已在 `dev` 但无就绪证明的内容先核实所有者，不静默部署、不回退抹掉。
+4. 冻结完整候选及各原始提交映射。合并后的共享代码需要定向交叉回归；仅版本号或交接记录变更不另外重复业务测试。
+5. 只有协调者对冻结候选执行正常 pre-push source 门禁并将同一提交快进到 `dev`。不得各分支先各推一遍 `dev` 再分别重跑发布检查。
+6. FF 拒绝或发现新预留时，停止自动重试，查明实际冲突和所有者，重新按第一个章节选择发布方式；涉及 Claude 改走串行，不一边收新提交一边反复变基和运行全套门禁。
 
-Push the release commit and annotated tag to both authoritative remotes. Do not create a release branch:
+候选使用命名准确的短期分支正常推送，记录所有者与用途；不要累积 release-*、deploy-* 或 ready-* 分支。完整合入权威 dev 并核对原始 SHA、祖先关系或补丁等价证明后，必须精确删除已合入且不再需要的远端临时分支，再 fetch --prune 并用 ls-remote 确认不存在；本地短期分支在未被活跃工作树使用且无需继续编辑时按精确名称安全删除。若本次发布仍依赖该引用，发布收口后立即完成清理并记录结果，不能一直保留。禁止批量猜删、强删未合入改动、删除 dev/main/production-current 或正式标签；他人未合入、仍在使用或归属不明的分支保留。
 
-```powershell
-git push origin <release-commit>:dev refs/tags/<tag>
-git push github <release-commit>:dev refs/tags/<tag>
-```
+## 3. 门禁一次正确执行
 
-## 5. Serialize Server Activation
+加速靠独立检查并行、有效回执复用及实际争用时的协商，不靠默认合批等待或跳过验证。GitHub 只跑现有 `static` 工作流，禁止 GitHub `full`、手动触发全量或把 `deferred` 当作必须全量补跑的失败。
 
-Before taking the activation lock, inspect the migration and data-patch manifest. If there is no database change, record `database backup: not required (no database change)` and continue without a dump. If schema or data changes are present, export only every affected table and the minimum related rows required to verify and restore foreign-key or soft-link relationships into a versioned local directory. Record the source database, table/row scope, release version, target commit, and snapshot time, then verify every scoped backup is non-empty and its SHA256 matches a separately captured digest. A missing affected table, relationship scope, transfer, or checksum blocks the release. Whole-database dumps are prohibited unless the user explicitly authorizes disaster-recovery work.
+- 采用仓库已有正常 pre-push hook 作为发布 source 检查入口，不先手动跑同一 source 再让 hook 无条件重跑。
+- 使用规定的 Python 3.12、Node 22；全过程保持同一解释器、依赖、Git 配置和环境。设置 `OA_QUALITY_JOBS` 后始终保持其值，不能用“仅 CLI --jobs 相同”代替同一环境指纹。
+- 若确需手动运行，必须传实际完整 40 位 `--push-commit`、与 hook 相同的环境和 jobs，并核回执绑定该 HEAD、`passed=true`、每步 exit 0。无绑定报告或不同环境不能冒充有效缓存。
+- 保存真实 source receipt/context，后续同 HEAD 的 `main` 同步复用正常 hook 回执。失配时记录可证实差异，不伪改缓存或报告，不把推测写成根因。
+- 最终提交包含本批全部版本及交接修改，之后停笔。同一最终 HEAD 的生产构建与 source hook 可独立并行；构建后不再改源码。
+- 对准确发布 SHA 查询 GitHub `static` run，要求 completed/success；读取质量 artifact 的 `profile=static`、`passed=true`、步骤 exit 0。拿不到 artifact 时明确限制，不伪称读取或触发 full。
 
-If a required scoped export cannot be streamed directly, it may exist only as short-lived staging under `/tmp`; transfer and verify it locally, then delete the server staging file before activation. Never leave database exports, frontend archives, or release backup directories on the server after the transfer.
+## 4. 一批只分配一个新版本
 
-Only server activation is locked. Upload one standalone Linux release script and execute the complete critical section under:
+功能候选验证及必要构建通过后，由本次实际发布所有者按生产权威脚本晚分配一个新号。采用 [production-authority.md](references/production-authority.md) 的新鲜 GitHub refs 快照及独立 SHA，不猜号、不启动新计数器。正常排队不等未完成候选；各独立发布按实际队列分别登记，不因排队填写 consolidated_into。下列原候选合并规则仅用于 Codex 合批或另获明确授权的合并，不用于 Claude 串行队列。
 
-```bash
-flock -x /opt/sunhold-oa/locks/formal-release.lock -c '/tmp/activate-oa-release.sh <commit> <tag>'
-```
+- 正常排队在轮到本任务且候选已验证后领取自己的唯一版本；已经协商合批的候选不得各自预占版本来制造争用，所有方式均不提前抢号。
+- 冲突前已存在的 assigned 候选保留原版本、提交、owner、scope 和时间。与所有者核对就绪证据及真实状态后，使用既有 allocator 的合并契约登记 `consolidates=<原版本列表>`，统一分配一个未占用的新版本。
+- 合并契约要求的标签、身份或就绪证据缺失时，核实并补齐真实证据；不伪造标签、删除预留、改 owner 或假记成功以绕过门禁。
+- 原候选不再单独激活。新包健康上线后才追加原记录 `consolidated_into=<新版本>`，失败时原记录保持可追踪。
+- 已进入实际激活的发布先完成或安全回滚，不能中途拆开它的临界区。其他未 activating 的候选保留真实身份和队列顺序，默认分别排队；只有所有者明确协商合并后才按合并契约收口，不因已有预留就强制合并或跳过队首。
+- 按唯一分配号一次更新 package.json、package-lock.json 的版本字段及本批必要交接信息，形成一个最终发布提交和 annotated tag；不在上线后为补文档反复触发新发布。
+- 最终正常 hook 与本地构建绑定同一 HEAD，GitHub `dev`/tag、版本文件、包及 manifest 一致后才允许激活。
 
-The script must, while holding the lock:
+## 5. 严格构包与一次激活
 
-1. Re-read the active commit/tag and remote `dev` HEAD.
-2. Abort unless the target is the expected tested commit and can fast-forward the active baseline.
-3. Confirm either that the release has no database change, or that the verified scoped table/relationship backup manifest belongs to this target release and was completed immediately before activation.
-4. Apply only repeatable migrations and explicitly listed data merges; verify keys and relations.
-5. Fetch and fast-forward `/opt/sunhold-oa/worktrees/production-current` to the target commit.
-6. Verify the uploaded frontend archive SHA256 against the locally recorded value, extract it into the fixed worktree without running any server-side frontend build, confirm both systemd services point to the fixed worktree, restart them, and poll API/Web health for up to 60 seconds.
-7. Check API health, static assets, package/tag/commit consistency, and critical database counts.
-8. Remove any server-side temporary backup staging and verify that no release database export remains on the server.
+读取实际运行的 native helper/解释器并核其 SHA，使用现有 runtime_package 验包；不上传覆盖目录。保留包大小、SHA、源码来源、完整文件集合及严格验包证明。
 
-Complex Windows-to-Linux commands must be written to a `.sh` file and uploaded. Do not embed pipelines, heredocs, nested quoting, or JSON inside a PowerShell SSH string.
+Windows 换行差异与业务差异分别审计。机械字节对齐仅在正式基线 manifest/raw hash、基线和候选 Git blob、候选内容均证明仅行尾不同后处理本地包；保留实际改动字节及包外 provenance，更新 manifest 并重新严格验包。不能静默归一化、不搬未知旧包、不改源码掩盖差异。
 
-## 6. Online Acceptance And Rollback
+数据库无变更则记录无需备份，不 dump。存在迁移/数据补丁时，按最小受影响表及关联行完成外置备份、SHA、恢复方案与审批；禁止无授权全库备份或替换生产数据。
 
-Do not open or control a browser after deployment unless the user explicitly requests it for the current issue. Verify the deployed commit/tag/package, static assets, service working directories, API/Web health and logs, then report the issue as `awaiting user acceptance`.
+- 上传本任务专属 staging，校验大小/SHA/工具归属和保护配置摘要，不清理未知路径。
+- 只有本次实际发布所有者激活一次。锁内重新核对当前基线、已验证目标、队列/所有者、refs 时效、保护配置及数据库范围。
+- 物理封存新包包括根目录和全部子路径，严格核 `chattr +i`。旧包完整保留为回滚点。
+- 准备租约正常释放后可由激活 helper重新非阻塞取锁并复查全部状态；不得宣称这段交接始终持锁，也不得外层持锁再让子进程重复取同一锁。
+- stdin 控制租约使用可保持输入的 `tty=true` 或已审控制文件机制。输入关闭、超时或异常退出按实际记录，不伪造正常释放或 exit 0。
+- 失败回滚以实际 `current` 指向判断：目标包才恢复原基线，原基线则验证健康，第三方目标拒绝覆盖。回滚须核原版本 health/build-info。
+- 健康通过、回执持久化、队列登记分别记录。回执 flush/fsync、回读校验后才称已保存；健康后的元数据失败明确 pending，不误回滚健康版本。
+- staging 只精确清理本任务拥有的文件。发布成功后清理失败记录待清理，不把健康发布改成失败或触发回滚。
 
-On failure:
+## 6. 统一收尾与后续批次
 
-- keep the failed version occupied;
-- roll the fixed production worktree and services back to the last proven active tag;
-- reverse only migrations with an explicitly tested down path; otherwise restore the verified affected-table/related-row backup according to the migration plan;
-- leave the Excel row incomplete and fix forward under a new version.
+核 current/manifest、API/Web/Nginx、公开 health/build-info、主资源及受影响页面少量 lazy 资源的 HTTP/SHA、严重日志、保护配置未变和正式回执。不要把这轮变成全站业务测试。
 
-After healthy activation, update the deployment ledger and leave affected Excel rows as `待用户验收`. Only after the user explicitly confirms a row passed may it be marked `1`, preserving workbook media and formatting. Report active commit/tag/version, backups, migrations, tests, health evidence, user acceptance state, and rollback point.
+正常 hook复用最终回执将 GitHub `main` 快进，核 `dev`、`main`、annotated tag 和运行提交一致，查静态 CI。记录本批各原候选的整合结果，精确清理本批 staging 和已完整合入的多余短期分支，核验远端删除及 fetch/prune 结果，确认租约进程和必要执行会话退出；清理失败记录具体待清理分支，不宣称已清理。
 
-Then synchronize GitHub `main` by a strict fast-forward from the exact released commit and verify `github/main`, `github/dev`, the release tag, and the active server commit are identical:
-
-```powershell
-git push github <release-commit>:main
-git ls-remote github refs/heads/main refs/heads/dev refs/tags/<tag>^{}
-```
-
-Finally delete any temporary feature branch created for this release from both remotes. Never delete `dev`, GitHub `main`, `production-current`, formal tags, active safety refs, or an unmerged branch. A branch cleanup is complete only after `git fetch --all --prune` and `git ls-remote --heads` confirm removal.
-
-## 7. Deterministic Release Order
-
-Every ordinary release follows this exact order; do not interleave branch creation or optional pushes:
-
-1. Verify `git remote -v`, clean owned worktree state, remote `dev` heads, active server commit/tag, queue and release lock.
-2. Rebase the local tested commit onto the latest authoritative `dev`; rerun affected checks when the base changed.
-3. Fast-forward the identical commit to `origin/dev` and `github/dev`; verify both hashes.
-4. Reserve one version under the queue lock, change only the package version files, build locally, create one release commit and one annotated tag.
-5. Push the same release commit/tag to both remotes. Do not create a release/deploy/ready branch.
-6. Activate only the fixed server worktree under `formal-release.lock`; verify health, assets, services, logs and database scope.
-7. Fast-forward `github/main` to the released commit, record the ledger, and delete any short-lived handoff branch.
-
-Stop immediately on any hash mismatch, non-fast-forward rejection, occupied version, active lock, build failure, migration uncertainty, or health failure. Preserve the local commit and report the exact mismatch; do not improvise another branch or version.
-
-## 8. Scope And Concurrency
-
-- Multiple sessions may edit/test concurrently and push their tested commits to their own branches. Only the session holding the release slot may fast-forward `dev`.
-- The primary task assigns versions and deployment order; owning sessions deploy only after receiving an assignment.
-- Multiple sessions must not allocate versions or activate the server concurrently; the release queue and `flock` are mandatory.
-- A later release must contain the current active commit and all already published `dev` commits. Never deploy an older `dev` snapshot over a newer release.
-- If a session's change depends on another unfinished change, wait for that commit on `dev` or explicitly include and retest both scopes.
-- A direct standalone issue must enter formal release automatically after its code change and required production build. Do not require local or online business tests; treat the original fix request as release authorization and do not wait for a separate `deploy` message.
-- An Excel batch or explicitly grouped set must still release once after every included row passes local acceptance. Do not split that batch into row-by-row deployments unless the user explicitly changes the batch scope.
-
-## 9. Controlled Divergent-Baseline Reconciliation
-
-Use this procedure only when the fixed production worktree's active commit and remote `dev` have diverged, so no candidate can be both a descendant of the active production commit and a fast-forward of `dev`.
-
-Only the unique release-coordination session may perform this procedure, and only after the user explicitly authorizes coordination and publication. The current issue session may become that coordinator when it verifies that no other session owns the active release slot; a separate conversation is not required. If another coordinator is active, the issue session must stop and hand off its tested candidate.
-
-1. Fetch all remote refs and tags. Record the active production commit/tag/package, remote `dev`, merge base, commits unique to each side, working-tree status, and release queue.
-2. Create a candidate directly from the active production commit. Reapply every still-required `dev`-only change and the new tested issue commit with cherry-pick or equivalent patch application. Do not omit changes merely because commit messages look duplicated.
-3. Compare the candidate tree against both sides, audit every differing file, rerun affected tests and the production build, and confirm the candidate contains all currently served behavior plus the intended new change.
-4. Push immutable safety refs before changing `dev`: one ref for the old remote `dev`, one for the active production baseline, and one for the tested reconciliation candidate. Verify all three hashes by `ls-remote`.
-5. Re-read remote `dev`. If it changed after step 1, stop and rebuild the candidate. Otherwise, the coordinator may update `dev` exactly once with `git push --force-with-lease=refs/heads/dev:<recorded-old-dev> <candidate>:refs/heads/dev`. Never use plain `--force`.
-6. Fetch and verify that remote `dev` equals the candidate and that the active production commit is its ancestor. Record the reconciliation in the release ledger, including all safety-ref hashes and the reason.
-7. Resume the normal version reservation and locked activation workflow. Do not deploy until the normal commit/tag/package, artifact, service, health, and rollback checks pass.
-
-This exception repairs branch ancestry only. It does not authorize discarding a unique commit, rewriting tags, deleting safety refs, bypassing the release queue or activation lock, overwriting the database, or skipping tests and build verification.
+正常排队分别汇报本任务版本、GitHub 同步和运行检查结果；仅已协商合批时一次汇报整批及各候选映射。均明确待用户验收，记录已合入临时分支的删除结果；后续工作按队列推进，冻结后新候选不得插入当前版本。
