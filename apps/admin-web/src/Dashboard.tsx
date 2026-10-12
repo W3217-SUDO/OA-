@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Button, message } from "antd";
 import dayjs from "dayjs";
 import AssistantPanel, { type AssistantSuggestion } from "./personal-agent/AssistantPanel";
 import { usePersonalWorkspace } from "./personal-agent/usePersonalWorkspace";
-import DashboardGreeting from "./DashboardGreeting";
 import DashboardHearingSchedule from "./DashboardHearingSchedule";
 import DashboardMetricTiles from "./DashboardMetricTiles";
 import DashboardRejectionReminder from "./DashboardRejectionReminder";
@@ -18,6 +17,8 @@ import { isWorkspaceRouteGranted, normalizeWorkspaceRoute } from "./workspacePer
 
 const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
+export type DashboardView = "overview" | "conversation";
+
 function greetingByHour(hour: number) {
   if (hour < 6) return "凌晨好";
   if (hour < 12) return "上午好";
@@ -27,6 +28,8 @@ function greetingByHour(hour: number) {
 }
 
 export default function Dashboard({
+  view,
+  onViewChange,
   onNavigate,
   grantedMenuKeys,
   permissionAdministrator,
@@ -34,6 +37,8 @@ export default function Dashboard({
   assistantFocusRequested,
   onAssistantFocusHandled,
 }: {
+  view: DashboardView;
+  onViewChange: (view: DashboardView) => void;
   onNavigate: (route: string) => void;
   grantedMenuKeys: ReadonlySet<string>;
   permissionAdministrator: boolean;
@@ -44,14 +49,13 @@ export default function Dashboard({
   const { data, loading, errors, retry } = useDashboardData();
   // 工作台与智能体中心共用同一套会话运行时，因此这里可以列出会话并让多个会话同时回答。
   const workspace = usePersonalWorkspace();
-  const [showConversation, setShowConversation] = useState(false);
   const detailRequest = useRef<AbortController | null>(null);
   const navigation = useRef({ onNavigate, grantedMenuKeys, permissionAdministrator });
   navigation.current = { onNavigate, grantedMenuKeys, permissionAdministrator };
   useEffect(() => () => detailRequest.current?.abort(), []);
   useEffect(() => {
-    if (assistantFocusRequested) setShowConversation(true);
-  }, [assistantFocusRequested]);
+    if (assistantFocusRequested && view !== "conversation") onViewChange("conversation");
+  }, [assistantFocusRequested, onViewChange, view]);
   const canNavigate = (route: string) => isWorkspaceRouteGranted(
     normalizeWorkspaceRoute(route), grantedMenuKeys, permissionAdministrator,
   );
@@ -103,7 +107,7 @@ export default function Dashboard({
   // 提醒里的“交给智能体”和输入框共用当前对话；当前对话忙碌时另开一条对话并行回答。
   const askAgent = (prompt: string) => {
     // 面板按需挂载，直接切到对话视图即可，不再滚动定位。
-    setShowConversation(true);
+    onViewChange("conversation");
     if (!workspace.sending) {
       void workspace.send(prompt);
       return;
@@ -159,7 +163,6 @@ export default function Dashboard({
   );
   const metrics = (
     <DashboardMetricTiles
-      leading={<DashboardGreeting greeting={greetingByHour(now.hour())} name={workspace.status?.identity?.display_name} briefing={briefing} />}
       metrics={data.metrics || []}
       status={sectionStatus("metrics")}
       onOpen={navigateMetric}
@@ -182,16 +185,19 @@ export default function Dashboard({
         <div className="wb-grid">
           <div className="wb-main">
             <div className="wb-view-switch" aria-label="工作台视图">
-              <button type="button" aria-pressed={!showConversation} onClick={() => setShowConversation(false)}>工作概览</button>
-              <button type="button" aria-pressed={showConversation} onClick={() => setShowConversation(true)}>助手对话</button>
+              <button type="button" aria-pressed={view === "overview"} onClick={() => onViewChange("overview")}>工作概况</button>
+              <button type="button" aria-pressed={view === "conversation"} onClick={() => onViewChange("conversation")}>助手对话</button>
             </div>
-            {showConversation ? <AssistantPanel
+            {view === "conversation" ? <AssistantPanel
               workspace={workspace}
               suggestions={suggestions}
               focusRequested={assistantFocusRequested}
               onFocusHandled={onAssistantFocusHandled}
               onOpenCaseAgent={onOpenCaseAgent}
             /> : <DashboardOverview
+              greeting={greetingByHour(now.hour())}
+              name={workspace.status?.identity?.display_name}
+              briefing={briefing}
               todos={data.todos}
               cases={data.latest_cases}
               todoStatus={sectionStatus("todos")}

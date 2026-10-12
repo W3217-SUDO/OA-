@@ -29,13 +29,12 @@ const metricIcons: Record<string, ReactNode> = {
 const COLLAPSE_KEY = "sunhold:workbench-metrics-collapsed";
 
 type Props = {
-  leading: ReactNode;
   metrics: Metric[];
   status: ReactNode;
   onOpen: (metric: Metric) => void;
 };
 
-// 折叠状态只影响工作台这一块，刷新后保持。用户没手动设置过时，窄屏默认收起，把对话留在第一屏。
+// 折叠状态只影响工作台这一块，刷新后保持。用户没手动设置过时，窄屏默认收起，减少首屏占用。
 function readCollapsed() {
   try {
     const stored = window.localStorage.getItem(COLLAPSE_KEY);
@@ -46,8 +45,8 @@ function readCollapsed() {
   return window.innerWidth < 721;
 }
 
-// 提醒指标：八个色块加一个折叠开关，收起来时只留一行摘要；开关行左侧放工作台问候语。
-export default function DashboardMetricTiles({ leading, metrics, status, onOpen }: Props) {
+// 提醒指标：八个色块加一个折叠开关，收起来时只留一行摘要，不承载问候语。
+export default function DashboardMetricTiles({ metrics, status, onOpen }: Props) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   useEffect(() => {
     try {
@@ -60,7 +59,6 @@ export default function DashboardMetricTiles({ leading, metrics, status, onOpen 
   return (
     <section className={`wb-metrics${collapsed ? " is-collapsed" : ""}`} aria-label="案件与费用提醒">
       <div className="wb-metric-bar">
-        {leading}
         {status}
         <Button
           type="text"

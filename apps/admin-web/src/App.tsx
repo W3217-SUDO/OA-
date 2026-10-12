@@ -1,4 +1,4 @@
-import Dashboard from "./Dashboard";
+import Dashboard, { type DashboardView } from "./Dashboard";
 import { ConflictReviewHost } from "./conflict-review/ConflictReviewHost";
 import { dashboardWorkspace } from "./dashboardWorkspace";
 import {
@@ -50,7 +50,6 @@ import {
   QrcodeOutlined,
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
-import AgentAvatar from "./personal-agent/AgentAvatar";
 import { bindDingTalkWebLogin, clearDingTalkWebCallback, consumeDingTalkWebCallback, startDingTalkWebLogin } from "./auth/dingtalkWebLogin";
 import {
   PERMISSIONS_UPDATED_EVENT,
@@ -1232,6 +1231,7 @@ export default function App() {
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
   const [taskUnreadCount, setTaskUnreadCount] = useState(0);
+  const [dashboardView, setDashboardView] = useState<DashboardView>("overview");
   const [assistantFocusRequested, setAssistantFocusRequested] = useState(false);
   const effectiveMenuItems = useMemo(
     () => configuredMenuItems(menuConfig),
@@ -1262,6 +1262,8 @@ export default function App() {
     setContractDetailTarget(null);
     setOpenMenuKeys([]);
     setOpenPages(dashboard);
+    setDashboardView("overview");
+    setAssistantFocusRequested(false);
     setActive("dashboard");
   };
   const endClientSession = () => {
@@ -1463,6 +1465,7 @@ export default function App() {
     setActive(normalizedRoute);
   };
   const openPersonalAgent = () => {
+    setDashboardView("conversation");
     setAssistantFocusRequested(true);
     navigate("dashboard");
   };
@@ -1559,6 +1562,8 @@ export default function App() {
           : <CaseCenterPage key={active} initialView={dashboardTarget.view} dashboardQueue={dashboardTarget.key} onNavigate={navigate} />
     ) : route === "dashboard" ? (
       <Dashboard
+        view={dashboardView}
+        onViewChange={setDashboardView}
         onNavigate={navigate}
         grantedMenuKeys={grantedMenuKeys}
         permissionAdministrator={permissionAdministrator}
@@ -1951,19 +1956,25 @@ export default function App() {
       <nav className="mobile-bottom-nav" aria-label="移动端主导航">
         <button
           type="button"
-          className={active === "dashboard" ? "active" : ""}
-          aria-current={active === "dashboard" ? "page" : undefined}
-          onClick={() => navigate("dashboard")}
+          className={active === "dashboard" && dashboardView === "overview" ? "active" : ""}
+          aria-current={active === "dashboard" && dashboardView === "overview" ? "page" : undefined}
+          onClick={() => {
+            setDashboardView("overview");
+            setAssistantFocusRequested(false);
+            navigate("dashboard");
+          }}
         >
           <HomeOutlined />
           <span>首页</span>
         </button>
         <button
           type="button"
+          className={active === "dashboard" && dashboardView === "conversation" ? "active" : ""}
+          aria-current={active === "dashboard" && dashboardView === "conversation" ? "page" : undefined}
           onClick={openPersonalAgent}
         >
-          <AgentAvatar size={21} />
-          <span>智能体</span>
+          <DashboardOutlined />
+          <span>工作台</span>
         </button>
         <button
           type="button"

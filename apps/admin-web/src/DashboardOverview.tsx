@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { Button, Empty } from "antd";
+import { Button, Empty, Tooltip } from "antd";
 import { AuditOutlined, BankOutlined, CheckSquareOutlined, FileSearchOutlined, FolderOpenOutlined, ReloadOutlined, RightOutlined } from "@ant-design/icons";
 import type { DashboardData } from "./dashboardData";
+import DashboardGreeting from "./DashboardGreeting";
 
 // 沿用工作台原有待办入口；统计展示与个人智能体对话互相独立。
 const todoRoutes: Record<string, string> = {
@@ -30,6 +31,9 @@ const todoIcons: Record<string, ReactNode> = {
 };
 
 type Props = {
+  greeting: string;
+  name?: string;
+  briefing: ReactNode;
   todos?: DashboardData["todos"];
   cases?: DashboardData["latest_cases"];
   todoStatus: ReactNode;
@@ -45,7 +49,7 @@ type Props = {
   onRefresh: () => void;
 };
 
-export default function DashboardOverview({ todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh }: Props) {
+export default function DashboardOverview({ greeting, name, briefing, todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh }: Props) {
   const items = (todos || []).flatMap((row) => [
     { label: String(row[0]), count: row[1] },
     { label: String(row[3]), count: row[4] },
@@ -57,16 +61,19 @@ export default function DashboardOverview({ todos, cases, todoStatus, caseStatus
     onNavigate(route);
   };
   return (
-    <section className="wb-overview" aria-label="工作概览">
+    <section className="wb-overview" aria-label="工作概况">
       <header className="wb-overview-head">
-        <div>
-          <h2>我的待办</h2>
-          <p>任务、审批与归档</p>
-        </div>
-        <Button type="text" icon={<ReloadOutlined />} onClick={onRefresh}>刷新概览</Button>
+        <DashboardGreeting greeting={greeting} name={name} briefing={briefing} />
+        <Tooltip title="刷新工作概况">
+          <Button type="text" icon={<ReloadOutlined />} aria-label="刷新工作概况" onClick={onRefresh} />
+        </Tooltip>
       </header>
       <div className="wb-overview-body">
         <section className="wb-overview-section" aria-label="我的待办">
+          <div className="wb-overview-section-head">
+            <h3>我的待办</h3>
+            <span>任务、审批与归档</span>
+          </div>
           {todoStatus}
           {!todosLoading && !todosError && !items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待办事项" />}
           <div className="wb-todo-grid">
