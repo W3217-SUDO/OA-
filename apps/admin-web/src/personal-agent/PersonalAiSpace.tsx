@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Drawer, Pagination, Spin, Tooltip } from "antd";
-import { FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { errorText } from "./types";
 import { PersonalAiSpaceFiles } from "./PersonalAiSpaceFiles";
@@ -8,13 +8,14 @@ import { downloadPersonalAiFile, type PersonalAiFile, type PersonalAiFilePage, t
 import "./personal-ai-space.css";
 
 type Props = {
+  open: boolean;
+  onClose: () => void;
   revision: number;
   busy: boolean;
   onOpenConversation: (id: string) => Promise<unknown>;
 };
 
-export function PersonalAiSpace({ revision, busy, onOpenConversation }: Props) {
-  const [open, setOpen] = useState(false);
+export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversation }: Props) {
   const [page, setPage] = useState(1);
   const [refresh, setRefresh] = useState(0);
   const [space, setSpace] = useState<PersonalAiSpaceInfo | null>(null);
@@ -22,6 +23,7 @@ export function PersonalAiSpace({ revision, busy, onOpenConversation }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [downloadingId, setDownloadingId] = useState("");
+  const close = () => { setPage(1); setSpace(null); onClose(); };
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
@@ -44,14 +46,12 @@ export function PersonalAiSpace({ revision, busy, onOpenConversation }: Props) {
   };
   const openConversation = async (id: string) => {
     setError("");
-    try { await onOpenConversation(id); setOpen(false); }
+    try { await onOpenConversation(id); close(); }
     catch (failure) { setError(errorText(failure, "来源会话不可用")); }
   };
-  return <>
-    <Tooltip title="个人 AI 空间"><Button className="personal-ai-space-trigger" type="text" icon={<FolderOpenOutlined />} aria-label="个人 AI 空间" onClick={() => { setPage(1); setSpace(null); setOpen(true); }}><span className="personal-ai-space-label">个人 AI 空间</span></Button></Tooltip>
-    <Drawer
+  return <Drawer
     open={open}
-    onClose={() => setOpen(false)}
+    onClose={close}
     width={760}
     destroyOnHidden
     rootClassName="personal-ai-space-drawer"
@@ -64,6 +64,5 @@ export function PersonalAiSpace({ revision, busy, onOpenConversation }: Props) {
       {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} busy={busy} onDownload={(file) => void download(file)} onConversation={(id) => void openConversation(id)} />}
       {files && files.total > 0 && <Pagination simple current={files.page} pageSize={files.page_size} total={files.total} disabled={loading} showSizeChanger={false} onChange={setPage} />}
     </div>
-  </Drawer>
-  </>;
+  </Drawer>;
 }

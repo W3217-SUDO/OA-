@@ -8,9 +8,9 @@ import { errorText, type Material, type ResponseMode } from "./types";
 import { MATERIAL_ACCEPT, type usePersonalWorkspace } from "./usePersonalWorkspace";
 import "./assistant-workspace-tools.css";
 
-type Props = { workspace: ReturnType<typeof usePersonalWorkspace> };
+type Props = { workspace: ReturnType<typeof usePersonalWorkspace>; onOpenPersonalAiSpace: () => void };
 
-export function AssistantWorkspaceTools({ workspace }: Props) {
+export function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace }: Props) {
   const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 991px)").matches);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<"case" | "materials" | null>(null);
@@ -68,6 +68,7 @@ export function AssistantWorkspaceTools({ workspace }: Props) {
       <Tooltip title="管理或上传技能">
         <Button type="text" htmlType="button" icon={<ExperimentOutlined />} disabled={busy} aria-label="管理或上传技能" onClick={() => void openSkills()} />
       </Tooltip>
+      {mobile && <Button type="text" htmlType="button" className="personal-ai-space-mobile-entry" icon={<FolderOpenOutlined />} onClick={() => { setToolsOpen(false); onOpenPersonalAiSpace(); }}>个人 AI 空间</Button>}
     </div>;
 
   return <>

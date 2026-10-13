@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Input, List, Tag, Tooltip } from "antd";
-import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileWordOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import AgentAvatar from "./AgentAvatar";
 import { ConversationManager } from "./ConversationManager";
@@ -60,6 +60,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const [decisionError, setDecisionError] = useState("");
   const [historyAction, setHistoryAction] = useState<{ conversationId: string; actionId: string } | null>(null);
   const [dismissalError, setDismissalError] = useState("");
+  const [personalSpaceOpen, setPersonalSpaceOpen] = useState(false);
   const hasMessages = state.messages.length > 0;
   const lastMessage = state.messages[state.messages.length - 1];
   const sendBlocked = loading || !!loadError || !status?.ready || workspace.conversationBusy || workspace.uploading || !!workspace.decisionId || stopping || composing;
@@ -156,8 +157,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             {name && state.conversation_title && <small>{state.conversation_title}</small>}
           </span> : conversationTitle}
         </span>
-        <div className="assistant-bar-actions has-personal-ai-space">
-          <PersonalAiSpace revision={workspace.documentRevision} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} onOpenConversation={workspace.selectConversation} />
+        <div className="assistant-bar-actions">
+          <Tooltip title="个人 AI 空间"><Button className="personal-ai-space-trigger" type="text" icon={<FolderOpenOutlined />} aria-label="个人 AI 空间" onClick={() => setPersonalSpaceOpen(true)}><span className="personal-ai-space-label">个人 AI 空间</span></Button></Tooltip>
           <ConfirmationHistory onReopen={reopen} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} />
           <Tooltip title="刷新智能体">
             <Button
@@ -272,6 +273,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         </div>
       )}
       <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeId) ?? null} deciding={!!workspace.decisionId} decisionFailure={activeId ? workspace.decisionFailures[activeId] : undefined} onDecide={decide} onClose={() => { setActiveAction(null); setHistoryAction(null); }} />
+      <PersonalAiSpace open={personalSpaceOpen} onClose={() => setPersonalSpaceOpen(false)} revision={workspace.documentRevision} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} onOpenConversation={workspace.selectConversation} />
       <div className="assistant-composer"
         onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
         onDrop={(event) => {
@@ -280,7 +282,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           void workspace.upload(Array.from(event.dataTransfer.files));
         }}
       >
-        <AssistantWorkspaceTools key={state.conversation_id || "new"} workspace={workspace} />
+        <AssistantWorkspaceTools key={state.conversation_id || "new"} workspace={workspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} />
         <form className="assistant-composer-input" onSubmit={(event) => { event.preventDefault(); submit(); }}>
           <Input.TextArea
             ref={inputRef}

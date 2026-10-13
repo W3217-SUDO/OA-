@@ -287,6 +287,14 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   const props = { workspace, suggestions: [], focusRequested: false, onFocusHandled: () => {} };
   let renderer;
   await act(async () => { renderer = create(React.createElement(AssistantPanel, props)); });
+  assert.equal(renderer.root.findAllByType("personal-ai-space").length, 1, "桌面与手机共用唯一空间抽屉");
+  assert.equal(renderer.root.findByType("personal-ai-space").props.open, false);
+  await act(async () => renderer.root.findByType("workspace-tools").props.onOpenPersonalAiSpace());
+  assert.equal(renderer.root.findByType("personal-ai-space").props.open, true);
+  await act(async () => renderer.root.findByType("personal-ai-space").props.onClose());
+  await act(async () => renderer.root.findAllByType("button").find((item) => item.props["aria-label"] === "个人 AI 空间").props.onClick());
+  assert.equal(renderer.root.findByType("personal-ai-space").props.open, true, "桌面入口使用同一空间开关");
+  await act(async () => renderer.root.findByType("personal-ai-space").props.onClose());
   const meta = renderer.root.findByType("list-meta");
   assert.equal(meta.props.title, action.summary);
   assert.equal(meta.props.description, undefined, "不重复标题和摘要");
@@ -859,12 +867,45 @@ test("personal AI document uses raw UTF8 hash and explicit one-shot confirmation
   await failed;
 });
 
+test("personal AI mobile tools close their existing popover before opening the shared space", async () => {
+  const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
+  let mobile = true;
+  let mediaChange;
+  let opened = 0;
+  const media = { get matches() { return mobile; }, addEventListener: (_event, listener) => { mediaChange = listener; }, removeEventListener() {} };
+  const workspace = { status: { commands: [] }, loading: false, stopping: false, uploading: false, decisionId: "", conversationBusy: false, skills: [], skillId: "general-office", selectedCase: null, materials: [], caseMaterials: [] };
+  const { AssistantWorkspaceTools } = loadModule("../personal-agent/AssistantWorkspaceTools.tsx", {
+    antd: { Button: component("button"), Popover: ({ content, children, open, ...props }) => React.createElement("popover", { open, ...props }, children, open ? content : null), Segmented: component("segmented"), Select: component("select"), Tooltip: component("tooltip"), message: { error: (text) => assert.fail(text) } },
+    "./usePersonalWorkspace": { MATERIAL_ACCEPT: ".docx" },
+    "./types": { errorText: (error) => error.message },
+    "./CaseMaterialsPicker": { CaseMaterialsPicker: component("case-picker") },
+    "./MaterialPreview": { MaterialPreview: component("material-preview") },
+    "./SkillManager": { SkillManager: component("skill-manager") },
+  }, { window: { matchMedia: () => media } });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(AssistantWorkspaceTools, { workspace, onOpenPersonalAiSpace: () => { opened++; } })); });
+  assert.equal(opened, 0);
+  await act(async () => renderer.root.findByType("popover").props.onOpenChange(true));
+  const entry = renderer.root.findAllByType("button").find((item) => item.props.className === "personal-ai-space-mobile-entry");
+  assert.ok(entry);
+  await act(async () => entry.props.onClick());
+  assert.equal(renderer.root.findByType("popover").props.open, false);
+  assert.equal(opened, 1);
+  mobile = false;
+  await act(async () => mediaChange());
+  assert.equal(renderer.root.findAllByType("popover").length, 0);
+  assert.equal(renderer.root.findAllByType("button").some((item) => item.props.className === "personal-ai-space-mobile-entry"), false, "桌面工具组不重复挂入口");
+  await act(async () => renderer.unmount());
+});
+
 test("personal AI space shows known Chinese source labels and preserves unknown source values", () => {
   const { PersonalAiSpaceFiles } = loadModule("../personal-agent/PersonalAiSpaceFiles.tsx", { antd: { Button: () => null, Empty: () => null, Tag: () => null, Tooltip: () => null } });
   const text = (node) => typeof node === "string" || typeof node === "number" ? String(node) : React.Children.toArray(node?.props?.children).map(text).join("");
   for (const [source, label] of [["mcp_export", "案件导出"], ["mcp_generated", "智能体生成文件"], ["case_draft", "案件AI草稿"], ["case_upload", "案件AI上传"], ["case_migration", "案件AI迁移"], ["assistant_message", "助手回答"], ["future_source", "future_source"], ["toString", "toString"]]) {
     const rendered = PersonalAiSpaceFiles({ items: [{ id: "CODEX-file", name: "CODEX文稿.docx", status: "failed", size: 10, created_at: "2026-10-13T00:00:00Z", source_kind: source, conversation_id: null, source_request_id: null, error: null, download_url: null }], downloadingId: "", busy: false, onDownload: () => assert.fail("来源展示不能下载"), onConversation: () => assert.fail("无来源会话不能导航") });
     assert.ok(text(rendered).includes(label));
+    assert.ok(text(rendered).includes("保存时间"));
+    assert.equal(text(rendered).includes("生成时间"), false);
     if (source !== label) assert.equal(text(rendered).includes(source), false);
   }
 });

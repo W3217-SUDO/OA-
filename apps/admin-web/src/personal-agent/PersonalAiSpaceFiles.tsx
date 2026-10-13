@@ -27,7 +27,7 @@ export function PersonalAiSpaceFiles({ items, downloadingId, busy, onDownload, o
       <dl className="personal-ai-space-file-metadata">
         <dt>格式</dt><dd>{item.name.includes(".") ? item.name.slice(item.name.lastIndexOf(".") + 1).toUpperCase() : item.content_type}</dd>
         <dt>大小</dt><dd>{new Intl.NumberFormat("zh-CN").format(item.size)} 字节</dd>
-        <dt>生成时间</dt><dd><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString("zh-CN", { hour12: false })}</time></dd>
+        <dt>保存时间</dt><dd><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString("zh-CN", { hour12: false })}</time></dd>
         <dt>来源</dt><dd>{Object.hasOwn(SOURCE_LABELS, item.source_kind) ? SOURCE_LABELS[item.source_kind] : item.source_kind}</dd>
         {item.source_request_id && <><dt>请求编号</dt><dd>{item.source_request_id}</dd></>}
       </dl>
