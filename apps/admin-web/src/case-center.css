@@ -290,6 +290,16 @@
   .case-detail-drawer .case-firm-fees-table .case-firm-fee-amount-link.ant-btn-link{justify-self:start;justify-content:flex-start;text-align:left}
   .case-detail-drawer .case-firm-fees-table .ant-table-placeholder,
   .case-detail-drawer .case-firm-fees-table .ant-table-placeholder>td{display:block;width:100%}
+  /* 窄屏空状态按内容占高，避免固定行高使新增入口溢出并覆盖日志。 */
+  .case-detail-drawer .case-detail-tab-area .ant-table-placeholder,
+  .case-detail-drawer .case-detail-tab-area .ant-table-placeholder>td{height:auto}
+  .case-detail-drawer .case-fee-empty-state{min-width:0;max-width:100%;flex-direction:column;align-items:center;gap:8px;padding:16px 8px}
+  .case-detail-drawer .case-fee-empty-state>.anticon{margin-top:0}
+  .case-detail-drawer .case-fee-empty-state>span:not(.anticon){max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .case-detail-drawer .case-fee-empty-state>.ant-space{display:flex;width:100%;max-width:100%;flex-wrap:wrap;justify-content:center;gap:8px!important}
+  .case-detail-drawer .case-fee-empty-state .ant-space-item{min-width:0;max-width:100%}
+  .case-detail-drawer .case-detail-tab-area .ant-table-placeholder .ant-btn{min-width:44px;min-height:44px;max-width:100%;height:auto;white-space:normal;overflow-wrap:anywhere}
+  .case-detail-drawer .case-fee-empty-state .ant-btn-link{padding:6px 8px}
   .case-detail-drawer .case-firm-fees-table .ant-pagination{flex-wrap:wrap;justify-content:flex-start;gap:8px 0}
   .case-detail-drawer .case-firm-fees-table .ant-pagination-item,
   .case-detail-drawer .case-firm-fees-table .ant-pagination-prev,
@@ -524,6 +534,9 @@
   .case-detail-drawer .case-detail-tab-area .ant-table-content,
   .case-detail-drawer .case-detail-tab-area .ant-table-body{max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain}
   .case-detail-drawer .case-legacy-bottom-actions .ant-space{max-width:100%;flex-wrap:wrap}
+  .case-detail-drawer .case-legacy-bottom-actions.ant-space{display:flex;min-width:0;width:calc(100% - 8px);max-width:100%;flex-wrap:wrap;gap:8px!important}
+  .case-detail-drawer .case-legacy-bottom-actions .ant-space-item{min-width:0;max-width:100%}
+  .case-detail-drawer .case-legacy-bottom-actions .ant-btn{min-width:44px;min-height:44px;max-width:100%;height:auto;white-space:normal;overflow-wrap:anywhere}
   .case-detail-drawer .case-documents-layout{grid-template-columns:minmax(0,1fr);min-height:0}
   .case-detail-drawer .case-detail-doc-tree{min-width:0;padding:0 8px;border-right:0;border-bottom:1px solid #dce2e8}
   .case-detail-drawer .case-document-directory-toggle.ant-btn{display:flex;align-items:center;width:100%;height:auto;min-height:44px;padding:8px 0;text-align:left;white-space:normal}
