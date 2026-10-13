@@ -29,6 +29,7 @@ function greetingByHour(hour: number) {
 
 export default function Dashboard({
   view,
+  isNarrowViewport,
   onViewChange,
   onNavigate,
   grantedMenuKeys,
@@ -37,6 +38,7 @@ export default function Dashboard({
   onAssistantFocusHandled,
 }: {
   view: DashboardView;
+  isNarrowViewport: boolean;
   onViewChange: (view: DashboardView) => void;
   onNavigate: (route: string) => void;
   grantedMenuKeys: ReadonlySet<string>;
@@ -52,8 +54,9 @@ export default function Dashboard({
   navigation.current = { onNavigate, grantedMenuKeys, permissionAdministrator };
   useEffect(() => () => detailRequest.current?.abort(), []);
   useEffect(() => {
-    if (assistantFocusRequested && view !== "conversation") onViewChange("conversation");
-  }, [assistantFocusRequested, onViewChange, view]);
+    if (isNarrowViewport && assistantFocusRequested && view !== "conversation") onViewChange("conversation");
+  }, [isNarrowViewport, assistantFocusRequested, onViewChange, view]);
+  const showEmbeddedConversation = isNarrowViewport && view === "conversation";
   const canNavigate = (route: string) => isWorkspaceRouteGranted(
     normalizeWorkspaceRoute(route), grantedMenuKeys, permissionAdministrator,
   );
@@ -104,7 +107,7 @@ export default function Dashboard({
   };
   // 提醒里的“交给智能体”和输入框共用当前对话；当前对话忙碌时另开一条对话并行回答。
   const askAgent = (prompt: string) => {
-    // 面板按需挂载，直接切到对话视图即可，不再滚动定位。
+    // 由父级按当前端设备切换到助手入口，继续复用同一工作区。
     onViewChange("conversation");
     if (workspace.loading || workspace.loadError || !workspace.status?.ready || workspace.conversationBusy || workspace.uploading || workspace.decisionId || workspace.stopping) {
       // 当前无法发送时保留完整问题，也不覆盖用户已输入的草稿。
@@ -182,16 +185,16 @@ export default function Dashboard({
     />
   );
   return (
-    <div className={`reference-dashboard workbench${view === "conversation" ? " is-conversation" : ""}`}>
+    <div className={`reference-dashboard workbench${showEmbeddedConversation ? " is-conversation" : ""}`}>
       <div className="wb-shell">
         {metrics}
         <div className="wb-grid">
           <div className="wb-main">
-            <div className="wb-view-switch" aria-label="工作台视图">
+            {isNarrowViewport && <div className="wb-view-switch" aria-label="工作台视图">
               <button type="button" aria-pressed={view === "overview"} onClick={() => onViewChange("overview")}>工作概况</button>
               <button type="button" aria-pressed={view === "conversation"} onClick={() => onViewChange("conversation")}>助手对话</button>
-            </div>
-            {view === "conversation" ? <AssistantPanel
+            </div>}
+            {showEmbeddedConversation ? <AssistantPanel
               workspace={workspace}
               suggestions={suggestions}
               focusRequested={assistantFocusRequested}

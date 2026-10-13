@@ -55,6 +55,24 @@
   max-height: none;
 }
 
+@media (min-width: 992px) {
+  .ai-chat-page .ai-chat-suggestions-error {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 20%;
+    margin: 8px 24px 0;
+    overflow: auto;
+  }
+
+  /* 桌面待确认操作独立滚动，保留输入区的可达性。 */
+  .ai-chat-page .assistant-pending {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: min(28%, 240px);
+    overflow: auto;
+  }
+}
+
 @media (max-width: 991px) {
   .app-shell.is-chat-workspace .content.ai-chat-content {
     flex: 1 1 0;

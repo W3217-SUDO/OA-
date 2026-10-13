@@ -680,13 +680,14 @@ function flattenMenu(items: NavItem[]): NavItem[] {
   return items.flatMap((item) => [item, ...flattenMenu(item.children || [])]);
 }
 
-function filterMenuByGrantedKeys(items: NavItem[], grantedKeys: Set<string>): NavItem[] {
+function filterMenuByGrantedKeys(items: NavItem[], grantedKeys: Set<string>, includePersonalAgent = false): NavItem[] {
   return items.flatMap((item) => {
-    const children = filterMenuByGrantedKeys(item.children || [], grantedKeys);
+    const children = filterMenuByGrantedKeys(item.children || [], grantedKeys, includePersonalAgent);
     // A parent is retained only as a container for an authorized descendant.
     // It does not grant its own route unless the server returned that key in
     // the user's effective menu permissions.
-    if (item.key !== "dashboard" && !grantedKeys.has(item.key) && !children.length) return [];
+    const personalAgentGranted = includePersonalAgent && item.key === "ai-chat" && isWorkspaceRouteGranted(item.key, grantedKeys);
+    if (item.key !== "dashboard" && !personalAgentGranted && !grantedKeys.has(item.key) && !children.length) return [];
     return [{ ...item, ...(item.children ? { children } : {}) }];
   });
 }
@@ -904,10 +905,10 @@ const routePageLabels: Record<string, string> = {
   "notary-query-files": "公证书文件列表",
 };
 
-function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems): string {
+function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems, personalAgentName = "Ai"): string {
   const normalizedKey = normalizeWorkspaceRoute(key);
   if (normalizedKey === "dashboard") return "工作台";
-  if (normalizedKey === "ai-chat") return "Ai";
+  if (normalizedKey === "ai-chat") return personalAgentName;
   const workspace = dashboardWorkspace(normalizedKey);
   if (workspace) return workspace.label;
   if (normalizedKey.startsWith("case-new-")) return "新建案件";
@@ -1228,7 +1229,7 @@ export default function App() {
   const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(routeFromLocation()));
   const [workspaceReloadKey, setWorkspaceReloadKey] = useState(0);
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false);
-  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
+  const [isNarrowViewport, setIsNarrowViewport] = useState(() => window.matchMedia("screen and (max-width: 991.98px)").matches);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
   const [permissionsReady, setPermissionsReady] = useState(false);
@@ -1238,9 +1239,20 @@ export default function App() {
   const [taskUnreadCount, setTaskUnreadCount] = useState(0);
   const [dashboardView, setDashboardView] = useState<DashboardView>("overview");
   const [assistantFocusRequested, setAssistantFocusRequested] = useState(false);
+  const personalAgentName = isNarrowViewport ? "Ai" : "AI助手";
   const effectiveMenuItems = useMemo(
-    () => configuredMenuItems(menuConfig),
-    [menuConfig],
+    () => {
+      const items = configuredMenuItems(menuConfig);
+      if (isNarrowViewport) return items;
+      const removePersonalAgent = (entries: NavItem[]): NavItem[] => entries
+        .filter((item) => item.key !== "ai-chat")
+        .map((item) => item.children ? { ...item, children: removePersonalAgent(item.children) } : item);
+      return removePersonalAgent(items).flatMap((item) => item.key === "dashboard" ? [
+        { ...item, label: "工作台" },
+        { key: "ai-chat", icon: <RobotOutlined />, label: "AI助手" },
+      ] : [item]);
+    },
+    [menuConfig, isNarrowViewport],
   );
   const actualRole = sessionUser?.actual_role || sessionUser?.role;
   const permissionAdministrator = actualRole === "admin" || sessionUser?.actual_role_ids?.includes("admin") === true;
@@ -1453,9 +1465,9 @@ export default function App() {
   }, [loggedIn]);
   useEffect(() => {
     if (!loggedIn) return;
-    const pageTitle = resolveWorkspacePageLabel(active, effectiveMenuItems);
+    const pageTitle = resolveWorkspacePageLabel(active, effectiveMenuItems, personalAgentName);
     document.title = siteBrand.code === "huzhi" ? `${pageTitle} · ${siteBrand.name}` : pageTitle;
-  }, [active, effectiveMenuItems, loggedIn, siteBrand]);
+  }, [active, effectiveMenuItems, loggedIn, siteBrand, personalAgentName]);
   const navigate = (route: string) => {
     const normalizedRoute = resolveGrantedMenuRoute(normalizeWorkspaceRoute(route), effectiveMenuItems, grantedMenuKeys, permissionAdministrator);
     if (normalizedRoute === "contract-new") {
@@ -1494,13 +1506,13 @@ export default function App() {
   };
   useEffect(() => {
     if (!permissionsReady) return;
-    const effectiveLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
+    const effectiveLabel = resolveWorkspacePageLabel(active, effectiveMenuItems, personalAgentName);
     setOpenPages((current) => {
       const normalized = Array.from(new Map(current.flatMap((entry) => {
         const requested = normalizeWorkspaceRoute(entry.key);
         const key = resolveGrantedMenuRoute(requested, effectiveMenuItems, grantedMenuKeys, permissionAdministrator);
         if (key === "dashboard" && requested !== "dashboard") return [];
-        return [[key, { key, label: resolveWorkspacePageLabel(key, effectiveMenuItems) }] as const];
+        return [[key, { key, label: resolveWorkspacePageLabel(key, effectiveMenuItems, personalAgentName) }] as const];
       })).values());
       const next = normalized.some((entry) => entry.key === active)
         ? normalized
@@ -1512,7 +1524,7 @@ export default function App() {
       localStorage.setItem("sunhold:open-pages", JSON.stringify(next));
       return next;
     });
-  }, [active, effectiveMenuItems, grantedMenuKeys, permissionAdministrator, permissionsReady]);
+  }, [active, effectiveMenuItems, grantedMenuKeys, permissionAdministrator, permissionsReady, personalAgentName]);
   const closeOpenPage = (target: string) => {
     setOpenPages((current) => {
       if (current.length <= 1) return current;
@@ -1555,8 +1567,8 @@ export default function App() {
       ) : <div className="page-loading">正在加载页面授权…</div>}
     </Card>
   );
-  const currentPageLabel = resolveWorkspacePageLabel(active, effectiveMenuItems);
-  const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys);
+  const currentPageLabel = resolveWorkspacePageLabel(active, effectiveMenuItems, personalAgentName);
+  const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys, !isNarrowViewport);
   const sidebarReloadableItems = menuItemsWithDoubleClickReload(sideMenuItems, (item) => {
     navigate(String(item.key));
     setWorkspaceReloadKey((value) => value + 1);
@@ -1573,9 +1585,10 @@ export default function App() {
           : <CaseCenterPage key={active} initialView={dashboardTarget.view} dashboardQueue={dashboardTarget.key} onNavigate={navigate} />
     ) : route === "dashboard" ? (
       <Dashboard
-        view={dashboardView}
+        view={isNarrowViewport ? dashboardView : "overview"}
+        isNarrowViewport={isNarrowViewport}
         onViewChange={(view) => {
-          if (view === "conversation" && isNarrowViewport) openPersonalAgent();
+          if (view === "conversation") openPersonalAgent();
           else setDashboardView(view);
         }}
         onNavigate={navigate}
@@ -1586,6 +1599,8 @@ export default function App() {
       />
     ) : route === "ai-chat" ? (
       <AiChatPage
+        name={isNarrowViewport ? "Ai" : "AI助手"}
+        desktop={!isNarrowViewport}
         onReturnWorkbench={returnToWorkbench}
         focusRequested={assistantFocusRequested}
         onFocusHandled={() => setAssistantFocusRequested(false)}
@@ -1725,7 +1740,7 @@ export default function App() {
                   closeOpenPage(item.key);
                 }}
               >
-                {item.label}
+                {resolveWorkspacePageLabel(item.key, effectiveMenuItems, personalAgentName)}
               </span>
             ),
             closable: item.key !== "dashboard",

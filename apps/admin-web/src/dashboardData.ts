@@ -35,7 +35,7 @@ export type DashboardSection = "metrics" | "todos" | "cases" | "rejections";
 const sections: DashboardSection[] = ["metrics", "todos", "cases", "rejections"];
 const refreshIntervalMs = 5 * 60_000;
 
-export function useDashboardData() {
+export function useDashboardData(requestedSections: readonly DashboardSection[] = sections) {
   const [data, setData] = useState<Partial<DashboardData>>({});
   const [loading, setLoading] = useState<Record<DashboardSection, boolean>>({ metrics: true, todos: true, cases: true, rejections: true });
   const [errors, setErrors] = useState<Partial<Record<DashboardSection, string>>>({});
@@ -117,8 +117,8 @@ export function useDashboardData() {
         .finally(finish);
     };
     loader.current = load;
-    sections.forEach((section) => load(section));
-    const refreshStale = () => sections.forEach((section) => load(section, false));
+    requestedSections.forEach((section) => load(section));
+    const refreshStale = () => requestedSections.forEach((section) => load(section, false));
     const timer = window.setInterval(refreshStale, refreshIntervalMs);
     document.addEventListener("visibilitychange", refreshStale);
     return () => {
@@ -128,7 +128,7 @@ export function useDashboardData() {
       pending.forEach((controller) => controller.abort());
       caseMetricsController?.abort();
     };
-  }, []);
+  }, [requestedSections]);
   const retry = useCallback((section: DashboardSection) => loader.current(section), []);
   return { data, loading, errors, caseMetricsError, retry };
 }
