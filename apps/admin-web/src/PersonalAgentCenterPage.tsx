@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Alert, Button, Input, Segmented, Select, Skeleton, Space, Tag, Tooltip, message } from "antd";
 import { AppstoreAddOutlined, ArrowDownOutlined, ArrowUpOutlined, AuditOutlined, BulbOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, FolderOpenOutlined, LockOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, ScheduleOutlined, StopOutlined, TeamOutlined, ThunderboltOutlined, WalletOutlined } from "@ant-design/icons";
-import { agentOperationName } from "./AgentOperationPreview";
 import { AgentToolRequests } from "./AgentToolRequests";
 import { AgentToolResult } from "./AgentToolResult";
 import { CaseMaterialsPicker } from "./personal-agent/CaseMaterialsPicker";
@@ -12,6 +11,7 @@ import { ConversationMessage } from "./personal-agent/ConversationMessage";
 import { ConversationManager } from "./personal-agent/ConversationManager";
 import { MobileComposerOptions } from "./personal-agent/MobileComposerOptions";
 import { ActionConfirmation } from "./personal-agent/ActionConfirmation";
+import { ConfirmationHistory } from "./personal-agent/ConfirmationHistory";
 import { MATERIAL_ACCEPT, usePersonalWorkspace } from "./personal-agent/usePersonalWorkspace";
 import { errorText, type Material, type PendingAction, type ResponseMode, type WorkspaceCommand } from "./personal-agent/types";
 import "./personal-agent-center.css";
@@ -63,10 +63,11 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
   return <div className="personal-agent-page" data-testid="personal-agent-center-page">
     <header className="personal-agent-header">
       <div className="personal-agent-title"><div className="workspace-brand-icon"><RobotOutlined /></div><h2>智能体中心</h2><span>律所工作台</span></div>
-      <Space className="workspace-header-actions" size={8}>
+      <Space className="workspace-header-actions" size={8} wrap>
         <Segmented aria-label="切换工作视图" value={view} options={[{ value: "workspace", label: "工作台" }, { value: "chat", label: "对话" }]} onChange={(value) => setView(value as "workspace" | "chat")} />
         <Tooltip title={status?.ready ? `当前模型：${status.model}` : "模型服务未就绪"}><span className={`workspace-service ${status?.ready ? "ready" : ""}`}><i />{status?.ready ? "已连接" : loading ? "连接中" : "未就绪"}</span></Tooltip>
         {canUseCases && <Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={() => onNavigate("case-agent-center")}>案件智能体</Button></Tooltip>}
+        <ConfirmationHistory />
         <Tooltip title="刷新工作台与会话"><Button type="text" icon={<ReloadOutlined />} aria-label="刷新工作台与会话" disabled={navigationBusy || !!workspace.runningIds.length} onClick={() => { setRefreshToken((value) => value + 1); void workspace.load(); }} /></Tooltip>
       </Space>
     </header>
@@ -85,7 +86,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
           </div>
           {!follow && <div className="workspace-scroll-bottom-wrap"><Button className="workspace-scroll-bottom" shape="circle" icon={<ArrowDownOutlined />} aria-label="查看最新回答" onClick={() => { setFollow(true); bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }); }} /></div>}
         </div>
-        {!!state.pending_actions.length && <div className="workspace-pending"><div className="workspace-section-heading"><b><AuditOutlined /> 待确认操作</b><Tag>{state.pending_actions.length}</Tag></div>{state.pending_actions.filter((action) => action.status === "pending").map((action) => <div className="workspace-pending-row" key={action.id}><div><b>{agentOperationName(action)}</b><p>{action.summary}</p></div><Button size="small" type="primary" icon={<CheckOutlined />} disabled={busy} onClick={() => setActiveAction(action)}>查看并确认</Button></div>)}</div>}
+        {!!state.pending_actions.length && <div className="workspace-pending"><div className="workspace-section-heading"><b><AuditOutlined /> 待确认操作</b><Tag>{state.pending_actions.length}</Tag></div>{state.pending_actions.filter((action) => action.status === "pending").map((action) => <div className="workspace-pending-row" key={action.id}><div><b>{action.summary}</b></div><Button size="small" type="primary" icon={<CheckOutlined />} disabled={busy} onClick={() => setActiveAction(action)}>查看并确认</Button></div>)}</div>}
         <div className="personal-agent-composer-wrap">
           <div className={`personal-agent-composer${dragging ? " dragging" : ""}`} onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); setDragging(true); } }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }} onDrop={(event) => { event.preventDefault(); setDragging(false); void workspace.upload(Array.from(event.dataTransfer.files)); }}>
             <div className="workspace-composer-context"><Select aria-label="选择办公技能" value={skillId} disabled={busy} onChange={workspace.setSkillId} popupMatchSelectWidth={300} options={skills.map((item) => ({ value: item.id, label: item.name, disabled: !item.available, title: item.description }))} />{responseModeControl}{canUseCases && <Tooltip title={selectedCase?.title || "选择本轮问题关联的案件"}><Button type="text" size="small" icon={<FolderOpenOutlined />} disabled={busy} onClick={() => setPickerMode("case")}>{selectedCase?.serial_no || "关联案件"}</Button></Tooltip>}</div>

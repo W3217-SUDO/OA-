@@ -6,6 +6,7 @@ import { api } from "../api";
 import { AgentOperationPreview, agentOperationError, agentOperationMessage, hasAgentOperationPreview } from "../AgentOperationPreview";
 import type { ToolRequest } from "../AgentToolRequests";
 import type { PendingAction } from "./types";
+import "./confirmation-history.css";
 
 const STATUS_NAMES: Record<ToolRequest["status"], string> = {
   pending: "待确认", executing: "执行中", succeeded: "已执行", failed: "执行失败", rejected: "已取消",
@@ -61,7 +62,7 @@ export function ActionConfirmation({ action, deciding, onDecide, onClose }: {
     }
   };
 
-  return <Modal open={!!action} title="智能体操作确认" width={760} maskClosable={!deciding}
+  return <Modal className="personal-action-confirmation" open={!!action} title="智能体操作确认" width={760} maskClosable={!deciding} closable={!deciding} keyboard={!deciding}
     onCancel={() => { if (!deciding) onClose(); }}
     footer={<Space wrap>
       {action?.type === "mcp.call" && <Button icon={<ReloadOutlined />} loading={loading} disabled={deciding} onClick={() => setRefresh((value) => value + 1)}>刷新状态</Button>}

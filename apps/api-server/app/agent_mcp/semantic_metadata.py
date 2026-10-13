@@ -69,6 +69,8 @@ _VERBS = {
     "borrow": "借用", "return": "归还", "destroy": "销毁", "check": "检查",
     "process": "处理", "read": "读取", "mark": "标记", "link": "关联",
     "replace": "替换", "print": "打印", "send": "发送", "stamp": "盖章",
+    "accept": "接收", "complete": "提交完成", "handoff": "交接", "restart": "重新开始",
+    "reject": "退回", "withdraw": "撤回", "resend": "重新发送", "start": "开始处理",
 }
 
 _SUBJECTS = {
@@ -179,7 +181,7 @@ def title_for(route: APIRoute, method: str) -> str:
     if key[2] == "get_case_word_editor_content":
         return "读取并锁定案件 Word 文书"
     words = route.endpoint.__name__.lower().split("_")
-    verbs = list(dict.fromkeys(_VERBS[word] for word in words if word in _VERBS))
+    verbs = list(dict.fromkeys(_VERBS[word] for word in words if word in _VERBS and word != "batch"))
     subjects = list(dict.fromkeys(_SUBJECTS.get(word, _SUBJECTS.get(word.rstrip("s"), "")) for word in words))
     subjects = [subject for subject in subjects if subject]
     verb = verbs[0] if verbs else "查询" if not is_write(route, method) else "办理"

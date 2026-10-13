@@ -6,6 +6,24 @@ export type ResponseMode = "fast" | "deep";
 export type Material = { id: number; name: string; case_id?: number };
 export type WorkspaceMessage = { role: "user" | "assistant"; content: string; created_at?: string; skill_name?: string; case_id?: number; case_no?: string; can_save_document?: boolean; attachments?: Material[]; failed?: boolean; stopped?: boolean };
 export type PendingAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; preview?: AgentActionPreview; status: "pending" | "approved" | "rejected" };
+export type ConfirmationStatus = "executing" | "succeeded" | "failed" | "rejected";
+export type ConfirmationRecord = {
+  id: string;
+  source: "mcp" | "personal_action";
+  action_type: string;
+  summary: string;
+  status: ConfirmationStatus;
+  requested_at: string | null;
+  decided_at: string | null;
+  finished_at: string | null;
+  operator: string | null;
+  comment: string;
+  result: unknown;
+  error: unknown;
+  conversation_id: string | null;
+  conversation_title: string | null;
+};
+export type ConfirmationHistoryPage = { items: ConfirmationRecord[]; total: number; page: number; page_size: number };
 export type WorkspaceState = { conversation_id?: string | null; conversation_title?: string; messages: WorkspaceMessage[]; pending_actions: PendingAction[]; structured_results?: unknown[] };
 export type WorkspaceConversation = { id: string; title: string; message_count: number; updated_at: string };
 export type ConversationSnapshot = { items: WorkspaceConversation[]; active_id: string | null; state: WorkspaceState };
@@ -17,9 +35,4 @@ export type WorkOverview = { todos: [string, number, number, string, number, num
 
 export function errorText(error: unknown, label: string): string {
   return agentOperationError(error, label);
-}
-
-// 待确认操作的标题：已知类型给中文名，其余沿用后端给出的摘要。
-export function actionLabel(action: PendingAction): string {
-  return action.type === "create_task" ? "新建任务" : action.type === "approve_contract" ? "合同审批" : action.summary;
 }

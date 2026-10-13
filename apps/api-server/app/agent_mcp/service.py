@@ -12,6 +12,7 @@ from sqlalchemy import func, select, update
 from app.agent_mcp.auth import (
     authenticated_identity, get_auth_context, require_human_decision, trusted_case_origin,
 )
+from app.agent_mcp.action_summary import summary_from_preview
 from app.agent_mcp.catalog import get_catalog
 from app.agent_mcp.safety import reject_credentials, render_path, require_business_record_target, safe_result
 from app.agent_mcp.transport import execute_original
@@ -63,9 +64,12 @@ def request_view(record: BusinessRecord) -> dict:
     data = record.data
     return {
         "request_id": data["request_id"], "id": data["request_id"], "status": STATUS_NAMES[record.status],
-        "summary": record.title, "preview": data["preview"], "owner": record.owner,
+        "summary": data.get("summary") or summary_from_preview(data["preview"]),
+        "preview": data["preview"], "owner": record.owner,
         "case_origin": data["case_origin"], "created_at": record.created_at, "updated_at": record.updated_at,
         "result": data.get("result"), "error": data.get("error"),
+        "decided_at": data.get("decided_at"), "finished_at": data.get("finished_at"),
+        "decision": data.get("decision"), "comment": data.get("comment"),
         "confirmation_url": settings.api_prefix + f"/agent-tools/requests/{data['request_id']}",
     }
 
@@ -120,13 +124,15 @@ async def call_tool(name: str, arguments: dict):
             "path": path, "path_template": spec.path, "params": params,
             "original_values": "未读取原值", "requires_confirmation": True,
         }
+        summary = summary_from_preview(preview)
+        preview["summary"] = summary
         data = {
             "request_id": request_id, "tool_name": spec.name, "descriptor_fingerprint": descriptor_fingerprint(spec),
             "arguments": json.loads(json.dumps(arguments, ensure_ascii=False, allow_nan=False)),
-            "params": params, "preview": preview, "case_origin": trusted_case_origin(),
+            "params": params, "preview": preview, "case_origin": trusted_case_origin(), "summary": summary,
         }
         record = BusinessRecord(
-            module=ACTION_MODULE, serial_no="MCP-" + request_id, title=spec.title[:255],
+            module=ACTION_MODULE, serial_no="MCP-" + request_id, title=summary[:255],
             status="待确认", owner=identity["username"], department=identity["department"], data=data,
         )
         db.add(record)
@@ -134,7 +140,7 @@ async def call_tool(name: str, arguments: dict):
         db.add(_event(record.id, identity, "", "待确认"))
         await db.commit()
         return {
-            "request_id": request_id, "status": "pending", "summary": record.title, "preview": preview,
+            "request_id": request_id, "status": "pending", "summary": summary, "preview": preview,
             "confirmation_url": settings.api_prefix + f"/agent-tools/requests/{request_id}",
         }
 

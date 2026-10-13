@@ -336,6 +336,9 @@ async def _explicit_system_role_menu_keys(role_ids: list[str], db: AsyncSession)
 
 async def _require_record_module_menu(module: str, identity: dict, db: AsyncSession, *, action: str) -> None:
     """Prevent generic write/export endpoints from bypassing menu authorization."""
+    # 确认存档仅经本人专用接口读取和决定，管理员也不能用通用记录入口绕过。
+    if module in {"agent_mcp_action", "personal_agent_action"}:
+        raise HTTPException(status_code=403, detail="智能体确认记录必须使用本人专用确认入口")
     from app.core.system import (
         _record_module_menu_allowed,
     )

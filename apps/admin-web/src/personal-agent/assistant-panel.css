@@ -20,7 +20,7 @@
 .assistant-empty-state.has-logo .assistant-start{flex:none;width:100%}
 .assistant-empty-logo{flex:none;align-self:center;width:56px;height:56px;object-fit:contain}
 .assistant-bar .workspace-conversation-controls{display:flex;flex:none;align-items:center;gap:8px;max-width:100%}
-.assistant-bar .workspace-conversation-controls .ant-btn{min-height:32px}
+.assistant-bar .workspace-conversation-controls .ant-btn{min-width:44px;min-height:44px}
 .assistant-bar .workspace-conversation-controls .ant-btn[aria-label="对话列表"]{width:auto;padding-inline:10px;color:#0e7a5f}
 .assistant-conversation-drawer .ant-drawer-content-wrapper{max-width:100vw}
 .assistant-conversation-drawer .ant-drawer-body{padding:12px}
@@ -79,6 +79,8 @@
 .assistant-pending{flex:none;padding:10px 14px;border:1px solid #f1d9a8;border-radius:10px;background:#fffaf0}
 .assistant-pending>b{display:block;margin-bottom:4px;color:#8a5a00;font-size:13px}
 .assistant-pending .ant-list-item{padding:8px 0}
+.assistant-pending .ant-list-item-meta-title{overflow-wrap:anywhere}
+.assistant-pending .ant-btn{min-width:44px;min-height:44px}
 
 .assistant-composer{display:flex;flex:none;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid #cfd8e1;border-radius:8px;background:#fbfcfd;transition:border-color .15s,background .15s}
 .assistant-composer:focus-within{border-color:#0e7a5f;background:#fff}
@@ -122,12 +124,12 @@
   .assistant{gap:0;min-width:0;width:100%;padding:0 0 calc(8px + env(safe-area-inset-bottom));border:0;border-radius:0;background:#fff;box-shadow:none;overflow:hidden}
   .assistant .assistant-bar{flex-wrap:nowrap;justify-content:flex-start;gap:8px;min-height:52px;padding:calc(4px + env(safe-area-inset-top)) 8px 4px}
   .assistant .assistant-bar-summary{display:none}
-  .assistant .assistant-bar-actions{display:contents}
+  .assistant .assistant-bar-actions{display:flex;flex:none;gap:4px;min-width:270px}
   .assistant .assistant-refresh{order:1}
-  .assistant .assistant-mobile-title{display:block;flex:1;min-width:0;overflow:hidden;color:#18212b;font-size:15px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+  .assistant .assistant-mobile-title{display:block;flex:1;min-width:96px;overflow:hidden;color:#18212b;font-size:15px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
   .assistant .assistant-mobile-title.is-branded{display:flex;align-items:center;gap:8px;line-height:20px}
   .assistant .assistant-mobile-control,.assistant .assistant-refresh,.assistant .assistant-bar .workspace-conversation-controls .ant-btn{display:inline-flex;flex:none;align-items:center;justify-content:center;width:44px;height:44px;min-height:44px;padding:0;border-radius:8px;font-size:18px}
-  .assistant .assistant-bar .workspace-conversation-controls{flex:none;gap:8px;max-width:none}
+  .assistant .assistant-bar .workspace-conversation-controls{flex:none;gap:4px;max-width:none}
   .assistant .assistant-bar .workspace-conversation-controls .workspace-conversation-label{display:none}
   .assistant .assistant-bar .workspace-conversation-controls .ant-btn[aria-label="新建对话"]{border-color:transparent;background:transparent;box-shadow:none;color:#0e7a5f}
   .assistant .assistant-bar .workspace-conversation-controls .ant-btn[aria-label="对话列表"]{width:44px;padding:0}
@@ -167,6 +169,10 @@
   .assistant .assistant-mobile-control:focus-visible,.assistant .assistant-mobile-suggestions button:focus-visible{outline:2px solid #0e7a5f;outline-offset:-2px}
   .assistant-conversation-drawer .ant-drawer-header .ant-btn,.assistant-conversation-row>.ant-btn{min-width:44px;min-height:44px}
   .assistant-conversation-select{min-height:44px}
+}
+@media(max-width:479px){
+  .assistant .assistant-bar{flex-wrap:wrap;row-gap:0}
+  .assistant .assistant-bar-actions{flex-basis:100%;justify-content:flex-end}
 }
 @media(prefers-reduced-motion:reduce){
   .assistant-thinking::after{animation:none}

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,7 @@ from app.security import current_identity
 from app.areas.personal_agent.service import build_context, decide_action, generate_response, manage_conversations, personal_identity, personal_state, stop_response
 from app.areas.personal_agent.workspace import workspace_commands
 from app.areas.personal_agent.response_runtime import ResponseMode, supports_response_modes
+from app.areas.personal_agent.confirmation_history import read_confirmation_history
 
 
 router = APIRouter()
@@ -69,6 +71,17 @@ async def personal_agent_workspace(identity: dict = Depends(current_identity), d
 @router.get(f"{settings.api_prefix}/personal-agent/conversations")
 async def personal_agent_conversations(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     return await manage_conversations(await personal_identity(identity, db))
+
+
+@router.get(f"{settings.api_prefix}/personal-agent/confirmation-history")
+async def personal_agent_confirmation_history(
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    status: str = "",
+):
+    return await read_confirmation_history(await personal_identity(identity, db), db,
+                                           status=status, page=page, page_size=page_size)
 
 
 @router.post(f"{settings.api_prefix}/personal-agent/conversations")

@@ -160,6 +160,137 @@ test("real approval preview loads the shared table and preserves original values
   assert.equal(agentOperationError(new Error("网络中断"), "操作失败"), "网络中断");
 });
 
+test("personal confirmation history only reads decided records with paging, errors and cancellation", async () => {
+  const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
+  const Empty = component("empty");
+  Empty.PRESENTED_IMAGE_SIMPLE = "simple";
+  const requests = [];
+  const { ConfirmationHistory } = loadModule("../personal-agent/ConfirmationHistory.tsx", {
+    antd: {
+      ...require("antd"),
+      Alert: component("alert"), Button: component("button"), Empty, Pagination: component("pagination"),
+      Select: component("select"), Spin: component("spin"), Tag: component("tag"), Tooltip: component("tooltip"),
+      Drawer: ({ open, children, ...props }) => open ? React.createElement("drawer", props, children) : null,
+    },
+    "../api": { api: { get: (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject })) } },
+  });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(ConfirmationHistory)); });
+  assert.equal(requests.length, 0, "未打开历史时不查询");
+  assert.equal(renderer.root.findByProps({ className: "confirmation-history-label" }).props.children, "历史确认记录", "历史入口保留可见文字，不只依赖图标");
+  await act(async () => renderer.root.findByProps({ "aria-label": "历史确认记录" }).props.onClick());
+  assert.equal(renderer.root.findByType("drawer").props.rootClassName, "confirmation-history-drawer", "宽度限制作用域必须位于抽屉根节点，才能命中内容 wrapper");
+  assert.equal(requests[0].path, "/personal-agent/confirmation-history");
+  assert.equal(JSON.stringify(requests[0].options.params), JSON.stringify({ page: 1, page_size: 20 }));
+  assert.equal(renderer.root.findByType("select").props.options.some((option) => option.value === "pending"), false);
+  assert.equal(renderer.root.findByType("spin").type, "spin");
+  const record = { id: "r1", source: "mcp", action_type: "batch", summary: "为2个案件新增期限提醒", status: "succeeded", requested_at: "2026-10-13T02:00:00Z", decided_at: "2026-10-13T02:01:00Z", finished_at: null, operator: "审核人", comment: "同意", result: { count: 2, message: "已生成期限提醒" }, error: null, conversation_id: null, conversation_title: null };
+  await act(async () => requests[0].resolve({ data: { items: [record], total: 21, page: 1, page_size: 20 } }));
+  assert.equal(renderer.root.findByType("strong").props.children, "为2个案件新增期限提醒");
+  assert.equal(renderer.root.findByType("tag").props.children, "已执行");
+  assert.equal(renderer.root.findByType("summary").props.children, "执行结果");
+  assert.equal(renderer.root.findByType("details").props.open, undefined, "完整结果默认折叠");
+  assert.deepEqual(JSON.parse(renderer.root.findByType("pre").props.children), record.result);
+  assert.equal(renderer.root.findAllByType("button").length, 2, "历史只保留打开与刷新，不提供重放按钮");
+  await act(async () => renderer.root.findByType("pagination").props.onChange(2));
+  assert.equal(requests[1].options.params.page, 2);
+  assert.equal(requests[0].options.signal.aborted, true);
+  await act(async () => renderer.root.findByType("select").props.onChange("failed"));
+  assert.equal(requests[2].options.params.page, 1);
+  assert.equal(requests[2].options.params.status, "failed");
+  assert.equal(requests[1].options.signal.aborted, true);
+  await act(async () => requests[1].resolve({ data: { items: [record], total: 21, page: 2, page_size: 20 } }));
+  assert.equal(renderer.root.findAllByType("li").length, 0, "已取消的旧页不能覆盖新筛选");
+  await act(async () => requests[2].reject(new AxiosError("失败", undefined, undefined, undefined, { data: { detail: "权限已变更" } })));
+  assert.equal(renderer.root.findByType("alert").props.description, "权限已变更");
+  assert.equal(renderer.root.findAllByType("empty").length, 0, "失败不能伪装空记录");
+  await act(async () => renderer.root.findByProps({ "aria-label": "刷新确认记录" }).props.onClick());
+  await act(async () => requests[3].resolve({ data: { items: [], total: 0, page: 1, page_size: 20 } }));
+  assert.equal(renderer.root.findByType("empty").props.description, "此状态下暂无确认记录");
+  await act(async () => renderer.root.findByProps({ "aria-label": "刷新确认记录" }).props.onClick());
+  await act(async () => renderer.root.findByType("drawer").props.onClose());
+  assert.equal(requests[4].options.signal.aborted, true);
+  await act(async () => renderer.unmount());
+});
+
+test("personal confirmation keeps failed cards and disables all decisions while executing", async () => {
+  const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
+  let closed = 0;
+  let decisions = 0;
+  const notices = [];
+  const { ActionConfirmation } = loadModule("../personal-agent/ActionConfirmation.tsx", {
+    antd: { Alert: component("alert"), Button: component("button"), Modal: ({ footer, children, ...props }) => React.createElement("modal", props, children, footer), Space: component("space"), Spin: component("spin"), Tag: component("tag"), message: { error: (value) => notices.push(value) } },
+    "../AgentOperationPreview": {
+      AgentOperationPreview: component("preview"), hasAgentOperationPreview: () => true,
+      agentOperationError: (failure) => failure.message, agentOperationMessage: (value) => String(value),
+    },
+  });
+  const action = { id: "a1", type: "create_task", summary: "为张三新建合同复核任务", status: "pending" };
+  const props = { action, deciding: false, onClose: () => closed++, onDecide: async () => { decisions++; throw new Error("原有业务权限拒绝"); } };
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(ActionConfirmation, props)); });
+  await act(async () => renderer.root.findAllByType("button").find((button) => button.props.children === "确认并执行").props.onClick());
+  assert.equal(decisions, 1);
+  assert.equal(closed, 0, "失败不得关闭或丢弃待确认卡");
+  assert.equal(renderer.root.findByType("preview").props.action, action);
+  assert.equal(renderer.root.findByType("alert").props.description, "原有业务权限拒绝");
+  assert.deepEqual(notices, ["原有业务权限拒绝"]);
+  await act(async () => renderer.update(React.createElement(ActionConfirmation, { ...props, deciding: true })));
+  assert.ok(renderer.root.findAllByType("button").every((button) => button.props.disabled));
+  const modal = renderer.root.findByType("modal");
+  assert.equal(modal.props.maskClosable, false);
+  assert.equal(modal.props.keyboard, false);
+  assert.equal(modal.props.closable, false);
+  await act(async () => modal.props.onCancel());
+  assert.equal(closed, 0);
+  await act(async () => renderer.unmount());
+});
+
+test("homepage pending summary is shown once and direct cancellation retains failures", async () => {
+  const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
+  const List = ({ dataSource, renderItem }) => React.createElement("list", null, dataSource.map((item) => React.cloneElement(renderItem(item), { key: item.id })));
+  List.Item = ({ actions, children }) => React.createElement("list-item", null, children, actions);
+  List.Item.Meta = component("list-meta");
+  const { default: AssistantPanel } = loadModule("../personal-agent/AssistantPanel.tsx", {
+    antd: { ...require("antd"), Alert: component("alert"), Button: component("button"), Input: { TextArea: component("textarea") }, List, Tooltip: component("tooltip") },
+    "./AssistantStart": { __esModule: true, default: component("start"), shortcuts: [] },
+    "./ConversationManager": { ConversationManager: component("conversation-manager") },
+    "./AssistantWorkspaceTools": { AssistantWorkspaceTools: component("workspace-tools") },
+    "./ConfirmationHistory": { ConfirmationHistory: component("confirmation-history") },
+    "./ActionConfirmation": { ActionConfirmation: component("action-confirmation") },
+  });
+  const action = { id: "a1", type: "mcp.call", summary: "为2个案件新增期限提醒", status: "pending" };
+  const decisions = [];
+  const workspace = {
+    status: { ready: true }, state: { messages: [], pending_actions: [action], conversation_id: "c1" },
+    loading: false, loadError: "", sending: false, stopping: false, input: "", conversations: [], runningIds: [],
+    conversationBusy: false, uploading: false, decisionId: "", setInput: () => {}, send: () => {}, stop: () => {}, load: () => {},
+    decide: async (item, decision) => { decisions.push([item.id, decision]); throw new Error("取消被原权限拒绝"); },
+  };
+  const props = { workspace, suggestions: [], focusRequested: false, onFocusHandled: () => {} };
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(AssistantPanel, props)); });
+  const meta = renderer.root.findByType("list-meta");
+  assert.equal(meta.props.title, action.summary);
+  assert.equal(meta.props.description, undefined, "不重复标题和摘要");
+  assert.equal(renderer.root.findAllByType("confirmation-history").length, 1);
+  assert.equal(renderer.root.findAllByType("conversation-manager").length, 1, "对话历史仍保留");
+  const button = (label) => renderer.root.findAllByType("button").find((item) => item.props.children === label);
+  await act(async () => button("取消").props.onClick());
+  assert.deepEqual(decisions, [["a1", "rejected"]]);
+  assert.equal(renderer.root.findByType("alert").props.description, "取消被原权限拒绝");
+  assert.equal(renderer.root.findAllByType("list-meta").length, 1);
+  await act(async () => button("查看并确认").props.onClick());
+  assert.equal(renderer.root.findByType("action-confirmation").props.action, action);
+  assert.equal(decisions.length, 1, "查看预览不能直接批准");
+  await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, decisionId: "a1" } })));
+  assert.equal(button("取消").props.disabled, true);
+  assert.equal(button("查看并确认").props.disabled, true);
+  await act(async () => button("取消").props.onClick());
+  assert.equal(decisions.length, 1);
+  await act(async () => renderer.unmount());
+});
+
 test("agent workspace releases screenshot URLs on removal and unmount, and reports upload failures", async () => {
   const notices = [];
   const urls = [];

@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator
 from uuid import uuid4
 
 from fastapi import HTTPException
+from app.agent_mcp.action_summary import summary_from_preview
 
 
 STATE_LOCK = asyncio.Lock()
@@ -68,6 +69,24 @@ def _empty(conversation_id: str | None) -> dict[str, Any]:
             "messages": [], "pending_actions": [], "structured_results": [], "created_at": "", "updated_at": ""}
 
 
+def _pending_action_view(action):
+    """只转换返回副本，旧待确认卡按已存参数展示，不修改会话文件或操作参数。"""
+    if not isinstance(action, dict):
+        return action
+    payload = action.get("payload") or {}
+    if action.get("type") == "mcp.call" and isinstance(action.get("preview"), dict):
+        return {**action, "summary": summary_from_preview(action["preview"])}
+    if action.get("type") == "create_task" and isinstance(payload, dict) and payload.get("title"):
+        summary = f"新建任务“{payload['title']}”，负责人 {payload.get('owner') or action.get('requested_by') or '未指定'}，截止 {payload.get('deadline') or '未指定'}"
+        return {**action, "summary": summary}
+    if (action.get("type") == "approve_contract" and isinstance(payload, dict)
+            and action.get("summary") in (None, "", "审批合同", "批量任务")
+            and payload.get("contract_id") and isinstance(payload.get("approved"), bool)):
+        summary = f"{'批准' if payload['approved'] else '拒绝'}合同 {payload['contract_id']} 的当前审批节点"
+        return {**action, "summary": summary}
+    return action
+
+
 def read_state(directory: Path, conversation_id: str | None = None) -> dict[str, Any]:
     index = _index(directory)
     selected = conversation_id if conversation_id is not None else index["active_id"]
@@ -86,6 +105,7 @@ def read_state(directory: Path, conversation_id: str | None = None) -> dict[str,
         if not isinstance(items, list):
             raise HTTPException(status_code=500, detail="个人智能体会话内容格式错误")
         state[key] = items
+    state["pending_actions"] = [_pending_action_view(action) for action in state["pending_actions"]]
     state["created_at"] = str(value.get("created_at") or "")
     state["updated_at"] = str(value.get("updated_at") or "")
     first = next((item for item in state["messages"] if isinstance(item, dict) and item.get("role") == "user" and item.get("content")), None)

@@ -32,6 +32,9 @@ from app.case_agent import RESPONSE_STYLE_RULES
 from app.areas.personal_agent.materials import material_message, prepare_materials
 from app.areas.personal_agent.response_runtime import ProgressCallback, ResponseMode, request_model
 from app.areas.personal_agent import conversations
+from app.areas.personal_agent.confirmation_history import (
+    begin_personal_decision, finish_personal_decision, prepare_personal_action,
+)
 
 
 _WRITE_MARKER = re.compile(r"<personal_action>\s*(\{.*?\})\s*</personal_action>", re.S)
@@ -276,6 +279,8 @@ def _action_from_model(action: dict[str, Any], identity: dict[str, Any], context
         if not isinstance(payload.get("approved"), bool):
             raise HTTPException(status_code=422, detail="审批结果无效")
         safe_payload = {"contract_id": contract_id, "approved": payload["approved"], "comment": str(payload.get("comment") or "")[:1000]}
+        contract = next(item for item in context["pending_contract_approvals"] if int(item["id"]) == contract_id)
+        summary = f"{'批准' if payload['approved'] else '拒绝'}合同 {contract.get('serial_no') or contract_id} 的当前审批节点"
     else:
         safe_payload = {
             "title": str(payload.get("title") or "").strip(),
@@ -286,7 +291,8 @@ def _action_from_model(action: dict[str, Any], identity: dict[str, Any], context
         }
         if not safe_payload["title"] or not safe_payload["deadline"]:
             raise HTTPException(status_code=422, detail="新建任务缺少标题或截止日期")
-    return {"id": str(uuid4()), "type": action_type, "payload": safe_payload, "summary": "新建任务" if action_type == "create_task" else "审批合同", "status": "pending", "requested_by": identity["username"], "created_at": _now()}
+        summary = f"新建任务“{safe_payload['title']}”，负责人 {safe_payload['owner']}，截止 {safe_payload['deadline']}"
+    return {"id": str(uuid4()), "type": action_type, "payload": safe_payload, "summary": summary, "status": "pending", "requested_by": identity["username"], "created_at": _now()}
 
 
 async def generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, conversation_id: str | None = None, skill_id: str = "general-office", attachment_ids: list[int] | None = None, case_id: int | None = None, document_ids: list[int] | None = None, response_mode: ResponseMode = "fast", on_progress: ProgressCallback | None = None) -> dict[str, Any]:
@@ -349,6 +355,8 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
         if model_action.get("type") == "create_task":
             await _require_record_module_menu("task", identity, db, action="新建")
         pending = _action_from_model(model_action, identity, context)
+        await prepare_personal_action(pending, identity, state, db)
+        await db.commit()
         state["pending_actions"] = [*state.get("pending_actions", []), pending][-30:]
         response = f"{response}\n\n已生成待确认操作：{pending['summary']}。确认前不会写入系统。".strip()
     state["messages"].append({"role": "assistant", "content": response, "created_at": _now(), "skill_name": skill.name, "case_id": case_id, "case_no": metadata["case_no"], "can_save_document": materials["can_save_document"]})
@@ -400,12 +408,35 @@ async def _decide_action(identity: dict[str, Any], db: AsyncSession, action_id: 
         state["updated_at"] = _now()
         await _save_state(identity["username"], state)
         return {"status": decision, "result": execution, "state": state}
+    record_id, execution_id = await begin_personal_decision(action, decision, comment, identity, state, db)
     if decision == "rejected":
         action["status"] = "rejected"
         action["decision_comment"] = comment[:1000]
         state["pending_actions"] = [item for item in state["pending_actions"] if item.get("id") != action_id]
         await _save_state(identity["username"], state)
         return {"status": "rejected", "state": state}
+    try:
+        result = await _execute_personal_action(action, comment, identity, db)
+    except Exception as exc:
+        await db.rollback()
+        error = ({"status_code": exc.status_code, "detail": exc.detail} if isinstance(exc, HTTPException)
+                 else {"type": type(exc).__name__, "detail": "业务接口执行失败，请核对实际结果，禁止重复提交"})
+        await finish_personal_decision(record_id, execution_id, identity, db, error=error)
+        state["pending_actions"] = [item for item in state["pending_actions"] if item.get("id") != action_id]
+        state["updated_at"] = _now()
+        await _save_state(identity["username"], state)
+        raise
+    # 结果落库失败时保留先前已提交的执行中状态，原待确认卡也不能重放业务。
+    await finish_personal_decision(record_id, execution_id, identity, db, result=result)
+    state["pending_actions"] = [item for item in state["pending_actions"] if item.get("id") != action_id]
+    state["messages"].append({"role": "assistant", "content": "操作已完成，系统数据已更新。", "created_at": _now()})
+    state["messages"] = state["messages"][-100:]
+    state["updated_at"] = _now()
+    await _save_state(identity["username"], state)
+    return {"status": "approved", "result": result, "state": state}
+
+
+async def _execute_personal_action(action, comment, identity, db):
     current_context = await build_context(identity, db)
     action_type = action.get("type")
     payload = action.get("payload") or {}
@@ -426,9 +457,4 @@ async def _decide_action(identity: dict[str, Any], db: AsyncSession, action_id: 
             raise HTTPException(status_code=409, detail="合同审批未完成，请在合同审批页面查看具体原因")
     else:
         raise HTTPException(status_code=422, detail="不支持的待确认操作")
-    state["pending_actions"] = [item for item in state["pending_actions"] if item.get("id") != action_id]
-    state["messages"].append({"role": "assistant", "content": "操作已完成，系统数据已更新。", "created_at": _now()})
-    state["messages"] = state["messages"][-100:]
-    state["updated_at"] = _now()
-    await _save_state(identity["username"], state)
-    return {"status": "approved", "result": result, "state": state}
+    return result
