@@ -177,6 +177,9 @@ def _record_module_menu_allowed(module: str, identity: dict, permission: dict) -
     from app.core.permissions import (
         _identity_role_ids,
     )
+    from app.core.generated_file_records import PRIVATE_MODULES
+    if module in PRIVATE_MODULES:
+        return False
     if "admin" in _identity_role_ids(identity) or identity.get("_page_menu_capability"):
         return True
     roots = RECORD_MODULE_MENU_ROOTS.get(module)

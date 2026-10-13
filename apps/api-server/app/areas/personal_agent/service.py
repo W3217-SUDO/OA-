@@ -344,7 +344,7 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
         await on_progress("正在获取当前待办…")
     with measure_phase("personal_agent.context"):
         context = await build_context(identity, db)
-    tools = ModelToolSession()
+    tools = ModelToolSession(conversation_id=state["conversation_id"])
     raw = await request_model(_prompt_messages(identity, state, context, text, skill, materials), on_delta, tools=tools, response_mode=response_mode, on_progress=on_progress)
     response, model_action = _extract_action(raw)
     state["structured_results"] = tools.structured_results
@@ -363,7 +363,13 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
         await db.commit()
         state["pending_actions"] = [*state.get("pending_actions", []), pending][-30:]
         response = f"{response}\n\n已生成待确认操作：{pending['summary']}。确认前不会写入系统。".strip()
-    state["messages"].append({"role": "assistant", "content": response, "created_at": _now(), "skill_name": skill.name, "case_id": case_id, "case_no": metadata["case_no"], "can_save_document": materials["can_save_document"]})
+    from app.areas.personal_agent.ai_space_service import personal_save_capability
+    personal_capability = await personal_save_capability(identity, db)
+    personal_save = personal_capability["can_save"]
+    state["messages"].append({"role": "assistant", "content": response, "created_at": _now(), "skill_name": skill.name, "case_id": case_id, "case_no": metadata["case_no"],
+                              "can_save_document": personal_save or materials["can_save_document"],
+                              "can_save_personal_document": personal_save, "can_save_case_document": materials["can_save_document"],
+                              "personal_document_save_error": personal_capability["error"]})
     state["messages"] = state["messages"][-100:]
     state["updated_at"] = _now()
     await _save_state(username, state)

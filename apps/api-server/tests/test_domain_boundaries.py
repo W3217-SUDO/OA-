@@ -1,6 +1,7 @@
 """领域路由迁移后，核对回款事务与用印文件补偿。"""
 
 from datetime import date
+import hashlib
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -23,6 +24,366 @@ from app.areas.personal_agent.confirmation_history import begin_personal_decisio
 from app.areas.personal_agent.action_presentation import dismiss_personal_actions
 from app.areas.personal_agent import conversations
 from app.agent_mcp import service as tool_service
+from app.core import generated_file_storage as generated_storage
+from app.core.generated_file_records import FILE_MODULE, SPACE_MODULE
+from app.areas.personal_agent.ai_space_service import list_space_files, space_file_record, space_file_bytes
+from sqlalchemy import func, select
+
+
+class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with self.engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
+        self.db = self.sessions()
+        self.users = [User(username=name, display_name="同名员工", role=role, role_ids=[role],
+                           password_hash="unused", is_active=True)
+                      for name, role in (("codex-ai-a", "user"), ("codex-ai-b", "user"), ("codex-ai-admin", "admin"))]
+        self.db.add_all(self.users)
+        await self.db.commit()
+        self.actor = self.users[0]
+        self.objects = {}
+        self.patches = [patch.object(generated_storage, "_load_credentials", return_value=None),
+                        patch("app.agent_mcp.auth.authenticated_identity", new=self.identity),
+                        patch.object(generated_storage, "oss_put_editor_revision", new=AsyncMock(side_effect=self.put)),
+                        patch.object(generated_storage, "read_generated_bytes", new=AsyncMock(side_effect=self.read)),
+                        patch.object(generated_storage, "resolve_generated_scope", wraps=generated_storage.resolve_generated_scope),
+                        patch.object(personal_service.settings, "ai_oss_bucket", "codex-ai-test"),
+                        patch.object(personal_service.settings, "ai_oss_prefix", "CODEX/AI空间"),
+                        patch.object(personal_service.settings, "ai_oss_endpoint", "https://oss.invalid"),
+                        patch.object(personal_service.settings, "ai_oss_credentials_file", "isolated-ai-credentials.csv")]
+        for item in self.patches:
+            item.start()
+
+    async def asyncTearDown(self):
+        for item in reversed(self.patches):
+            item.stop()
+        await self.db.close()
+        await self.engine.dispose()
+
+    async def identity(self, db=None):
+        return {"username": self.actor.username, "role": self.actor.role, "_actual_role_ids": self.actor.role_ids}
+
+    async def put(self, bucket, key, content, content_type, *, endpoint):
+        plan = await self.db.scalar(select(BusinessRecord).where(BusinessRecord.module == FILE_MODULE)
+                                    .order_by(BusinessRecord.id.desc()))
+        self.assertEqual(plan.status, "uploading")
+        self.assertEqual(plan.data["path"], f"oss://{bucket}/{key}")
+        self.assertEqual(plan.data["endpoint"], endpoint)
+        self.objects[plan.data["path"]] = content
+        return True
+
+    async def read(self, item, *, max_bytes):
+        return self.objects[item.path]
+
+    async def save(self, **overrides):
+        args = {"name": "真实结果.xls", "content": b"actual-xls-content", "content_type": "application/vnd.ms-excel",
+                "source_kind": "mcp_export", "conversation_id": "source-conversation"}
+        args.update(overrides)
+        return await generated_storage.save_generated_file(self.db, await self.identity(), **args)
+
+    async def test_real_names_stable_owners_and_one_attachment(self):
+        first = await self.save()
+        self.assertEqual(first["file"]["status"], "available")
+        self.assertEqual(first["file"]["owner_user_id"], self.actor.id)
+        self.assertIn(f"/同名员工--u{self.actor.id}/", first["attachment"].path)
+        self.assertTrue(first["attachment"].path.endswith("/真实结果.xls"))
+        self.assertEqual(first["file"]["attachment_id"], first["attachment"].id)
+        self.assertEqual(first["file"]["content_type"], "application/vnd.ms-excel")
+        old_folder = first["attachment"].path.split("/" + first["file"]["id"] + "/")[0]
+        self.actor.display_name = "改名员工"
+        await self.db.commit()
+        second = await self.save(name="第二结果.xls")
+        self.assertTrue(second["attachment"].path.startswith(old_folder + "/"))
+        self.actor = self.users[1]
+        third = await self.save()
+        self.assertIn(f"/同名员工--u{self.actor.id}/", third["attachment"].path)
+        self.assertNotEqual(first["attachment"].path, third["attachment"].path)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 3)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(BusinessRecord)
+                                             .where(BusinessRecord.module == SPACE_MODULE)), 2)
+
+    async def test_bound_employee_is_authoritative_and_conflicting_binding_rejected(self):
+        employee = BusinessRecord(module="hr", serial_no="CODEX-AI-HR", title="真实档案姓名", owner=self.actor.username,
+                                  data={"username": self.actor.username, "system_user_id": self.actor.id})
+        self.db.add(employee)
+        await self.db.commit()
+        result = await self.save()
+        self.assertEqual(result["file"]["owner_name"], "真实档案姓名")
+        self.assertIn("/真实档案姓名--u", result["attachment"].path)
+        employee.data = {"username": self.actor.username, "system_user_id": self.users[1].id}
+        await self.db.commit()
+        with self.assertRaises(HTTPException) as raised:
+            await self.save()
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(len(self.objects), 1)
+
+    async def test_missing_config_or_name_never_uploads_or_falls_back(self):
+        with patch.object(personal_service.settings, "ai_oss_bucket", ""):
+            with self.assertRaises(HTTPException) as raised:
+                await self.save()
+            self.assertEqual(raised.exception.status_code, 503)
+        self.actor.display_name = ""
+        await self.db.commit()
+        with self.assertRaises(HTTPException) as raised:
+            await self.save()
+        self.assertEqual(raised.exception.status_code, 422)
+        self.assertFalse(self.objects)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 0)
+
+    async def test_failed_readback_is_tracked_without_available_attachment(self):
+        with patch.object(generated_storage, "read_generated_bytes", new=AsyncMock(return_value=b"changed")):
+            with self.assertRaises(HTTPException) as raised:
+                await self.save()
+        self.assertEqual(raised.exception.status_code, 409)
+        plan = await self.db.scalar(select(BusinessRecord).where(BusinessRecord.module == FILE_MODULE))
+        self.assertEqual(plan.status, "uncertain")
+        self.assertIn(plan.data["path"], self.objects)
+        self.assertIsNone(plan.data["attachment_id"])
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 0)
+
+    async def test_callback_failure_keeps_plan_and_rolls_back_final_attachment(self):
+        callback = AsyncMock(side_effect=RuntimeError("isolated final transaction failure"))
+        with self.assertRaises(HTTPException):
+            await self.save(on_available=callback)
+        plan = await self.db.scalar(select(BusinessRecord).where(BusinessRecord.module == FILE_MODULE))
+        self.assertEqual(plan.status, "uncertain")
+        self.assertEqual(plan.data["error"], "文件保存未完成（RuntimeError），请人工核对")
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 0)
+        self.assertEqual(len(self.objects), 1)
+
+    async def test_owner_access_rejects_page_admin_but_real_admin_reads(self):
+        result = await self.save()
+        owner_id = self.actor.id
+        self.actor = self.users[1]
+        spoof = {"username": self.actor.username, "role": "admin", "_actual_role_ids": ["admin"], "_page_menu_capability": True}
+        with self.assertRaises(HTTPException) as raised:
+            await space_file_record(result["file"]["id"], spoof, self.db)
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertEqual((await list_space_files(await self.identity(), self.db, page=1, page_size=20))["total"], 0)
+        self.actor = self.users[2]
+        item = await space_file_record(result["file"]["id"], await self.identity(), self.db)
+        self.assertEqual(item.data["owner_user_id"], owner_id)
+        listing = await list_space_files(await self.identity(), self.db, page=1, page_size=20, owner_user_id=owner_id)
+        self.assertEqual(listing["total"], 1)
+        from app.core.permissions import _require_record_module_menu
+        from app.core.system import _record_module_menu_allowed
+        with self.assertRaises(HTTPException) as raised:
+            await _require_record_module_menu(FILE_MODULE, await self.identity(), self.db, action="编辑")
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertFalse(_record_module_menu_allowed(FILE_MODULE, spoof, {}))
+
+    async def test_download_checks_real_bytes_and_name_validation(self):
+        for name in ("../x.xls", "a\\b.xls", "x\x00.xls", "C:x.xls"):
+            with self.assertRaises(HTTPException):
+                generated_storage.safe_original_name(name)
+        result = await self.save()
+        with patch("app.areas.personal_agent.ai_space_service.read_generated_bytes", new=AsyncMock(return_value=b"actual-xls-content")):
+            item, content = await space_file_bytes(result["file"]["id"], await self.identity(), self.db)
+        self.assertEqual(item["id"], result["file"]["id"])
+        self.assertEqual(content, b"actual-xls-content")
+        with patch("app.areas.personal_agent.ai_space_service.read_generated_bytes", new=AsyncMock(return_value=b"wrong")):
+            with self.assertRaises(HTTPException) as raised:
+                await space_file_bytes(result["file"]["id"], await self.identity(), self.db)
+        self.assertEqual(raised.exception.status_code, 409)
+
+    async def test_case_attachment_is_indexed_once_and_revisions_keep_original_bytes(self):
+        self.actor = self.users[2]
+        case = BusinessRecord(module="case", serial_no="CODEX-AI-CASE", title="真实案件名称", owner=self.actor.username,
+                              status="草稿", data={})
+        self.db.add(case)
+        await self.db.commit()
+        with patch("app.core.permissions._require_case_attachment_upload_access", new=AsyncMock()):
+            first = await self.save(case_record=case, source_kind="case_ai_draft")
+            old_path = first["attachment"].path
+            second = await self.save(case_record=case, attachment=first["attachment"], content=b"second-revision",
+                                     source_kind="case_ai_draft")
+        self.assertEqual(first["attachment"].id, second["attachment"].id)
+        self.assertEqual(second["attachment"].record_id, case.id)
+        self.assertEqual(second["file"]["case_id"], case.id)
+        self.assertIn(f"/CODEX-AI-CASE-真实案件名称--c{case.id}/", second["attachment"].path)
+        self.assertNotEqual(old_path, second["attachment"].path)
+        self.assertEqual(self.objects[old_path], b"actual-xls-content")
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 1)
+        listing = await list_space_files(await self.identity(), self.db, page=1, page_size=20)
+        self.assertEqual(listing["total"], 2)
+        self.assertEqual({item["attachment_id"] for item in listing["items"]}, {second["attachment"].id})
+
+    async def test_final_commit_failure_keeps_remote_object_and_uncertain_plan(self):
+        commit = self.db.commit
+        calls = 0
+
+        async def fail_final_commit():
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("isolated final commit failed")
+            await commit()
+
+        with patch.object(self.db, "commit", new=fail_final_commit):
+            with self.assertRaises(HTTPException):
+                await self.save()
+        self.assertEqual(calls, 3)
+        plan = await self.db.scalar(select(BusinessRecord).where(BusinessRecord.module == FILE_MODULE))
+        self.assertEqual(plan.status, "uncertain")
+        self.assertIn(plan.data["path"], self.objects)
+        self.assertIsNone(plan.data["attachment_id"])
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 0)
+
+    async def test_cancelled_upload_keeps_uncertain_plan(self):
+        import asyncio
+
+        with patch.object(generated_storage, "oss_put_editor_revision", new=AsyncMock(side_effect=asyncio.CancelledError())):
+            with self.assertRaises(asyncio.CancelledError):
+                await self.save()
+        plan = await self.db.scalar(select(BusinessRecord).where(BusinessRecord.module == FILE_MODULE))
+        self.assertEqual(plan.status, "uncertain")
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 0)
+
+    async def test_no_case_message_capability_and_true_message_save(self):
+        from app.areas.personal_agent.ai_space_service import save_space_message
+
+        identity = {**await self.identity(), "display_name": self.actor.display_name}
+        state = {"conversation_id": "original", "messages": [], "pending_actions": []}
+        with patch.object(personal_service, "ModelToolSession", wraps=personal_service.ModelToolSession) as tool_session, \
+                patch("app.core.oss_attachments._load_credentials", return_value=None), \
+                patch.object(personal_service, "_agent_skill_for_identity", new=AsyncMock(return_value=SimpleNamespace(id="test", name="测试技能"))), \
+                patch.object(personal_service, "prepare_materials", new=AsyncMock(return_value={"case": None, "readings": [], "can_save_document": False})), \
+                patch.object(personal_service, "build_context", new=AsyncMock(return_value={})), \
+                patch.object(personal_service, "_prompt_messages", return_value=[]), \
+                patch.object(personal_service, "request_model", new=AsyncMock(return_value="真实完整回答")), \
+                patch.object(personal_service, "_save_state", new=AsyncMock()):
+            result = await personal_service._generate_response(identity, self.db, "生成文书", AsyncMock(), state=state,
+                                                               skill_id="test", attachment_ids=[], case_id=None, document_ids=[],
+                                                               response_mode="fast", on_progress=None)
+        message = result["state"]["messages"][-1]
+        tool_session.assert_called_once_with(conversation_id="original")
+        self.assertTrue(message["can_save_document"])
+        self.assertTrue(message["can_save_personal_document"])
+        self.assertFalse(message["can_save_case_document"])
+        with TemporaryDirectory(prefix="oa-test-personal-message-") as temporary:
+            directory = Path(temporary)
+            snapshot = await conversations.create_conversation(directory)
+            snapshot["state"]["messages"] = [message]
+            await conversations.save_state(directory, snapshot["state"])
+            body = SimpleNamespace(conversation_id=snapshot["state"]["conversation_id"], message_index=0,
+                                   name="真实文书.docx", expected_content_sha256=hashlib.sha256(message["content"].encode()).hexdigest())
+            with patch.object(personal_service, "_user_dir", return_value=directory):
+                saved = await save_space_message(body, identity, self.db)
+                self.assertEqual(saved["source_kind"], "assistant_message")
+                self.assertEqual(saved["conversation_id"], body.conversation_id)
+                body.expected_content_sha256 = "0" * 64
+                with self.assertRaises(HTTPException) as raised:
+                    await save_space_message(body, identity, self.db)
+                self.assertEqual(raised.exception.status_code, 409)
+
+    async def test_ai_endpoint_is_separate_for_signed_download_and_missing_config(self):
+        from urllib.parse import urlsplit
+        from app.core.oss_attachments import oss_attachment_signed_url
+
+        old = SimpleNamespace(path="oss://historical-test/old.docx")
+        new = SimpleNamespace(path="oss://codex-ai-test/CODEX/AI空间/new.docx")
+        with patch("app.core.oss_attachments._load_credentials", return_value=("isolated-id", "isolated-secret")) as load, \
+                patch.object(personal_service.settings, "oss_endpoint", "https://oss-old.invalid"), \
+                patch.object(personal_service.settings, "ai_oss_endpoint", "https://oss-ai.invalid"), \
+                patch.object(personal_service.settings, "ai_oss_credentials_file", "explicit-ai-credentials.csv"):
+            self.assertEqual(urlsplit(oss_attachment_signed_url(old)).hostname, "historical-test.oss-old.invalid")
+            load.assert_called_with()
+            self.assertEqual(urlsplit(oss_attachment_signed_url(new)).hostname, "codex-ai-test.oss-ai.invalid")
+            load.assert_called_with("explicit-ai-credentials.csv")
+            with patch.object(personal_service.settings, "ai_oss_endpoint", ""):
+                with self.assertRaises(HTTPException) as raised:
+                    oss_attachment_signed_url(new)
+                self.assertEqual(raised.exception.status_code, 503)
+                self.assertEqual(urlsplit(oss_attachment_signed_url(old)).hostname, "historical-test.oss-old.invalid")
+        with patch.object(personal_service.settings, "ai_oss_credentials_file", ""), \
+                patch.object(personal_service.settings, "oss_credentials_file", "must-not-inherit.csv"):
+            with self.assertRaises(HTTPException) as raised:
+                oss_attachment_signed_url(new)
+            self.assertEqual(raised.exception.status_code, 503)
+
+    async def test_unlinked_hr_owner_is_creator_not_employee_binding(self):
+        self.db.add(BusinessRecord(module="hr", serial_no="CODEX-AI-UNLINKED", title="其他档案姓名",
+                                   owner=self.actor.username, data={}))
+        await self.db.commit()
+        saved = await self.save()
+        self.assertEqual(saved["file"]["owner_name"], self.actor.display_name)
+        self.assertIn(f"/同名员工--u{self.actor.id}/", saved["attachment"].path)
+
+    async def test_generic_case_ai_upload_preserves_shared_storage_and_workflow(self):
+        from app.areas.system.attachments import upload_attachment
+        from app.core.constants import AI_SPACE_CATEGORY
+
+        self.actor = self.users[2]
+        case = BusinessRecord(module="case", serial_no="CODEX-AI-GENERIC", title="隔离案件",
+                              owner=self.actor.username, status="草稿", data={})
+        self.db.add(case)
+        await self.db.commit()
+        file = UploadFile(filename="草稿.docx", file=BytesIO(b"uploaded-unchanged"))
+        with patch("app.core.permissions._require_case_attachment_upload_access", new=AsyncMock()), \
+                patch("app.core.case_automation.advance_case_for_uploaded_document", new=AsyncMock()) as advance, \
+                patch("app.core.documents._sync_case_document_readiness", new=AsyncMock()) as readiness, \
+                patch("app.areas.system.attachments.Path.write_bytes", side_effect=AssertionError("AI must not write local")):
+            result = await upload_attachment(file=file, record_id=case.id, finance_transaction_id=None,
+                                             source_case_id=None, customer_guid=None, is_license=None, document_date=None,
+                                             category=AI_SPACE_CATEGORY, remark="原上传备注", identity=await self.identity(), db=self.db)
+        self.assertEqual(result["storage_backend"], "oss")
+        self.assertEqual(result["category"], AI_SPACE_CATEGORY)
+        self.assertEqual(result["remark"], "原上传备注")
+        advance.assert_awaited_once()
+        readiness.assert_awaited_once()
+        from app.data_models.records import WorkflowEvent
+        event = await self.db.scalar(select(WorkflowEvent).where(WorkflowEvent.record_id == case.id))
+        self.assertEqual(event.action, "上传归档材料")
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 1)
+        self.assertEqual(len(self.objects), 1)
+        with patch.object(file, "read", new=AsyncMock(return_value=b"x" * (20 * 1024 * 1024 + 1))), \
+                patch("app.core.permissions._require_case_attachment_upload_access", new=AsyncMock()), \
+                patch("app.core.cases._save_case_ai_upload", new=AsyncMock()) as save:
+            with self.assertRaises(HTTPException) as raised:
+                await upload_attachment(file=file, record_id=case.id, finance_transaction_id=None,
+                                        source_case_id=None, customer_guid=None, is_license=None, document_date=None,
+                                        category=AI_SPACE_CATEGORY, remark="", identity=await self.identity(), db=self.db)
+            self.assertEqual(raised.exception.status_code, 413)
+            save.assert_not_awaited()
+
+    async def test_configuration_ready_is_not_put_permission_proof_and_reads_do_not_create_space(self):
+        from app.areas.personal_agent.ai_space_service import space_info
+
+        with patch("app.core.oss_attachments._load_credentials", return_value=None):
+            info = await space_info(await self.identity(), self.db)
+            self.assertTrue(info["configured"])
+            self.assertFalse(info["put_verified"])
+            self.assertEqual(info["verification_scope"], "configuration_only")
+            with patch.object(personal_service.settings, "ai_oss_endpoint", ""):
+                with self.assertRaises(HTTPException) as raised:
+                    await space_info(await self.identity(), self.db)
+                self.assertEqual(raised.exception.status_code, 503)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(BusinessRecord)
+                                             .where(BusinessRecord.module == SPACE_MODULE)), 0)
+        self.assertFalse(self.objects)
+
+    async def test_committed_available_state_is_not_rewritten_as_failed_when_ack_is_lost(self):
+        commit = self.db.commit
+        calls = 0
+
+        async def commit_with_lost_ack():
+            nonlocal calls
+            calls += 1
+            await commit()
+            if calls == 2:
+                raise RuntimeError("isolated committed response lost")
+
+        with patch.object(self.db, "commit", new=commit_with_lost_ack):
+            with self.assertRaises(HTTPException) as raised:
+                await self.save()
+        self.assertEqual(raised.exception.detail["status"], "available")
+        self.assertIn("文件已持久提交为 available", raised.exception.detail["detail"])
+        plan = await self.db.scalar(select(BusinessRecord).where(BusinessRecord.module == FILE_MODULE))
+        self.assertEqual(plan.status, "available")
+        self.assertIsNone(plan.data["error"])
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 1)
 
 
 class PersonalConfirmationBoundaryTest(IsolatedAsyncioTestCase):

@@ -26,8 +26,8 @@ def oss_attachment_location(item) -> tuple[str, str] | None:
     return bucket, key
 
 
-def _load_credentials() -> tuple[str, str]:
-    credentials_file = settings.oss_credentials_file.strip()
+def _load_credentials(credentials_file: str | None = None) -> tuple[str, str]:
+    credentials_file = (settings.oss_credentials_file if credentials_file is None else credentials_file).strip()
     if not credentials_file:
         raise HTTPException(status_code=503, detail="附件已关联 OSS 路径；尚未配置签名读取凭据")
     path = Path(credentials_file).expanduser()
@@ -45,23 +45,31 @@ def _load_credentials() -> tuple[str, str]:
     return access_key_id, access_key_secret
 
 
-def _endpoint_host() -> tuple[str, str]:
-    endpoint = settings.oss_endpoint.strip()
+def _endpoint_host(endpoint: str | None = None) -> tuple[str, str]:
+    endpoint = (settings.oss_endpoint if endpoint is None else endpoint).strip()
     if not endpoint:
         raise HTTPException(status_code=503, detail="附件 OSS 端点未配置")
     parsed = urlsplit(endpoint if "://" in endpoint else f"https://{endpoint}")
-    if parsed.scheme != "https" or not parsed.netloc:
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="附件 OSS 端点格式无效") from exc
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.path not in {"", "/"} or parsed.query or parsed.fragment or port is not None):
         raise HTTPException(status_code=503, detail="附件 OSS 端点必须使用 HTTPS")
-    return parsed.scheme, parsed.netloc.rstrip("/")
+    return parsed.scheme, parsed.hostname
 
 
-def oss_attachment_signed_url(item) -> str | None:
+def oss_attachment_signed_url(item, *, endpoint: str | None = None) -> str | None:
     location = oss_attachment_location(item)
     if location is None:
         return None
     bucket, key = location
-    access_key_id, access_key_secret = _load_credentials()
-    scheme, endpoint_host = _endpoint_host()
+    ai_bucket = bucket == settings.ai_oss_bucket.strip()
+    access_key_id, access_key_secret = _load_credentials(settings.ai_oss_credentials_file) if ai_bucket else _load_credentials()
+    if endpoint is None and ai_bucket:
+        endpoint = settings.ai_oss_endpoint
+    scheme, endpoint_host = _endpoint_host() if endpoint is None else _endpoint_host(endpoint)
     expires = int(time.time()) + settings.oss_signed_url_expire_seconds
     encoded_key = quote(key, safe="/~")
     resource = f"/{bucket}/{key}"
@@ -100,10 +108,13 @@ def oss_editor_revision_key(attachment_id: int, session_id: str, version: str) -
     return f"{prefix}/{attachment_id}/{session_id}/{version}.docx"
 
 
-async def oss_put_editor_revision(bucket: str, key: str, content: bytes, content_type: str) -> bool:
+async def oss_put_editor_revision(bucket: str, key: str, content: bytes, content_type: str, *, endpoint: str | None = None) -> bool:
     """返回是否新建；已存在时必须由调用方回读校验，不能冒充写入成功。"""
-    access_key_id, access_key_secret = _load_credentials()
-    scheme, host = _endpoint_host()
+    ai_bucket = bucket == settings.ai_oss_bucket.strip()
+    access_key_id, access_key_secret = _load_credentials(settings.ai_oss_credentials_file) if ai_bucket else _load_credentials()
+    if endpoint is None and ai_bucket:
+        endpoint = settings.ai_oss_endpoint
+    scheme, host = _endpoint_host() if endpoint is None else _endpoint_host(endpoint)
     date_header = formatdate(usegmt=True)
     checksum = base64.b64encode(hashlib.md5(content, usedforsecurity=False).digest()).decode("ascii")
     canonical = "x-oss-forbid-overwrite:true\nx-oss-object-acl:private\n"

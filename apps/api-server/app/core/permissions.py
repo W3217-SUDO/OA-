@@ -18,6 +18,7 @@ from app.models_shared import (
     FinanceFeeInput,
 )
 from app.core.json_relation_query import scalar_in_values
+from app.core.generated_file_records import PRIVATE_MODULES, require_generated_record_access
 
 
 _MENU_PERMISSION_ROUTE_ALIASES = {
@@ -337,7 +338,7 @@ async def _explicit_system_role_menu_keys(role_ids: list[str], db: AsyncSession)
 async def _require_record_module_menu(module: str, identity: dict, db: AsyncSession, *, action: str) -> None:
     """Prevent generic write/export endpoints from bypassing menu authorization."""
     # 确认存档仅经本人专用接口读取和决定，管理员也不能用通用记录入口绕过。
-    if module in {"agent_mcp_action", "personal_agent_action"}:
+    if module in {"agent_mcp_action", "personal_agent_action"} or module in PRIVATE_MODULES:
         raise HTTPException(status_code=403, detail="智能体确认记录必须使用本人专用确认入口")
     from app.core.system import (
         _record_module_menu_allowed,
@@ -677,6 +678,7 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     protected_scope = [] if await can_review_conflicts(identity, db) else [or_(
         BusinessRecord.module != "conflict_review", BusinessRecord.owner == identity.get("username", ""),
     )]
+    protected_scope.append(BusinessRecord.module.not_in(PRIVATE_MODULES))
     # 问题反馈仅对真实管理员和提交人开放，菜单带来的临时管理员能力不扩展此范围。
     if "admin" not in identity.get("_actual_role_ids", []):
         protected_scope.append(or_(
@@ -868,6 +870,9 @@ async def _visible_legacy_contract_history_parent_keys(identity: dict, db: Async
 async def _ensure_record_visible(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
     from app.core.conflict_review import ensure_conflict_review_visible
     candidate = await db.get(BusinessRecord, record_id)
+    if candidate and candidate.module in PRIVATE_MODULES:
+        await require_generated_record_access(candidate, identity, db)
+        return candidate
     if candidate and candidate.module == "conflict_review":
         return await ensure_conflict_review_visible(record_id, identity, db)
     if candidate and candidate.module == "bug_feedback":
@@ -1036,8 +1041,10 @@ async def _filter_visible_attachments(items: list[FileAttachment], identity: dic
     from app.core.conflict_review import can_review_conflicts
     parent_ids = {item.record_id for item in items if item.record_id}
     protected_records = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.id.in_(parent_ids), BusinessRecord.module.in_(("conflict_review", "bug_feedback")),
+        BusinessRecord.id.in_(parent_ids), BusinessRecord.module.in_(("conflict_review", "bug_feedback", *PRIVATE_MODULES)),
     ))).all()) if parent_ids else []
+    private_ids = {row.id for row in protected_records if row.module in PRIVATE_MODULES}
+    items = [item for item in items if item.record_id not in private_ids]
     reviews = [row for row in protected_records if row.module == "conflict_review"]
     reviewer = await can_review_conflicts(identity, db) if reviews else False
     allowed_review_ids = {row.id for row in reviews if reviewer or row.owner == identity.get("username")}

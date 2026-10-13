@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     oss_credentials_file: str = ""
     oss_endpoint: str = "oss-cn-shanghai.aliyuncs.com"
     oss_signed_url_expire_seconds: int = Field(default=600, ge=60, le=3600)
+    ai_oss_bucket: str = ""
+    ai_oss_prefix: str = ""
+    ai_oss_endpoint: str = ""
+    ai_oss_credentials_file: str = ""
     dify_base_url: str = ""
     dify_api_key: str = ""
     langgraph_enabled: bool = False

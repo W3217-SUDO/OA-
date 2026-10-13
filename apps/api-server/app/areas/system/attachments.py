@@ -164,6 +164,9 @@ async def upload_attachment(
     if record_id is not None:
         await ensure_investigation_material_access(record_id, identity, db, write=True)
         record = await _ensure_attachment_record_visible(record_id, identity, db)
+        from app.core.generated_file_records import PRIVATE_MODULES
+        if record.module in PRIVATE_MODULES:
+            raise HTTPException(status_code=409, detail="个人 AI 文件必须使用专用人工确认保存入口")
         if record.module in {"clue", "evidence"}:
             # 审核菜单只授予读取能力，上传仍按真实身份校验原记录和写入范围。
             identity = {**identity, "role": identity["_actual_role"],
@@ -283,6 +286,15 @@ async def upload_attachment(
             raise HTTPException(status_code=413, detail="头像图片不能超过 5MB")
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="单个文件不能超过 20MB")
+    if record and record.module == "case" and category == AI_SPACE_CATEGORY:
+        from app.core.cases import _save_case_ai_upload
+
+        item = await _save_case_ai_upload(
+            record, identity, db, name=Path(file.filename or "").name, content=content,
+            content_type=file.content_type or "application/octet-stream", remark=remark,
+            document_date=document_date, is_license=bool(is_license),
+        )
+        return _attachment_dict(item, record)
     try:
         stored_name = f"{uuid4().hex}{suffix}"
         target = UPLOAD_ROOT / stored_name
@@ -642,6 +654,9 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     if item.category == "客户联系人照片":
         raise HTTPException(status_code=409, detail="联系人照片请在客户联系人中维护")
     record = await db.get(BusinessRecord, item.record_id) if item.record_id else None
+    from app.core.generated_file_records import PRIVATE_MODULES
+    if record and record.module in PRIVATE_MODULES:
+        raise HTTPException(status_code=409, detail="个人 AI 文件不能通过通用附件接口删除持久记录")
     if record and record.module in {"clue", "evidence"} and "admin" not in identity["_actual_role_ids"]:
         raise HTTPException(status_code=403, detail="仅系统管理员可以删除线索或证据附件")
     if record and record.module == "conflict_review":

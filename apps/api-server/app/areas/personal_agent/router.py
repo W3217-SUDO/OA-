@@ -18,9 +18,11 @@ from app.areas.personal_agent.workspace import workspace_commands
 from app.areas.personal_agent.response_runtime import ResponseMode, supports_response_modes
 from app.areas.personal_agent.confirmation_history import read_confirmation_detail, read_confirmation_history, project_personal_actions
 from app.areas.personal_agent.action_presentation import dismiss_personal_actions
+from app.areas.personal_agent.ai_space import router as ai_space_router
 
 
 router = APIRouter()
+router.include_router(ai_space_router)
 
 
 class PersonalMessageInput(BaseModel):
@@ -47,6 +49,8 @@ class PersonalActionDismissInput(BaseModel):
 @router.get(f"{settings.api_prefix}/personal-agent/status")
 async def personal_agent_status(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     safe_identity = await personal_identity(identity, db)
+    from app.areas.personal_agent.ai_space_service import personal_save_capability
+    file_capability = await personal_save_capability(safe_identity, db)
     return {
         "ready": bool(settings.langgraph_enabled and settings.langgraph_api_base_url and settings.langgraph_api_key and settings.langgraph_model),
         "model": settings.langgraph_model,
@@ -54,6 +58,7 @@ async def personal_agent_status(identity: dict = Depends(current_identity), db: 
         "runtime": "personal-agent",
         "supports_response_modes": supports_response_modes(),
         "write_requires_confirmation": True,
+        "personal_file_storage": file_capability,
         "identity": {key: value for key, value in safe_identity.items() if not key.startswith("_")},
         "commands": workspace_commands(safe_identity),
     }
