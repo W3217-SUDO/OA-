@@ -827,6 +827,11 @@ async def list_system_configs(keyword: str = "", page: int | None = Query(None, 
     )
     _require_admin(identity)
     items = (await db.scalars(select(SystemConfig).order_by(SystemConfig.id))).all()
+    from app.global_agent_skills import GLOBAL_SKILL_CONFIG_KEY, can_manage_global
+    from app.user_agent_skills import USER_SKILL_CONFIG_PREFIX
+    if not can_manage_global(identity):
+        # Menu capability does not grant access to private skill-library JSON.
+        items = [item for item in items if item.key != GLOBAL_SKILL_CONFIG_KEY and not item.key.startswith(USER_SKILL_CONFIG_PREFIX)]
     result = [{"key": item.key, "label": item.label, "group": item.group, "value": item.value or {}, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at, **(auto_review_status(item.value) if item.key == CONFIG_KEY else {})} for item in items]
     supervisor_options = [
         {"username": user.username, "display_name": user.display_name}

@@ -279,7 +279,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         </div>
       )}
       <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeId) ?? null} deciding={!!workspace.decisionId} decisionFailure={activeId ? workspace.decisionFailures[activeId] : undefined} onDecide={decide} onClose={() => { setActiveAction(null); setHistoryAction(null); }} />
-      <PersonalAiSpace open={personalSpaceOpen} onClose={() => setPersonalSpaceOpen(false)} revision={workspace.documentRevision} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} onOpenConversation={workspace.selectConversation} />
+      <PersonalAiSpace open={personalSpaceOpen} onClose={() => setPersonalSpaceOpen(false)} revision={workspace.documentRevision} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} onOpenConversation={workspace.selectConversation} onSkillsChanged={workspace.refreshSkills} />
       <div className="assistant-composer"
         onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
         onDrop={(event) => {

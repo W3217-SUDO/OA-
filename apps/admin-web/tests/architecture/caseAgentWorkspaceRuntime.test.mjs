@@ -78,9 +78,9 @@ test("skill market browses server catalog, previews full instructions and instal
     } },
     "./types": { errorText: (error, fallback) => error.message || fallback },
   });
-  function Harness() {
+  function Harness({ scope } = {}) {
     const [busy, setBusy] = React.useState(false);
-    return React.createElement(SkillCatalog, { active: true, busy, onBusy: setBusy, onInstalled: async skill => { if (refreshFails) throw new Error("列表网络失败"); installed.push(skill.id); } });
+    return React.createElement(SkillCatalog, { active: true, busy, scope, onBusy: setBusy, onInstalled: async skill => { if (refreshFails) throw new Error("列表网络失败"); installed.push(skill.id); } });
   }
   let renderer;
   await act(async () => { renderer = create(React.createElement(Harness)); });
@@ -128,6 +128,13 @@ test("skill market browses server catalog, previews full instructions and instal
   catalogFails = false; empty = true;
   await act(async () => { renderer.root.findAllByType("alert").find(item => item.props.action)?.props.action.props.onClick(); });
   assert.equal(renderer.root.findByType("empty").props.description, "没有找到技能，请尝试英文技能名或切换来源");
+  empty = false;
+  await act(async () => { renderer.update(React.createElement(Harness, { scope: "global" })); });
+  await act(async () => { renderer.root.findAllByType("button").find(item => item.props["aria-label"] === "刷新技能目录").props.onClick(); });
+  await act(async () => { button("选择并预览").props.onClick(); });
+  assert.ok(renderer.root.findAllByType("p").some(item => String(item.props.children).includes("全所账号可选用")));
+  await act(async () => { button("确认安装到全局技能").props.onClick(); });
+  assert.equal(requests.at(-1).path, "/agent/global-skills/github/install", "全局只向全局端点写入");
   await act(async () => { renderer.unmount(); });
 });
 
@@ -156,13 +163,99 @@ test("GitHub URL install reports persisted success separately from personal-libr
   await act(async () => { button("确认安装并选中").props.onClick(); });
   assert.equal(requests.filter(item => item.path.endsWith("/install")).length, 1);
   assert.equal(selected.length, 0);
-  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.message.includes("技能已安装，但列表刷新失败")));
+  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.message?.includes("技能已安装，但列表刷新失败")));
   assert.equal(renderer.root.findAllByType("pre").length, 0, "成功落库后不保留再次安装入口");
   refreshFails = false;
   await act(async () => { renderer.root.findAllByType("alert").find(item => item.props.action).props.action.props.onClick(); });
   assert.equal(requests.filter(item => item.path.endsWith("/install")).length, 1);
   assert.deepEqual(selected, ["personal-docx"]);
   assert.equal(renderer.root.findByType("tabs").props.activeKey, "mine");
+  await act(async () => { renderer.update(React.createElement(SkillManager, { open: true, onClose() {}, scope: "global", skills: [{ id: "global-one", scope: "global", custom: true, name: "全局示例", quick_prompts: [] }, { id: "personal-one", scope: "personal", custom: true, name: "个人示例", quick_prompts: [] }], refresh: async () => {} })); });
+  const visibleNames = renderer.root.findAllByType("b").map(item => item.props.children);
+  assert.ok(visibleNames.includes("全局示例") && !visibleNames.includes("个人示例"), "全局管理列表不暴露个人编辑项");
+  assert.equal(renderer.root.findAllByType("button").some(item => item.props.children === "使用"), false, "全局中心不强行选用聊天技能");
+  await act(async () => { renderer.root.findByType("tabs").props.onChange("github"); });
+  await act(async () => { renderer.root.findAllByType("input").find(item => item.props["aria-label"] === "GitHub 技能链接").props.onChange({ target: { value: "https://github.com/anthropics/skills/tree/main/skills/docx" } }); });
+  await act(async () => { button("预览技能").props.onClick(); });
+  assert.equal(requests.at(-1).path, "/agent/global-skills/github/preview");
+  await act(async () => { button("确认安装到全局技能").props.onClick(); });
+  assert.equal(requests.at(-1).path, "/agent/global-skills/github/install");
+  assert.deepEqual(selected, ["personal-docx"], "global无onSelect不会改变原个人选中项");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("personal AI skill directory reads only owned records, previews full saved definition and downloads actual MD response", async () => {
+  const requests = [], savedDownloads = [], revoked = [];
+  let runtimeRefreshes = 0;
+  const content = "---\nname: own-skill\n---\n" + "完整定义\n".repeat(1500);
+  const downloadBytes = new Blob([content], { type: "text/markdown" });
+  const api = {
+    get: async (path, options) => {
+      requests.push({ path, options });
+      if (path.endsWith("/download")) return { data: downloadBytes, headers: { "content-disposition": 'attachment; filename="own-skill.md"' } };
+      if (path.endsWith("/definition")) return { data: { id: "own", name: "本人技能", scope: "personal", filename: "own-skill.md", content, definition_sha256: "current-definition-sha", import_sha256: "original-import-sha" } };
+      return { data: { items: [{ id: "own", name: "本人技能", scope: "personal", custom: true, enabled: true, available: true, description: "本人说明" }] } };
+    },
+    patch: async (path, body) => { requests.push({ path, body }); },
+  };
+  const { PersonalAiSpaceSkills } = loadModule("../personal-agent/PersonalAiSpaceSkills.tsx", {
+    antd: { Alert: "alert", Button: "button", Empty: "empty", Modal: "modal", Spin: "spin", Switch: "switch", Tag: "tag" },
+    "../api": { api }, "./SkillManager": { SkillManager: "skill-manager" }, "./types": { errorText: (error, fallback) => error.message || fallback },
+  }, {
+    URL: { createObjectURL: blob => { assert.equal(blob, downloadBytes); return "blob:actual-response"; }, revokeObjectURL: url => revoked.push(url) },
+    window: { setTimeout: (callback, delay) => { assert.equal(delay, 1000); callback(); } },
+    document: { body: { appendChild() {} }, createElement: () => ({ href: "", download: "", click() { savedDownloads.push({ href: this.href, filename: this.download }); }, remove() {} }) },
+  });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(PersonalAiSpaceSkills, { active: false, busy: false })); });
+  assert.equal(requests.length, 0, "默认文件Tab不会加载个人技能目录");
+  await act(async () => { renderer.update(React.createElement(PersonalAiSpaceSkills, { active: true, busy: false, onSkillsChanged: async () => { runtimeRefreshes += 1; } })); });
+  assert.equal(requests[0].path, "/agent/skills/personal");
+  const button = label => renderer.root.findAllByType("button").find(item => item.props.children === label);
+  await act(async () => { button("查看完整定义").props.onClick(); });
+  assert.equal(requests.at(-1).path, "/agent/skills/own/definition");
+  assert.equal(renderer.root.findByType("pre").props.children, content);
+  const hashes = renderer.root.findAllByType("small").map(item => String(item.props.children));
+  assert.ok(hashes.some(value => value.includes("当前定义 SHA256") && value.includes("current-definition-sha")));
+  assert.ok(hashes.some(value => value.includes("导入时原文件 SHA256") && value.includes("original-import-sha")));
+  await act(async () => { button("下载 MD").props.onClick(); });
+  assert.equal(requests.at(-1).path, "/agent/skills/own/definition/download");
+  assert.equal(requests.at(-1).options.responseType, "blob");
+  assert.deepEqual(savedDownloads, [{ href: "blob:actual-response", filename: "own-skill.md" }]);
+  assert.deepEqual(revoked, ["blob:actual-response"]);
+  await act(async () => { renderer.root.findByType("switch").props.onChange(false); });
+  assert.ok(requests.some(item => item.path === "/agent/skills/own" && item.body?.enabled === false));
+  assert.equal(runtimeRefreshes, 1, "个人技能变动后更新原AI助手可选目录");
+  assert.equal(requests.filter(item => item.path.includes("ai-space") || item.path.includes("global-skills")).length, 0, "技能目录不传输OSS或其他作用域");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("global skill management entry requires both authorized overview and can_manage and never selects personal chat skill", async () => {
+  let canManage = true, overviewDenied = false, globalReads = 0;
+  const { default: AgentAdminPage } = loadModule("../AgentAdminPage.tsx", {
+    antd: { Alert: "alert", Button: "button", Card: "card", Descriptions: Object.assign(props => React.createElement("descriptions", props), { Item: "description" }), Empty: "empty", Space: "space", Tabs: "tabs", Tag: "tag", message: { error() {} } },
+    "./components/ResizableTable": "table", "./personal-agent/SkillManager": { SkillManager: "skill-manager" },
+    "./personal-agent/types": { errorText: (error, fallback) => error.message || fallback },
+    "./api": { api: { get: async path => {
+      if (path === "/agent-admin/overview") { if (overviewDenied) throw new Error("管理员权限不足"); return { data: { runtime: {}, system_skills: [], user_libraries: [] } }; }
+      globalReads += 1; return { data: { items: [], can_manage: canManage } };
+    } } },
+  });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(AgentAdminPage)); });
+  const manage = () => renderer.root.findAllByType("button").find(item => item.props.children === "管理全局技能 · 从市场安装");
+  await act(async () => { manage().props.onClick(); });
+  assert.equal(renderer.root.findByType("skill-manager").props.scope, "global");
+  assert.equal(renderer.root.findByType("skill-manager").props.onSelect, undefined);
+  canManage = false;
+  await act(async () => { renderer.update(React.createElement(AgentAdminPage, { key: "no-write" })); });
+  assert.equal(manage(), undefined);
+  assert.equal(renderer.root.findAllByType("skill-manager").length, 0);
+  const beforeDenied = globalReads; overviewDenied = true; canManage = true;
+  await act(async () => { renderer.update(React.createElement(AgentAdminPage, { key: "no-overview" })); });
+  assert.equal(globalReads, beforeDenied, "管理员overview失败不继续开放全局目录管理");
+  assert.equal(manage(), undefined);
+  assert.equal(renderer.root.findAllByType("skill-manager").length, 0);
   await act(async () => { renderer.unmount(); });
 });
 
