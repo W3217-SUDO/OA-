@@ -289,7 +289,7 @@
   .case-detail-drawer .case-firm-fees-table .case-cell-link.ant-btn-link{min-height:44px;padding-block:6px}
   .case-detail-drawer .case-firm-fees-table .case-firm-fee-amount-link.ant-btn-link{justify-self:start;justify-content:flex-start;text-align:left}
   .case-detail-drawer .case-firm-fees-table .ant-table-placeholder,
-  .case-detail-drawer .case-firm-fees-table .ant-table-placeholder>td{display:block;width:100%}
+  .case-detail-drawer .case-firm-fees-table .ant-table-placeholder>td{display:block;width:100%;height:auto}
   .case-detail-drawer .case-firm-fees-table .ant-pagination{flex-wrap:wrap;justify-content:flex-start;gap:8px 0}
   .case-detail-drawer .case-firm-fees-table .ant-pagination-item,
   .case-detail-drawer .case-firm-fees-table .ant-pagination-prev,
