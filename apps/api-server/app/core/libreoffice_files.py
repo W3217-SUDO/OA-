@@ -92,6 +92,9 @@ async def read_document(item) -> bytes:
 def revision_path(item, session: dict, version: str) -> str:
     location = oss_attachment_location(item)
     if location is not None:
+        if session.get("scope") == "personal":
+            folder = session["revision_folder"]
+            return f"oss://{location[0]}/{folder}/office-versions/{session['file_id']}/{session['id']}/{version}.docx"
         return f"oss://{location[0]}/{oss_editor_revision_key(item.id, session['id'], version)}"
     return str(UPLOAD_ROOT / "libreoffice" / str(item.id) / session["id"] / f"{version}.docx")
 

@@ -1,5 +1,5 @@
 import { Button, Empty, Tag, Tooltip } from "antd";
-import { DownloadOutlined, MessageOutlined } from "@ant-design/icons";
+import { DownloadOutlined, EditOutlined, MessageOutlined } from "@ant-design/icons";
 import type { PersonalAiFile } from "./personalAiSpaceApi";
 
 const STATUS_LABELS: Record<PersonalAiFile["status"], string> = { uploading: "保存中", available: "可下载", failed: "保存失败", uncertain: "保存结果待核对" };
@@ -14,12 +14,13 @@ const SOURCE_LABELS: Record<string, string> = {
   personal_identity: "个人身份文件",
 };
 
-export function PersonalAiSpaceFiles({ items, downloadingId, busy, onDownload, onConversation }: {
+export function PersonalAiSpaceFiles({ items, downloadingId, busy, onDownload, onConversation, onEdit }: {
   items: PersonalAiFile[];
   downloadingId: string;
   busy: boolean;
   onDownload: (item: PersonalAiFile) => void;
   onConversation: (id: string) => void;
+  onEdit: (item: PersonalAiFile) => void;
 }) {
   if (!items.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="个人 AI 空间暂无文件" />;
   return <ol className="personal-ai-space-files">
@@ -34,9 +35,11 @@ export function PersonalAiSpaceFiles({ items, downloadingId, busy, onDownload, o
       </dl>
       {item.error && <p className="personal-ai-space-file-error" role="alert">{item.error}</p>}
       <div className="personal-ai-space-file-actions">
+        {item.editable === true && <Button icon={<EditOutlined />} disabled={busy || !!downloadingId} onClick={() => onEdit(item)}>在线编辑</Button>}
         {item.conversation_id && <Tooltip title={item.conversation_id}><Button icon={<MessageOutlined />} disabled={busy} onClick={() => onConversation(item.conversation_id!)}>查看来源会话</Button></Tooltip>}
         {item.status === "available" && item.download_url && <Button icon={<DownloadOutlined />} loading={downloadingId === item.id} disabled={!!downloadingId && downloadingId !== item.id} onClick={() => onDownload(item)}>下载 {item.name.includes(".") ? item.name.slice(item.name.lastIndexOf(".") + 1).toUpperCase() : "文件"}</Button>}
       </div>
+      {item.editable !== true && item.edit_unavailable_reason && <p className="personal-ai-space-edit-reason">在线编辑不可用：{item.edit_unavailable_reason}</p>}
     </li>)}
   </ol>;
 }

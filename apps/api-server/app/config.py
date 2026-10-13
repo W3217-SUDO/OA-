@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     # publicly trusted HTTPS origin rather than the user's authenticated OA URL.
     office_preview_public_base_url: str = ""
     office_editor_enabled: bool = False
+    office_personal_editor_enabled: bool = False
     office_editor_validation_case_codes: list[str] = Field(default_factory=list)
     code_server_url: str = ""
     code_browser_url: str = ""

@@ -14,7 +14,7 @@ from app.core.libreoffice_files import DOCX_CONTENT_TYPE, read_document, validat
 from app.core.libreoffice_save import put_file, require_wopi_lock
 from app.core.libreoffice_security import request_token, verify_proof
 from app.core.libreoffice_sessions import close_session, create_session, get_session
-from app.core.libreoffice_state import count_request, persist_context, session_context
+from app.core.libreoffice_state import count_request, persist_context, reload_context
 from app.database import get_db
 from app.security import current_identity
 
@@ -41,9 +41,12 @@ async def close_libreoffice_session(case_id: int, attachment_id: int, session_id
 
 async def authenticated_wopi(request: Request, session_id: str, db):
     token, claims = request_token(request, session_id)
-    await verify_proof(request, token)
-    context = await session_context(claims["case_id"], claims["attachment_id"], session_id,
-                                    {"username": claims["sub"]}, db, lock=True)
+    personal = claims.get("scope") == "personal"
+    await verify_proof(request, token, personal=personal)
+    context = await reload_context({**claims, "id": session_id}, {"username": claims["sub"]}, db, lock=True)
+    if (context.item.id != claims["attachment_id"] or (personal
+            and context.session["owner_user_id"] != claims["owner_user_id"])):
+        raise HTTPException(status_code=401, detail="WOPI 令牌文件归属已变化")
     if not secrets.compare_digest(context.session["token_id"], claims["jti"]):
         raise HTTPException(status_code=401, detail="WOPI 令牌已撤销")
     # 请求计数和协议状态一起提交，避免同一次请求先释放锁再用旧栅栏写入。
@@ -64,7 +67,7 @@ async def check_file_info(session_id: str, request: Request, db: AsyncSession = 
             "LastModifiedTime": context.session["modified_at"], "UserCanWrite": True,
             "ReadOnly": False, "UserCanNotWriteRelative": True, "SupportsUpdate": True,
             "SupportsLocks": True, "SupportsGetLock": True, "SupportsRename": False,
-            "UserCanRename": False, "PostMessageOrigin": editor_configuration()["frontend"]}
+            "UserCanRename": False, "PostMessageOrigin": editor_configuration(personal=context.session.get("scope") == "personal")["frontend"]}
 
 
 @router.get(f"{settings.api_prefix}/office/wopi/files/{{session_id}}/contents")
@@ -88,7 +91,7 @@ async def get_file(session_id: str, request: Request, db: AsyncSession = Depends
     content = await read_document(snapshot)
     if validate_docx(content) != previous["version"]:
         raise HTTPException(status_code=409, detail="附件内容与登记版本不一致")
-    context = await session_context(previous["case_id"], previous["attachment_id"], session_id, identity, db)
+    context = await reload_context(previous, identity, db)
     if context.session["version"] != previous["version"]:
         raise HTTPException(status_code=409, detail="读取期间附件版本已变化")
     return Response(content, media_type=DOCX_CONTENT_TYPE,

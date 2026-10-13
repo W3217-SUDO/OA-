@@ -1,0 +1,15 @@
+.libreoffice-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.libreoffice-editor-footer > .ant-typography { min-width: 0; overflow-wrap: anywhere; }
+.libreoffice-editor-modal .ant-btn { min-width: 44px; min-height: 44px; }
+.libreoffice-editor-modal .ant-modal-close { width: 44px; height: 44px; }
+@media (max-width: 991px) {
+  .libreoffice-editor-modal { top: 0 !important; width: 100vw !important; max-width: 100vw; margin: 0; padding-bottom: 0; }
+  .libreoffice-editor-modal .ant-modal-container { display: flex; flex-direction: column; height: 100dvh; min-height: 0; padding: calc(12px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom)); border-radius: 0; }
+  .libreoffice-editor-modal .ant-modal-header, .libreoffice-editor-modal .ant-modal-footer { flex: none; }
+  .libreoffice-editor-modal .ant-modal-body { flex: 1 1 0; height: auto !important; min-height: 0 !important; overflow: hidden; }
+  .libreoffice-editor-modal .ant-alert { flex: none; max-height: 30%; overflow: auto; overflow-wrap: anywhere; }
+  .libreoffice-editor-modal .ant-modal-close { top: calc(8px + env(safe-area-inset-top)); right: 8px; }
+  .libreoffice-editor-modal .ant-modal-title { padding-right: 44px; }
+  .libreoffice-editor-footer { gap: 8px; }
+  .libreoffice-editor-footer > .ant-space { margin-left: auto; }
+}

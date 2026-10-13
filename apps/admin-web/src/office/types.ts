@@ -1,8 +1,10 @@
-export type LibreOfficeEditorTarget = {
+export type LibreOfficeCaseEditorTarget = {
+  scope?: "case";
   caseId: number;
   attachmentId: number;
   filename: string;
 };
+export type LibreOfficeEditorTarget = LibreOfficeCaseEditorTarget | { scope: "personal"; fileId: string; filename: string };
 
 export type LibreOfficeSession = {
   session_id: string;
