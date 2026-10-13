@@ -1872,9 +1872,78 @@ def _case_ai_draft_bytes(name: str, content: str) -> tuple[bytes, str]:
 
 
 async def _case_ai_draft(
-    case_record: BusinessRecord, attachment_id: int, db: AsyncSession,
+    case_record: BusinessRecord, attachment_id: int, db: AsyncSession, *, lock: bool = False,
 ) -> FileAttachment:
-    item = await db.get(FileAttachment, attachment_id)
+    query = select(FileAttachment).where(FileAttachment.id == attachment_id).execution_options(populate_existing=True)
+    if lock:
+        query = query.with_for_update()
+    item = await db.scalar(query)
     if not item or item.record_id != case_record.id or item.category != AI_SPACE_CATEGORY:
         raise HTTPException(status_code=404, detail="AI 空间草稿不存在")
     return item
+
+
+async def _case_ai_draft_content(item: FileAttachment, db: AsyncSession) -> bytes:
+    import hashlib
+    from types import SimpleNamespace
+
+    from app.core.generated_file_records import FILE_MODULE
+    from app.core.generated_file_storage import read_generated_bytes
+    from app.core.oss_attachments import oss_attachment_location
+
+    source = item
+    digest = None
+    if oss_attachment_location(item) is not None:
+        version = await db.scalar(select(BusinessRecord).where(
+            BusinessRecord.module == FILE_MODULE, BusinessRecord.status == "available",
+            BusinessRecord.data["attachment_id"].as_integer() == item.id,
+            BusinessRecord.data["path"].as_string() == item.path,
+        ))
+        if version is None:
+            raise HTTPException(409, "AI 草稿缺少当前可用版本记录")
+        digest = version.data.get("sha256")
+        endpoint = version.data.get("endpoint")
+        if (version.data.get("size") != item.size or not isinstance(endpoint, str) or not endpoint.strip()
+                or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+            raise HTTPException(409, "AI 草稿当前版本的大小、SHA256 或 endpoint 记录无效")
+        source = SimpleNamespace(
+            path=item.path, original_name=item.original_name, stored_name=item.stored_name, oss_endpoint=endpoint,
+        )
+    content = await read_generated_bytes(source)
+    if len(content) != item.size:
+        raise HTTPException(409, "AI 草稿大小与附件记录不一致")
+    if digest is not None and hashlib.sha256(content).hexdigest() != digest:
+        raise HTTPException(409, "AI 草稿 SHA256 校验不一致")
+    return content
+
+
+async def _save_case_ai_upload(
+    record: BusinessRecord, identity: dict, db: AsyncSession, *, name: str, content: bytes,
+    content_type: str, remark: str, document_date: date | None, is_license: bool,
+) -> FileAttachment:
+    from app.core.case_automation import advance_case_for_uploaded_document, apply_case_rules_on_change
+    from app.core.documents import _sync_case_document_readiness
+    from app.core.generated_file_storage import save_generated_file
+
+    if record.module != "case":
+        raise HTTPException(422, "案件 AI 空间上传必须关联真实案件")
+
+    async def on_available(session, attachment):
+        attachment.remark = remark
+        attachment.document_date = document_date
+        attachment.is_license = is_license
+        await advance_case_for_uploaded_document(record, attachment.original_name, session, operator=identity["username"])
+        if "保全裁定" in attachment.original_name:
+            await apply_case_rules_on_change(record, session)
+        await _sync_case_document_readiness(record, session)
+        session.add(WorkflowEvent(
+            record_id=record.id, action="上传归档材料", from_status=record.status,
+            to_status=record.status, operator=identity["username"],
+            comment=f"{AI_SPACE_CATEGORY}：{attachment.original_name}",
+        ))
+
+    result = await save_generated_file(
+        db, identity, name=name, content=content, content_type=content_type,
+        source_kind="case_upload", case_record=record, on_available=on_available,
+    )
+    return result["attachment"]

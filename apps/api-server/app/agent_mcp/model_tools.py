@@ -60,8 +60,9 @@ MODEL_TOOLS = [
 class ModelToolSession:
     """仅在本轮模型请求内保留发现结果，不保存登录凭据。"""
 
-    def __init__(self, case_id: int | None = None) -> None:
+    def __init__(self, case_id: int | None = None, *, conversation_id: str | None = None) -> None:
         self.case_id = case_id
+        self.conversation_id = conversation_id
         self.discovered: dict[str, ToolDefinition] = {}
         self.pending_actions: list[dict[str, Any]] = []
         self.structured_results: list[dict[str, Any]] = []
@@ -111,10 +112,10 @@ class ModelToolSession:
         if call_key in self._prepared:
             return {"result": self._prepared[call_key]}
         if self.case_id is None:
-            result = await call_tool(tool.name, arguments["arguments"])
+            result = await call_tool(tool.name, arguments["arguments"], conversation_id=self.conversation_id)
         else:
             with tool_origin(self.case_id):
-                result = await call_tool(tool.name, arguments["arguments"])
+                result = await call_tool(tool.name, arguments["arguments"], conversation_id=self.conversation_id)
         if isinstance(result, dict) and result.get("status") == "pending":
             request_id = result.get("request_id")
             preview = result.get("preview")

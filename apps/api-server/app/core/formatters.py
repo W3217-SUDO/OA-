@@ -1,7 +1,11 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from collections.abc import Sequence
 from datetime import tzinfo
+import io
 from types import SimpleNamespace
+from zipfile import BadZipFile
+
+from lxml.etree import XMLSyntaxError
 from app.core.constants import (
     AI_SPACE_CATEGORY, CASE_DEFENDANT_FIELDS, CASE_DOCUMENT_FOLDER_HEADERS, CASE_EVENT_TIME_ZONE, CASE_PLAINTIFF_FIELDS,
     CONTRACT_PERSON_NAME_PLACEHOLDER, PERSON_NAME_PLACEHOLDER, RECORD_PERSON_FIELDS_BY_MODULE, RECORD_PERSON_LIST_FIELDS_BY_MODULE, UPLOAD_ROOT,
@@ -635,10 +639,16 @@ def _normalize_case_document_folder_name(value: str) -> str:
     return name
 
 
-def _case_ai_draft_text(item: FileAttachment, path: Path) -> str:
+def _case_ai_draft_text(item: FileAttachment, content: bytes) -> str:
     if Path(item.original_name).suffix.lower() != ".docx":
-        return path.read_text(encoding="utf-8")
-    document = Document(path)
+        try:
+            return content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise HTTPException(422, "AI 草稿不是有效的 UTF-8 文本，未修改原文件") from exc
+    try:
+        document = Document(io.BytesIO(content))
+    except (BadZipFile, KeyError, ValueError, XMLSyntaxError) as exc:
+        raise HTTPException(422, "AI 草稿不是有效的 DOCX 文档，未修改原文件") from exc
     lines = [paragraph.text for paragraph in document.paragraphs]
     for table in document.tables:
         lines.extend("\t".join(cell.text for cell in row.cells) for row in table.rows)

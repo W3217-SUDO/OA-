@@ -1,6 +1,7 @@
 """通过真实挂载路由执行 OA 请求，不直接调用业务处理函数。"""
 
 from email.message import Message
+from email.utils import collapse_rfc2231_value
 import json
 from urllib.parse import unquote
 
@@ -16,6 +17,24 @@ from app.agent_mcp.safety import render_path, safe_result
 from app.config import settings
 from app.database import SessionLocal
 from app.models import FileAttachment
+
+
+_ATTACHMENT_DOWNLOAD = "/attachments/{attachment_id}/download"
+_PDF_PREVIEW_PAGE = "/attachments/{attachment_id}/pdf-preview/pages/{page_number}.png"
+_SOURCE_READS = {
+    (_ATTACHMENT_DOWNLOAD, "download_attachment"),
+    (_PDF_PREVIEW_PAGE, "render_pdf_preview_page"),
+    ("/feedback/{feedback_id}/screenshot", "feedback_screenshot"),
+    ("/feedback/{feedback_id}/events/{event_id}/screenshot", "feedback_event_screenshot"),
+    ("/cases/{case_id}/fee-headers/{header_id}/items/{item_id}/bill/attachment", "get_ipr_fee_bill_attachment"),
+}
+
+
+def _is_source_read(spec) -> bool:
+    return (
+        not spec.is_write and spec.method == "GET"
+        and (spec.path.removeprefix(settings.api_prefix), spec._route.endpoint.__name__) in _SOURCE_READS
+    )
 
 
 def _require_route(spec, path: str) -> None:
@@ -42,7 +61,7 @@ def _query_pairs(values: dict) -> list[tuple[str, str]]:
 
 def _authorized_query(spec, params: dict, case_origin: int | None) -> dict:
     query = dict(params["query"])
-    if case_origin is not None and spec.path == settings.api_prefix + "/attachments/{attachment_id}/download":
+    if case_origin is not None and spec.path in {settings.api_prefix + _ATTACHMENT_DOWNLOAD, settings.api_prefix + _PDF_PREVIEW_PAGE}:
         supplied_case = query.get("case_id")
         if supplied_case is not None and supplied_case != case_origin:
             raise HTTPException(422, "附件下载的案件编号与可信案件上下文不一致")
@@ -54,7 +73,20 @@ def _authorized_query(spec, params: dict, case_origin: int | None) -> dict:
 def _response_name(spec, response) -> str:
     disposition = Message()
     disposition["content-disposition"] = response.headers.get("content-disposition", "")
-    return disposition.get_filename() or spec.name
+    filenames = [value for key, value in disposition.get_params(header="content-disposition", unquote=True) or [] if key == "filename"]
+    # 同时存在 ASCII 名称与 filename* 时，以接口给出的扩展真实名称为准。
+    extended = [value for value in filenames if isinstance(value, tuple)]
+    if len(extended) > 1:
+        raise HTTPException(502, "原接口返回了多个真实文件名，不能确定导出文件")
+    try:
+        value = collapse_rfc2231_value(extended[0], errors="strict") if extended else disposition.get_filename()
+    except (UnicodeError, LookupError) as exc:
+        raise HTTPException(502, "原接口真实文件名编码无效") from exc
+    if not value:
+        raise HTTPException(502, "原接口未返回真实文件名，不能猜测导出格式")
+    from app.core.generated_file_storage import safe_original_name
+
+    return safe_original_name(value)
 
 
 def _raise_response_error(response) -> None:
@@ -116,18 +148,26 @@ def _client():
 
 
 async def read_source(spec, params: dict, *, case_origin: int | None) -> bytes:
-    if spec.is_write or spec.method != "GET" or spec.path != settings.api_prefix + "/attachments/{attachment_id}/download":
+    if not _is_source_read(spec):
         raise HTTPException(409, "此下载跳转没有已核实的受信资源读取通道")
     path = render_path(spec, params)
     _require_route(spec, path)
     async with _client() as client:
         response = await client.get(path, params=_query_pairs(_authorized_query(spec, params, case_origin)))
-    # 每次资源读取先执行原附件下载权限，再读取该已授权附件的实际存储对象。
-    _, content, _ = await _trusted_attachment_bytes(params["path"]["attachment_id"], response)
-    return content
+    # 每次引用读取都重新执行原授权路由，不将预览或原件变为长期生成副本。
+    if spec.path == settings.api_prefix + _ATTACHMENT_DOWNLOAD:
+        _, content, _ = await _trusted_attachment_bytes(params["path"]["attachment_id"], response)
+        return content
+    _raise_response_error(response)
+    if not response.is_success:
+        raise HTTPException(409, "源读取未返回受信字节，不跟随或暴露跳转地址")
+    return response.content
 
 
-async def execute_original(spec, params: dict, *, case_origin: int | None = None):
+async def execute_original(
+    spec, params: dict, *, case_origin: int | None = None,
+    conversation_id: str | None = None, source_request_id: str | None = None,
+):
     context = get_auth_context()
     path = render_path(spec, params)
     _require_route(spec, path)
@@ -149,21 +189,35 @@ async def execute_original(spec, params: dict, *, case_origin: int | None = None
             options["json"] = params["body"]
         response = await client.request(spec.method, path, **options)
     _raise_response_error(response)
+    if _is_source_read(spec):
+        if spec.path == settings.api_prefix + _ATTACHMENT_DOWNLOAD:
+            async with SessionLocal() as db:
+                attachment = await db.get(FileAttachment, params["path"]["attachment_id"])
+                if attachment is None:
+                    raise HTTPException(404, "下载附件不存在")
+                name, mime_type = attachment.original_name, attachment.content_type
+        else:
+            if not response.is_success:
+                raise HTTPException(409, "源读取未返回受信字节，不跟随或暴露跳转地址")
+            name = _response_name(spec, response)
+            mime_type = response.headers.get("content-type", "application/octet-stream").split(";")[0]
+        try:
+            return await cache_source(spec, params, case_origin, name=name, mime_type=mime_type)
+        except OSError as exc:
+            raise HTTPException(503, "原接口已授权源读取，但私有源引用保存失败") from exc
     if response.is_redirect:
-        if spec.is_write or spec.method != "GET" or spec.path != settings.api_prefix + "/attachments/{attachment_id}/download":
-            raise HTTPException(409, "接口返回跳转，但不存在已核实的安全结果通道；不会跟随或暴露签名地址")
-        async with SessionLocal() as db:
-            attachment = await db.get(FileAttachment, params["path"]["attachment_id"])
-            if attachment is None:
-                raise HTTPException(404, "下载附件不存在")
-            return await cache_source(spec, params, case_origin, name=attachment.original_name, mime_type=attachment.content_type)
+        raise HTTPException(409, "接口返回跳转，但不存在已核实的安全结果通道；不会跟随或暴露签名地址")
     if response.status_code == 204 or not response.content:
         return {"status_code": response.status_code}
     content_type = response.headers.get("content-type", "application/octet-stream").lower()
     if "attachment" not in response.headers.get("content-disposition", "").lower() and "json" in content_type:
         return safe_result(response.json(), context.bearer)
-    # 查询导出和写操作生成的字节只缓存一次；读取结果不能重放原写接口。
+    # 原业务接口只执行一次；生成字节交给统一 OSS 服务，失败不得重放原写接口。
     try:
-        return await cache_result(_response_name(spec, response), content_type.split(";")[0], response.content)
+        return await cache_result(
+            _response_name(spec, response), content_type.split(";")[0], response.content,
+            conversation_id=conversation_id, source_request_id=source_request_id,
+            source_kind="mcp_generated" if spec.is_write else "mcp_export",
+        )
     except OSError as exc:
         raise HTTPException(503, "原接口已返回结果，但私有工具结果缓存失败；写操作请人工核对实际结果，禁止自动重试") from exc

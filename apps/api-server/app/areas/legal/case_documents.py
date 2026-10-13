@@ -192,36 +192,25 @@ async def create_case_ai_draft(
     from app.core.storage import (
         _attachment_dict,
     )
+    from app.core.generated_file_storage import save_generated_file
+
     record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_attachment_upload_access(record, identity, db)
     name = _case_ai_draft_name(body.name)
     content, content_type = _case_ai_draft_bytes(name, body.content)
-    stored_name = f"{uuid4().hex}{Path(name).suffix.lower()}"
-    target = UPLOAD_ROOT / stored_name
-    target.write_bytes(content)
-    try:
-        item = FileAttachment(
-            record_id=record.id,
-            category=AI_SPACE_CATEGORY,
-            original_name=name,
-            stored_name=stored_name,
-            content_type=content_type,
-            size=len(content),
-            path=str(target),
-            uploader=identity["username"],
-            remark="AI 生成草稿，尚未转入正式案件文档",
-        )
-        db.add(item)
-        db.add(WorkflowEvent(
+
+    async def on_available(session, item):
+        item.remark = "AI 生成草稿，尚未转入正式案件文档"
+        session.add(WorkflowEvent(
             record_id=record.id, action="新增 AI 空间草稿", from_status=record.status,
             to_status=record.status, operator=identity["username"], comment=name,
         ))
-        await db.commit()
-        await db.refresh(item)
-    except Exception:
-        await db.rollback()
-        target.unlink(missing_ok=True)
-        raise
+
+    result = await save_generated_file(
+        db, identity, name=name, content=content, content_type=content_type,
+        source_kind="case_draft", case_record=record, on_available=on_available,
+    )
+    item = result["attachment"]
     return {**_attachment_dict(item, record), "content_editable": True}
 
 
@@ -231,7 +220,7 @@ async def get_case_ai_draft_content(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.cases import (
-        _case_ai_draft,
+        _case_ai_draft, _case_ai_draft_content,
     )
     from app.core.formatters import (
         _case_ai_draft_text,
@@ -243,10 +232,8 @@ async def get_case_ai_draft_content(
     item = await _case_ai_draft(record, attachment_id, db)
     if Path(item.original_name).suffix.lower() not in AI_SPACE_EDITABLE_SUFFIXES:
         raise HTTPException(status_code=422, detail="当前草稿格式不支持在线编辑")
-    path = Path(item.path)
-    if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
-        raise HTTPException(status_code=404, detail="AI 空间草稿实体不存在")
-    return {"id": item.id, "name": item.original_name, "content": _case_ai_draft_text(item, path)}
+    content = await _case_ai_draft_content(item, db)
+    return {"id": item.id, "name": item.original_name, "content": _case_ai_draft_text(item, content)}
 
 
 @router.put(f"{settings.api_prefix}/cases/{{case_id}}/ai-space/files/{{attachment_id}}/content")
@@ -255,7 +242,7 @@ async def update_case_ai_draft_content(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.cases import (
-        _case_ai_draft, _case_ai_draft_bytes,
+        _case_ai_draft, _case_ai_draft_bytes, _case_ai_draft_content,
     )
     from app.core.permissions import (
         _ensure_record_module, _require_case_action, _require_case_detail_write_access,
@@ -263,26 +250,29 @@ async def update_case_ai_draft_content(
     from app.core.storage import (
         _attachment_dict,
     )
+    from app.core.generated_file_storage import save_generated_file
+
     record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_detail_write_access(record, identity, db)
     await _require_case_action(identity, db, "case.document.manage")
     item = await _case_ai_draft(record, attachment_id, db)
     if Path(item.original_name).suffix.lower() not in AI_SPACE_EDITABLE_SUFFIXES:
         raise HTTPException(status_code=422, detail="当前草稿格式不支持在线编辑")
-    path = Path(item.path)
-    if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
-        raise HTTPException(status_code=404, detail="AI 空间草稿实体不存在")
+    # 先核对实际旧版本；新修订保留原对象，不覆盖历史本地原件或 OSS 对象。
+    await _case_ai_draft_content(item, db)
     content, content_type = _case_ai_draft_bytes(item.original_name, body.content)
-    temporary = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
-    temporary.write_bytes(content)
-    temporary.replace(path)
-    item.size = len(content)
-    item.content_type = content_type
-    db.add(WorkflowEvent(
-        record_id=record.id, action="编辑 AI 空间草稿", from_status=record.status,
-        to_status=record.status, operator=identity["username"], comment=item.original_name,
-    ))
-    await db.commit()
+
+    async def on_available(session, attachment):
+        session.add(WorkflowEvent(
+            record_id=record.id, action="编辑 AI 空间草稿", from_status=record.status,
+            to_status=record.status, operator=identity["username"], comment=attachment.original_name,
+        ))
+
+    result = await save_generated_file(
+        db, identity, name=item.original_name, content=content, content_type=content_type,
+        source_kind="case_draft", case_record=record, attachment=item, on_available=on_available,
+    )
+    item = result["attachment"]
     return {**_attachment_dict(item, record), "content_editable": True}
 
 
@@ -292,7 +282,7 @@ async def promote_case_ai_draft(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.cases import (
-        _case_ai_draft,
+        _case_ai_draft, _case_ai_draft_content,
     )
     from app.core.documents import (
         _case_related_document_record, _sync_case_document_readiness, _validate_case_formal_document_category,
@@ -306,11 +296,16 @@ async def promote_case_ai_draft(
     record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_attachment_upload_access(record, identity, db)
     item = await _case_ai_draft(record, attachment_id, db)
+    original = (item.path, item.size, item.original_name)
+    await _case_ai_draft_content(item, db)
     target_category = await _validate_case_formal_document_category(record, body.category, db)
     destination_record = record
     if target_category in {"客户文档", "合同文档"}:
         destination_module = "customer" if target_category == "客户文档" else "contract"
         destination_record = await _case_related_document_record(record, destination_module, db) or record
+    item = await _case_ai_draft(record, attachment_id, db, lock=True)
+    if (item.path, item.size, item.original_name) != original:
+        raise HTTPException(409, "AI 草稿在转入前已变化，请核对当前版本后再确认")
     item.record_id = destination_record.id
     item.category = target_category
     item.remark = f"由 AI 空间转入正式案件文档；原草稿创建人：{item.uploader}"

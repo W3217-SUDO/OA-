@@ -104,7 +104,7 @@ async def list_tool_requests(identity: dict, db, *, status: str = "pending", pag
     return {"items": [request_view(record) for record in records], "total": total, "page": page, "page_size": page_size}
 
 
-async def call_tool(name: str, arguments: dict):
+async def call_tool(name: str, arguments: dict, *, conversation_id: str | None = None):
     context = get_auth_context()
     identity = await authenticated_identity()
     spec = get_catalog(context.application).get(name)
@@ -116,7 +116,7 @@ async def call_tool(name: str, arguments: dict):
     async with SessionLocal() as db:
         await require_business_record_target(spec, params, db)
         if not spec.is_write:
-            return await execute_original(spec, params, case_origin=trusted_case_origin())
+            return await execute_original(spec, params, case_origin=trusted_case_origin(), conversation_id=conversation_id)
         arguments = await prepare_business_arguments(spec, arguments, params, identity, db)
         params = spec.validate_arguments(arguments)
         reject_credentials(params)
@@ -134,6 +134,7 @@ async def call_tool(name: str, arguments: dict):
             "request_id": request_id, "tool_name": spec.name, "descriptor_fingerprint": descriptor_fingerprint(spec),
             "arguments": json.loads(json.dumps(arguments, ensure_ascii=False, allow_nan=False)),
             "params": params, "preview": preview, "case_origin": trusted_case_origin(), "summary": summary,
+            "conversation_id": conversation_id,
         }
         record = BusinessRecord(
             module=ACTION_MODULE, serial_no="MCP-" + request_id, title=summary[:255],
@@ -192,7 +193,10 @@ async def decide_tool_request(
     if decision == "rejected":
         return await get_tool_request(request_id, actual_identity, db)
     try:
-        result = await execute_original(spec, params, case_origin=data["case_origin"])
+        result = await execute_original(
+            spec, params, case_origin=data["case_origin"],
+            conversation_id=data.get("conversation_id"), source_request_id=request_id,
+        )
     except Exception as exc:
         error = safe_result(
             {"status_code": exc.status_code, "detail": exc.detail} if isinstance(exc, HTTPException)
