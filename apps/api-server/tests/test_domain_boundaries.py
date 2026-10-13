@@ -19,7 +19,7 @@ from app.database import Base
 from app.models import BusinessRecord, FileAttachment, FinanceTransaction, ReceivablePlan, User
 from app.models_shared import AttachmentBatchInput
 from app.areas.personal_agent import service as personal_service
-from app.areas.personal_agent.confirmation_history import project_personal_actions
+from app.areas.personal_agent.confirmation_history import begin_personal_decision, project_personal_actions
 from app.agent_mcp import service as tool_service
 
 
@@ -66,6 +66,27 @@ class PersonalConfirmationBoundaryTest(IsolatedAsyncioTestCase):
             await project_personal_actions(foreign, {"username": "本人"}, db)
         self.assertEqual(raised.exception.status_code, 403)
         db.scalars.assert_not_awaited()
+        for action_type in ("create_task", "approve_contract"):
+            for stored, visible in (("执行失败", "failed"), ("已执行", "succeeded"), ("已拒绝", "rejected"), ("执行中", "executing"), ("待确认", "pending")):
+                with self.subTest(action_type=action_type, status=stored):
+                    state = self.state()
+                    state["pending_actions"][0]["type"] = action_type
+                    original = deepcopy(state)
+                    record = self.request(stored)
+                    record.module, record.serial_no = "personal_agent_action", "PA-action-1"
+                    db = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [record])))
+                    result = await project_personal_actions(state, {"username": "本人"}, db)
+                    self.assertEqual(result["pending_actions"][0]["status"], visible)
+                    self.assertEqual(result["pending_actions"][0]["error"], record.data["error"])
+                    self.assertEqual(state, original)
+                    self.assertEqual(record.status, stored)
+            db = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [])))
+            result = await project_personal_actions(state, {"username": "本人"}, db)
+            self.assertEqual(result["pending_actions"][0], state["pending_actions"][0], "升级前无 PA 存档时保留原 pending")
+            db = SimpleNamespace(scalars=AsyncMock(side_effect=[SimpleNamespace(all=lambda: []), SimpleNamespace(all=lambda: ["PA-action-1"])]))
+            with self.assertRaises(HTTPException) as raised:
+                await project_personal_actions(state, {"username": "本人"}, db)
+            self.assertEqual(raised.exception.status_code, 403, "他人的 PA 存档不能冒充无存档旧请求")
 
     async def test_personal_state_and_conversation_reads_project_without_saving(self):
         state = self.state()
@@ -98,6 +119,12 @@ class PersonalConfirmationBoundaryTest(IsolatedAsyncioTestCase):
                     self.assertEqual(raised.exception.status_code, 409)
                     self.assertEqual(record.status, status)
                     execute.assert_not_awaited()
+                for action_type in ("create_task", "approve_contract"):
+                    action = {**self.state()["pending_actions"][0], "type": action_type}
+                    record.module, record.serial_no = "personal_agent_action", "PA-action-1"
+                    with self.assertRaises(HTTPException) as raised:
+                        await begin_personal_decision(action, "approved", "", {"username": "本人"}, self.state(), db)
+                    self.assertEqual(raised.exception.status_code, 409)
 
 
 class DomainBoundaryTest(IsolatedAsyncioTestCase):

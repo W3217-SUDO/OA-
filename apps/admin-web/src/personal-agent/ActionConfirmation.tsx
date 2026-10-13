@@ -8,8 +8,9 @@ import type { ToolRequest } from "../AgentToolRequests";
 import type { PendingAction } from "./types";
 import "./confirmation-history.css";
 
-const STATUS_NAMES: Record<ToolRequest["status"], string> = {
+const STATUS_NAMES: Record<PendingAction["status"], string> = {
   pending: "待确认", executing: "执行中", succeeded: "已执行", failed: "执行失败", rejected: "已取消",
+  approved: "已批准",
 };
 
 export function ActionConfirmation({ action, deciding, onDecide, onClose }: {
@@ -43,9 +44,10 @@ export function ActionConfirmation({ action, deciding, onDecide, onClose }: {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [action?.id, requestId, refresh]);
+  }, [action?.id, action?.status, requestId, refresh]);
 
-  const currentStatus = request?.status;
+  const currentStatus = action?.type === "mcp.call" ? request?.status : action?.status;
+  const visibleError = error || (action?.type !== "mcp.call" && action?.error != null ? agentOperationMessage(action.error) : "");
   const canDecide = action?.status === "pending" && (action.type !== "mcp.call" || currentStatus === "pending");
   const previewAction = action && request ? { ...action, summary: request.summary, preview: request.preview } : action;
   const decide = async (decision: "approved" | "rejected") => {
@@ -84,7 +86,7 @@ export function ActionConfirmation({ action, deciding, onDecide, onClose }: {
       </>}
     </Space>}>
     {currentStatus && <Tag color={currentStatus === "failed" ? "error" : currentStatus === "succeeded" ? "success" : "processing"} style={{ marginBottom: 12 }}>{STATUS_NAMES[currentStatus]}</Tag>}
-    {error && <Alert type="error" showIcon title={currentStatus === "failed" ? "操作执行失败" : "操作未完成"} description={error} style={{ marginBottom: 12, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }} />}
+    {visibleError && <Alert type="error" showIcon title={currentStatus === "failed" ? "操作执行失败" : "操作未完成"} description={visibleError} style={{ marginBottom: 12, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }} />}
     {currentStatus && currentStatus !== "pending" && <Alert type={currentStatus === "succeeded" ? "success" : "warning"} showIcon title={currentStatus === "failed" ? "该确认请求已失败，不能重复执行" : `该请求${STATUS_NAMES[currentStatus]}，不能重复确认`} style={{ marginBottom: 12 }} />}
     <Spin spinning={loading}><div style={{ maxHeight: "60dvh", overflowY: "auto" }}>{previewAction && <AgentOperationPreview action={previewAction} />}</div></Spin>
   </Modal>;

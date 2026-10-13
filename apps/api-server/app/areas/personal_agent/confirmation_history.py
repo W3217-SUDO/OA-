@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 
 from app.agent_mcp.auth import get_auth_context
 from app.agent_mcp.action_summary import summary_from_preview
@@ -23,22 +23,39 @@ async def project_personal_actions(state, identity, db):
     actions = state.get("pending_actions", [])
     references = {}
     for action in actions:
-        if action.get("type") != "mcp.call":
+        action_type = action.get("type")
+        if action_type not in {"mcp.call", "create_task", "approve_contract"}:
             continue
-        request_id = (action.get("payload") or {}).get("request_id")
         if action.get("requested_by") != identity["username"]:
             raise HTTPException(403, "待确认操作不属于当前账号")
-        if not isinstance(request_id, str) or not request_id:
-            raise HTTPException(422, "工具请求缺少有效编号")
-        references[action["id"]] = "MCP-" + request_id
+        if action_type == "mcp.call":
+            request_id = (action.get("payload") or {}).get("request_id")
+            if not isinstance(request_id, str) or not request_id:
+                raise HTTPException(422, "工具请求缺少有效编号")
+            references[action["id"]] = "MCP-" + request_id
+        else:
+            references[action["id"]] = "PA-" + action["id"]
     if not references:
         return {**state, "pending_actions": [dict(action) for action in actions]}
     records = (await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == ACTION_MODULE,
         BusinessRecord.owner == identity["username"],
-        BusinessRecord.serial_no.in_(list(references.values())),
+        or_(
+            and_(BusinessRecord.module == ACTION_MODULE, BusinessRecord.serial_no.in_(
+                [serial for serial in references.values() if serial.startswith("MCP-")])),
+            and_(BusinessRecord.module == PERSONAL_ACTION_MODULE, BusinessRecord.serial_no.in_(
+                [serial for serial in references.values() if serial.startswith("PA-")])),
+        ),
     ).execution_options(populate_existing=True))).all()
     requests = {record.serial_no: record for record in records}
+    legacy = [serial for serial in references.values() if serial.startswith("PA-") and serial not in requests]
+    if legacy:
+        # 无存档的升级前请求仍可人工决定；他人已存档请求不能冒充为旧请求。
+        foreign = (await db.scalars(select(BusinessRecord.serial_no).where(
+            BusinessRecord.module == PERSONAL_ACTION_MODULE,
+            BusinessRecord.serial_no.in_(legacy), BusinessRecord.owner != identity["username"],
+        ))).all()
+        if foreign:
+            raise HTTPException(403, "确认请求不属于当前账号")
     projected = []
     for action in actions:
         serial_no = references.get(action["id"])
@@ -47,6 +64,9 @@ async def project_personal_actions(state, identity, db):
             continue
         record = requests.get(serial_no)
         if record is None:
+            if serial_no in legacy:
+                projected.append(dict(action))
+                continue
             raise HTTPException(404, "确认请求不存在或不属于当前账号")
         projected.append({**action, "status": STATUS_NAMES[record.status],
                           "error": record.data.get("error")})

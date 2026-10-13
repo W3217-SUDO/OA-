@@ -243,6 +243,17 @@ test("personal confirmation keeps failed cards and disables all decisions while 
   assert.equal(modal.props.closable, false);
   await act(async () => modal.props.onCancel());
   assert.equal(closed, 0);
+  for (const [status, label] of [["failed", "执行失败"], ["succeeded", "已执行"], ["rejected", "已取消"], ["executing", "执行中"], ["approved", "已批准"]]) {
+    const terminal = { ...action, status, error: status === "failed" ? "真实的非 MCP 业务拒绝" : undefined };
+    await act(async () => renderer.update(React.createElement(ActionConfirmation, { ...props, action: terminal })));
+    assert.equal(renderer.root.findByType("tag").props.children, label);
+    assert.equal(renderer.root.findAllByType("button").some((button) => button.props.children === "确认并执行"), false);
+    if (status === "failed") assert.equal(renderer.root.findAllByType("alert")[0].props.description, "真实的非 MCP 业务拒绝");
+    if (status === "approved") assert.equal(renderer.root.findByType("tag").props.color, "processing", "已批准不冒称执行成功");
+  }
+  await act(async () => renderer.update(React.createElement(ActionConfirmation, props)));
+  assert.equal(renderer.root.findByType("tag").props.children, "待确认", "无 PA 存档的原 pending 请求保留人工确认入口");
+  assert.equal(renderer.root.findAllByType("button").find((button) => button.props.children === "确认并执行").props.disabled, false);
   await act(async () => renderer.unmount());
 });
 
