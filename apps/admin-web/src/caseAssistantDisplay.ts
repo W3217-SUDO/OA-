@@ -2,7 +2,12 @@ type CaseAssistantData = Record<string, unknown>;
 
 const populatedValues = (value: unknown): unknown[] => {
   const values = Array.isArray(value) ? value : [value];
-  return values.filter((item) => String(item ?? "").trim());
+  // The API uses an em dash for an unassigned assistant. It is an empty
+  // display state, not a person reference that should be resolved again.
+  return values.filter((item) => {
+    const text = String(item ?? "").trim();
+    return text && text !== "—";
+  });
 };
 
 export const caseAssistantDisplayValues = (data: CaseAssistantData | null | undefined): unknown[] => {
