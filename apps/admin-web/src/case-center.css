@@ -290,16 +290,6 @@
   .case-detail-drawer .case-firm-fees-table .case-firm-fee-amount-link.ant-btn-link{justify-self:start;justify-content:flex-start;text-align:left}
   .case-detail-drawer .case-firm-fees-table .ant-table-placeholder,
   .case-detail-drawer .case-firm-fees-table .ant-table-placeholder>td{display:block;width:100%}
-  /* 窄屏空状态按内容占高，避免固定行高使新增入口溢出并覆盖日志。 */
-  .case-detail-drawer .case-detail-tab-area .ant-table-placeholder,
-  .case-detail-drawer .case-detail-tab-area .ant-table-placeholder>td{height:auto}
-  .case-detail-drawer .case-fee-empty-state{min-width:0;max-width:100%;flex-direction:column;align-items:center;gap:8px;padding:16px 8px}
-  .case-detail-drawer .case-fee-empty-state>.anticon{margin-top:0}
-  .case-detail-drawer .case-fee-empty-state>span:not(.anticon){max-width:100%;white-space:normal;overflow-wrap:anywhere}
-  .case-detail-drawer .case-fee-empty-state>.ant-space{display:flex;width:100%;max-width:100%;flex-wrap:wrap;justify-content:center;gap:8px!important}
-  .case-detail-drawer .case-fee-empty-state .ant-space-item{min-width:0;max-width:100%}
-  .case-detail-drawer .case-detail-tab-area .ant-table-placeholder .ant-btn{min-width:44px;min-height:44px;max-width:100%;height:auto;white-space:normal;overflow-wrap:anywhere}
-  .case-detail-drawer .case-fee-empty-state .ant-btn-link{padding:6px 8px}
   .case-detail-drawer .case-firm-fees-table .ant-pagination{flex-wrap:wrap;justify-content:flex-start;gap:8px 0}
   .case-detail-drawer .case-firm-fees-table .ant-pagination-item,
   .case-detail-drawer .case-firm-fees-table .ant-pagination-prev,
@@ -311,6 +301,18 @@
   .case-detail-drawer .case-firm-fees-panel .case-legacy-bottom-actions{display:flex;width:calc(100% - 8px);max-width:100%;flex-wrap:wrap;gap:8px!important}
   .case-detail-drawer .case-firm-fees-panel .case-legacy-bottom-actions .ant-space-item{min-width:0;max-width:100%}
   .case-detail-drawer .case-firm-fees-panel .case-legacy-bottom-actions .ant-btn{height:auto;min-height:44px;white-space:normal}
+}
+@media(max-width:991px){
+  /* 窄屏空状态按内容占高，避免固定行高使新增入口溢出并覆盖日志。 */
+  .case-detail-drawer .case-detail-tab-area .ant-table-placeholder,
+  .case-detail-drawer .case-detail-tab-area .ant-table-placeholder>td{height:auto}
+  .case-detail-drawer .case-fee-empty-state{min-width:0;max-width:100%;flex-direction:column;align-items:center;gap:8px;padding:16px 8px}
+  .case-detail-drawer .case-fee-empty-state>.anticon{margin-top:0}
+  .case-detail-drawer .case-fee-empty-state>span:not(.anticon){max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  .case-detail-drawer .case-fee-empty-state>.ant-space{display:flex;width:100%;max-width:100%;flex-wrap:wrap;justify-content:center;gap:8px!important}
+  .case-detail-drawer .case-fee-empty-state .ant-space-item{min-width:0;max-width:100%}
+  .case-detail-drawer .case-detail-tab-area .ant-table-placeholder .ant-btn{min-width:44px;min-height:44px;max-width:100%;height:auto;white-space:normal;overflow-wrap:anywhere}
+  .case-detail-drawer .case-fee-empty-state .ant-btn-link{padding:6px 8px}
 }
 /* 8.12-row2-scroll-layout */
 .page-workbench:has(.case-original-layout) { overflow: hidden; }
