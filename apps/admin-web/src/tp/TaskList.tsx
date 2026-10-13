@@ -335,7 +335,7 @@ export default function TaskList(props: TaskListProps) {
             )}
             {canManageAcceptedTask && statusTab === "pending" && (
               <>
-                <Button onClick={onCompleteSelected}>完成任务</Button>
+                <Button disabled={selectedRows.some(row => row.phase_completion_required)} onClick={onCompleteSelected}>完成任务</Button>
                 <Button onClick={() => selected && onOpenHandoff(selected)}>
                   转交任务
                 </Button>
@@ -343,7 +343,7 @@ export default function TaskList(props: TaskListProps) {
             )}
             {canManageAcceptedTask && statusTab === "processing" && (
               <>
-                <Button onClick={() => selected && onCompleteOne(selected)}>
+                <Button disabled={selected?.phase_completion_required} onClick={() => selected && onCompleteOne(selected)}>
                   完成任务
                 </Button>
                 <Button onClick={() => selected && onOpenHandoff(selected)}>
@@ -362,7 +362,7 @@ export default function TaskList(props: TaskListProps) {
                       ...(canManageAcceptedTask
                         ? [
                             { key: "accept", label: "批量接收任务" },
-                            { key: "complete", label: "批量提交完成" },
+                            { key: "complete", label: "批量提交完成", disabled: selectedRows.some(row => row.phase_completion_required) },
                             { key: "handoff", label: "批量交接任务" },
                           ]
                         : []),

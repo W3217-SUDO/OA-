@@ -775,6 +775,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     transition endpoint: task state transitions have different participants,
     automatic deadlines and audit semantics.
     """
+    from app.core.task_lifecycle_policy import validate_task_lifecycle
     from app.core.tasks import (
             _active_task_username, _add_task_message_notifications, _record_task_manual_intervention, _task_dict,
         )
@@ -803,10 +804,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
             if task.status not in {"待接收", "待处理"}:
                 raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 当前状态不能接收")
         elif body.action == "complete":
-            if identity.get("role") != "admin" and task.owner != identity["username"]:
-                raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅负责人可提交完成")
-            if task.status not in {"待接收", "待处理", "处理中", "进行中", "已逾期"}:
-                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 当前状态不能提交完成")
+            validate_task_lifecycle(task, identity, "complete", comment)
         elif body.action == "confirm":
             if identity.get("role") != "admin" and data.get("initiator") != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅任务发起人可以批量确认完成")
@@ -820,10 +818,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
             if recipient == task.owner:
                 raise HTTPException(status_code=422, detail=f"任务 {task.serial_no} 不能交接给当前负责人")
         else:  # withdraw
-            if data.get("initiator") != identity["username"]:
-                raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅发起人可撤回")
-            if task.status not in {"待接收", "待处理", "处理中"}:
-                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 当前状态不能撤回")
+            validate_task_lifecycle(task, identity, "withdraw", comment)
 
     auto_at = date.today() + timedelta(days=5)
     action_labels = {
@@ -954,16 +949,11 @@ async def withdraw_task(task_id: int, body: TaskActionInput, identity: dict = De
     from app.core.tasks import (
             _add_task_message_notifications, _task_dict, _task_or_404,
         )
+    from app.core.task_lifecycle_policy import validate_task_lifecycle
     task = await _task_or_404(task_id, db)
     data = task.data or {}
-    if data.get("initiator") != identity["username"]:
-        raise HTTPException(status_code=403, detail="只有任务发起人可以撤回任务")
-    # ``待处理`` is retained for historical imported tasks and has the same pre-accept semantics.
-    if task.status not in {"待接收", "待处理", "处理中"}:
-        raise HTTPException(status_code=409, detail="只有待接收或处理中的任务可以撤回")
     comment = body.comment.strip()
-    if not comment:
-        raise HTTPException(status_code=422, detail="撤回任务必须填写撤回原因")
+    validate_task_lifecycle(task, identity, "withdraw", comment)
     previous = task.status
     task.status = "已撤回"
     task.data = {
@@ -1466,12 +1456,12 @@ async def review_task_exception(task_id: int, body: TaskExceptionReviewInput, id
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/complete")
 async def complete_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.task_lifecycle_policy import validate_task_lifecycle
     from app.core.tasks import (
         _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db)
-    if identity.get("role") != "admin" and task.owner != identity["username"]: raise HTTPException(status_code=403, detail="只有任务负责人可以提交完成")
-    if task.status not in {"待接收", "待处理", "处理中", "进行中", "已逾期"}: raise HTTPException(status_code=409, detail="当前状态不能提交完成")
+    validate_task_lifecycle(task, identity, "complete", body.comment)
     previous = task.status
     task.status = "已完成"
     auto_at = date.today() + timedelta(days=5)

@@ -1385,60 +1385,9 @@ async def finance_contract_ledger(contract_id: int, identity: dict = Depends(cur
 
 @router.post(f"{settings.api_prefix}/finance/fees", status_code=status.HTTP_201_CREATED)
 async def create_finance_fee(body: FinanceFeeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.finance import (
-        _case_fee_type_snapshot, _finance_fee_commission_payload, _finance_linked_case, _resolve_case_fee_contract, _resolve_case_fee_type_master,
-        _round_fee_amount,
-    )
-    from app.core.permissions import (
-        _case_detail_action_capabilities, _ensure_record_visible, _record_dict_for_identity, _validate_finance_fee_scope_subtype,
-    )
-    if body.amount == 0: raise HTTPException(status_code=422, detail="费用金额不能为 0")
-    case_record = await _finance_linked_case(body.case_no, identity, db)
-    if body.case_record_id:
-        linked_case = await _ensure_record_visible(body.case_record_id, identity, db)
-        if linked_case.module != "case": raise HTTPException(status_code=422, detail="关联记录不是案件")
-        if case_record and case_record.id != linked_case.id: raise HTTPException(status_code=409, detail="案件编号与案件记录不一致")
-        case_record = linked_case
-    fee_snapshot = {
-        "fee_type_id": None,
-        "fee_type_code": "",
-        "fee_type_name": body.expense_subtype or body.fee_type,
-        "fee_type_path": body.expense_subtype or body.fee_type,
-        "fee_type": body.fee_type,
-        "expense_subtype": body.expense_subtype or "",
-    }
-    if case_record or body.fee_type_id:
-        fee_parameter, fee_option = await _resolve_case_fee_type_master(
-            body.fee_type_id, body.expense_scope, db,
-            legacy_name=body.expense_subtype or "", legacy_base=body.fee_type,
-        )
-        fee_snapshot = _case_fee_type_snapshot(fee_parameter, fee_option)
-        if body.fee_type != fee_snapshot["fee_type"]:
-            raise HTTPException(status_code=422, detail="费用类型与系统费用分类不一致")
-        if body.expense_subtype and body.expense_subtype != fee_parameter.name:
-            raise HTTPException(status_code=422, detail="费用子类型与系统费用分类不一致")
-    else:
-        if body.fee_type not in FINANCE_FEE_TYPES:
-            raise HTTPException(status_code=422, detail="费用类型无效")
-        if body.expense_scope and body.fee_type not in EXPENSE_SCOPE_FEE_TYPES[body.expense_scope]:
-            raise HTTPException(status_code=422, detail="费用归属与费用类型不一致")
-        _validate_finance_fee_scope_subtype(body.expense_scope, body.expense_subtype, body.fee_type)
-    if body.amount < 0 and fee_snapshot["fee_type"] != "内部费用": raise HTTPException(status_code=422, detail="只有内部费用可以使用负数冲销")
-    if case_record and not (await _case_detail_action_capabilities(case_record, identity, db))["can_create_finance"]:
-        raise HTTPException(status_code=403, detail="当前账号没有新增案件费用权限")
-    contract_record = None
-    if body.contract_record_id:
-        contract_record = await db.get(BusinessRecord, body.contract_record_id) if case_record else await _ensure_record_visible(body.contract_record_id, identity, db)
-        if not contract_record: raise HTTPException(status_code=404, detail="关联合同不存在")
-        if contract_record.module != "contract": raise HTTPException(status_code=422, detail="关联记录不是合同")
-        if case_record and contract_record.customer != case_record.customer:
-            raise HTTPException(status_code=409, detail="关联合同必须属于当前案件客户")
-    contract_record = await _resolve_case_fee_contract(case_record, contract_record, body.expense_scope, identity, db)
-    user = await db.scalar(select(User).where(User.username == identity["username"]))
-    if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
-    handler = identity["username"] if identity.get("role") == "user" else body.handler
-    amount = _round_fee_amount(body.amount)
-    commission = await _finance_fee_commission_payload(body, amount, db, case_record=case_record)
+    from app.areas.finance.fee_draft_preparation import prepare_finance_fee_draft
+    from app.core.permissions import _record_dict_for_identity
+    case_record, fee_snapshot, contract_record, user, handler, amount, commission = await prepare_finance_fee_draft(body, identity, db)
     serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}"
     item = BusinessRecord(module="finance", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=handler, department=user.department, description=body.description, data={"amount": amount, **fee_snapshot, "expense_scope": body.expense_scope or "", "is_refund": fee_snapshot["fee_type"] == "内部费用" and amount < 0, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else None, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", "handler": handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, **commission})
     db.add(item); await db.flush()

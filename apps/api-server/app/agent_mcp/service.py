@@ -14,6 +14,7 @@ from app.agent_mcp.auth import (
 )
 from app.agent_mcp.action_summary import summary_from_preview
 from app.agent_mcp.catalog import get_catalog
+from app.agent_mcp.business_preflight import prepare_business_arguments
 from app.agent_mcp.safety import reject_credentials, render_path, require_business_record_target, safe_result
 from app.agent_mcp.transport import execute_original
 from app.config import settings
@@ -112,11 +113,14 @@ async def call_tool(name: str, arguments: dict):
         raise HTTPException(422, "工具参数不能包含当前登录凭据")
     params = spec.validate_arguments(arguments)
     reject_credentials(params)
-    path = render_path(spec, params)
     async with SessionLocal() as db:
         await require_business_record_target(spec, params, db)
         if not spec.is_write:
             return await execute_original(spec, params, case_origin=trusted_case_origin())
+        arguments = await prepare_business_arguments(spec, arguments, params, identity, db)
+        params = spec.validate_arguments(arguments)
+        reject_credentials(params)
+        path = render_path(spec, params)
         # 写操作只落准备记录，不调用任何业务写入或新建附件。
         request_id = uuid4().hex
         preview = {

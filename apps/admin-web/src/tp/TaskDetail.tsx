@@ -158,12 +158,12 @@ export default function TaskDetail(props: TaskDetailProps) {
           )}
           {isAcceptedTaskContext && ["待接收", "待处理", "处理中", "进行中", "已逾期"].includes(communication.workflow_status || communication.status) && (
             <>
-              <Button
+              {!communication.phase_completion_required && <Button
                 loading={actionSubmitting}
                 onClick={() => onSimpleAction(communication, "complete")}
               >
                 完成任务
-              </Button>
+              </Button>}
               <Button
                 loading={actionSubmitting}
                 onClick={() => onOpenHandoff(communication)}

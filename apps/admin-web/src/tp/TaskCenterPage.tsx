@@ -192,7 +192,7 @@ export default function TaskCenterPage({
       row &&
         isInitiatedTaskContext &&
         row.initiator === profile.username &&
-        ["待接收", "待处理", "处理中", "进行中"].includes(row.workflow_status || row.status),
+        ["待接收", "待处理", "处理中", "进行中", "已逾期"].includes(row.workflow_status || row.status),
     );
 
   const canReviewTaskException = (row?: TaskRow | null) =>

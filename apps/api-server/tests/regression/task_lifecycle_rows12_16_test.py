@@ -128,7 +128,7 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         await self.sync_automatic_case(case_id, stage="一审准备开庭")
         self.assertEqual((await self.persisted_task(task_id)).status, "已完成")
 
-    async def test_automatic_task_manual_start_complete_and_confirm_keep_original_permissions(self) -> None:
+    async def test_phase_task_starts_manually_but_completion_requires_case_stage(self) -> None:
         task_id, case_id = await self.create_automatic_task("待接收", "lifecycle")
         self.identity = dict(OWNER)
         started = await self.client.post(f"{API}/tasks/{task_id}/restart", json={"comment": "人工开始"})
@@ -136,7 +136,10 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         await self.sync_automatic_case(case_id)
         self.assertEqual((await self.persisted_task(task_id)).status, "处理中")
         completed = await self.client.post(f"{API}/tasks/{task_id}/complete", json={"comment": "人工完成"})
-        self.assertEqual(completed.status_code, 200, completed.text)
+        self.assertEqual(completed.status_code, 409, completed.text)
+        self.assertEqual((await self.persisted_task(task_id)).status, "处理中")
+        await self.sync_automatic_case(case_id, stage="一审准备开庭")
+        self.assertEqual((await self.persisted_task(task_id)).status, "已完成")
         denied = await self.client.post(f"{API}/tasks/{task_id}/confirm", json={})
         self.assertEqual(denied.status_code, 403, denied.text)
         self.identity = dict(INITIATOR)
@@ -146,10 +149,11 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.persisted_task(task_id)).status, "已验收")
         async with self.sessions() as db:
             events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == task_id))).all())
-        self.assertEqual([event.action for event in events], ["重新开始任务", "提交任务完成", "验收任务"])
-        self.assertEqual([event.operator for event in events], [OWNER["username"], OWNER["username"], INITIATOR["username"]])
+        self.assertNotIn("提交任务完成", [event.action for event in events])
+        self.assertEqual(events[0].operator, OWNER["username"])
+        self.assertEqual(events[-1].operator, INITIATOR["username"])
 
-    async def test_automatic_task_batch_lifecycle_accept_complete_handoff_and_confirm(self) -> None:
+    async def test_phase_task_batch_completion_rejected_then_initiator_withdraws(self) -> None:
         task_id, case_id = await self.create_automatic_task("待接收", "batch")
         self.identity = dict(OWNER)
         for action in ("accept", "handoff"):
@@ -163,11 +167,14 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         self.identity = dict(RECIPIENT)
         for action in ("accept", "complete"):
             response = await self.client.post(f"{API}/tasks/batch-lifecycle", json={"task_ids": [task_id], "action": action})
-            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.status_code, 409 if action == "complete" else 200, response.text)
         self.identity = dict(INITIATOR)
-        confirmed = await self.client.post(f"{API}/tasks/batch-lifecycle", json={"task_ids": [task_id], "action": "confirm"})
-        self.assertEqual(confirmed.status_code, 200, confirmed.text)
-        self.assertEqual((await self.persisted_task(task_id)).status, "已验收")
+        withdrawn = await self.client.post(f"{API}/tasks/batch-lifecycle", json={
+            "task_ids": [task_id], "action": "withdraw", "comment": "发起人撤回",
+        })
+        self.assertEqual(withdrawn.status_code, 200, withdrawn.text)
+        await self.sync_automatic_case(case_id, stage="一审准备开庭")
+        self.assertEqual((await self.persisted_task(task_id)).status, "已撤回")
 
     async def test_automatic_task_cancel_requires_original_application_and_review(self) -> None:
         task_id, case_id = await self.create_automatic_task("处理中", "cancel")
@@ -237,7 +244,7 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
     async def test_manual_completion_still_auto_confirms_after_five_days(self) -> None:
         from app.core.tasks import _apply_task_auto_completion
 
-        task_id, _ = await self.create_automatic_task("处理中", "auto-confirm")
+        task_id = await self.create_task("处理中", "auto-confirm")
         self.identity = dict(OWNER)
         response = await self.client.post(f"{API}/tasks/{task_id}/complete", json={})
         self.assertEqual(response.status_code, 200, response.text)
