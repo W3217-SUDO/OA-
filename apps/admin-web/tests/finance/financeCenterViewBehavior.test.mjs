@@ -20,7 +20,8 @@ const ui = {
 };
 
 function loadFinanceModule(name, dependencies = {}, globals = {}) {
-  const source = fs.readFileSync(new URL(name, sourceRoot), "utf8");
+  const sourceUrl = new URL(name, sourceRoot);
+  const source = fs.readFileSync(sourceUrl, "utf8");
   const output = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
@@ -40,7 +41,13 @@ function loadFinanceModule(name, dependencies = {}, globals = {}) {
   vm.runInNewContext(output, {
     module,
     exports: module.exports,
-    require: (specifier) => specifier in mocks ? mocks[specifier] : require(specifier),
+    require: (specifier) => {
+      if (specifier in mocks) return mocks[specifier];
+      if (["../financialValueDisplay", "../../financialValueDisplay"].includes(specifier)) {
+        return loadFinanceModule(new URL(`${specifier}.ts`, sourceUrl).href);
+      }
+      return require(specifier);
+    },
     ...globals,
   }, { filename: name });
   return module.exports;
