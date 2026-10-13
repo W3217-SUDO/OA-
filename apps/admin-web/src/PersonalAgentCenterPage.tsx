@@ -14,7 +14,7 @@ import { MobileComposerOptions } from "./personal-agent/MobileComposerOptions";
 import { ActionConfirmation } from "./personal-agent/ActionConfirmation";
 import { ConfirmationHistory } from "./personal-agent/ConfirmationHistory";
 import { MATERIAL_ACCEPT, usePersonalWorkspace } from "./personal-agent/usePersonalWorkspace";
-import { errorText, type Material, type PendingAction, type ResponseMode, type WorkspaceCommand } from "./personal-agent/types";
+import { errorText, type ConfirmationDetail, type Material, type PendingAction, type ResponseMode, type WorkspaceCommand } from "./personal-agent/types";
 import "./personal-agent-center.css";
 
 const commandIcons: Record<string, ReactNode> = { today: <ScheduleOutlined />, task: <CheckOutlined />, approval: <AuditOutlined />, case: <FolderOpenOutlined />, finance: <WalletOutlined />, seal: <FileTextOutlined />, customer: <TeamOutlined /> };
@@ -30,6 +30,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
   const [dragging, setDragging] = useState(false);
   const [previewMaterial, setPreviewMaterial] = useState<Material | null>(null);
   const [activeAction, setActiveAction] = useState<PendingAction | null>(null);
+  const [historyAction, setHistoryAction] = useState<{ conversationId: string; actionId: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -38,6 +39,16 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
   const navigationBusy = loading || uploading || !!workspace.decisionId || workspace.conversationBusy;
   useEffect(() => { if (follow) bottomRef.current?.scrollIntoView({ block: "end" }); }, [state.messages, follow, view]);
   useEffect(() => { setFollow(true); setActiveAction(null); }, [state.conversation_id]);
+  useEffect(() => { if (historyAction && state.conversation_id !== historyAction.conversationId) setHistoryAction(null); }, [state.conversation_id]);
+  const reopen = async (detail: ConfirmationDetail) => {
+    const selected = await workspace.reopenConfirmation(detail);
+    setActiveAction(null); setHistoryAction(selected); setView("chat");
+  };
+  const dismiss = async (action: PendingAction) => {
+    try { await workspace.dismissAction(action); }
+    catch (error) { message.error(errorText(error, "操作卡收起失败")); }
+  };
+  const activeId = historyAction && historyAction.conversationId === state.conversation_id ? historyAction.actionId : activeAction?.id;
   const showAssistant = () => { if (window.matchMedia("(max-width: 1100px)").matches) setView("chat"); };
   const prepare = (command: WorkspaceCommand) => { workspace.setSkillId(command.skill_id); workspace.setInput(command.prompt); showAssistant(); };
   const draft = () => { workspace.setSkillId("general-office"); workspace.setInput("根据我提供的材料起草一份办公文档，缺失信息标为待补充"); showAssistant(); };
@@ -68,7 +79,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
         <Segmented aria-label="切换工作视图" value={view} options={[{ value: "workspace", label: "工作台" }, { value: "chat", label: "对话" }]} onChange={(value) => setView(value as "workspace" | "chat")} />
         <Tooltip title={status?.ready ? `当前模型：${status.model}` : "模型服务未就绪"}><span className={`workspace-service ${status?.ready ? "ready" : ""}`}><i />{status?.ready ? "已连接" : loading ? "连接中" : "未就绪"}</span></Tooltip>
         {canUseCases && <Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={() => onNavigate("case-agent-center")}>案件智能体</Button></Tooltip>}
-        <ConfirmationHistory />
+        <ConfirmationHistory onReopen={reopen} busy={navigationBusy || !!workspace.dismissalId} />
         <Tooltip title="刷新工作台与会话"><Button type="text" icon={<ReloadOutlined />} aria-label="刷新工作台与会话" disabled={navigationBusy || !!workspace.runningIds.length} onClick={() => { setRefreshToken((value) => value + 1); void workspace.load(); }} /></Tooltip>
       </Space>
     </header>
@@ -87,7 +98,8 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
           </div>
           {!follow && <div className="workspace-scroll-bottom-wrap"><Button className="workspace-scroll-bottom" shape="circle" icon={<ArrowDownOutlined />} aria-label="查看最新回答" onClick={() => { setFollow(true); bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }); }} /></div>}
         </div>
-        {!!state.pending_actions.length && <div className="workspace-pending"><div className="workspace-section-heading"><b><AuditOutlined /> 操作状态</b><Tag>{state.pending_actions.length}</Tag></div>{state.pending_actions.map((action) => <div className="workspace-pending-row" key={action.id}><div><b>{action.summary}</b>{action.status !== "pending" && <Tag color={action.status === "failed" ? "error" : "processing"}>{({ failed: "执行失败", executing: "执行中", succeeded: "已执行", approved: "已批准", rejected: "已取消" })[action.status]}</Tag>}{action.error != null && <Alert type="error" showIcon title={agentOperationMessage(action.error)} />}</div><Button size="small" type={action.status === "pending" ? "primary" : "default"} icon={<CheckOutlined />} disabled={navigationBusy} onClick={() => setActiveAction(action)}>{action.status === "pending" ? "查看并确认" : "查看状态"}</Button></div>)}</div>}
+        {Object.values(workspace.decisionFailures).filter((failure) => !failure.hidden && !state.pending_actions.some((action) => action.id === failure.actionId)).map((failure) => <Alert key={failure.actionId} type="error" showIcon closable={{ onClose: () => workspace.hideDecisionFailure(failure.actionId) }} title="操作未完成" description={failure.message} />)}
+        {!!workspace.visibleActions.length && <div className="workspace-pending"><div className="workspace-section-heading"><b><AuditOutlined /> 操作状态</b><Tag>{workspace.visibleActions.length}</Tag></div>{workspace.visibleActions.map((action) => <div className="workspace-pending-row" key={action.id}><div><b>{action.summary}</b>{action.status !== "pending" && <Tag color={action.status === "failed" ? "error" : "processing"}>{({ failed: "执行失败", executing: "执行中", succeeded: "已执行", approved: "已批准", rejected: "已取消" })[action.status]}</Tag>}{action.error != null && <Alert type="error" showIcon title={agentOperationMessage(action.error)} />}{action.error == null && workspace.decisionFailures[action.id] && <Alert type="error" showIcon title="操作未完成" description={workspace.decisionFailures[action.id].message} />}</div><Button size="small" type={action.status === "pending" ? "primary" : "default"} icon={<CheckOutlined />} disabled={navigationBusy || !!workspace.dismissalId} onClick={() => { setHistoryAction(null); setActiveAction(action); }}>{action.status === "pending" ? "查看并确认" : "查看状态"}</Button><Tooltip title="收起操作卡"><Button type="text" icon={<CloseOutlined />} aria-label={`收起操作卡：${action.summary}`} disabled={navigationBusy || !!workspace.dismissalId} loading={workspace.dismissalId === action.id} onClick={() => void dismiss(action)} /></Tooltip></div>)}</div>}
         <div className="personal-agent-composer-wrap">
           <div className={`personal-agent-composer${dragging ? " dragging" : ""}`} onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); setDragging(true); } }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }} onDrop={(event) => { event.preventDefault(); setDragging(false); void workspace.upload(Array.from(event.dataTransfer.files)); }}>
             <div className="workspace-composer-context"><Select aria-label="选择办公技能" value={skillId} disabled={busy} onChange={workspace.setSkillId} popupMatchSelectWidth={300} options={skills.map((item) => ({ value: item.id, label: item.name, disabled: !item.available, title: item.description }))} />{responseModeControl}{canUseCases && <Tooltip title={selectedCase?.title || "选择本轮问题关联的案件"}><Button type="text" size="small" icon={<FolderOpenOutlined />} disabled={busy} onClick={() => setPickerMode("case")}>{selectedCase?.serial_no || "关联案件"}</Button></Tooltip>}</div>
@@ -111,7 +123,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
       </main>
     </div>
     <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} skills={skills} refresh={workspace.refreshSkills} onSelect={workspace.setSkillId} />
-    <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeAction?.id) ?? null} deciding={!!workspace.decisionId} onDecide={workspace.decide} onClose={() => setActiveAction(null)} />
+    <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeId) ?? null} deciding={!!workspace.decisionId} decisionFailure={activeId ? workspace.decisionFailures[activeId] : undefined} onDecide={workspace.decide} onClose={() => { setActiveAction(null); setHistoryAction(null); }} />
     <MaterialPreview item={previewMaterial} onClose={() => setPreviewMaterial(null)} />
     <CaseMaterialsPicker mode={pickerMode} onClose={() => setPickerMode(null)} selectedCase={selectedCase} onCase={workspace.chooseCase} selectedMaterials={workspace.caseMaterials} onMaterials={workspace.setCaseMaterials} privateCount={workspace.materials.length} />
   </div>;

@@ -256,7 +256,7 @@ test("dashboard approved entries keep their destinations and unapproved entries 
   // 工作台沿用智能体中心那套会话工作区：桩只要暴露面板读取的字段并记录发问。
   const workspace = {
     status: { ready: true },
-    state: { messages: [], pending_actions: [] },
+    state: { messages: [], pending_actions: [], dismissed_action_ids: [] },
     loading: false,
     sending: false,
     send: (prompt) => calls.push(["agent", prompt]),

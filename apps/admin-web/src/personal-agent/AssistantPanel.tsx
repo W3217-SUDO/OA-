@@ -7,7 +7,7 @@ import { AssistantWorkspaceTools } from "./AssistantWorkspaceTools";
 import { ActionConfirmation } from "./ActionConfirmation";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { agentOperationMessage } from "../AgentOperationPreview";
-import { errorText, type PendingAction } from "./types";
+import { errorText, type ConfirmationDetail, type PendingAction } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 import "./assistant-panel.css";
 
@@ -56,6 +56,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const [composing, setComposing] = useState(false);
   const [activeAction, setActiveAction] = useState<PendingAction | null>(null);
   const [decisionError, setDecisionError] = useState("");
+  const [historyAction, setHistoryAction] = useState<{ conversationId: string; actionId: string } | null>(null);
+  const [dismissalError, setDismissalError] = useState("");
   const hasMessages = state.messages.length > 0;
   const lastMessage = state.messages[state.messages.length - 1];
   const sendBlocked = loading || !!loadError || !status?.ready || workspace.conversationBusy || workspace.uploading || !!workspace.decisionId || stopping || composing;
@@ -73,6 +75,10 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     setAwayFromBottom(false);
     setActiveAction(null);
     setDecisionError("");
+    setDismissalError("");
+  }, [state.conversation_id]);
+  useEffect(() => {
+    if (historyAction && state.conversation_id !== historyAction.conversationId) setHistoryAction(null);
   }, [state.conversation_id]);
   useEffect(() => {
     if (!stickToBottom.current) return;
@@ -106,7 +112,22 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
 
   const runningIds = workspace.runningIds;
   const conversationTitle = state.conversation_title || name || "沪知助手";
-  const decisionBusy = loading || workspace.conversationBusy || !!workspace.decisionId;
+  const decisionBusy = loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId;
+  const dismiss = async (action: PendingAction) => {
+    setDismissalError("");
+    try { await workspace.dismissAction(action); }
+    catch (error) { setDismissalError(errorText(error, "操作卡收起失败")); }
+  };
+  const dismissVisible = async () => {
+    setDismissalError("");
+    try { await workspace.dismissActions(workspace.visibleActions); }
+    catch (error) { setDismissalError(errorText(error, "操作状态收起失败")); }
+  };
+  const reopen = async (detail: ConfirmationDetail) => {
+    const selected = await workspace.reopenConfirmation(detail);
+    setActiveAction(null); setHistoryAction(selected);
+  };
+  const activeId = historyAction && historyAction.conversationId === state.conversation_id ? historyAction.actionId : activeAction?.id;
   const reject = async (action: PendingAction) => {
     if (decisionBusy) return;
     setDecisionError("");
@@ -134,7 +155,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           </span> : conversationTitle}
         </span>
         <div className="assistant-bar-actions">
-          <ConfirmationHistory />
+          <ConfirmationHistory onReopen={reopen} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} />
           <Tooltip title="刷新智能体">
             <Button
               className="assistant-refresh"
@@ -211,30 +232,37 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           {awayFromBottom && <button type="button" className="assistant-jump" onClick={followBottom}>回到最新回答</button>}
         </div>
       )}
-      {!!state.pending_actions.length && (
+      {dismissalError && <Alert className="assistant-alert" type="error" showIcon title="操作卡未收起" description={dismissalError} />}
+      {Object.values(workspace.decisionFailures).filter((failure) => !failure.hidden && !state.pending_actions.some((action) => action.id === failure.actionId)).map((failure) => <Alert key={failure.actionId} className="assistant-decision-failure" type="error" showIcon closable={{ onClose: () => workspace.hideDecisionFailure(failure.actionId) }} title="操作未完成" description={failure.message} />)}
+      {!!workspace.visibleActions.length && (
         <div className="assistant-pending">
-          <b>{state.pending_actions.some((action) => action.status === "pending") ? "待你确认的操作" : "操作状态"}</b>
+          <div className="assistant-pending-heading">
+            <b>{workspace.visibleActions.some((action) => action.status === "pending") ? "待你确认的操作" : "操作状态"}</b>
+            <Tooltip title="收起当前操作状态"><Button className="assistant-action-dismiss" type="text" icon={<CloseOutlined />} aria-label="收起当前操作状态" disabled={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId} loading={!!workspace.dismissalId} onClick={() => void dismissVisible()} /></Tooltip>
+          </div>
           {decisionError && <Alert type="error" showIcon title="操作未完成" description={decisionError} />}
           <List
             size="small"
-            dataSource={state.pending_actions}
+            dataSource={workspace.visibleActions}
             renderItem={(item) => (
               <List.Item
                 actions={[
-                  <Button key="approve" type={item.status === "pending" ? "primary" : "default"} size="small" icon={<CheckOutlined />} disabled={decisionBusy} onClick={() => { setDecisionError(""); setActiveAction(item); }}>{item.status === "pending" ? "查看并确认" : "查看状态"}</Button>,
+                  <Button key="approve" type={item.status === "pending" ? "primary" : "default"} size="small" icon={<CheckOutlined />} disabled={decisionBusy} onClick={() => { setDecisionError(""); setHistoryAction(null); setActiveAction(item); }}>{item.status === "pending" ? "查看并确认" : "查看状态"}</Button>,
                   ...(item.status === "pending" ? [<Button key="reject" size="small" icon={<CloseOutlined />} disabled={decisionBusy} loading={workspace.decisionId === item.id} onClick={() => void reject(item)}>取消</Button>] : []),
+                  <Tooltip key="dismiss" title="收起操作卡"><Button className="assistant-action-dismiss" type="text" size="small" icon={<CloseOutlined />} aria-label={`收起操作卡：${item.summary}`} disabled={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId} loading={workspace.dismissalId === item.id} onClick={() => void dismiss(item)} /></Tooltip>,
                 ]}
               >
-                <List.Item.Meta title={item.summary} description={item.status === "pending" ? undefined : <>
-                  <Tag color={item.status === "failed" ? "error" : "processing"}>{({ failed: "执行失败", executing: "执行中", succeeded: "已执行", approved: "已批准", rejected: "已取消" })[item.status]}</Tag>
+                <List.Item.Meta title={item.summary} description={item.status === "pending" && !workspace.decisionFailures[item.id] ? undefined : <>
+                  {item.status !== "pending" && <Tag color={item.status === "failed" ? "error" : "processing"}>{({ failed: "执行失败", executing: "执行中", succeeded: "已执行", approved: "已批准", rejected: "已取消" })[item.status]}</Tag>}
                   {item.error != null && <Alert type="error" showIcon title={agentOperationMessage(item.error)} />}
+                  {item.error == null && workspace.decisionFailures[item.id] && <Alert type="error" showIcon title="操作未完成" description={workspace.decisionFailures[item.id].message} />}
                 </>} />
               </List.Item>
             )}
           />
         </div>
       )}
-      <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeAction?.id) ?? null} deciding={!!workspace.decisionId} onDecide={decide} onClose={() => setActiveAction(null)} />
+      <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeId) ?? null} deciding={!!workspace.decisionId} decisionFailure={activeId ? workspace.decisionFailures[activeId] : undefined} onDecide={decide} onClose={() => { setActiveAction(null); setHistoryAction(null); }} />
       <div className="assistant-composer"
         onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
         onDrop={(event) => {

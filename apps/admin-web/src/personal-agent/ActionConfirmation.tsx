@@ -5,7 +5,7 @@ import { isAxiosError } from "axios";
 import { api } from "../api";
 import { AgentOperationPreview, agentOperationError, agentOperationMessage, hasAgentOperationPreview } from "../AgentOperationPreview";
 import type { ToolRequest } from "../AgentToolRequests";
-import type { PendingAction } from "./types";
+import type { DecisionFailure, PendingAction } from "./types";
 import "./confirmation-history.css";
 
 const STATUS_NAMES: Record<PendingAction["status"], string> = {
@@ -13,9 +13,10 @@ const STATUS_NAMES: Record<PendingAction["status"], string> = {
   approved: "已批准",
 };
 
-export function ActionConfirmation({ action, deciding, onDecide, onClose }: {
+export function ActionConfirmation({ action, deciding, decisionFailure, onDecide, onClose }: {
   action: PendingAction | null;
   deciding: boolean;
+  decisionFailure?: DecisionFailure;
   onDecide: (action: PendingAction, decision: "approved" | "rejected") => Promise<boolean>;
   onClose: () => void;
 }) {
@@ -47,7 +48,8 @@ export function ActionConfirmation({ action, deciding, onDecide, onClose }: {
   }, [action?.id, action?.status, requestId, refresh]);
 
   const currentStatus = action?.type === "mcp.call" ? request?.status : action?.status;
-  const visibleError = error || (action?.type !== "mcp.call" && action?.error != null ? agentOperationMessage(action.error) : "");
+  const pendingFailure = decisionFailure?.actionId === action?.id ? decisionFailure : undefined;
+  const visibleError = error || pendingFailure?.message || (action?.type !== "mcp.call" && action?.error != null ? agentOperationMessage(action.error) : "");
   const canDecide = action?.status === "pending" && (action.type !== "mcp.call" || currentStatus === "pending");
   const previewAction = action && request ? { ...action, summary: request.summary, preview: request.preview } : action;
   const decide = async (decision: "approved" | "rejected") => {
@@ -81,12 +83,13 @@ export function ActionConfirmation({ action, deciding, onDecide, onClose }: {
       {action?.type === "mcp.call" && <Button icon={<ReloadOutlined />} loading={loading} disabled={deciding} onClick={() => setRefresh((value) => value + 1)}>刷新状态</Button>}
       <Button disabled={deciding} onClick={onClose}>关闭</Button>
       {canDecide && <>
-        <Button icon={<CloseOutlined />} disabled={deciding || loading} onClick={() => void decide("rejected")}>取消操作</Button>
-        <Button type="primary" icon={<CheckOutlined />} loading={deciding} disabled={deciding || loading || !!error || !previewAction || !hasAgentOperationPreview(previewAction)} onClick={() => void decide("approved")}>确认并执行</Button>
+        <Button icon={<CloseOutlined />} disabled={deciding || loading || !!pendingFailure} onClick={() => void decide("rejected")}>取消操作</Button>
+        <Button type="primary" icon={<CheckOutlined />} loading={deciding} disabled={deciding || loading || !!visibleError || !previewAction || !hasAgentOperationPreview(previewAction)} onClick={() => void decide("approved")}>确认并执行</Button>
       </>}
     </Space>}>
     {currentStatus && <Tag color={currentStatus === "failed" ? "error" : currentStatus === "succeeded" ? "success" : "processing"} style={{ marginBottom: 12 }}>{STATUS_NAMES[currentStatus]}</Tag>}
     {visibleError && <Alert type="error" showIcon title={currentStatus === "failed" ? "操作执行失败" : "操作未完成"} description={visibleError} style={{ marginBottom: 12, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }} />}
+    {pendingFailure && <Alert type={pendingFailure.state === "unknown" ? "warning" : "info"} showIcon title={pendingFailure.state === "syncing" ? "正在只读核对真实执行状态" : pendingFailure.state === "unknown" ? "执行状态未能核实，禁止重复提交" : "已读取最新对话状态，可在历史记录查看详情"} style={{ marginBottom: 12 }} />}
     {currentStatus && currentStatus !== "pending" && <Alert type={currentStatus === "succeeded" ? "success" : "warning"} showIcon title={currentStatus === "failed" ? "该确认请求已失败，不能重复执行" : `该请求${STATUS_NAMES[currentStatus]}，不能重复确认`} style={{ marginBottom: 12 }} />}
     <Spin spinning={loading}><div style={{ maxHeight: "60dvh", overflowY: "auto" }}>{previewAction && <AgentOperationPreview action={previewAction} />}</div></Spin>
   </Modal>;

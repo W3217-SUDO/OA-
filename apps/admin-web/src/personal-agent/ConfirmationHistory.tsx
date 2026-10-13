@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Drawer, Empty, Pagination, Select, Spin, Tag, Tooltip } from "antd";
-import { AuditOutlined, ReloadOutlined } from "@ant-design/icons";
+import { AuditOutlined, EyeOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { agentOperationMessage } from "../AgentOperationPreview";
-import { errorText, type ConfirmationHistoryPage, type ConfirmationStatus } from "./types";
+import { ConfirmationHistoryDetails } from "./ConfirmationHistoryDetails";
+import { errorText, type ConfirmationDetail, type ConfirmationHistoryPage, type ConfirmationRecord, type ConfirmationStatus } from "./types";
 import "./confirmation-history.css";
 
 const STATUS_LABELS: Record<ConfirmationStatus, string> = {
+  pending: "待确认",
   executing: "执行中", succeeded: "已执行", failed: "执行失败", rejected: "已取消",
 };
 const STATUS_COLORS: Record<ConfirmationStatus, string> = {
+  pending: "warning",
   executing: "processing", succeeded: "success", failed: "error", rejected: "default",
 };
 const PAGE_SIZE = 20;
@@ -19,8 +22,9 @@ const displayTime = (value: string | null) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { hour12: false });
 };
 
-export function ConfirmationHistory() {
+export function ConfirmationHistory({ onReopen, busy = false }: { onReopen?: (detail: ConfirmationDetail) => Promise<void>; busy?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<ConfirmationRecord | null>(null);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<ConfirmationStatus | "">("");
   const [refresh, setRefresh] = useState(0);
@@ -75,11 +79,13 @@ export function ConfirmationHistory() {
                 <summary>执行结果</summary>
                 <pre>{typeof item.result === "string" ? item.result : JSON.stringify(item.result, null, 2)}</pre>
               </details>}
+              <Button className="confirmation-history-detail-button" icon={<EyeOutlined />} disabled={busy} onClick={() => setSelectedRecord(item)}>查看详情</Button>
             </li>)}
           </ol>}
         </>}
       </div>
       {data && data.total > 0 && <div className="confirmation-history-pagination"><span>共 {data.total} 条</span><Pagination simple current={data.page} pageSize={data.page_size} total={data.total} showSizeChanger={false} onChange={setPage} /></div>}
     </Drawer>
+    <ConfirmationHistoryDetails record={selectedRecord} onClose={() => setSelectedRecord(null)} onReopen={onReopen} busy={busy} onReopened={() => { setSelectedRecord(null); setOpen(false); }} />
   </>;
 }

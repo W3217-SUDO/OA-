@@ -91,6 +91,7 @@
 .workspace-pending-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 8px; font-size: 12px; }
 .workspace-pending-row > div:first-child { min-width: 0; overflow-wrap: anywhere; }
 .workspace-pending-row > .ant-btn { flex: none; min-height: 44px; }
+.workspace-pending-row > .ant-btn-icon-only { width: 44px; min-width: 44px; height: 44px; padding: 0; box-sizing: border-box; }
 .workspace-pending-row p { margin: 5px 0 0; color: #8c7858; overflow-wrap: anywhere; }
 .personal-agent-composer-wrap { padding: 8px 16px 10px; border-top: 1px solid var(--workspace-line); flex-shrink: 0; background: #f3f5f7; }
 .personal-agent-composer { border: 1px solid #cfd9df; border-radius: 8px; padding: 8px 10px 6px; background: #fff; transition: border-color .15s; }

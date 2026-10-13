@@ -26,6 +26,12 @@
 .confirmation-history-pagination .ant-pagination-prev, .confirmation-history-pagination .ant-pagination-next, .confirmation-history-pagination .ant-pagination-simple-pager { min-width: 44px; height: 44px; line-height: 44px; }
 .personal-action-confirmation .ant-modal-close { width: 44px; height: 44px; }
 .personal-action-confirmation .ant-modal-footer .ant-btn { min-width: 44px; min-height: 44px; }
+.confirmation-history-detail-button { margin-top: 12px; }
+.confirmation-history-detail .ant-modal-close,
+.confirmation-history-detail .ant-modal-footer .ant-btn { min-width: 44px; min-height: 44px; }
+.confirmation-history-detail-content { min-height: 120px; max-height: 60dvh; overflow: auto; overflow-wrap: anywhere; }
+.confirmation-history-detail-content > strong { display: block; margin-block: 12px; }
+.confirmation-history-detail-content > pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 991px) {
   .confirmation-history-trigger.ant-btn,
   .personal-agent-page .workspace-header-actions .confirmation-history-trigger.ant-btn { width: auto; min-width: 44px; padding-inline: 10px; }

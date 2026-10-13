@@ -6,7 +6,8 @@ export type ResponseMode = "fast" | "deep";
 export type Material = { id: number; name: string; case_id?: number };
 export type WorkspaceMessage = { role: "user" | "assistant"; content: string; created_at?: string; skill_name?: string; case_id?: number; case_no?: string; can_save_document?: boolean; attachments?: Material[]; failed?: boolean; stopped?: boolean };
 export type PendingAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; preview?: AgentActionPreview; status: "pending" | "approved" | "rejected" | "executing" | "succeeded" | "failed"; error?: unknown };
-export type ConfirmationStatus = "executing" | "succeeded" | "failed" | "rejected";
+export type DecisionFailure = { actionId: string; message: string; state: "syncing" | "verified" | "unknown"; hidden?: boolean };
+export type ConfirmationStatus = "pending" | "executing" | "succeeded" | "failed" | "rejected";
 export type ConfirmationRecord = {
   id: string;
   source: "mcp" | "personal_action";
@@ -22,9 +23,12 @@ export type ConfirmationRecord = {
   error: unknown;
   conversation_id: string | null;
   conversation_title: string | null;
+  action_id: string | null;
+  can_decide: boolean;
 };
 export type ConfirmationHistoryPage = { items: ConfirmationRecord[]; total: number; page: number; page_size: number };
-export type WorkspaceState = { conversation_id?: string | null; conversation_title?: string; messages: WorkspaceMessage[]; pending_actions: PendingAction[]; structured_results?: unknown[] };
+export type ConfirmationDetail = { item: ConfirmationRecord; action: PendingAction | null; conversation_id: string | null; conversation_title: string | null; can_decide: boolean; request_preview: AgentActionPreview | null };
+export type WorkspaceState = { conversation_id?: string | null; conversation_title?: string; messages: WorkspaceMessage[]; pending_actions: PendingAction[]; dismissed_action_ids: string[]; structured_results?: unknown[] };
 export type WorkspaceConversation = { id: string; title: string; message_count: number; updated_at: string };
 export type ConversationSnapshot = { items: WorkspaceConversation[]; active_id: string | null; state: WorkspaceState };
 export type WorkspaceCommand = { id: string; label: string; prompt: string; skill_id: string; icon: string };

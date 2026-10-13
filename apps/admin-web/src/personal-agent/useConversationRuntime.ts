@@ -5,7 +5,7 @@ import { errorText, type WorkspaceMessage, type WorkspaceState } from "./types";
 type Activity = { progress: string; stopping: boolean };
 type Generation = { controller: AbortController; stopping: boolean; finished: boolean; done: Promise<WorkspaceState | null>; stopRequest?: Promise<WorkspaceState>; stopPromise?: Promise<void> };
 type MessageBody = { content: string; skill_id: string; attachment_ids: number[]; case_id?: number; document_ids: number[]; response_mode: string };
-const EMPTY: WorkspaceState = { messages: [], pending_actions: [] };
+const EMPTY: WorkspaceState = { messages: [], pending_actions: [], dismissed_action_ids: [] };
 
 export function useConversationRuntime() {
   const [state, renderState] = useState<WorkspaceState>(EMPTY);
@@ -23,7 +23,7 @@ export function useConversationRuntime() {
   };
   const activate = (next: WorkspaceState) => {
     const id = next.conversation_id;
-    const selected = id ? cache.current.get(id) || next : next;
+    const selected = id && requests.current.has(id) ? cache.current.get(id) || next : next;
     if (id) cache.current.set(id, selected);
     active.current = selected;
     renderState(selected);

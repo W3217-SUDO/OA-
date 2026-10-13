@@ -160,7 +160,7 @@ test("real approval preview loads the shared table and preserves original values
   assert.equal(agentOperationError(new Error("网络中断"), "操作失败"), "网络中断");
 });
 
-test("personal confirmation history only reads decided records with paging, errors and cancellation", async () => {
+test("personal confirmation history reads pending and decided records with paging, errors and cancellation", async () => {
   const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
   const Empty = component("empty");
   Empty.PRESENTED_IMAGE_SIMPLE = "simple";
@@ -173,6 +173,7 @@ test("personal confirmation history only reads decided records with paging, erro
       Drawer: ({ open, children, ...props }) => open ? React.createElement("drawer", props, children) : null,
     },
     "../api": { api: { get: (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject })) } },
+    "./ConfirmationHistoryDetails": { ConfirmationHistoryDetails: component("history-details") },
   });
   let renderer;
   await act(async () => { renderer = create(React.createElement(ConfirmationHistory)); });
@@ -182,16 +183,19 @@ test("personal confirmation history only reads decided records with paging, erro
   assert.equal(renderer.root.findByType("drawer").props.rootClassName, "confirmation-history-drawer", "宽度限制作用域必须位于抽屉根节点，才能命中内容 wrapper");
   assert.equal(requests[0].path, "/personal-agent/confirmation-history");
   assert.equal(JSON.stringify(requests[0].options.params), JSON.stringify({ page: 1, page_size: 20 }));
-  assert.equal(renderer.root.findByType("select").props.options.some((option) => option.value === "pending"), false);
+  assert.equal(renderer.root.findByType("select").props.options.some((option) => option.value === "pending"), true);
   assert.equal(renderer.root.findByType("spin").type, "spin");
-  const record = { id: "r1", source: "mcp", action_type: "batch", summary: "为2个案件新增期限提醒", status: "succeeded", requested_at: "2026-10-13T02:00:00Z", decided_at: "2026-10-13T02:01:00Z", finished_at: null, operator: "审核人", comment: "同意", result: { count: 2, message: "已生成期限提醒" }, error: null, conversation_id: null, conversation_title: null };
+  const record = { id: "r1", source: "mcp", action_type: "batch", summary: "为2个案件新增期限提醒", status: "succeeded", requested_at: "2026-10-13T02:00:00Z", decided_at: "2026-10-13T02:01:00Z", finished_at: null, operator: "审核人", comment: "同意", result: { count: 2, message: "已生成期限提醒" }, error: null, conversation_id: null, conversation_title: null, action_id: null, can_decide: false };
   await act(async () => requests[0].resolve({ data: { items: [record], total: 21, page: 1, page_size: 20 } }));
   assert.equal(renderer.root.findByType("strong").props.children, "为2个案件新增期限提醒");
   assert.equal(renderer.root.findByType("tag").props.children, "已执行");
   assert.equal(renderer.root.findByType("summary").props.children, "执行结果");
   assert.equal(renderer.root.findByType("details").props.open, undefined, "完整结果默认折叠");
   assert.deepEqual(JSON.parse(renderer.root.findByType("pre").props.children), record.result);
-  assert.equal(renderer.root.findAllByType("button").length, 2, "历史只保留打开与刷新，不提供重放按钮");
+  assert.equal(renderer.root.findAllByType("button").length, 3, "历史新增只读详情，不提供决定或重放按钮");
+  await act(async () => renderer.root.findAllByType("button").find((button) => button.props.children === "查看详情").props.onClick());
+  assert.equal(renderer.root.findByType("history-details").props.record, record);
+  assert.equal(requests.length, 1, "查看已执行记录不发决定请求");
   await act(async () => renderer.root.findByType("pagination").props.onChange(2));
   assert.equal(requests[1].options.params.page, 2);
   assert.equal(requests[0].options.signal.aborted, true);
@@ -273,7 +277,8 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   const action = { id: "a1", type: "mcp.call", summary: "为2个案件新增期限提醒", status: "pending" };
   const decisions = [];
   const workspace = {
-    status: { ready: true }, state: { messages: [], pending_actions: [action], conversation_id: "c1" },
+    status: { ready: true }, state: { messages: [], pending_actions: [action], dismissed_action_ids: [], conversation_id: "c1" },
+    visibleActions: [action], dismissalId: "", decisionFailures: {},
     loading: false, loadError: "", sending: false, stopping: false, input: "", conversations: [], runningIds: [],
     conversationBusy: false, uploading: false, decisionId: "", setInput: () => {}, send: () => {}, stop: () => {}, load: () => {},
     decide: async (item, decision) => { decisions.push([item.id, decision]); throw new Error("取消被原权限拒绝"); },
@@ -303,7 +308,7 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   await act(async () => button("取消").props.onClick());
   assert.equal(decisions.length, 1);
   const failed = { ...action, status: "failed", error: { status_code: 409, detail: { detail: "任务由案件阶段自动完成，人工只能变更期限" } } };
-  await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, state: { ...workspace.state, pending_actions: [failed] } } })));
+  await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, visibleActions: [failed], state: { ...workspace.state, pending_actions: [failed] } } })));
   assert.equal(renderer.root.findByType("action-confirmation").props.action, failed, "已打开弹窗直接读取最新操作，不保留旧 pending 对象");
   assert.equal(renderer.root.findByType("tag").props.children, "执行失败");
   assert.equal(renderer.root.findByType("alert").props.title, "任务由案件阶段自动完成，人工只能变更期限");
@@ -312,10 +317,16 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   await act(async () => button("查看状态").props.onClick());
   assert.equal(renderer.root.findByType("action-confirmation").props.action.status, "failed");
   assert.equal(decisions.length, 1, "失败卡只读查看，不能重复执行");
-  await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, state: { ...workspace.state, pending_actions: [] } } })));
+  await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, visibleActions: [], state: { ...workspace.state, pending_actions: [] } } })));
   assert.equal(renderer.root.findByType("action-confirmation").props.action, null, "操作已移除时关闭弹窗，不回退旧对象");
   await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, state: { ...workspace.state, conversation_id: "c2", pending_actions: [action] } } })));
   assert.equal(renderer.root.findByType("action-confirmation").props.action, null, "切换会话后不能沿用旧操作选择");
+  const failures = {
+    a1: { actionId: "a1", message: "A执行结果未知", state: "unknown" },
+    b1: { actionId: "b1", message: "B执行结果未知", state: "unknown" },
+  };
+  await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, visibleActions: [], decisionFailures: failures, state: { ...workspace.state, pending_actions: [] } } })));
+  assert.deepEqual(renderer.root.findAllByType("alert").map((item) => item.props.description), ["A执行结果未知", "B执行结果未知"], "原卡移除也显示所有相关错误，不只最后一条");
   await act(async () => renderer.unmount());
 });
 
@@ -323,7 +334,8 @@ test("personal center retains terminal outcomes as visible read-only cards", asy
   const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
   const action = { id: "a1", type: "create_task", status: "pending", summary: "原待确认任务" };
   const workspace = {
-    status: { ready: true, commands: [] }, state: { conversation_id: "c1", messages: [], pending_actions: [action] },
+    status: { ready: true, commands: [] }, state: { conversation_id: "c1", messages: [], pending_actions: [action], dismissed_action_ids: [] },
+    visibleActions: [action], dismissalId: "", decisionFailures: {},
     skills: [], skillId: "general-office", input: "", loading: false, sending: true, uploading: false,
     materials: [], caseMaterials: [], savedDocuments: {}, conversations: [], runningIds: ["c1"],
     decisionId: "", conversationBusy: false,
@@ -349,6 +361,7 @@ test("personal center retains terminal outcomes as visible read-only cards", asy
   assert.equal(renderer.root.findByType("confirmation").props.action, action);
   const failed = { ...action, status: "failed", error: { detail: { detail: "任务由案件阶段自动完成，人工只能变更期限" } } };
   workspace.state = { ...workspace.state, pending_actions: [failed] };
+  workspace.visibleActions = [failed];
   await act(async () => renderer.update(React.createElement(PersonalAgentCenterPage, { onNavigate() {} })));
   assert.equal(renderer.root.findByType("confirmation").props.action, failed, "非 MCP 弹窗同步最新终态和错误");
   assert.equal(button("查看并确认"), undefined);
@@ -357,9 +370,11 @@ test("personal center retains terminal outcomes as visible read-only cards", asy
   await act(async () => button("查看状态").props.onClick());
   assert.equal(renderer.root.findByType("confirmation").props.action.status, "failed");
   workspace.state = { ...workspace.state, pending_actions: [] };
+  workspace.visibleActions = [];
   await act(async () => renderer.update(React.createElement(PersonalAgentCenterPage, { onNavigate() {} })));
   assert.equal(renderer.root.findByType("confirmation").props.action, null, "已移除的非 MCP 操作不能退回旧 pending");
   workspace.state = { ...workspace.state, conversation_id: "c2", pending_actions: [action] };
+  workspace.visibleActions = [action];
   await act(async () => renderer.update(React.createElement(PersonalAgentCenterPage, { onNavigate() {} })));
   assert.equal(renderer.root.findByType("confirmation").props.action, null, "切换会话清除旧选择，不确认另一会话");
   await act(async () => renderer.unmount());
@@ -393,6 +408,13 @@ test("confirmation controls retain mobile wrapping, touch size and bounded scrol
     assert.equal(value(center, ".workspace-pending", "overflow", width), "auto");
     if (width <= 760) assert.equal(value(center, ".workspace-pending-row", "flex-wrap", width), "wrap");
     assert.equal(value(confirmation, ".personal-action-confirmation .ant-modal-footer .ant-btn", "min-height", width), "44px");
+  }
+  for (const width of [320, 375, 390, 414, 768, 1280, 1880]) {
+    assert.equal(value(assistant, ".assistant-pending .assistant-action-dismiss.ant-btn", "width", width), "44px");
+    assert.equal(value(assistant, ".assistant-pending .assistant-action-dismiss.ant-btn", "height", width), "44px");
+    assert.equal(value(center, ".workspace-pending-row > .ant-btn-icon-only", "width", width), "44px");
+    assert.equal(value(center, ".workspace-pending-row > .ant-btn-icon-only", "height", width), "44px");
+    assert.equal(value(confirmation, ".confirmation-history-detail .ant-modal-footer .ant-btn", "min-height", width), "44px");
   }
 });
 
@@ -443,11 +465,13 @@ test("personal runtime completes on authoritative state without waiting for tran
   function Probe() { runtime = useConversationRuntime(); return null; }
   let renderer;
   await act(async () => { renderer = create(React.createElement(Probe)); });
-  const initial = { conversation_id: "c1", messages: [], pending_actions: [] };
+  const initial = { conversation_id: "c1", messages: [], pending_actions: [], dismissed_action_ids: [] };
   await act(async () => runtime.activate(initial));
   let generation;
   await act(async () => { generation = runtime.generate(initial, { content: "准备操作" }, { role: "user", content: "准备操作" }, {}); });
   assert.equal(runtime.running("c1"), true);
+  await act(async () => runtime.activate(initial));
+  assert.equal(runtime.state.messages.length, 2, "在途生成仍保留已有流式cache");
   const completed = { ...initial, messages: [{ role: "assistant", content: "等待人工确认" }], pending_actions: [{ id: "a1", status: "pending" }] };
   await act(async () => {
     controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "state", state: completed })}\r\n\r\n`));
@@ -457,6 +481,9 @@ test("personal runtime completes on authoritative state without waiting for tran
   assert.equal(runtime.running("c1"), false);
   assert.equal(Object.keys(runtime.activities).length, 0);
   assert.equal(runtime.state.pending_actions[0].id, "a1");
+  const fresh = { ...completed, pending_actions: [{ id: "a1", status: "failed" }] };
+  await act(async () => runtime.activate(fresh));
+  assert.equal(runtime.state, fresh, "非运行会话采用服务端fresh状态，不回退旧pending缓存");
   await act(async () => renderer.unmount());
 });
 
@@ -470,7 +497,7 @@ test("personal runtime treats done without state as an explicit incomplete respo
   function Probe() { runtime = useConversationRuntime(); return null; }
   let renderer;
   await act(async () => { renderer = create(React.createElement(Probe)); });
-  const initial = { conversation_id: "c1", messages: [], pending_actions: [] };
+  const initial = { conversation_id: "c1", messages: [], pending_actions: [], dismissed_action_ids: [] };
   await act(async () => runtime.activate(initial));
   let generation;
   await act(async () => { generation = runtime.generate(initial, { content: "查询" }, { role: "user", content: "查询" }, {}); });
@@ -491,7 +518,7 @@ test("personal decision waits for server stop, serializes duplicate clicks and p
   let rejectStop;
   const calls = [];
   const action = { id: "a1", type: "mcp.call", status: "pending", summary: "准备修改", payload: { request_id: "r1" } };
-  const initial = { conversation_id: "c1", messages: [], pending_actions: [action] };
+  const initial = { conversation_id: "c1", messages: [], pending_actions: [action], dismissed_action_ids: [] };
   const stopped = { ...initial, messages: [{ role: "user", content: "查询" }, { role: "assistant", content: "已停止", stopped: true }] };
   const api = {
     get: async (path) => ({ data: path === "/agent/skills" ? { items: [{ id: "general-office", available: true, name: "办公" }] } : { ready: true } }),
@@ -553,17 +580,22 @@ test("personal decision waits for server stop, serializes duplicate clicks and p
 
 test("personal failed decision synchronizes authoritative conversation without replaying writes", async () => {
   let workspace;
+  let resolveRead;
   const action = { id: "a1", status: "pending", type: "mcp.call", payload: { request_id: "r1" } };
-  let current = { conversation_id: "c1", messages: [], pending_actions: [action] };
+  let current = { conversation_id: "c1", messages: [], pending_actions: [action], dismissed_action_ids: [] };
   const refreshed = { ...current, pending_actions: [] };
   const calls = [];
   const failure = new AxiosError("请求失败", undefined, undefined, undefined, { status: 409, data: { detail: { status: "failed", error: { detail: "原业务接口已拒绝" } } } });
   const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
     antd: { ...require("antd"), message: { warning() {}, error() {}, success: () => assert.fail("失败不能伪造成功") } },
     "../api": { api: {
-      get: async (path) => {
+      get: async (path, options) => {
         calls.push(["get", path]);
-        return { data: path === "/agent/skills" ? { items: [] } : path === "/personal-agent/conversations" ? { state: refreshed, items: [] } : { ready: true } };
+        if (path === "/personal-agent/conversations") {
+          assert.equal(options.timeout, 15000);
+          return await new Promise((resolve) => { resolveRead = resolve; });
+        }
+        return { data: path === "/agent/skills" ? { items: [] } : { ready: true } };
       },
       post: async (path) => { calls.push(["post", path]); throw failure; },
     } },
@@ -574,13 +606,145 @@ test("personal failed decision synchronizes authoritative conversation without r
   function Probe() { workspace = usePersonalWorkspace(); return null; }
   let renderer;
   await act(async () => { renderer = create(React.createElement(Probe)); });
-  await act(async () => assert.rejects(workspace.decide(action, "approved"), (error) => error === failure));
+  let rejection;
+  await act(async () => { rejection = assert.rejects(workspace.decide(action, "approved"), (error) => error === failure); });
+  assert.equal(workspace.decisionFailures[action.id].message, "原业务接口已拒绝", "只读GET未返回前已经显示真实HTTP错误");
+  assert.equal(workspace.decisionFailures[action.id].state, "syncing");
+  assert.equal(workspace.state.pending_actions[0].status, "pending", "不能把未知执行结果伪造为failed");
+  await act(async () => { resolveRead({ data: { state: refreshed, items: [] } }); await rejection; });
   assert.equal(current, refreshed);
   assert.equal(workspace.state.pending_actions.length, 0);
   assert.equal(workspace.decisionId, "");
+  assert.equal(workspace.decisionFailures[action.id].state, "verified");
+  assert.equal(workspace.decisionFailures[action.id].message, "原业务接口已拒绝", "原卡移除也保留会话错误反馈");
   assert.deepEqual(calls.filter(([method]) => method === "post"), [["post", "/personal-agent/actions/a1/decision"]]);
   await act(async () => assert.rejects(workspace.decide(action, "approved"), /不存在或已处理/));
   assert.equal(calls.filter(([method]) => method === "post").length, 1);
+  await act(async () => renderer.unmount());
+});
+
+test("personal action dismissal persists one captured ID batch and resumes only the mapped original action", async () => {
+  let workspace;
+  let current = { conversation_id: "CODEX-conversation", messages: [], dismissed_action_ids: [], pending_actions: [
+    { id: "CODEX-action-a", type: "mcp.call", status: "pending", summary: "待确认A" },
+    { id: "CODEX-action-b", type: "create_task", status: "failed", summary: "失败B" },
+  ] };
+  const calls = [];
+  let failDismiss = false;
+  let resolveDismiss;
+  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
+    antd: { ...require("antd"), message: { warning() {}, error() {}, success: () => assert.fail("展示操作不得假称业务成功") } },
+    "../api": { api: {
+      get: async (path) => ({ data: path === "/agent/skills" ? { items: [] } : { ready: true } }),
+      post: async (path, body) => {
+        calls.push([path, body]);
+        if (failDismiss) throw new Error("展示持久化失败");
+        return await new Promise((resolve) => { resolveDismiss = resolve; });
+      },
+    } },
+    "./useConversationRuntime": { useConversationRuntime: () => ({ state: current, activities: {}, anyRunning: () => false, running: () => false, reset() {}, get: () => current, replace: (next) => { current = next; } }) },
+    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], busy: false, locked: () => false, load: async () => {}, refresh: async () => {}, select: async (id) => { calls.push(["select", id]); return current; } }) },
+    "../legal/constants": {}, "../legal/services/agentDocumentConfirmation": {},
+  });
+  function Probe() { workspace = usePersonalWorkspace(); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  let saved;
+  await act(async () => { saved = workspace.dismissActions(workspace.visibleActions); });
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), ["/personal-agent/conversations/CODEX-conversation/actions/dismiss", { action_ids: ["CODEX-action-a", "CODEX-action-b"] }]);
+  assert.equal(workspace.visibleActions.length, 2, "服务器保存前不得乐观隐藏");
+  current = { ...current, pending_actions: [...current.pending_actions, { id: "CODEX-new", type: "create_task", status: "pending", summary: "新请求" }] };
+  await act(async () => { resolveDismiss({ data: { state: { ...current, dismissed_action_ids: ["CODEX-action-a", "CODEX-action-b"] } } }); await saved; });
+  assert.deepEqual(workspace.visibleActions.map((action) => action.id), ["CODEX-new"], "点击后新到的请求不在旧收起ID集");
+  assert.equal(current.dismissed_action_ids.length, 0, "不把收起返回的旧消息快照覆盖流式状态");
+  failDismiss = true;
+  await act(async () => assert.rejects(workspace.dismissAction(workspace.visibleActions[0]), /展示持久化失败/));
+  assert.equal(workspace.visibleActions[0].id, "CODEX-new");
+  const detail = { item: { source: "mcp", id: "CODEX-request-r", status: "pending", action_id: "CODEX-action-a", can_decide: true }, conversation_id: current.conversation_id, conversation_title: "本轮对话", action: current.pending_actions[0], can_decide: true, request_preview: null };
+  let restored;
+  await act(async () => { restored = await workspace.reopenConfirmation(detail); });
+  assert.equal(restored.actionId, "CODEX-action-a", "不能用不同的MCP request_id猜action_id");
+  assert.equal(calls.filter(([path]) => path.endsWith("/decision")).length, 0, "关闭及重开不发决定请求");
+  await act(async () => assert.rejects(workspace.reopenConfirmation({ ...detail, can_decide: false }), /不是可恢复/));
+  await act(async () => assert.rejects(workspace.reopenConfirmation({ ...detail, item: { ...detail.item, action_id: "CODEX-request-r" } }), /不是可恢复/));
+  current = { ...current, dismissed_action_ids: ["CODEX-action-a", "CODEX-action-b"] };
+  await act(async () => renderer.unmount());
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  assert.deepEqual(workspace.visibleActions.map((action) => action.id), ["CODEX-new"], "重载从服务器契约恢复收起，不依赖组件state或localStorage");
+  await act(async () => renderer.unmount());
+});
+
+test("personal unknown decision state stays actionable only after explicit history verification", async () => {
+  let workspace;
+  const action = { id: "CODEX-unknown", type: "create_task", status: "pending", summary: "待核对" };
+  const current = { conversation_id: "CODEX-conversation", messages: [], dismissed_action_ids: [], pending_actions: [action] };
+  let posts = 0;
+  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
+    antd: { ...require("antd"), message: { warning() {}, error() {}, success: () => assert.fail("未知结果不能报告成功") } },
+    "../api": { api: {
+      get: async (path) => { if (path === "/personal-agent/conversations") throw new Error("只读状态读取超时"); return { data: path === "/agent/skills" ? { items: [] } : { ready: true } }; },
+      post: async () => { posts++; throw new Error("网络断开，执行结果未知"); },
+    } },
+    "./useConversationRuntime": { useConversationRuntime: () => ({ state: current, activities: {}, anyRunning: () => false, running: () => false, reset() {}, get: () => current, replace() {} }) },
+    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], busy: false, locked: () => false, load: async () => {}, refresh: async () => {} }) },
+    "../legal/constants": {}, "../legal/services/agentDocumentConfirmation": {},
+  });
+  function Probe() { workspace = usePersonalWorkspace(); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  await act(async () => assert.rejects(workspace.decide(action, "approved"), /禁止重复提交/));
+  assert.equal(workspace.decisionFailures[action.id].state, "unknown");
+  assert.equal(action.status, "pending", "网络未知不得伪造业务failed");
+  await act(async () => workspace.hideDecisionFailure(action.id));
+  await act(async () => assert.rejects(workspace.decide(action, "approved"), /禁止直接重复提交/));
+  assert.equal(posts, 1, "收起错误反馈不清除未知决定保护，不重POST");
+  await act(async () => renderer.unmount());
+});
+
+test("personal per-action failure ledger preserves A across B failures, dismissal and verified reopening", async () => {
+  let workspace;
+  const a = { id: "CODEX-action-A", type: "mcp.call", status: "pending", summary: "操作A", payload: { request_id: "CODEX-request-A" } };
+  const b = { id: "CODEX-action-B", type: "create_task", status: "pending", summary: "操作B" };
+  let current = { conversation_id: "CODEX-conversation", messages: [], dismissed_action_ids: [], pending_actions: [a, b] };
+  const posts = [];
+  let failSelect = true;
+  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
+    antd: { ...require("antd"), message: { warning() {}, error() {}, success: () => assert.fail("未知结果不能报告成功") } },
+    "../api": { api: {
+      get: async (path) => { if (path === "/personal-agent/conversations") throw new Error("只读回查失败"); return { data: path === "/agent/skills" ? { items: [] } : { ready: true } }; },
+      post: async (path, body) => {
+        posts.push([path, body]);
+        if (path.endsWith("/actions/dismiss")) return { data: { state: { ...current, dismissed_action_ids: body.action_ids } } };
+        throw new Error(`网络未知：${path}`);
+      },
+    } },
+    "./useConversationRuntime": { useConversationRuntime: () => ({ state: current, activities: {}, anyRunning: () => false, running: () => false, reset() {}, get: () => current, replace: (next) => { current = next; } }) },
+    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], busy: false, locked: () => false, load: async () => {}, refresh: async () => {}, select: async () => { if (failSelect) throw new Error("原会话读取失败"); return current; } }) },
+    "../legal/constants": {}, "../legal/services/agentDocumentConfirmation": {},
+  });
+  function Probe() { workspace = usePersonalWorkspace(); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  await act(async () => assert.rejects(workspace.decide(a, "approved"), /禁止重复提交/));
+  const originalA = workspace.decisionFailures[a.id];
+  await act(async () => assert.rejects(workspace.decide(b, "approved"), /禁止重复提交/));
+  assert.equal(workspace.decisionFailures[a.id], originalA, "B失败不能覆盖A的保护与错误");
+  assert.equal(workspace.decisionFailures[b.id].state, "unknown");
+  await act(async () => workspace.hideDecisionFailure(b.id));
+  assert.equal(workspace.decisionFailures[a.id], originalA, "收起B提示只修改B");
+  await act(async () => workspace.dismissAction(a));
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), ["/personal-agent/conversations/CODEX-conversation/actions/dismiss", { action_ids: [a.id] }], "单卡X只传一项");
+  assert.deepEqual(workspace.visibleActions.map((action) => action.id), [b.id], "单卡收起不隐藏B");
+  assert.equal(workspace.decisionFailures[a.id], originalA, "关闭操作卡不清未知决定保护");
+  const detail = { item: { source: "personal_action", id: b.id, status: "pending", action_id: b.id, can_decide: true }, conversation_id: current.conversation_id, conversation_title: "本轮对话", action: b, can_decide: true, request_preview: null };
+  await act(async () => assert.rejects(workspace.reopenConfirmation(detail), /原会话读取失败/));
+  assert.equal(workspace.decisionFailures[b.id].state, "unknown", "读取失败不能解除B保护");
+  failSelect = false;
+  await act(async () => { await workspace.reopenConfirmation(detail); });
+  assert.equal(workspace.decisionFailures[b.id], undefined, "只对已核验的B解除保护");
+  assert.equal(workspace.decisionFailures[a.id], originalA, "重开B不能解除A未知保护");
+  await act(async () => assert.rejects(workspace.decide(a, "approved"), /禁止直接重复提交/));
+  assert.equal(posts.filter(([path]) => path.endsWith("/decision")).length, 2, "A与B最初各一POST，A禁止重POST");
   await act(async () => renderer.unmount());
 });
 
