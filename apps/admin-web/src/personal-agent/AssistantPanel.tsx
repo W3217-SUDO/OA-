@@ -186,6 +186,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           />
         </div>
       </div>
+      <div className="assistant-mobile-space-access"><Button icon={<FolderOpenOutlined />} onClick={() => setPersonalSpaceOpen(true)}>个人 AI 空间 · 查看文件</Button></div>
       {loadError && (
         <Alert className="assistant-alert" type="error" showIcon title={loadError} action={<Button size="small" onClick={() => void load()}>重试</Button>} />
       )}
@@ -233,7 +234,12 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                       : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><span>{progressText}</span></span> : "")}
                     {item.stopped && <span className="assistant-stopped">{item.content ? "已停止，已保留生成内容" : "已停止"}</span>}
                     {item.role === "assistant" && item.personal_document_save_error && !item.failed && !(sending && index === state.messages.length - 1) && <Alert type="warning" showIcon title="个人文档暂不可保存" description={item.personal_document_save_error} />}
-                    {item.role === "assistant" && documentTarget && !!item.content && !item.failed && !item.stopped && !(sending && index === state.messages.length - 1) && !state.pending_actions.some((action) => action.status === "pending" && action.preview?.path?.endsWith("/ai-space/files")) && <div className="personal-ai-document-actions"><Tooltip title={documentTarget === "case" ? "保存 Word 到案件 AI 空间" : "保存 Word 到个人 AI 空间"}><Button type="text" icon={<FileWordOutlined />} disabled={loading || workspace.conversationBusy || !!workspace.savedDocuments[index]} onClick={() => void workspace.saveWord(item, index)}>{workspace.savedDocuments[index] ? documentTarget === "case" ? "已存入案件 AI 空间" : "已存入个人 AI 空间" : documentTarget === "case" ? "保存到案件 AI 空间" : "保存 Word"}</Button></Tooltip></div>}
+                    {item.role === "assistant" && documentTarget && !!item.content && !item.failed && !item.stopped && !(sending && index === state.messages.length - 1) && !state.pending_actions.some((action) => action.status === "pending" && action.preview?.path?.endsWith("/ai-space/files")) && <div className="personal-ai-document-actions">
+                      {workspace.savedDocuments[index] ? <>
+                        <span className="personal-ai-document-saved"><FileWordOutlined />{documentTarget === "case" ? "已存入案件 AI 空间" : "已存入个人 AI 空间"}</span>
+                        {documentTarget === "personal" ? <Button type="link" icon={<FolderOpenOutlined />} onClick={() => setPersonalSpaceOpen(true)}>查看文件</Button> : <Button type="link" icon={<FolderOpenOutlined />} href={`?page=case-detail-${item.case_id}-${encodeURIComponent(item.case_no || "")}`} title="在案件文档的 AI 空间目录中查看">查看案件文件</Button>}
+                      </> : <Tooltip title={documentTarget === "case" ? "保存 Word 到案件 AI 空间" : "保存 Word 到个人 AI 空间"}><Button type="text" icon={<FileWordOutlined />} disabled={loading || workspace.conversationBusy} onClick={() => void workspace.saveWord(item, index)}>{documentTarget === "case" ? "保存到案件 AI 空间" : "保存 Word"}</Button></Tooltip>}
+                    </div>}
                   </div>
                 </div>
               );

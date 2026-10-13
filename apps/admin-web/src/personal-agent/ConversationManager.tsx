@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button, Drawer, Empty, Modal, Tooltip, message } from "antd";
 import { DeleteOutlined, HistoryOutlined, LoadingOutlined, MessageOutlined, PlusOutlined } from "@ant-design/icons";
 import { errorText, type WorkspaceConversation } from "./types";
@@ -29,6 +29,7 @@ export function ConversationManager({ items, activeId, busy, runningIds, onCreat
 }: Props) {
   const [open, setOpen] = useState(false);
   const [modal, contextHolder] = Modal.useModal();
+  const createConfirmationOpen = useRef(false);
   const run = async (operation: () => Promise<unknown>, close = false) => {
     try { await operation(); if (close) setOpen(false); }
     catch (error) { message.error(errorText(error, "对话操作失败")); }
@@ -42,13 +43,28 @@ export function ConversationManager({ items, activeId, busy, runningIds, onCreat
       catch (error) { message.error(errorText(error, "删除对话失败")); throw error; }
     },
   });
+  const create = (close = false) => {
+    if (createConfirmationOpen.current || busy) return;
+    createConfirmationOpen.current = true;
+    modal.confirm({
+    title: "新建对话？",
+    content: activeId ? "将打开一条新对话，当前对话和未发送的内容会保留，可在对话列表中返回。" : "确认打开一条新对话？",
+    okText: "新建对话", cancelText: "取消",
+    className: "workspace-new-conversation-confirmation",
+    afterClose: () => { createConfirmationOpen.current = false; },
+    onOk: async () => {
+      try { await onCreate(); if (close) setOpen(false); }
+      catch (error) { message.error(errorText(error, "新建对话失败")); throw error; }
+    },
+    });
+  };
   return <>
     {contextHolder}
     <div className="workspace-conversation-controls">
-      <Tooltip title="新建对话"><Button size="small" icon={<PlusOutlined />} aria-label="新建对话" disabled={busy} onClick={() => void run(onCreate)}><span className="workspace-conversation-label">新建对话</span></Button></Tooltip>
+      <Tooltip title="新建对话"><Button size="small" icon={<PlusOutlined />} aria-label="新建对话" disabled={busy} onClick={() => create()}><span className="workspace-conversation-label">新建对话</span></Button></Tooltip>
       <Tooltip title="对话列表"><Button size="small" type="text" icon={<HistoryOutlined />} aria-label="对话列表" onClick={() => setOpen(true)}>{showHistoryLabel && <span className="workspace-conversation-label">对话列表</span>}</Button></Tooltip>
     </div>
-    <Drawer title="我的对话" placement="right" width={360} open={open} onClose={() => setOpen(false)} className={drawerClassName} extra={<Button icon={<PlusOutlined />} disabled={busy} onClick={() => void run(onCreate, true)}>新建对话</Button>}>
+    <Drawer title="我的对话" placement="right" width="min(360px, 100vw)" open={open} onClose={() => setOpen(false)} className={drawerClassName} extra={<Button icon={<PlusOutlined />} disabled={busy} onClick={() => create(true)}>新建对话</Button>}>
       {!items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />}
       <div className={listClassName}>{items.map((item) => <div className={`${rowClassName}${item.id === activeId ? " active" : ""}`} key={item.id}>
         <button className={selectClassName} aria-current={item.id === activeId ? "true" : undefined} disabled={busy} onClick={() => void run(() => onSelect(item.id), true)}>

@@ -123,6 +123,7 @@
 .assistant-chips button.is-context{border-color:#b9dfd0;background:#eef8f3;color:#0b5e49;font-weight:500}
 .assistant-chips button.is-context em{min-width:18px;padding:0 5px;border-radius:999px;background:#0e7a5f;color:#fff;font-size:11px;font-style:normal;font-variant-numeric:tabular-nums;line-height:18px;text-align:center}
 
+.assistant-mobile-space-access{display:none}
 @media(max-width:1100px){
   .assistant-thread-region{flex:none}
   .assistant-thread{flex:none;max-height:min(50vh,420px)}
@@ -130,6 +131,8 @@
 }
 /* 手机对话独占父级视口：顶栏和输入不滚动，消息与确认操作各自保留可达的滚动区域。 */
 @media(max-width:991px){
+  .assistant-mobile-space-access{display:flex;flex:none;justify-content:flex-end;min-width:0;padding:0 8px 4px}
+  .assistant-mobile-space-access .ant-btn{display:inline-flex;align-items:center;min-height:44px;max-width:100%;height:auto;white-space:normal;overflow-wrap:anywhere}
   .assistant{gap:0;min-width:0;width:100%;padding:0 0 calc(8px + env(safe-area-inset-bottom));border:0;border-radius:0;background:#fff;box-shadow:none;overflow:hidden}
   .assistant .assistant-bar{flex-wrap:nowrap;justify-content:flex-start;gap:8px;min-height:52px;padding:calc(4px + env(safe-area-inset-top)) 8px 4px}
   .assistant .assistant-bar-summary{display:none}

@@ -10,11 +10,12 @@ import { MaterialPreview } from "./personal-agent/MaterialPreview";
 import { WorkPanel } from "./personal-agent/WorkPanel";
 import { ConversationMessage } from "./personal-agent/ConversationMessage";
 import { ConversationManager } from "./personal-agent/ConversationManager";
+import { PersonalAiSpace } from "./personal-agent/PersonalAiSpace";
 import { MobileComposerOptions } from "./personal-agent/MobileComposerOptions";
 import { ActionConfirmation } from "./personal-agent/ActionConfirmation";
 import { ConfirmationHistory } from "./personal-agent/ConfirmationHistory";
 import { MATERIAL_ACCEPT, usePersonalWorkspace } from "./personal-agent/usePersonalWorkspace";
-import { errorText, type ConfirmationDetail, type Material, type PendingAction, type ResponseMode, type WorkspaceCommand } from "./personal-agent/types";
+import { errorText, workspaceDocumentSaveTarget, type ConfirmationDetail, type Material, type PendingAction, type ResponseMode, type WorkspaceCommand } from "./personal-agent/types";
 import "./personal-agent-center.css";
 
 const commandIcons: Record<string, ReactNode> = { today: <ScheduleOutlined />, task: <CheckOutlined />, approval: <AuditOutlined />, case: <FolderOpenOutlined />, finance: <WalletOutlined />, seal: <FileTextOutlined />, customer: <TeamOutlined /> };
@@ -25,6 +26,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
   const [view, setView] = useState<"workspace" | "chat">("workspace");
   const [refreshToken, setRefreshToken] = useState(0);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [personalSpaceOpen, setPersonalSpaceOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<"case" | "materials" | null>(null);
   const [follow, setFollow] = useState(true);
   const [dragging, setDragging] = useState(false);
@@ -76,6 +78,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
     <header className="personal-agent-header">
       <div className="personal-agent-title"><div className="workspace-brand-icon"><RobotOutlined /></div><h2>智能体中心</h2><span>律所工作台</span></div>
       <Space className="workspace-header-actions" size={8} wrap>
+        <Button className="personal-ai-space-trigger" icon={<FolderOpenOutlined />} onClick={() => setPersonalSpaceOpen(true)}>个人 AI 空间</Button>
         <Segmented aria-label="切换工作视图" value={view} options={[{ value: "workspace", label: "工作台" }, { value: "chat", label: "对话" }]} onChange={(value) => setView(value as "workspace" | "chat")} />
         <Tooltip title={status?.ready ? `当前模型：${status.model}` : "模型服务未就绪"}><span className={`workspace-service ${status?.ready ? "ready" : ""}`}><i />{status?.ready ? "已连接" : loading ? "连接中" : "未就绪"}</span></Tooltip>
         {canUseCases && <Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={() => onNavigate("case-agent-center")}>案件智能体</Button></Tooltip>}
@@ -92,7 +95,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
         <div ref={scrollRef} className="personal-agent-messages" onScroll={() => { const element = scrollRef.current; if (element) setFollow(element.scrollHeight - element.scrollTop - element.clientHeight < 100); }}>
           <div className="workspace-thread">
             {loading ? <Skeleton active paragraph={{ rows: 4 }} /> : !state.messages.length && <div className="workspace-empty"><div className="workspace-empty-symbol"><RobotOutlined /></div><h3>开始今天的工作</h3><div className="workspace-start-actions">{status?.commands.slice(0, 4).map((command) => <button key={command.id} onClick={() => prepare(command)}>{commandIcons[command.icon]}<span>{command.label}</span><ArrowUpOutlined /></button>)}</div></div>}
-            {state.messages.map((item, index) => <ConversationMessage key={`${item.created_at || "message"}-${index}`} item={item} generating={sending && index === state.messages.length - 1} readingMaterials={!!(workspace.materials.length + workspace.caseMaterials.length)} progress={workspace.progress} saved={!!workspace.savedDocuments[index]} busy={busy} onCopy={copy} onPreview={setPreviewMaterial} onSave={() => workspace.saveWord(item, index)} />)}
+            {state.messages.map((item, index) => <ConversationMessage key={`${item.created_at || "message"}-${index}`} item={item} generating={sending && index === state.messages.length - 1} readingMaterials={!!(workspace.materials.length + workspace.caseMaterials.length)} progress={workspace.progress} saved={!!workspace.savedDocuments[index]} busy={busy} onCopy={copy} onPreview={setPreviewMaterial} onSave={() => workspace.saveWord(item, index)} onViewFiles={() => { if (workspaceDocumentSaveTarget(item) === "case") onNavigate(`case-detail-${item.case_id}-${encodeURIComponent(item.case_no || "")}`); else setPersonalSpaceOpen(true); }} />)}
             <AgentToolResult result={[state.structured_results, workspace.decisionResult]} />
             <div ref={bottomRef} />
           </div>
@@ -123,6 +126,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
       </main>
     </div>
     <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} skills={skills} refresh={workspace.refreshSkills} onSelect={workspace.setSkillId} />
+    <PersonalAiSpace open={personalSpaceOpen} onClose={() => setPersonalSpaceOpen(false)} revision={workspace.documentRevision} busy={navigationBusy} onOpenConversation={workspace.selectConversation} />
     <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeId) ?? null} deciding={!!workspace.decisionId} decisionFailure={activeId ? workspace.decisionFailures[activeId] : undefined} onDecide={workspace.decide} onClose={() => { setActiveAction(null); setHistoryAction(null); }} />
     <MaterialPreview item={previewMaterial} onClose={() => setPreviewMaterial(null)} />
     <CaseMaterialsPicker mode={pickerMode} onClose={() => setPickerMode(null)} selectedCase={selectedCase} onCase={workspace.chooseCase} selectedMaterials={workspace.caseMaterials} onMaterials={workspace.setCaseMaterials} privateCount={workspace.materials.length} />

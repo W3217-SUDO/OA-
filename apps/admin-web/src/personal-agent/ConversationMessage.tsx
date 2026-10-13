@@ -1,7 +1,7 @@
 import { Button, Tooltip } from "antd";
-import { CopyOutlined, FileWordOutlined, PaperClipOutlined, RobotOutlined } from "@ant-design/icons";
+import { CopyOutlined, FileWordOutlined, FolderOpenOutlined, PaperClipOutlined, RobotOutlined } from "@ant-design/icons";
 import { AgentMessageContent } from "../AgentMessageContent";
-import type { Material, WorkspaceMessage } from "./types";
+import { workspaceDocumentSaveTarget, type Material, type WorkspaceMessage } from "./types";
 
 type Props = {
   item: WorkspaceMessage;
@@ -13,10 +13,12 @@ type Props = {
   onCopy: (content: string) => void;
   onPreview: (material: Material) => void;
   onSave: () => void;
+  onViewFiles: () => void;
 };
 
-export function ConversationMessage({ item, generating, readingMaterials, progress, saved, busy, onCopy, onPreview, onSave }: Props) {
+export function ConversationMessage({ item, generating, readingMaterials, progress, saved, busy, onCopy, onPreview, onSave, onViewFiles }: Props) {
   const assistant = item.role === "assistant";
+  const documentTarget = workspaceDocumentSaveTarget(item);
   return <article className={`personal-message ${item.role}${item.failed ? " failed" : ""}`}>
     {assistant && <div className="workspace-message-avatar" aria-hidden="true"><RobotOutlined /></div>}
     <div className="workspace-message-main">
@@ -35,9 +37,12 @@ export function ConversationMessage({ item, generating, readingMaterials, progre
         </div>}
         {assistant && !!item.content && !item.failed && !generating && <div className="workspace-message-actions">
           <Tooltip title="复制回答"><Button type="text" size="small" icon={<CopyOutlined />} aria-label="复制回答" onClick={() => onCopy(item.content)} /></Tooltip>
-          {!!item.can_save_document && <Tooltip title={`将回答保存为 Word 到 ${item.case_no} 的 AI 空间`}>
-            <Button type="text" size="small" icon={<FileWordOutlined />} disabled={saved || busy} onClick={onSave}>{saved ? "已存入 AI 空间" : "保存 Word"}</Button>
-          </Tooltip>}
+          {documentTarget && !item.stopped && (saved ? <>
+            <span className="personal-ai-document-saved"><FileWordOutlined />{documentTarget === "case" ? "已存入案件 AI 空间" : "已存入个人 AI 空间"}</span>
+            <Button type="link" icon={<FolderOpenOutlined />} onClick={onViewFiles}>{documentTarget === "case" ? "查看案件文件" : "查看文件"}</Button>
+          </> : <Tooltip title={documentTarget === "case" ? `将回答保存为 Word 到 ${item.case_no} 的案件 AI 空间` : "将回答保存为 Word 到个人 AI 空间"}>
+            <Button type="text" size="small" icon={<FileWordOutlined />} disabled={busy} onClick={onSave}>保存 Word</Button>
+          </Tooltip>)}
         </div>}
       </div>
     </div>

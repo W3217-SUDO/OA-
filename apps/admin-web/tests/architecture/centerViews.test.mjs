@@ -23,6 +23,7 @@ const HearingScheduleStub = RecordingComponent("DashboardHearingSchedule");
 const RejectionReminderStub = RecordingComponent("DashboardRejectionReminder");
 const AssistantPanelStub = RecordingComponent("AssistantPanel");
 const OverviewStub = RecordingComponent("DashboardOverview");
+const PersonalAiSpaceStub = RecordingComponent("PersonalAiSpace");
 
 function loadComponent(path, dependencies, globals = {}) {
   const source = fs.readFileSync(new URL(path, import.meta.url), "utf8");
@@ -236,6 +237,7 @@ test("dashboard approved entries keep their destinations and unapproved entries 
   const errors = [];
   const cleanups = [];
   let conversationVisible = false;
+  let personalSpaceOpen = false;
   let relatedRecords = [{ id: 17, serial_no: "CASE-1", title: "案件" }];
   const data = {
     metrics: [{ key: "official-fee-unpaid", label: "待收费用", value: "2", route: "finance-fee-query", query: { scope: "mine" }, detail_context: { contract_no: "HT-1", return_view: "dashboard" } }],
@@ -260,10 +262,12 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     loading: false,
     sending: false,
     send: (prompt) => calls.push(["agent", prompt]),
+    selectConversation: async (id) => calls.push(["conversation", id]),
   };
   const Dashboard = loadComponent("../../src/Dashboard.tsx", {
     react: {
       useMemo: (factory) => factory(),
+      useState: () => [personalSpaceOpen, (open) => { personalSpaceOpen = open; }],
       useCallback: (callback) => callback,
       useRef: (value) => ({ current: value }),
       useEffect: (effect) => { const cleanup = effect(); if (typeof cleanup === "function") cleanups.push(cleanup); },
@@ -283,6 +287,7 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     "./caseDetailNavigation": { rememberCaseDetailTarget: (target) => calls.push(["case", target.serial_no]) },
     "./customerDetailNavigation": { rememberCustomerDetailTarget: (target) => calls.push(["customer", target.title]) },
     "./personal-agent/AssistantPanel": AssistantPanelStub,
+    "./personal-agent/PersonalAiSpace": { PersonalAiSpace: PersonalAiSpaceStub },
     "./personal-agent/PersonalWorkspaceProvider": { usePersonalWorkspaceContext: () => workspace },
     "./detailRelationResolver": detailResolver,
     "./workspacePermissions": permissions,
@@ -338,6 +343,24 @@ test("dashboard approved entries keep their destinations and unapproved entries 
   assert.equal(mobileOverview.some((node) => node.type === AssistantPanelStub), false);
   assert.equal(calls.at(-1)[0], "agent");
   assert.equal(calls.at(-1)[1], "开庭 CASE-1");
+  const spaceButton = mobileOverview.find((node) => node.type === "button" && node.props.children === "AI 空间");
+  assert.equal(spaceButton.props["aria-haspopup"], "dialog");
+  spaceButton.props.onClick();
+  const openedSpace = nodes(Dashboard(props)).find((node) => node.type === PersonalAiSpaceStub);
+  assert.equal(openedSpace.props.open, true);
+  await openedSpace.props.onOpenConversation("file-source-conversation");
+  assert.equal(calls.at(-1)[0], "conversation");
+  assert.equal(calls.at(-1)[1], "file-source-conversation");
+  assert.equal(conversationVisible, true, "文件来源会话载入后切换到助手对话");
+  openedSpace.props.onClose();
+  assert.equal(nodes(Dashboard(props)).find((node) => node.type === PersonalAiSpaceStub).props.open, false);
+  assert.ok(desktopConversation.some((node) => node.type === "button" && node.props.children === "AI 空间"));
+  conversationVisible = false;
+  const selectConversation = workspace.selectConversation;
+  workspace.selectConversation = async () => { throw new Error("来源会话不可用"); };
+  await assert.rejects(openedSpace.props.onOpenConversation("unavailable-source"), /来源会话不可用/);
+  assert.equal(conversationVisible, false, "来源会话失败不切换视图，交由空间组件显示失败");
+  workspace.selectConversation = selectConversation;
 
   const successfulCallCount = calls.length;
   relatedRecords = [];

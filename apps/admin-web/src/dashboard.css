@@ -12,6 +12,7 @@
 .wb-view-switch{display:flex;flex:none;gap:4px;align-self:flex-start;margin-bottom:10px;padding:3px;border:1px solid var(--wb-line);border-radius:10px;background:#e9edf0}
 .wb-view-switch button{min-height:44px;padding:6px 18px;border:0;border-radius:7px;background:transparent;color:var(--wb-slate);font:inherit;cursor:pointer}
 .wb-view-switch button[aria-pressed="true"]{background:#fff;color:var(--wb-jade);font-weight:600}
+.wb-view-switch.is-desktop{align-self:flex-end;background:#fff}
 .wb-view-switch button:focus-visible,.wb-todo-entry:focus-visible,.wb-overview-case-number button:focus-visible{outline:2px solid var(--wb-jade);outline-offset:2px}
 .wb-overview{--overview-space:20px;--overview-gap:12px;--overview-surface:#f7faf9;--overview-rule:#e8edf0;display:flex;flex-direction:column;min-height:0;border:1px solid var(--wb-line);border-radius:14px;background:#edf3f6;overflow:hidden;container-type:inline-size}
 .wb-overview-head{display:flex;flex:none;align-items:center;justify-content:space-between;gap:var(--overview-gap);padding:16px var(--overview-space) 12px}
@@ -66,14 +67,16 @@ button.wb-todo-entry:active{background:#dcece3}
   .wb-todo-value strong{font-size:clamp(20px,6vw,24px)}
   .wb-overview-cases,.wb-overview-cases tbody{display:block}
   .wb-overview-cases thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-  .wb-overview-cases tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 8px;padding:8px 0;border-bottom:1px solid var(--overview-rule)}
-  .wb-overview-cases td{padding:0;border:0}
+  .wb-overview-cases tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 8px;padding:10px 12px;border-bottom:1px solid var(--overview-rule)}
+  .wb-overview-cases td{min-width:0;padding:0;border:0}
+  .wb-overview-parties>span{overflow:visible;white-space:normal;overflow-wrap:anywhere}
   .wb-overview-case-number{grid-column:1;grid-row:1}
   .wb-overview-cases td:nth-child(3){grid-column:2;grid-row:1;align-self:center;justify-self:end;min-width:0}
   .wb-overview-parties{grid-column:1/-1;grid-row:2;padding-bottom:6px!important}
   .wb-overview-case-date{grid-column:1/-1;grid-row:3}
 }
 @media(max-width:1100px){.wb-overview-body{flex:none;overflow:visible}.wb-main>.wb-overview{flex:none}}
+@media(max-width:1100px){.wb-view-switch:not(.is-desktop){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-self:stretch}.wb-view-switch:not(.is-desktop) button{min-width:0;padding:6px 8px;white-space:nowrap}}
 .wb-side{display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0}
 .wb-side>.wb-docket{flex:1 1 auto;min-height:200px}
 .wb-side>.wb-rail{flex:1 1 auto;min-height:170px}
@@ -187,6 +190,7 @@ button.wb-todo-entry:active{background:#dcece3}
   .wb-metric-text strong{font-size:14px;line-height:1.2}
   .wb-metric-text span{width:100%;overflow:visible;font-size:11px;line-height:1.25;white-space:normal;word-break:break-all}
   .wb-shell{gap:10px}
+  .reference-dashboard.workbench{padding-bottom:16px}
   .wb-grid{gap:10px}
   /* 手机上先显示当前工作台视图，排期和审批提醒保持在其后。 */
   .wb-side{order:2}

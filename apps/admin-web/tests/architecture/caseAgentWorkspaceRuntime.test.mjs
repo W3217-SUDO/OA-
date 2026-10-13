@@ -53,6 +53,54 @@ function loadModule(name, dependencies, globals = {}) {
   return loadSource(entry);
 }
 
+test("manual new conversation requires one confirmation, cancellation preserves state and failures keep the drawer", async () => {
+  const confirmations = [], failures = [], created = [];
+  let failCreate = false;
+  const modal = { confirm: options => { confirmations.push(options); } };
+  const { ConversationManager } = loadModule("../personal-agent/ConversationManager.tsx", {
+    antd: {
+      Button: "button", Drawer: "drawer", Empty: "empty", Tooltip: "tooltip",
+      Modal: { useModal: () => [modal, null] },
+      message: { error: value => failures.push(value), success() {} },
+    },
+    "./types": { errorText: (error, fallback) => error.message || fallback },
+  });
+  let renderer;
+  const props = {
+    items: [], activeId: "original", busy: false, runningIds: [],
+    onCreate: async () => { if (failCreate) throw new Error("创建失败"); created.push("new"); },
+    onSelect: async () => {}, onDelete: async () => {},
+  };
+  await act(async () => { renderer = create(React.createElement(ConversationManager, props)); });
+  const newButton = () => renderer.root.findAllByType("button").find(button => button.props["aria-label"] === "新建对话");
+  await act(async () => { newButton().props.onClick(); newButton().props.onClick(); });
+  assert.equal(confirmations.length, 1, "连续点击只能打开一个确认框");
+  assert.match(confirmations[0].content, /可在对话列表中返回/);
+  assert.equal(created.length, 0, "打开确认框不会创建对话");
+  await act(async () => { confirmations[0].onCancel?.(); confirmations[0].afterClose(); });
+  assert.equal(created.length, 0, "取消不会调用创建操作");
+  await act(async () => { newButton().props.onClick(); await confirmations[1].onOk(); confirmations[1].afterClose(); });
+  assert.equal(created.length, 1, "确认才创建一次对话");
+  await act(async () => { renderer.update(React.createElement(ConversationManager, { ...props, activeId: null })); });
+  await act(async () => { newButton().props.onClick(); });
+  assert.equal(confirmations[2].content, "确认打开一条新对话？", "无当前会话时不承诺返回未保存草稿");
+  await act(async () => { confirmations[2].afterClose(); });
+  await act(async () => { renderer.root.findAllByType("button").find(button => button.props["aria-label"] === "对话列表").props.onClick(); });
+  assert.equal(renderer.root.findByType("drawer").props.open, true);
+  await act(async () => { renderer.root.findByType("drawer").props.extra.props.onClick(); });
+  failCreate = true;
+  await act(async () => { await assert.rejects(confirmations[3].onOk(), /创建失败/); });
+  assert.equal(renderer.root.findByType("drawer").props.open, true, "创建失败保留当前抽屉");
+  assert.deepEqual(failures, ["创建失败"]);
+  await act(async () => { newButton().props.onClick(); });
+  assert.equal(confirmations.length, 4, "失败时确认框保持打开，不增加第二个确认框");
+  failCreate = false;
+  await act(async () => { await confirmations[3].onOk(); confirmations[3].afterClose(); });
+  assert.equal(renderer.root.findByType("drawer").props.open, false, "抽屉新建成功才关闭抽屉");
+  assert.equal(created.length, 2);
+  await act(async () => { renderer.unmount(); });
+});
+
 test("agent service streams an answer, records an approval, and exposes upstream failures", async () => {
   const notices = [];
   const messages = { error: (value) => notices.push(["error", value]), success: (value) => notices.push(["success", value]), warning: (value) => notices.push(["warning", value]) };
@@ -354,6 +402,7 @@ test("personal center retains terminal outcomes as visible read-only cards", asy
     "./personal-agent/usePersonalWorkspace": { usePersonalWorkspace: () => workspace },
     "./personal-agent/WorkPanel": { WorkPanel: component("work-panel") },
     "./personal-agent/ConversationManager": { ConversationManager: component("conversations") },
+    "./personal-agent/PersonalAiSpace": { PersonalAiSpace: component("personal-ai-space") },
     "./personal-agent/MobileComposerOptions": { MobileComposerOptions: component("mobile-options") },
     "./personal-agent/SkillManager": { SkillManager: component("skills") },
     "./personal-agent/MaterialPreview": { MaterialPreview: component("materials") },

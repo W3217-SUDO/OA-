@@ -19,7 +19,10 @@
 .personal-ai-space-file-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .personal-ai-space-file-actions .ant-btn { min-width: 44px; min-height: 44px; }
 .personal-ai-space-drawer .ant-pagination-prev, .personal-ai-space-drawer .ant-pagination-next { min-width: 44px; min-height: 44px; }
-.personal-ai-document-actions { margin-top: 8px; }
+.personal-ai-document-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 8px; }
+.personal-ai-document-saved { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; color: #667085; overflow-wrap: anywhere; }
+.workspace-new-conversation-confirmation .ant-modal-confirm-btns .ant-btn { min-width: 44px; min-height: 44px; }
+.workspace-new-conversation-confirmation .ant-modal-confirm-btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .personal-ai-document-actions .ant-btn { max-width: 100%; min-width: 44px; min-height: 44px; height: auto; white-space: normal; overflow-wrap: anywhere; }
 .personal-ai-document-confirmation .ant-modal-footer .ant-btn,
 .personal-ai-document-confirmation .ant-modal-confirm-btns .ant-btn { min-width: 44px; min-height: 44px; }
