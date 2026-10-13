@@ -204,7 +204,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       {hasMessages && (
         <div className="assistant-thread-region">
           <div
-            className="assistant-thread"
+            className={`assistant-thread${awayFromBottom ? " has-jump" : ""}`}
             ref={threadRef}
             aria-live="polite"
             onScroll={() => {
