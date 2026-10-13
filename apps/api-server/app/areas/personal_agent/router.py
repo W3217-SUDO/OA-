@@ -13,6 +13,7 @@ from app.config import settings
 from app.core.constants import logger
 from app.database import get_db
 from app.security import current_identity
+from app.skill_catalog import CatalogSource
 from app.areas.personal_agent.service import build_context, decide_action, generate_response, manage_conversations, personal_identity, personal_state, stop_response, _user_dir
 from app.areas.personal_agent.workspace import workspace_commands
 from app.areas.personal_agent.response_runtime import ResponseMode, supports_response_modes
@@ -53,6 +54,28 @@ class GitHubSkillPreviewInput(BaseModel):
 
 class GitHubSkillInstallInput(GitHubSkillPreviewInput):
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class SkillCatalogPreviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source: CatalogSource
+    id: str = Field(min_length=1, max_length=600)
+    q: str = Field(default="", max_length=100)
+
+
+@router.get(f"{settings.api_prefix}/agent/skills/catalog")
+async def skill_catalog_list(source: CatalogSource = "openai", q: str = Query(default="", max_length=100),
+                             identity: dict = Depends(current_identity)):
+    from app.skill_catalog import catalog, catalog_quota
+    catalog_quota(identity["username"])
+    return await catalog(source, q)
+
+
+@router.post(f"{settings.api_prefix}/agent/skills/catalog/preview")
+async def skill_catalog_preview(body: SkillCatalogPreviewInput, identity: dict = Depends(current_identity)):
+    from app.skill_catalog import catalog_preview, catalog_quota
+    catalog_quota(identity["username"])
+    return await catalog_preview(body.source, body.id, body.q)
 
 
 @router.post(f"{settings.api_prefix}/agent/skills/github/preview")

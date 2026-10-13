@@ -1,6 +1,7 @@
 """agents 领域请求数据契约。"""
 
 from pydantic import BaseModel, Field
+from app.user_agent_skills import CUSTOM_SKILL_DESCRIPTION_LIMIT, CUSTOM_SKILL_INSTRUCTION_LIMIT
 
 
 class DifyRequest(BaseModel):
@@ -26,8 +27,8 @@ class CaseAgentMessageInput(BaseModel):
 class UserAgentSkillInput(BaseModel):
     name: str = Field(min_length=2, max_length=64)
     category: str = Field(default="自定义", min_length=1, max_length=32)
-    description: str = Field(min_length=2, max_length=500)
-    instruction: str = Field(min_length=10, max_length=6000)
+    description: str = Field(min_length=2, max_length=CUSTOM_SKILL_DESCRIPTION_LIMIT)
+    instruction: str = Field(min_length=10, max_length=CUSTOM_SKILL_INSTRUCTION_LIMIT)
     quick_prompts: list[str] = Field(default_factory=list, max_length=5)
     enabled: bool = True
 
@@ -35,8 +36,8 @@ class UserAgentSkillInput(BaseModel):
 class UserAgentSkillUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=64)
     category: str | None = Field(default=None, min_length=1, max_length=32)
-    description: str | None = Field(default=None, min_length=2, max_length=500)
-    instruction: str | None = Field(default=None, min_length=10, max_length=6000)
+    description: str | None = Field(default=None, min_length=2, max_length=CUSTOM_SKILL_DESCRIPTION_LIMIT)
+    instruction: str | None = Field(default=None, min_length=10, max_length=CUSTOM_SKILL_INSTRUCTION_LIMIT)
     quick_prompts: list[str] | None = Field(default=None, max_length=5)
     enabled: bool | None = None
 

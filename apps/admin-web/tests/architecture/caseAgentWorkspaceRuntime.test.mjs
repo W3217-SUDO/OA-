@@ -53,6 +53,119 @@ function loadModule(name, dependencies, globals = {}) {
   return loadSource(entry);
 }
 
+test("skill market browses server catalog, previews full instructions and installs only after confirmation", async () => {
+  const requests = [], installed = [];
+  let previewFails = false, catalogFails = false, empty = false, refreshFails = false;
+  const instruction = "完整技能正文\n".repeat(1000);
+  const description = "来源中的完整长技能说明。".repeat(70);
+  const { SkillCatalog } = loadModule("../personal-agent/SkillCatalog.tsx", {
+    antd: { Alert: "alert", Button: "button", Empty: "empty", Input: "input", Select: "select", Spin: "spin" },
+    "../api": { api: {
+      get: async (path, options) => {
+        requests.push({ method: "GET", path, params: options.params });
+        if (catalogFails) throw new Error("目录连接失败");
+        const source = options.params.source;
+        return { data: { source, query: options.params.q || "skill", items: empty ? [] : [{ id: "anthropics/skills/pdf", name: "pdf", description: "PDF tools", source, market_url: "https://skills.sh/anthropics/skills/pdf", repo: "anthropics/skills", skill_slug: "pdf" }] } };
+      },
+      post: async (path, body) => {
+        requests.push({ method: "POST", path, body });
+        if (path.endsWith("/preview")) {
+          if (previewFails) throw new Error("此来源不支持导入");
+          return { data: { name: "pdf", description, instruction, source: "https://github.com/anthropics/skills", url: "https://github.com/anthropics/skills/blob/main/skills/pdf/SKILL.md", sha256: "content-hash" } };
+        }
+        return { data: { id: "personal-pdf", available: true } };
+      },
+    } },
+    "./types": { errorText: (error, fallback) => error.message || fallback },
+  });
+  function Harness() {
+    const [busy, setBusy] = React.useState(false);
+    return React.createElement(SkillCatalog, { active: true, busy, onBusy: setBusy, onInstalled: async skill => { if (refreshFails) throw new Error("列表网络失败"); installed.push(skill.id); } });
+  }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Harness)); });
+  const button = label => renderer.root.findAllByType("button").find(item => item.props.children === label);
+  assert.equal(requests[0].params.source, "skills-sh");
+  assert.equal(renderer.root.findAllByType("article").length, 1);
+  await act(async () => { renderer.root.findByType("input").props.onChange({ target: { value: "pdf" } }); });
+  assert.equal(requests.length, 1, "输入文字不会自动发送搜索");
+  await act(async () => { button("搜索技能").props.onClick(); });
+  assert.equal(requests.at(-1).params.q, "pdf");
+  await act(async () => { await button("选择并预览").props.onClick(); });
+  assert.equal(requests.at(-1).path, "/agent/skills/catalog/preview");
+  assert.equal(requests.at(-1).body.id, "anthropics/skills/pdf");
+  assert.equal(requests.at(-1).body.q, "pdf");
+  assert.equal(renderer.root.findByType("pre").props.children, instruction, "大于6000字符仍完整显示");
+  assert.ok(description.length > 500 && renderer.root.findAllByType("p").some(item => item.props.children === description), "真实长说明不截断");
+  assert.equal(requests.filter(item => item.path.endsWith("/install")).length, 0);
+  await act(async () => { button("取消选择").props.onClick(); });
+  assert.equal(renderer.root.findAllByType("pre").length, 0);
+  assert.equal(requests.filter(item => item.path.endsWith("/install")).length, 0, "取消不安装");
+  await act(async () => { await button("选择并预览").props.onClick(); });
+  await act(async () => { await button("确认安装到个人技能").props.onClick(); });
+  assert.equal(requests.filter(item => item.path.endsWith("/install")).length, 1);
+  assert.equal(requests.at(-1).body.sha256, "content-hash");
+  assert.deepEqual(installed, ["personal-pdf"]);
+  previewFails = true;
+  await act(async () => { await button("选择并预览").props.onClick(); });
+  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.description === "此来源不支持导入"));
+  assert.equal(installed.length, 1);
+  previewFails = false; refreshFails = true;
+  await act(async () => { await button("选择并预览").props.onClick(); });
+  await act(async () => { await button("确认安装到个人技能").props.onClick(); });
+  assert.equal(requests.filter(item => item.path.endsWith("/install")).length, 2);
+  assert.equal(installed.length, 1, "列表刷新失败时不选中未载入技能");
+  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.title === "技能已安装，待刷新个人库" && item.props.description.includes("已安装，但列表刷新失败")));
+  assert.equal(renderer.root.findAllByType("pre").length, 0, "成功落库后移除再次安装按钮");
+  refreshFails = false;
+  await act(async () => { renderer.root.findAllByType("alert").find(item => item.props.action)?.props.action.props.onClick(); });
+  assert.equal(requests.filter(item => item.path.endsWith("/install")).length, 2, "重试刷新不重复安装");
+  assert.equal(installed.length, 2);
+  catalogFails = true;
+  await act(async () => { renderer.root.findByType("select").props.onChange("openai"); });
+  assert.equal(requests.at(-1).params.source, "openai");
+  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.description === "目录连接失败"));
+  catalogFails = false; empty = true;
+  await act(async () => { renderer.root.findAllByType("alert").find(item => item.props.action)?.props.action.props.onClick(); });
+  assert.equal(renderer.root.findByType("empty").props.description, "没有找到技能，请尝试英文技能名或切换来源");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("GitHub URL install reports persisted success separately from personal-library refresh failure", async () => {
+  const requests = [], selected = [];
+  let refreshFails = true;
+  const form = { resetFields() {}, setFieldsValue() {} };
+  const Form = Object.assign(({ children, ...props }) => React.createElement("form", props, children), { useForm: () => [form], Item: "form-item" });
+  const Input = Object.assign(props => React.createElement("input", props), { TextArea: "textarea" });
+  const { SkillManager } = loadModule("../personal-agent/SkillManager.tsx", {
+    antd: { Alert: "alert", Button: "button", Empty: "empty", Form, Input, Modal: "modal", Space: "space", Switch: "switch", Tabs: "tabs", Tooltip: "tooltip", message: { success() {}, info() {}, error() {} } },
+    "./SkillCatalog": { SkillCatalog: () => null },
+    "./types": { errorText: (error, fallback) => error.message || fallback },
+    "../api": { api: { post: async (path, body) => {
+      requests.push({ path, body });
+      return path.endsWith("/preview") ? { data: { name: "docx", description: "完整说明".repeat(210), instruction: "完整正文".repeat(1700), source: "https://github.com/anthropics/skills", url: "https://github.com/anthropics/skills/blob/main/skills/docx/SKILL.md", sha256: "hash" } } : { data: { id: "personal-docx", available: true } };
+    } } },
+  });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(SkillManager, { open: true, onClose() {}, skills: [], refresh: async () => { if (refreshFails) throw new Error("列表加载失败"); }, onSelect: id => selected.push(id) })); });
+  const button = label => renderer.root.findAllByType("button").find(item => item.props.children === label);
+  assert.equal(renderer.root.findAllByType("form-item").find(item => item.props.name === "description").props.rules[0].max, 8000);
+  await act(async () => { renderer.root.findByType("tabs").props.onChange("github"); });
+  await act(async () => { renderer.root.findAllByType("input").find(item => item.props["aria-label"] === "GitHub 技能链接").props.onChange({ target: { value: "https://github.com/anthropics/skills/tree/main/skills/docx" } }); });
+  await act(async () => { button("预览技能").props.onClick(); });
+  await act(async () => { button("确认安装并选中").props.onClick(); });
+  assert.equal(requests.filter(item => item.path.endsWith("/install")).length, 1);
+  assert.equal(selected.length, 0);
+  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.message.includes("技能已安装，但列表刷新失败")));
+  assert.equal(renderer.root.findAllByType("pre").length, 0, "成功落库后不保留再次安装入口");
+  refreshFails = false;
+  await act(async () => { renderer.root.findAllByType("alert").find(item => item.props.action).props.action.props.onClick(); });
+  assert.equal(requests.filter(item => item.path.endsWith("/install")).length, 1);
+  assert.deepEqual(selected, ["personal-docx"]);
+  assert.equal(renderer.root.findByType("tabs").props.activeKey, "mine");
+  await act(async () => { renderer.unmount(); });
+});
+
 test("manual new conversation requires one confirmation, cancellation preserves state and failures keep the drawer", async () => {
   const confirmations = [], failures = [], created = [];
   let failCreate = false;

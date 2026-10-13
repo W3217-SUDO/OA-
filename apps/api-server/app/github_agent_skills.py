@@ -10,7 +10,7 @@ import httpx
 import yaml
 from fastapi import HTTPException
 
-from app.user_agent_skills import normalize_custom_skill
+from app.user_agent_skills import CUSTOM_SKILL_INSTRUCTION_LIMIT, normalize_custom_skill
 
 DOWNLOAD_LIMIT = 128 * 1024
 DOWNLOAD_TIMEOUT = 20
@@ -68,8 +68,8 @@ def parse_github_skill(content: bytes, location: dict[str, str]) -> dict:
     if not isinstance(metadata, dict) or not all(isinstance(metadata.get(key), str) for key in ("name", "description")):
         raise ValueError("SKILL.md 的 name 和 description 必须是文本")
     instruction = "".join(lines[end + 1:]).strip()
-    if len(instruction) > 6000:
-        raise ValueError("技能正文超过当前 6000 字符上限，未截断或安装")
+    if len(instruction) > CUSTOM_SKILL_INSTRUCTION_LIMIT:
+        raise ValueError(f"技能正文超过当前 {CUSTOM_SKILL_INSTRUCTION_LIMIT} 字符上限，未截断或安装")
     try:
         record = normalize_custom_skill({"name": metadata["name"], "description": metadata["description"],
                                         "category": "GitHub", "instruction": instruction}, source=location["source"])

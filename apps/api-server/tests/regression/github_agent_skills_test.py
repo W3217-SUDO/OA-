@@ -48,7 +48,7 @@ class GitHubSkillParserTest(unittest.TestCase):
         self.assertEqual(parsed['source'], location['url'])
         self.assertEqual(len(parsed['sha256']), 64)
         for content in (b'no metadata', b'---\nname: [bad]\ndescription: test\n---\nlong enough body',
-                        CONTENT + b'x' * 6001, b'\xff',
+                        CONTENT + b'x' * 64001, b'\xff',
                         b'---\nname: !!python/object/apply:os.system ["echo unsafe"]\n---\nbody'):
             with self.subTest(content=content[:30]), self.assertRaises(ValueError):
                 parse_github_skill(content, location)

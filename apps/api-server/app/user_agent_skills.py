@@ -22,6 +22,8 @@ USER_SKILL_CONFIG_PREFIX = "agent_skills_"
 CUSTOM_SKILL_SOURCE = "user-custom"
 CUSTOM_SKILL_FILE_LIMIT = 2 * 1024 * 1024
 CUSTOM_SKILL_LIMIT = 30
+CUSTOM_SKILL_INSTRUCTION_LIMIT = 64000
+CUSTOM_SKILL_DESCRIPTION_LIMIT = 8000
 
 
 def user_skill_config_key(username: str) -> str:
@@ -47,8 +49,8 @@ def normalize_custom_skill(payload: dict[str, Any], *, skill_id: str = "", sourc
         "id": skill_id or f"custom-{uuid4().hex}",
         "name": _text(payload.get("name"), "name", minimum=2, maximum=64),
         "category": _text(payload.get("category") or "自定义", "category", minimum=1, maximum=32),
-        "description": _text(payload.get("description"), "description", minimum=2, maximum=500),
-        "instruction": _text(payload.get("instruction"), "instruction", minimum=10, maximum=6000),
+        "description": _text(payload.get("description"), "description", minimum=2, maximum=CUSTOM_SKILL_DESCRIPTION_LIMIT),
+        "instruction": _text(payload.get("instruction"), "instruction", minimum=10, maximum=CUSTOM_SKILL_INSTRUCTION_LIMIT),
         "quick_prompts": normalized_prompts,
         "enabled": bool(payload.get("enabled", True)),
         "source": source,
@@ -106,11 +108,11 @@ def _docx_markdown(filename: str, content: bytes) -> tuple[str, str, str]:
             blocks.extend("| " + " | ".join(row) + " |" for row in normalized_rows[1:])
 
     markdown = "\n\n".join(blocks).strip()
-    if len(markdown) > 6000:
-        markdown = markdown[:5940].rstrip() + "\n\n> Word 内容较长，已截取前部作为技能指令。"
+    if len(markdown) > CUSTOM_SKILL_INSTRUCTION_LIMIT:
+        raise ValueError("instruction")
     properties = document.core_properties
     name = str(properties.title or first_heading or Path(filename).stem).strip()
-    description = str(properties.subject or first_paragraph or f"从 Word 文档 {Path(filename).name} 导入").strip()[:500]
+    description = str(properties.subject or first_paragraph or f"从 Word 文档 {Path(filename).name} 导入").strip()
     return name, description, markdown
 
 
