@@ -6,6 +6,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from copy import deepcopy
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from fastapi import HTTPException, UploadFile
@@ -16,6 +18,86 @@ from app.core.incoming_settlement import _active_settlements_by_receipt, _revert
 from app.database import Base
 from app.models import BusinessRecord, FileAttachment, FinanceTransaction, ReceivablePlan, User
 from app.models_shared import AttachmentBatchInput
+from app.areas.personal_agent import service as personal_service
+from app.areas.personal_agent.confirmation_history import project_personal_actions
+from app.agent_mcp import service as tool_service
+
+
+class PersonalConfirmationBoundaryTest(IsolatedAsyncioTestCase):
+    def request(self, status, owner="本人"):
+        return BusinessRecord(
+            id=1, module="agent_mcp_action", serial_no="MCP-request-1", owner=owner,
+            status=status, data={"request_id": "request-1", "error": {"status_code": 409, "detail": {"detail": "原业务拒绝"}} if status == "执行失败" else None},
+        )
+
+    def state(self):
+        return {"conversation_id": "default", "messages": [], "pending_actions": [{
+            "id": "action-1", "type": "mcp.call", "status": "pending", "requested_by": "本人",
+            "payload": {"request_id": "request-1"}, "summary": "旧待确认卡",
+        }]}
+
+    async def test_persistent_status_projection_is_read_only_and_identity_scoped(self):
+        for stored, visible in (("执行失败", "failed"), ("已执行", "succeeded"), ("已拒绝", "rejected"), ("执行中", "executing"), ("待确认", "pending")):
+            with self.subTest(status=stored):
+                state = self.state()
+                original = deepcopy(state)
+                record = self.request(stored)
+                db = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [record])))
+                result = await project_personal_actions(state, {"username": "本人"}, db)
+                self.assertEqual(result["pending_actions"][0]["status"], visible)
+                self.assertEqual(state, original)
+                self.assertEqual(record.status, stored)
+                self.assertIsNot(result["pending_actions"][0], state["pending_actions"][0])
+                query = db.scalars.await_args.args[0]
+                parameters = query.compile().params
+                self.assertIn("本人", parameters.values())
+                self.assertIn("agent_mcp_action", parameters.values())
+                self.assertIn(["MCP-request-1"], parameters.values())
+                if stored == "执行失败":
+                    self.assertEqual(result["pending_actions"][0]["error"]["detail"]["detail"], "原业务拒绝")
+        db = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [])))
+        with self.assertRaises(HTTPException) as raised:
+            await project_personal_actions(self.state(), {"username": "本人"}, db)
+        self.assertEqual(raised.exception.status_code, 404, "其他所有者的请求不能被投影")
+        foreign = self.state()
+        foreign["pending_actions"][0]["requested_by"] = "别人"
+        db.scalars.reset_mock()
+        with self.assertRaises(HTTPException) as raised:
+            await project_personal_actions(foreign, {"username": "本人"}, db)
+        self.assertEqual(raised.exception.status_code, 403)
+        db.scalars.assert_not_awaited()
+
+    async def test_personal_state_and_conversation_reads_project_without_saving(self):
+        state = self.state()
+        original = deepcopy(state)
+        record = self.request("执行失败")
+        db = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [record])))
+        with patch.object(personal_service, "ensure_identity_file", new=AsyncMock(return_value="身份")), \
+             patch.object(personal_service, "_read_state", return_value=state), \
+             patch.object(personal_service, "_user_dir", return_value=Path("isolated-unit")), \
+             patch.object(personal_service.conversations, "list_conversations", new=AsyncMock(return_value={"state": state, "items": [], "active_id": "default"})), \
+             patch.object(personal_service.conversations, "save_state", new=AsyncMock()) as save:
+            identity = {"username": "本人"}
+            direct = await personal_service.personal_state(identity, db)
+            snapshot = await personal_service.manage_conversations(identity, db=db)
+            self.assertEqual(direct["pending_actions"][0]["status"], "failed")
+            self.assertEqual(snapshot["state"]["pending_actions"][0]["status"], "failed")
+            self.assertEqual(state, original)
+            save.assert_not_awaited()
+
+    async def test_decided_mcp_requests_remain_non_replayable(self):
+        for status in ("执行失败", "已执行", "已拒绝", "执行中"):
+            with self.subTest(status=status):
+                record = self.request(status)
+                db = SimpleNamespace(scalar=AsyncMock(return_value=record))
+                with patch.object(tool_service, "require_human_decision"), \
+                     patch.object(tool_service, "authenticated_identity", new=AsyncMock(return_value={"username": "本人"})), \
+                     patch.object(tool_service, "execute_original", new=AsyncMock()) as execute:
+                    with self.assertRaises(HTTPException) as raised:
+                        await tool_service.decide_tool_request("request-1", "approved", {"username": "本人"}, db)
+                    self.assertEqual(raised.exception.status_code, 409)
+                    self.assertEqual(record.status, status)
+                    execute.assert_not_awaited()
 
 
 class DomainBoundaryTest(IsolatedAsyncioTestCase):

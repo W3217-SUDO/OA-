@@ -18,6 +18,41 @@ PERSONAL_ACTION_MODULE = "personal_agent_action"
 HISTORY_STATUSES = ("executing", "succeeded", "failed", "rejected")
 
 
+async def project_personal_actions(state, identity, db):
+    """按本人持久请求投影旧卡状态，只返回副本，不回写会话或业务记录。"""
+    actions = state.get("pending_actions", [])
+    references = {}
+    for action in actions:
+        if action.get("type") != "mcp.call":
+            continue
+        request_id = (action.get("payload") or {}).get("request_id")
+        if action.get("requested_by") != identity["username"]:
+            raise HTTPException(403, "待确认操作不属于当前账号")
+        if not isinstance(request_id, str) or not request_id:
+            raise HTTPException(422, "工具请求缺少有效编号")
+        references[action["id"]] = "MCP-" + request_id
+    if not references:
+        return {**state, "pending_actions": [dict(action) for action in actions]}
+    records = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == ACTION_MODULE,
+        BusinessRecord.owner == identity["username"],
+        BusinessRecord.serial_no.in_(list(references.values())),
+    ).execution_options(populate_existing=True))).all()
+    requests = {record.serial_no: record for record in records}
+    projected = []
+    for action in actions:
+        serial_no = references.get(action["id"])
+        if serial_no is None:
+            projected.append(dict(action))
+            continue
+        record = requests.get(serial_no)
+        if record is None:
+            raise HTTPException(404, "确认请求不存在或不属于当前账号")
+        projected.append({**action, "status": STATUS_NAMES[record.status],
+                          "error": record.data.get("error")})
+    return {**state, "pending_actions": projected}
+
+
 def _event(record_id, identity, before, after, comment=""):
     return WorkflowEvent(
         record_id=record_id, action="个人智能体人工确认" if before else "个人智能体准备操作",

@@ -6,7 +6,7 @@ import { aiWordDocumentName, isAiWordGenerationRequest, isUsableAiDocumentConten
 import { confirmCaseAgentDocument } from "../legal/services/agentDocumentConfirmation";
 import { usePersonalConversations } from "./usePersonalConversations";
 import { useConversationRuntime } from "./useConversationRuntime";
-import { errorText, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
+import { errorText, type ConversationSnapshot, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
 
 const SUPPORTED_FILE = /\.(pdf|docx|xlsx|txt|png|jpe?g)$/i;
 export const MATERIAL_ACCEPT = ".pdf,.docx,.xlsx,.txt,.png,.jpg,.jpeg";
@@ -148,10 +148,31 @@ export function usePersonalWorkspace() {
   const stop = async () => { try { await runtime.stop(id); } catch (error) { message.error(errorText(error, "停止生成失败")); } };
 
   const decide = async (action: PendingAction, decision: "approved" | "rejected") => {
-    if (decisionLock.current || runtime.running(id) || conversations.locked()) return false;
+    if (decisionLock.current) return false;
+    if (loading || conversations.locked() || sendStarts.current.has(id)) throw new Error("正在加载或切换对话，请完成后再确认");
+    if (!id) throw new Error("请先选择待确认操作所属的对话");
     decisionLock.current = true; setDecisionId(action.id);
     try {
-      const { data } = await api.post<{ state: WorkspaceState; result?: unknown }>(`/personal-agent/actions/${action.id}/decision`, { conversation_id: state.conversation_id, decision }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
+      // 先等待服务端停止生成并释放锁；已确认写入仍由服务端拒绝中断。
+      if (runtime.running(id)) await runtime.stop(id);
+      const current = runtime.get(id);
+      if (!current.pending_actions.some((item) => item.id === action.id && item.status === "pending")) throw new Error("待确认操作不存在或已处理，请核对最新状态");
+      let response;
+      try {
+        response = await api.post<{ state: WorkspaceState; result?: unknown }>(`/personal-agent/actions/${action.id}/decision`, { conversation_id: id, decision }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
+      } catch (error) {
+        // 决定可能已在服务端落库；只读回查会话，不重试写入或把失败当成功。
+        try {
+          const { data } = await api.get<ConversationSnapshot>("/personal-agent/conversations");
+          if (data.state.conversation_id !== id) throw new Error("服务端当前对话已变化，请刷新核对原操作状态");
+          runtime.replace(data.state);
+        } catch (syncError) {
+          throw new Error(`${errorText(error, "确认操作失败")}；${errorText(syncError, "最新对话状态读取失败")}，禁止重复提交`, { cause: error });
+        }
+        throw error;
+      }
+      const { data } = response;
+      if (data.state.conversation_id !== id) throw new Error("确认响应对话编号不匹配，请核对实际执行状态，禁止重复提交");
       runtime.replace(data.state); updateDraft(id, "decisionResult", data.result);
       message.success(decision === "approved" ? "操作已完成" : "已取消操作"); return true;
     } finally { decisionLock.current = false; setDecisionId(""); }

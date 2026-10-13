@@ -5,7 +5,7 @@ export type WorkspaceSkill = AgentSkill & { custom?: boolean; enabled?: boolean;
 export type ResponseMode = "fast" | "deep";
 export type Material = { id: number; name: string; case_id?: number };
 export type WorkspaceMessage = { role: "user" | "assistant"; content: string; created_at?: string; skill_name?: string; case_id?: number; case_no?: string; can_save_document?: boolean; attachments?: Material[]; failed?: boolean; stopped?: boolean };
-export type PendingAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; preview?: AgentActionPreview; status: "pending" | "approved" | "rejected" };
+export type PendingAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; preview?: AgentActionPreview; status: "pending" | "approved" | "rejected" | "executing" | "succeeded" | "failed"; error?: unknown };
 export type ConfirmationStatus = "executing" | "succeeded" | "failed" | "rejected";
 export type ConfirmationRecord = {
   id: string;

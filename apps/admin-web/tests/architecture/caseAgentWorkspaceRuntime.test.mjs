@@ -250,9 +250,9 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
   const List = ({ dataSource, renderItem }) => React.createElement("list", null, dataSource.map((item) => React.cloneElement(renderItem(item), { key: item.id })));
   List.Item = ({ actions, children }) => React.createElement("list-item", null, children, actions);
-  List.Item.Meta = component("list-meta");
+  List.Item.Meta = ({ title, description }) => React.createElement("list-meta", { title, description }, description);
   const { default: AssistantPanel } = loadModule("../personal-agent/AssistantPanel.tsx", {
-    antd: { ...require("antd"), Alert: component("alert"), Button: component("button"), Input: { TextArea: component("textarea") }, List, Tooltip: component("tooltip") },
+    antd: { ...require("antd"), Alert: component("alert"), Button: component("button"), Input: { TextArea: component("textarea") }, List, Tag: component("tag"), Tooltip: component("tooltip") },
     "./AssistantStart": { __esModule: true, default: component("start"), shortcuts: [] },
     "./ConversationManager": { ConversationManager: component("conversation-manager") },
     "./AssistantWorkspaceTools": { AssistantWorkspaceTools: component("workspace-tools") },
@@ -283,11 +283,276 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   await act(async () => button("查看并确认").props.onClick());
   assert.equal(renderer.root.findByType("action-confirmation").props.action, action);
   assert.equal(decisions.length, 1, "查看预览不能直接批准");
+  await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, sending: true, runningIds: ["c1"] } })));
+  assert.equal(button("查看并确认").props.disabled, false, "生成不能阻止人工查看已有待确认操作");
+  assert.equal(button("取消").props.disabled, false, "取消由工作区等待服务端释放生成锁");
   await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, decisionId: "a1" } })));
   assert.equal(button("取消").props.disabled, true);
   assert.equal(button("查看并确认").props.disabled, true);
   await act(async () => button("取消").props.onClick());
   assert.equal(decisions.length, 1);
+  const failed = { ...action, status: "failed", error: { status_code: 409, detail: { detail: "任务由案件阶段自动完成，人工只能变更期限" } } };
+  await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, state: { ...workspace.state, pending_actions: [failed] } } })));
+  assert.equal(renderer.root.findByType("tag").props.children, "执行失败");
+  assert.equal(renderer.root.findByType("alert").props.title, "任务由案件阶段自动完成，人工只能变更期限");
+  assert.equal(button("查看并确认"), undefined);
+  assert.equal(button("取消"), undefined);
+  await act(async () => button("查看状态").props.onClick());
+  assert.equal(renderer.root.findByType("action-confirmation").props.action.status, "failed");
+  assert.equal(decisions.length, 1, "失败卡只读查看，不能重复执行");
+  await act(async () => renderer.unmount());
+});
+
+test("personal center retains terminal outcomes as visible read-only cards", async () => {
+  const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
+  const action = { id: "a1", type: "mcp.call", status: "failed", summary: "旧批量任务", error: { detail: { detail: "任务由案件阶段自动完成，人工只能变更期限" } } };
+  const workspace = {
+    status: { ready: true, commands: [] }, state: { conversation_id: "c1", messages: [], pending_actions: [action] },
+    skills: [], skillId: "general-office", input: "", loading: false, sending: true, uploading: false,
+    materials: [], caseMaterials: [], savedDocuments: {}, conversations: [], runningIds: ["c1"],
+    decisionId: "", conversationBusy: false,
+  };
+  const { default: PersonalAgentCenterPage } = loadModule("../PersonalAgentCenterPage.tsx", {
+    antd: { ...require("antd"), Alert: component("alert"), Button: component("button"), Input: { TextArea: component("textarea") }, Select: component("select"), Segmented: component("segmented"), Space: component("space"), Tag: component("tag"), Tooltip: component("tooltip") },
+    "./personal-agent/usePersonalWorkspace": { usePersonalWorkspace: () => workspace },
+    "./personal-agent/WorkPanel": { WorkPanel: component("work-panel") },
+    "./personal-agent/ConversationManager": { ConversationManager: component("conversations") },
+    "./personal-agent/MobileComposerOptions": { MobileComposerOptions: component("mobile-options") },
+    "./personal-agent/SkillManager": { SkillManager: component("skills") },
+    "./personal-agent/MaterialPreview": { MaterialPreview: component("materials") },
+    "./personal-agent/CaseMaterialsPicker": { CaseMaterialsPicker: component("picker") },
+    "./personal-agent/ActionConfirmation": { ActionConfirmation: component("confirmation") },
+    "./personal-agent/ConfirmationHistory": { ConfirmationHistory: component("history") },
+    "./AgentToolRequests": { AgentToolRequests: component("tool-requests") },
+    "./AgentToolResult": { AgentToolResult: component("tool-result") },
+  });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(PersonalAgentCenterPage, { onNavigate() {} })); });
+  const button = (label) => renderer.root.findAllByType("button").find((item) => item.props.children === label);
+  assert.equal(button("查看并确认"), undefined);
+  assert.equal(button("查看状态").props.disabled, false);
+  assert.equal(renderer.root.findByType("alert").props.title, "任务由案件阶段自动完成，人工只能变更期限");
+  await act(async () => button("查看状态").props.onClick());
+  assert.equal(renderer.root.findByType("confirmation").props.action.status, "failed");
+  await act(async () => renderer.unmount());
+});
+
+test("confirmation controls retain mobile wrapping, touch size and bounded scrolling", () => {
+  const parse = require("postcss").parse;
+  const assistant = parse(fs.readFileSync(new URL("../personal-agent/assistant-panel.css", sourceRoot), "utf8"));
+  const center = parse(fs.readFileSync(new URL("../personal-agent-center.css", sourceRoot), "utf8"));
+  const confirmation = parse(fs.readFileSync(new URL("../personal-agent/confirmation-history.css", sourceRoot), "utf8"));
+  const value = (root, selector, property, width) => {
+    let result;
+    root.walkRules((rule) => {
+      if (!rule.selectors.includes(selector)) return;
+      for (let parent = rule.parent; parent; parent = parent.parent) {
+        if (parent.type !== "atrule" || parent.name !== "media") continue;
+        const limit = /max-width:\s*(\d+)px/.exec(parent.params);
+        if (!limit || width > Number(limit[1])) return;
+      }
+      rule.walkDecls(property, (declaration) => { result = declaration.value; });
+    });
+    return result;
+  };
+  for (const width of [320, 375, 390, 414, 768]) {
+    assert.equal(value(assistant, ".assistant .assistant-pending .ant-list-item", "flex-wrap", width), "wrap");
+    assert.equal(value(assistant, ".assistant .assistant-pending", "overflow", width), "auto");
+    assert.equal(value(assistant, ".assistant .assistant-pending .ant-btn", "min-width", width), "44px");
+    assert.equal(value(assistant, ".assistant .assistant-pending .ant-btn", "min-height", width), "44px");
+    assert.equal(value(center, ".workspace-pending-row > .ant-btn", "min-height", width), "44px");
+    assert.equal(value(center, ".workspace-pending-row > div:first-child", "overflow-wrap", width), "anywhere");
+    assert.equal(value(center, ".workspace-pending", "overflow", width), "auto");
+    if (width <= 760) assert.equal(value(center, ".workspace-pending-row", "flex-wrap", width), "wrap");
+    assert.equal(value(confirmation, ".personal-action-confirmation .ant-modal-footer .ant-btn", "min-height", width), "44px");
+  }
+});
+
+test("personal MCP confirmation rereads failed status and permits only manual cancellation of stale pending requests", async () => {
+  const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
+  const action = { id: "a1", type: "mcp.call", status: "pending", payload: { request_id: "r1" } };
+  let status = "pending";
+  let reads = 0;
+  let closed = 0;
+  const decisions = [];
+  const { ActionConfirmation } = loadModule("../personal-agent/ActionConfirmation.tsx", {
+    antd: { ...require("antd"), Alert: component("alert"), Button: component("button"), Modal: ({ footer, children, ...props }) => React.createElement("modal", props, children, footer), Space: component("space"), Spin: component("spin"), Tag: component("tag"), message: { error() {} } },
+    "../api": { api: { get: async () => { reads++; return { data: { request_id: "r1", status, preview: {}, summary: "确认操作" } }; } } },
+    "../AgentOperationPreview": { AgentOperationPreview: component("preview"), hasAgentOperationPreview: () => true, agentOperationError: (error) => error.message, agentOperationMessage: String },
+  });
+  const props = { action, deciding: false, onClose: () => closed++, onDecide: async (_action, decision) => {
+    decisions.push(decision);
+    if (decision === "approved") throw new AxiosError("接口定义已变化，请重新准备", undefined, undefined, undefined, { status: 409, data: { detail: "接口定义已变化，请重新准备" } });
+    return true;
+  } };
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(ActionConfirmation, props)); });
+  const button = (label) => renderer.root.findAllByType("button").find((item) => item.props.children === label);
+  await act(async () => button("确认并执行").props.onClick());
+  assert.equal(reads, 2, "409 后只读回查真实请求，不重试写入");
+  assert.equal(button("确认并执行").props.disabled, true);
+  assert.equal(button("取消操作").props.disabled, false, "仍待确认的过期请求可以由用户取消");
+  await act(async () => button("确认并执行").props.onClick());
+  assert.deepEqual(decisions, ["approved"], "错误状态不能重复批准");
+  await act(async () => button("取消操作").props.onClick());
+  assert.deepEqual(decisions, ["approved", "rejected"]);
+  assert.equal(closed, 1);
+  status = "failed";
+  await act(async () => renderer.update(React.createElement(ActionConfirmation, { ...props, action: { ...action, id: "a2" } })));
+  assert.equal(renderer.root.findAllByType("button").some((item) => item.props.children === "确认并执行"), false);
+  assert.equal(renderer.root.findByType("tag").props.children, "执行失败");
+  await act(async () => renderer.unmount());
+});
+
+test("personal runtime completes on authoritative state without waiting for transport EOF", { timeout: 3000 }, async () => {
+  let runtime;
+  let controller;
+  let cancelled = false;
+  const body = new ReadableStream({ start(value) { controller = value; }, cancel() { cancelled = true; } });
+  const { useConversationRuntime } = loadModule("../personal-agent/useConversationRuntime.ts", {
+    "../api": { api: {} },
+  }, { fetch: async () => ({ ok: true, body }), localStorage: { getItem: () => "test-only" } });
+  function Probe() { runtime = useConversationRuntime(); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  const initial = { conversation_id: "c1", messages: [], pending_actions: [] };
+  await act(async () => runtime.activate(initial));
+  let generation;
+  await act(async () => { generation = runtime.generate(initial, { content: "准备操作" }, { role: "user", content: "准备操作" }, {}); });
+  assert.equal(runtime.running("c1"), true);
+  const completed = { ...initial, messages: [{ role: "assistant", content: "等待人工确认" }], pending_actions: [{ id: "a1", status: "pending" }] };
+  await act(async () => {
+    controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "state", state: completed })}\r\n\r\n`));
+    await generation;
+  });
+  assert.equal(cancelled, true, "终态后主动结束读取，不等待代理关闭连接");
+  assert.equal(runtime.running("c1"), false);
+  assert.equal(Object.keys(runtime.activities).length, 0);
+  assert.equal(runtime.state.pending_actions[0].id, "a1");
+  await act(async () => renderer.unmount());
+});
+
+test("personal runtime treats done without state as an explicit incomplete response", { timeout: 3000 }, async () => {
+  let runtime;
+  let controller;
+  const body = new ReadableStream({ start(value) { controller = value; } });
+  const { useConversationRuntime } = loadModule("../personal-agent/useConversationRuntime.ts", {
+    "../api": { api: {} },
+  }, { fetch: async () => ({ ok: true, body }), localStorage: { getItem: () => "test-only" } });
+  function Probe() { runtime = useConversationRuntime(); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  const initial = { conversation_id: "c1", messages: [], pending_actions: [] };
+  await act(async () => runtime.activate(initial));
+  let generation;
+  await act(async () => { generation = runtime.generate(initial, { content: "查询" }, { role: "user", content: "查询" }, {}); });
+  await act(async () => {
+    const rejected = assert.rejects(generation, /未收到完整结果/);
+    controller.enqueue(new TextEncoder().encode('data: {"type":"done"}\n\n'));
+    await rejected;
+  });
+  assert.equal(runtime.running("c1"), false);
+  assert.equal(runtime.state.messages.at(-1).failed, true);
+  await act(async () => renderer.unmount());
+});
+
+test("personal decision waits for server stop, serializes duplicate clicks and propagates stop refusal", { timeout: 5000 }, async () => {
+  let workspace;
+  let controller;
+  let resolveStop;
+  let rejectStop;
+  const calls = [];
+  const action = { id: "a1", type: "mcp.call", status: "pending", summary: "准备修改", payload: { request_id: "r1" } };
+  const initial = { conversation_id: "c1", messages: [], pending_actions: [action] };
+  const stopped = { ...initial, messages: [{ role: "user", content: "查询" }, { role: "assistant", content: "已停止", stopped: true }] };
+  const api = {
+    get: async (path) => ({ data: path === "/agent/skills" ? { items: [{ id: "general-office", available: true, name: "办公" }] } : { ready: true } }),
+    post: async (path, body, options) => {
+      calls.push({ path, body, options });
+      if (path.endsWith("/stop")) return new Promise((resolve, reject) => { resolveStop = resolve; rejectStop = reject; });
+      return { data: { state: { ...stopped, pending_actions: [] } } };
+    },
+  };
+  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
+    "../api": { api },
+    antd: { ...require("antd"), message: { warning() {}, error() {}, success() {} } },
+    "./usePersonalConversations": { usePersonalConversations: (activate) => ({
+      items: [], busy: false, locked: () => false, load: async () => activate(initial), refresh: async () => {},
+    }) },
+    "../legal/constants": { aiWordDocumentName: () => "", isAiWordGenerationRequest: () => false, isUsableAiDocumentContent: () => false },
+    "../legal/services/agentDocumentConfirmation": { confirmCaseAgentDocument: () => assert.fail("不得自动保存业务文档") },
+  }, {
+    fetch: async (_path, options) => ({ ok: true, body: new ReadableStream({ start(value) {
+      controller = value;
+      options.signal.addEventListener("abort", () => { const error = new Error("aborted"); error.name = "AbortError"; controller.error(error); });
+    } }) }),
+    localStorage: { getItem: () => "test-only" },
+  });
+  function Probe() { workspace = usePersonalWorkspace(); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  let generation;
+  await act(async () => { generation = workspace.send("查询"); });
+  let decision;
+  await act(async () => { decision = workspace.decide(action, "approved"); });
+  assert.equal(workspace.decisionId, "a1");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, "/personal-agent/conversations/c1/stop");
+  await act(async () => assert.equal(await workspace.decide(action, "approved"), false));
+  assert.equal(calls.length, 1, "等待停止时重复点击不能再发确认请求");
+  await act(async () => { resolveStop({ data: { state: stopped } }); assert.equal(await decision, true); await generation; });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].path, "/personal-agent/actions/a1/decision");
+  assert.equal(calls[1].body.conversation_id, "c1");
+  assert.equal(calls[1].options.headers["X-OA-Agent-Confirmation"], "frontend");
+  assert.equal(workspace.sending, false);
+  assert.equal(workspace.decisionId, "");
+  await act(async () => { generation = workspace.send("再次查询"); });
+  await act(async () => { decision = workspace.decide(action, "approved"); });
+  await act(async () => {
+    const refused = assert.rejects(decision, /不能中断/);
+    rejectStop(new Error("已确认的 OA 操作不能中断"));
+    await refused;
+  });
+  assert.equal(calls.length, 3, "停止拒绝后不能继续发确认请求");
+  assert.equal(workspace.decisionId, "");
+  await act(async () => {
+    controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "state", state: { ...stopped, pending_actions: [] } })}\n\n`));
+    await generation;
+    renderer.unmount();
+  });
+});
+
+test("personal failed decision synchronizes authoritative conversation without replaying writes", async () => {
+  let workspace;
+  const action = { id: "a1", status: "pending", type: "mcp.call", payload: { request_id: "r1" } };
+  let current = { conversation_id: "c1", messages: [], pending_actions: [action] };
+  const refreshed = { ...current, pending_actions: [] };
+  const calls = [];
+  const failure = new AxiosError("请求失败", undefined, undefined, undefined, { status: 409, data: { detail: { status: "failed", error: { detail: "原业务接口已拒绝" } } } });
+  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
+    antd: { ...require("antd"), message: { warning() {}, error() {}, success: () => assert.fail("失败不能伪造成功") } },
+    "../api": { api: {
+      get: async (path) => {
+        calls.push(["get", path]);
+        return { data: path === "/agent/skills" ? { items: [] } : path === "/personal-agent/conversations" ? { state: refreshed, items: [] } : { ready: true } };
+      },
+      post: async (path) => { calls.push(["post", path]); throw failure; },
+    } },
+    "./useConversationRuntime": { useConversationRuntime: () => ({ state: current, activities: {}, anyRunning: () => false, running: () => false, reset() {}, get: () => current, replace: (next) => { current = next; } }) },
+    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], busy: false, locked: () => false, load: async () => {}, refresh: async () => {} }) },
+    "../legal/constants": {}, "../legal/services/agentDocumentConfirmation": {},
+  });
+  function Probe() { workspace = usePersonalWorkspace(); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  await act(async () => assert.rejects(workspace.decide(action, "approved"), (error) => error === failure));
+  assert.equal(current, refreshed);
+  assert.equal(workspace.state.pending_actions.length, 0);
+  assert.equal(workspace.decisionId, "");
+  assert.deepEqual(calls.filter(([method]) => method === "post"), [["post", "/personal-agent/actions/a1/decision"]]);
+  await act(async () => assert.rejects(workspace.decide(action, "approved"), /不存在或已处理/));
+  assert.equal(calls.filter(([method]) => method === "post").length, 1);
   await act(async () => renderer.unmount());
 });
 

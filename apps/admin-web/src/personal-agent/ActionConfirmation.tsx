@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Modal, Space, Spin, Tag, message } from "antd";
 import { CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
 import { isAxiosError } from "axios";
@@ -22,6 +22,8 @@ export function ActionConfirmation({ action, deciding, onDecide, onClose }: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const activeId = useRef(action?.id);
+  activeId.current = action?.id;
   const requestId = action?.type === "mcp.call" ? action.payload?.request_id : undefined;
 
   useEffect(() => {
@@ -44,10 +46,10 @@ export function ActionConfirmation({ action, deciding, onDecide, onClose }: {
   }, [action?.id, requestId, refresh]);
 
   const currentStatus = request?.status;
-  const canDecide = !!action && (action.type !== "mcp.call" || currentStatus === "pending");
+  const canDecide = action?.status === "pending" && (action.type !== "mcp.call" || currentStatus === "pending");
   const previewAction = action && request ? { ...action, summary: request.summary, preview: request.preview } : action;
   const decide = async (decision: "approved" | "rejected") => {
-    if (!action || !canDecide || deciding || loading || error) return;
+    if (!action || !canDecide || deciding || loading || (decision === "approved" && error)) return;
     try {
       if (await onDecide(action, decision)) onClose();
     } catch (failure: unknown) {
@@ -59,6 +61,15 @@ export function ActionConfirmation({ action, deciding, onDecide, onClose }: {
           setRequest({ ...request, status: outcome.status as ToolRequest["status"], error: outcome.error });
         }
       }
+      if (action.type === "mcp.call" && typeof requestId === "string" && requestId) {
+        setLoading(true);
+        try {
+          const { data } = await api.get<ToolRequest>(`/agent-tools/requests/${encodeURIComponent(requestId)}`);
+          if (activeId.current === action.id) setRequest(data);
+        } catch (readError) {
+          if (activeId.current === action.id) setError(`${text}；${agentOperationError(readError, "真实执行状态读取失败")}，禁止重复提交`);
+        } finally { if (activeId.current === action.id) setLoading(false); }
+      }
     }
   };
 
@@ -68,7 +79,7 @@ export function ActionConfirmation({ action, deciding, onDecide, onClose }: {
       {action?.type === "mcp.call" && <Button icon={<ReloadOutlined />} loading={loading} disabled={deciding} onClick={() => setRefresh((value) => value + 1)}>刷新状态</Button>}
       <Button disabled={deciding} onClick={onClose}>关闭</Button>
       {canDecide && <>
-        <Button icon={<CloseOutlined />} disabled={deciding || loading || !!error} onClick={() => void decide("rejected")}>取消操作</Button>
+        <Button icon={<CloseOutlined />} disabled={deciding || loading} onClick={() => void decide("rejected")}>取消操作</Button>
         <Button type="primary" icon={<CheckOutlined />} loading={deciding} disabled={deciding || loading || !!error || !previewAction || !hasAgentOperationPreview(previewAction)} onClick={() => void decide("approved")}>确认并执行</Button>
       </>}
     </Space>}>

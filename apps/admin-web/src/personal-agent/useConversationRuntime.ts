@@ -59,6 +59,7 @@ export function useConversationRuntime() {
         const decoder = new TextDecoder();
         let buffer = "";
         let result: WorkspaceState | null = null;
+        let completed = false;
         const consume = (chunk: string) => {
           buffer += chunk.replace(/\r\n/g, "\n");
           const blocks = buffer.split("\n\n");
@@ -72,14 +73,21 @@ export function useConversationRuntime() {
             else if (event.type === "state" && event.state) {
               if (event.state.conversation_id !== id) throw new Error("响应对话编号不匹配");
               result = event.state; replace(result);
+              completed = true;
+            } else if (event.type === "done") {
+              completed = true;
             } else if (event.type === "error") throw new Error(event.detail || "智能体处理失败");
           }
         };
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) { consume(decoder.decode()); break; }
-          consume(decoder.decode(value, { stream: true }));
-        }
+        try {
+          while (!completed) {
+            const { done, value } = await reader.read();
+            if (done) { consume(decoder.decode()); break; }
+            consume(decoder.decode(value, { stream: true }));
+          }
+          // state 是服务端保存并释放会话锁后的终态，不再等待连接关闭才解除生成状态。
+          if (completed) await reader.cancel();
+        } finally { reader.releaseLock(); }
         if (!result) {
           // 服务端取消可能先结束 SSE，必须等停止请求成功才能认定本轮已停止。
           if (entry.stopRequest) await entry.stopRequest;

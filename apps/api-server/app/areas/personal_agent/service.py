@@ -33,7 +33,7 @@ from app.areas.personal_agent.materials import material_message, prepare_materia
 from app.areas.personal_agent.response_runtime import ProgressCallback, ResponseMode, request_model
 from app.areas.personal_agent import conversations
 from app.areas.personal_agent.confirmation_history import (
-    begin_personal_decision, finish_personal_decision, prepare_personal_action,
+    begin_personal_decision, finish_personal_decision, prepare_personal_action, project_personal_actions,
 )
 
 
@@ -75,18 +75,20 @@ async def _save_state(username: str, state: dict[str, Any]) -> None:
     await conversations.save_state(_user_dir(username), state)
 
 
-async def manage_conversations(identity: dict[str, Any], action: str = "list", conversation_id: str | None = None) -> dict[str, Any]:
+async def manage_conversations(identity: dict[str, Any], action: str = "list", conversation_id: str | None = None, *, db: AsyncSession) -> dict[str, Any]:
     directory = _user_dir(identity["username"])
     await ensure_identity_file(identity)
     if action == "create":
-        return await conversations.create_conversation(directory)
-    if action == "select" and conversation_id:
-        return await conversations.select_conversation(directory, conversation_id)
-    if action == "delete" and conversation_id:
-        return await conversations.delete_conversation(directory, conversation_id)
-    if action == "list":
-        return await conversations.list_conversations(directory)
-    raise HTTPException(status_code=422, detail="对话操作无效")
+        snapshot = await conversations.create_conversation(directory)
+    elif action == "select" and conversation_id:
+        snapshot = await conversations.select_conversation(directory, conversation_id)
+    elif action == "delete" and conversation_id:
+        snapshot = await conversations.delete_conversation(directory, conversation_id)
+    elif action == "list":
+        snapshot = await conversations.list_conversations(directory)
+    else:
+        raise HTTPException(status_code=422, detail="对话操作无效")
+    return {**snapshot, "state": await project_personal_actions(snapshot["state"], identity, db)}
 
 
 def _safe_identity_payload(user: User, permissions: dict[str, Any]) -> dict[str, Any]:
@@ -154,7 +156,7 @@ async def ensure_identity_file(identity: dict[str, Any]) -> str:
 
 async def personal_state(identity: dict[str, Any], db: AsyncSession) -> dict[str, Any]:
     content = await ensure_identity_file(identity)
-    state = _read_state(identity["username"])
+    state = await project_personal_actions(_read_state(identity["username"]), identity, db)
     return {**state, "identity_file": content, "identity_file_name": "IDENTITY.md"}
 
 
@@ -305,7 +307,8 @@ async def generate_response(identity: dict[str, Any], db: AsyncSession, text: st
             await on_delta(content)
 
         try:
-            return await _generate_response(identity, db, text, capture_delta, state=state, skill_id=skill_id, attachment_ids=attachment_ids, case_id=case_id, document_ids=document_ids, response_mode=response_mode, on_progress=on_progress)
+            result = await _generate_response(identity, db, text, capture_delta, state=state, skill_id=skill_id, attachment_ids=attachment_ids, case_id=case_id, document_ids=document_ids, response_mode=response_mode, on_progress=on_progress)
+            return {**result, "state": await project_personal_actions(result["state"], identity, db)}
         except asyncio.CancelledError:
             if not state["messages"] or state["messages"][-1] is initial_last:
                 state["messages"].append({"role": "user", "content": text, "created_at": _now()})
@@ -319,8 +322,9 @@ async def generate_response(identity: dict[str, Any], db: AsyncSession, text: st
             raise
 
 
-async def stop_response(identity: dict[str, Any], conversation_id: str) -> dict[str, Any]:
-    return {"state": await conversations.stop_generation(_user_dir(identity["username"]), conversation_id)}
+async def stop_response(identity: dict[str, Any], conversation_id: str, *, db: AsyncSession) -> dict[str, Any]:
+    state = await conversations.stop_generation(_user_dir(identity["username"]), conversation_id)
+    return {"state": await project_personal_actions(state, identity, db)}
 
 
 async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, state: dict[str, Any], skill_id: str, attachment_ids: list[int] | None, case_id: int | None, document_ids: list[int] | None, response_mode: ResponseMode, on_progress: ProgressCallback | None) -> dict[str, Any]:

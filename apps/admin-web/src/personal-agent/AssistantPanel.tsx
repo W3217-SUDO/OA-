@@ -1,11 +1,12 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
-import { Alert, Button, Input, List, Tooltip } from "antd";
+import { Alert, Button, Input, List, Tag, Tooltip } from "antd";
 import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import { ConversationManager } from "./ConversationManager";
 import { AssistantWorkspaceTools } from "./AssistantWorkspaceTools";
 import { ActionConfirmation } from "./ActionConfirmation";
 import { ConfirmationHistory } from "./ConfirmationHistory";
+import { agentOperationMessage } from "../AgentOperationPreview";
 import { errorText, type PendingAction } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 import "./assistant-panel.css";
@@ -105,7 +106,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
 
   const runningIds = workspace.runningIds;
   const conversationTitle = state.conversation_title || name || "沪知助手";
-  const decisionBusy = loading || sending || workspace.conversationBusy || !!workspace.decisionId;
+  const decisionBusy = loading || workspace.conversationBusy || !!workspace.decisionId;
   const reject = async (action: PendingAction) => {
     if (decisionBusy) return;
     setDecisionError("");
@@ -212,19 +213,22 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       )}
       {!!state.pending_actions.length && (
         <div className="assistant-pending">
-          <b>待你确认的操作</b>
+          <b>{state.pending_actions.some((action) => action.status === "pending") ? "待你确认的操作" : "操作状态"}</b>
           {decisionError && <Alert type="error" showIcon title="操作未完成" description={decisionError} />}
           <List
             size="small"
-            dataSource={state.pending_actions.filter((action) => action.status === "pending")}
+            dataSource={state.pending_actions}
             renderItem={(item) => (
               <List.Item
                 actions={[
-                  <Button key="approve" type="primary" size="small" icon={<CheckOutlined />} disabled={decisionBusy} onClick={() => { setDecisionError(""); setActiveAction(item); }}>查看并确认</Button>,
-                  <Button key="reject" size="small" icon={<CloseOutlined />} disabled={decisionBusy} loading={workspace.decisionId === item.id} onClick={() => void reject(item)}>取消</Button>,
+                  <Button key="approve" type={item.status === "pending" ? "primary" : "default"} size="small" icon={<CheckOutlined />} disabled={decisionBusy} onClick={() => { setDecisionError(""); setActiveAction(item); }}>{item.status === "pending" ? "查看并确认" : "查看状态"}</Button>,
+                  ...(item.status === "pending" ? [<Button key="reject" size="small" icon={<CloseOutlined />} disabled={decisionBusy} loading={workspace.decisionId === item.id} onClick={() => void reject(item)}>取消</Button>] : []),
                 ]}
               >
-                <List.Item.Meta title={item.summary} />
+                <List.Item.Meta title={item.summary} description={item.status === "pending" ? undefined : <>
+                  <Tag color={item.status === "failed" ? "error" : "processing"}>{({ failed: "执行失败", executing: "执行中", succeeded: "已执行", approved: "已批准", rejected: "已取消" })[item.status]}</Tag>
+                  {item.error != null && <Alert type="error" showIcon title={agentOperationMessage(item.error)} />}
+                </>} />
               </List.Item>
             )}
           />
