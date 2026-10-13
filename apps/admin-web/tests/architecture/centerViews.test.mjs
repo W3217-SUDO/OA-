@@ -289,6 +289,9 @@ test("dashboard approved entries keep their destinations and unapproved entries 
   }, { AbortController, sessionStorage: { setItem: (key, value) => storage.set(key, value) } }).default;
   const props = {
     get view() { return conversationVisible ? "conversation" : "overview"; },
+    isNarrowViewport: true,
+    assistantFocusRequested: false,
+    onAssistantFocusHandled: () => {},
     onViewChange: (view) => { conversationVisible = view === "conversation"; },
     onNavigate: (route) => calls.push(["route", route]),
     grantedMenuKeys: new Set(["finance-fee-query", "task-my-accepted", "case-mine-civil"]),
@@ -322,11 +325,17 @@ test("dashboard approved entries keep their destinations and unapproved entries 
   // 提醒里的“交给智能体”与输入框共用同一条对话。
   schedule.props.onAsk("开庭 CASE-1");
   assert.equal(conversationVisible, true);
-  assert.ok(nodes(Dashboard(props)).some((node) => node.type === AssistantPanelStub));
-  const overviewButton = nodes(Dashboard(props)).find((node) => node.type === "button" && node.props.children === "工作概况");
+  const desktopConversation = nodes(Dashboard({ ...props, isNarrowViewport: false }));
+  assert.equal(desktopConversation.some((node) => node.type === AssistantPanelStub), false, "PC工作台不内嵌独立AI助手");
+  assert.ok(desktopConversation.some((node) => node.type === OverviewStub));
+  const mobileConversation = nodes(Dashboard(props));
+  assert.ok(mobileConversation.some((node) => node.type === AssistantPanelStub), "手机对话保留内嵌助手");
+  const overviewButton = mobileConversation.find((node) => node.type === "button" && node.props.children === "工作概况");
   overviewButton.props.onClick();
   assert.equal(conversationVisible, false);
-  assert.ok(nodes(Dashboard(props)).some((node) => node.type === OverviewStub));
+  const mobileOverview = nodes(Dashboard(props));
+  assert.ok(mobileOverview.some((node) => node.type === OverviewStub));
+  assert.equal(mobileOverview.some((node) => node.type === AssistantPanelStub), false);
   assert.equal(calls.at(-1)[0], "agent");
   assert.equal(calls.at(-1)[1], "开庭 CASE-1");
 
