@@ -398,8 +398,6 @@ export const getCompanyScheduleQueryFields = (): [string,string,string?,string?]
   ["log_content", "日志内容", "text", "日志内容"],
 ];
 
-export const getCompanyScheduleQueryInitialValues = (today: unknown) => ({ hearing_range: [today, null] });
-
 export const getCompanyCriminalColumnSchema = () => [
   {key:"serial_no",title:"案件编号",width:150},
   {key:"charge",title:"罪名",width:180},

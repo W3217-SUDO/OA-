@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api";
-import type { CaseRow } from "../types";
+import type { CaseRow, Hearing } from "../types";
+
+type SpecialCaseRow = CaseRow | (Omit<Hearing, "id"> & { id: string; case: CaseRow });
 
 export function useSpecialCaseRecords(route: string) {
-  const kind = route.endsWith("-unclaimed") ? "unclaimed" : route.endsWith("-no-refund") ? "refund" : "";
+  const kind = route === "case-company-schedule" ? "schedule" : route.endsWith("-unclaimed") ? "unclaimed" : route.endsWith("-no-refund") ? "refund" : "";
   const scope = route.startsWith("case-mine") ? "mine" : route.startsWith("case-dept") ? "department" : "company";
-  const [rows, setRows] = useState<CaseRow[]>([]);
+  const [rows, setRows] = useState<SpecialCaseRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -28,12 +30,19 @@ export function useSpecialCaseRecords(route: string) {
     setTotal(0);
     setLoading(true);
     setError("");
-    const { payment_range, ...filters } = query;
+    const { payment_range, hearing_range, source_range, handling_lawyer, ...filters } = query;
     try {
       const { data } = await api.get("/cases/special-records", {
         params: {
           ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "")),
           kind, scope, page: nextPage, page_size: nextSize,
+          ...(kind === "schedule" ? {
+            handling_lawyer,
+            hearing_from: hearing_range?.[0]?.format("YYYY-MM-DD"),
+            hearing_to: hearing_range?.[1]?.format("YYYY-MM-DD"),
+            source_from: source_range?.[0]?.format("YYYY-MM-DD"),
+            source_to: source_range?.[1]?.format("YYYY-MM-DD"),
+          } : {}),
           ...(payment_range?.length === 2 ? {
             paid_from: payment_range[0].format("YYYY-MM-DD"),
             paid_to: payment_range[1].format("YYYY-MM-DD"),

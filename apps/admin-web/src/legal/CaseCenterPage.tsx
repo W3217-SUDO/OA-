@@ -212,7 +212,6 @@ getCompanyCriminalQueryFields,
 getCompanyScheduleCourtLevels,
 getCompanySchedulePageSizeOptions,
 getCompanyScheduleQueryFields,
-getCompanyScheduleQueryInitialValues,
 getCustomCaseDocumentFolders,
 getLegacyCaseDetailMoreOperationLabels,
 getLegacyCaseDetailPrimaryOperationLabels,
@@ -259,7 +258,7 @@ TaskRow
 export {
 buildCasePhaseItems,
 buildCasePhaseItemsFromCounts,CasePhasePickerTree,getCaseDocumentMoveCategoryOptions,getCasePhaseDefinitions,getCompanyArbitrationColumnSchema,getCompanyArbitrationQueryFields,getCompanyCriminalColumnSchema,getCompanyCriminalQueryFields,getCompanyScheduleCourtLevels,getCompanySchedulePageSizeOptions,getCompanyScheduleQueryFields,
-getCompanyScheduleQueryInitialValues,getLegacyCaseDetailMoreOperationLabels,getLegacyCaseDetailPrimaryOperationLabels,getLegacyCaseDocumentGenerationItems,getLegacyGroupedCaseColumnSchema,isCivilCaseType,isCompanyCaseListRoute,isMyCaseListRoute,isNormalCaseBasicType,scopeCasesByListRoute,shouldShowCaseListActions,shouldShowCompanyScheduleActions,shouldShowCompanyScheduleSinglePageJumper,shouldUseCompanyArbitrationColumns,shouldUseCompanyArbitrationQueryFields,shouldUseCompanyCriminalQueryFields,shouldUseCompanySchedulePagination,shouldUseCompanyScheduleQueryFields
+getLegacyCaseDetailMoreOperationLabels,getLegacyCaseDetailPrimaryOperationLabels,getLegacyCaseDocumentGenerationItems,getLegacyGroupedCaseColumnSchema,isCivilCaseType,isCompanyCaseListRoute,isMyCaseListRoute,isNormalCaseBasicType,scopeCasesByListRoute,shouldShowCaseListActions,shouldShowCompanyScheduleActions,shouldShowCompanyScheduleSinglePageJumper,shouldUseCompanyArbitrationColumns,shouldUseCompanyArbitrationQueryFields,shouldUseCompanyCriminalQueryFields,shouldUseCompanySchedulePagination,shouldUseCompanyScheduleQueryFields
 } from "./constants";
 
 export default function CaseCenterPage({
@@ -2956,7 +2955,7 @@ export default function CaseCenterPage({
           </Space>
         </div>}
         {specialMode==="invoice"&&invoiceBatch.error&&<Alert type="error" showIcon title={invoiceBatch.error} action={<Button disabled={invoiceBatch.loading||!invoiceBatch.attachmentIds.length} onClick={()=>void loadCaseInvoiceBatch()}>重试查询</Button>}/>}
-        {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className="case-special-query" initialValues={shouldUseCompanyScheduleQueryFields(initialView)?getCompanyScheduleQueryInitialValues(dayjs()):undefined} onFinish={values=>{setCaseQuery(values);setSelectedCaseKeys([]);setCompanySchedulePage(1);if(specialCaseList.active)void specialCaseList.search(values,1,specialCaseList.pageSize);else if(specialMode==="receipt")void receiptList.search(values,1,receiptList.pageSize);}}>
+        {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className="case-special-query" onFinish={values=>{setCaseQuery(values);setSelectedCaseKeys([]);setCompanySchedulePage(1);if(specialCaseList.active)void specialCaseList.search(values,1,specialCaseList.pageSize);else if(specialMode==="receipt")void receiptList.search(values,1,receiptList.pageSize);}}>
           {(specialFilters[specialMode]||[]).map(([key,label,type,placeholder])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker placeholder={placeholder!==undefined?[placeholder,placeholder]:undefined}/>:type==="select"?<Select allowClear placeholder={placeholder} options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input placeholder={placeholder}/>}</Form.Item>)}
           <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button>{specialMode==="receipt"&&receiptList.canUpload&&<Button type="primary" onClick={()=>{const rows=receiptRows.filter(row=>selectedCaseKeySet.has(String(row.id)));if(!rows.length)return message.warning("请选择费用记录");if(new Set(rows.map(row=>row.customer)).size>1)return message.warning("批量上传的费用必须属于同一客户");setReceiptUploadRows(rows);}}>批量上传</Button>}<Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setSelectedCaseKeys([]);setCompanySchedulePage(1);if(specialCaseList.active)void specialCaseList.search({},1,specialCaseList.pageSize);else if(specialMode==="receipt")void receiptList.search({},1,receiptList.pageSize);}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>
         </ListFilterBar>}
