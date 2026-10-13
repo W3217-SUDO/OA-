@@ -272,6 +272,7 @@ test("homepage pending summary is shown once and direct cancellation retains fai
     "./ConversationManager": { ConversationManager: component("conversation-manager") },
     "./AssistantWorkspaceTools": { AssistantWorkspaceTools: component("workspace-tools") },
     "./ConfirmationHistory": { ConfirmationHistory: component("confirmation-history") },
+    "./PersonalAiSpace": { PersonalAiSpace: component("personal-ai-space") },
     "./ActionConfirmation": { ActionConfirmation: component("action-confirmation") },
   });
   const action = { id: "a1", type: "mcp.call", summary: "为2个案件新增期限提醒", status: "pending" };
@@ -746,6 +747,144 @@ test("personal per-action failure ledger preserves A across B failures, dismissa
   await act(async () => assert.rejects(workspace.decide(a, "approved"), /禁止直接重复提交/));
   assert.equal(posts.filter(([path]) => path.endsWith("/decision")).length, 2, "A与B最初各一POST，A禁止重POST");
   await act(async () => renderer.unmount());
+});
+
+test("personal workspace preserves legacy case Word confirmation and follows explicit document capabilities", async () => {
+  let workspace;
+  let caseConfirmation;
+  const calls = [];
+  const errors = [];
+  let running = false;
+  const caseMessage = { role: "assistant", content: "原案件正文", case_id: 42, case_no: "CODEX-CASE", can_save_document: true };
+  const personalMessage = { role: "assistant", content: "个人正文", can_save_document: true, can_save_case_document: false, can_save_personal_document: true };
+  const caseWithoutUpload = { ...personalMessage, content: "有关联案件但无案件上传权限", case_id: 42 };
+  const state = { conversation_id: "CODEX-conversation", messages: [caseMessage, personalMessage, caseWithoutUpload], pending_actions: [], dismissed_action_ids: [] };
+  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
+    antd: { ...require("antd"), message: { warning() {}, error: (text) => errors.push(text), success() {} } },
+    "../api": { api: { get: async (path) => ({ data: path === "/agent/skills" ? { items: [] } : { ready: true } }) } },
+    "./useConversationRuntime": { useConversationRuntime: () => ({ state, activities: {}, anyRunning: () => false, running: () => running, reset() {}, get: () => state }) },
+    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], busy: false, locked: () => false, load: async () => {}, refresh: async () => {} }) },
+    "../legal/constants": { aiWordDocumentName: () => "原文.docx" },
+    "../legal/services/agentDocumentConfirmation": { confirmCaseAgentDocument: (value) => { calls.push("case"); caseConfirmation = value; } },
+    "./personalAiDocumentConfirmation": { confirmPersonalAiDocument: async (value) => { calls.push("personal"); assert.equal(value.conversationId, "CODEX-conversation"); assert.ok([1, 2].includes(value.messageIndex)); assert.equal(Object.hasOwn(value, "caseId"), false); value.onSaved({ name: "个人文稿.docx" }); } },
+  });
+  function Probe() { workspace = usePersonalWorkspace(); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  await act(async () => { await workspace.saveWord(caseMessage, 0); });
+  assert.deepEqual(calls, ["case"], "原can_save_document+case_id消息保留案件确认，不依赖新标记");
+  assert.equal(caseConfirmation.caseId, 42);
+  assert.equal(caseConfirmation.serialNo, "CODEX-CASE");
+  assert.equal(caseConfirmation.content, caseMessage.content);
+  assert.equal(workspace.documentRevision, 0, "打开确认不等于保存成功");
+  await act(async () => { await caseConfirmation.onSaved(); });
+  assert.equal(workspace.savedDocuments[0], "原文.docx");
+  assert.equal(workspace.documentRevision, 1);
+  await act(async () => { await workspace.saveWord(personalMessage, 1); });
+  assert.deepEqual(calls, ["case", "personal"]);
+  assert.equal(workspace.savedDocuments[1], "个人文稿.docx");
+  assert.equal(workspace.documentRevision, 2, "两个真实成功回调都刷新个人空间索引");
+  await act(async () => { await workspace.saveWord(caseWithoutUpload, 2); });
+  assert.deepEqual(calls, ["case", "personal", "personal"], "真实case标记为false时不能凭case_id走案件写入");
+  assert.equal(workspace.documentRevision, 3);
+  running = true;
+  await act(async () => { await workspace.saveWord(caseWithoutUpload, 2); });
+  assert.match(errors.at(-1), /尚未完整生成/);
+  running = false;
+  state.messages[2] = { ...caseWithoutUpload, failed: true };
+  await act(async () => { await workspace.saveWord(caseWithoutUpload, 2); });
+  state.messages[2] = { ...caseWithoutUpload, content: "已变化正文" };
+  await act(async () => { await workspace.saveWord(caseWithoutUpload, 2); });
+  assert.equal(calls.length, 3, "未完成、失败或变化的原消息不打开保存确认");
+  await act(async () => renderer.unmount());
+});
+
+test("explicit document capability flags cannot fall through to legacy case permissions", () => {
+  const { workspaceDocumentSaveTarget } = loadModule("../personal-agent/types.ts", { "../AgentOperationPreview": { agentOperationError: (error) => error.message } });
+  const legacy = { role: "assistant", content: "正文", case_id: 42, can_save_document: true };
+  assert.equal(workspaceDocumentSaveTarget(legacy), "case");
+  assert.equal(workspaceDocumentSaveTarget({ ...legacy, can_save_case_document: false, can_save_personal_document: true }), "personal");
+  assert.equal(workspaceDocumentSaveTarget({ ...legacy, can_save_case_document: false, can_save_personal_document: false }), null);
+  assert.equal(workspaceDocumentSaveTarget({ ...legacy, can_save_case_document: true, can_save_personal_document: true }), "case");
+  assert.equal(workspaceDocumentSaveTarget({ role: "assistant", content: "个人正文", can_save_document: true, can_save_personal_document: true, can_save_case_document: false }), "personal");
+});
+
+test("personal AI document uses raw UTF8 hash and explicit one-shot confirmation without case inference", async () => {
+  const { createHash, webcrypto } = require("node:crypto");
+  const content = "\n 中文正文\r\n保留空格 \n";
+  let configured = false;
+  let options;
+  let modalReady;
+  let available = true;
+  const posts = [];
+  const updates = [];
+  const saved = [];
+  const notices = [];
+  const file = { id: "a".repeat(32), attachment_id: null, name: "文稿.docx", content_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", size: 128, sha256: "b".repeat(64), status: "available", storage_backend: "oss", owner_user_id: 1, owner_name: "CODEX测试员工", source_kind: "assistant_message", conversation_id: "CODEX-conversation", source_request_id: null, case_id: null, created_at: "2026-10-13T00:00:00Z", download_url: "/api/v1/personal-agent/ai-space/files/" + "a".repeat(32) + "/download", error: null };
+  const { confirmPersonalAiDocument } = loadModule("../personal-agent/personalAiDocumentConfirmation.tsx", {
+    antd: { Alert: () => null, message: { success: (text) => notices.push(text) }, Modal: { confirm: (value) => { options = value; modalReady(); return { update: (value) => updates.push(value) }; } } },
+    "../api": { api: {
+      get: async () => ({ data: { owner_user_id: 1, owner_name: "CODEX测试员工", employee_record_id: 1, folder: "员工目录", storage_backend: "oss", configured } }),
+      post: async (path, body, request) => { posts.push([path, body, request]); return { data: available ? file : { ...file, status: "uncertain", error: "存储状态未核实" } }; },
+    } },
+    "../AgentOperationPreview": { AgentOperationPreview: () => null, agentOperationError: (error) => error.message },
+  }, { crypto: webcrypto, TextEncoder });
+  const args = { conversationId: "CODEX-conversation", messageIndex: 3, name: "文稿.docx", content, onSaved: (item) => saved.push(item) };
+  await assert.rejects(confirmPersonalAiDocument(args), /OSS 尚未配置/);
+  assert.equal(options, undefined);
+  assert.equal(posts.length, 0);
+  configured = true;
+  const ready = new Promise((resolve) => { modalReady = resolve; });
+  const opened = confirmPersonalAiDocument(args);
+  await ready;
+  assert.equal(posts.length, 0, "查询配置及计算hash不写入，必须等待人工确认");
+  await options.onOk();
+  await opened;
+  assert.equal(posts[0][0], "/personal-agent/ai-space/files");
+  assert.deepEqual(JSON.parse(JSON.stringify(posts[0][1])), { conversation_id: "CODEX-conversation", message_index: 3, name: "文稿.docx", expected_content_sha256: createHash("sha256").update(content, "utf8").digest("hex") });
+  assert.equal(posts[0][2].headers["X-OA-Agent-Confirmation"], "frontend");
+  assert.equal(saved.length, 1);
+  assert.equal(notices.length, 1);
+  await assert.rejects(options.onOk(), /禁止重复提交/);
+  assert.equal(posts.length, 1);
+  available = false;
+  const failedReady = new Promise((resolve) => { modalReady = resolve; });
+  const failed = confirmPersonalAiDocument(args);
+  await failedReady;
+  await assert.rejects(options.onOk(), /存储状态未核实/);
+  assert.equal(saved.length, 1, "uncertain不能标记保存成功");
+  assert.equal(notices.length, 1);
+  assert.equal(updates.at(-1).okButtonProps.disabled, true);
+  options.onCancel();
+  await failed;
+});
+
+test("personal AI space shows known Chinese source labels and preserves unknown source values", () => {
+  const { PersonalAiSpaceFiles } = loadModule("../personal-agent/PersonalAiSpaceFiles.tsx", { antd: { Button: () => null, Empty: () => null, Tag: () => null, Tooltip: () => null } });
+  const text = (node) => typeof node === "string" || typeof node === "number" ? String(node) : React.Children.toArray(node?.props?.children).map(text).join("");
+  for (const [source, label] of [["mcp_export", "案件导出"], ["mcp_generated", "智能体生成文件"], ["case_draft", "案件AI草稿"], ["case_upload", "案件AI上传"], ["case_migration", "案件AI迁移"], ["assistant_message", "助手回答"], ["future_source", "future_source"], ["toString", "toString"]]) {
+    const rendered = PersonalAiSpaceFiles({ items: [{ id: "CODEX-file", name: "CODEX文稿.docx", status: "failed", size: 10, created_at: "2026-10-13T00:00:00Z", source_kind: source, conversation_id: null, source_request_id: null, error: null, download_url: null }], downloadingId: "", busy: false, onDownload: () => assert.fail("来源展示不能下载"), onConversation: () => assert.fail("无来源会话不能导航") });
+    assert.ok(text(rendered).includes(label));
+    if (source !== label) assert.equal(text(rendered).includes(source), false);
+  }
+});
+
+test("personal AI download preserves XLS filename and rejects unavailable files before bytes", async () => {
+  let status = "available";
+  const paths = [];
+  const urls = [];
+  const anchor = { click() {} };
+  const file = { id: "c".repeat(32), name: "案件导出.xls", status: "available", download_url: "/api/v1/personal-agent/ai-space/files/" + "c".repeat(32) + "/download" };
+  const { downloadPersonalAiFile } = loadModule("../personal-agent/personalAiSpaceApi.ts", {
+    "../api": { api: { get: async (path) => { paths.push(path); return { data: path.endsWith("/download") ? {} : { ...file, status } }; } } },
+  }, { document: { createElement: () => anchor }, URL: { createObjectURL: () => "blob:CODEX", revokeObjectURL: (url) => urls.push(url) }, window: { setTimeout: (callback) => callback() } });
+  await downloadPersonalAiFile(file);
+  assert.equal(anchor.download, "案件导出.xls", "保留实际扩展名，不伪装XLSX");
+  assert.equal(paths[1], `/personal-agent/ai-space/files/${file.id}/download`);
+  assert.deepEqual(urls, ["blob:CODEX"]);
+  status = "uncertain";
+  await assert.rejects(downloadPersonalAiFile(file), /不能下载/);
+  assert.equal(paths.filter((path) => path.endsWith("/download")).length, 1);
 });
 
 test("agent workspace releases screenshot URLs on removal and unmount, and reports upload failures", async () => {

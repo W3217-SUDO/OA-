@@ -1,14 +1,15 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Input, List, Tag, Tooltip } from "antd";
-import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileWordOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import AgentAvatar from "./AgentAvatar";
 import { ConversationManager } from "./ConversationManager";
 import { AssistantWorkspaceTools } from "./AssistantWorkspaceTools";
 import { ActionConfirmation } from "./ActionConfirmation";
 import { ConfirmationHistory } from "./ConfirmationHistory";
+import { PersonalAiSpace } from "./PersonalAiSpace";
 import { agentOperationMessage } from "../AgentOperationPreview";
-import { errorText, type ConfirmationDetail, type PendingAction } from "./types";
+import { errorText, workspaceDocumentSaveTarget, type ConfirmationDetail, type PendingAction } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 import "./assistant-panel.css";
 
@@ -155,7 +156,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             {name && state.conversation_title && <small>{state.conversation_title}</small>}
           </span> : conversationTitle}
         </span>
-        <div className="assistant-bar-actions">
+        <div className="assistant-bar-actions has-personal-ai-space">
+          <PersonalAiSpace revision={workspace.documentRevision} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} onOpenConversation={workspace.selectConversation} />
           <ConfirmationHistory onReopen={reopen} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} />
           <Tooltip title="刷新智能体">
             <Button
@@ -218,6 +220,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           >
             {state.messages.map((item, index) => {
               const thinking = !item.content && !item.stopped && sending && index === state.messages.length - 1;
+              const documentTarget = workspaceDocumentSaveTarget(item);
               return (
                 <div key={`${item.created_at || "message"}-${index}`} className={`assistant-message is-${item.role}`}>
                   {item.role === "assistant" && <div className="assistant-message-avatar" role="img" aria-label={name || "AI助手"}>
@@ -228,6 +231,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                       ? (item.role === "user" ? <MessageText content={item.content} /> : item.content)
                       : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><span>{progressText}</span></span> : "")}
                     {item.stopped && <span className="assistant-stopped">{item.content ? "已停止，已保留生成内容" : "已停止"}</span>}
+                    {item.role === "assistant" && item.personal_document_save_error && !item.failed && !(sending && index === state.messages.length - 1) && <Alert type="warning" showIcon title="个人文档暂不可保存" description={item.personal_document_save_error} />}
+                    {item.role === "assistant" && documentTarget && !!item.content && !item.failed && !item.stopped && !(sending && index === state.messages.length - 1) && !state.pending_actions.some((action) => action.status === "pending" && action.preview?.path?.endsWith("/ai-space/files")) && <div className="personal-ai-document-actions"><Tooltip title={documentTarget === "case" ? "保存 Word 到案件 AI 空间" : "保存 Word 到个人 AI 空间"}><Button type="text" icon={<FileWordOutlined />} disabled={loading || workspace.conversationBusy || !!workspace.savedDocuments[index]} onClick={() => void workspace.saveWord(item, index)}>{workspace.savedDocuments[index] ? documentTarget === "case" ? "已存入案件 AI 空间" : "已存入个人 AI 空间" : documentTarget === "case" ? "保存到案件 AI 空间" : "保存 Word"}</Button></Tooltip></div>}
                   </div>
                 </div>
               );

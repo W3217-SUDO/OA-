@@ -4,9 +4,10 @@ import { api } from "../api";
 import { DEFAULT_AGENT_SKILL } from "../agentSkillRouting";
 import { aiWordDocumentName, isAiWordGenerationRequest, isUsableAiDocumentContent } from "../legal/constants";
 import { confirmCaseAgentDocument } from "../legal/services/agentDocumentConfirmation";
+import { confirmPersonalAiDocument } from "./personalAiDocumentConfirmation";
 import { usePersonalConversations } from "./usePersonalConversations";
 import { useConversationRuntime } from "./useConversationRuntime";
-import { errorText, type ConfirmationDetail, type ConversationSnapshot, type DecisionFailure, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
+import { errorText, workspaceDocumentSaveTarget, type ConfirmationDetail, type ConversationSnapshot, type DecisionFailure, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
 
 const SUPPORTED_FILE = /\.(pdf|docx|xlsx|txt|png|jpe?g)$/i;
 export const MATERIAL_ACCEPT = ".pdf,.docx,.xlsx,.txt,.png,.jpg,.jpeg";
@@ -21,6 +22,7 @@ export function usePersonalWorkspace() {
   const [uploading, setUploading] = useState(false);
   const [decisionId, setDecisionId] = useState("");
   const [dismissalId, setDismissalId] = useState("");
+  const [documentRevision, setDocumentRevision] = useState(0);
   const [dismissedByConversation, setDismissedByConversation] = useState<Record<string, string[]>>({});
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const draftsRef = useRef<Record<string, Draft>>({});
@@ -28,6 +30,7 @@ export function usePersonalWorkspace() {
   const decisionLock = useRef(false);
   const dismissalLock = useRef(false);
   const sendStarts = useRef(new Set<string>());
+  const documentConfirmations = useRef(new Set<string>());
   const runtime = useConversationRuntime();
   const state = runtime.state;
   const id = state.conversation_id || "";
@@ -96,10 +99,28 @@ export function usePersonalWorkspace() {
   };
 
   const chooseCase = (item: WorkspaceCase | null) => { updateDraft(id, "selectedCase", item); setCaseMaterials([]); };
-  const saveWord = (item: WorkspaceMessage, index: number, target = id) => {
-    if (!item.case_id || !item.content.trim()) return;
-    const name = aiWordDocumentName("", item.content);
-    confirmCaseAgentDocument({ caseId: item.case_id, serialNo: item.case_no || "", name, content: item.content, onSaved: async () => { updateDraft(target, "savedDocuments", (current) => ({ ...current, [index]: name })); } });
+  const saveWord = async (item: WorkspaceMessage, index: number, target = id) => {
+    const current = runtime.get(target);
+    const source = current.messages[index];
+    if (!target || !source || source.role !== "assistant" || source.content !== item.content || !source.content.trim() || source.failed || source.stopped || (runtime.running(target) && index === current.messages.length - 1)) { message.error("原回答尚未完整生成或已变化，请核对当前会话后保存"); return; }
+    const destination = workspaceDocumentSaveTarget(source);
+    if (!destination) { message.error(source.personal_document_save_error || "当前回答不具备文档保存能力"); return; }
+    const name = aiWordDocumentName("", source.content);
+    const onSaved = (savedName: string) => {
+      updateDraft(target, "savedDocuments", (current) => ({ ...current, [index]: savedName }));
+      setDocumentRevision((value) => value + 1);
+    };
+    if (destination === "case") {
+      confirmCaseAgentDocument({ caseId: source.case_id!, serialNo: source.case_no || "", name, content: source.content, onSaved: async () => onSaved(name) });
+      return;
+    }
+    const key = `${target}:${index}`;
+    if (documentConfirmations.current.has(key) || draftsRef.current[target]?.savedDocuments[index]) return;
+    documentConfirmations.current.add(key);
+    try {
+      await confirmPersonalAiDocument({ conversationId: target, messageIndex: index, name, content: source.content, onSaved: (file) => onSaved(file.name) });
+    } catch (error) { message.error(errorText(error, "个人文档保存未完成")); }
+    finally { documentConfirmations.current.delete(key); }
   };
   // override 用于工作台提醒和快捷问题：它们把完整问题直接交给智能体，不经过输入框。
   // target 用于把问题发给一条刚建的对话，避免沿用闭包里的旧会话。
@@ -227,7 +248,7 @@ export function usePersonalWorkspace() {
     const failure = draftsRef.current[id]?.decisionFailures[actionId];
     if (failure) updateDecisionFailure(id, actionId, { ...failure, hidden: true });
   };
-  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, savedDocuments, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation,
+  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, savedDocuments, documentRevision, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation,
     conversations: conversations.items, conversationBusy: conversations.busy, runningIds: Object.keys(runtime.activities),
     createConversation: () => changeConversation(conversations.create), selectConversation: (target: string) => target === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(target)),
     deleteConversation: (target: string) => changeConversation(async () => { const next = await conversations.remove(target); runtime.forget(target); const updated = { ...draftsRef.current }; delete updated[target]; draftsRef.current = updated; setDrafts(updated); return next; }),
