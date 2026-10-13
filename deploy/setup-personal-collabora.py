@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import csv
 import fcntl
 import hashlib
 import json
@@ -125,6 +126,20 @@ def runtime_commit():
     return json.loads(Path("/opt/sunhold-oa/runtime/enterprise/current/runtime-manifest.json").read_text())[
         "source_commit"
     ]
+
+
+def require_idle_release_queue():
+    states = {}
+    with Path("/opt/sunhold-oa/releases/queue.tsv").open(newline="") as handle:
+        for row in csv.reader(handle, delimiter="\t"):
+            if not row:
+                continue
+            if len(row) != 6:
+                raise RuntimeError("release queue malformed; infrastructure change refused")
+            states[row[0]] = row
+    pending = [row[0] for row in states.values() if row[1] in {"assigned", "activating"}]
+    if pending:
+        raise RuntimeError("unresolved release queue; infrastructure change refused: " + ",".join(pending))
 
 
 def atomic(path, content, mode):
@@ -426,6 +441,7 @@ try:
         held.append(handle)
     if runtime_commit() != args.expected_runtime_commit:
         raise RuntimeError("runtime baseline drift under formal mutex")
+    require_idle_release_queue()
     if args.action == "rollback":
         result = rollback(args.expected_runtime_commit)
     else:
