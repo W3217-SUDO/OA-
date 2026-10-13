@@ -230,6 +230,14 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                 context.setSelectedCaseKeys([]);
                 const profileRes = await api.get("/auth/me");
                 setProfile(profileRes.data);
+                if (initialView === "case-company-schedule") {
+                    const { data } = await api.get("/cases/reference-options");
+                    setCaseTypeOptions(data.case_types);
+                    setCourtOptions(data.courts);
+                    setCourtOfficerOptions(data.court_officers);
+                    setCaseLawyerOptions(data.case_lawyers);
+                    setCaseAssistantOptions(data.case_assistants);
+                }
                 await context.specialCaseList.reload();
                 return;
             }
