@@ -111,7 +111,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
       </main>
     </div>
     <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} skills={skills} refresh={workspace.refreshSkills} onSelect={workspace.setSkillId} />
-    <ActionConfirmation action={activeAction} deciding={!!workspace.decisionId} onDecide={workspace.decide} onClose={() => setActiveAction(null)} />
+    <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeAction?.id) ?? null} deciding={!!workspace.decisionId} onDecide={workspace.decide} onClose={() => setActiveAction(null)} />
     <MaterialPreview item={previewMaterial} onClose={() => setPreviewMaterial(null)} />
     <CaseMaterialsPicker mode={pickerMode} onClose={() => setPickerMode(null)} selectedCase={selectedCase} onCase={workspace.chooseCase} selectedMaterials={workspace.caseMaterials} onMaterials={workspace.setCaseMaterials} privateCount={workspace.materials.length} />
   </div>;

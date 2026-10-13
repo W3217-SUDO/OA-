@@ -234,7 +234,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           />
         </div>
       )}
-      <ActionConfirmation action={activeAction} deciding={!!workspace.decisionId} onDecide={decide} onClose={() => setActiveAction(null)} />
+      <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeAction?.id) ?? null} deciding={!!workspace.decisionId} onDecide={decide} onClose={() => setActiveAction(null)} />
       <div className="assistant-composer"
         onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
         onDrop={(event) => {

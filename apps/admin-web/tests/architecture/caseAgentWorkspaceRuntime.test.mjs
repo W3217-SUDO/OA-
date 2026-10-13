@@ -304,6 +304,7 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   assert.equal(decisions.length, 1);
   const failed = { ...action, status: "failed", error: { status_code: 409, detail: { detail: "任务由案件阶段自动完成，人工只能变更期限" } } };
   await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, state: { ...workspace.state, pending_actions: [failed] } } })));
+  assert.equal(renderer.root.findByType("action-confirmation").props.action, failed, "已打开弹窗直接读取最新操作，不保留旧 pending 对象");
   assert.equal(renderer.root.findByType("tag").props.children, "执行失败");
   assert.equal(renderer.root.findByType("alert").props.title, "任务由案件阶段自动完成，人工只能变更期限");
   assert.equal(button("查看并确认"), undefined);
@@ -311,12 +312,16 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   await act(async () => button("查看状态").props.onClick());
   assert.equal(renderer.root.findByType("action-confirmation").props.action.status, "failed");
   assert.equal(decisions.length, 1, "失败卡只读查看，不能重复执行");
+  await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, state: { ...workspace.state, pending_actions: [] } } })));
+  assert.equal(renderer.root.findByType("action-confirmation").props.action, null, "操作已移除时关闭弹窗，不回退旧对象");
+  await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, state: { ...workspace.state, conversation_id: "c2", pending_actions: [action] } } })));
+  assert.equal(renderer.root.findByType("action-confirmation").props.action, null, "切换会话后不能沿用旧操作选择");
   await act(async () => renderer.unmount());
 });
 
 test("personal center retains terminal outcomes as visible read-only cards", async () => {
   const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
-  const action = { id: "a1", type: "mcp.call", status: "failed", summary: "旧批量任务", error: { detail: { detail: "任务由案件阶段自动完成，人工只能变更期限" } } };
+  const action = { id: "a1", type: "create_task", status: "pending", summary: "原待确认任务" };
   const workspace = {
     status: { ready: true, commands: [] }, state: { conversation_id: "c1", messages: [], pending_actions: [action] },
     skills: [], skillId: "general-office", input: "", loading: false, sending: true, uploading: false,
@@ -340,11 +345,23 @@ test("personal center retains terminal outcomes as visible read-only cards", asy
   let renderer;
   await act(async () => { renderer = create(React.createElement(PersonalAgentCenterPage, { onNavigate() {} })); });
   const button = (label) => renderer.root.findAllByType("button").find((item) => item.props.children === label);
+  await act(async () => button("查看并确认").props.onClick());
+  assert.equal(renderer.root.findByType("confirmation").props.action, action);
+  const failed = { ...action, status: "failed", error: { detail: { detail: "任务由案件阶段自动完成，人工只能变更期限" } } };
+  workspace.state = { ...workspace.state, pending_actions: [failed] };
+  await act(async () => renderer.update(React.createElement(PersonalAgentCenterPage, { onNavigate() {} })));
+  assert.equal(renderer.root.findByType("confirmation").props.action, failed, "非 MCP 弹窗同步最新终态和错误");
   assert.equal(button("查看并确认"), undefined);
   assert.equal(button("查看状态").props.disabled, false);
   assert.equal(renderer.root.findByType("alert").props.title, "任务由案件阶段自动完成，人工只能变更期限");
   await act(async () => button("查看状态").props.onClick());
   assert.equal(renderer.root.findByType("confirmation").props.action.status, "failed");
+  workspace.state = { ...workspace.state, pending_actions: [] };
+  await act(async () => renderer.update(React.createElement(PersonalAgentCenterPage, { onNavigate() {} })));
+  assert.equal(renderer.root.findByType("confirmation").props.action, null, "已移除的非 MCP 操作不能退回旧 pending");
+  workspace.state = { ...workspace.state, conversation_id: "c2", pending_actions: [action] };
+  await act(async () => renderer.update(React.createElement(PersonalAgentCenterPage, { onNavigate() {} })));
+  assert.equal(renderer.root.findByType("confirmation").props.action, null, "切换会话清除旧选择，不确认另一会话");
   await act(async () => renderer.unmount());
 });
 
