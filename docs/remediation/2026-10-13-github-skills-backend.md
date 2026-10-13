@@ -28,6 +28,7 @@ AI助手使用 WorkspaceSkill 和个人技能CRUD；连接器UI由C线程实现�
 |D2|技能连接器|没有预览与安装|预览摘要、确认后重取校验、个人库持久化|
 
 ## 6. 精确修改清单
+- [ ] 生产连通性补证后局部整改（候选008a）：PM真实只读核验阿里云HTTPX直接raw间歇TLS失败，官方Contents API连续3次200且同SHA。`github_agent_skills.py`下载固定生成`https://api.github.com/repos/{owner}/{repo}/contents/{path}`，ref作为HTTPX独立params编码，Accept固定`application/vnd.github.raw+json`。用户URL白名单不变、无认证/自定义header、TLS校验与no redirect/trust_env=False、128KiB与20秒总限时保留；不是fallback或代理。测试新增特殊ref/path编码检查，既有固定目标断言更新。只在候选clone修改，不写真实业务库或服务器环境。
 - [x] `app/github_agent_skills.py`：只接受固定GitHub HTTPS主机，blob/tree/raw/根仓库URL规范化为SKILL.md；固定raw下载、禁止重定向、超时/大小限制；YAML safe_load解析元数据，保留正文且超过6000明确拒绝。
 - [x] `areas/personal_agent/router.py`：增加preview/install接口；要求认证，安装重取SHA256匹配，复用个人库、30个上限、同来源幂等，保留AI空间和旧CRUD。
 - [x] `tests/regression/github_agent_skills_test.py`：纯函数和MockTransport隔离测试，无真实业务数据。
@@ -40,6 +41,8 @@ AI助手使用 WorkspaceSkill 和个人技能CRUD；连接器UI由C线程实现�
 原文GitHub下载映射到固定主机读取；连接器映射到认证preview/install。测试非法URL、编码路径、redirect、超限、frontmatter、网络失败、内容变更；公开小文件真实只读下载。生产构建由PM/C统一执行。浏览器及真实业务写测试不执行，用户验收预览/安装/刷新/选择/删除，保持待验收。定时、业务审批、附件不涉及。未创建测试业务数据。
 
 ## 8. 实施记录
+2026-10-13 生产下载补证整改已完成：候选`/tmp/oa-release-candidate-20261013-FSJmPo`中只改`app/github_agent_skills.py`、`tests/regression/github_agent_skills_test.py`和本记录。官方Contents API为唯一下载目标，ref独立params编码，用户来源URL与摘要语义不变，保留全部限制与权限链。11项测试、相关ruff与py_compile通过，特殊`release+&=1` ref及含中文/#/&路径编码验证通过。候选函数本机真实GET成功（名称skill-installer、正文2881字符、SHA256与原文件一致）；同生产已有解释器、相同HTTPX参数远端只读GET HTTP200/3240字节/frontmatter真实、SHA256 `83b31cffb2552a923f4152f0338bea548274accc5489d151a95bced8e7bcfb74`。CodeGraph仍缺失；未写生产文件/环境/业务库，无数据库迁移，不安装技能或执行脚本。队列369阻断保持，未add/commit/push/部署，交D统一提交。
+
 已完成M1安全下载解析、M2认证预览/安装端点，旧上传/创建/更新/删除及AI空间路由保留。安装按source幂等，重取内容与预览摘要不一致返回409；已有同来源不同摘要也返回409，不覆盖原技能。存储复用当前账号个人库，无迁移。
 
 验证：`python -m unittest discover -s tests/regression -p github_agent_skills_test.py -v` 八项通过；其中安装端点测试使用AsyncMock存储，无数据库写入，覆盖当前身份归属、摘要变化阻断、同来源幂等及不同摘要不可覆盖，启停重新normalize后合法摘要仍保留。相关4个Python文件ruff通过，3个后端文件py_compile通过，git diff --check通过。`codegraph sync`仍command not found。

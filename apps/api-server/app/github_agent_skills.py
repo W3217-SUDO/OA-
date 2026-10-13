@@ -41,10 +41,11 @@ def github_skill_location(url: str) -> dict[str, str]:
         raise ValueError("请提供仓库、tree 目录或 blob/SKILL.md 链接；分支名含斜线时请使用提交 SHA")
     if not path or path[-1] != "SKILL.md":
         raise ValueError("仅支持 SKILL.md 技能文件")
-    encoded = "/".join(quote(part, safe="") for part in [owner, repo, ref, *path])
+    encoded_path = "/".join(quote(part, safe="") for part in path)
     source = f"https://github.com/{quote(owner, safe='')}/{quote(repo, safe='')}/blob/{quote(ref, safe='')}/" + "/".join(quote(part, safe="") for part in path)
     return {"url": source, "source": source, "owner": owner, "repo": repo, "ref": ref,
-            "path": "/".join(path), "raw_url": f"https://raw.githubusercontent.com/{encoded}"}
+            "path": "/".join(path),
+            "contents_url": f"https://api.github.com/repos/{quote(owner, safe='')}/{quote(repo, safe='')}/contents/{encoded_path}"}
 
 
 def parse_github_skill(content: bytes, location: dict[str, str]) -> dict:
@@ -74,7 +75,7 @@ def parse_github_skill(content: bytes, location: dict[str, str]) -> dict:
                                         "category": "GitHub", "instruction": instruction}, source=location["source"])
     except ValueError as exc:
         raise ValueError(f"技能字段不满足当前格式限制：{exc}") from exc
-    return {**{key: value for key, value in location.items() if key != "raw_url"},
+    return {**{key: value for key, value in location.items() if key != "contents_url"},
             "name": record["name"], "description": record["description"], "instruction": record["instruction"],
             "sha256": hashlib.sha256(content).hexdigest()}
 
@@ -87,7 +88,8 @@ async def preview_github_skill(url: str, *, transport: httpx.AsyncBaseTransport 
     try:
         async with asyncio.timeout(DOWNLOAD_TIMEOUT), httpx.AsyncClient(timeout=httpx.Timeout(15, connect=5), follow_redirects=False,
                                      trust_env=False, transport=transport) as client:
-            async with client.stream("GET", location["raw_url"], headers={"Accept": "text/plain", "Accept-Encoding": "identity"}) as response:
+            async with client.stream("GET", location["contents_url"], params={"ref": location["ref"]},
+                                     headers={"Accept": "application/vnd.github.raw+json", "Accept-Encoding": "identity"}) as response:
                 if response.status_code != 200:
                     raise HTTPException(status_code=422, detail=f"GitHub 文件读取失败（HTTP {response.status_code}）；请核对分支和 SKILL.md 路径，仓库根链接默认 main")
                 content = bytearray()

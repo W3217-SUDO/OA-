@@ -68,21 +68,42 @@ class GitHubSkillDownloadTest(unittest.IsolatedAsyncioTestCase):
                     lambda request: httpx.Response(200, stream=SlowStream())))
         self.assertEqual(failed.exception.status_code, 502)
 
-    async def test_fixed_raw_target_and_no_redirect_following(self):
+    async def test_fixed_contents_target_and_no_redirect_following(self):
         calls = []
 
         def response(request):
             calls.append(str(request.url))
+            self.assertEqual(request.headers['Accept'], 'application/vnd.github.raw+json')
+            self.assertNotIn('Authorization', request.headers)
             return httpx.Response(200, content=CONTENT)
 
         result = await preview_github_skill('https://github.com/a/b', transport=httpx.MockTransport(response))
-        self.assertEqual(calls, ['https://raw.githubusercontent.com/a/b/main/SKILL.md'])
+        self.assertEqual(calls, ['https://api.github.com/repos/a/b/contents/SKILL.md?ref=main'])
         self.assertEqual(result['name'], 'test-skill')
         for status in (302, 404, 429):
             with self.subTest(status=status), self.assertRaises(HTTPException) as caught:
                 await preview_github_skill('https://github.com/a/b', transport=httpx.MockTransport(
                     lambda request: httpx.Response(status, headers={'location': 'http://127.0.0.1/secret'})))
             self.assertEqual(caught.exception.status_code, 422)
+
+    async def test_ref_query_and_path_are_encoded_separately(self):
+        calls = []
+
+        def response(request):
+            calls.append(request.url)
+            self.assertEqual(request.url.host, 'api.github.com')
+            self.assertEqual(dict(request.url.params), {'ref': 'release+&=1'})
+            self.assertEqual(request.url.path, '/repos/org/repo/contents/skills/合同#&/SKILL.md')
+            return httpx.Response(200, content=CONTENT)
+
+        result = await preview_github_skill(
+            'https://github.com/org/repo/blob/release%2B%26%3D1/skills/%E5%90%88%E5%90%8C%23%26/SKILL.md',
+            transport=httpx.MockTransport(response))
+        self.assertEqual(len(calls), 1)
+        self.assertIn('ref=release%2B%26%3D1', str(calls[0]))
+        self.assertIn('/%E5%90%88%E5%90%8C%23%26/', str(calls[0]))
+        self.assertEqual(result['ref'], 'release+&=1')
+        self.assertNotIn('contents_url', result)
 
     async def test_size_limit_and_connection_failure(self):
         with self.assertRaises(HTTPException) as large:
