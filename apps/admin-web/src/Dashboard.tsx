@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Button, message } from "antd";
 import dayjs from "dayjs";
 import AssistantPanel, { type AssistantSuggestion } from "./personal-agent/AssistantPanel";
 import { usePersonalWorkspaceContext } from "./personal-agent/PersonalWorkspaceProvider";
-import { PersonalAiSpace } from "./personal-agent/PersonalAiSpace";
 import DashboardHearingSchedule from "./DashboardHearingSchedule";
 import DashboardMetricTiles from "./DashboardMetricTiles";
 import DashboardRejectionReminder from "./DashboardRejectionReminder";
@@ -50,7 +49,6 @@ export default function Dashboard({
   const { data, loading, errors, retry } = useDashboardData();
   // 运行时由路由外的容器持有，提醒切到独立 Ai 页面后仍保留当前对话和草稿。
   const workspace = usePersonalWorkspaceContext();
-  const [personalSpaceOpen, setPersonalSpaceOpen] = useState(false);
   const detailRequest = useRef<AbortController | null>(null);
   const navigation = useRef({ onNavigate, grantedMenuKeys, permissionAdministrator });
   navigation.current = { onNavigate, grantedMenuKeys, permissionAdministrator };
@@ -192,13 +190,10 @@ export default function Dashboard({
         {metrics}
         <div className="wb-grid">
           <div className="wb-main">
-            <div className={`wb-view-switch${isNarrowViewport ? "" : " is-desktop"}`} aria-label="工作台视图与文件">
-              {isNarrowViewport && <>
-                <button type="button" aria-pressed={view === "overview"} onClick={() => onViewChange("overview")}>工作概况</button>
-                <button type="button" aria-pressed={view === "conversation"} onClick={() => onViewChange("conversation")}>助手对话</button>
-              </>}
-              <button type="button" aria-haspopup="dialog" onClick={() => setPersonalSpaceOpen(true)}>AI 空间</button>
-            </div>
+            {isNarrowViewport && <div className="wb-view-switch" aria-label="工作台视图">
+              <button type="button" aria-pressed={view === "overview"} onClick={() => onViewChange("overview")}>工作概况</button>
+              <button type="button" aria-pressed={view === "conversation"} onClick={() => onViewChange("conversation")}>助手对话</button>
+            </div>}
             {showEmbeddedConversation ? <AssistantPanel
               workspace={workspace}
               suggestions={suggestions}
@@ -230,16 +225,6 @@ export default function Dashboard({
           </div>
         </div>
       </div>
-      <PersonalAiSpace
-        open={personalSpaceOpen}
-        onClose={() => setPersonalSpaceOpen(false)}
-        revision={workspace.documentRevision}
-        busy={workspace.loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading}
-        onOpenConversation={async (id) => {
-          await workspace.selectConversation(id);
-          onViewChange("conversation");
-        }}
-      />
     </div>
   );
 }

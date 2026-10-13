@@ -12,7 +12,6 @@
 .wb-view-switch{display:flex;flex:none;gap:4px;align-self:flex-start;margin-bottom:10px;padding:3px;border:1px solid var(--wb-line);border-radius:10px;background:#e9edf0}
 .wb-view-switch button{min-height:44px;padding:6px 18px;border:0;border-radius:7px;background:transparent;color:var(--wb-slate);font:inherit;cursor:pointer}
 .wb-view-switch button[aria-pressed="true"]{background:#fff;color:var(--wb-jade);font-weight:600}
-.wb-view-switch.is-desktop{align-self:flex-end;background:#fff}
 .wb-view-switch button:focus-visible,.wb-todo-entry:focus-visible,.wb-overview-case-number button:focus-visible{outline:2px solid var(--wb-jade);outline-offset:2px}
 .wb-overview{--overview-space:20px;--overview-gap:12px;--overview-surface:#f7faf9;--overview-rule:#e8edf0;display:flex;flex-direction:column;min-height:0;border:1px solid var(--wb-line);border-radius:14px;background:#edf3f6;overflow:hidden;container-type:inline-size}
 .wb-overview-head{display:flex;flex:none;align-items:center;justify-content:space-between;gap:var(--overview-gap);padding:16px var(--overview-space) 12px}
@@ -76,7 +75,7 @@ button.wb-todo-entry:active{background:#dcece3}
   .wb-overview-case-date{grid-column:1/-1;grid-row:3}
 }
 @media(max-width:1100px){.wb-overview-body{flex:none;overflow:visible}.wb-main>.wb-overview{flex:none}}
-@media(max-width:1100px){.wb-view-switch:not(.is-desktop){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-self:stretch}.wb-view-switch:not(.is-desktop) button{min-width:0;padding:6px 8px;white-space:nowrap}}
+@media(max-width:1100px){.wb-view-switch{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-self:stretch}.wb-view-switch button{min-width:0;padding:6px 8px;white-space:nowrap}}
 .wb-side{display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0}
 .wb-side>.wb-docket{flex:1 1 auto;min-height:200px}
 .wb-side>.wb-rail{flex:1 1 auto;min-height:170px}
