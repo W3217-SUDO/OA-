@@ -48,6 +48,12 @@ body {
   font-weight: 600;
   transition: 0.2s;
 }
+.logo.logo-collapsed {
+  width: 50px;
+  min-width: 50px;
+  flex: 0 0 50px;
+  white-space: nowrap;
+}
 .global-search {
   width: 320px;
   min-width: 320px;
@@ -646,7 +652,9 @@ body {
     justify-content: start;
   }
   .logo.logo-collapsed {
-    width: auto;
+    width: 88px;
+    min-width: 88px;
+    flex: 0 0 88px;
   }
   .sidebar-toggle {
     order: -1;
