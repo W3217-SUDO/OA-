@@ -238,10 +238,19 @@ class SQLiteSelectedQueryTest(SelectedQueryAssertions, unittest.IsolatedAsyncioT
                 issued = await db.get(BusinessRecord, issued_id)
                 issued.data = {key: value for key, value in invoice_data.items() if key != "extra_amount"}
                 await db.commit()
-            for kind in ("case", "settlement", "receipt"):
+            for kind, name in (("case", "案件明细清单"), ("settlement", "结算列表")):
                 response = await client.get("/api/v1/finance/general-settlements/export", params={"kind": kind, "ids": payment_id})
-                self.assertEqual(response.status_code, 409, response.text)
-                self.assertEqual(response.json()["detail"], "结算关联发票金额未映射完整")
+                self.assertEqual(response.status_code, 200, response.text if response.status_code != 200 else "")
+                self.assertTrue(response.content.startswith(bytes.fromhex("d0cf11e0a1b11ae1")))
+                sheet = xlrd.open_workbook(file_contents=response.content).sheet_by_index(0)
+                self.assertEqual(sheet.name, name)
+                case_rows = [sheet.row_values(index) for index in range(sheet.nrows)
+                             if sheet.cell_value(index, 0) == "CODEX-ROW4-MIXED-CASE"]
+                self.assertEqual(len(case_rows), 1)
+                self.assertEqual((case_rows[0][3], case_rows[0][5]), (25, 25))
+            response = await client.get("/api/v1/finance/general-settlements/export", params={"kind": "receipt", "ids": payment_id})
+            self.assertEqual(response.status_code, 409, response.text)
+            self.assertEqual(response.json()["detail"], "结算关联发票金额未映射完整")
 
     async def test_selected_receipt_exports_real_workbooks(self):
         async with self.engine.begin() as connection:

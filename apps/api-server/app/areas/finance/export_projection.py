@@ -222,7 +222,7 @@ async def archive_export_values(rows, identity, db):
     return values
 
 
-async def enrich_settlement_exports(rows, identity, db):
+async def enrich_settlement_exports(rows, identity, db, *, include_invoice_fields: bool):
     from app.core.incoming_allocation_projection import normalize_settlement_allocation_times
     from app.core.finance import _invoice_fee_details, _visible_incoming_payment_statement, _incoming_payment_legacy_summary
     from app.core.permissions import _record_scope_conditions
@@ -232,17 +232,18 @@ async def enrich_settlement_exports(rows, identity, db):
     by_id, by_number = await linked_cases([{"data": detail} for detail in details], identity, db)
     ids = {int(detail["fee_id"]) for detail in details if detail.get("fee_id")}
     fees = {fee["id"]: fee for fee in await _invoice_fee_details(identity, db, ids=ids)} if ids else {}
-    invoices = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "invoice",
-        or_(BusinessRecord.data["purpose"].as_string().is_(None), BusinessRecord.data["purpose"].as_string() != "付款凭证"),
-        *(await _record_scope_conditions(identity, db)), BusinessRecord.status.notin_(("已作废", "已撤回")),
-    ))).all())
     invoices_by_case_id, invoices_by_case_no = {}, {}
-    for invoice in invoices:
-        invoice_data = invoice.data or {}
-        for case_id in set([invoice_data.get("case_id")] + list(invoice_data.get("case_ids") or [])) - {None, ""}:
-            invoices_by_case_id.setdefault(int(case_id), {})[invoice.id] = invoice
-        for case_no in set([invoice_data.get("case_no")] + list(invoice_data.get("case_nos") or [])) - {None, ""}:
-            invoices_by_case_no.setdefault(str(case_no), {})[invoice.id] = invoice
+    if include_invoice_fields:
+        invoices = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "invoice",
+            or_(BusinessRecord.data["purpose"].as_string().is_(None), BusinessRecord.data["purpose"].as_string() != "付款凭证"),
+            *(await _record_scope_conditions(identity, db)), BusinessRecord.status.notin_(("已作废", "已撤回")),
+        ))).all())
+        for invoice in invoices:
+            invoice_data = invoice.data or {}
+            for case_id in set([invoice_data.get("case_id")] + list(invoice_data.get("case_ids") or [])) - {None, ""}:
+                invoices_by_case_id.setdefault(int(case_id), {})[invoice.id] = invoice
+            for case_no in set([invoice_data.get("case_no")] + list(invoice_data.get("case_nos") or [])) - {None, ""}:
+                invoices_by_case_no.setdefault(str(case_no), {})[invoice.id] = invoice
     payments = {payment.id: payment for payment in (await db.scalars(await _visible_incoming_payment_statement(identity, db))).all()}
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     for row in rows:
@@ -275,13 +276,14 @@ async def enrich_settlement_exports(rows, identity, db):
                 raise HTTPException(409, "结算关联费用金额未映射完整")
             detail["fee_total_amount"] = fee["data"].get("amount")
             detail["fee_allocated_amount"] = fee["data"].get("cashed_amount")
-            linked = list({**invoices_by_case_no.get(case.serial_no, {}), **invoices_by_case_id.get(case.id, {})}.values())
-            detail["invoice_dates"] = joined((invoice.data or {}).get("invoice_date") for invoice in linked)
-            detail["invoice_titles"] = joined((invoice.data or {}).get("invoice_title") for invoice in linked)
-            detail["invoice_numbers"] = joined((invoice.data or {}).get("invoice_no") for invoice in linked)
-            for target, source in (("invoice_amount", "amount"), ("invoice_extra_amount", "extra_amount")):
-                amounts = [(invoice.data or {}).get(source) for invoice in linked]
-                if show_amount and any(amount is None for amount in amounts):
-                    raise HTTPException(409, "结算关联发票金额未映射完整")
-                detail[target] = sum(float(amount) for amount in amounts) if show_amount else None
+            if include_invoice_fields:
+                linked = list({**invoices_by_case_no.get(case.serial_no, {}), **invoices_by_case_id.get(case.id, {})}.values())
+                detail["invoice_dates"] = joined((invoice.data or {}).get("invoice_date") for invoice in linked)
+                detail["invoice_titles"] = joined((invoice.data or {}).get("invoice_title") for invoice in linked)
+                detail["invoice_numbers"] = joined((invoice.data or {}).get("invoice_no") for invoice in linked)
+                for target, source in (("invoice_amount", "amount"), ("invoice_extra_amount", "extra_amount")):
+                    amounts = [(invoice.data or {}).get(source) for invoice in linked]
+                    if show_amount and any(amount is None for amount in amounts):
+                        raise HTTPException(409, "结算关联发票金额未映射完整")
+                    detail[target] = sum(float(amount) for amount in amounts) if show_amount else None
     return rows
