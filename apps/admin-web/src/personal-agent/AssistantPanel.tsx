@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef
 import { Alert, Button, Input, List, Tag, Tooltip } from "antd";
 import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
+import AgentAvatar from "./AgentAvatar";
 import { ConversationManager } from "./ConversationManager";
 import { AssistantWorkspaceTools } from "./AssistantWorkspaceTools";
 import { ActionConfirmation } from "./ActionConfirmation";
@@ -219,6 +220,9 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
               const thinking = !item.content && !item.stopped && sending && index === state.messages.length - 1;
               return (
                 <div key={`${item.created_at || "message"}-${index}`} className={`assistant-message is-${item.role}`}>
+                  {item.role === "assistant" && <div className="assistant-message-avatar" role="img" aria-label={name || "AI助手"}>
+                    {logoSrc ? <img src={logoSrc} alt="" width={32} height={32} /> : <AgentAvatar size={32} />}
+                  </div>}
                   <div className={`assistant-bubble${item.failed ? " is-failed" : ""}${thinking ? " is-thinking" : ""}`}>
                     {item.content
                       ? (item.role === "user" ? <MessageText content={item.content} /> : item.content)

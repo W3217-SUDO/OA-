@@ -60,7 +60,10 @@
 .assistant-thread{display:flex;flex:1 1 auto;flex-direction:column;gap:12px;min-width:0;min-height:0;padding:2px 4px 8px 0;overflow:auto;scrollbar-width:thin;scrollbar-color:#c9d2dc transparent}
 .assistant .assistant-thread.has-jump{padding-bottom:52px}
 .assistant-message{display:flex}
-.assistant-message.is-assistant{width:100%;min-width:0}
+.assistant-message.is-assistant{display:grid;grid-template-columns:32px minmax(0,1fr);align-items:start;column-gap:10px;width:100%;min-width:0}
+.assistant-message-avatar{display:flex;align-items:center;justify-content:center;width:32px;height:32px;overflow:hidden;border-radius:50%;background:#e7f3ee}
+.assistant-message-avatar>img,.assistant-message-avatar>svg{display:block;width:100%;height:100%}
+.assistant-message-avatar>img{object-fit:contain}
 .assistant-message.is-assistant .assistant-bubble{box-sizing:border-box;width:100%;min-width:0;max-width:none}
 .assistant-message.is-user{justify-content:flex-end}
 .assistant-bubble{max-width:min(88%,74ch);padding:10px 14px;border-radius:12px 12px 12px 4px;background:#f2f5f8;color:#18212b;font-size:14px;line-height:1.75;white-space:pre-wrap;word-break:break-word}
