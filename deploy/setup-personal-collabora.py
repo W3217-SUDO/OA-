@@ -4,12 +4,14 @@ import argparse
 import base64
 import csv
 import fcntl
+import gzip
 import hashlib
 import json
 import os
 from pathlib import Path
 import secrets
 import subprocess
+import tarfile
 import time
 from urllib.request import urlopen
 from urllib.parse import urlsplit
@@ -70,6 +72,7 @@ SNIPPET = """    # CODEX-personal-office-infra-20261014 begin
     location = /cool/adminws { return 404; }
     location ^~ /cool/ {
         access_log off;
+        proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -142,6 +145,91 @@ def require_idle_release_queue():
         raise RuntimeError("unresolved release queue; infrastructure change refused: " + ",".join(pending))
 
 
+def validate_official_archive(archive, expected_sha):
+    archive = Path(archive)
+    if not archive.is_absolute() or archive.is_symlink() or not archive.is_file():
+        raise RuntimeError("official archive must be an explicit regular absolute file")
+    with archive.open("rb") as handle:
+        if hashlib.file_digest(handle, "sha256").hexdigest() != expected_sha:
+            raise RuntimeError("official archive transport SHA mismatch")
+    manifest_digest = IMAGE.split("@sha256:")[1]
+    config_digest = EXPECTED_IMAGE_ID.removeprefix("sha256:")
+    with tarfile.open(archive, "r:") as tar:
+        members = tar.getmembers()
+        names = [member.name for member in members]
+        if len(names) != len(set(names)) or len(names) > 30:
+            raise RuntimeError("duplicate or unexpected archive members")
+        for member in members:
+            path = Path(member.name)
+            if path.is_absolute() or ".." in path.parts or not (member.isdir() or member.isfile()):
+                raise RuntimeError("unsafe official archive member")
+
+        def read_json(name, expected_digest=None):
+            member = tar.getmember(name)
+            if member.size > 1024 * 1024:
+                raise RuntimeError("official archive metadata too large")
+            content = tar.extractfile(member).read()
+            if expected_digest and digest(content) != expected_digest:
+                raise RuntimeError("pinned registry metadata SHA mismatch")
+            return json.loads(content)
+
+        manifest = read_json("blobs/sha256/" + manifest_digest, manifest_digest)
+        if manifest["config"]["digest"] != EXPECTED_IMAGE_ID:
+            raise RuntimeError("official manifest config binding mismatch")
+        config = read_json("blobs/sha256/" + config_digest, config_digest)
+        if config.get("architecture") != "amd64" or config.get("os") != "linux":
+            raise RuntimeError("official archive platform mismatch")
+        layers = ["blobs/sha256/" + item["digest"].removeprefix("sha256:") for item in manifest["layers"]]
+        docker_manifest = read_json("manifest.json")
+        if len(docker_manifest) != 1 or docker_manifest[0].get("RepoTags") not in (None, []):
+            raise RuntimeError("archive may not retag or overwrite any existing image")
+        if docker_manifest[0]["Config"] != "blobs/sha256/" + config_digest or docker_manifest[0]["Layers"] != layers:
+            raise RuntimeError("Docker export metadata does not bind the official image")
+        index = read_json("index.json")
+        if len(index["manifests"]) != 1 or index["manifests"][0]["digest"] != "sha256:" + manifest_digest:
+            raise RuntimeError("OCI index is not the single official pinned manifest")
+        if index["manifests"][0].get("annotations") != {
+            "containerd.io/distribution.source.docker.io": "collabora/code"
+        }:
+            raise RuntimeError("OCI export origin annotation mismatch")
+        allowed = {
+            "blobs",
+            "blobs/",
+            "blobs/sha256",
+            "blobs/sha256/",
+            "index.json",
+            "manifest.json",
+            "oci-layout",
+            "blobs/sha256/" + manifest_digest,
+            "blobs/sha256/" + config_digest,
+            *layers,
+        }
+        if set(names) != allowed.intersection(names):
+            raise RuntimeError("archive includes files outside the official manifest")
+        difference_ids = config["rootfs"]["diff_ids"]
+        if len(difference_ids) != len(layers):
+            raise RuntimeError("official rootfs layer count mismatch")
+        for name, layer, difference_id in zip(layers, manifest["layers"], difference_ids, strict=True):
+            member = tar.getmember(name)
+            if member.size != layer["size"] or hashlib.file_digest(
+                tar.extractfile(member), "sha256"
+            ).hexdigest() != layer["digest"].removeprefix("sha256:"):
+                raise RuntimeError("official compressed layer SHA/size mismatch")
+            if layer["mediaType"] != "application/vnd.docker.image.rootfs.diff.tar.gzip":
+                raise RuntimeError("unsupported official layer transport")
+            with gzip.GzipFile(fileobj=tar.extractfile(member)) as uncompressed:
+                if hashlib.file_digest(uncompressed, "sha256").hexdigest() != difference_id.removeprefix("sha256:"):
+                    raise RuntimeError("official rootfs difference SHA mismatch")
+    return {
+        "archive_sha256": expected_sha,
+        "archive_size": archive.stat().st_size,
+        "official_manifest": "sha256:" + manifest_digest,
+        "official_config": EXPECTED_IMAGE_ID,
+        "diff_ids": difference_ids,
+        "image_config": config["config"],
+    }
+
+
 def atomic(path, content, mode):
     temporary = path.with_name(path.name + ".CODEX-personal-office-pending")
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
@@ -202,7 +290,7 @@ def discovery(url):
     }
 
 
-def install(expected_nginx, expected_env, expected_runtime, resume=False):
+def install(expected_nginx, expected_env, expected_runtime, resume=False, official_archive=None, archive_sha=None):
     global CURRENT_INSTALL_OWNED
     if UNIT.exists():
         raise RuntimeError("owned unit already exists; do not overwrite")
@@ -251,23 +339,42 @@ def install(expected_nginx, expected_env, expected_runtime, resume=False):
         }
     save_state(state)
     CURRENT_INSTALL_OWNED = True
-    try:
-        run(["docker", "pull", IMAGE])
-    except Exception:
-        state["phase"] = "pull-failed"
+    if official_archive:
+        provenance = validate_official_archive(official_archive, archive_sha)
+        run(["docker", "load", "--input", official_archive])
+        state["official_archive_provenance"] = provenance
         save_state(state)
-        raise RuntimeError(
-            "official image pull failed before OA mutations; preserved backups support guarded resume or rollback"
-        ) from None
-    inspected = json.loads(run(["docker", "image", "inspect", IMAGE]))[0]
-    if inspected["Architecture"] != "amd64" or IMAGE not in inspected.get("RepoDigests", []):
+        runtime_image = "sha256:" + IMAGE.split("@sha256:")[1]
+        try:
+            inspected = json.loads(run(["docker", "image", "inspect", runtime_image]))[0]
+        except subprocess.CalledProcessError:
+            runtime_image = EXPECTED_IMAGE_ID
+            inspected = json.loads(run(["docker", "image", "inspect", runtime_image]))[0]
+    else:
+        try:
+            run(["docker", "pull", IMAGE])
+        except Exception:
+            state["phase"] = "pull-failed"
+            save_state(state)
+            raise RuntimeError(
+                "official image pull failed before OA mutations; preserved backups support guarded resume or rollback"
+            ) from None
+        runtime_image = IMAGE
+        inspected = json.loads(run(["docker", "image", "inspect", runtime_image]))[0]
+    if inspected["Architecture"] != "amd64" or (not official_archive and IMAGE not in inspected.get("RepoDigests", [])):
         raise RuntimeError("fixed official image identity mismatch")
     if (
-        inspected["Id"] != EXPECTED_IMAGE_ID
+        inspected["Id"] not in {EXPECTED_IMAGE_ID, "sha256:" + IMAGE.split("@sha256:")[1]}
         or inspected["Config"].get("Entrypoint") != EXPECTED_ENTRYPOINT
         or inspected["Config"].get("Cmd") not in (None, [])
     ):
         raise RuntimeError("pinned image entrypoint/Cmd differs from independently verified registry config")
+    if official_archive and inspected["RootFS"]["Layers"] != provenance["diff_ids"]:
+        raise RuntimeError("loaded runtime layers do not match the verified official config")
+    if official_archive and any(
+        inspected["Config"].get(key) != value for key, value in provenance["image_config"].items()
+    ):
+        raise RuntimeError("loaded runtime config does not match the verified official config")
     proof_key = STATE / "proof_key"
     if not proof_key.exists():
         run(["openssl", "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048", "-out", proof_key])
@@ -296,7 +403,7 @@ def install(expected_nginx, expected_env, expected_runtime, resume=False):
             "127.0.0.1:9980:9980",
             "--mount",
             f"type=bind,src={proof_key},dst=/etc/coolwsd/proof_key,readonly",
-            IMAGE,
+            runtime_image,
             "--o:server_name=huzhilawfirm.com",
             "--o:ssl.enable=false",
             "--o:ssl.termination=true",
@@ -424,6 +531,8 @@ parser.add_argument("--execute-approved", action="store_true")
 parser.add_argument("--expected-nginx-sha256")
 parser.add_argument("--expected-env-sha256")
 parser.add_argument("--expected-runtime-commit")
+parser.add_argument("--official-image-archive")
+parser.add_argument("--archive-sha256")
 args = parser.parse_args()
 if not args.execute_approved:
     parser.error("PM-reviewed execution approval required")
@@ -433,6 +542,8 @@ if args.action in ("install", "resume") and (not args.expected_nginx_sha256 or n
     parser.error("explicit preflight hashes required")
 if not args.expected_runtime_commit:
     parser.error("explicit expected current runtime SHA required")
+if bool(args.official_image_archive) != bool(args.archive_sha256):
+    parser.error("official archive and independently verified SHA must be supplied together")
 held = []
 try:
     for lock_path in LOCKS:
@@ -451,6 +562,8 @@ try:
                 args.expected_env_sha256,
                 args.expected_runtime_commit,
                 resume=args.action == "resume",
+                official_archive=args.official_image_archive,
+                archive_sha=args.archive_sha256,
             )
         except Exception as installation_error:
             if CURRENT_INSTALL_OWNED and STATE.exists():
