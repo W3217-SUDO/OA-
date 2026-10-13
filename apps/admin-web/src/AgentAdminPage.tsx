@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Card, Descriptions, Space, Tag, message } from "antd";
+import { Alert, Button, Card, Descriptions, Empty, Space, Tabs, Tag, message } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "./api";
 import Table from "./components/ResizableTable";
+import { SkillManager } from "./personal-agent/SkillManager";
+import { errorText, type WorkspaceSkill } from "./personal-agent/types";
 
 type Runtime = {
   ready: boolean;
@@ -63,24 +65,48 @@ const libraryColumns = [
 export default function AgentAdminPage() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("global");
+  const [globalSkills, setGlobalSkills] = useState<WorkspaceSkill[]>([]);
+  const [canManage, setCanManage] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [error, setError] = useState("");
+  const refreshGlobals = useCallback(async () => {
+    const { data } = await api.get<{ items: WorkspaceSkill[]; can_manage: boolean }>("/agent/global-skills");
+    setGlobalSkills(data.items); setCanManage(data.can_manage);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(""); setCanManage(false);
     try {
       const { data } = await api.get<Overview>("/agent-admin/overview");
       setOverview(data);
+      await refreshGlobals();
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "智能体中心加载失败");
+      setError(errorText(error, "智能体中心加载失败"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshGlobals]);
 
   useEffect(() => { void load(); }, [load]);
 
   const runtime = overview?.runtime;
   return (
-    <Space orientation="vertical" size={12} style={{ width: "100%" }} data-testid="agent-admin-page">
+    <div className="agent-scope-admin" data-testid="agent-admin-page">
+      <Tabs activeKey={tab} onChange={setTab} items={[{ key: "global", label: "全局技能" }, { key: "overview", label: "运行状态与个人库" }]} />
+      {error && <Alert type="error" showIcon title="智能体中心加载未完成" description={error} action={<Button loading={loading} onClick={() => void load()}>重试</Button>} />}
+      <div hidden={tab !== "global"}>
+        <Card title="全局技能" loading={loading && !overview} extra={<Button loading={loading} icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>}>
+          <p>启用的全局技能可供全所账号选用；个人技能仍只属于原账号，不会迁移到全局。系统内置技能保持只读。</p>
+          {overview && canManage && <Button type="primary" disabled={loading} onClick={() => setSkillsOpen(true)}>管理全局技能 · 从市场安装</Button>}
+          {!canManage && !loading && !error && <Alert type="info" title="当前账号仅可查看和选用已启用的全局技能，不能修改。" />}
+          {!loading && !error && !globalSkills.length && <Empty description="尚未安装全局技能" />}
+          <div className="agent-global-skill-cards">{globalSkills.map(skill => <article key={skill.id}><div><strong>{skill.name}</strong><Tag color={skill.available ? "success" : "default"}>{skill.available ? "已启用" : "已停用"}</Tag></div><p>{skill.description}</p><small>全局 · {skill.category}</small></article>)}</div>
+        </Card>
+      </div>
+      <Space hidden={tab !== "overview"} orientation="vertical" size={12} style={{ width: "100%" }}>
       <Card
         title="运行状态"
         loading={loading && !overview}
@@ -124,6 +150,8 @@ export default function AgentAdminPage() {
           locale={{ emptyText: "还没有账号创建个人技能" }}
         />
       </Card>
-    </Space>
+      </Space>
+      {overview && canManage && <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} scope="global" skills={globalSkills} refresh={refreshGlobals} />}
+    </div>
   );
 }

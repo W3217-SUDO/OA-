@@ -3,6 +3,7 @@ import { Alert, Button, Empty, Input, Select, Spin } from "antd";
 import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { errorText, type WorkspaceSkill } from "./types";
+import { skillBase, skillScopeLabel, type SkillScope } from "./skillScope";
 
 type Source = "skills-sh" | "openai" | "anthropic";
 type CatalogItem = { id: string; name: string; description: string; source: Source; market_url: string; repo: string; skill_slug: string; installs?: number };
@@ -14,9 +15,10 @@ const SOURCES: { value: Source; label: string; website: string }[] = [
   { value: "anthropic", label: "Anthropic 官方技能", website: "https://github.com/anthropics/skills" },
 ];
 
-export function SkillCatalog({ active, busy, onBusy, onInstalled }: {
-  active: boolean; busy: boolean; onBusy: (value: boolean) => void; onInstalled: (skill: WorkspaceSkill) => Promise<void>;
+export function SkillCatalog({ active, busy, onBusy, onInstalled, scope = "personal" }: {
+  active: boolean; busy: boolean; onBusy: (value: boolean) => void; onInstalled: (skill: WorkspaceSkill) => Promise<void>; scope?: SkillScope;
 }) {
+  const scopeLabel = skillScopeLabel(scope);
   const [source, setSource] = useState<Source>("skills-sh");
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
@@ -56,11 +58,11 @@ export function SkillCatalog({ active, busy, onBusy, onInstalled }: {
     operationLock.current = true; onBusy(true); setPreviewError("");
     let saved: WorkspaceSkill | null = null;
     try {
-      const { data } = await api.post<WorkspaceSkill>("/agent/skills/github/install", { url: preview.url, sha256: preview.sha256 });
+      const { data } = await api.post<WorkspaceSkill>(`${skillBase(scope)}/github/install`, { url: preview.url, sha256: preview.sha256 });
       saved = data; setPreview(null); setRefreshPending(null);
       await onInstalled(data);
     } catch (failure) {
-      if (saved) { setRefreshPending(saved); setPreviewError(`技能已安装，但列表刷新失败，请刷新重试：${errorText(failure, "个人技能加载失败")}`); }
+      if (saved) { setRefreshPending(saved); setPreviewError(`技能已安装，但列表刷新失败，请刷新重试：${errorText(failure, `${scopeLabel}加载失败`)}`); }
       else setPreviewError(errorText(failure, "安装未完成；若来源已变化，请重新选择并预览"));
     }
     finally { operationLock.current = false; onBusy(false); }
@@ -69,7 +71,7 @@ export function SkillCatalog({ active, busy, onBusy, onInstalled }: {
     if (!refreshPending || busy || operationLock.current) return;
     operationLock.current = true; onBusy(true);
     try { await onInstalled(refreshPending); setRefreshPending(null); setPreviewError(""); }
-    catch (failure) { setPreviewError(`技能已安装，但列表刷新失败，请刷新重试：${errorText(failure, "个人技能加载失败")}`); }
+    catch (failure) { setPreviewError(`技能已安装，但列表刷新失败，请刷新重试：${errorText(failure, `${scopeLabel}加载失败`)}`); }
     finally { operationLock.current = false; onBusy(false); }
   };
   return <section className="workspace-skill-catalog" aria-label="技能市场">
@@ -82,10 +84,10 @@ export function SkillCatalog({ active, busy, onBusy, onInstalled }: {
       <Button disabled={busy} onClick={() => { setQuery(input.trim()); setRevision(value => value + 1); }}>搜索技能</Button>
       <Button icon={<ReloadOutlined />} aria-label="刷新技能目录" disabled={busy || loading} onClick={() => setRevision(value => value + 1)} />
     </div>
-    <p className="workspace-catalog-note">从来源网站读取真实技能目录。选择技能后查看完整指令，再确认安装到个人技能；仅导入 SKILL.md，不执行仓库脚本或下载依赖。</p>
+    <p className="workspace-catalog-note">从来源网站读取真实技能目录。选择技能后查看完整指令，再确认安装到{scopeLabel}；仅导入 SKILL.md，不执行仓库脚本或下载依赖。</p>
     {page?.note && <Alert type="info" showIcon title={page.note} />}
     {error && <Alert type="error" showIcon title="技能目录暂不可用" description={error} action={<Button disabled={busy} onClick={() => setRevision(value => value + 1)}>重试</Button>} />}
-    {(previewError || refreshPending) && <Alert type={refreshPending ? "warning" : "error"} showIcon title={refreshPending ? "技能已安装，待刷新个人库" : "技能操作未完成"} description={previewError || "技能已安装，但个人库尚未刷新，请刷新重试"} action={refreshPending ? <Button disabled={busy} onClick={() => void retryRefresh()}>刷新个人技能</Button> : undefined} />}
+    {(previewError || refreshPending) && <Alert type={refreshPending ? "warning" : "error"} showIcon title={refreshPending ? scope === "global" ? "技能已安装，待刷新全局库" : "技能已安装，待刷新个人库" : "技能操作未完成"} description={previewError || "技能已安装，但技能库尚未刷新，请刷新重试"} action={refreshPending ? <Button disabled={busy} onClick={() => void retryRefresh()}>刷新{scopeLabel}</Button> : undefined} />}
     {loading ? <div className="workspace-catalog-loading" role="status"><Spin /><span>正在读取技能网站</span></div> : page && !page.items.length ? <Empty description="没有找到技能，请尝试英文技能名或切换来源" /> : <div className="workspace-catalog-grid">{page?.items.map(item => <article className="workspace-catalog-card" key={`${item.source}:${item.id}`}>
       <h3>{item.name}</h3><p>{item.description || "来源未提供说明，选择后查看完整 SKILL.md。"}</p>
       <small>{item.repo} · {item.skill_slug}</small>
@@ -97,8 +99,8 @@ export function SkillCatalog({ active, busy, onBusy, onInstalled }: {
       <a href={preview.source} target="_blank" rel="noopener noreferrer">来源：{preview.source}</a>
       <span className="workspace-skill-hash">SHA256：{preview.sha256}</span>
       <b>完整技能指令（{preview.instruction.length} 字符）</b><pre tabIndex={0}>{preview.instruction}</pre>
-      <p>请阅读完整指令。确认后仅加入你自己的技能库，并可在当前 AI 对话中选用。</p>
-      <div className="workspace-catalog-preview-actions"><Button disabled={busy} onClick={() => { setPreview(null); setPreviewError(""); }}>取消选择</Button><Button type="primary" loading={busy} disabled={busy || preview.instruction.length > 64000} onClick={() => void install()}>确认安装到个人技能</Button></div>
+      <p>请阅读完整指令。{scope === "global" ? "确认后加入全局技能库，启用后全所账号可选用。" : "确认后仅加入你自己的个人技能库，可在 AI 对话中选用。"}</p>
+      <div className="workspace-catalog-preview-actions"><Button disabled={busy} onClick={() => { setPreview(null); setPreviewError(""); }}>取消选择</Button><Button type="primary" loading={busy} disabled={busy || preview.instruction.length > 64000} onClick={() => void install()}>{`确认安装到${scopeLabel}`}</Button></div>
       {preview.instruction.length > 64000 && <Alert type="error" showIcon title="指令超过 64000 字符，不支持安装；完整正文仍可阅读" />}
     </div>}
   </section>;

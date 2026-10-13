@@ -506,6 +506,9 @@ async def _parameter_reference_examples(item: SystemParameter, db: AsyncSession)
 
 
 def _validate_system_config(key: str, value: dict) -> dict:
+    from app.global_agent_skills import GLOBAL_SKILL_CONFIG_KEY
+    if key == GLOBAL_SKILL_CONFIG_KEY:
+        raise HTTPException(status_code=409, detail="请在智能体中心专用入口管理全局技能，不能直接修改技能库配置")
     if key == "customer_share_policy":
         required = {"all_days", "filed_days", "premium_days", "standard_days", "basic_days", "shared_days"}
         if set(value) != required or any(isinstance(value[name], bool) or not isinstance(value[name], int) or not 1 <= value[name] <= 3650 for name in required):

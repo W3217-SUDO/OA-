@@ -1,4 +1,13 @@
 .workspace-skill-manager { display: grid; gap: 24px; }
+.agent-scope-admin { min-width: 0; width: 100%; }
+.agent-scope-admin > [hidden] { display: none; }
+.agent-scope-admin .ant-tabs-tab, .agent-scope-admin .ant-btn { min-height: 44px; }
+.agent-scope-admin .ant-btn { min-width: 44px; max-width: 100%; height: auto; white-space: normal; }
+.agent-global-skill-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.agent-global-skill-cards article { min-width: 0; padding: 12px; border: 1px solid #dce6e1; border-radius: 8px; }
+.agent-global-skill-cards article > div { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.agent-global-skill-cards p, .agent-global-skill-cards strong, .agent-global-skill-cards small { overflow-wrap: anywhere; }
+@media (max-width: 760px) { .agent-global-skill-cards { grid-template-columns: minmax(0, 1fr); } .agent-scope-admin .ant-card-head { flex-wrap: wrap; } }
 .workspace-skill-manager > section, .workspace-skill-manager > form { min-width: 0; }
 .workspace-skill-manager > [hidden] { display: none; }
 .workspace-skill-modal .ant-modal-body { max-height: 78dvh; overflow-y: auto; overscroll-behavior: contain; }
