@@ -14,7 +14,7 @@ type ExternalCaseFeeColumnContext = {
     readonly openCaseReceiptFiles: (fee: CaseRow) => void;
 };
 
-const firmColumnWeights = [12, 15, 7, 10, 8, 9, 9, 7, 9, 10, 7];
+const firmColumnWeights = [10.5, 13, 7, 8, 6.5, 8, 8, 8, 8, 7, 12];
 const firmColumnWeightTotal = firmColumnWeights.reduce((total, weight) => total + weight, 0);
 const firmColumnWidths = firmColumnWeights.map(weight => `${(weight / firmColumnWeightTotal * 96).toFixed(3)}%`);
 

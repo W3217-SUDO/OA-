@@ -259,6 +259,7 @@
 .case-firm-fees-table table{width:100%!important;min-width:0!important}
 .case-legacy-tab-panel .case-firm-fees-table .ant-table-thead>tr>th,
 .case-legacy-tab-panel .case-firm-fees-table .ant-table-tbody>tr>td{min-width:0;padding:4px!important;white-space:normal;overflow-wrap:anywhere}
+.case-legacy-tab-panel .case-firm-fees-table .ant-table-thead>tr>th{padding-inline:2px!important;font-size:12px;white-space:nowrap;overflow-wrap:normal;text-align:center!important}
 .case-legacy-tab-panel .case-firm-fees-table .ant-table-thead>tr>th.ant-table-selection-column,
 .case-legacy-tab-panel .case-firm-fees-table .ant-table-tbody>tr>td.ant-table-selection-column{padding-inline:3px!important}
 .case-firm-fees-table .case-cell-link.ant-btn-link{max-width:100%;height:auto;padding-inline:0;white-space:normal;overflow-wrap:anywhere;text-align:left}
@@ -266,7 +267,8 @@
 .case-legacy-bottom-actions{margin:0 0 8px 8px}
 .case-legacy-bottom-actions .ant-btn{height:32px}
 
-@media(max-width:991px){
+/* 案件侧栏占用空间时，窄屏费用表继续按完整字段纵向展示。 */
+@media(max-width:1280px){
   .case-detail-drawer .case-firm-fees-table .ant-table-content,
   .case-detail-drawer .case-firm-fees-table .ant-table-body{overflow:visible!important}
   .case-detail-drawer .case-firm-fees-table table{display:block;width:100%!important;min-width:0!important;table-layout:auto!important}
