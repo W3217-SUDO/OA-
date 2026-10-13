@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { LibreOfficeFrame } from "./LibreOfficeFrame";
 import type { LibreOfficeEditorTarget } from "./types";
 import { useLibreOfficeSession } from "./useLibreOfficeSession";
+import "./libreoffice-editor.css";
 
 type LibreOfficeEditorModalProps = {
   target: LibreOfficeEditorTarget;
@@ -18,6 +19,7 @@ export function LibreOfficeEditorModal({ target, onStored, onClosed }: LibreOffi
   const canSave = editor.ready && !editor.closing && !editor.saving && !terminal;
   return <Modal
     open
+    className="libreoffice-editor-modal"
     title={<Typography.Text ellipsis style={{ maxWidth: "calc(100% - 32px)" }}>{editor.session?.filename || target.filename}</Typography.Text>}
     width="calc(100vw - 32px)"
     style={{ top: 16, paddingBottom: 0 }}
@@ -26,11 +28,11 @@ export function LibreOfficeEditorModal({ target, onStored, onClosed }: LibreOffi
     keyboard={false}
     closable={!editor.closing}
     onCancel={editor.close}
-    footer={<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+    footer={<div className="libreoffice-editor-footer">
       <Typography.Text type="secondary">{editor.status?.last_saved_at ? `已回写 ${new Date(editor.status.last_saved_at).toLocaleString()}` : null}</Typography.Text>
-      <Space>
+      <Space wrap>
         <Button icon={<SaveOutlined />} disabled={!canSave} loading={editor.saving} onClick={editor.save}>保存</Button>
-        <Button icon={<CloseOutlined />} loading={editor.closing} disabled={editor.closing} onClick={editor.close}>{terminal ? "返回列表" : "保存并关闭"}</Button>
+        <Button icon={<CloseOutlined />} loading={editor.closing} disabled={editor.closing} onClick={editor.close}>{terminal || (!editor.session && editor.error) ? "返回列表" : "保存并关闭"}</Button>
       </Space>
     </div>}
   >

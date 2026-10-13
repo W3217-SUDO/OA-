@@ -3,6 +3,8 @@ import { Alert, Button, Drawer, Pagination, Spin, Tooltip } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { errorText } from "./types";
+import { LibreOfficeEditorModal } from "../office/LibreOfficeEditorModal";
+import type { LibreOfficeEditorTarget } from "../office/types";
 import { PersonalAiSpaceFiles } from "./PersonalAiSpaceFiles";
 import { downloadPersonalAiFile, type PersonalAiFile, type PersonalAiFilePage, type PersonalAiSpaceInfo } from "./personalAiSpaceApi";
 import "./personal-ai-space.css";
@@ -23,7 +25,8 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [downloadingId, setDownloadingId] = useState("");
-  const close = () => { setPage(1); setSpace(null); onClose(); };
+  const [editorTarget, setEditorTarget] = useState<LibreOfficeEditorTarget | null>(null);
+  const close = () => { if (editorTarget) return; setPage(1); setSpace(null); onClose(); };
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
@@ -49,11 +52,26 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
     try { await onOpenConversation(id); close(); }
     catch (failure) { setError(errorText(failure, "来源会话不可用")); }
   };
-  return <Drawer
+  const edit = (file: PersonalAiFile) => {
+    if (busy || editorTarget || downloadingId) return;
+    if (file.editable !== true) { setError(file.edit_unavailable_reason || "此文件当前不能在线编辑，请刷新文件状态"); return; }
+    setError(""); setEditorTarget({ scope: "personal", fileId: file.id, filename: file.name });
+  };
+  const refreshStored = async () => {
+    const [info, list] = await Promise.all([
+      api.get<PersonalAiSpaceInfo>("/personal-agent/ai-space"),
+      api.get<PersonalAiFilePage>("/personal-agent/ai-space/files", { params: { page, page_size: 20 } }),
+    ]);
+    setSpace(info.data); setFiles(list.data);
+  };
+  return <><Drawer
     open={open}
     onClose={close}
     width={760}
     destroyOnHidden
+    closable={!editorTarget}
+    maskClosable={!editorTarget}
+    keyboard={!editorTarget}
     rootClassName="personal-ai-space-drawer"
     title={<span className="personal-ai-space-title">{space ? `${space.owner_name}的个人 AI 空间` : "个人 AI 空间"}</span>}
   >
@@ -61,8 +79,8 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       <div className="personal-ai-space-toolbar"><Tooltip title="刷新个人 AI 空间"><Button icon={<ReloadOutlined />} aria-label="刷新个人 AI 空间" loading={loading} onClick={() => setRefresh((value) => value + 1)} /></Tooltip>{files && <span>共 {files.total} 个文件</span>}</div>
       {space && !space.configured && <Alert type="warning" showIcon title="OSS 尚未配置，不能保存新文件" />}
       {error && <Alert type="error" showIcon title="个人 AI 空间操作未完成" description={error} />}
-      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} busy={busy} onDownload={(file) => void download(file)} onConversation={(id) => void openConversation(id)} />}
+      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} busy={busy || !!editorTarget} onDownload={(file) => void download(file)} onConversation={(id) => void openConversation(id)} onEdit={edit} />}
       {files && files.total > 0 && <Pagination simple current={files.page} pageSize={files.page_size} total={files.total} disabled={loading} showSizeChanger={false} onChange={setPage} />}
     </div>
-  </Drawer>;
+  </Drawer>{editorTarget && <LibreOfficeEditorModal target={editorTarget} onStored={refreshStored} onClosed={() => { setEditorTarget(null); setRefresh((value) => value + 1); }} />}</>;
 }

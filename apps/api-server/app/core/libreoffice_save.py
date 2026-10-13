@@ -2,11 +2,12 @@
 
 import copy
 from uuid import uuid4
+from types import SimpleNamespace
 
 from fastapi import HTTPException, Request
 
-from app.core.libreoffice_files import DOCX_CONTENT_TYPE, read_put_body, revision_path, validate_docx, write_revision
-from app.core.libreoffice_state import iso_utc, now_utc, persist_context, session_context
+from app.core.libreoffice_files import DOCX_CONTENT_TYPE, read_document, read_put_body, revision_path, validate_docx, write_revision
+from app.core.libreoffice_state import iso_utc, now_utc, persist_context, reload_context, session_context
 from app.models import WorkflowEvent
 
 
@@ -38,7 +39,7 @@ async def put_file(context, request: Request, db) -> tuple[dict, str]:
     try:
         content = await read_put_body(request)
         version = validate_docx(content)
-        context = await session_context(case_id, attachment_id, session_id, identity, db, lock=True)
+        context = await reload_context(context.session, identity, db, lock=True)
         require_wopi_lock(context, lock)
         if version == context.session["version"]:
             context.session["save_status"] = "saved"
@@ -59,7 +60,12 @@ async def put_file(context, request: Request, db) -> tuple[dict, str]:
         await persist_context(context, db)
         # 对象 I/O 不持有 SQL 锁；pending 已持久化，DB 提交失败后仍可重试同一个对象键。
         await write_revision(pending["path"], content)
-        context = await session_context(case_id, attachment_id, session_id, identity, db, lock=True)
+        if context.session.get("scope") == "personal":
+            checked = await read_document(SimpleNamespace(path=pending["path"], original_name=context.item.original_name,
+                                                          stored_name=version + ".docx"))
+            if len(checked) != len(content) or validate_docx(checked) != version:
+                raise HTTPException(409, detail="个人 DOCX 新版本回读摘要不一致，未切换原文件")
+        context = await reload_context(context.session, identity, db, lock=True)
         require_wopi_lock(context, lock)
         active = context.session["pending"]
         if not active and context.session["version"] == version and context.item.path == pending["path"]:
@@ -68,21 +74,33 @@ async def put_file(context, request: Request, db) -> tuple[dict, str]:
                 or context.item.path != pending["base_path"]):
             raise HTTPException(status_code=409, detail="提交前附件或保存请求已变化，原指针未覆盖")
         modified = iso_utc(now_utc())
-        documents = copy.deepcopy((context.record.data or {})["libreoffice_documents"])
-        document = documents[str(attachment_id)]
         revision = {"version": version, "path": pending["path"], "size": len(content),
                     "previous_version": pending["base_version"], "previous_path": pending["base_path"],
                     "saved_at": modified, "operator": identity["username"], "session_id": session_id}
-        document["versions"].append(revision)
-        document.update(version=version, path=pending["path"], modified_at=modified)
-        context.record.data = {**(context.record.data or {}), "libreoffice_documents": documents}
+        if context.session.get("scope") == "personal":
+            data = context.record.data
+            if data.get("path") != pending["base_path"] or data.get("sha256") != pending["base_version"]:
+                raise HTTPException(409, detail="个人文件当前版本已变化，未覆盖")
+            original = data.get("original_storage") or {key: data[key] for key in ("path", "sha256", "size", "stored_name")}
+            context.record.data = {**data, "original_storage": original,
+                                   "versions": [*(data.get("versions") or []), revision],
+                                   "path": pending["path"], "sha256": version, "size": len(content),
+                                   "content_type": DOCX_CONTENT_TYPE,
+                                   "stored_name": f"libreoffice-{attachment_id}-{session_id}-{version}.docx",
+                                   "modified_at": modified}
+        else:
+            documents = copy.deepcopy((context.record.data or {})["libreoffice_documents"])
+            document = documents[str(attachment_id)]
+            document["versions"].append(revision)
+            document.update(version=version, path=pending["path"], modified_at=modified)
+            context.record.data = {**(context.record.data or {}), "libreoffice_documents": documents}
         context.item.path = pending["path"]
         context.item.stored_name = f"libreoffice-{attachment_id}-{session_id}-{version}.docx"
         context.item.size = len(content)
         context.item.content_type = DOCX_CONTENT_TYPE
         context.session.update(path=pending["path"], version=version, size=len(content), modified_at=modified,
                                last_saved_at=modified, pending=None, save_status="saved", error=None)
-        db.add(WorkflowEvent(record_id=case_id, action="LibreOffice 保存案件 Word 文件",
+        db.add(WorkflowEvent(record_id=case_id, action="LibreOffice 保存个人 Word 文件" if context.session.get("scope") == "personal" else "LibreOffice 保存案件 Word 文件",
                              from_status=context.record.status, to_status=context.record.status,
                              operator=identity["username"], comment=f"附件 {attachment_id}；版本 {version}"))
         await persist_context(context, db)
@@ -90,8 +108,19 @@ async def put_file(context, request: Request, db) -> tuple[dict, str]:
     except HTTPException as exc:
         # 独立提交错误状态，不能让请求事务回滚后 GET 丢失保存失败事实。
         message = str(exc.detail) if isinstance(exc.detail, str) else "保存请求与当前附件版本冲突"
-        await record_failure(case_id, attachment_id, session_id, identity, db, message)
+        await scoped_failure(context, db, message)
         raise
     except Exception as exc:
-        await record_failure(case_id, attachment_id, session_id, identity, db, "保存未完成，原附件指针未提交，请重试")
+        await scoped_failure(context, db, "保存未完成，原附件指针未提交，请重试")
         raise HTTPException(status_code=500, detail="Office 保存失败，不能视为保存成功") from exc
+
+
+async def scoped_failure(context, db, message):
+    if context.session.get("scope") != "personal":
+        return await record_failure(context.record.id, context.item.id, context.session["id"], context.identity, db, message)
+    session = copy.deepcopy(context.session)
+    await db.rollback()
+    context = await reload_context(session, context.identity, db, lock=True)
+    context.session["save_status"] = "error"
+    context.session["error"] = message
+    await persist_context(context, db)

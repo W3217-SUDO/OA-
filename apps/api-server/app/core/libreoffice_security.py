@@ -1,6 +1,7 @@
 """WOPI 专属令牌、引擎 proof 校验和实时业务授权。"""
 
 import base64
+import re
 import secrets
 import struct
 from datetime import datetime, timezone
@@ -28,9 +29,11 @@ WOPI_ISSUER = "sunhold-oa-libreoffice"
 
 
 def session_token(session: dict) -> str:
+    target = ({"scope": "personal", "file_id": session["file_id"], "owner_user_id": session["owner_user_id"]}
+              if session.get("scope") == "personal" else {"case_id": session["case_id"]})
     return jwt.encode({
         "iss": WOPI_ISSUER, "aud": WOPI_AUDIENCE, "sub": session["user"],
-        "case_id": session["case_id"], "attachment_id": session["attachment_id"],
+        **target, "attachment_id": session["attachment_id"],
         "sid": session["id"], "jti": session["token_id"],
         "iat": int(datetime.now(timezone.utc).timestamp()),
         "exp": int(datetime.fromisoformat(session["expires_at"]).timestamp()),
@@ -38,7 +41,6 @@ def session_token(session: dict) -> str:
 
 
 def request_token(request: Request, session_id: str) -> tuple[str, dict]:
-    editor_configuration()
     tokens = request.query_params.getlist("access_token")
     bearer = request.headers.get("authorization", "")
     if len(tokens) > 1 or (bearer and not bearer.startswith("Bearer ")):
@@ -50,16 +52,22 @@ def request_token(request: Request, session_id: str) -> tuple[str, dict]:
     try:
         payload = jwt.decode(token, settings.office_wopi_token_secret, algorithms=["HS256"],
                              audience=WOPI_AUDIENCE, issuer=WOPI_ISSUER,
-                             options={"require": ["exp", "iat", "sub", "sid", "jti", "case_id", "attachment_id"]})
-        if payload["sid"] != session_id or type(payload["case_id"]) is not int or type(payload["attachment_id"]) is not int:
+                             options={"require": ["exp", "iat", "sub", "sid", "jti", "attachment_id"]})
+        personal = payload.get("scope") == "personal"
+        valid_target = (re.fullmatch(r"[a-f0-9]{32}", str(payload.get("file_id", ""))) is not None
+                        and type(payload.get("owner_user_id")) is int and payload["owner_user_id"] > 0
+                        and "case_id" not in payload) if personal else (
+                            payload.get("scope", "case") == "case" and type(payload.get("case_id")) is int)
+        if payload["sid"] != session_id or not valid_target or type(payload["attachment_id"]) is not int:
             raise ValueError("令牌业务归属不匹配")
     except (jwt.PyJWTError, ValueError) as exc:
         raise HTTPException(status_code=401, detail="WOPI 令牌无效或已过期") from exc
+    editor_configuration(personal=personal)
     return token, payload
 
 
-async def verify_proof(request: Request, token: str) -> None:
-    config = editor_configuration()
+async def verify_proof(request: Request, token: str, *, personal: bool = False) -> None:
+    config = editor_configuration(personal=personal)
     try:
         timestamp = int(request.headers["x-wopi-timestamp"])
         # WOPI 使用自公元 0001 年起的 .NET ticks，不是 Windows FILETIME。
@@ -81,7 +89,7 @@ async def verify_proof(request: Request, token: str) -> None:
     except (KeyError, ValueError, OverflowError, UnicodeError, struct.error) as exc:
         raise HTTPException(status_code=401, detail="WOPI 引擎 proof 缺失或无效") from exc
     for refresh in (False, True):
-        keys = (await discovery(refresh=refresh))["proof"]
+        keys = (await discovery(refresh=refresh, personal=personal))["proof"]
         for signature_name, prefix in (("current", ""), ("old", ""), ("current", "old")):
             if signature_name not in signatures or not keys.get(prefix + "modulus") or not keys.get(prefix + "exponent"):
                 continue

@@ -36,8 +36,8 @@ def origin(value: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}"
 
 
-def editor_configuration() -> dict:
-    if not settings.office_editor_enabled:
+def editor_configuration(*, personal: bool = False) -> dict:
+    if not (settings.office_personal_editor_enabled if personal else settings.office_editor_enabled):
         raise HTTPException(status_code=503, detail="LibreOffice 在线编辑尚未启用")
     try:
         server = validated_url(settings.code_server_url)
@@ -83,9 +83,9 @@ def office_attachment_editable(item, record=None) -> bool:
     return True
 
 
-async def discovery(*, refresh: bool = False) -> dict:
+async def discovery(*, refresh: bool = False, personal: bool = False) -> dict:
     global _discovery_cache
-    config = editor_configuration()
+    config = editor_configuration(personal=personal)
     cache_key = (config["server"], config["browser"], tuple(sorted(config["trusted"])))
     async with _discovery_lock:
         if not refresh and _discovery_cache and _discovery_cache[0] == cache_key and time.monotonic() < _discovery_cache[1]:
@@ -123,8 +123,8 @@ async def discovery(*, refresh: bool = False) -> dict:
         return result
 
 
-def editor_url(info: dict, session_id: str) -> str:
-    config = editor_configuration()
+def editor_url(info: dict, session_id: str, *, personal: bool = False) -> str:
+    config = editor_configuration(personal=personal)
     browser = urlsplit(config["browser"])
     wopi_src = f"{config['wopi']}{settings.api_prefix}/office/wopi/files/{session_id}"
     query = info["query"].rstrip("&")

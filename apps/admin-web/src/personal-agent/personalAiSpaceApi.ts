@@ -27,6 +27,8 @@ export type PersonalAiFile = {
   created_at: string;
   download_url: string | null;
   error: string | null;
+  editable?: boolean;
+  edit_unavailable_reason?: string | null;
 };
 
 export type PersonalAiFilePage = { items: PersonalAiFile[]; total: number; page: number; page_size: number };
