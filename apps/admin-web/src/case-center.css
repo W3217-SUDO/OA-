@@ -254,8 +254,51 @@
 .case-legacy-tab-panel .ant-table-thead>tr>th{height:32px;padding:5px 9px!important;text-align:center}
 .case-legacy-tab-panel .ant-table-tbody>tr>td{height:32px;padding:4px 9px!important}
 .case-legacy-tab-panel .ant-pagination{margin:8px 8px 0}
+.case-firm-fees-table,.case-firm-fees-table .ant-table,.case-firm-fees-table .ant-table-container{min-width:0;max-width:100%}
+.case-firm-fees-table .ant-table-content{max-width:100%;overflow-x:visible}
+.case-firm-fees-table table{width:100%!important;min-width:0!important}
+.case-legacy-tab-panel .case-firm-fees-table .ant-table-thead>tr>th,
+.case-legacy-tab-panel .case-firm-fees-table .ant-table-tbody>tr>td{min-width:0;padding:4px!important;white-space:normal;overflow-wrap:anywhere}
+.case-legacy-tab-panel .case-firm-fees-table .ant-table-thead>tr>th.ant-table-selection-column,
+.case-legacy-tab-panel .case-firm-fees-table .ant-table-tbody>tr>td.ant-table-selection-column{padding-inline:3px!important}
+.case-firm-fees-table .case-cell-link.ant-btn-link{max-width:100%;height:auto;padding-inline:0;white-space:normal;overflow-wrap:anywhere;text-align:left}
+.case-firm-fees-table .case-firm-fee-amount-link.ant-btn-link{display:inline-flex;justify-content:flex-end;text-align:right}
 .case-legacy-bottom-actions{margin:0 0 8px 8px}
 .case-legacy-bottom-actions .ant-btn{height:32px}
+
+@media(max-width:991px){
+  .case-detail-drawer .case-firm-fees-table .ant-table-content,
+  .case-detail-drawer .case-firm-fees-table .ant-table-body{overflow:visible!important}
+  .case-detail-drawer .case-firm-fees-table table{display:block;width:100%!important;min-width:0!important;table-layout:auto!important}
+  .case-detail-drawer .case-firm-fees-table colgroup,
+  .case-detail-drawer .case-firm-fees-table .ant-table-measure-row{display:none}
+  .case-detail-drawer .case-firm-fees-table .ant-table-thead,
+  .case-detail-drawer .case-firm-fees-table .ant-table-thead>tr,
+  .case-detail-drawer .case-firm-fees-table .ant-table-tbody{display:block}
+  .case-detail-drawer .case-firm-fees-table .ant-table-thead>tr>th{display:none}
+  .case-detail-drawer .case-firm-fees-table .ant-table-thead>tr>th.ant-table-selection-column{display:flex;align-items:center;gap:8px;position:static;min-height:44px;width:100%;padding:8px!important}
+  .case-detail-drawer .case-firm-fees-table .ant-table-thead>tr>th.ant-table-selection-column::after{content:"全选"}
+  .case-detail-drawer .case-firm-fees-table .ant-table-tbody>tr.ant-table-row{display:block;padding:8px;border-bottom:4px solid #eef2f6}
+  .case-detail-drawer .case-firm-fees-table .ant-table-tbody>tr>td.case-firm-fee-cell{display:grid;grid-template-columns:88px minmax(0,1fr);align-items:start;gap:8px;width:100%!important;min-width:0;height:auto;min-height:0;padding:6px 0!important;border:0;line-height:20px;text-align:left!important;white-space:normal;overflow-wrap:anywhere}
+  .case-detail-drawer .case-firm-fees-table .case-firm-fee-cell::before{color:#68727d;font-weight:400;content:attr(data-label)}
+  .case-detail-drawer .case-firm-fees-table .ant-table-tbody>tr>td.case-firm-fee-selection{display:flex;align-items:center;width:100%!important;min-height:44px;height:auto;padding:0!important;border:0;text-align:left}
+  .case-detail-drawer .case-firm-fees-table .ant-table-selection-column .ant-checkbox-wrapper{min-width:44px;min-height:44px;align-items:center;justify-content:center}
+  .case-detail-drawer .case-firm-fees-table .case-cell-link.ant-btn-link{min-height:44px;padding-block:6px}
+  .case-detail-drawer .case-firm-fees-table .case-firm-fee-amount-link.ant-btn-link{justify-self:start;justify-content:flex-start;text-align:left}
+  .case-detail-drawer .case-firm-fees-table .ant-table-placeholder,
+  .case-detail-drawer .case-firm-fees-table .ant-table-placeholder>td{display:block;width:100%}
+  .case-detail-drawer .case-firm-fees-table .ant-pagination{flex-wrap:wrap;justify-content:flex-start;gap:8px 0}
+  .case-detail-drawer .case-firm-fees-table .ant-pagination-item,
+  .case-detail-drawer .case-firm-fees-table .ant-pagination-prev,
+  .case-detail-drawer .case-firm-fees-table .ant-pagination-next{min-width:44px;min-height:44px;height:auto;line-height:44px}
+  .case-detail-drawer .case-firm-fees-table .ant-pagination-options .ant-select{min-height:44px}
+  .case-detail-drawer .case-firm-fees-table .ant-pagination-total-text,
+  .case-detail-drawer .case-firm-fees-table .ant-pagination-options{display:block;max-width:100%;margin-inline-start:0}
+  .case-detail-drawer .case-firm-fees-panel{padding-bottom:max(8px,env(safe-area-inset-bottom))}
+  .case-detail-drawer .case-firm-fees-panel .case-legacy-bottom-actions{display:flex;width:calc(100% - 8px);max-width:100%;flex-wrap:wrap;gap:8px!important}
+  .case-detail-drawer .case-firm-fees-panel .case-legacy-bottom-actions .ant-space-item{min-width:0;max-width:100%}
+  .case-detail-drawer .case-firm-fees-panel .case-legacy-bottom-actions .ant-btn{height:auto;min-height:44px;white-space:normal}
+}
 /* 8.12-row2-scroll-layout */
 .page-workbench:has(.case-original-layout) { overflow: hidden; }
 .page-workbench > .case-original-layout { height: 100%; min-height: 0; }

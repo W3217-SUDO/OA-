@@ -125,7 +125,7 @@ import { useReceiptFees } from "./hooks/useReceiptFees";
 import { useSpecialCaseRecords } from "./hooks/useSpecialCaseRecords";
 import { ReceiptBatchUploadModal } from "./ReceiptBatchUploadModal";
 import { createCaseColumns } from "./columns/caseColumns";
-import { createExternalCaseFeeColumns } from "./columns/externalCaseFeeColumns";
+import { createExternalCaseFeeColumns, createFirmCaseFeeColumns } from "./columns/externalCaseFeeColumns";
 import { CasePartyIdentityFields, casePartyIdentityFormValues } from "./CasePartyIdentityFields";
 import { rememberTaskDetailTarget } from "../taskDetailNavigation";
 import { createGroupedOriginalCaseColumns } from "./columns/groupedOriginalCaseColumns";
@@ -2752,14 +2752,16 @@ export default function CaseCenterPage({
     setFeeInformRecord(null);
   };
 
-  const externalCaseFeeColumns=createExternalCaseFeeColumns({
+  const externalCaseFeeColumnContext = {
     get viewingCounselCase() { return viewingCounselCase; },
     get openRelatedContract() { return openRelatedContract; },
     get casePersonDisplayName() { return casePersonDisplayName; },
     get openRelatedIncomingPayment() { return openRelatedIncomingPayment; },
     get openRelatedInvoice() { return openRelatedInvoice; },
     get openCaseReceiptFiles() { return openCaseReceiptFiles; },
-  });
+  };
+  const externalCaseFeeColumns=createExternalCaseFeeColumns(externalCaseFeeColumnContext);
+  const firmCaseFeeColumns=createFirmCaseFeeColumns(externalCaseFeeColumnContext);
   const closeCaseCommission = () => {
     setCaseCommissionPreview(null);
     setCaseCommissionRows([]);
@@ -4046,7 +4048,7 @@ export default function CaseCenterPage({
                 setSelectedFeeKeys={setSelectedFirmFeeKeys}
                 selectedFee={selectedFirmFee}
                 counselDetailCapabilities={counselDetailCapabilities}
-                externalCaseFeeColumns={externalCaseFeeColumns}
+                firmCaseFeeColumns={firmCaseFeeColumns}
                 casePersonDisplayName={casePersonDisplayName}
                 renderCaseFeeEmptyState={renderCaseFeeEmptyState}
                 openCaseFeeBySubtype={openCaseFeeBySubtype}
