@@ -1,6 +1,7 @@
 import { moneyColumnStyle } from "../moneyColumns";
 import { Button } from "antd";
 import { money } from "../constants";
+import { displayFinancialValue } from "../../financialValueDisplay";
 import type { Fee } from "../types";
 export function createPaymentAuditOriginalColumns(context: {
     readonly setFeeReviewTargets: React.Dispatch<React.SetStateAction<Fee[]>>;
@@ -43,7 +44,7 @@ export function createPaymentAuditOriginalColumns(context: {
         {
             title: "交款截止日期", ...moneyColumnStyle("交款截止日期"),
             width: 120,
-            render: (_: unknown, row: Fee) => row.data.deadline || row.data.due_date || "—",
+            render: (_: unknown, row: Fee) => displayFinancialValue(row.data.deadline || row.data.due_date || "—"),
         },
         {
             title: "案件编号", ...moneyColumnStyle("案件编号"),
@@ -68,7 +69,7 @@ export function createPaymentAuditOriginalColumns(context: {
         {
             title: "申请日期", ...moneyColumnStyle("申请日期"),
             width: 110,
-            render: (_: unknown, row: Fee) => (row.data.application_date || row.created_at || "—").slice(0, 10),
+            render: (_: unknown, row: Fee) => displayFinancialValue(row.data.application_date || row.created_at || "—").slice(0, 10),
         },
         {
             title: "状态", ...moneyColumnStyle("状态"),

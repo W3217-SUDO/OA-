@@ -1,6 +1,7 @@
 import { moneyColumnStyle } from "../moneyColumns";
 import { Button, Tag } from "antd";
 import { money } from "../constants";
+import { displayFinancialValue } from "../../financialValueDisplay";
 import type { Reconciliation } from "../types";
 export function createReconcileColumns(context: {
     readonly financePersonDisplayName: (identity: unknown, displayName?: unknown) => string;
@@ -13,8 +14,8 @@ export function createReconcileColumns(context: {
             width: 90,
             render: (v: string) => <Tag color="blue">{v}</Tag>,
         },
-        { title: "开始日期", ...moneyColumnStyle("开始日期"), dataIndex: "date_from", width: 110 },
-        { title: "结束日期", ...moneyColumnStyle("结束日期"), dataIndex: "date_to", width: 110 },
+        { title: "开始日期", ...moneyColumnStyle("开始日期"), dataIndex: "date_from", width: 110, render: (value: string) => displayFinancialValue(value) },
+        { title: "结束日期", ...moneyColumnStyle("结束日期"), dataIndex: "date_to", width: 110, render: (value: string) => displayFinancialValue(value) },
         { title: "流水笔数", ...moneyColumnStyle("流水笔数"), dataIndex: "transaction_count", width: 90 },
         { title: "流水金额", ...moneyColumnStyle("流水金额"), dataIndex: "total_amount", width: 140, render: money },
         {

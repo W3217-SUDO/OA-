@@ -2,6 +2,7 @@ import { Button, message, Modal, Space } from "antd";
 import Table from "../../components/ResizableTable";
 import { api } from "../../api";
 import { openAttachmentOnlinePreview } from "../../attachmentOnlinePreview.mjs";
+import { displayFinancialValue } from "../../financialValueDisplay";
 import type { CaseFeeFile } from "../caseReceiptFiles";
 
 export async function openCaseFeeFilesDialog(options: {
@@ -18,11 +19,11 @@ export async function openCaseFeeFilesDialog(options: {
     const pending = new Set<number>();
     let closed = false;
     const content = () => <Table size="small" rowKey="attachment_id" pagination={{ pageSize: 10 }} scroll={{ x: 980 }} dataSource={rows} columns={[
-        { title: "来源", dataIndex: "source", width: 110 },
-        { title: "票据号", dataIndex: "bill_no", width: 150, render: (value: string) => value || "—" },
-        { title: "日期", dataIndex: "bill_date", width: 110, render: (value: string) => value || "—" },
-        { title: "文件", dataIndex: "original_name", ellipsis: true },
-        { title: "导入说明", dataIndex: "remark", width: 220, ellipsis: true },
+        { title: "来源", dataIndex: "source", width: 110, render: (value: string) => displayFinancialValue(value) },
+        { title: "票据号", dataIndex: "bill_no", width: 150, render: (value: string) => displayFinancialValue(value) || "—" },
+        { title: "日期", dataIndex: "bill_date", width: 110, render: (value: string) => displayFinancialValue(value) || "—" },
+        { title: "文件", dataIndex: "original_name", ellipsis: true, render: (value: string) => displayFinancialValue(value) },
+        { title: "导入说明", dataIndex: "remark", width: 220, ellipsis: true, render: (value: string) => displayFinancialValue(value) },
         { title: "操作", width: 190, render: (_: unknown, item: CaseFeeFile) => <Space size={0}>
             <Button type="link" onClick={() => void openAttachmentOnlinePreview(api, { id: item.attachment_id, original_name: item.original_name }).catch((error: any) => message.error(error?.response?.data?.detail || error?.message || "查看票据失败"))}>查看</Button>
             <Button type="link" onClick={() => void options.download(`/attachments/${item.attachment_id}/download`, item.original_name).catch((error: any) => message.error(error?.response?.data?.detail || "下载票据失败"))}>下载</Button>
@@ -31,7 +32,7 @@ export async function openCaseFeeFilesDialog(options: {
                 pending.add(item.attachment_id);
                 dialog.update({ content: content() });
                 const release = () => { pending.delete(item.attachment_id); if (!closed) dialog.update({ content: content() }); };
-                Modal.confirm({ title: "删除费用票据附件", content: `确认删除“${item.original_name}”的附件记录及关联？存储原件保留，费用金额和审批状态不变。`, okText: "删除", okButtonProps: { danger: true }, cancelText: "取消",
+                Modal.confirm({ title: "删除费用票据附件", content: `确认删除“${displayFinancialValue(item.original_name)}”的附件记录及关联？存储原件保留，费用金额和审批状态不变。`, okText: "删除", okButtonProps: { danger: true }, cancelText: "取消",
                     onCancel: release,
                     onOk: async () => {
                         try { await api.delete(`${path}/${item.attachment_id}`); }

@@ -1,6 +1,7 @@
 import { moneyColumnStyle } from "../moneyColumns";
 import { Button } from "antd";
 import { money } from "../constants";
+import { displayFinancialValue } from "../../financialValueDisplay";
 import type { Fee, Transaction } from "../types";
 export function createFeeQueryOriginalColumns(context: {
     readonly originalOperation: (_: unknown, row: Fee) => React.JSX.Element;
@@ -41,12 +42,12 @@ export function createFeeQueryOriginalColumns(context: {
         {
             title: "申请日期", ...moneyColumnStyle("申请日期"),
             width: 110,
-            render: (_: unknown, row: Fee) => (row.data.application_date || row.created_at || "—").slice(0, 10),
+            render: (_: unknown, row: Fee) => displayFinancialValue(row.data.application_date || row.created_at || "—").slice(0, 10),
         },
         {
             title: "付款日期", ...moneyColumnStyle("付款日期"),
             width: 110,
-            render: (_: unknown, row: Fee) => context.latestTransaction(row)?.transaction_date || "—",
+            render: (_: unknown, row: Fee) => displayFinancialValue(context.latestTransaction(row)?.transaction_date || "—"),
         },
         {
             title: "案件编号", ...moneyColumnStyle("案件编号"),

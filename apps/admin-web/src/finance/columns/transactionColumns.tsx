@@ -2,6 +2,7 @@ import { moneyColumnStyle } from "../moneyColumns";
 import { PaperClipOutlined } from "@ant-design/icons";
 import { Button, Tag } from "antd";
 import { money } from "../constants";
+import { displayFinancialValue } from "../../financialValueDisplay";
 import type { Transaction } from "../types";
 export function createTransactionColumns(context: {
     readonly openVouchers: (row: Transaction) => void;
@@ -10,7 +11,7 @@ export function createTransactionColumns(context: {
     readonly rollbackFinanceTransaction: (row: Transaction) => void;
 }) {
     return [
-        { title: "日期", ...moneyColumnStyle("日期"), dataIndex: "transaction_date", width: 105 },
+        { title: "日期", ...moneyColumnStyle("日期"), dataIndex: "transaction_date", width: 105, render: (value: string) => displayFinancialValue(value) },
         {
             title: "类型", ...moneyColumnStyle("类型"),
             dataIndex: "transaction_type",

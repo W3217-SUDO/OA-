@@ -1,6 +1,7 @@
 import { moneyColumnStyle } from "../moneyColumns";
 import { Tag } from "antd";
 import { money } from "../constants";
+import { displayFinancialValue } from "../../financialValueDisplay";
 import type { IncomingPayment } from "../types";
 export function createIncomingColumns(context: {
     readonly financePersonDisplayName: (identity: unknown, displayName?: unknown) => string;
@@ -8,7 +9,7 @@ export function createIncomingColumns(context: {
 }) {
     return [
         { title: "到账编号", ...moneyColumnStyle("到账编号"), dataIndex: "receipt_no", width: 180 },
-        { title: "到账日期", ...moneyColumnStyle("到账日期"), dataIndex: "received_date", width: 110 },
+        { title: "到账日期", ...moneyColumnStyle("到账日期"), dataIndex: "received_date", width: 110, render: (value: string) => displayFinancialValue(value) },
         { title: "付款单位/户名", ...moneyColumnStyle("付款单位/户名"), dataIndex: "payer_name", width: 210 },
         { title: "银行流水号", ...moneyColumnStyle("银行流水号"), dataIndex: "bank_reference", width: 165 },
         {

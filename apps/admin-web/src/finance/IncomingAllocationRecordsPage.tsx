@@ -3,6 +3,7 @@ import { Alert, Button, Card, Descriptions, Input, InputNumber, message, Select,
 import Table from "../components/ResizableTable";
 import { api } from "../api";
 import { money } from "./constants";
+import { displayFinancialValue } from "../financialValueDisplay";
 
 type Allocation = { index: number; case_no: string; contract_no: string; case_title: string; case_type: string; court_keywords: string; fee_type: string; case_stage: string; plaintiff: string; defendant: string; fee_amount: number | null; fee_received: number | null; fee_remaining: number | null; amount: number; allocated_at: string };
 type Result = { payment: { receipt_no: string; payer_name: string; received_date: string; amount: number; allocated_amount: number; remaining_amount: number; bank_reference: string; claimed_customer: string; claimant_display_name: string; contract_no: string; payment_method: string; remark: string }; items: Allocation[]; revision: string; can_cancel: boolean };
@@ -44,7 +45,7 @@ export function IncomingAllocationRecordsPage({ paymentId, onClose, onChange, on
   return <Card title={`已分配回款记录：${payment?.receipt_no || ""}`} extra={<Button onClick={onClose}>返回列表</Button>}>
     {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 12 }} />}
     <Descriptions bordered size="small" column={3} items={[
-      { key: "payer", label: "回款单位", children: payment?.payer_name }, { key: "date", label: "到账日期", children: payment?.received_date },
+      { key: "payer", label: "回款单位", children: payment?.payer_name }, { key: "date", label: "到账日期", children: displayFinancialValue(payment?.received_date) },
       { key: "bank", label: "银行单号", children: payment?.bank_reference }, { key: "amount", label: "到账金额", children: payment ? money(payment.amount) : "—" },
       { key: "allocated", label: "已分配", children: payment ? money(payment.allocated_amount) : "—" },
       { key: "remaining", label: "未分配", children: payment ? money(payment.remaining_amount) : "—" },
@@ -71,7 +72,7 @@ export function IncomingAllocationRecordsPage({ paymentId, onClose, onChange, on
       { title: "费用总额", dataIndex: "fee_amount", align: "right", render: value => value == null ? "—" : money(value) },
       { title: "已收", dataIndex: "fee_received", align: "right", render: value => value == null ? "—" : money(value) },
       { title: "待收", dataIndex: "fee_remaining", align: "right", render: value => value == null ? "—" : money(value) },
-      { title: "分配金额", dataIndex: "amount", align: "right", render: money }, { title: "分配时间", dataIndex: "allocated_at", width: 180 },
+      { title: "分配金额", dataIndex: "amount", align: "right", render: money }, { title: "分配时间", dataIndex: "allocated_at", width: 180, render: (value: string) => displayFinancialValue(value) },
     ]} />
     <Button danger disabled={!result?.can_cancel || !selected.length} loading={busy} onClick={() => void cancel()}>取消分配（{selected.length}）</Button>
   </Card>;

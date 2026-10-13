@@ -1,5 +1,6 @@
 import { Button, Descriptions, Modal, Select, Tag } from "antd";
 import { money, statusColors } from "./constants";
+import { displayFinancialValue } from "../financialValueDisplay";
 import type { FinanceFlow } from "./types";
 
 export interface RefundDetailModalProps {
@@ -32,10 +33,10 @@ export function RefundDetailModal({
             <Descriptions.Item label="关联案号">{refundDetail.data.case_no ? <Button type="link" onClick={() => openCaseDetail(refundDetail.data.case_no)}>{refundDetail.data.case_no}</Button> : "—"}</Descriptions.Item>
             <Descriptions.Item label="客户">{refundDetail.customer ? <Button type="link" onClick={() => openCustomerDetail(refundDetail.customer, refundDetail.data.customer_no)}>{refundDetail.customer}</Button> : "—"}</Descriptions.Item>
             <Descriptions.Item label="退款金额">{refundDetail.data.amount == null ? "—" : money(refundDetail.data.amount)}</Descriptions.Item>
-            <Descriptions.Item label="预计到账">{refundDetail.data.expected_date || "—"}</Descriptions.Item>
+            <Descriptions.Item label="预计到账">{displayFinancialValue(refundDetail.data.expected_date || "—")}</Descriptions.Item>
             <Descriptions.Item label="原缴费票号">{refundDetail.data.original_payment_no || "—"}</Descriptions.Item>
             <Descriptions.Item label="退款账户">{refundDetail.data.refund_account_name || "—"}</Descriptions.Item>
-            <Descriptions.Item label="实际到账">{refundDetail.data.actual_date || "—"}</Descriptions.Item>
+            <Descriptions.Item label="实际到账">{displayFinancialValue(refundDetail.data.actual_date || "—")}</Descriptions.Item>
             <Descriptions.Item label="退款凭证号">{refundDetail.data.voucher_no || "—"}</Descriptions.Item>
             <Descriptions.Item label="申请人">{financePersonDisplayName(refundDetail.data.applicant || refundDetail.owner, refundDetail.data.applicant_display_name || refundDetail.data.owner_display_name)}</Descriptions.Item>
             <Descriptions.Item label="说明" span={2}>{refundDetail.description || refundDetail.data.remark || "—"}</Descriptions.Item>

@@ -1,4 +1,5 @@
 import { LEGACY_THIRD_PARTY_FEE_SUBTYPES } from "../caseRelationConsumption.mjs";
+import { displayFinancialValue } from "../financialValueDisplay";
 
 export type CaseReceiptFile = {
   attachmentId: number;
@@ -22,7 +23,7 @@ export function caseFeeBillDisplay(data: Record<string, unknown>) {
   const entries: { key: string; label: string; kind: "invoice" | "files" }[] = [];
   if (data.invoice_no) entries.push({ key: "invoice", label: String(data.invoice_no), kind: "invoice" });
   const files = Array.isArray(data.case_fee_files) ? data.case_fee_files as CaseFeeFile[] : null;
-  const dates = [String(data.invoice_date || "").slice(0, 10), String(data.paid_date || data.payment_date || "").slice(0, 10)];
+  const dates = [displayFinancialValue(String(data.invoice_date || "")).slice(0, 10), displayFinancialValue(String(data.paid_date || data.payment_date || "")).slice(0, 10)];
   if (files) {
     for (const file of files) {
       entries.push({ key: `attachment-${file.attachment_id}`, label: (file.kind === "invoice" && file.bill_no) || file.original_name || file.bill_no || "查看凭证", kind: "files" });
@@ -38,7 +39,10 @@ export function caseFeeBillDisplay(data: Record<string, unknown>) {
       entries.push({ key: "writeoff", label: String(data.writeoff_voucher_no || "查看凭证"), kind: "files" });
     }
   }
-  return { entries, dates: [...new Set(dates.filter(Boolean))] };
+  return {
+    entries: entries.map(entry => ({ ...entry, label: displayFinancialValue(entry.label) })),
+    dates: [...new Set(dates.filter(Boolean).map(date => displayFinancialValue(date)))],
+  };
 }
 
 export function caseReceiptFiles(data: Record<string, unknown>): CaseReceiptFile[] {

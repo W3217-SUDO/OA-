@@ -1,6 +1,7 @@
 import { Button } from "antd";
 import Table from "../components/ResizableTable";
 import { normalizeIncomingPaymentForContract, normalizeInvoiceObject, normalizePaidObject } from "../contractObjectPresentation.mjs";
+import { displayFinancialValue } from "../financialValueDisplay";
 import { amount } from "./constants";
 import type { Contract } from "./types";
 
@@ -12,6 +13,9 @@ interface Props {
   personName: (value: unknown) => string;
   onOpenRelatedPayment: (row: Contract) => void;
 }
+
+const displayAmount = (value?: number) =>
+  Object.is(displayFinancialValue(value), value) ? amount(value) : "—";
 
 export function ContractFinancialRecords({ viewing, detailReceipts, detailInvoices, detailPayments, personName, onOpenRelatedPayment }: Props) {
   const presentedReceipts = detailReceipts
@@ -85,15 +89,15 @@ export function ContractFinancialRecords({ viewing, detailReceipts, detailInvoic
               locale={{ emptyText: "暂无回款记录" }}
               columns={[
                 { title: "序号", width: 64, render: (_: unknown, __: any, index: number) => index + 1 },
-                { title: "回款单号", dataIndex: "receipt_no", width: 150 },
-                { title: "回款日期", dataIndex: "received_date", width: 120 },
-                { title: "银行单据号", dataIndex: "bank_reference", width: 150 },
-                { title: "回款金额", dataIndex: "amount", width: 110, render: (value: number) => amount(value) },
-                { title: "官费", width: 100, render: (_: unknown, row: any) => amount(row.official_amount || 0) },
-                { title: "代理费", width: 100, render: (_: unknown, row: any) => amount(row.agency_amount || 0) },
-                { title: "其他费用", width: 100, render: (_: unknown, row: any) => amount(row.other_amount || 0) },
-                { title: "回款方式", dataIndex: "payment_method", width: 120 },
-                { title: "回款分配人", dataIndex: "claimant", width: 120 },
+                { title: "回款单号", dataIndex: "receipt_no", width: 150, render: (value: string) => displayFinancialValue(value) },
+                { title: "回款日期", dataIndex: "received_date", width: 120, render: (value: string) => displayFinancialValue(value) },
+                { title: "银行单据号", dataIndex: "bank_reference", width: 150, render: (value: string) => displayFinancialValue(value) },
+                { title: "回款金额", dataIndex: "amount", width: 110, render: (value: number) => displayAmount(value) },
+                { title: "官费", width: 100, render: (_: unknown, row: any) => displayAmount(row.official_amount || 0) },
+                { title: "代理费", width: 100, render: (_: unknown, row: any) => displayAmount(row.agency_amount || 0) },
+                { title: "其他费用", width: 100, render: (_: unknown, row: any) => displayAmount(row.other_amount || 0) },
+                { title: "回款方式", dataIndex: "payment_method", width: 120, render: (value: string) => displayFinancialValue(value) },
+                { title: "回款分配人", dataIndex: "claimant", width: 120, render: (value: string) => displayFinancialValue(value) },
               ]}
             />
           </section>
@@ -109,39 +113,39 @@ export function ContractFinancialRecords({ viewing, detailReceipts, detailInvoic
               locale={{ emptyText: "暂无开票记录" }}
               columns={[
                 { title: "序号", width: 64, render: (_: unknown, __: Contract, index: number) => index + 1 },
-                { title: "请票单号", dataIndex: "serial_no", width: 150 },
+                { title: "请票单号", dataIndex: "serial_no", width: 150, render: (value: string) => displayFinancialValue(value) },
                 {
                   title: "发票号码",
                   width: 150,
-                  render: (_: unknown, row: Contract) => (row.data as any).invoice_no || "—",
+                  render: (_: unknown, row: Contract) => displayFinancialValue((row.data as any).invoice_no || "—"),
                 },
                 {
                   title: "开票日期",
                   width: 120,
-                  render: (_: unknown, row: Contract) => (row.data as any).invoice_date || "—",
+                  render: (_: unknown, row: Contract) => displayFinancialValue((row.data as any).invoice_date || "—"),
                 },
                 {
                   title: "开票金额",
                   width: 110,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).amount || 0),
+                  render: (_: unknown, row: Contract) => displayAmount((row.data as any).amount || 0),
                 },
                 {
                   title: "官费",
                   width: 100,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).official_amount || 0),
+                  render: (_: unknown, row: Contract) => displayAmount((row.data as any).official_amount || 0),
                 },
                 {
                   title: "代理费",
                   width: 100,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).agency_amount || 0),
+                  render: (_: unknown, row: Contract) => displayAmount((row.data as any).agency_amount || 0),
                 },
                 {
                   title: "其他费用",
                   width: 100,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).other_amount || 0),
+                  render: (_: unknown, row: Contract) => displayAmount((row.data as any).other_amount || 0),
                 },
-                { title: "状态", dataIndex: "status", width: 110 },
-                { title: "备注", dataIndex: "description", width: 180 },
+                { title: "状态", dataIndex: "status", width: 110, render: (value: string) => displayFinancialValue(value) },
+                { title: "备注", dataIndex: "description", width: 180, render: (value: string) => displayFinancialValue(value) },
               ]}
             />
           </section>
@@ -164,7 +168,7 @@ export function ContractFinancialRecords({ viewing, detailReceipts, detailInvoic
                   render: (value: string, row: Contract) =>
                     value ? (
                       <Button type="link" className="contract-cell-link" onClick={() => onOpenRelatedPayment(row)}>
-                        {value}
+                        {displayFinancialValue(value)}
                       </Button>
                     ) : (
                       "—"
@@ -174,53 +178,53 @@ export function ContractFinancialRecords({ viewing, detailReceipts, detailInvoic
                   title: "申请人",
                   width: 120,
                   render: (_: unknown, row: Contract) =>
-                    personName(
+                    displayFinancialValue(personName(
                       (row.data as any).applicant_display_name ||
                         (row.data as any).applicant ||
                         (row as any).owner_display_name ||
                         row.owner,
-                    ),
+                    )),
                 },
                 {
                   title: "待付金额",
                   width: 110,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).pending_amount || 0),
+                  render: (_: unknown, row: Contract) => displayAmount((row.data as any).pending_amount || 0),
                 },
                 {
                   title: "付款日期",
                   width: 120,
-                  render: (_: unknown, row: Contract) => (row.data as any).payment_date || "—",
+                  render: (_: unknown, row: Contract) => displayFinancialValue((row.data as any).payment_date || "—"),
                 },
                 {
                   title: "付款单据",
                   width: 140,
-                  render: (_: unknown, row: Contract) => (row.data as any).payment_reference || "—",
+                  render: (_: unknown, row: Contract) => displayFinancialValue((row.data as any).payment_reference || "—"),
                 },
                 {
                   title: "付款金额",
                   width: 110,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).amount || 0),
+                  render: (_: unknown, row: Contract) => displayAmount((row.data as any).amount || 0),
                 },
                 {
                   title: "付款类型",
                   width: 120,
-                  render: (_: unknown, row: Contract) => (row.data as any).payment_type || "—",
+                  render: (_: unknown, row: Contract) => displayFinancialValue((row.data as any).payment_type || "—"),
                 },
                 {
                   title: "付款标的",
                   width: 260,
                   dataIndex: "line_summary",
-                  render: (value: string) => value || "—",
+                  render: (value: string) => displayFinancialValue(value || "—"),
                 },
                 {
                   title: "官费",
                   width: 100,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).official_amount || 0),
+                  render: (_: unknown, row: Contract) => displayAmount((row.data as any).official_amount || 0),
                 },
                 {
                   title: "其他费用",
                   width: 100,
-                  render: (_: unknown, row: Contract) => amount((row.data as any).other_amount || 0),
+                  render: (_: unknown, row: Contract) => displayAmount((row.data as any).other_amount || 0),
                 },
               ]}
             />

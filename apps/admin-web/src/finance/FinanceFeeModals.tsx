@@ -2,6 +2,7 @@ import { Button, Descriptions, Form, Input, InputNumber, Modal } from "antd";
 import type { FormInstance } from "antd";
 import { FeeTypePicker } from "./FeeTypePicker";
 import { money } from "./constants";
+import { displayFinancialValue } from "../financialValueDisplay";
 import type { FeeEditorFormValues } from "./formTypes";
 import type { Fee, Transaction } from "./types";
 
@@ -60,14 +61,14 @@ export function FeeDetailModal({
               {feeDetail.data.payment_package_context?.status || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="申请日期">
-              {(
+              {displayFinancialValue(
                 feeDetail.data.application_date ||
                 feeDetail.created_at ||
                 "—"
               ).slice(0, 10)}
             </Descriptions.Item>
             <Descriptions.Item label="审核日期">
-              {(feeDetail.data.audit_date || feeDetail.updated_at || "—").slice(
+              {displayFinancialValue(feeDetail.data.audit_date || feeDetail.updated_at || "—").slice(
                 0,
                 10,
               )}
@@ -113,7 +114,7 @@ export function FeeDetailModal({
                 : feeDetail.data.payee_display_name || feeDetail.data.payee || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="付款日期">
-              {latestTransaction(feeDetail)?.transaction_date || "—"}
+              {displayFinancialValue(latestTransaction(feeDetail)?.transaction_date || "—")}
             </Descriptions.Item>
             <Descriptions.Item label="申请人">
               {financePersonDisplayName(

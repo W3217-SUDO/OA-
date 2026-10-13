@@ -1,4 +1,5 @@
 import { FeeTypePicker, matchesFeeTypeSelection, type FeeTypeCatalog } from "./FeeTypePicker";
+import { displayFinancialValue } from "../financialValueDisplay";
 import { receiptBankCode, matchesReceiptBank } from "./bankReceiptScope";
 import {
 ArrowUpOutlined,
@@ -3226,7 +3227,7 @@ export default function FinanceCenterPage({
     return undefined;
   };
   const cellValue = (row: OriginalFinanceRow, header: string) => {
-    const value = rawCellValue(row, header);
+    const value = displayFinancialValue(rawCellValue(row, header));
     if (value == null || value === "") return "—";
     if (
       isArchiveSettlementActiveRoute &&
@@ -4206,7 +4207,7 @@ export default function FinanceCenterPage({
             {String(Number(feeDetail.data.paid_hearing || 0))}
           </Descriptions.Item>
           <Descriptions.Item label="申请日期">
-            {(
+            {displayFinancialValue(
               feeDetail.data.application_date ||
               feeDetail.created_at ||
               "—"
@@ -4465,7 +4466,7 @@ export default function FinanceCenterPage({
               <th>打包流水号：</th>
               <td>{paymentPrintPreview.packageNo || "—"}</td>
               <th>打印日期：</th>
-              <td>{paymentPrintPreview.printTime.slice(0, 10) || "—"}</td>
+              <td>{displayFinancialValue(paymentPrintPreview.printTime).slice(0, 10) || "—"}</td>
               <th />
               <td />
             </tr>
@@ -4487,7 +4488,7 @@ export default function FinanceCenterPage({
             </tr>
             <tr>
               <th>付款日期：</th>
-              <td>{paymentPrintPreview.paymentDate || "—"}</td>
+              <td>{displayFinancialValue(paymentPrintPreview.paymentDate || "—")}</td>
               <th>付款凭证号：</th>
               <td>{paymentPrintPreview.voucherNo || "—"}</td>
               <th>经办人：</th>
@@ -4617,7 +4618,7 @@ export default function FinanceCenterPage({
                 <th>打包流水号：</th>
                 <td>{paymentPackagePrintData.package_no}</td>
                 <th>打印日期：</th>
-                <td>{paymentPackagePrintData.print_date}</td>
+                <td>{displayFinancialValue(paymentPackagePrintData.print_date)}</td>
                 <th>付款总金额：</th>
                 <td>￥{Number(paymentPackagePrintData.total_amount).toFixed(2)}</td>
               </tr>
@@ -4677,7 +4678,7 @@ export default function FinanceCenterPage({
         colon
       >
         <Descriptions.Item label="回款单位">{incomingDetailTarget.payer_name || "—"}</Descriptions.Item>
-        <Descriptions.Item label="到账日期">{incomingDetailTarget.received_date || "—"}</Descriptions.Item>
+        <Descriptions.Item label="到账日期">{displayFinancialValue(incomingDetailTarget.received_date || "—")}</Descriptions.Item>
         <Descriptions.Item label="银行单号">{incomingDetailTarget.bank_reference || "—"}</Descriptions.Item>
         <Descriptions.Item label="回款方式">{incomingDetailTarget.payment_method || incomingDetailTarget.bank_source || "—"}</Descriptions.Item>
         <Descriptions.Item label="合同号">{incomingDetailTarget.contract_no || "—"}</Descriptions.Item>

@@ -1,5 +1,6 @@
 import { Button } from "antd";
 import { caseFeeRefundLabel } from "../../caseFeeLegacyProjection.mjs";
+import { displayFinancialValue } from "../../financialValueDisplay";
 import { caseFeeBillDisplay, caseFeeReceiptApplicable } from "../caseReceiptFiles";
 import type { CaseRow } from "../types";
 export function createExternalCaseFeeColumns(context: {
@@ -17,14 +18,14 @@ export function createExternalCaseFeeColumns(context: {
                 return contractNo ? <Button type="link" className="case-cell-link" onClick={() => context.openRelatedContract({ id: contractId, serial_no: contractNo })}>{contractNo}</Button> : "—";
             } },
         { title: "费用类型", width: 190, render: (_: unknown, row: CaseRow) => row.data.expense_subtype || row.data.fee_type || row.title || "—" },
-        { title: "金额", width: 100, align: "right" as const, render: (_: unknown, row: CaseRow) => row.data.amount ?? 0 },
+        { title: "金额", width: 100, align: "right" as const, render: (_: unknown, row: CaseRow) => displayFinancialValue(row.data.amount ?? 0) },
         { title: "退费", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => caseFeeRefundLabel(row.data) },
         { title: "提交人", width: 120, render: (_: unknown, row: CaseRow) => row.data.submitter_display_name || row.data.submitted_by_display_name || row.data.handler_display_name || row.owner_display_name || context.casePersonDisplayName(row.owner) },
-        { title: "提交日期", width: 120, render: (_: unknown, row: CaseRow) => String(row.data.submitted_at || row.created_at || row.data.created_at || "").slice(0, 10) || "—" },
+        { title: "提交日期", width: 120, render: (_: unknown, row: CaseRow) => displayFinancialValue(String(row.data.submitted_at || row.created_at || row.data.created_at || "")).slice(0, 10) || "—" },
         { title: "回款日期", width: 120, render: (_: unknown, row: CaseRow) => caseFeeReceiptApplicable(row.data, row.title)
-            ? String(row.data.received_at || row.data.cashed_date || "").slice(0, 10) || "—" : "/" },
+            ? displayFinancialValue(String(row.data.received_at || row.data.cashed_date || "")).slice(0, 10) || "—" : "—" },
         { title: "回款金额", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => {
-                if (!caseFeeReceiptApplicable(row.data, row.title)) return "/";
+                if (!caseFeeReceiptApplicable(row.data, row.title)) return "—";
                 const rawValue = row.data.received_amount ?? row.data.cashed_amount;
                 const normalizedValue = String(rawValue ?? "").trim();
                 const value = normalizedValue && normalizedValue !== "/" && normalizedValue !== "\\"
@@ -46,6 +47,6 @@ export function createExternalCaseFeeColumns(context: {
                         onClick={() => entry.kind === "invoice" ? context.openRelatedInvoice(row) : context.openCaseReceiptFiles(row)}>{entry.label}</Button>
                 </div>)}</div> : "—";
             } },
-        { title: "申请付款金额", width: 130, align: "right" as const, render: (_: unknown, row: CaseRow) => row.data.payment_requested_amount ?? 0 },
+        { title: "申请付款金额", width: 130, align: "right" as const, render: (_: unknown, row: CaseRow) => displayFinancialValue(row.data.payment_requested_amount ?? 0) },
     ];
 }

@@ -112,6 +112,17 @@ test('allocation selection retains functional updates and normalizes table keys'
   const view = IncomingAllocationModal({ allocateTarget: null, allocationCandidates: [], filteredAllocationCandidates: [], selectedAllocationKeys: ['initial'], allocationAmounts: {}, onSelectedKeysChange: next => { keys = typeof next === 'function' ? next(keys) : next; }, onAmountChange: () => {} });
   const table = findElement(view, element => Array.isArray(element.props?.columns));
   const amountColumn = table.props.columns.find(column => column.key === 'allocation_amount');
+  const thirdParty = { key: 'third-party', fee_type: '公告费', received_amount: 20, remaining_amount: 30 };
+  for (const title of ['已回', '待回']) {
+    const column = table.props.columns.find(item => item.title === title);
+    assert.equal(column.render(null, thirdParty), '—');
+    assert.equal(column.render(null, { fee_type: '律师代理费', received_amount: 0, remaining_amount: 0 }), '\u00a5 0.00');
+    assert.equal(column.render(null, { fee_type: '律师代理费', received_amount: 12.5, remaining_amount: 12.5 }), '\u00a5 12.50');
+  }
+  assert.equal(amountColumn.render(null, thirdParty).props.disabled, true);
+  assert.equal(table.props.columns.find(column => column.key === 'all').render(null, thirdParty).props.disabled, true);
+  assert.equal(table.props.rowSelection.getCheckboxProps(thirdParty).disabled, true);
+  assert.equal(table.props.rowSelection.getCheckboxProps({ fee_type: '律师代理费' }).disabled, false);
   amountColumn.render(null, { key: 'a', remaining_amount: 10 }).props.onChange(2);
   amountColumn.render(null, { key: 'b', remaining_amount: 10 }).props.onChange(3);
   assert.deepEqual(keys, ['initial', 'a', 'b']);

@@ -26,6 +26,7 @@ import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { resolveDetailRelation } from "./detailRelationResolver";
 import { formatRequiredDate } from "./formSafety";
+import { displayFinancialValue } from "./financialValueDisplay";
 import "./platform-finance.css";
 
 type FieldKind = "text" | "select" | "range" | "money-range";
@@ -770,7 +771,10 @@ export default function PlatformFinancePage({
 
   if (config.kind === "receipt-create") return <ReceiptCreatePage />;
 
-  const money = (value: unknown) => value == null ? "—" : `¥ ${Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 2 })}`;
+  const money = (value: unknown) => {
+    if (typeof value === "string" && displayFinancialValue(value) !== value) return "—";
+    return value == null ? "—" : `¥ ${Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 2 })}`;
+  };
   const openCaseDetail = async (caseNo: unknown) => {
     const serialNo = String(caseNo || "").trim();
     if (!serialNo || serialNo === "—") {
@@ -904,21 +908,30 @@ export default function PlatformFinancePage({
     ...item,
     render: (_: unknown, row: any) => {
       const value = row[item.title] || row._source?.data?.case_no;
-      return value && value !== "—" ? <Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button> : "—";
+      return value && value !== "—" ? <Button type="link" onClick={() => openCaseDetail(value)}>{displayFinancialValue(value)}</Button> : "—";
     },
   } : ["合同编号", "合同号"].includes(String(item.title)) ? {
     ...item,
     render: (_: unknown, row: any) => {
       const value = row[item.title] || row._source?.data?.contract_no;
-      return value && value !== "—" ? <Button type="link" onClick={() => openContractDetail(value)}>{value}</Button> : "—";
+      return value && value !== "—" ? <Button type="link" onClick={() => openContractDetail(value)}>{displayFinancialValue(value)}</Button> : "—";
     },
   } : ["客户名称", "客户"].includes(String(item.title)) ? {
     ...item,
     render: (_: unknown, row: any) => {
       const value = row[item.title] || row._source?.claimed_customer || row._source?.customer;
-      return value && value !== "—" ? <Button type="link" onClick={() => openCustomerDetail(value, row._source?.data?.customer_no)}>{value}</Button> : "—";
+      return value && value !== "—" ? <Button type="link" onClick={() => openCustomerDetail(value, row._source?.data?.customer_no)}>{displayFinancialValue(value)}</Button> : "—";
     },
-  } : item);
+  } : {
+    ...item,
+    render: (value: any, row: any, index: number) => {
+      if (item.title === "申请日期") {
+        const rawDate = row._source.created_at;
+        if (!Object.is(displayFinancialValue(rawDate), rawDate)) return "—";
+      }
+      return typeof item.render === "function" ? item.render(value, row, index) : displayFinancialValue(value);
+    },
+  });
   const exportCsv = (rows = filteredRows) => {
     const titles = renderedColumns.map((item: any) => String(item.title)).filter((title) => title !== "操作");
     const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -993,16 +1006,16 @@ export default function PlatformFinancePage({
         }}
         data-query-count={Object.keys(submittedQuery).length}
       />
-      <Drawer open={Boolean(detail)} width={620} title={`财务详情：${detail?.serial_no || detail?.receipt_no || ""}`} onClose={() => setDetail(null)}>
+      <Drawer open={Boolean(detail)} width={620} title={`财务详情：${displayFinancialValue(detail?.serial_no || detail?.receipt_no || "")}`} onClose={() => setDetail(null)}>
         {detail && <Descriptions bordered size="small" column={1} items={[
-          { key: "status", label: "状态", children: <Tag>{detail.status}</Tag> },
-          { key: "customer", label: "客户", children: (detail.claimed_customer || detail.customer) ? <Button type="link" onClick={() => openCustomerDetail(detail.claimed_customer || detail.customer, detail.data?.customer_no)}>{detail.claimed_customer || detail.customer}</Button> : "—" },
+          { key: "status", label: "状态", children: <Tag>{displayFinancialValue(detail.status)}</Tag> },
+          { key: "customer", label: "客户", children: (detail.claimed_customer || detail.customer) ? <Button type="link" onClick={() => openCustomerDetail(detail.claimed_customer || detail.customer, detail.data?.customer_no)}>{displayFinancialValue(detail.claimed_customer || detail.customer)}</Button> : "—" },
           { key: "amount", label: "金额", children: money(detail.amount ?? detail.data?.amount) },
-          { key: "case_no", label: "案件编号", children: detail.data?.case_no ? <Button type="link" onClick={() => openCaseDetail(detail.data.case_no)}>{detail.data.case_no}</Button> : "—" },
-          { key: "contract_no", label: "合同编号", children: (detail.contract_no || detail.data?.contract_no) ? <Button type="link" onClick={() => openContractDetail(detail.contract_no || detail.data?.contract_no)}>{detail.contract_no || detail.data?.contract_no}</Button> : "—" },
-          { key: "owner", label: "负责人", children: detail.claimant || detail.owner || detail.operator || "—" },
-          { key: "date", label: "日期", children: detail.received_date || detail.created_at || "—" },
-          { key: "remark", label: "说明", children: detail.remark || detail.description || "—" },
+          { key: "case_no", label: "案件编号", children: detail.data?.case_no ? <Button type="link" onClick={() => openCaseDetail(detail.data.case_no)}>{displayFinancialValue(detail.data.case_no)}</Button> : "—" },
+          { key: "contract_no", label: "合同编号", children: (detail.contract_no || detail.data?.contract_no) ? <Button type="link" onClick={() => openContractDetail(detail.contract_no || detail.data?.contract_no)}>{displayFinancialValue(detail.contract_no || detail.data?.contract_no)}</Button> : "—" },
+          { key: "owner", label: "负责人", children: displayFinancialValue(detail.claimant || detail.owner || detail.operator || "—") },
+          { key: "date", label: "日期", children: displayFinancialValue(detail.received_date || detail.created_at || "—") },
+          { key: "remark", label: "说明", children: displayFinancialValue(detail.remark || detail.description || "—") },
           { key: "data", label: "扩展信息", children: <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{JSON.stringify(detail.data || detail.allocations || {}, null, 2)}</pre> },
         ]} />}
       </Drawer>
