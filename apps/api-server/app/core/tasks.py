@@ -621,25 +621,25 @@ async def _record_task_manual_intervention(
     task: BusinessRecord, identity: dict, db: AsyncSession, *, action: str,
     completion_override: bool = False,
 ) -> None:
-    """仅在专用入口校验通过后，保存自动任务的人工操作阶段快照。"""
-    if _task_creation_mode(task.data or {}) != "自动":
+    """仅为明确的状态覆盖保存阶段快照，普通操作沿用原工作流审计。"""
+    if not completion_override or _task_creation_mode(task.data or {}) != "自动":
         return
     data = task.data or {}
-    case_id = data.get("case_record_id") or data.get("case_id")
-    if not case_id:
-        return
-    case_record = await db.get(BusinessRecord, int(case_id))
+    raw_case_id = data.get("case_record_id")
+    if raw_case_id is None:
+        raw_case_id = data.get("case_id")
+    if isinstance(raw_case_id, bool) or not isinstance(raw_case_id, (int, str)):
+        raise HTTPException(status_code=409, detail="自动任务关联案件编号无效，不能记录人工干预")
+    try:
+        case_id = int(raw_case_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="自动任务关联案件编号无效，不能记录人工干预") from exc
+    if case_id <= 0:
+        raise HTTPException(status_code=409, detail="自动任务关联案件编号无效，不能记录人工干预")
+    case_record = await db.get(BusinessRecord, case_id)
     if not case_record or case_record.module not in {"case", "ipr_case"}:
         raise HTTPException(status_code=409, detail="自动任务关联案件不存在，不能记录人工干预")
     phase_changed_at = str((case_record.data or {}).get("phase_changed_at") or "")
-    previous = data.get("manual_intervention") or {}
-    # 普通接收和维护只记审计，不停用自动完成；同阶段保留已明确的退回重启意图。
-    retain_override = (
-        previous.get("completion_override") is True
-        and previous.get("case_id") == case_record.id
-        and previous.get("case_stage") == case_record.status
-        and previous.get("phase_changed_at") == phase_changed_at
-    )
     task.data = {
         **data,
         "manual_intervention": {
@@ -649,7 +649,7 @@ async def _record_task_manual_intervention(
             "case_id": case_record.id,
             "case_stage": case_record.status,
             "phase_changed_at": phase_changed_at,
-            "completion_override": completion_override or retain_override,
+            "completion_override": True,
         },
     }
 

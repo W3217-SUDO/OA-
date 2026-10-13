@@ -121,8 +121,10 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         await self.sync_automatic_case(case_id)
         task = await self.persisted_task(task_id)
         self.assertEqual((task.owner, task.status, task.data["deadline"]), (RECIPIENT["username"], "待接收", deadline))
-        self.assertEqual(task.data["manual_intervention"]["operator"], INITIATOR["username"])
-        self.assertFalse(task.data["manual_intervention"]["completion_override"])
+        self.assertNotIn("manual_intervention", task.data)
+        async with self.sessions() as db:
+            event = await db.scalar(select(WorkflowEvent).where(WorkflowEvent.record_id == task_id))
+            self.assertEqual((event.action, event.operator), ("批量修改任务", INITIATOR["username"]))
         await self.sync_automatic_case(case_id, stage="一审准备开庭")
         self.assertEqual((await self.persisted_task(task_id)).status, "已完成")
 
@@ -284,6 +286,7 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
             await db.commit()
         response = await self.client.post(f"{API}/tasks/{task_id}/restart", json={})
         self.assertEqual(response.status_code, 200, response.text)
+        original_marker = dict((await self.persisted_task(task_id)).data["manual_intervention"])
         response = await self.client.post(f"{API}/tasks/batch-update", json={
             "task_ids": [task_id], "deadline": str(date.today() + timedelta(days=10)),
         })
@@ -291,7 +294,43 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         await self.sync_automatic_case(case_id)
         task = await self.persisted_task(task_id)
         self.assertEqual(task.status, "处理中")
-        self.assertTrue(task.data["manual_intervention"]["completion_override"])
+        self.assertEqual(task.data["manual_intervention"], original_marker)
+
+    async def test_missing_case_does_not_block_normal_actions_but_explicit_override_requires_valid_case(self) -> None:
+        for suffix, reference in (("missing", 999999), ("malformed", "not-an-id"), ("absent", None), ("wrong-module", "task")):
+            task_id, case_id = await self.create_automatic_task("待接收", f"historical-{suffix}")
+            async with self.sessions() as db:
+                task = await db.get(BusinessRecord, task_id)
+                case = await db.get(BusinessRecord, case_id)
+                linked_id = task_id if reference == "task" else reference
+                task.data = {**task.data, "case_id": linked_id, "case_record_id": linked_id, "case_no": case.serial_no}
+                await db.commit()
+            self.identity = dict(OWNER)
+            updated = await self.client.post(f"{API}/tasks/batch-update", json={
+                "task_ids": [task_id], "owner": RECIPIENT["username"],
+                "deadline": str(date.today() + timedelta(days=10)),
+            })
+            self.assertEqual(updated.status_code, 200, updated.text)
+            self.identity = dict(RECIPIENT)
+            accepted = await self.client.post(f"{API}/tasks/{task_id}/accept", json={})
+            self.assertEqual(accepted.status_code, 200, accepted.text)
+            requested = await self.client.post(f"{API}/tasks/{task_id}/exception-request", json={"action": "取消", "reason": "历史任务取消申请"})
+            self.assertEqual(requested.status_code, 200, requested.text)
+            task = await self.persisted_task(task_id)
+            self.assertNotIn("manual_intervention", task.data)
+            async with self.sessions() as db:
+                events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == task_id))).all())
+                self.assertEqual([event.action for event in events], ["批量修改任务", "接收任务", "申请任务取消"])
+                task = await db.get(BusinessRecord, task_id)
+                task.status = "已完成"
+                task.data = {**task.data, "auto_completed": True}
+                await db.commit()
+            self.identity = dict(INITIATOR)
+            restarted = await self.client.post(f"{API}/tasks/{task_id}/restart", json={})
+            self.assertEqual(restarted.status_code, 409, restarted.text)
+            task = await self.persisted_task(task_id)
+            self.assertEqual(task.status, "已完成")
+            self.assertNotIn("manual_intervention", task.data)
 
     async def test_initiator_can_restart_or_confirm_rejected_and_completed_tasks(self) -> None:
         rejected_restart = await self.create_task("已拒绝", "1201")
