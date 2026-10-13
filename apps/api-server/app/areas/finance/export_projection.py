@@ -223,6 +223,8 @@ async def archive_export_values(rows, identity, db):
 
 
 async def enrich_settlement_exports(rows, identity, db, *, include_invoice_fields: bool):
+    from app.core.contracts import _contract_person_values, _valid_contract_chinese_person_name
+    from app.core.formatters import _person_reference_display, _user_display_map
     from app.core.incoming_allocation_projection import normalize_settlement_allocation_times
     from app.core.finance import _invoice_fee_details, _visible_incoming_payment_statement, _incoming_payment_legacy_summary
     from app.core.permissions import _record_scope_conditions
@@ -230,6 +232,24 @@ async def enrich_settlement_exports(rows, identity, db, *, include_invoice_field
 
     details = [detail for row in rows for detail in row["data"].get("allocation_details") or []]
     by_id, by_number = await linked_cases([{"data": detail} for detail in details], identity, db)
+    lawyer_references = {case.id: _contract_person_values(
+        (case.data or {}).get("hearing_lawyer_username") or (case.data or {}).get("hearing_lawyer")
+        or (case.data or {}).get("court_lawyer")
+    ) for case in by_id.values()}
+    users = await _user_display_map({value for values in lawyer_references.values() for value in values}, db)
+    lawyer_names = {}
+    for case_id, references in lawyer_references.items():
+        names = []
+        for reference in references:
+            if reference.lower() in users:
+                name, missing = _person_reference_display(reference, users)
+            else:
+                name = _valid_contract_chinese_person_name(reference)
+                missing = not name
+            if missing:
+                raise HTTPException(409, "结算关联案件的开庭律师姓名不完整，请在员工管理中补全后导出")
+            names.append(name)
+        lawyer_names[case_id] = "、".join(dict.fromkeys(names))
     ids = {int(detail["fee_id"]) for detail in details if detail.get("fee_id")}
     fees = {fee["id"]: fee for fee in await _invoice_fee_details(identity, db, ids=ids)} if ids else {}
     invoices_by_case_id, invoices_by_case_no = {}, {}
@@ -263,7 +283,7 @@ async def enrich_settlement_exports(rows, identity, db, *, include_invoice_field
             if not case:
                 raise HTTPException(409, "结算关联案件不存在或无权导出")
             case_data = case.data or {}
-            detail.update({"hearing_lawyer": case_data.get("hearing_lawyer") or case_data.get("court_lawyer"),
+            detail.update({"hearing_lawyer": lawyer_names[case.id],
                 "source_person": case_data.get("source_person") or case_data.get("business_owner") or case_data.get("case_source"),
                 "court_case_no": case_data.get("official_no") or case_data.get("court_case_no") or case_data.get("first_instance_case_no"),
                 "file_no": case_data.get("file_no"), "archive_no": case_data.get("archive_no") or case_data.get("archived_file_no")})
