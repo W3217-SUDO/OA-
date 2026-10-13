@@ -6,7 +6,7 @@ import { api } from "../../api";
 import { openAttachmentOnlinePreview } from "../../attachmentOnlinePreview.mjs";
 import { getCaseAttachmentUploadValidationError, getCaseFileRenameValidationError, hasCaseFileTypeOption } from "../../caseFileFrontendParity.mjs";
 import { DEFAULT_CASE_ATTACHMENT_CATEGORY } from "../constants";
-import type { LibreOfficeEditorTarget } from "../../office/types";
+import type { LibreOfficeCaseEditorTarget } from "../../office/types";
 import type { CaseInvoiceBatch, LoadCaseInvoiceBatch } from "../hooks/useCaseInvoiceBatch";
 import type { AttachmentPreview, AttachmentRow, CaseAiDraftEditor, CaseDetailCapabilities, CaseDocumentFolderEditor, CaseFileTypeOption, CaseRow, CaseTaskAttachment, CaseWordEditor, CaseWordEditorBlock, ContractRow } from "../types";
 /** legal documents operations; dependencies are read when each operation runs. */
@@ -54,8 +54,8 @@ export interface CaseDocumentsDependencies {
     readonly setWordEditorLockLost: React.Dispatch<React.SetStateAction<boolean>>;
     readonly wordEditorOpening: boolean;
     readonly wordEditor: CaseWordEditor | null;
-    readonly libreOfficeEditorTarget: LibreOfficeEditorTarget | null;
-    readonly setLibreOfficeEditorTarget: React.Dispatch<React.SetStateAction<LibreOfficeEditorTarget | null>>;
+    readonly libreOfficeEditorTarget: LibreOfficeCaseEditorTarget | null;
+    readonly setLibreOfficeEditorTarget: React.Dispatch<React.SetStateAction<LibreOfficeCaseEditorTarget | null>>;
     readonly setWordEditorOpening: React.Dispatch<React.SetStateAction<boolean>>;
     readonly wordEditorChanged: (editor: CaseWordEditor) => boolean;
     readonly wordEditorSavingRef: React.RefObject<boolean>;

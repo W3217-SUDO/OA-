@@ -9,6 +9,7 @@ type SessionActions = { save: () => void; close: () => void; frameLoaded: () => 
 type SessionCallbacks = { onStored: () => Promise<unknown>; onClosed: () => void };
 
 export function useLibreOfficeSession(target: LibreOfficeEditorTarget, frameRef: RefObject<HTMLIFrameElement | null>, callbacks: SessionCallbacks) {
+  const targetKey = target.scope === "personal" ? `personal:${target.fileId}` : `case:${target.caseId}:${target.attachmentId}`;
   const [session, setSession] = useState<LibreOfficeSession | null>(null);
   const [status, setStatus] = useState<LibreOfficeSessionStatus | null>(null);
   const [ready, setReady] = useState(false);
@@ -285,7 +286,7 @@ export function useLibreOfficeSession(target: LibreOfficeEditorTarget, frameRef:
       window.removeEventListener("message", onMessage);
       window.removeEventListener("beforeunload", beforeUnload);
     };
-  }, [target.caseId, target.attachmentId, frameRef]);
+  }, [targetKey, frameRef]);
 
   return {
     session, status, ready, closing, saving, error, pollError,

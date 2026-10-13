@@ -135,7 +135,7 @@ import { createSpecialColumns } from "./columns/specialColumns";
 import { useCaseAgentWorkspace } from "./hooks/useCaseAgentWorkspace";
 import { createCaseDocumentsActions } from "./services/documentsActions";
 import { LibreOfficeEditorModal } from "../office/LibreOfficeEditorModal";
-import type { LibreOfficeEditorTarget } from "../office/types";
+import type { LibreOfficeCaseEditorTarget } from "../office/types";
 import { createCaseFinanceActions } from "./services/financeActions";
 import { createCaseQueriesActions } from "./services/queriesActions";
 import { createCaseWorkflowActions } from "./services/workflowActions";
@@ -461,7 +461,7 @@ export default function CaseCenterPage({
   const [renamingCounselAttachment, setRenamingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [aiDraftEditor, setAiDraftEditor] = useState<CaseAiDraftEditor | null>(null);
   const [wordEditor, setWordEditor] = useState<CaseWordEditor | null>(null);
-  const [libreOfficeEditorTarget, setLibreOfficeEditorTarget] = useState<LibreOfficeEditorTarget | null>(null);
+  const [libreOfficeEditorTarget, setLibreOfficeEditorTarget] = useState<LibreOfficeCaseEditorTarget | null>(null);
   const [wordEditorOpening, setWordEditorOpening] = useState(false);
   const [wordEditorSaving, setWordEditorSaving] = useState(false);
   const [wordEditorLockLost, setWordEditorLockLost] = useState(false);

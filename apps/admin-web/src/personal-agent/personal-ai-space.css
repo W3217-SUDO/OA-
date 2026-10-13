@@ -16,6 +16,7 @@
 .personal-ai-space-file-metadata dt { color: #667085; }
 .personal-ai-space-file-metadata dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .personal-ai-space-file-error { color: #b42318; white-space: pre-wrap; overflow-wrap: anywhere; }
+.personal-ai-space-edit-reason { color: #667085; overflow-wrap: anywhere; font-size: 12px; }
 .personal-ai-space-file-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .personal-ai-space-file-actions .ant-btn { min-width: 44px; min-height: 44px; }
 .personal-ai-space-drawer .ant-pagination-prev, .personal-ai-space-drawer .ant-pagination-next { min-width: 44px; min-height: 44px; }

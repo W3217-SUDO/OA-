@@ -14,6 +14,9 @@ from app.areas.personal_agent.ai_space_service import (
     list_space_files, save_space_message, space_file_bytes, space_file_record, space_info,
 )
 from app.core.generated_file_records import generated_file_item
+from app.core.personal_libreoffice import (
+    close_personal_session, create_personal_session, get_personal_session, personal_capability,
+)
 
 
 router = APIRouter(prefix=settings.api_prefix + "/personal-agent/ai-space", tags=["个人AI空间"])
@@ -37,13 +40,36 @@ async def get_personal_ai_space(owner_user_id: int | None = Query(None, ge=1),
 async def get_personal_ai_files(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
                                 owner_user_id: int | None = Query(None, ge=1),
                                 identity=Depends(current_identity), db=Depends(get_db)):
-    return await list_space_files(identity, db, page=page, page_size=page_size, owner_user_id=owner_user_id)
+    result = await list_space_files(identity, db, page=page, page_size=page_size, owner_user_id=owner_user_id)
+    result["items"] = [{**item, **await personal_capability(item["id"], identity, db)} for item in result["items"]]
+    return result
 
 
 @router.get("/files/{file_id}")
 async def get_personal_ai_file(file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
                                identity=Depends(current_identity), db=Depends(get_db)):
-    return generated_file_item(await space_file_record(file_id, identity, db))
+    item = generated_file_item(await space_file_record(file_id, identity, db))
+    return {**item, **await personal_capability(file_id, identity, db)}
+
+
+@router.post("/files/{file_id}/libreoffice/session")
+async def create_personal_office_session(file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                         identity=Depends(current_identity), db=Depends(get_db)):
+    return await create_personal_session(file_id, identity, db)
+
+
+@router.get("/files/{file_id}/libreoffice/sessions/{session_id}")
+async def get_personal_office_session(file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                      session_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                      identity=Depends(current_identity), db=Depends(get_db)):
+    return await get_personal_session(file_id, session_id, identity, db)
+
+
+@router.post("/files/{file_id}/libreoffice/sessions/{session_id}/close")
+async def close_personal_office_session(file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                        session_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                        identity=Depends(current_identity), db=Depends(get_db)):
+    return await close_personal_session(file_id, session_id, identity, db)
 
 
 @router.get("/files/{file_id}/download")

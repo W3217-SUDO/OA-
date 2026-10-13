@@ -67,6 +67,15 @@ async def session_context(case_id: int, attachment_id: int, session_id: str, ide
     return context
 
 
+async def reload_context(session: dict, identity: dict, db, *, terminal=False, lock=False) -> OfficeContext:
+    if session.get("scope") == "personal":
+        from app.core.personal_libreoffice import personal_session_context
+        return await personal_session_context(session["file_id"], session["id"], identity, db,
+                                              terminal=terminal, lock=lock)
+    return await session_context(session["case_id"], session["attachment_id"], session["id"], identity, db,
+                                 terminal=terminal, lock=lock)
+
+
 def require_lease(context: OfficeContext) -> None:
     item, session = context.item, context.session
     expires = _word_editor_utc(item.word_editor_lock_expires_at)
@@ -81,7 +90,7 @@ def require_lease(context: OfficeContext) -> None:
 
 def store_session(context: OfficeContext) -> None:
     data = dict(context.record.data or {})
-    sessions = dict(data.get("libreoffice_sessions", {}))
+    sessions = dict(data.get("libreoffice_sessions") or {})
     sessions[context.session["id"]] = context.session
     context.record.data = {**data, "libreoffice_sessions": sessions}
 
