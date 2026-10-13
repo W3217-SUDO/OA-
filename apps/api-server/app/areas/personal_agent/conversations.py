@@ -66,7 +66,8 @@ def _path(directory: Path, conversation_id: str) -> Path:
 
 def _empty(conversation_id: str | None) -> dict[str, Any]:
     return {"conversation_id": conversation_id, "conversation_title": "办公对话" if conversation_id == "default" else "新对话",
-            "messages": [], "pending_actions": [], "structured_results": [], "created_at": "", "updated_at": ""}
+            "messages": [], "pending_actions": [], "structured_results": [], "dismissed_action_ids": [],
+            "created_at": "", "updated_at": ""}
 
 
 def _pending_action_view(action):
@@ -106,6 +107,11 @@ def read_state(directory: Path, conversation_id: str | None = None) -> dict[str,
             raise HTTPException(status_code=500, detail="个人智能体会话内容格式错误")
         state[key] = items
     state["pending_actions"] = [_pending_action_view(action) for action in state["pending_actions"]]
+    dismissed = value.get("dismissed_action_ids", [])
+    if (not isinstance(dismissed, list) or any(not isinstance(item, str) or not item for item in dismissed)
+            or len(set(dismissed)) != len(dismissed)):
+        raise HTTPException(status_code=500, detail="个人智能体操作卡展示记录格式错误")
+    state["dismissed_action_ids"] = dismissed
     state["created_at"] = str(value.get("created_at") or "")
     state["updated_at"] = str(value.get("updated_at") or "")
     first = next((item for item in state["messages"] if isinstance(item, dict) and item.get("role") == "user" and item.get("content")), None)
@@ -127,6 +133,28 @@ def _snapshot(directory: Path) -> dict[str, Any]:
 async def list_conversations(directory: Path) -> dict[str, Any]:
     async with STATE_LOCK:
         return _snapshot(directory)
+
+
+async def read_conversation_states(directory: Path) -> list[dict[str, Any]]:
+    """仅从本人索引读取结构化操作来源，不扫描其他账号或猜测会话编号。"""
+    async with STATE_LOCK:
+        return [read_state(directory, item) for item in _index(directory)["ids"]]
+
+
+async def save_action_dismissals(directory: Path, conversation_id: str, action_ids: list[str]) -> dict[str, Any]:
+    """在既有会话操作锁内调用，只修改展示元数据，保留原请求与聊天。"""
+    async with STATE_LOCK:
+        state = read_state(directory, conversation_id)
+        existing = {item.get("id") for item in state["pending_actions"] if isinstance(item, dict)}
+        if not set(action_ids).issubset(existing):
+            raise HTTPException(status_code=404, detail="操作卡不存在或已从原会话处理")
+        raw = _read_json(_path(directory, conversation_id))
+        retained = [item for item in state["dismissed_action_ids"] if item in existing]
+        dismissed = [*retained, *(item for item in action_ids if item not in retained)]
+        if dismissed != state["dismissed_action_ids"]:
+            raw["dismissed_action_ids"] = dismissed
+            _write_json(_path(directory, conversation_id), raw)
+        return read_state(directory, conversation_id)
 
 
 async def create_conversation(directory: Path) -> dict[str, Any]:

@@ -6,17 +6,18 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.constants import logger
 from app.database import get_db
 from app.security import current_identity
-from app.areas.personal_agent.service import build_context, decide_action, generate_response, manage_conversations, personal_identity, personal_state, stop_response
+from app.areas.personal_agent.service import build_context, decide_action, generate_response, manage_conversations, personal_identity, personal_state, stop_response, _user_dir
 from app.areas.personal_agent.workspace import workspace_commands
 from app.areas.personal_agent.response_runtime import ResponseMode, supports_response_modes
-from app.areas.personal_agent.confirmation_history import read_confirmation_history, project_personal_actions
+from app.areas.personal_agent.confirmation_history import read_confirmation_detail, read_confirmation_history, project_personal_actions
+from app.areas.personal_agent.action_presentation import dismiss_personal_actions
 
 
 router = APIRouter()
@@ -36,6 +37,11 @@ class PersonalActionDecisionInput(BaseModel):
     conversation_id: str | None = Field(default=None, max_length=64)
     decision: str = Field(pattern="^(approved|rejected)$")
     comment: str = Field(default="", max_length=1000)
+
+
+class PersonalActionDismissInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action_ids: list[str] = Field(min_length=1, max_length=30)
 
 
 @router.get(f"{settings.api_prefix}/personal-agent/status")
@@ -80,8 +86,29 @@ async def personal_agent_confirmation_history(
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     status: str = "",
 ):
-    return await read_confirmation_history(await personal_identity(identity, db), db,
-                                           status=status, page=page, page_size=page_size)
+    safe_identity = await personal_identity(identity, db)
+    return await read_confirmation_history(safe_identity, db, status=status, page=page, page_size=page_size,
+                                           directory=_user_dir(safe_identity["username"]))
+
+
+@router.get(f"{settings.api_prefix}/personal-agent/confirmation-history/{{source}}/{{request_id}}")
+async def personal_agent_confirmation_detail(source: str, request_id: str,
+                                             identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    safe_identity = await personal_identity(identity, db)
+    return await read_confirmation_detail(source, request_id, safe_identity, db,
+                                          directory=_user_dir(safe_identity["username"]))
+
+
+@router.post(f"{settings.api_prefix}/personal-agent/conversations/{{conversation_id}}/actions/dismiss")
+async def personal_agent_action_dismiss(conversation_id: str, body: PersonalActionDismissInput,
+                                        identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.agent_mcp.auth import authenticated_identity
+
+    actual_identity = await authenticated_identity(db)
+    if identity["username"] != actual_identity["username"]:
+        raise HTTPException(403, "操作卡展示身份与实际登录账号不一致")
+    return await dismiss_personal_actions(_user_dir(actual_identity["username"]), conversation_id, body.action_ids,
+                                         actual_identity, db)
 
 
 @router.post(f"{settings.api_prefix}/personal-agent/conversations")

@@ -12,10 +12,11 @@ from app.agent_mcp.action_summary import summary_from_preview
 from app.agent_mcp.safety import safe_result
 from app.agent_mcp.service import ACTION_MODULE, STATUS_NAMES
 from app.models import BusinessRecord, WorkflowEvent
+from app.areas.personal_agent import conversations
 
 
 PERSONAL_ACTION_MODULE = "personal_agent_action"
-HISTORY_STATUSES = ("executing", "succeeded", "failed", "rejected")
+HISTORY_STATUSES = ("pending", "executing", "succeeded", "failed", "rejected")
 
 
 async def project_personal_actions(state, identity, db):
@@ -161,6 +162,18 @@ async def finish_personal_decision(record_id, execution_id, identity, db, *, res
 def _history_item(record, decision_event):
     data = record.data
     personal = record.module == PERSONAL_ACTION_MODULE
+    conversation_id = data.get("conversation_id")
+    conversation_title = data.get("conversation_title")
+    if not personal and data.get("context") is not None:
+        context = data["context"]
+        if not isinstance(context, dict):
+            raise HTTPException(409, "工具请求的会话来源格式错误")
+        contextual_id = context.get("conversation_id")
+        if conversation_id and contextual_id and conversation_id != contextual_id:
+            raise HTTPException(409, "工具请求的会话来源不一致")
+        if contextual_id is not None:
+            conversation_id = contextual_id
+            conversation_title = context.get("conversation_title")
     return safe_result({
         "id": data["action_id"] if personal else data["request_id"],
         "source": "personal_action" if personal else "mcp",
@@ -172,11 +185,55 @@ def _history_item(record, decision_event):
         "decided_at": data.get("decided_at"), "finished_at": data.get("finished_at"),
         "operator": decision_event.operator if decision_event else data.get("operator"),
         "comment": data.get("comment") or "", "result": data.get("result"), "error": data.get("error"),
-        "conversation_id": data.get("conversation_id"), "conversation_title": data.get("conversation_title"),
+        "conversation_id": conversation_id, "conversation_title": conversation_title,
     })
 
 
-async def read_confirmation_history(identity, db, *, status="", page=1, page_size=20):
+async def _action_contexts(directory, identity):
+    contexts = {}
+    if directory is None:
+        return contexts
+    for state in await conversations.read_conversation_states(directory):
+        for action in state["pending_actions"]:
+            if not isinstance(action, dict) or action.get("type") not in {"mcp.call", "create_task", "approve_contract"}:
+                continue
+            if action.get("requested_by") != identity["username"]:
+                raise HTTPException(403, "操作卡不属于当前账号")
+            if action["type"] == "mcp.call":
+                request_id = (action.get("payload") or {}).get("request_id")
+                if not isinstance(request_id, str) or not request_id:
+                    raise HTTPException(422, "工具请求缺少有效编号")
+                key = ("mcp", request_id)
+            else:
+                key = ("personal_action", action["id"])
+            if key in contexts:
+                raise HTTPException(409, "确认请求存在多个会话来源，不能猜测原会话")
+            contexts[key] = (state, action)
+    return contexts
+
+
+def _context_item(item, context):
+    if context is None:
+        return {**item, "action_id": None, "can_decide": False}
+    state, action = context
+    if item.get("conversation_id") and item["conversation_id"] != state["conversation_id"]:
+        raise HTTPException(409, "存档与原会话来源不一致")
+    return {**item, "conversation_id": state["conversation_id"],
+            "conversation_title": state["conversation_title"], "action_id": action["id"],
+            "can_decide": item["status"] == "pending" and action.get("status") == "pending"}
+
+
+def _legacy_item(state, action):
+    return {
+        "id": action["id"], "source": "personal_action", "action_type": action["type"],
+        "summary": action["summary"], "status": "pending", "requested_at": action.get("created_at"),
+        "decided_at": None, "finished_at": None, "operator": None, "comment": "", "result": None,
+        "error": None, "conversation_id": state["conversation_id"], "conversation_title": state["conversation_title"],
+        "action_id": action["id"], "can_decide": True,
+    }
+
+
+async def read_confirmation_history(identity, db, *, status="", page=1, page_size=20, directory=None):
     if status and status not in HISTORY_STATUSES:
         raise HTTPException(422, "确认历史状态无效")
     conditions = [
@@ -185,6 +242,20 @@ async def read_confirmation_history(identity, db, *, status="", page=1, page_siz
         BusinessRecord.status.in_([name for name, value in STATUS_NAMES.items()
                                   if value == status or (not status and value in HISTORY_STATUSES)]),
     ]
+    contexts = await _action_contexts(directory, identity)
+    legacy = []
+    personal_ids = ["PA-" + key[1] for key in contexts if key[0] == "personal_action"]
+    if personal_ids and status in ("", "pending"):
+        archived = (await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == PERSONAL_ACTION_MODULE, BusinessRecord.serial_no.in_(personal_ids),
+        ))).all()
+        if any(record.owner != identity["username"] for record in archived):
+            raise HTTPException(403, "确认请求不属于当前账号")
+        archived_ids = {record.serial_no for record in archived}
+        legacy = [_legacy_item(state, action) for key, (state, action) in contexts.items()
+                  if key[0] == "personal_action" and "PA-" + key[1] not in archived_ids
+                  and action.get("status") == "pending"]
+        legacy.sort(key=lambda item: (item["requested_at"] or "", item["id"]), reverse=True)
     total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions))
     # 两类确认均写入 UTC ISO 时间；缺失真实决定时间的旧记录排后，不冒用创建时间。
     records = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(
@@ -197,7 +268,53 @@ async def read_confirmation_history(identity, db, *, status="", page=1, page_siz
         WorkflowEvent.action.in_(("MCP人工确认", "个人智能体人工确认")),
     ).order_by(WorkflowEvent.id))).all() if records else []
     decisions = {event.record_id: event for event in events}
-    return {
-        "items": [_history_item(record, decisions.get(record.id)) for record in records],
-        "total": total, "page": page, "page_size": page_size,
-    }
+    items = []
+    for record in records:
+        item = _history_item(record, decisions.get(record.id))
+        items.append(_context_item(item, contexts.get((item["source"], item["id"]))))
+    legacy_offset = max(0, (page - 1) * page_size - total)
+    if len(items) < page_size:
+        items.extend(legacy[legacy_offset:legacy_offset + page_size - len(items)])
+    return {"items": safe_result(items), "total": total + len(legacy), "page": page, "page_size": page_size}
+
+
+async def read_confirmation_detail(source, request_id, identity, db, *, directory):
+    modules = {"mcp": (ACTION_MODULE, "MCP-"), "personal_action": (PERSONAL_ACTION_MODULE, "PA-")}
+    if source not in modules:
+        raise HTTPException(422, "确认历史来源无效")
+    module, prefix = modules[source]
+    record = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.module == module, BusinessRecord.serial_no == prefix + request_id,
+    ).execution_options(populate_existing=True))
+    if record is not None and record.owner != identity["username"]:
+        raise HTTPException(403, "确认请求不属于当前账号")
+    contexts = await _action_contexts(directory, identity)
+    context = contexts.get((source, request_id))
+    if record is None:
+        if source != "personal_action" or context is None or context[1].get("status") != "pending":
+            raise HTTPException(404, "确认请求不存在")
+        item = _legacy_item(*context)
+    else:
+        event = await db.scalar(select(WorkflowEvent).where(
+            WorkflowEvent.record_id == record.id, WorkflowEvent.from_status == "待确认",
+            WorkflowEvent.to_status.in_(("执行中", "已拒绝")),
+            WorkflowEvent.action.in_(("MCP人工确认", "个人智能体人工确认")),
+        ).order_by(WorkflowEvent.id.desc()).limit(1))
+        item = _context_item(_history_item(record, event), context)
+    action = None
+    if context is not None:
+        state, original = context
+        if record is not None and source == "personal_action" and (
+            record.data["action_type"] != original["type"] or record.data["payload"] != original["payload"]
+        ):
+            raise HTTPException(409, "存档与原操作内容不一致")
+        if record is not None and source == "mcp" and original.get("preview") != record.data.get("preview"):
+            raise HTTPException(409, "存档与原工具预览不一致")
+        action = {**original, "status": item["status"], "error": item["error"]}
+    elif record is not None and source == "personal_action":
+        action = {"id": record.data["action_id"], "type": record.data["action_type"],
+                  "payload": record.data["payload"], "summary": item["summary"], "status": item["status"],
+                  "requested_by": record.owner, "created_at": record.data.get("requested_at"), "error": item["error"]}
+    return safe_result({"item": item, "action": action, "conversation_id": item["conversation_id"],
+                        "conversation_title": item["conversation_title"], "can_decide": item["can_decide"],
+                        "request_preview": record.data.get("preview") if record is not None and source == "mcp" else None})

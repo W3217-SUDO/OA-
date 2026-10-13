@@ -19,7 +19,9 @@ from app.database import Base
 from app.models import BusinessRecord, FileAttachment, FinanceTransaction, ReceivablePlan, User
 from app.models_shared import AttachmentBatchInput
 from app.areas.personal_agent import service as personal_service
-from app.areas.personal_agent.confirmation_history import begin_personal_decision, project_personal_actions
+from app.areas.personal_agent.confirmation_history import begin_personal_decision, project_personal_actions, read_confirmation_detail, read_confirmation_history
+from app.areas.personal_agent.action_presentation import dismiss_personal_actions
+from app.areas.personal_agent import conversations
 from app.agent_mcp import service as tool_service
 
 
@@ -125,6 +127,172 @@ class PersonalConfirmationBoundaryTest(IsolatedAsyncioTestCase):
                     with self.assertRaises(HTTPException) as raised:
                         await begin_personal_decision(action, "approved", "", {"username": "本人"}, self.state(), db)
                     self.assertEqual(raised.exception.status_code, 409)
+
+    async def test_action_dismissal_persists_only_presentation_and_keeps_audit(self):
+        with TemporaryDirectory(prefix="oa-test-action-dismiss-") as temporary:
+            directory = Path(temporary)
+            snapshot = await conversations.create_conversation(directory)
+            state = {**snapshot["state"], "pending_actions": self.state()["pending_actions"]}
+            await conversations.save_state(directory, state)
+            original = conversations.read_state(directory, state["conversation_id"])
+            record = self.request("执行失败")
+            db = SimpleNamespace(scalar=AsyncMock(return_value="本人"),
+                                 scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [record])), commit=AsyncMock())
+            result = await dismiss_personal_actions(directory, state["conversation_id"], ["action-1"], {"username": "本人"}, db)
+            stored = conversations.read_state(directory, state["conversation_id"])
+            self.assertEqual(stored["dismissed_action_ids"], ["action-1"])
+            self.assertEqual({**stored, "dismissed_action_ids": []}, original)
+            self.assertEqual(result["state"]["pending_actions"][0]["status"], "failed")
+            self.assertEqual(stored["pending_actions"][0]["status"], "pending", "原结构化请求不被展示投影重写")
+            self.assertEqual(record.status, "执行失败")
+            with patch.object(conversations, "_write_json", wraps=conversations._write_json) as write:
+                again = await dismiss_personal_actions(directory, state["conversation_id"], ["action-1"], {"username": "本人"}, db)
+                self.assertEqual(again["state"]["dismissed_action_ids"], ["action-1"])
+                write.assert_not_called()
+            await conversations.save_state(directory, {**stored, "dismissed_action_ids": ["departed-action", "action-1"]})
+            with patch.object(conversations, "_write_json", wraps=conversations._write_json) as write:
+                self.assertEqual(conversations.read_state(directory, state["conversation_id"])["dismissed_action_ids"],
+                                 ["departed-action", "action-1"])
+                write.assert_not_called()
+                cleaned = await dismiss_personal_actions(directory, state["conversation_id"], ["action-1"], {"username": "本人"}, db)
+                self.assertEqual(cleaned["state"]["dismissed_action_ids"], ["action-1"])
+                self.assertEqual(conversations.read_state(directory, state["conversation_id"]), stored)
+                self.assertEqual(write.call_count, 1)
+            await conversations.save_state(directory, stored)
+            self.assertEqual(conversations.read_state(directory, state["conversation_id"])["dismissed_action_ids"], ["action-1"])
+            db.commit.assert_not_awaited()
+            async with conversations.conversation_operation(directory, state["conversation_id"]):
+                with self.assertRaises(HTTPException) as raised:
+                    await dismiss_personal_actions(directory, state["conversation_id"], ["action-1"], {"username": "本人"}, db)
+                self.assertEqual(raised.exception.status_code, 409)
+            record.owner = "别人"
+            with self.assertRaises(HTTPException) as raised:
+                await dismiss_personal_actions(directory, state["conversation_id"], ["action-1"], {"username": "本人"}, db)
+            self.assertEqual(raised.exception.status_code, 403)
+            self.assertEqual(conversations.read_state(directory, state["conversation_id"]), stored)
+
+    async def test_batch_dismissal_validates_all_ids_before_one_presentation_write(self):
+        with TemporaryDirectory(prefix="oa-test-action-batch-dismiss-") as temporary:
+            directory = Path(temporary)
+            snapshot = await conversations.create_conversation(directory)
+            first = self.state()["pending_actions"][0]
+            second = {**first, "id": "action-2", "payload": {"request_id": "request-2"}}
+            state = {**snapshot["state"], "pending_actions": [first, second],
+                     "dismissed_action_ids": ["departed-action", "action-1"]}
+            await conversations.save_state(directory, state)
+            record = self.request("待确认")
+            other = self.request("待确认")
+            other.id, other.serial_no = 2, "MCP-request-2"
+            db = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [record, other])), commit=AsyncMock())
+            before = conversations.read_state(directory, state["conversation_id"])
+            with patch.object(conversations, "_write_json", wraps=conversations._write_json) as write:
+                self.assertEqual(conversations.read_state(directory, state["conversation_id"])["dismissed_action_ids"],
+                                 ["departed-action", "action-1"])
+                write.assert_not_called()
+                for ids, expected in ((["action-1", "missing"], 404), (["action-1", "action-1"], 422), ([], 422)):
+                    with self.assertRaises(HTTPException) as raised:
+                        await dismiss_personal_actions(directory, state["conversation_id"], ids, {"username": "本人"}, db)
+                    self.assertEqual(raised.exception.status_code, expected)
+                    self.assertEqual(conversations.read_state(directory, state["conversation_id"]), before)
+                other.owner = "别人"
+                with self.assertRaises(HTTPException) as raised:
+                    await dismiss_personal_actions(directory, state["conversation_id"], ["action-1", "action-2"], {"username": "本人"}, db)
+                self.assertEqual(raised.exception.status_code, 403)
+                write.assert_not_called()
+                other.owner = "本人"
+                result = await dismiss_personal_actions(directory, state["conversation_id"], ["action-1", "action-2"], {"username": "本人"}, db)
+                self.assertEqual(write.call_count, 1)
+                self.assertEqual(result["state"]["dismissed_action_ids"], ["action-1", "action-2"])
+                self.assertEqual({**conversations.read_state(directory, state["conversation_id"]),
+                                  "dismissed_action_ids": before["dismissed_action_ids"]}, before)
+                self.assertEqual(len(result["state"]["pending_actions"]), 2)
+                self.assertEqual(record.status, "待确认")
+                self.assertEqual(other.status, "待确认")
+                db.commit.assert_not_awaited()
+
+    async def test_pending_history_preserves_legacy_and_real_conversation_source(self):
+        with TemporaryDirectory(prefix="oa-test-action-history-") as temporary:
+            directory = Path(temporary)
+            snapshot = await conversations.create_conversation(directory)
+            original = self.state()["pending_actions"][0]
+            original["preview"] = {"operation_name": "真实操作", "method": "POST", "path_template": "/api/v1/isolated-operation",
+                                   "params": {"path": {}, "query": {}, "body": {}}}
+            legacy = {"id": "legacy-action", "type": "create_task", "requested_by": "本人", "status": "pending",
+                      "payload": {"title": "旧任务"}, "summary": "旧任务", "created_at": "2026-10-13T00:00:00+00:00"}
+            state = {**snapshot["state"], "pending_actions": [original, legacy]}
+            await conversations.save_state(directory, state)
+            before = conversations.read_state(directory, state["conversation_id"])
+            record = self.request("待确认")
+            record.data = {**record.data, "tool_name": "真实操作", "summary": "真实操作", "preview": original["preview"]}
+            db = SimpleNamespace(scalar=AsyncMock(return_value=1),
+                                 scalars=AsyncMock(side_effect=[SimpleNamespace(all=lambda: []),
+                                                              SimpleNamespace(all=lambda: [record]), SimpleNamespace(all=lambda: [])]),
+                                 commit=AsyncMock())
+            history = await read_confirmation_history({"username": "本人"}, db, status="pending", directory=directory)
+            self.assertEqual(history["total"], 2)
+            self.assertEqual([item["status"] for item in history["items"]], ["pending", "pending"])
+            self.assertTrue(all(item["can_decide"] for item in history["items"]))
+            self.assertTrue(all(item["conversation_id"] == state["conversation_id"] for item in history["items"]))
+            self.assertEqual(history["items"][0]["id"], "request-1")
+            self.assertEqual(history["items"][0]["action_id"], "action-1")
+            db.scalars = AsyncMock(side_effect=[SimpleNamespace(all=lambda: []), SimpleNamespace(all=lambda: [])])
+            second = await read_confirmation_history({"username": "本人"}, db, status="pending", page=2, page_size=1, directory=directory)
+            self.assertEqual(second["total"], 2)
+            self.assertEqual([item["id"] for item in second["items"]], ["legacy-action"])
+            record.data["context"] = {"conversation_id": state["conversation_id"], "conversation_title": state["conversation_title"]}
+            for stored, visible in (("待确认", "pending"), ("执行失败", "failed"), ("已执行", "succeeded"), ("已拒绝", "rejected")):
+                record.status = stored
+                db.scalar = AsyncMock(side_effect=[record, None])
+                detail = await read_confirmation_detail("mcp", "request-1", {"username": "本人"}, db, directory=directory)
+                self.assertEqual(detail["action"]["id"], "action-1")
+                self.assertEqual(detail["action"]["status"], visible)
+                self.assertEqual(detail["can_decide"], visible == "pending")
+            db.scalar = AsyncMock(return_value=None)
+            detail = await read_confirmation_detail("personal_action", "legacy-action", {"username": "本人"}, db, directory=directory)
+            self.assertTrue(detail["can_decide"])
+            self.assertEqual(detail["action"]["payload"], legacy["payload"])
+            record.owner = "别人"
+            db.scalar = AsyncMock(return_value=record)
+            with self.assertRaises(HTTPException) as raised:
+                await read_confirmation_detail("mcp", "request-1", {"username": "本人"}, db, directory=directory)
+            self.assertEqual(raised.exception.status_code, 403)
+            self.assertEqual(conversations.read_state(directory, state["conversation_id"]), before)
+            db.commit.assert_not_awaited()
+
+    async def test_truncated_mcp_card_keeps_true_preview_without_fabricating_action(self):
+        with TemporaryDirectory(prefix="oa-test-action-truncated-") as temporary:
+            directory = Path(temporary)
+            snapshot = await conversations.create_conversation(directory)
+            record = self.request("待确认")
+            record.data = {**record.data, "tool_name": "原工具", "summary": "原请求", "preview": {"params": {"body": {"value": "原参数"}}},
+                           "context": {"conversation_id": snapshot["state"]["conversation_id"], "conversation_title": "原对话"}}
+            db = SimpleNamespace(scalar=AsyncMock(side_effect=[record, None]), commit=AsyncMock())
+            detail = await read_confirmation_detail("mcp", "request-1", {"username": "本人"}, db, directory=directory)
+            self.assertEqual(detail["conversation_id"], snapshot["state"]["conversation_id"])
+            self.assertEqual(detail["request_preview"], record.data["preview"])
+            self.assertIsNone(detail["action"])
+            self.assertIsNone(detail["item"]["action_id"])
+            self.assertFalse(detail["can_decide"], "30条截断后不能捏造原操作ID或自动恢复可执行卡")
+            self.assertEqual(conversations.read_state(directory)["pending_actions"], [])
+            db.commit.assert_not_awaited()
+
+    async def test_removed_personal_actions_use_archive_without_becoming_replayable(self):
+        with TemporaryDirectory(prefix="oa-test-action-archive-") as temporary:
+            directory = Path(temporary)
+            record = BusinessRecord(module="personal_agent_action", owner="本人", status="执行失败", title="原操作",
+                                    data={"action_id": "archived-action", "action_type": "create_task", "summary": "原操作",
+                                          "payload": {"title": "原任务"}, "conversation_id": "default", "conversation_title": "原对话",
+                                          "error": {"status_code": 409, "detail": "原业务拒绝"}})
+            db = SimpleNamespace(scalar=AsyncMock(side_effect=[record, None]), commit=AsyncMock())
+            detail = await read_confirmation_detail("personal_action", "archived-action", {"username": "本人"}, db, directory=directory)
+            self.assertEqual(detail["action"]["payload"], record.data["payload"])
+            self.assertEqual(detail["action"]["status"], "failed")
+            self.assertEqual(detail["item"]["error"], record.data["error"])
+            self.assertEqual(detail["conversation_id"], "default")
+            self.assertFalse(detail["can_decide"])
+            self.assertEqual(conversations.read_state(directory)["pending_actions"], [])
+            self.assertEqual(list(directory.iterdir()), [], "读取历史不能生成会话或补建业务存档")
+            db.commit.assert_not_awaited()
 
 
 class DomainBoundaryTest(IsolatedAsyncioTestCase):
