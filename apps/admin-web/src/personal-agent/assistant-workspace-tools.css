@@ -46,6 +46,7 @@
   }
 
   .assistant-tools-popover .assistant-skill-select,
+  .assistant-tools-popover .assistant-skills-manage,
   .assistant-tools-popover .assistant-case-select,
   .assistant-tools-popover .ant-segmented {
     grid-column: 1 / -1;

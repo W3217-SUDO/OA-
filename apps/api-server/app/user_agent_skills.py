@@ -43,7 +43,7 @@ def normalize_custom_skill(payload: dict[str, Any], *, skill_id: str = "", sourc
     if not isinstance(prompts, list) or len(prompts) > 5:
         raise ValueError("quick_prompts")
     normalized_prompts = [_text(item, "quick_prompts", minimum=1, maximum=200) for item in prompts]
-    return {
+    record = {
         "id": skill_id or f"custom-{uuid4().hex}",
         "name": _text(payload.get("name"), "name", minimum=2, maximum=64),
         "category": _text(payload.get("category") or "自定义", "category", minimum=1, maximum=32),
@@ -53,6 +53,12 @@ def normalize_custom_skill(payload: dict[str, Any], *, skill_id: str = "", sourc
         "enabled": bool(payload.get("enabled", True)),
         "source": source,
     }
+    # PATCH re-normalizes the stored record, including enable/disable changes.
+    # Retain the original imported digest so these edits do not break idempotency.
+    digest = payload.get("sha256")
+    if source.startswith("https://github.com/") and isinstance(digest, str) and re.fullmatch(r"[a-f0-9]{64}", digest):
+        record["sha256"] = digest
+    return record
 
 
 def _docx_markdown(filename: str, content: bytes) -> tuple[str, str, str]:
@@ -180,4 +186,5 @@ def custom_skill_public(record: dict[str, Any]) -> dict[str, Any]:
         "custom": True,
         "enabled": bool(record.get("enabled", True)),
         "instruction": str(record.get("instruction") or ""),
+        **({"sha256": record["sha256"]} if "sha256" in record else {}),
     }

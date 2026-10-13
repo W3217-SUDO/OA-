@@ -46,6 +46,47 @@ class PersonalActionDismissInput(BaseModel):
     action_ids: list[str] = Field(min_length=1, max_length=30)
 
 
+class GitHubSkillPreviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str = Field(min_length=1, max_length=2048)
+
+
+class GitHubSkillInstallInput(GitHubSkillPreviewInput):
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+@router.post(f"{settings.api_prefix}/agent/skills/github/preview")
+async def github_skill_preview(body: GitHubSkillPreviewInput, identity: dict = Depends(current_identity)):
+    from app.github_agent_skills import preview_github_skill
+    return await preview_github_skill(body.url)
+
+
+@router.post(f"{settings.api_prefix}/agent/skills/github/install")
+async def github_skill_install(body: GitHubSkillInstallInput, identity: dict = Depends(current_identity),
+                               db: AsyncSession = Depends(get_db)):
+    from app.core.documents import _save_user_agent_skills, _user_agent_skill_store
+    from app.github_agent_skills import preview_github_skill
+    from app.user_agent_skills import CUSTOM_SKILL_LIMIT, custom_skill_public, normalize_custom_skill
+
+    preview = await preview_github_skill(body.url)
+    if preview["sha256"] != body.sha256:
+        raise HTTPException(status_code=409, detail="GitHub 技能内容已变化，请重新预览后安装")
+    _, skills = await _user_agent_skill_store(identity["username"], db)
+    existing = next((item for item in skills if item.get("source") == preview["source"]), None)
+    if existing:
+        if (existing.get("sha256") != preview["sha256"]
+                or any(existing.get(field) != preview[field] for field in ("name", "description", "instruction"))):
+            raise HTTPException(status_code=409, detail="该来源已有不同版本技能，请先删除旧技能再安装")
+        return custom_skill_public(existing)
+    if len(skills) >= CUSTOM_SKILL_LIMIT:
+        raise HTTPException(status_code=409, detail=f"每个账号最多保存 {CUSTOM_SKILL_LIMIT} 个自定义技能")
+    record = normalize_custom_skill({**preview, "category": "GitHub"}, source=preview["source"])
+    record["sha256"] = preview["sha256"]
+    skills.append(record)
+    await _save_user_agent_skills(identity["username"], skills, identity, db)
+    return custom_skill_public(record)
+
+
 @router.get(f"{settings.api_prefix}/personal-agent/status")
 async def personal_agent_status(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     safe_identity = await personal_identity(identity, db)

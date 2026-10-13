@@ -65,8 +65,8 @@ export function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace }: Pr
       <Tooltip title="上传文件">
         <Button type="text" htmlType="button" icon={<PaperClipOutlined />} loading={workspace.uploading} disabled={busy} aria-label="上传文件" onClick={() => { setToolsOpen(false); fileRef.current?.click(); }} />
       </Tooltip>
-      <Tooltip title="管理或上传技能">
-        <Button type="text" htmlType="button" icon={<ExperimentOutlined />} disabled={busy} aria-label="管理或上传技能" onClick={() => void openSkills()} />
+      <Tooltip title="管理技能，或从 GitHub 安装">
+        <Button type="text" htmlType="button" className="assistant-skills-manage" icon={<ExperimentOutlined />} disabled={busy} aria-label="管理技能" onClick={() => void openSkills()}>技能</Button>
       </Tooltip>
       {mobile && <Button type="text" htmlType="button" className="personal-ai-space-mobile-entry" icon={<FolderOpenOutlined />} onClick={() => { setToolsOpen(false); onOpenPersonalAiSpace(); }}>个人 AI 空间</Button>}
     </div>;

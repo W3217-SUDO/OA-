@@ -1,4 +1,16 @@
 .workspace-skill-manager { display: grid; gap: 24px; }
+.workspace-skill-manager > section, .workspace-skill-manager > form { min-width: 0; }
+.workspace-github-install { padding-bottom: 20px; border-bottom: 1px solid #e9edef; }
+.workspace-github-install p { color: #687b79; margin: 0 0 12px; overflow-wrap: anywhere; }
+.workspace-github-url { display: flex; gap: 8px; margin-bottom: 12px; }
+.workspace-github-url > .ant-input { min-width: 0; flex: 1; }
+.workspace-github-url > .ant-btn { flex: none; }
+.workspace-github-preview { display: grid; gap: 10px; margin-top: 16px; min-width: 0; }
+.workspace-github-preview h3, .workspace-github-preview p { margin: 0; overflow-wrap: anywhere; }
+.workspace-github-preview a, .workspace-skill-source, .workspace-skill-hash { display: block; font-size: 12px; overflow-wrap: anywhere; }
+.workspace-github-preview pre { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 12px; background: #f4f7f6; border-radius: 8px; font-size: 12px; }
+.workspace-github-preview > .ant-btn { justify-self: start; }
+.workspace-skill-row b { overflow-wrap: anywhere; }
 .workspace-skill-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .workspace-skill-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; gap: 12px; border-bottom: 1px solid #e9edef; }
 .workspace-skill-row > div:first-child { min-width: 0; }
@@ -15,7 +27,16 @@
 .workspace-case-option b { color: #395453; font-size: 13px; }
 .workspace-case-option span { color: #879296; font-size: 12px; margin-top: 4px; }
 .workspace-case-option:focus-visible { outline: 2px solid #0b8d68; outline-offset: 2px; }
+@media (max-width: 991px) {
+  .workspace-skill-manager .ant-btn, .workspace-skill-manager .ant-input { min-height: 44px; }
+  .workspace-skill-manager .ant-btn { min-width: 44px; }
+  .workspace-skill-toggle { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
+}
 @media (max-width: 760px) {
+  .workspace-skill-modal { max-width: calc(100vw - 24px); margin-inline: auto; }
+  .workspace-skill-manager .workspace-section-heading { flex-wrap: wrap; }
+  .workspace-github-url { flex-direction: column; }
+  .workspace-github-preview > .ant-btn { justify-self: stretch; }
   .workspace-skill-row { flex-wrap: wrap; gap: 8px; }
   .workspace-skill-row > .ant-space { margin-left: auto; }
   .workspace-skill-fields { grid-template-columns: 1fr; gap: 0; }

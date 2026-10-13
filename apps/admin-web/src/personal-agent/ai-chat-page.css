@@ -71,6 +71,13 @@
     max-height: min(28%, 240px);
     overflow: auto;
   }
+
+  /* 仅放大桌面新对话中央玩偶，手机和工具栏品牌图标保留原尺寸。 */
+  .ai-chat-page .assistant-empty-logo {
+    width: 112px;
+    height: 112px;
+    max-width: 100%;
+  }
 }
 
 @media (max-width: 991px) {

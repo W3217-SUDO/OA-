@@ -49,7 +49,10 @@ function Install-QualityPrePushHook {
         [IO.File]::WriteAllText($destination, $hookContent, [Text.UTF8Encoding]::new($false))
     }
     if ($env:OS -ne 'Windows_NT') {
-        & chmod +x -- $destination
+        # BSD chmod (macOS) does not support GNU's `--` option separator.
+        # The hook path is resolved to an absolute path above, so `u+x` is safe
+        # on both BSD and GNU chmod without an option separator.
+        & chmod u+x $destination
         if ($LASTEXITCODE -ne 0) { throw '无法设置 pre-push 可执行权限。' }
         & test -x $destination
         if ($LASTEXITCODE -ne 0) { throw 'pre-push 不具备可执行权限。' }
