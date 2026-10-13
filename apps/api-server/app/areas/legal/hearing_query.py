@@ -1,10 +1,9 @@
 """公司排期从案件法院资料和独立排期记录统一查询，不回填业务表。"""
 
-from datetime import date
-
 from fastapi import HTTPException
 from sqlalchemy import String, cast, func, literal, or_, select, union_all
 
+from app.core.formatters import _case_hearing_datetime
 from app.models import BusinessRecord, FileAttachment, HearingSchedule, WorkflowEvent
 
 
@@ -28,7 +27,7 @@ async def query_company_hearings(identity, db, *, page, page_size, filters, hear
         "plaintiff": field("plaintiff"), "defendant": field("opponent", "defendant"),
         "third_party": field("third_party"), "notary_no": field("notary_no"),
         "handling_lawyer": cast(data["handling_lawyers"], String),
-        "hearing_lawyer": field("hearing_lawyer"), "assistant": field("assistant"),
+        "assistant": field("assistant"),
         "investigator": field("investigator"), "case_type": field("case_type"),
     }
     for key, column in columns.items():
@@ -100,6 +99,8 @@ async def query_company_hearings(identity, db, *, page, page_size, filters, hear
         schedule_conditions.append(schedules.c.day <= hearing_to.isoformat())
     if filters.get("court", "").strip():
         schedule_conditions.append(schedules.c.court.icontains(filters["court"].strip(), autoescape=True))
+    if filters.get("hearing_lawyer", "").strip():
+        schedule_conditions.append(schedules.c.hearing_lawyer.icontains(filters["hearing_lawyer"].strip(), autoescape=True))
     total = int(await db.scalar(select(func.count()).select_from(schedules).where(*schedule_conditions)) or 0)
     rows = (await db.execute(select(schedules).where(*schedule_conditions).order_by(
         schedules.c.day, schedules.c.time, schedules.c.case_id, schedules.c.slot,
@@ -110,7 +111,10 @@ async def query_company_hearings(identity, db, *, page, page_size, filters, hear
     by_id = {record["id"]: record for record in visible}
     items = []
     for row in rows:
-        hearing_day = date.fromisoformat(row["day"])
+        hearing_at = _case_hearing_datetime(row["day"])
+        if hearing_at is None:
+            raise HTTPException(422, f'案件 {row["case_id"]} 的开庭日期格式无效，请修正法院或排期资料')
+        hearing_day = hearing_at.date()
         case = by_id[row["case_id"]]
         items.append({
             "id": f'{row["case_id"]}:{row["slot"]}', "case_record_id": row["case_id"], "case": case,
