@@ -37,8 +37,9 @@ export type TaskRow = {
   handoff_auto_complete_at: string;
   completion_auto_confirm_at: string;
   auto_completed: boolean;
+  phase_completion_required?: boolean;
   performance_impact?: { overdue?: boolean; overdue_days?: number; penalty_points?: number };
-  exception_request?: { action?: string; status?: string; reason?: string };
+  exception_request?: { action?: string; status?: string; reason?: string; requested_by?: string };
   latest_unread_message: string;
   latest_unread_sender: string;
   latest_unread_sender_display_name?: string;

@@ -56,6 +56,7 @@ import {
   HandoffModal,
   DialogModal,
   TaskBatchModal,
+  TaskMaintenanceModal,
   FeeModal,
   CaseBatchModal,
   DocumentModal,
@@ -101,6 +102,7 @@ export default function TaskCenterPage({
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [handoff, setHandoff] = useState<TaskRow | null>(null);
+  const [maintenance, setMaintenance] = useState<TaskRow | null>(null);
   const [handoffDirectory, setHandoffDirectory] = useState<DirectoryUser[]>([]);
   const [handoffDirectoryLoading, setHandoffDirectoryLoading] = useState(false);
   const [dialog, setDialog] = useState<{
@@ -126,6 +128,7 @@ export default function TaskCenterPage({
   const [caseContextLoading, setCaseContextLoading] = useState(false);
   const [createForm] = Form.useForm();
   const [handoffForm] = Form.useForm();
+  const [maintenanceForm] = Form.useForm();
   const [dialogForm] = Form.useForm();
   const [commentForm] = Form.useForm();
   const [feeAction, setFeeAction] = useState<FeeAction | null>(null);
@@ -195,10 +198,22 @@ export default function TaskCenterPage({
   const canReviewTaskException = (row?: TaskRow | null) =>
     Boolean(
       row &&
+        (profile.role === "admin" || row.exception_request?.requested_by !== profile.username) &&
         (profile.role === "admin" ||
           row.initiator === profile.username ||
           (profile.role === "manager" && profile.department === row.department)),
     );
+
+  const canRequestTaskException = (row?: TaskRow | null) => Boolean(
+    row && (profile.role === "admin" || row.owner === profile.username) &&
+    ["待接收", "待处理", "处理中"].includes(row.workflow_status || row.status) &&
+    row.exception_request?.status !== "待审批",
+  );
+
+  const canMaintainTask = (row?: TaskRow | null) => Boolean(
+    row && (profile.role === "admin" || row.owner === profile.username || row.initiator === profile.username) &&
+    ["待接收", "待处理", "处理中"].includes(row.workflow_status || row.status),
+  );
 
   // ─── Data loading ──────────────────────────────────────────────────────
   const loadTaskFeedback = async (row: TaskRow) => {
@@ -441,6 +456,39 @@ export default function TaskCenterPage({
   const selected = selectedRows.length === 1 ? selectedRows[0] : null;
 
   // ─── Task actions ──────────────────────────────────────────────────────
+  const openTaskMaintenance = (row: TaskRow) => {
+    maintenanceForm.resetFields();
+    setMaintenance(row);
+  };
+
+  const submitTaskMaintenance = async () => {
+    if (!maintenance) return;
+    const values = await maintenanceForm.validateFields();
+    if (!values.owner && !values.deadline) {
+      message.warning("请选择需要修改的负责人或截止日期");
+      return;
+    }
+    if (!beginTaskAction()) return;
+    try {
+      const { data } = await api.post("/tasks/batch-update", {
+        task_ids: [maintenance.id], owner: values.owner || undefined,
+        deadline: values.deadline ? formatRequiredDate(values.deadline, "截止日期") : undefined,
+        comment: values.comment,
+      });
+      message.success("任务已修改");
+      setMaintenance(null);
+      if (communication?.id === maintenance.id) {
+        setCommunication(data.items[0]);
+        await loadTaskFeedback(data.items[0]);
+      }
+      await load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "任务修改失败");
+    } finally {
+      endTaskAction();
+    }
+  };
+
   const createTask = async () => {
     const values = await createForm.validateFields();
     if (!beginTaskAction()) return;
@@ -568,20 +616,59 @@ export default function TaskCenterPage({
       okText: "提交审批",
       cancelText: "取消",
       onOk: async () => {
+        if (reason.trim().length < 2) {
+          message.warning("请填写至少两个字的申请原因");
+          throw new Error("申请原因不完整");
+        }
+        if (!beginTaskAction()) return;
         try {
-          await api.post(`/tasks/${row.id}/exception-request`, { action, reason });
+          const { data } = await api.post(`/tasks/${row.id}/exception-request`, { action, reason: reason.trim() });
           message.success(`任务${action}申请已提交`);
+          if (communication?.id === row.id) {
+            setCommunication(data);
+            await loadTaskFeedback(data);
+          }
           await load();
         } catch (error: any) {
           message.error(error?.response?.data?.detail || `任务${action}申请失败`);
           throw error;
+        } finally {
+          endTaskAction();
         }
       },
     });
   };
 
-
-
+  const reviewTaskException = (row: TaskRow, approved: boolean) => {
+    let comment = "";
+    Modal.confirm({
+      title: `${approved ? "通过" : "驳回"}任务${row.exception_request?.action}申请：${row.serial_no}`,
+      content: <Input.TextArea rows={4} placeholder="审批意见（驳回必填）" onChange={(event) => { comment = event.target.value; }} />,
+      okText: approved ? "通过申请" : "驳回申请",
+      cancelText: "取消",
+      onOk: async () => {
+        if (!approved && !comment.trim()) {
+          message.warning("驳回时必须填写原因");
+          throw new Error("驳回原因不能为空");
+        }
+        if (!beginTaskAction()) return;
+        try {
+          const { data } = await api.post(`/tasks/${row.id}/exception-review`, { approved, comment: comment.trim() });
+          message.success(`特殊处理申请已${approved ? "通过" : "驳回"}`);
+          if (communication?.id === row.id) {
+            setCommunication(data);
+            await loadTaskFeedback(data);
+          }
+          await load();
+        } catch (error: any) {
+          message.error(error?.response?.data?.detail || "审批失败");
+          throw error;
+        } finally {
+          endTaskAction();
+        }
+      },
+    });
+  };
   const openDialog = (row: TaskRow, action: DialogAction) => {
     setDialog({ row, action });
     dialogForm.resetFields();
@@ -1357,6 +1444,8 @@ export default function TaskCenterPage({
         canManageCompanyCreatedTask={canManageCompanyCreatedTask}
         canWithdrawTask={canWithdrawTask}
         canReviewTaskException={canReviewTaskException}
+        canRequestTaskException={canRequestTaskException}
+        canMaintainTask={canMaintainTask}
         selectedRows={selectedRows}
         selected={selected}
         caseBatchLabels={caseBatchLabels}
@@ -1377,9 +1466,14 @@ export default function TaskCenterPage({
         onCompleteOne={(row) => void simpleAction(row, "complete")}
         onOpenHandoff={openTaskHandoff}
         onRequestException={requestTaskException}
+        onReviewException={reviewTaskException}
+        onMaintainTask={openTaskMaintenance}
         onOpenTaskBatchLifecycle={openTaskBatchLifecycle}
         onMoreAction={moreAction}
       />
+
+      <TaskMaintenanceModal row={maintenance} form={maintenanceForm} peopleOptions={peopleOptions}
+        actionSubmitting={actionSubmitting} onOk={submitTaskMaintenance} onCancel={() => setMaintenance(null)} />
 
       <FeeModal
         feeAction={feeAction}
@@ -1472,6 +1566,12 @@ export default function TaskCenterPage({
         actionSubmitting={actionSubmitting}
         isInitiatedTaskContext={isInitiatedTaskContext}
         isAcceptedTaskContext={isAcceptedTaskContext}
+        canRequestTaskException={canRequestTaskException}
+        canReviewTaskException={canReviewTaskException}
+        onRequestException={requestTaskException}
+        onReviewException={reviewTaskException}
+        canMaintainTask={canMaintainTask}
+        onMaintainTask={openTaskMaintenance}
         profile={profile}
         commentForm={commentForm}
         onClose={closeCommunication}

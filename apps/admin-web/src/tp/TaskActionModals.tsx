@@ -23,6 +23,7 @@ import type {
   FeeSubtype,
   CaseBatchAction,
   TaskBatchLifecycleAction,
+  PeopleOption,
 } from "./types";
 import {
   formatTaskScheduleTime,
@@ -32,6 +33,32 @@ import {
   taskStartedAt,
   visiblePersonName,
 } from "./constants";
+import dayjs from "dayjs";
+
+export function TaskMaintenanceModal({ row, form, peopleOptions, actionSubmitting, onOk, onCancel }: {
+  row: TaskRow | null;
+  form: FormInstance;
+  peopleOptions: PeopleOption[];
+  actionSubmitting: boolean;
+  onOk: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Modal open={Boolean(row)} title={`维护任务：${row?.serial_no || ""}`} okText="保存" cancelText="取消"
+      confirmLoading={actionSubmitting} onOk={onOk} onCancel={onCancel}
+      okButtonProps={{ style: { minHeight: 44, minWidth: 44 } }} cancelButtonProps={{ style: { minHeight: 44, minWidth: 44 } }}>
+      <Form form={form} layout="vertical">
+        <Form.Item label="负责人" name="owner">
+          <Select allowClear showSearch style={{ height: 44 }} optionFilterProp="label" options={peopleOptions.map((person) => ({ value: person.username, label: person.label }))} />
+        </Form.Item>
+        <Form.Item label="截止日期" name="deadline">
+          <DatePicker style={{ width: "100%", height: 44 }} disabledDate={(value) => value.isBefore(dayjs(), "day") || value.isAfter(dayjs().add(30, "day"), "day")} />
+        </Form.Item>
+        <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3} /></Form.Item>
+      </Form>
+    </Modal>
+  );
+}
 
 // ─── Handoff Modal ────────────────────────────────────────────────────────
 

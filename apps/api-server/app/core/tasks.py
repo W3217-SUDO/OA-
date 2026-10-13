@@ -95,6 +95,7 @@ def _task_schedule_state(record: BusinessRecord) -> tuple[date | None, int | Non
 
 
 def _task_dict(record: BusinessRecord) -> dict:
+    from app.core.case_automation import requires_phase_completion
     from app.core.system import (
         _explicit_vip_value, _record_dict,
     )
@@ -141,6 +142,7 @@ def _task_dict(record: BusinessRecord) -> dict:
         "handoff_auto_complete_at": data.get("handoff_auto_complete_at", ""),
         "handoff_restarted": bool(data.get("handoff_restarted")),
         "auto_completed": bool(data.get("auto_completed")),
+        "phase_completion_required": requires_phase_completion(record),
         "performance_impact": data.get("performance_impact", {}),
         "exception_request": data.get("exception_request", {}),
         "parent_task_id": data.get("parent_task_id"),
@@ -613,6 +615,43 @@ async def _vip_task_response(task: VipTask, identity: dict, db: AsyncSession) ->
         VipTaskMessage.vip_task_id == task.id, VipTaskMessage.recipient == identity["username"], VipTaskMessage.is_read.is_(False),
     )) or 0)
     return _vip_task_dict(task, node_count=node_count, unread_message_count=unread_count)
+
+
+async def _record_task_manual_intervention(
+    task: BusinessRecord, identity: dict, db: AsyncSession, *, action: str,
+    completion_override: bool = False,
+) -> None:
+    """仅在专用入口校验通过后，保存自动任务的人工操作阶段快照。"""
+    if _task_creation_mode(task.data or {}) != "自动":
+        return
+    data = task.data or {}
+    case_id = data.get("case_record_id") or data.get("case_id")
+    if not case_id:
+        return
+    case_record = await db.get(BusinessRecord, int(case_id))
+    if not case_record or case_record.module not in {"case", "ipr_case"}:
+        raise HTTPException(status_code=409, detail="自动任务关联案件不存在，不能记录人工干预")
+    phase_changed_at = str((case_record.data or {}).get("phase_changed_at") or "")
+    previous = data.get("manual_intervention") or {}
+    # 普通接收和维护只记审计，不停用自动完成；同阶段保留已明确的退回重启意图。
+    retain_override = (
+        previous.get("completion_override") is True
+        and previous.get("case_id") == case_record.id
+        and previous.get("case_stage") == case_record.status
+        and previous.get("phase_changed_at") == phase_changed_at
+    )
+    task.data = {
+        **data,
+        "manual_intervention": {
+            "action": action,
+            "operator": identity["username"],
+            "at": datetime.now().isoformat(timespec="seconds"),
+            "case_id": case_record.id,
+            "case_stage": case_record.status,
+            "phase_changed_at": phase_changed_at,
+            "completion_override": completion_override or retain_override,
+        },
+    }
 
 
 async def _active_task_username(value: str, db: AsyncSession, *, field_name: str) -> str:

@@ -718,7 +718,8 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
         _explicit_vip_value,
     )
     from app.core.tasks import (
-        _active_task_username, _add_task_message_notifications, _task_dict, _task_has_vip_customer,
+        _active_task_username, _add_task_message_notifications, _record_task_manual_intervention,
+        _task_dict, _task_has_vip_customer,
     )
     if body.owner is None and body.deadline is None and body.priority is None and body.is_vip is None:
         raise HTTPException(status_code=422, detail="请至少选择一个需要修改的字段")
@@ -736,10 +737,11 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
         normalized_owner = await _active_task_username(body.owner, db, field_name="负责人")
     for task in tasks:
         _require_task_owner_or_initiator(task, identity, action="批量修改任务")
-        if requires_phase_completion(task) and (body.owner is not None or body.priority is not None or body.is_vip is not None):
-            raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 只能人工变更期限")
+        if requires_phase_completion(task) and (body.priority is not None or body.is_vip is not None):
+            raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 的人工维护仅允许变更负责人和期限")
         if task.status not in {"待接收", "待处理", "处理中"}:
             raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 已进入不可批量修改的状态")
+    for task in tasks:
         changes: list[str] = []
         if normalized_owner is not None:
             changes.append(f"负责人：{task.owner} → {normalized_owner}")
@@ -757,6 +759,7 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
             changes.append(f"VIP：{'是' if previous_vip else '否'} ⇒ {'是' if next_vip else '否'}")
             data["is_vip"] = next_vip
         task.data = data
+        await _record_task_manual_intervention(task, identity, db, action="批量修改任务")
         await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="批量修改任务", from_status=task.status, to_status=task.status, operator=identity["username"], comment="；".join(changes + ([body.comment] if body.comment else []))), db, content="任务已修改.")
     await db.commit()
     for task in tasks:
@@ -766,7 +769,6 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
 
 @router.post(f"{settings.api_prefix}/tasks/batch-lifecycle")
 async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.case_automation import requires_phase_completion
     """Apply one dedicated task lifecycle action atomically to selected tasks.
 
     This deliberately does not reuse ``batch-update`` or the generic record
@@ -774,7 +776,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     automatic deadlines and audit semantics.
     """
     from app.core.tasks import (
-            _active_task_username, _add_task_message_notifications, _task_dict,
+            _active_task_username, _add_task_message_notifications, _record_task_manual_intervention, _task_dict,
         )
     task_ids = list(dict.fromkeys(body.task_ids))
     tasks = (await db.scalars(
@@ -795,8 +797,6 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     # selection never creates a partial lifecycle result.
     for task in ordered_tasks:
         data = task.data or {}
-        if requires_phase_completion(task) and body.action not in {"accept", "withdraw"}:
-            raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 须由上传文书或案件阶段变化自动完成，不能手动完成、验收或交接；发起人可以撤回")
         if body.action == "accept":
             if identity.get("role") != "admin" and task.owner != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅负责人可接收")
@@ -889,6 +889,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
                 "completion_auto_confirm_at": "",
                 "exception_request": {},
             }
+        await _record_task_manual_intervention(task, identity, db, action=action_labels[body.action])
         event_comment = comment
         if body.action == "handoff":
             event_comment = f"{previous_owner} 交接给 {recipient}。{comment}"
@@ -916,7 +917,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/accept")
 async def accept_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.tasks import (
-        _add_task_message_notifications, _task_dict, _task_or_404,
+        _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db)
     if identity.get("role") != "admin" and task.owner != identity["username"]:
@@ -925,6 +926,7 @@ async def accept_task(task_id: int, body: TaskActionInput, identity: dict = Depe
         raise HTTPException(status_code=409, detail="当前状态不能接收任务")
     previous = task.status; task.status = "处理中"
     task.data = {**(task.data or {}), "accepted_at": datetime.now().isoformat(timespec="seconds"), "handoff_restarted": True, "rejected_reason": ""}
+    await _record_task_manual_intervention(task, identity, db, action="接收任务")
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="接收任务", from_status=previous, to_status="处理中", operator=identity["username"], comment=body.comment), db, content="任务已接受.")
     await db.commit(); await db.refresh(task); return _task_dict(task)
 
@@ -1301,13 +1303,10 @@ async def batch_read_task_messages(body: TaskBatchReadInput, identity: dict = De
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/handoff")
 async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.case_automation import requires_phase_completion
     from app.core.tasks import (
-        _active_task_username, _add_task_message_notifications, _task_dict, _task_or_404,
+        _active_task_username, _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db)
-    if requires_phase_completion(task):
-        raise HTTPException(status_code=409, detail="该任务只能人工变更期限")
     if identity.get("role") != "admin" and task.owner != identity["username"]:
         raise HTTPException(status_code=403, detail="只有当前负责人可以转交任务")
     if task.status in {"已完成", "已验收", "已撤回", "已停止", "已取消", "待确认", "已拒绝"}:
@@ -1372,6 +1371,7 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
             "handoff_limit_days": handoff_limit_days,
         }
     task.data = {**data, **deadline_updates, "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": "", "handoff_restarted": False}
+    await _record_task_manual_intervention(task, identity, db, action="任务交接")
     deadline_comment = f"；交接结束时间：{handoff_end_at.isoformat(timespec='seconds')}" if deadline_updates else ""
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="任务交接", from_status=previous_status, to_status="待接收", operator=identity["username"], comment=f"{previous_owner} 交接给 {recipient}{deadline_comment}。{body.comment}"), db, content="任务已交接.")
     await db.commit()
@@ -1381,11 +1381,12 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/restart")
 async def restart_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.case_automation import requires_phase_completion
     from app.core.tasks import (
-        _add_task_message_notifications, _task_dict, _task_or_404,
+        _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db); data = task.data or {}
-    if task.status == "已完成" and (task.data or {}).get("auto_completed"):
+    if task.status == "已完成" and data.get("auto_completed") and not requires_phase_completion(task):
         raise HTTPException(status_code=409, detail="任务已自动完成，请新建后续任务")
     if task.status in {"待确认", "已完成", "已拒绝"}:
         if identity.get("role") != "admin" and data.get("initiator") != identity["username"]: raise HTTPException(status_code=403, detail="只有发起人可以退回重启")
@@ -1398,6 +1399,12 @@ async def restart_task(task_id: int, body: TaskActionInput, identity: dict = Dep
     restart_status = "待处理" if task.status == "已拒绝" else "处理中"
     task.status = restart_status
     task.data = {**data, "handoff_restarted": True, "restarted_at": str(date.today()), "completion_auto_confirm_at": "", "completion_comment": "", "rejected_reason": "", "exception_request": {**(data.get("exception_request") or {}), "resumed_at": datetime.now().isoformat(timespec="seconds"), "resumed_by": identity["username"]}}
+    if requires_phase_completion(task):
+        task.data = {**task.data, "auto_completed": False, "auto_completed_at": ""}
+    await _record_task_manual_intervention(
+        task, identity, db, action="重新开始任务",
+        completion_override=previous in {"已完成", "待确认", "已拒绝", "已停止"},
+    )
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="重新开始任务", from_status=previous, to_status=restart_status, operator=identity["username"], comment=body.comment), db, content="任务已重新开始.")
     await db.commit()
     await db.refresh(task)
@@ -1406,13 +1413,10 @@ async def restart_task(task_id: int, body: TaskActionInput, identity: dict = Dep
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/exception-request")
 async def request_task_exception(task_id: int, body: TaskExceptionRequestInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.case_automation import requires_phase_completion
     from app.core.tasks import (
-        _add_task_message_notifications, _task_dict, _task_or_404,
+        _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db)
-    if requires_phase_completion(task):
-        raise HTTPException(status_code=409, detail="该任务只能人工变更期限")
     if identity.get("role") != "admin" and task.owner != identity["username"]:
         raise HTTPException(status_code=403, detail="只有任务负责人可以申请挂起或取消")
     if task.status not in {"待接收", "待处理", "处理中"}:
@@ -1422,6 +1426,7 @@ async def request_task_exception(task_id: int, body: TaskExceptionRequestInput, 
         raise HTTPException(status_code=409, detail="已有任务特殊处理申请正在审批")
     request_data = {"action": body.action, "reason": body.reason.strip(), "status": "待审批", "requested_by": identity["username"], "requested_at": datetime.now().isoformat(timespec="seconds"), "status_before_request": task.status}
     task.data = {**data, "exception_request": request_data}
+    await _record_task_manual_intervention(task, identity, db, action=f"申请任务{body.action}")
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action=f"申请任务{body.action}", from_status=task.status, to_status=task.status, operator=identity["username"], comment=body.reason.strip()), db, content=f"任务{body.action}申请待审批.")
     await db.commit(); await db.refresh(task)
     return _task_dict(task)
@@ -1430,7 +1435,7 @@ async def request_task_exception(task_id: int, body: TaskExceptionRequestInput, 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/exception-review")
 async def review_task_exception(task_id: int, body: TaskExceptionReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.tasks import (
-        _add_task_message_notifications, _task_dict, _task_or_404,
+        _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db); data = task.data or {}; pending = data.get("exception_request") or {}
     if pending.get("status") != "待审批":
@@ -1450,6 +1455,10 @@ async def review_task_exception(task_id: int, body: TaskExceptionReviewInput, id
         task.status = "已停止" if action_name == "挂起" else "已取消"
     reviewed = {**pending, "status": "已通过" if body.approved else "已驳回", "reviewed_by": identity["username"], "reviewed_at": datetime.now().isoformat(timespec="seconds"), "review_comment": body.comment.strip()}
     task.data = {**data, "exception_request": reviewed}
+    if body.approved:
+        await _record_task_manual_intervention(
+            task, identity, db, action=f"任务{action_name}审批通过", completion_override=True,
+        )
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action=f"任务{action_name}审批{'通过' if body.approved else '驳回'}", from_status=previous, to_status=task.status, operator=identity["username"], comment=body.comment), db, content=f"任务{action_name}申请已{'通过' if body.approved else '驳回'}.")
     await db.commit(); await db.refresh(task)
     return _task_dict(task)
@@ -1457,19 +1466,17 @@ async def review_task_exception(task_id: int, body: TaskExceptionReviewInput, id
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/complete")
 async def complete_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.case_automation import requires_phase_completion
     from app.core.tasks import (
-        _add_task_message_notifications, _task_dict, _task_or_404,
+        _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db)
-    if requires_phase_completion(task):
-        raise HTTPException(status_code=409, detail="该任务只能由案件阶段变化自动完成")
     if identity.get("role") != "admin" and task.owner != identity["username"]: raise HTTPException(status_code=403, detail="只有任务负责人可以提交完成")
     if task.status not in {"待接收", "待处理", "处理中", "进行中", "已逾期"}: raise HTTPException(status_code=409, detail="当前状态不能提交完成")
     previous = task.status
     task.status = "已完成"
     auto_at = date.today() + timedelta(days=5)
     task.data = {**(task.data or {}), "completion_submitted_at": datetime.now().isoformat(timespec="seconds"), "completion_auto_confirm_at": str(auto_at), "completion_comment": body.comment}
+    await _record_task_manual_intervention(task, identity, db, action="提交任务完成")
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="提交任务完成", from_status=previous, to_status="已完成", operator=identity["username"], comment=f"发起人应在 {auto_at} 前验收或退回重启。{body.comment}"), db, content="任务已完成，等待确认.")
     await db.commit()
     await db.refresh(task)

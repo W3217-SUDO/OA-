@@ -66,6 +66,12 @@ export interface TaskDetailProps {
   onMarkHistoryUnread: (item: HistoryItem) => void;
   isTaskParticipant: (row: TaskRow) => boolean;
   canWithdrawTask: (row?: TaskRow | null) => boolean;
+  canRequestTaskException: (row?: TaskRow | null) => boolean;
+  canReviewTaskException: (row?: TaskRow | null) => boolean;
+  onRequestException: (row: TaskRow, action: "挂起" | "取消") => void;
+  onReviewException: (row: TaskRow, approved: boolean) => void;
+  canMaintainTask: (row?: TaskRow | null) => boolean;
+  onMaintainTask: (row: TaskRow) => void;
 }
 
 const renderTaskCaseLinks = (
@@ -118,10 +124,10 @@ export default function TaskDetail(props: TaskDetailProps) {
       open={Boolean(communication)}
       title="案件任务"
       footer={communication ? (
-        <Space>
+        <Space wrap>
           {isInitiatedTaskContext && ["已完成", "待确认", "已拒绝"].includes(communication.workflow_status || communication.status) && (
             <>
-              {!communication.auto_completed && (
+              {(!communication.auto_completed || communication.phase_completion_required) && (
                 <Button
                   loading={actionSubmitting}
                   onClick={() => onSimpleAction(communication, "restart")}
@@ -164,6 +170,20 @@ export default function TaskDetail(props: TaskDetailProps) {
               >
                 转交任务
               </Button>
+            </>
+          )}
+          {props.canRequestTaskException(communication) && (
+            <Button danger style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onRequestException(communication, "取消")}>
+              申请取消任务
+            </Button>
+          )}
+          {props.canMaintainTask(communication) && (
+            <Button style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onMaintainTask(communication)}>维护任务</Button>
+          )}
+          {communication.exception_request?.status === "待审批" && props.canReviewTaskException(communication) && (
+            <>
+              <Button style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onReviewException(communication, true)}>通过特殊处理</Button>
+              <Button danger style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onReviewException(communication, false)}>驳回特殊处理</Button>
             </>
           )}
           <Button onClick={onClose}>关闭</Button>

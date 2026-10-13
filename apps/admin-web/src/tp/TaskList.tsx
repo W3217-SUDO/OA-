@@ -54,6 +54,8 @@ export interface TaskListProps {
   canManageCompanyCreatedTask: boolean;
   canWithdrawTask: (row?: TaskRow | null) => boolean;
   canReviewTaskException: (row?: TaskRow | null) => boolean;
+  canRequestTaskException: (row?: TaskRow | null) => boolean;
+  canMaintainTask: (row?: TaskRow | null) => boolean;
   selectedRows: TaskRow[];
   selected: TaskRow | null;
   caseBatchLabels: Record<CaseBatchAction, string>;
@@ -79,11 +81,14 @@ export interface TaskListProps {
   onCompleteOne: (row: TaskRow) => void;
   onOpenHandoff: (row: TaskRow) => void;
   onRequestException: (row: TaskRow, action: "挂起" | "取消") => void;
+  onReviewException: (row: TaskRow, approved: boolean) => void;
+  onMaintainTask: (row: TaskRow) => void;
   onOpenTaskBatchLifecycle: (action: TaskBatchLifecycleAction) => void;
   onMoreAction: (key: string) => void;
 }
 
 export default function TaskList(props: TaskListProps) {
+  const { canRequestTaskException, onRequestException, onReviewException } = props;
   const { isUnread, tabs, statusTab, counts, mobileFiltersOpen, queryForm, loading, columns, filteredTasks, taskMeta, selectedKeys, hideTaskFooter, actionSubmitting, profile, canManageInitiatedTask, canManageAcceptedTask, canManageCompanyCreatedTask, canWithdrawTask, canReviewTaskException, selectedRows, selected, caseBatchLabels, onTabChange, onToggleMobileFilters, onQuerySubmit, onQueryReset, onSelectedKeysChange, onTableChange, onOpenCommunication, onMarkSelectedUnreadRead, onConfirmTask, onWithdrawTask, onResendTask, onRestartTask, onAcceptSelected, onCompleteSelected, onCompleteOne, onOpenHandoff, onOpenTaskBatchLifecycle, onMoreAction } = props;
 
   return (
@@ -318,7 +323,7 @@ export default function TaskList(props: TaskListProps) {
                 selected?.workflow_status || selected?.status || "",
               ) && (
                 <>
-                  {!selected?.auto_completed && (
+                  {(!selected?.auto_completed || selected.phase_completion_required) && (
                     <Button onClick={() => selected && onRestartTask(selected)}>
                       重启任务
                     </Button>
@@ -385,17 +390,26 @@ export default function TaskList(props: TaskListProps) {
             {selected?.exception_request?.status === "待审批" &&
               canReviewTaskException(selected) && (
                 <>
-                  <Button onClick={() => selected && onConfirmTask(selected)}>
+                  <Button style={{ minHeight: 44, minWidth: 44 }} onClick={() => selected && onReviewException(selected, true)}>
                     通过特殊处理
                   </Button>
                   <Button
                     danger
-                    onClick={() => selected && onWithdrawTask(selected)}
+                    style={{ minHeight: 44, minWidth: 44 }}
+                    onClick={() => selected && onReviewException(selected, false)}
                   >
                     驳回特殊处理
                   </Button>
                 </>
               )}
+            {selected && canRequestTaskException(selected) && (
+              <Button danger style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => onRequestException(selected, "取消")}>
+                申请取消任务
+              </Button>
+            )}
+            {selected && props.canMaintainTask(selected) && (
+              <Button style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onMaintainTask(selected)}>维护任务</Button>
+            )}
             {selected?.performance_impact?.overdue && (
               <Tag color="red">
                 超期 {selected.performance_impact.overdue_days} 天，绩效影响{" "}

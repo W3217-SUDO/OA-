@@ -434,6 +434,16 @@ async def _complete_matching_tasks(db: AsyncSession, sources: RuleSources, cases
         case = by_id.get(case_id)
         if not case or task.status in TERMINAL_TASK_STATUSES:
             continue
+        intervention = data.get("manual_intervention") or {}
+        # 同一阶段尊重人工操作；阶段变化后沿用原有完成条件，不重开终态任务。
+        if (
+            intervention.get("completion_override") is True
+            and intervention.get("operator")
+            and intervention.get("case_id") == case.id
+            and intervention.get("case_stage") == case.status
+            and intervention.get("phase_changed_at") == str((case.data or {}).get("phase_changed_at") or "")
+        ):
+            continue
         status = case.status
         reason = ""
         if rule_number == 11:
