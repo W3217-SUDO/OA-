@@ -283,6 +283,7 @@
   .case-detail-drawer .case-firm-fees-table .case-firm-fee-cell::before{color:#68727d;font-weight:400;content:attr(data-label)}
   .case-detail-drawer .case-firm-fees-table .ant-table-tbody>tr>td.case-firm-fee-selection{display:flex;align-items:center;width:100%!important;min-height:44px;height:auto;padding:0!important;border:0;text-align:left}
   .case-detail-drawer .case-firm-fees-table .ant-table-selection-column .ant-checkbox-wrapper{min-width:44px;min-height:44px;align-items:center;justify-content:center}
+  .case-detail-drawer .case-firm-fees-table .ant-btn{min-height:44px;height:auto;white-space:normal;overflow-wrap:anywhere}
   .case-detail-drawer .case-firm-fees-table .case-cell-link.ant-btn-link{min-height:44px;padding-block:6px}
   .case-detail-drawer .case-firm-fees-table .case-firm-fee-amount-link.ant-btn-link{justify-self:start;justify-content:flex-start;text-align:left}
   .case-detail-drawer .case-firm-fees-table .ant-table-placeholder,

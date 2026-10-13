@@ -7,6 +7,7 @@ const MIN_COLUMN_WIDTH = 48;
 const RESIZE_EDGE_WIDTH = 9;
 
 type ResizeSession = { stop: () => void };
+type ResizableTableProps<RecordType extends object> = TableProps<RecordType> & { resizable?: boolean };
 
 function columnSignature<RecordType extends object>(columns: TableColumnsType<RecordType>): string {
   const parts: string[] = [];
@@ -31,28 +32,31 @@ function storedWidths(key: string): Record<string, number> {
   return Object.fromEntries(Object.entries(value).filter(([, width]) => typeof width === "number" && Number.isFinite(width) && width >= MIN_COLUMN_WIDTH && width <= 2000));
 }
 
-function ResizableTable<RecordType extends object>({ columns, className, ...props }: TableProps<RecordType>) {
+function ResizableTable<RecordType extends object>({ columns, className, resizable = true, ...props }: ResizableTableProps<RecordType>) {
   const storageKey = useMemo(() => {
     const route = new URLSearchParams(window.location.search).get("page") || window.location.pathname;
     return `sunhold:table-widths:${route}:${className || ""}:${columnSignature(columns || [])}`;
   }, [className, columns]);
-  const [widths, setWidths] = useState<Record<string, number>>(() => storedWidths(storageKey));
+  const [widths, setWidths] = useState<Record<string, number>>(() => resizable ? storedWidths(storageKey) : {});
   const widthsRef = useRef(widths);
-  const previousStorageKey = useRef(storageKey);
+  const previousStorageKey = useRef({ key: storageKey, resizable });
   const activeResize = useRef<ResizeSession | null>(null);
   const ignoredClick = useRef<string | null>(null);
 
   useEffect(() => () => activeResize.current?.stop(), []);
   useEffect(() => {
-    if (previousStorageKey.current === storageKey) return;
-    previousStorageKey.current = storageKey;
-    const nextWidths = storedWidths(storageKey);
+    if (previousStorageKey.current.key === storageKey && previousStorageKey.current.resizable === resizable) return;
+    previousStorageKey.current = { key: storageKey, resizable };
+    activeResize.current?.stop();
+    const nextWidths = resizable ? storedWidths(storageKey) : {};
     widthsRef.current = nextWidths;
     setWidths(nextWidths);
-  }, [storageKey]);
+  }, [storageKey, resizable]);
 
   const resizedColumns = useMemo((): TableColumnsType<RecordType> | undefined => {
     if (!columns) return undefined;
+    // 自适应表格保留比例列宽，不读取历史像素宽度或添加拖拽事件。
+    if (!resizable) return columns;
     const decorate = (items: TableColumnsType<RecordType>, parentKey = ""): TableColumnsType<RecordType> =>
       items.map((column, index) => {
         if (column === AntTable.SELECTION_COLUMN || column === AntTable.EXPAND_COLUMN) return column;
@@ -123,13 +127,13 @@ function ResizableTable<RecordType extends object>({ columns, className, ...prop
         };
       });
     return decorate(columns);
-  }, [columns, widths]);
+  }, [columns, widths, resizable]);
 
-  const scroll = Object.keys(widths).length && typeof props.scroll?.x === "number"
+  const scroll = resizable && Object.keys(widths).length && typeof props.scroll?.x === "number"
     ? { ...props.scroll, x: "max-content" as const }
     : props.scroll;
   const sticky = props.sticky ?? (scroll?.x !== undefined ? { offsetScroll: 0 } : undefined);
-  return <AntTable<RecordType> {...props} scroll={scroll} sticky={sticky} className={[className, "oa-resizable-table"].filter(Boolean).join(" ")} columns={resizedColumns} />;
+  return <AntTable<RecordType> {...props} scroll={scroll} sticky={sticky} className={[className, resizable ? "oa-resizable-table" : ""].filter(Boolean).join(" ")} columns={resizedColumns} />;
 }
 
 const Table = Object.assign(ResizableTable, {
@@ -138,6 +142,6 @@ const Table = Object.assign(ResizableTable, {
   Summary: AntTable.Summary,
   SELECTION_COLUMN: AntTable.SELECTION_COLUMN,
   EXPAND_COLUMN: AntTable.EXPAND_COLUMN,
-}) as typeof AntTable;
+}) as typeof AntTable & typeof ResizableTable;
 
 export default Table;
