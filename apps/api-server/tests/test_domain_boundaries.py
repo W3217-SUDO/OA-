@@ -74,7 +74,7 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         self.objects[plan.data["path"]] = content
         return True
 
-    async def read(self, item, *, max_bytes):
+    async def read(self, item, *, max_bytes=20 * 1024 * 1024):
         return self.objects[item.path]
 
     async def save(self, **overrides):
@@ -103,6 +103,45 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 3)
         self.assertEqual(await self.db.scalar(select(func.count()).select_from(BusinessRecord)
                                              .where(BusinessRecord.module == SPACE_MODULE)), 2)
+
+    async def test_zero_byte_case_text_create_edit_and_generic_upload_are_preserved(self):
+        from app.api_schemas.case_documents import CaseAiDraftCreateInput, CaseAiDraftUpdateInput
+        from app.areas.legal.case_documents import create_case_ai_draft, update_case_ai_draft_content
+        from app.areas.system.attachments import upload_attachment
+        from app.core.constants import AI_SPACE_CATEGORY
+
+        self.actor = self.users[2]
+        case = BusinessRecord(module="case", serial_no="CODEX-AI-ZERO", title="零字节兼容案件",
+                              owner=self.actor.username, status="草稿", data={})
+        self.db.add(case)
+        await self.db.commit()
+        empty_sha = hashlib.sha256(b"").hexdigest()
+        for suffix in ("txt", "md"):
+            created = await create_case_ai_draft(case.id, CaseAiDraftCreateInput(name=f"空白.{suffix}", content=""),
+                                                 identity=await self.identity(), db=self.db)
+            self.assertEqual(created["size"], 0)
+            item = await self.db.get(FileAttachment, created["id"])
+            old_path = item.path
+            edited = await update_case_ai_draft_content(case.id, item.id, CaseAiDraftUpdateInput(content=""),
+                                                       identity=await self.identity(), db=self.db)
+            self.assertEqual(edited["size"], 0)
+            self.assertEqual(self.objects[old_path], b"")
+        with patch("app.core.case_automation.advance_case_for_uploaded_document", new=AsyncMock()), \
+                patch("app.core.documents._sync_case_document_readiness", new=AsyncMock()):
+            uploaded = await upload_attachment(
+                file=UploadFile(filename="原空文件.txt", file=BytesIO(b"")), record_id=case.id,
+                finance_transaction_id=None, source_case_id=None, customer_guid=None,
+                is_license=None, document_date=None, category=AI_SPACE_CATEGORY, remark="",
+                identity=await self.identity(), db=self.db,
+            )
+        self.assertEqual(uploaded["size"], 0)
+        records = (await self.db.scalars(select(BusinessRecord).where(BusinessRecord.module == FILE_MODULE))).all()
+        self.assertEqual(len(records), 5)
+        for record in records:
+            self.assertEqual(record.status, "available")
+            self.assertEqual(record.data["size"], 0)
+            self.assertEqual(record.data["sha256"], empty_sha)
+            self.assertEqual(self.objects[record.data["path"]], b"")
 
     async def test_bound_employee_is_authoritative_and_conflicting_binding_rejected(self):
         employee = BusinessRecord(module="hr", serial_no="CODEX-AI-HR", title="真实档案姓名", owner=self.actor.username,

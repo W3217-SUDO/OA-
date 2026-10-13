@@ -88,8 +88,8 @@ async def save_generated_file(
     case_record=None, attachment=None, on_available=None,
 ) -> dict:
     name = safe_original_name(name)
-    if not isinstance(content, bytes) or not content or len(content) > MAX_GENERATED_BYTES:
-        raise HTTPException(413, "生成文件为空或超过20MB")
+    if not isinstance(content, bytes) or len(content) > MAX_GENERATED_BYTES:
+        raise HTTPException(413, "生成文件必须为字节内容且不能超过20MB")
     if (not content_type or len(content_type) > 128 or "\r" in content_type or "\n" in content_type
             or not source_kind or len(source_kind) > 64):
         raise HTTPException(422, "生成文件类型或来源标识无效")
