@@ -1,5 +1,6 @@
 """领域路由迁移后，核对回款事务与用印文件补偿。"""
 
+import asyncio
 from datetime import date
 import hashlib
 from io import BytesIO
@@ -23,6 +24,8 @@ from app.areas.personal_agent import service as personal_service
 from app.areas.personal_agent.confirmation_history import begin_personal_decision, project_personal_actions, read_confirmation_detail, read_confirmation_history
 from app.areas.personal_agent.action_presentation import dismiss_personal_actions
 from app.areas.personal_agent import conversations
+from app.areas.personal_agent import identity_storage
+from app.agent_mcp import auth as tool_auth
 from app.agent_mcp import service as tool_service
 from app.core import generated_file_storage as generated_storage
 from app.core.generated_file_records import FILE_MODULE, SPACE_MODULE
@@ -423,6 +426,277 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         self.assertEqual(plan.status, "available")
         self.assertIsNone(plan.data["error"])
         self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 1)
+
+
+class PersonalIdentityStorageBoundaryTest(IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.temporary = TemporaryDirectory(prefix="CODEX-personal-identity-")
+        root = Path(self.temporary.name)
+        self.engine = create_async_engine("sqlite+aiosqlite:///" + (root / "identity.sqlite").as_posix())
+        async with self.engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
+        self.db = self.sessions()
+        self.actor = User(username="CODEX-identity-owner", display_name="真实员工", role="user", role_ids=["user"],
+                          password_hash="unused", is_active=True)
+        self.db.add(self.actor)
+        await self.db.commit()
+        self.username = self.actor.username
+        self.objects = {}
+        self.writer = AsyncMock(side_effect=self.put)
+        self.patches = [patch.object(generated_storage, "_load_credentials", return_value=None),
+                        patch.object(identity_storage, "_load_credentials", return_value=None),
+                        patch.object(tool_auth, "authenticated_identity", new=self.identity),
+                        patch.object(generated_storage, "oss_put_editor_revision", new=self.writer),
+                        patch.object(generated_storage, "read_generated_bytes", new=AsyncMock(side_effect=self.read)),
+                        patch.object(personal_service, "_user_permission_payload", new=AsyncMock(return_value={
+                            "menu_keys": ["task"], "action_keys": ["task.read"], "data_scope": "本人数据",
+                        })),
+                        patch.object(personal_service.settings, "personal_agent_root", str(root / "runtime")),
+                        patch.object(personal_service.settings, "ai_oss_bucket", "codex-ai-test"),
+                        patch.object(personal_service.settings, "ai_oss_prefix", "CODEX/AI空间"),
+                        patch.object(personal_service.settings, "ai_oss_endpoint", "https://oss.invalid"),
+                        patch.object(personal_service.settings, "ai_oss_credentials_file", "isolated-credentials.csv")]
+        for item in self.patches:
+            item.start()
+        self.context = tool_auth.AuthContext(None, "isolated-request-token", {
+            "method": "POST", "path": personal_service.settings.api_prefix + "/personal-agent/messages",
+        })
+        self.context_token = tool_auth._auth_context.set(self.context)
+
+    async def asyncTearDown(self):
+        tool_auth._auth_context.reset(self.context_token)
+        for item in reversed(self.patches):
+            item.stop()
+        await self.db.close()
+        await self.engine.dispose()
+        self.temporary.cleanup()
+
+    async def identity(self, db=None):
+        return {"username": self.username}
+
+    async def put(self, bucket, key, content, content_type, *, endpoint):
+        self.objects[f"oss://{bucket}/{key}"] = content
+        return True
+
+    async def read(self, item, *, max_bytes):
+        return self.objects[item.path]
+
+    async def safe_identity(self):
+        return await personal_service.personal_identity(await self.identity(), self.db)
+
+    async def persist(self, *, db=None, conversation_id="default"):
+        identity = await self.safe_identity()
+        return await identity_storage.persist_personal_identity(
+            db or self.db, identity, content=personal_service._identity_markdown(identity), conversation_id=conversation_id,
+        )
+
+    async def claims(self):
+        return (await self.db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == SPACE_MODULE, BusinessRecord.serial_no.like("PAID-%"),
+        ).execution_options(populate_existing=True))).all()
+
+    async def test_post_archives_only_actual_identity_before_model_and_preserves_local_file(self):
+        forged = {"username": self.actor.username, "display_name": "伪造姓名", "role": "admin", "action_keys": ["all"]}
+
+        async def generate(identity, db, text, on_delta, **kwargs):
+            self.assertEqual(identity["role"], "user")
+            self.assertEqual(identity["action_keys"], ["task.read"])
+            self.assertEqual(len(self.objects), 1)
+            expected = personal_service._identity_markdown(identity)
+            self.assertEqual(next(iter(self.objects.values())), expected.encode("utf-8"))
+            self.assertEqual(personal_service._identity_path(self.actor.username).read_text(encoding="utf-8"), expected)
+            return {"state": kwargs["state"], "response": "模型回答不是身份文件来源"}
+
+        with patch.object(personal_service, "_generate_response", new=AsyncMock(side_effect=generate)):
+            await personal_service.generate_response(forged, self.db, "第一次真实提问", AsyncMock())
+            await personal_service.generate_response(forged, self.db, "再次提问", AsyncMock())
+        self.assertEqual(self.writer.await_count, 1)
+        files = await list_space_files(await self.identity(), self.db, page=1, page_size=20)
+        self.assertEqual(files["total"], 1)
+        self.assertEqual(files["items"][0]["source_kind"], "personal_identity")
+        self.assertEqual(files["items"][0]["name"], "IDENTITY.md")
+        self.assertEqual(files["items"][0]["conversation_id"], "default")
+
+    async def test_reads_never_claim_or_put_identity(self):
+        self.context.scope["method"] = "GET"
+        identity = await self.safe_identity()
+        await personal_service.personal_state(identity, self.db)
+        await personal_service.manage_conversations(identity, db=self.db)
+        self.assertEqual(await self.claims(), [])
+        self.writer.assert_not_awaited()
+
+    async def test_versions_reuse_history_hash_and_keep_original_bytes(self):
+        first = await self.persist()
+        original = dict(self.objects)
+        self.actor.display_name = "真实改名员工"
+        await self.db.commit()
+        second = await self.persist(conversation_id="other-conversation")
+        self.assertNotEqual(first["id"], second["id"])
+        self.assertNotEqual(first["sha256"], second["sha256"])
+        self.actor.display_name = "真实员工"
+        await self.db.commit()
+        again = await self.persist(conversation_id="third-conversation")
+        self.assertEqual(first["id"], again["id"])
+        self.assertEqual(self.writer.await_count, 2)
+        self.assertTrue(all(self.objects[path] == raw for path, raw in original.items()))
+        self.assertEqual(len(await self.claims()), 2)
+        self.assertTrue(all(len(row.serial_no) <= 64 and row.status == "available" for row in await self.claims()))
+
+    async def test_real_auth_and_post_origin_are_required(self):
+        identity = await self.safe_identity()
+        for method, path in (("GET", "/personal-agent/state"), ("POST", "/personal-agent/conversations")):
+            self.context.scope.update(method=method, path=personal_service.settings.api_prefix + path)
+            with self.assertRaises(HTTPException) as raised:
+                await self.persist()
+            self.assertEqual(raised.exception.status_code, 403)
+        self.context.scope.update(method="POST", path=personal_service.settings.api_prefix + "/personal-agent/messages")
+        with self.assertRaises(HTTPException) as raised:
+            await identity_storage.persist_personal_identity(
+                self.db, {**identity, "username": "another-person"}, content="不可信内容", conversation_id="default")
+        self.assertEqual(raised.exception.status_code, 403)
+        self.context.active = False
+        with self.assertRaises(HTTPException) as raised:
+            await self.persist()
+        self.assertEqual(raised.exception.status_code, 401)
+        self.writer.assert_not_awaited()
+        self.assertEqual(await self.claims(), [])
+
+    async def test_failed_and_uncertain_claims_never_automatically_retry(self):
+        with patch.object(identity_storage, "save_generated_file", new=AsyncMock(side_effect=HTTPException(503, "配置失败"))):
+            with self.assertRaises(HTTPException):
+                await self.persist()
+        self.assertEqual((await self.claims())[0].status, "failed")
+        with self.assertRaises(HTTPException) as raised:
+            await self.persist(conversation_id="different-conversation")
+        self.assertEqual(raised.exception.detail["status"], "failed")
+        self.writer.assert_not_awaited()
+        self.actor.display_name = "新内容员工"
+        await self.db.commit()
+        with patch.object(generated_storage, "read_generated_bytes", new=AsyncMock(side_effect=HTTPException(502, "读取失败"))):
+            with self.assertRaises(HTTPException):
+                await self.persist()
+        with self.assertRaises(HTTPException) as raised:
+            await self.persist()
+        self.assertEqual(raised.exception.detail["status"], "uncertain")
+        self.assertEqual(self.writer.await_count, 1)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 0)
+
+    async def test_cancelled_upload_retains_uncertain_claim(self):
+        with patch.object(generated_storage, "oss_put_editor_revision", new=AsyncMock(side_effect=asyncio.CancelledError)):
+            with self.assertRaises(asyncio.CancelledError):
+                await self.persist()
+        self.assertEqual((await self.claims())[0].status, "uncertain")
+        with self.assertRaises(HTTPException) as raised:
+            await self.persist()
+        self.assertEqual(raised.exception.detail["status"], "uncertain")
+        self.writer.assert_not_awaited()
+
+    async def test_claim_available_is_atomic_with_file_commit_and_lost_ack_does_not_reupload(self):
+        commit = self.db.commit
+        count = 0
+
+        async def lost_ack():
+            nonlocal count
+            count += 1
+            await commit()
+            if count == 3:
+                raise RuntimeError("isolated committed acknowledgment lost")
+
+        with patch.object(self.db, "commit", new=lost_ack):
+            with self.assertRaises(HTTPException):
+                await self.persist()
+        claim = (await self.claims())[0]
+        self.assertEqual(claim.status, "available")
+        file = await self.db.get(BusinessRecord, claim.data["file_record_id"])
+        self.assertEqual(file.status, "available")
+        self.assertEqual(file.data["file_id"], claim.data["file_id"])
+        again = await self.persist()
+        self.assertEqual(again["id"], claim.data["file_id"])
+        self.assertEqual(self.writer.await_count, 1)
+
+    async def test_final_commit_failure_does_not_publish_claim_or_replay(self):
+        commit = self.db.commit
+        count = 0
+
+        async def fail_final():
+            nonlocal count
+            count += 1
+            if count == 3:
+                raise RuntimeError("isolated final transaction failed")
+            await commit()
+
+        with patch.object(self.db, "commit", new=fail_final):
+            with self.assertRaises(HTTPException):
+                await self.persist()
+        claim = (await self.claims())[0]
+        self.assertEqual(claim.status, "uncertain")
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 0)
+        with self.assertRaises(HTTPException):
+            await self.persist()
+        self.assertEqual(self.writer.await_count, 1)
+
+    async def test_different_sessions_compete_on_persistent_unique_claim(self):
+        identity = await self.safe_identity()
+        await generated_storage.resolve_generated_scope(self.db, identity)
+        await self.db.commit()
+        original = identity_storage._claim
+        arrivals = 0
+        ready = asyncio.Event()
+
+        async def simultaneous(db, serial):
+            nonlocal arrivals
+            claim = await original(db, serial)
+            if claim is None:
+                arrivals += 1
+                if arrivals == 2:
+                    ready.set()
+                await asyncio.wait_for(ready.wait(), 5)
+            return claim
+
+        async def contender(conversation_id):
+            async with self.sessions() as db:
+                return await identity_storage.persist_personal_identity(
+                    db, identity, content=personal_service._identity_markdown(identity), conversation_id=conversation_id)
+
+        with patch.object(identity_storage, "_claim", new=simultaneous):
+            results = await asyncio.gather(contender("first-conversation"), contender("second-conversation"), return_exceptions=True)
+        for result in results:
+            if isinstance(result, HTTPException):
+                self.assertEqual(result.status_code, 409)
+            else:
+                self.assertIsInstance(result, dict)
+                self.assertEqual(result["status"], "available")
+        self.assertTrue(any(isinstance(result, dict) for result in results))
+        self.assertEqual(self.writer.await_count, 1)
+        self.assertEqual(len(await self.claims()), 1)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 1)
+
+    async def test_uploading_claim_cannot_be_taken_over_by_another_session(self):
+        identity = await self.safe_identity()
+        started = asyncio.Event()
+        finish = asyncio.Event()
+
+        async def blocked_put(*args, **kwargs):
+            started.set()
+            await asyncio.wait_for(finish.wait(), 5)
+            return await self.put(*args, **kwargs)
+
+        with patch.object(generated_storage, "oss_put_editor_revision", new=AsyncMock(side_effect=blocked_put)) as writer:
+            first = asyncio.create_task(self.persist())
+            try:
+                await asyncio.wait_for(started.wait(), 5)
+                async with self.sessions() as db:
+                    with self.assertRaises(HTTPException) as raised:
+                        await identity_storage.persist_personal_identity(
+                            db, identity, content=personal_service._identity_markdown(identity), conversation_id="other-session")
+                    self.assertEqual(raised.exception.detail["status"], "uploading")
+                    self.assertEqual(raised.exception.status_code, 409)
+            finally:
+                finish.set()
+                await first
+            self.assertEqual(writer.await_count, 1)
+        self.assertEqual((await self.claims())[0].status, "available")
 
 
 class PersonalConfirmationBoundaryTest(IsolatedAsyncioTestCase):

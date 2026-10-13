@@ -32,6 +32,7 @@ from app.case_agent import RESPONSE_STYLE_RULES
 from app.areas.personal_agent.materials import material_message, prepare_materials
 from app.areas.personal_agent.response_runtime import ProgressCallback, ResponseMode, request_model
 from app.areas.personal_agent import conversations
+from app.areas.personal_agent.identity_storage import persist_personal_identity
 from app.areas.personal_agent.confirmation_history import (
     begin_personal_decision, finish_personal_decision, prepare_personal_action, project_personal_actions,
 )
@@ -114,7 +115,7 @@ def _safe_identity_payload(user: User, permissions: dict[str, Any]) -> dict[str,
 
 
 async def personal_identity(identity: dict[str, Any], db: AsyncSession) -> dict[str, Any]:
-    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    user = await db.scalar(select(User).where(User.username == identity["username"]).execution_options(populate_existing=True))
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="当前用户不存在或已停用")
     permissions = await _user_permission_payload(user, db)
@@ -307,6 +308,9 @@ async def generate_response(identity: dict[str, Any], db: AsyncSession, text: st
             await on_delta(content)
 
         try:
+            identity = await personal_identity(identity, db)
+            content = await ensure_identity_file(identity)
+            await persist_personal_identity(db, identity, content=content, conversation_id=state["conversation_id"])
             result = await _generate_response(identity, db, text, capture_delta, state=state, skill_id=skill_id, attachment_ids=attachment_ids, case_id=case_id, document_ids=document_ids, response_mode=response_mode, on_progress=on_progress)
             return {**result, "state": await project_personal_actions(result["state"], identity, db)}
         except asyncio.CancelledError:
