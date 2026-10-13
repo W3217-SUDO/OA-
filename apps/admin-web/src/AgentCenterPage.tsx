@@ -9,6 +9,8 @@ import { AgentToolResult } from "./AgentToolResult";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import { AGENT_DOCUMENT_LIMIT, buildAgentDocumentTree } from "./legal/constants";
 import type { CaseAgentDocument } from "./legal/types";
+import { managedSkills, skillChoiceLabel } from "./personal-agent/skillScope";
+import type { WorkspaceSkill } from "./personal-agent/types";
 import "./agent-center.css";
 
 type CaseOption = { id: number; serial_no: string; title: string; customer: string; status: string };
@@ -17,7 +19,7 @@ type AgentMessage = { id?: string; role: "user" | "assistant"; content: string; 
 type AgentAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; preview?: AgentActionPreview; execution_result?: unknown; status: "pending" | "approved" | "rejected" };
 type AgentState = { messages: AgentMessage[]; pending_actions: AgentAction[]; active_skill?: string; structured_results?: unknown[] };
 type AgentStatus = { ready: boolean; model: string; checkpoint_backend: string; write_requires_approval: boolean; skills?: AgentSkill[] };
-type CustomAgentSkill = AgentSkill & { custom?: boolean; enabled?: boolean; instruction?: string };
+type CustomAgentSkill = WorkspaceSkill;
 type WorkflowPhase = { code: string; name: string; state: "completed" | "current" | "pending"; target_days?: number | null };
 type WorkflowGuide = { phases: WorkflowPhase[] };
 const PHASE_SHORT_NAMES: Record<string, string> = {
@@ -434,7 +436,7 @@ export default function AgentCenterPage({ onOpenPersonalAgent }: { onOpenPersona
               <Button type="primary" icon={<AppstoreAddOutlined />} onClick={resetSkillEditor}>新增</Button>
             </Space>
           </div>
-          {skills.filter((item) => item.custom).length ? skills.filter((item) => item.custom).map((skill) => <div className="agent-skill-row" key={skill.id}>
+          {managedSkills(skills, "personal").length ? managedSkills(skills, "personal").map((skill) => <div className="agent-skill-row" key={skill.id}>
             <div><strong>{skill.name}</strong><span>{skill.description}</span><small>{skill.category}</small></div>
             <Space>
               <Switch size="small" checked={skill.available} onChange={(checked) => void toggleSkill(skill, checked)} />
@@ -449,8 +451,8 @@ export default function AgentCenterPage({ onOpenPersonalAgent }: { onOpenPersona
             <Form.Item label="技能名称" name="name" rules={[{ required: true, min: 2, max: 64 }]}><Input /></Form.Item>
             <Form.Item label="分类" name="category" initialValue="自定义" rules={[{ required: true, max: 32 }]}><Input /></Form.Item>
           </div>
-          <Form.Item label="说明" name="description" rules={[{ required: true, min: 2, max: 500 }]}><Input /></Form.Item>
-          <Form.Item label="技能指令" name="instruction" rules={[{ required: true, min: 10, max: 6000 }]}><Input.TextArea autoSize={{ minRows: 5, maxRows: 10 }} /></Form.Item>
+          <Form.Item label="说明" name="description" rules={[{ required: true, min: 2, max: 8000 }]}><Input.TextArea autoSize={{ minRows: 2, maxRows: 6 }} /></Form.Item>
+          <Form.Item label="技能指令" name="instruction" rules={[{ required: true, min: 10, max: 64000 }]}><Input.TextArea autoSize={{ minRows: 5, maxRows: 10 }} /></Form.Item>
           <Form.Item label="快捷指令" name="quick_prompts"><Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} /></Form.Item>
           <Button type="primary" htmlType="submit" loading={skillSaving}>{editingSkillId ? "保存修改" : "添加技能"}</Button>
         </Form>
@@ -513,7 +515,7 @@ export default function AgentCenterPage({ onOpenPersonalAgent }: { onOpenPersona
               <Select
                 value={skillId}
                 onChange={setSkillId}
-                options={skills.map((skill) => ({ value: skill.id, label: skill.custom ? `${skill.name} · 我的` : skill.name, disabled: !skill.available }))}
+                options={skills.map((skill) => ({ value: skill.id, label: skillChoiceLabel(skill), disabled: !skill.available }))}
                 popupMatchSelectWidth={false}
               />
               <Button type="text" icon={<AppstoreAddOutlined />} title="管理我的技能" onClick={() => void openSkillManager()} />

@@ -1734,7 +1734,11 @@ async def _agent_skill_catalog_for_identity(identity: dict, db: AsyncSession) ->
         _user_agent_skill_store,
     )
     _, custom_records = await _user_agent_skill_store(identity["username"], db)
-    return [*public_skill_catalog(), *[custom_skill_public(item) for item in custom_records]]
+    from app.global_agent_skills import global_skill_store
+    _, shared = await global_skill_store(db)
+    return [*[{**item, "scope": "system"} for item in public_skill_catalog()],
+            *[custom_skill_public(item) for item in shared if item.get("enabled", True)],
+            *[custom_skill_public(item) for item in custom_records]]
 
 
 async def _agent_skill_for_identity(skill_id: str, identity: dict, db: AsyncSession):
@@ -1746,6 +1750,16 @@ async def _agent_skill_for_identity(skill_id: str, identity: dict, db: AsyncSess
         skill = SKILLS_BY_ID[normalized]
         if not skill.available:
             raise HTTPException(status_code=409, detail=skill.unavailable_reason or "该技能暂不可用")
+        return skill
+    if normalized.startswith("global-"):
+        from app.global_agent_skills import global_skill_store
+        _, shared = await global_skill_store(db)
+        record = next((item for item in shared if item["id"] == normalized), None)
+        if record is None:
+            raise HTTPException(status_code=404, detail="全局技能不存在")
+        skill = custom_skill_agent(record)
+        if not skill.available:
+            raise HTTPException(status_code=409, detail="全局技能已停用")
         return skill
     _, custom_records = await _user_agent_skill_store(identity["username"], db)
     record = next((item for item in custom_records if item.get("id") == normalized), None)

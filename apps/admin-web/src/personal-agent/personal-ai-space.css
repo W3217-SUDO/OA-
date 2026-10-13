@@ -5,6 +5,21 @@
 .personal-ai-space-title { display: block; font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
 .personal-ai-space-drawer .ant-drawer-body { min-width: 0; min-height: 0; padding: 16px; }
 .personal-ai-space-content { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
+.personal-ai-space-content[hidden], .personal-ai-space-drawer [hidden] { display: none; }
+.personal-ai-space-drawer .ant-tabs-tab { min-height: 44px; }
+.personal-ai-space-skills { display: grid; gap: 12px; min-width: 0; }
+.personal-ai-space-skills .personal-ai-space-toolbar { flex-wrap: wrap; }
+.personal-ai-skill-list { list-style: none; margin: 0; padding: 0; }
+.personal-ai-skill-list > li { padding: 14px 0; border-bottom: 1px solid #e5e9ee; min-width: 0; }
+.personal-ai-skill-list p, .personal-ai-skill-heading strong { overflow-wrap: anywhere; }
+.personal-ai-skill-heading { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.personal-ai-skill-heading strong { flex: 1 1 180px; min-width: 0; }
+.personal-ai-skill-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding-inline: 8px; }
+.personal-ai-skill-definition-content { display: grid; gap: 8px; min-width: 0; }
+.personal-ai-skill-definition-content small { overflow-wrap: anywhere; }
+.personal-ai-skill-definition-content pre { margin: 0; padding: 12px; max-height: 55dvh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: #f4f7f6; }
+.personal-ai-skill-definition .ant-btn { min-height: 44px; min-width: 44px; }
+@media (max-width: 760px) { .personal-ai-skill-definition { max-width: calc(100vw - 24px); margin-inline: auto; } }
 .personal-ai-space-trigger.ant-btn { min-width: 44px; min-height: 44px; }
 .personal-ai-space-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .personal-ai-space-toolbar .ant-btn { min-width: 44px; min-height: 44px; }
