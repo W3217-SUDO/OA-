@@ -6,6 +6,7 @@ import { errorText } from "./types";
 import { PersonalAiSpaceFiles } from "./PersonalAiSpaceFiles";
 import { AttachmentPreviewContent, type PreviewAttachment } from "../components/common/AttachmentContent";
 import { downloadPersonalAiFile, type PersonalAiFile, type PersonalAiFilePage, type PersonalAiSpaceInfo } from "./personalAiSpaceApi";
+import { personalHtmlToMarkdown, personalMarkdownToHtml, sanitizePersonalEditorHtml } from "./personalAiDocumentCodec";
 import "./personal-ai-space.css";
 
 type Props = {
@@ -17,48 +18,30 @@ type Props = {
   onSkillsChanged?: () => Promise<unknown>;
 };
 
-function escapeHtml(value: string) {
-  return value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[character] || character));
-}
-
-function textToHtml(value: string) {
-  return value.split(/\r?\n/).map((line) => `<p>${escapeHtml(line) || "<br>"}</p>`).join("");
-}
-
-function htmlToMarkdown(html: string) {
-  const container = document.createElement("div");
-  container.innerHTML = html;
-  const render = (node: Node): string => {
-    if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
-    if (node.nodeType !== Node.ELEMENT_NODE) return "";
-    const element = node as HTMLElement;
-    const inner = Array.from(element.childNodes).map(render).join("");
-    const tag = element.tagName.toLowerCase();
-    if (tag === "br") return "\n";
-    if (tag === "strong" || tag === "b") return `**${inner}**`;
-    if (tag === "em" || tag === "i") return `*${inner}*`;
-    if (tag === "li") return `- ${inner.trim()}\n`;
-    if (["p", "div", "h1", "h2", "h3"].includes(tag)) return `${inner.trim()}\n`;
-    if (tag === "ol") return `${Array.from(element.children).map((item, index) => `${index + 1}. ${render(item).replace(/^[- ]+/, "").trim()}`).join("\n")}\n`;
-    if (tag === "ul") return `${inner}`;
-    return inner;
-  };
-  return render(container).replace(/\n{3,}/g, "\n\n").trim();
-}
-
-function RichTextEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function RichTextEditor({ value, onChange, onError }: { value: string; onChange: (value: string) => void; onError: (value: string) => void }) {
   const editorRef = useRef<HTMLDivElement>(null);
-  const initialized = useRef(false);
+  const lastValue = useRef<string | null>(null);
   useEffect(() => {
-    if (editorRef.current && !initialized.current) {
-      editorRef.current.innerHTML = textToHtml(value);
-      initialized.current = true;
+    if (editorRef.current && value !== lastValue.current) {
+      try {
+        editorRef.current.innerHTML = personalMarkdownToHtml(value);
+        lastValue.current = value;
+        onError("");
+      } catch (failure) { onError(errorText(failure, "文档格式无法在线编辑，原文件未修改")); }
     }
-  }, [value]);
+  }, [value, onError]);
+  const update = () => {
+    try {
+      const content = personalHtmlToMarkdown(editorRef.current?.innerHTML || "");
+      personalMarkdownToHtml(content);
+      lastValue.current = content;
+      onChange(content); onError("");
+    } catch (failure) { onError(errorText(failure, "文档格式转换失败，原文件未修改")); }
+  };
   const command = (name: string, argument?: string) => {
     editorRef.current?.focus();
     document.execCommand(name, false, argument);
-    onChange(htmlToMarkdown(editorRef.current?.innerHTML || ""));
+    update();
   };
   return <div className="personal-ai-rich-editor">
     <div className="personal-ai-rich-toolbar" role="toolbar" aria-label="文档格式工具栏">
@@ -71,7 +54,14 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
       <Button size="small" icon={<OrderedListOutlined />} aria-label="编号列表" onMouseDown={(event) => event.preventDefault()} onClick={() => command("insertOrderedList")} />
       <Button size="small" onMouseDown={(event) => event.preventDefault()} onClick={() => command("formatBlock", "h2")}>标题</Button>
     </div>
-    <div ref={editorRef} className="personal-ai-rich-content" contentEditable role="textbox" aria-label="文档正文编辑区" suppressContentEditableWarning onInput={() => onChange(htmlToMarkdown(editorRef.current?.innerHTML || ""))} />
+    <div ref={editorRef} className="personal-ai-rich-content" contentEditable role="textbox" aria-label="文档正文编辑区" suppressContentEditableWarning onInput={update} onPaste={event => {
+      event.preventDefault();
+      try {
+        const html = event.clipboardData.getData("text/html");
+        const safe = html ? sanitizePersonalEditorHtml(html) : personalMarkdownToHtml(event.clipboardData.getData("text/plain"));
+        document.execCommand("insertHTML", false, safe); update();
+      } catch (failure) { onError(errorText(failure, "粘贴内容格式不受支持，原文件未修改")); }
+    }} onDrop={event => { event.preventDefault(); onError("不支持拖入富文本或文件，原文件未修改"); }} />
     <div className="personal-ai-rich-hint">支持直接排版、撤销重做、加粗、斜体和列表；保存会生成个人 AI 空间的新版本。</div>
   </div>;
 }
@@ -87,6 +77,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
   const [preview, setPreview] = useState<PreviewAttachment | null>(null);
   const [editor, setEditor] = useState<{ id: string; name: string; content: string } | null>(null);
   const [editorSaving, setEditorSaving] = useState(false);
+  const [editorFormatError, setEditorFormatError] = useState("");
   const [editForm] = Form.useForm<{ name: string; content: string }>();
   const close = () => { setPage(1); setSpace(null); onClose(); };
   useEffect(() => {
@@ -129,11 +120,13 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
     try {
       const { data } = await api.get<{ id: string; name: string; content: string }>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/content`);
       editForm.setFieldsValue({ name: data.name, content: data.content });
+      setEditorFormatError("");
       setEditor(data);
     } catch (failure) { setError(errorText(failure, "文件在线编辑加载失败")); }
   };
   const saveEditor = async () => {
     if (!editor) return;
+    if (editorFormatError) { message.error(editorFormatError); return; }
     const values = await editForm.validateFields();
     setEditorSaving(true);
     try {
@@ -166,9 +159,10 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
     <Modal open={!!preview} title={`在线查看：${preview?.name || ""}`} width={preview?.kind === "pdf" ? 1000 : 860} footer={<Button onClick={() => { if (preview?.url) URL.revokeObjectURL(preview.url); setPreview(null); }}>关闭</Button>} onCancel={() => { if (preview?.url) URL.revokeObjectURL(preview.url); setPreview(null); }} destroyOnHidden>
       <AttachmentPreviewContent preview={preview} />
     </Modal>
-    <Modal open={!!editor} title={`在线编辑：${editor?.name || ""}`} width={860} okText="保存为新版本" cancelText="取消" confirmLoading={editorSaving} onOk={() => void saveEditor()} onCancel={() => { setEditor(null); editForm.resetFields(); }} destroyOnHidden>
+    <Modal open={!!editor} title={`在线编辑：${editor?.name || ""}`} width={860} okText="保存为新版本" cancelText="取消" confirmLoading={editorSaving} okButtonProps={{ disabled: !!editorFormatError }} onOk={() => void saveEditor()} onCancel={() => { setEditor(null); editForm.resetFields(); }} destroyOnHidden>
       <Alert type="info" showIcon title="保存会生成个人 AI 空间的新版本，原文件保留不覆盖。" style={{ marginBottom: 12 }} />
-      <Form form={editForm} layout="vertical"><Form.Item name="name" label="文件名" rules={[{ required: true }, { pattern: /\.(docx|md|txt)$/i, message: "仅支持 .docx、.md、.txt" }]}><Input maxLength={255} /></Form.Item><Form.Item name="content" label="文档正文" rules={[{ required: true, message: "请输入文档正文" }]}><RichTextEditor value={editForm.getFieldValue("content") || ""} onChange={(content) => editForm.setFieldValue("content", content)} /></Form.Item></Form>
+      {editorFormatError && <Alert type="error" showIcon title={editorFormatError} />}
+      <Form form={editForm} layout="vertical"><Form.Item name="name" label="文件名" rules={[{ required: true }, { pattern: /\.(docx|md|txt)$/i, message: "仅支持 .docx、.md、.txt" }]}><Input maxLength={255} /></Form.Item><Form.Item name="content" label="文档正文" rules={[{ required: true, message: "请输入文档正文" }]}>{editor?.name.toLowerCase().endsWith(".txt") ? <Input.TextArea autoSize={{ minRows: 18, maxRows: 30 }} /> : <RichTextEditor value={editForm.getFieldValue("content") || ""} onChange={(content) => editForm.setFieldValue("content", content)} onError={setEditorFormatError} />}</Form.Item></Form>
     </Modal>
   </Drawer>;
 }

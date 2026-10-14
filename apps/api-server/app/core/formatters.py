@@ -639,7 +639,7 @@ def _normalize_case_document_folder_name(value: str) -> str:
     return name
 
 
-def _case_ai_draft_text(item: FileAttachment, content: bytes) -> str:
+def _case_ai_draft_text(item: FileAttachment, content: bytes, *, preserve_format: bool = False) -> str:
     if Path(item.original_name).suffix.lower() != ".docx":
         try:
             return content.decode("utf-8")
@@ -649,6 +649,13 @@ def _case_ai_draft_text(item: FileAttachment, content: bytes) -> str:
         document = Document(io.BytesIO(content))
     except (BadZipFile, KeyError, ValueError, XMLSyntaxError) as exc:
         raise HTTPException(422, "AI 草稿不是有效的 DOCX 文档，未修改原文件") from exc
+    if preserve_format:
+        from app.core.personal_ai_document_codec import personal_docx_markdown
+
+        try:
+            return personal_docx_markdown(document, generated_title=Path(item.original_name).stem)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
     lines = [paragraph.text for paragraph in document.paragraphs]
     for table in document.tables:
         lines.extend("\t".join(cell.text for cell in row.cells) for row in table.rows)

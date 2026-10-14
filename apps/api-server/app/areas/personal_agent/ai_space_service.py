@@ -127,8 +127,9 @@ async def space_file_text(file_id, identity, db):
     attachment = await db.get(FileAttachment, item["attachment_id"])
     if attachment is None:
         raise HTTPException(404, "生成文件附件已不存在")
-    # Reuse the same DOCX extraction contract as the case AI editor.
-    text = _case_ai_draft_text(attachment, content)
+    # 仅个人在线编辑保留格式，通用提取及案件分析仍使用原默认合同。
+    source = SimpleNamespace(original_name=item["name"])
+    text = _case_ai_draft_text(source, content, preserve_format=True)
     return {"id": file_id, "name": item["name"], "content": text, "content_editable": True}
 
 
@@ -143,7 +144,18 @@ async def edit_space_file(file_id, name, content, identity, db):
         raise HTTPException(403, "只有文件所属员工可以在线编辑个人 AI 文件")
     await space_file_text(file_id, identity, db)
     safe_name = _case_ai_draft_name(name)
-    binary, content_type = _case_ai_draft_bytes(safe_name, content)
+    if safe_name.lower().endswith(".docx"):
+        from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE
+        from app.core.personal_ai_document_codec import personal_markdown_docx
+        from pathlib import Path
+
+        try:
+            binary = personal_markdown_docx(Path(safe_name).stem, content)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        content_type = WORD_DOCUMENT_CONTENT_TYPE
+    else:
+        binary, content_type = _case_ai_draft_bytes(safe_name, content)
     result = await save_generated_file(
         db, identity, name=safe_name, content=binary, content_type=content_type,
         source_kind="personal_edit", conversation_id=(record.data or {}).get("conversation_id"),
