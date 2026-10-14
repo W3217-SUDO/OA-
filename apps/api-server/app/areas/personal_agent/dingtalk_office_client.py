@@ -40,15 +40,27 @@ async def member_union_id(user_id: str) -> str:
         async with httpx.AsyncClient(timeout=15, trust_env=False, follow_redirects=False) as client:
             response = await client.post("https://oapi.dingtalk.com/topapi/v2/user/get",
                                          params={"access_token": token}, json={"userid": user_id})
-        if response.status_code != 200:
-            raise HTTPException(502, "钉钉员工身份查询失败")
-        body = response.json()
-        result = body.get("result") if isinstance(body, dict) else None
-        if (not isinstance(body, dict) or body.get("errcode") != 0 or not isinstance(result, dict)
-                or result.get("userid") != user_id or result.get("contact_type") != 0):
-            raise HTTPException(403, "当前绑定账号不是钉钉应用所属企业的内部员工，或不在授权范围")
-        union_id = result.get("unionid")
-        identifier(union_id)
+            if response.status_code != 200:
+                raise HTTPException(502, "钉钉员工身份查询失败")
+            body = response.json()
+            result = body.get("result") if isinstance(body, dict) else None
+            if (not isinstance(body, dict) or type(body.get("errcode")) is not int or body["errcode"] != 0
+                    or not isinstance(result, dict) or result.get("userid") != user_id):
+                raise HTTPException(403, "当前绑定账号不在钉钉应用的通讯录授权范围，或身份返回不一致")
+            union_id = result.get("unionid")
+            identifier(union_id)
+            # 员工详情不提供 contact_type；沿用扫码登录的 UnionId 反查合同核验内部员工。
+            member_response = await client.post("https://oapi.dingtalk.com/topapi/user/getbyunionid",
+                                                params={"access_token": token}, json={"unionid": union_id})
+            if member_response.status_code != 200:
+                raise HTTPException(502, "钉钉企业成员身份查询失败")
+            member_body = member_response.json()
+            member = member_body.get("result") if isinstance(member_body, dict) else None
+            if (not isinstance(member_body, dict) or type(member_body.get("errcode")) is not int
+                    or member_body["errcode"] != 0 or not isinstance(member, dict)
+                    or type(member.get("contact_type")) is not int or member["contact_type"] != 0
+                    or member.get("userid") != user_id):
+                raise HTTPException(403, "当前绑定账号不是钉钉应用所属企业的内部员工，或成员身份不一致")
         return union_id
     except (httpx.HTTPError, ValueError) as exc:
         raise HTTPException(502, "钉钉员工身份查询未完成") from exc
