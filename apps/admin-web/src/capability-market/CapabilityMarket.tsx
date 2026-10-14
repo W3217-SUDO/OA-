@@ -154,7 +154,7 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
       </article>)}</div>
       {connectors.length > 24 && <Pagination className="capability-market-pagination" current={page} pageSize={24} total={connectors.length} onChange={setPage} showSizeChanger={false} responsive />}
     </>}
-    <Drawer open={active && !!selected} onClose={() => { if (!busy) setSelected(null); }} title={selected?.name} width={680} zIndex={1500} className="capability-market-detail" maskClosable={!busy} closable={!busy}
+    <Drawer open={active && !!selected} onClose={() => { if (!busy) setSelected(null); }} title={selected?.name} width={680} zIndex={1500} rootClassName="capability-market-detail" maskClosable={!busy} closable={!busy}
       footer={<div className="capability-market-detail-actions"><Button disabled={busy} onClick={() => setSelected(null)}>关闭</Button>{installed && onSelect ? <Button type="primary" icon={<CheckOutlined />} disabled={busy} onClick={() => { onSelect(installed.id); setSelected(null); }}>使用</Button> : <Button type="primary" icon={<DownloadOutlined />} loading={busy} disabled={!detail || !!detail.unavailable_reason || !!installed} onClick={() => void install()}>{installed ? "已安装" : `安装到${skillScopeLabel(scope)}`}</Button>}</div>}>
       {detailLoading ? <Skeleton active /> : detail && <>
         <p>{detail.description}</p><div className="capability-market-tags"><Tag>{detail.category}</Tag><Tag>{detail.license}</Tag>{detail.version && <Tag>v{detail.version}</Tag>}</div>
@@ -169,7 +169,7 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
       </>}
       {detailError && <Alert type="error" showIcon title={detailError} />}
     </Drawer>
-    <Drawer open={active && toolsOpen} onClose={() => setToolsOpen(false)} title="沪知 OA · 业务工具" width={680} zIndex={1500} className="capability-market-detail">
+    <Drawer open={active && toolsOpen} onClose={() => setToolsOpen(false)} title="沪知 OA · 业务工具" width={680} zIndex={1500} rootClassName="capability-market-detail">
       <div className="capability-market-tool-list">{tools?.map(tool => <article key={tool.name}><h3>{tool.title || tool.name}</h3><p>{tool.description}</p><Tag>{tool.is_write ? "写入需确认" : "只读查询"}</Tag></article>)}</div>
     </Drawer>
   </section>;
