@@ -294,7 +294,7 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         self.assertIn(f"/CODEX-AI-CASE-真实案件名称--c{case.id}/", second["attachment"].path)
         self.assertNotEqual(old_path, second["attachment"].path)
         self.assertEqual(self.objects[old_path], b"actual-xls-content")
-        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 1)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 2)
         listing = await list_space_files(await self.identity(), self.db, page=1, page_size=20)
         self.assertEqual(listing["total"], 2)
         self.assertEqual({item["attachment_id"] for item in listing["items"]}, {second["attachment"].id})
@@ -354,19 +354,17 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
             self.objects.pop(target_path)
             return {"blob_status": "absent", "historical_versions_purged": False}
 
-        with patch.object(ai_space_deletion, "delete_personal_blob", new=AsyncMock(side_effect=remove_exact)) as delete:
-            result = await ai_space_deletion.delete_space_file(target["id"], target["sha256"], await self.identity(), self.db)
-            again = await ai_space_deletion.delete_space_file(target["id"], target["sha256"], await self.identity(), self.db)
-            self.assertEqual(result, {"id": target["id"], "status": "deleted", "blob_status": "absent"})
-            self.assertEqual(again, result)
-            delete.assert_awaited_once()
+        result = await ai_space_deletion.delete_space_file(target["id"], target["sha256"], await self.identity(), self.db)
+        again = await ai_space_deletion.delete_space_file(target["id"], target["sha256"], await self.identity(), self.db)
+        self.assertEqual(result, {"id": target["id"], "status": "deleted", "blob_status": "retained"})
+        self.assertEqual(again, result)
         tombstone = await self.db.get(BusinessRecord, target_record.id, populate_existing=True)
         self.assertEqual(tombstone.status, "deleted")
         self.assertEqual(tombstone.data["supersedes"], original["file"]["id"])
-        self.assertEqual(tombstone.data["delete_plan"]["blob_status"], "absent")
-        self.assertNotIn(target_path, self.objects)
+        self.assertEqual(tombstone.data["delete_plan"]["blob_status"], "retained")
+        self.assertIn(target_path, self.objects)
         self.assertEqual(self.objects[original["attachment"].path], b"original")
-        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 1)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 2)
         listing = await list_space_files(await self.identity(), self.db, page=1, page_size=20)
         self.assertEqual([item["id"] for item in listing["items"]], [original["file"]["id"]])
         for read in (space_file_record, space_file_bytes):
@@ -409,6 +407,8 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 3)
 
     async def test_personal_delete_is_logical_and_retains_attachment_for_cleanup(self):
+        from app.areas.personal_agent import ai_space_deletion
+
         original = await self.save()
         file = original["file"]
         original_path = original["attachment"].path
