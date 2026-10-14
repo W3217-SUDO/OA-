@@ -42,7 +42,7 @@ export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestS
       <div className="personal-ai-space-file-actions">
         {item.conversation_id && <Tooltip title={item.conversation_id}><Button icon={<MessageOutlined />} disabled={busy} onClick={() => onConversation(item.conversation_id!)}>查看来源会话</Button></Tooltip>}
         {item.status === "available" && item.download_url && <>
-          {/\.(docx|md|txt)$/i.test(item.name) && <Button icon={<EditOutlined />} disabled={busy || !!downloadingId} onClick={() => onEdit(item)}>在线编辑</Button>}
+          {/\.(docx|xlsx|xls|md|txt)$/i.test(item.name) && <Button icon={<EditOutlined />} disabled={busy || !!downloadingId} onClick={() => onEdit(item)}>在线编辑</Button>}
           <Button icon={<DownloadOutlined />} loading={downloadingId === item.id} disabled={busy || (!!downloadingId && downloadingId !== item.id)} onClick={() => onDownload(item)}>下载 {item.name.includes(".") ? item.name.slice(item.name.lastIndexOf(".") + 1).toUpperCase() : "文件"}</Button>
         </>}
         {item.can_delete && <Tooltip title="删除生成文件"><Button danger icon={<DeleteOutlined />} aria-label={`删除生成文件：${item.name}`} loading={deletingId === item.id} disabled={busy || !!downloadingId} onClick={() => onDelete(item)}>删除文件</Button></Tooltip>}

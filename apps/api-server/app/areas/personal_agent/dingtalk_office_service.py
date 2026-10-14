@@ -1,6 +1,8 @@
-"""个人 Word 的钉钉编辑副本及 OA 新版本回存，元数据沿用私有文件记录。"""
+"""个人 Office 文件的钉钉编辑副本及 OA 自动回写。"""
 
 import hashlib
+import io
+import zipfile
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -25,6 +27,36 @@ from app.areas.personal_agent import dingtalk_office_client as office
 # the space creation request across enterprise tenants.
 SCENE = "oapersonalword"
 SESSION_KEY = "dingtalk_office_session"
+EXCEL_DOCUMENT_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+LEGACY_EXCEL_CONTENT_TYPE = "application/vnd.ms-excel"
+
+
+def _office_format(name: str) -> tuple[str, str]:
+    suffix = name.lower().rsplit(".", 1)[-1] if "." in name else ""
+    if suffix == "docx":
+        return "docx", WORD_DOCUMENT_CONTENT_TYPE
+    if suffix == "xlsx":
+        return "xlsx", EXCEL_DOCUMENT_CONTENT_TYPE
+    if suffix == "xls":
+        return "xls", LEGACY_EXCEL_CONTENT_TYPE
+    raise HTTPException(422, "只支持个人 DOCX、XLSX 或 XLS 文件")
+
+
+def _validate_office_content(name: str, content: bytes) -> tuple[str, str]:
+    extension, content_type = _office_format(name)
+    if not content or len(content) > MAX_GENERATED_BYTES:
+        raise HTTPException(413, "Office 文件为空或超过20MB")
+    if extension == "docx":
+        validate_docx(content)
+    elif extension == "xlsx":
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                names = set(archive.namelist())
+                if "[Content_Types].xml" not in names or "xl/workbook.xml" not in names:
+                    raise ValueError("缺少 Excel 工作簿结构")
+        except (ValueError, zipfile.BadZipFile, OSError) as exc:
+            raise HTTPException(422, "Excel 文件结构无效，未打开钉钉编辑器") from exc
+    return extension, content_type
 
 
 async def _owner(file_id, identity, db):
@@ -32,9 +64,11 @@ async def _owner(file_id, identity, db):
     user = await actual_user(db, identity)
     data = record.data or {}
     if data.get("owner_user_id") != user.id or data.get("case_id") is not None:
-        raise HTTPException(403, "只有文件所属员工可以编辑本人个人空间的 Word")
-    if record.status != "available" or not str(data.get("name", "")).lower().endswith(".docx"):
-        raise HTTPException(422, "只支持已保存完成的个人 DOCX 文件")
+        raise HTTPException(403, "只有文件所属员工可以编辑本人个人空间的 Office 文件")
+    name = str(data.get("name", ""))
+    if record.status != "available":
+        raise HTTPException(422, "只支持已保存完成的个人 Office 文件")
+    extension, content_type = _office_format(name)
     user_id = str((user.profile or {}).get("dingtalk_user_id") or "").strip()
     if not user_id:
         raise HTTPException(409, "当前 OA 账号尚未绑定钉钉员工账号，请先维护账号绑定")
@@ -46,7 +80,8 @@ async def _owner(file_id, identity, db):
     union_id = await office.member_union_id(user_id)
     binding = {"owner_user_id": user.id, "dingtalk_user_id": user_id, "union_id": union_id,
                "corp_id": settings.dingtalk_corp_id,
-               "app_digest": hashlib.sha256(settings.dingtalk_app_key.encode()).hexdigest()}
+               "app_digest": hashlib.sha256(settings.dingtalk_app_key.encode()).hexdigest(),
+               "office_extension": extension, "office_content_type": content_type}
     return record.id, binding
 
 
@@ -54,13 +89,14 @@ async def _locked(db, record_id):
     record = await db.scalar(select(BusinessRecord).where(BusinessRecord.id == record_id)
                              .with_for_update().execution_options(populate_existing=True))
     if record is None or record.status != "available":
-        raise HTTPException(409, "原 Word 文件已不可用，编辑未继续")
+        raise HTTPException(409, "原 Office 文件已不可用，编辑未继续")
     return record
 
 
 def _session(record, binding, session_id=None):
     session = (record.data or {}).get(SESSION_KEY)
-    if not isinstance(session, dict) or any(session.get(key) != value for key, value in binding.items()):
+    identity_keys = ("owner_user_id", "dingtalk_user_id", "union_id", "corp_id", "app_digest")
+    if not isinstance(session, dict) or any(session.get(key) != binding[key] for key in identity_keys):
         raise HTTPException(409, "钉钉编辑记录与当前员工或企业应用不一致")
     if session_id is not None and session.get("id") != session_id:
         raise HTTPException(409, "钉钉编辑记录已变化，请重新打开当前文件")
@@ -99,11 +135,11 @@ async def _uncertain(db, record_id, session_id, phase, binding, error):
             BusinessRecord.id == record_id, BusinessRecord.module == FILE_MODULE,
         ).with_for_update().execution_options(populate_existing=True))
         if record is None:
-            raise HTTPException(409, "原 Word 元记录不存在，失败审计未完成")
+            raise HTTPException(409, "原 Office 元记录不存在，失败审计未完成")
         session = (record.data or {}).get(SESSION_KEY)
         if isinstance(session, dict) and session.get("id") == session_id and session.get("phase") == phase:
             if record.data.get("owner_user_id") != binding["owner_user_id"] or record.data.get("case_id") is not None:
-                raise HTTPException(409, "原 Word 归属已变化，失败审计未更新")
+                raise HTTPException(409, "原 Office 归属已变化，失败审计未更新")
             session = _session(record, binding, session_id)
             await _store(db, record, {**session, "phase": "uncertain"})
     except Exception as audit_error:
@@ -117,7 +153,7 @@ async def start_office_edit(file_id, expected_sha256, identity, db):
     item, content = await space_file_bytes(file_id, identity, db)
     if item["sha256"] != expected_sha256:
         raise HTTPException(409, "文件版本已变化，请重新核对后打开钉钉编辑")
-    validate_docx(content)
+    _validate_office_content(item["name"], content)
     record = await _locked(db, record_id)
     session = (record.data or {}).get(SESSION_KEY)
     if session is not None:
@@ -142,14 +178,15 @@ async def start_office_edit(file_id, expected_sha256, identity, db):
     await _store(db, record, session)
     try:
         result = await office.storage_request("POST", "spaces", binding["union_id"], {
-            "option": {"name": "OA个人Word编辑", "ownerType": "USER", "scene": SCENE, "sceneId": scene_id},
+            "option": {"name": "OA个人Office编辑", "ownerType": "USER", "scene": SCENE, "sceneId": scene_id},
         })
         space = result.get("space")
         _validate_space(space, binding, scene_id)
         session = {**session, "space_id": space["id"], "space_owner_id": space.get("ownerId")}
         record = await _locked(db, record_id)
         await _store(db, record, session)
-        remote_name = item["name"][:-5][:150] + "-" + session_id + ".docx"
+        extension = binding["office_extension"]
+        remote_name = item["name"][:-(len(extension) + 1)][:150] + "-" + session_id + "." + extension
         dentry = await office.upload_copy(space["id"], binding["union_id"], remote_name, content)
         office.identifier(dentry.get("id"))
         session = {**session, "dentry_id": dentry["id"]}
@@ -158,7 +195,7 @@ async def start_office_edit(file_id, expected_sha256, identity, db):
         checked = await office.dentry_info(session)
         copied = await office.download_version(session, checked["version"])
         if hashlib.sha256(copied).hexdigest() != expected_sha256:
-            raise HTTPException(409, "钉钉副本回读摘要不一致，原 Word 未修改")
+            raise HTTPException(409, "钉钉副本回读摘要不一致，原 Office 未修改")
         session = {**session, "phase": "ready", "copied_version": checked["version"]}
         record = await _locked(db, record_id)
         await _store(db, record, session)
@@ -190,7 +227,8 @@ async def save_office_edit(file_id, session_id, identity, db, *, create_copy: bo
     content = await office.download_version(session, version)
     if len(content) != dentry["size"]:
         raise HTTPException(409, "钉钉文件大小与版本信息不一致，未保存回 OA")
-    digest = validate_docx(content)
+    _validate_office_content(session["source_name"], content)
+    digest = hashlib.sha256(content).hexdigest()
     if digest == session["source_sha256"]:
         raise HTTPException(409, "钉钉副本尚无内容修改，请先在钉钉完成编辑并保存")
     after = await office.dentry_info(session)
@@ -206,30 +244,31 @@ async def save_office_edit(file_id, session_id, identity, db, *, create_copy: bo
         source = await _locked(active_db, record_id)
         active = _session(source, binding, session_id)
         if source.data.get("file_id") != file_id or source.status != "available":
-            raise HTTPException(409, "原 Word 文件已变化，未覆盖当前文件")
+            raise HTTPException(409, "原 Office 文件已变化，未覆盖当前文件")
         attachment = await active_db.scalar(select(FileAttachment).where(
             FileAttachment.id == source.data.get("attachment_id"),
         ).with_for_update().execution_options(populate_existing=True))
         if attachment is None or attachment.record_id != source.id or attachment.stored_name != file_id:
-            raise HTTPException(409, "原 Word 附件映射已变化，未覆盖当前文件")
+            raise HTTPException(409, "原 Office 附件映射已变化，未覆盖当前文件")
         name = safe_original_name(source.data["name"])
         original_path = str(source.data["path"])
         if not original_path.startswith("oss://") or "/" not in original_path[6:]:
-            raise HTTPException(409, "原 Word 存储路径无效，未覆盖当前文件")
+            raise HTTPException(409, "原 Office 存储路径无效，未覆盖当前文件")
         bucket, old_key = original_path[6:].split("/", 1)
         key = old_key.rsplit("/", 2)[0] + "/" + content_digest + "/" + name
         path = f"oss://{bucket}/{key}"
-        await oss_put_editor_revision(bucket, key, content_bytes, WORD_DOCUMENT_CONTENT_TYPE,
+        await oss_put_editor_revision(bucket, key, content_bytes,
+                                      active.get("office_content_type") or binding["office_content_type"],
                                       endpoint=source.data.get("endpoint"))
         stored = SimpleNamespace(path=path, original_name=name, stored_name=file_id,
                                  oss_endpoint=source.data.get("endpoint"))
         checked = await read_generated_bytes(stored)
         if hashlib.sha256(checked).hexdigest() != content_digest or len(checked) != len(content_bytes):
-            raise HTTPException(409, "钉钉 Word 回写后校验不一致，原文件未覆盖")
+            raise HTTPException(409, "钉钉 Office 回写后校验不一致，原文件未覆盖")
         attachment.path = path
         attachment.size = len(content_bytes)
         attachment.original_name = name
-        attachment.content_type = WORD_DOCUMENT_CONTENT_TYPE
+        attachment.content_type = active.get("office_content_type") or binding["office_content_type"]
         source.data = {**source.data, "path": path, "size": len(content_bytes), "sha256": content_digest,
                        SESSION_KEY: {**active, "phase": "ready", "source_sha256": content_digest,
                                      "saved_version": version, "result_file_id": file_id}}
@@ -246,7 +285,7 @@ async def save_office_edit(file_id, session_id, identity, db, *, create_copy: bo
         source = await _locked(active_db, record_id)
         if (source.data.get("file_id") != file_id or source.data.get("owner_user_id") != binding["owner_user_id"]
                 or source.data.get("case_id") is not None):
-            raise HTTPException(409, "原 Word 的个人归属已变化，未确认新版本")
+            raise HTTPException(409, "原 Office 的个人归属已变化，未确认新版本")
         active = _session(source, binding, session_id)
         if active.get("phase") != "saving" or active.get("saving_version") != version:
             raise HTTPException(409, "编辑回存记录已变化，未确认新版本")
@@ -255,7 +294,7 @@ async def save_office_edit(file_id, session_id, identity, db, *, create_copy: bo
                 or result.data.get("owner_user_id") != binding["owner_user_id"] or result.data.get("case_id") is not None
                 or result.data.get("sha256") != digest or result.data.get("source_kind") != "dingtalk_office_edit"
                 or result.data.get("source_request_id") != session_id or result.data.get("attachment_id") != attachment.id):
-            raise HTTPException(409, "新 Word 文件关联不完整，未确认回存")
+            raise HTTPException(409, "新 Office 文件关联不完整，未确认回存")
         result.data = {**result.data, "supersedes": file_id}
         source.data = {**source.data, SESSION_KEY: {**active, "phase": "ready", "saved_version": version,
                                                   "result_file_id": result.data["file_id"]}}
@@ -272,7 +311,7 @@ async def save_office_edit(file_id, session_id, identity, db, *, create_copy: bo
     try:
         if create_copy:
             result = await save_generated_file(db, identity, name=session["source_name"], content=content,
-                                              content_type=WORD_DOCUMENT_CONTENT_TYPE, source_kind="dingtalk_office_edit",
+                                              content_type=binding["office_content_type"], source_kind="dingtalk_office_edit",
                                               conversation_id=record.data.get("conversation_id"),
                                               source_request_id=session_id, on_available=link_result)
             saved = await space_file_record(result["file"]["id"], identity, db)

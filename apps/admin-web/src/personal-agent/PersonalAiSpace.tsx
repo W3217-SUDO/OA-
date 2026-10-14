@@ -74,7 +74,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
     fileRead.current?.abort();
     const controller = new AbortController(); fileRead.current = controller;
     setError("");
-    if (file.case_id === null && file.name.toLowerCase().endsWith(".docx")) { setEditor(null); setOfficeFile(file); return; }
+    if (file.case_id === null && /\.(docx|xlsx|xls)$/i.test(file.name)) { setEditor(null); setOfficeFile(file); return; }
     try {
       const { data } = await api.get<PersonalAiDocument>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/content`, { signal: controller.signal });
       if (controller.signal.aborted) return;
@@ -135,12 +135,12 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       closable={!deleting} keyboard={!deleting} maskClosable={!deleting} onOk={() => void deleteFile()} onCancel={() => { if (!deleteLock.current) { setDeleteTarget(null); setDeleteError(""); } }} destroyOnHidden>
       <p>{deleteTarget?.name}</p>
       <p>将从前端隐藏此生成文件，原文件、附件及钉钉编辑副本暂时保留，后续由统一清理任务处理。其他版本、来源会话和案件原附件不受影响。</p>
-      {deleteTarget?.name.toLowerCase().endsWith(".docx") && <p>钉钉编辑副本不在本次删除范围。</p>}
+      {/\.(docx|xlsx|xls)$/i.test(deleteTarget?.name || "") && <p>钉钉编辑副本不在本次删除范围。</p>}
       {deleteError && <Alert type="error" showIcon title="删除未完成" description={deleteError} />}
     </Modal>
     {officeFile && <PersonalAiOfficeEditor key={officeFile.id} file={officeFile} disabled={deleting || editorBusy} onBusy={(value) => { officeOperation.current = value; setOfficeBusy(value); }}
       onClose={() => { if (!officeOperation.current) setOfficeFile(null); }} onVersionCreated={versionCreated} onSaved={(file, blob) => {
-        closePreview(); setOfficeFile(null); setPreviewFileId(file.id); setPreview({ name: file.name, kind: "docx", blob });
+      closePreview(); setOfficeFile(null); setPreviewFileId(file.id); setPreview({ name: file.name, kind: /\.xlsx?$/i.test(file.name) ? "xlsx" : "docx", blob });
       }} />}
   </Drawer>;
 }

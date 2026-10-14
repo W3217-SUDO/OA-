@@ -132,12 +132,15 @@ async def dentry_info(session: dict) -> dict:
     base = "spaces/" + identifier(session["space_id"]) + "/dentries/" + identifier(session["dentry_id"])
     result = await storage_request("POST", base + "/query", session["union_id"], {})
     dentry = result.get("dentry")
+    allowed_extensions = {"docx", "xlsx", "xls"}
+    expected_extension = str(session.get("office_extension") or "").lower()
     if (not isinstance(dentry, dict) or dentry.get("id") != session["dentry_id"]
             or dentry.get("spaceId") != session["space_id"]
             # DingTalk returns FILE in the storage API (the docs/examples also
             # use lowercase in places); treat the enum case-insensitively.
             or str(dentry.get("type", "")).upper() != "FILE"
-            or dentry.get("status") != "NORMAL" or str(dentry.get("extension", "")).lower() != "docx"
+            or dentry.get("status") != "NORMAL" or str(dentry.get("extension", "")).lower() not in allowed_extensions
+            or (expected_extension and str(dentry.get("extension", "")).lower() != expected_extension)
             or not isinstance(dentry.get("version"), int) or dentry["version"] < 1
             or not isinstance(dentry.get("size"), int) or not 0 < dentry["size"] <= MAX_GENERATED_BYTES):
         raise HTTPException(409, "钉钉编辑副本已删除、变更格式或超出大小限制")
@@ -170,5 +173,5 @@ async def editor_url(session: dict) -> str:
         "option": {"type": "EDIT", "waterMark": True, "checkLogin": True},
     })
     if not isinstance(result.get("url"), str):
-        raise HTTPException(502, "钉钉未返回 Word 编辑地址")
+        raise HTTPException(502, "钉钉未返回 Office 编辑地址")
     return provider_url(result["url"], editor=True)

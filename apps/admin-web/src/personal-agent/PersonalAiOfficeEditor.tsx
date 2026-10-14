@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { Alert, Button, Modal, message } from "antd";
-import { ExportOutlined, FileWordOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
+import { ExportOutlined, FileExcelOutlined, FileWordOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { errorText } from "./types";
 import type { PersonalAiFile } from "./personalAiSpaceApi";
@@ -62,7 +62,7 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
         editorWindow.location.replace(url.href);
         opened = true;
       }
-    } catch (failure) { setSubmissionUncertain(true); setError(errorText(failure, "钉钉 Word 编辑请求未确认，请核对，勿重复上传")); }
+    } catch (failure) { setSubmissionUncertain(true); setError(errorText(failure, "钉钉 Office 编辑请求未确认，请核对，勿重复上传")); }
     finally {
       if (!opened) {
         try { editorWindow?.close(); } catch { /* 浏览器可能已接管新窗口 */ }
@@ -76,25 +76,25 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
     const { data: current } = await api.get<PersonalAiFile>(`/personal-agent/ai-space/files/${encodeURIComponent(saved.id)}`);
     if (current.id !== saved.id || current.status !== "available" || !current.download_url
       || current.owner_user_id !== file.owner_user_id || current.case_id !== null
-      || (!inPlace && current.supersedes !== file.id) || current.name !== saved.name || !current.name.toLowerCase().endsWith(".docx")
+      || (!inPlace && current.supersedes !== file.id) || current.name !== saved.name || !/\.(docx|xlsx|xls)$/i.test(current.name)
       || current.sha256 !== saved.sha256 || current.size !== saved.size) {
-      throw new Error("OA 新 Word 的归属、版本关系或持久信息不一致，未确认读取，请核对该新文件");
+      throw new Error("OA 新 Office 的归属、版本关系或持久信息不一致，未确认读取，请核对该新文件");
     }
-    // 复杂 Word 按完整字节核验和预览，不经过受限正文提取或 Markdown 重建。
+    // Office 文件按完整字节核验，不经过受限正文提取或 Markdown 重建。
     const { data: blob } = await api.get<Blob>(`/personal-agent/ai-space/files/${encodeURIComponent(saved.id)}/download`, { responseType: "blob" });
-    if (blob.size !== current.size) throw new Error("OA 新 Word 回读大小不一致，请核对，勿重复回存");
-    if (!globalThis.crypto?.subtle) throw new Error("当前连接无法核验 Word 摘要，请使用 HTTPS 后重新读取已回存的新版本");
+    if (blob.size !== current.size) throw new Error("OA 新 Office 回读大小不一致，请核对，勿重复回存");
+    if (!globalThis.crypto?.subtle) throw new Error("当前连接无法核验 Office 摘要，请使用 HTTPS 后重新读取已回存的新版本");
     const digest = await globalThis.crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
     const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
-    if (sha256 !== current.sha256) throw new Error("OA 新 Word 回读 SHA256 不一致，请核对，勿重复回存");
+    if (sha256 !== current.sha256) throw new Error("OA 新 Office 回读 SHA256 不一致，请核对，勿重复回存");
     onSaved(current, blob);
-    message.success(version.unchanged ? "已读取此前回写的 OA Word，未重复写入" : (version.copied ? "已生成 OA Word 副本" : "修改已自动回写当前 OA Word"));
+    message.success(version.unchanged ? "已读取此前回写的 OA Office 文件，未重复写入" : (version.copied ? "已生成 OA Office 副本" : "修改已自动回写当前 OA Office 文件"));
   };
   const retryReadback = async () => {
     if (disabled || !savedVersion || operationLock.current) return;
     operationLock.current = true; setBusy("read"); onBusy(true); setError("");
     try { await readSavedVersion(savedVersion); }
-    catch (failure) { setError(errorText(failure, "新 Word 回读未完成，勿重复回存")); }
+    catch (failure) { setError(errorText(failure, "新 Office 回读未完成，勿重复回存")); }
     finally { operationLock.current = false; setBusy(null); onBusy(false); }
   };
   const save = async (createCopy = false) => {
@@ -107,14 +107,14 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
         { session_id: session.session_id, create_copy: createCopy }, { headers: { "x-oa-agent-confirmation": "frontend" } });
       if (data.supersedes !== file.id || !data.file.id || (createCopy && data.file.id === file.id) || data.file.status !== "available"
         || data.file.owner_user_id !== file.owner_user_id || data.file.case_id !== null) {
-        throw new Error("Word 回存返回的文件归属、版本或状态异常，请核对，勿重复回存");
+        throw new Error("Office 回存返回的文件归属、版本或状态异常，请核对，勿重复回存");
       }
       persisted = { file: data.file, unchanged: data.unchanged };
       setSavedVersion(persisted); onVersionCreated(data.file);
       await readSavedVersion(persisted);
     } catch (failure) {
       if (!persisted) setSubmissionUncertain(!isDefiniteOfficeSaveRejection(failure));
-      setError(errorText(failure, "Word 回存或回读未完成，请核对钉钉及 OA 保存状态"));
+    setError(errorText(failure, "Office 回存或回读未完成，请核对钉钉及 OA 保存状态"));
     } finally { operationLock.current = false; setBusy(null); onBusy(false); }
   };
   saveRef.current = () => { void save(false); };
@@ -135,22 +135,24 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [session, savedVersion, submissionUncertain]);
-  return <Modal open title="Word 在线编辑" width={640} rootClassName="personal-ai-office-editor"
+  const isSpreadsheet = /\.(xlsx|xls)$/i.test(file.name);
+  const officeIcon = isSpreadsheet ? <FileExcelOutlined /> : <FileWordOutlined />;
+  return <Modal open title="Office 在线编辑" width={640} rootClassName="personal-ai-office-editor"
     closable={!busy && !disabled} maskClosable={!busy && !disabled} keyboard={!busy && !disabled} onCancel={close} destroyOnHidden
     footer={<Button disabled={!!busy || disabled} onClick={close}>关闭</Button>}>
     <div className="personal-ai-office-content">
-      <div className="personal-ai-office-file"><FileWordOutlined /><strong>{file.name}</strong></div>
+      <div className="personal-ai-office-file">{officeIcon}<strong>{file.name}</strong></div>
       <Alert type="info" showIcon title="使用钉钉在线编辑"
-        description={`正在为${file.owner_name}打开钉钉 Word 编辑器。编辑内容保存后，可回到 OA 同步为新版本，原文件保留。`} />
-      {savedVersion && <Alert type="warning" showIcon title={savedVersion.copied ? "OA Word 副本已生成；正在核对完整 Word。" : "OA Word 已自动回写；正在核对完整 Word。"} description={`文件：${savedVersion.file.id}`} />}
+        description={`正在为${file.owner_name}打开钉钉 Office 编辑器。编辑内容保存后，可回到 OA 自动回写当前文件，原文件记录保留。`} />
+      {savedVersion && <Alert type="warning" showIcon title={savedVersion.copied ? "OA Office 副本已生成；正在核对完整文件。" : "OA Office 已自动回写；正在核对完整文件。"} description={`文件：${savedVersion.file.id}`} />}
       {error && <Alert type="error" showIcon title={submissionUncertain ? "请求结果未确认，请核对，勿重复提交" : "操作未完成"} description={error} />}
       <ol className="personal-ai-office-steps">
-        <li>点击“在线编辑”，系统会直接打开钉钉 Word 编辑器。</li>
+        <li>点击“在线编辑”，系统会直接打开钉钉 Office 编辑器。</li>
         <li>在钉钉完成排版、表格等编辑并等待保存完成。</li>
         <li>返回 OA 后系统会自动回写当前 OA 文件；如需另存为新文件，再点击“生成副本”。</li>
       </ol>
       <div className="personal-ai-office-actions">
-        <Button icon={session ? <ReloadOutlined /> : <FileWordOutlined />} loading={busy === "open"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain}
+        <Button icon={session ? <ReloadOutlined /> : officeIcon} loading={busy === "open"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain}
           onClick={() => void prepare()}>{session ? "重新打开钉钉编辑" : "在线编辑"}</Button>
         {session && <Button type="primary" icon={<ExportOutlined />} href={session.url} target="_blank" rel="noopener noreferrer" disabled={!!busy || disabled}>打开钉钉编辑</Button>}
         {session && <Button icon={<SaveOutlined />} loading={busy === "save"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain} onClick={() => void save(false)}>同步已保存内容</Button>}
