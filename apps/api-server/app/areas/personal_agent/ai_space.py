@@ -47,6 +47,7 @@ class PersonalOfficeOpenInput(BaseModel):
 class PersonalOfficeSaveInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     session_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    create_copy: bool = False
 
 
 @router.get("")
@@ -137,4 +138,4 @@ async def save_personal_office_file(body: PersonalOfficeSaveInput, request: Requ
     from app.areas.personal_agent.dingtalk_office_service import save_office_edit
 
     _require_office_confirmation(request)
-    return await save_office_edit(file_id, body.session_id, identity, db)
+    return await save_office_edit(file_id, body.session_id, identity, db, create_copy=body.create_copy)

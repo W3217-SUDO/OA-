@@ -1,6 +1,7 @@
 """个人 Word 的钉钉编辑副本及 OA 新版本回存，元数据沿用私有文件记录。"""
 
 import hashlib
+from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -9,7 +10,9 @@ from sqlalchemy import select
 from app.config import settings
 from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE, logger
 from app.core.generated_file_records import FILE_MODULE, actual_user, generated_file_item
-from app.core.generated_file_storage import save_generated_file
+from app.core.generated_file_storage import read_generated_bytes, safe_original_name, save_generated_file
+from app.core.oss_attachments import oss_put_editor_revision
+from app.data_models.documents import FileAttachment
 from app.core.libreoffice_files import validate_docx
 from app.data_models.identity import User
 from app.data_models.records import BusinessRecord, WorkflowEvent
@@ -169,7 +172,7 @@ async def start_office_edit(file_id, expected_sha256, identity, db):
     return {"session_id": session_id, "url": url, "name": item["name"]}
 
 
-async def save_office_edit(file_id, session_id, identity, db):
+async def save_office_edit(file_id, session_id, identity, db, *, create_copy: bool = True):
     record_id, binding = await _owner(file_id, identity, db)
     record = await _locked(db, record_id)
     session = _session(record, binding, session_id)
@@ -199,6 +202,46 @@ async def save_office_edit(file_id, session_id, identity, db):
         raise HTTPException(409, "另一个回存操作已更新此文件，请刷新后核对")
     await _store(db, record, {**current, "phase": "saving", "saving_version": version})
 
+    async def overwrite_source(active_db, content_bytes, content_digest):
+        source = await _locked(active_db, record_id)
+        active = _session(source, binding, session_id)
+        if source.data.get("file_id") != file_id or source.status != "available":
+            raise HTTPException(409, "原 Word 文件已变化，未覆盖当前文件")
+        attachment = await active_db.scalar(select(FileAttachment).where(
+            FileAttachment.id == source.data.get("attachment_id"),
+        ).with_for_update().execution_options(populate_existing=True))
+        if attachment is None or attachment.record_id != source.id or attachment.stored_name != file_id:
+            raise HTTPException(409, "原 Word 附件映射已变化，未覆盖当前文件")
+        name = safe_original_name(source.data["name"])
+        original_path = str(source.data["path"])
+        if not original_path.startswith("oss://") or "/" not in original_path[6:]:
+            raise HTTPException(409, "原 Word 存储路径无效，未覆盖当前文件")
+        bucket, old_key = original_path[6:].split("/", 1)
+        key = old_key.rsplit("/", 2)[0] + "/" + content_digest + "/" + name
+        path = f"oss://{bucket}/{key}"
+        await oss_put_editor_revision(bucket, key, content_bytes, WORD_DOCUMENT_CONTENT_TYPE,
+                                      endpoint=source.data.get("endpoint"))
+        stored = SimpleNamespace(path=path, original_name=name, stored_name=file_id,
+                                 oss_endpoint=source.data.get("endpoint"))
+        checked = await read_generated_bytes(stored)
+        if hashlib.sha256(checked).hexdigest() != content_digest or len(checked) != len(content_bytes):
+            raise HTTPException(409, "钉钉 Word 回写后校验不一致，原文件未覆盖")
+        attachment.path = path
+        attachment.size = len(content_bytes)
+        attachment.original_name = name
+        attachment.content_type = WORD_DOCUMENT_CONTENT_TYPE
+        source.data = {**source.data, "path": path, "size": len(content_bytes), "sha256": content_digest,
+                       SESSION_KEY: {**active, "phase": "ready", "source_sha256": content_digest,
+                                     "saved_version": version, "result_file_id": file_id}}
+        active_db.add(WorkflowEvent(
+            record_id=source.id, action="钉钉在线编辑自动覆盖回写", from_status=source.status,
+            to_status=source.status, operator=identity["username"],
+            comment=f"文件={file_id}；钉钉副本={session.get('dentry_id', '')}；会话={session_id}；SHA256={content_digest}",
+        ))
+        await active_db.commit()
+        await active_db.refresh(source)
+        return generated_file_item(source, requesting_user_id=binding["owner_user_id"])
+
     async def link_result(active_db, attachment):
         source = await _locked(active_db, record_id)
         if (source.data.get("file_id") != file_id or source.data.get("owner_user_id") != binding["owner_user_id"]
@@ -227,10 +270,19 @@ async def save_office_edit(file_id, session_id, identity, db):
         ))
 
     try:
-        result = await save_generated_file(db, identity, name=session["source_name"], content=content,
-                                          content_type=WORD_DOCUMENT_CONTENT_TYPE, source_kind="dingtalk_office_edit",
-                                          conversation_id=record.data.get("conversation_id"),
-                                          source_request_id=session_id, on_available=link_result)
+        if create_copy:
+            result = await save_generated_file(db, identity, name=session["source_name"], content=content,
+                                              content_type=WORD_DOCUMENT_CONTENT_TYPE, source_kind="dingtalk_office_edit",
+                                              conversation_id=record.data.get("conversation_id"),
+                                              source_request_id=session_id, on_available=link_result)
+            saved = await space_file_record(result["file"]["id"], identity, db)
+            return {"file": generated_file_item(saved, requesting_user_id=binding["owner_user_id"]),
+                    "supersedes": file_id, "unchanged": False, "copied": True}
+        digest = hashlib.sha256(content).hexdigest()
+        if digest == session["source_sha256"]:
+            raise HTTPException(409, "钉钉副本尚无内容修改，请先在钉钉完成编辑并保存")
+        overwritten = await overwrite_source(db, content, digest)
+        return {"file": overwritten, "supersedes": file_id, "unchanged": False}
     except BaseException as error:
         await _uncertain(db, record_id, session_id, "saving", binding, error)
         raise
