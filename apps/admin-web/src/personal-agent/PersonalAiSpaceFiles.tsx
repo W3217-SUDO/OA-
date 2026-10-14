@@ -11,6 +11,7 @@ const SOURCE_LABELS: Record<string, string> = {
   case_upload: "案件AI上传",
   case_migration: "案件AI迁移",
   assistant_message: "助手回答",
+  personal_identity: "个人身份文件",
   personal_edit: "在线编辑新版本",
 };
 
