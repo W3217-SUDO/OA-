@@ -36,6 +36,7 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [refreshPending, setRefreshPending] = useState<WorkspaceSkill | null>(null);
   const operation = useRef(false);
   const [tools, setTools] = useState<Tool[] | null>(null);
   const [toolsError, setToolsError] = useState("");
@@ -55,7 +56,7 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
   }, [active, revision]);
 
   useEffect(() => {
-    setDetail(null); setDetailError("");
+    setDetail(null); setDetailError(""); setRefreshPending(null);
     if (!active || !selected) return;
     const controller = new AbortController();
     setDetailLoading(true);
@@ -96,8 +97,16 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
       await onInstalled?.(data);
       message.success(data.available ? `已安装到${skillScopeLabel(scope)}` : "已安装的技能处于停用状态，请在技能库启用");
     } catch (failure) {
+      if (saved) setRefreshPending(saved);
       setDetailError(saved ? `能力已安装，但技能库刷新失败：${errorText(failure, "请刷新技能库")}` : errorText(failure, "安装失败"));
     } finally { operation.current = false; setBusy(false); }
+  };
+  const refreshInstalled = async () => {
+    if (!refreshPending || operation.current) return;
+    operation.current = true; setBusy(true);
+    try { await onInstalled?.(refreshPending); setRefreshPending(null); setDetailError(""); }
+    catch (failure) { setDetailError(`能力已安装，但技能库刷新失败：${errorText(failure, "请刷新技能库")}`); }
+    finally { operation.current = false; setBusy(false); }
   };
 
   return <section className="capability-market" aria-label="专家、技能与连接器">
@@ -155,7 +164,7 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
       {connectors.length > 24 && <Pagination className="capability-market-pagination" current={page} pageSize={24} total={connectors.length} onChange={setPage} showSizeChanger={false} responsive />}
     </>}
     <Drawer open={active && !!selected} onClose={() => { if (!busy) setSelected(null); }} title={selected?.name} width={680} zIndex={1500} rootClassName="capability-market-detail" maskClosable={!busy} closable={!busy}
-      footer={<div className="capability-market-detail-actions"><Button disabled={busy} onClick={() => setSelected(null)}>关闭</Button>{installed && onSelect ? <Button type="primary" icon={<CheckOutlined />} disabled={busy} onClick={() => { onSelect(installed.id); setSelected(null); }}>使用</Button> : <Button type="primary" icon={<DownloadOutlined />} loading={busy} disabled={!detail || !!detail.unavailable_reason || !!installed} onClick={() => void install()}>{installed ? "已安装" : `安装到${skillScopeLabel(scope)}`}</Button>}</div>}>
+      footer={<div className="capability-market-detail-actions"><Button disabled={busy} onClick={() => setSelected(null)}>关闭</Button>{refreshPending ? <Button type="primary" icon={<ReloadOutlined />} loading={busy} onClick={() => void refreshInstalled()}>刷新技能库</Button> : installed && onSelect ? <Button type="primary" icon={<CheckOutlined />} disabled={busy} onClick={() => { onSelect(installed.id); setSelected(null); }}>使用</Button> : <Button type="primary" icon={<DownloadOutlined />} loading={busy} disabled={!detail || !!detail.unavailable_reason || !!installed} onClick={() => void install()}>{installed ? "已安装" : `安装到${skillScopeLabel(scope)}`}</Button>}</div>}>
       {detailLoading ? <Skeleton active /> : detail && <>
         <p>{detail.description}</p><div className="capability-market-tags"><Tag>{detail.category}</Tag><Tag>{detail.license}</Tag>{detail.version && <Tag>v{detail.version}</Tag>}</div>
         <a href={detail.source} target="_blank" rel="noopener noreferrer">原始来源</a>

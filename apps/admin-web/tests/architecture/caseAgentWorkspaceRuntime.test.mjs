@@ -147,6 +147,7 @@ test("GitHub URL install reports persisted success separately from personal-libr
   const { SkillManager } = loadModule("../personal-agent/SkillManager.tsx", {
     antd: { Alert: "alert", Button: "button", Empty: "empty", Form, Input, Modal: "modal", Space: "space", Switch: "switch", Tabs: "tabs", Tooltip: "tooltip", message: { success() {}, info() {}, error() {} } },
     "./SkillCatalog": { SkillCatalog: () => null },
+    "../capability-market/CapabilityMarket": { CapabilityMarket: "capability-market" },
     "./types": { errorText: (error, fallback) => error.message || fallback },
     "../api": { api: { post: async (path, body) => {
       requests.push({ path, body });
@@ -181,6 +182,52 @@ test("GitHub URL install reports persisted success separately from personal-libr
   await act(async () => { button("确认安装到全局技能").props.onClick(); });
   assert.equal(requests.at(-1).path, "/agent/global-skills/github/install");
   assert.deepEqual(selected, ["personal-docx"], "global无onSelect不会改变原个人选中项");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("capability market previews before install and preserves persisted success on refresh failure", async () => {
+  const requests = [], selected = [];
+  let refreshFails = true;
+  const item = { id: "a".repeat(24), kind: "expert", name: "诉讼专家", description: "案件材料分析", category: "法务安全",
+    author: "验证来源", license: "Apache-2.0", version: "1", tags: [], avatar: "", source: "https://example.org/source",
+    members: [], unavailable_reason: "", sha256: "b".repeat(64), installed: [] };
+  const { CapabilityMarket } = loadModule("../capability-market/CapabilityMarket.tsx", {
+    antd: { Alert: "alert", Button: "button", Drawer: ({ open, footer, children, ...props }) => open ? React.createElement("drawer", props, children, footer) : null, Empty: "empty", Input: "input", Pagination: "pagination",
+      Segmented: "segmented", Skeleton: "skeleton", Tabs: "tabs", Tag: "tag", Tooltip: "tooltip", message: { success() {} } },
+    "./CapabilityAvatar": { CapabilityAvatar: "avatar" },
+    "../personal-agent/types": { errorText: (error, fallback) => error.message || fallback },
+    "../api": { api: {
+      get: async path => {
+        requests.push({ method: "GET", path });
+        if (path === "/capability-market") return { data: { items: [item] } };
+        if (path === `/capability-market/items/${item.id}`) return { data: { ...item, instruction: "完整指令", resources: [], license_documents: {}, connection_configs: {}, excluded_resources: [] } };
+        throw new Error("未预期的目录请求");
+      },
+      post: async (path, body) => {
+        requests.push({ method: "POST", path, body });
+        return { data: { id: "personal-example", available: true } };
+      },
+    } },
+  });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(CapabilityMarket, {
+    active: true, onInstalled: async () => { if (refreshFails) throw new Error("技能列表刷新失败"); }, onSelect: id => selected.push(id),
+  })); });
+  const button = label => renderer.root.findAllByType("button").find(control => control.props.children === label);
+  await act(async () => { button("查看详情").props.onClick(); });
+  assert.equal(requests.filter(request => request.method === "POST").length, 0, "查看不安装");
+  assert.equal(renderer.root.findByType("pre").props.children, "完整指令");
+  await act(async () => { button("安装到个人技能").props.onClick(); });
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).body)), { scope: "personal", sha256: item.sha256 });
+  assert.ok(renderer.root.findAllByType("alert").some(alert => alert.props.title.includes("能力已安装，但技能库刷新失败")));
+  assert.equal(button("安装到个人技能"), undefined, "落库后不能重复安装");
+  assert.equal(requests.filter(request => request.method === "POST").length, 1);
+  assert.equal(button("使用"), undefined, "列表刷新失败不能提前选中");
+  refreshFails = false;
+  await act(async () => { button("刷新技能库").props.onClick(); });
+  assert.equal(requests.filter(request => request.method === "POST").length, 1, "重试刷新不重复安装");
+  await act(async () => { button("使用").props.onClick(); });
+  assert.deepEqual(selected, ["personal-example"]);
   await act(async () => { renderer.unmount(); });
 });
 
@@ -235,6 +282,7 @@ test("global skill management entry requires both authorized overview and can_ma
   const { default: AgentAdminPage } = loadModule("../AgentAdminPage.tsx", {
     antd: { Alert: "alert", Button: "button", Card: "card", Descriptions: Object.assign(props => React.createElement("descriptions", props), { Item: "description" }), Empty: "empty", Space: "space", Tabs: "tabs", Tag: "tag", message: { error() {} } },
     "./components/ResizableTable": "table", "./personal-agent/SkillManager": { SkillManager: "skill-manager" },
+    "./capability-market/CapabilityMarket": { CapabilityMarket: "capability-market" },
     "./personal-agent/types": { errorText: (error, fallback) => error.message || fallback },
     "./api": { api: { get: async path => {
       if (path === "/agent-admin/overview") { if (overviewDenied) throw new Error("管理员权限不足"); return { data: { runtime: {}, system_skills: [], user_libraries: [] } }; }
