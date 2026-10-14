@@ -13,10 +13,12 @@ from app.models import SystemConfig, User
 from app.security import current_identity
 from app.user_agent_skills import USER_SKILL_CONFIG_GROUP, USER_SKILL_CONFIG_PREFIX
 from app.areas.agent_admin.skills import router as skills_router
+from app.areas.capability_market.router import router as capability_router
 
 
 router = APIRouter()
 router.include_router(skills_router)
+router.include_router(capability_router)
 
 
 @router.get(f"{settings.api_prefix}/agent-admin/overview")

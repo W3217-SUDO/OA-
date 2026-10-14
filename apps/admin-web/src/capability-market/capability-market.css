@@ -1,0 +1,59 @@
+.capability-market { min-width: 0; width: 100%; padding: 16px; background: #fff; color: #24292f; }
+.capability-market-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.capability-market-header > .ant-tabs { min-width: 270px; }
+.capability-market-header .ant-tabs-nav { margin-bottom: 0; }
+.capability-market-search { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.capability-market-search > .ant-input-affix-wrapper { width: 260px; max-width: 100%; }
+.capability-market-section-heading { display: flex; align-items: center; gap: 16px; margin: 24px 0 8px; }
+.capability-market-section-heading h2 { font-size: 18px; margin: 0; }
+.capability-market-section-heading > span:last-child { margin-left: auto; color: #57606a; font-size: 13px; }
+.capability-market-scenarios { margin-top: 24px; }
+.capability-market-scenarios h2 { font-size: 18px; margin: 0 0 12px; }
+.capability-market-scenario-rail { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 8px; }
+.capability-market-scenario-rail article { flex: 0 0 220px; min-width: 0; border: 1px solid #d8dee4; border-radius: 8px; padding: 12px; scroll-snap-align: start; }
+.capability-market-scenario-rail h3 { font-size: 14px; margin: 0 0 8px; color: #087e6a; }
+.capability-market-scenario-rail .ant-btn { display: block; width: 100%; text-align: left; white-space: normal; height: auto; min-height: 32px; overflow-wrap: anywhere; }
+.capability-market-categories .ant-tabs-nav { margin-bottom: 16px; }
+.capability-market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 16px; }
+.capability-market-card { border: 1px solid #d8dee4; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; min-width: 0; }
+.capability-market-card-heading { display: flex; gap: 12px; align-items: center; min-height: 44px; }
+.capability-market-card-heading > div { min-width: 0; }
+.capability-market-card-heading img { border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.capability-market-card h3 { font-size: 15px; margin: 0 0 4px; line-height: 1.5; overflow-wrap: anywhere; }
+.capability-market-card small { color: #57606a; font-size: 12px; }
+.capability-market-icon { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; background: #e8f4f1; color: #087e6a; border-radius: 8px; font-size: 22px; }
+.capability-market-card > p { font-size: 13px; line-height: 1.7; margin: 16px 0; overflow-wrap: anywhere; flex: 1; }
+.capability-market-tags { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
+.capability-market-tags .ant-tag { margin: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.capability-market-pagination { margin-top: 24px; display: flex; justify-content: center; }
+.capability-market-card footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.capability-market-card footer > span { color: #57606a; font-size: 12px; }
+.capability-market-detail .ant-drawer-body { min-width: 0; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+.capability-market-detail .ant-drawer-content { max-height: 100dvh; }
+.capability-market-detail .ant-alert { margin: 16px 0; }
+.capability-market-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; line-height: 1.65; background: #f6f8fa; padding: 12px; border-radius: 4px; }
+.capability-market-detail details { margin-top: 20px; }
+.capability-market-detail summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.capability-market-detail li { overflow-wrap: anywhere; }
+.capability-market-detail-actions { display: flex; justify-content: flex-end; gap: 8px; padding-bottom: env(safe-area-inset-bottom); flex-wrap: wrap; }
+.capability-market-tool-list article { padding: 12px 0; border-bottom: 1px solid #d8dee4; overflow-wrap: anywhere; }
+.capability-market-tool-list h3 { font-size: 14px; margin: 0; }
+.capability-market-tool-list p { font-size: 13px; }
+@media (max-width: 767px) {
+  .capability-market { padding: 12px 8px 24px; }
+  .capability-market-header { display: block; }
+  .capability-market-header > .ant-tabs { min-width: 0; }
+  .capability-market-search { display: grid; grid-template-columns: minmax(0, 1fr) 44px; margin-top: 12px; }
+  .capability-market-search > .ant-input-affix-wrapper { grid-column: 1 / -1; width: 100%; min-height: 44px; }
+  .capability-market-search .ant-btn, .capability-market-card .ant-btn { min-height: 44px; }
+  .capability-market-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .capability-market-scenario-rail .ant-btn { min-height: 44px; }
+  .capability-market-section-heading { gap: 8px; flex-wrap: wrap; }
+  .capability-market-header .ant-tabs-tab, .capability-market-categories .ant-tabs-tab { min-height: 44px; }
+  .capability-market-detail .ant-drawer-content-wrapper { width: 100% !important; max-width: 100vw; }
+  .capability-market-detail .ant-drawer-body { padding: 16px; }
+  .capability-market-detail summary, .capability-market-detail .ant-btn, .capability-market-detail .ant-drawer-close { min-height: 44px; min-width: 44px; }
+  .capability-market-detail-actions { padding-bottom: max(env(safe-area-inset-bottom), 8px); }
+  .capability-market-pagination { flex-wrap: wrap; gap: 4px; }
+  .capability-market-pagination .ant-pagination-item, .capability-market-pagination .ant-pagination-prev, .capability-market-pagination .ant-pagination-next { min-width: 44px; height: 44px; line-height: 42px; }
+}

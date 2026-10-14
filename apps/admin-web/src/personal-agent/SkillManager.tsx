@@ -6,6 +6,7 @@ import { errorText, type WorkspaceSkill } from "./types";
 import { SkillCatalog } from "./SkillCatalog";
 import { managedSkills, skillBase, skillScopeLabel, type SkillScope } from "./skillScope";
 import "./workspace-context.css";
+import { CapabilityMarket } from "../capability-market/CapabilityMarket";
 
 type Props = { open: boolean; onClose: () => void; skills: WorkspaceSkill[]; refresh: () => Promise<void>; onSelect?: (id: string) => void; scope?: SkillScope };
 type GithubPreview = { name: string; description: string; instruction: string; source: string; sha256: string; url: string };
@@ -21,7 +22,7 @@ export function SkillManager({ open, onClose, skills, refresh, onSelect, scope =
   const ownedSkills = managedSkills(skills, scope);
   const [form] = Form.useForm();
   const [editingId, setEditingId] = useState("");
-  const [tab, setTab] = useState("market");
+  const [tab, setTab] = useState("capabilities");
   const [busy, setBusy] = useState(false);
   const [githubUrl, setGithubUrl] = useState("");
   const [githubPreview, setGithubPreview] = useState<GithubPreview | null>(null);
@@ -92,13 +93,14 @@ export function SkillManager({ open, onClose, skills, refresh, onSelect, scope =
     try { await api.delete(`${base}/${skill.id}`); await refresh(); if (editingId === skill.id) reset(); }
     catch (error) { message.error(errorText(error, "技能删除失败")); throw error; }
   } });
-  return <Modal open={open} title={scopeLabel} width={900} footer={null} className="workspace-skill-modal" maskClosable={!busy} closable={!busy} onCancel={() => { if (busy) return; onClose(); reset(); setTab("market"); setGithubPreview(null); setGithubError(""); }}>
+  return <Modal open={open} title={scopeLabel} width={1040} footer={null} className="workspace-skill-modal" maskClosable={!busy} closable={!busy} onCancel={() => { if (busy) return; onClose(); reset(); setTab("capabilities"); setGithubPreview(null); setGithubError(""); }}>
     <Alert type="info" showIcon title={scope === "global" ? "管理全局技能：启用后可供全所账号选用，只有管理员可以修改。" : "管理个人技能：仅本人可用，不会共享给其他账号。"} />
     <Tabs activeKey={tab} onChange={key => { if (!busy) setTab(key); }} items={[
-      { key: "market", label: "技能市场", disabled: busy }, { key: "mine", label: scopeLabel, disabled: busy },
+      { key: "capabilities", label: "专家、技能、连接器", disabled: busy }, { key: "market", label: "更多技能", disabled: busy }, { key: "mine", label: scopeLabel, disabled: busy },
       { key: "github", label: "GitHub 链接", disabled: busy }, { key: "custom", label: editingId ? "编辑技能" : "手工新增", disabled: busy },
     ]} />
     <div className="workspace-skill-manager">
+      <div hidden={tab !== "capabilities"}><CapabilityMarket active={open && tab === "capabilities"} scope={scope} onBusy={setBusy} onInstalled={async () => { await refresh(); }} onSelect={onSelect ? id => { onSelect(id); onClose(); } : undefined} /></div>
       <div hidden={tab !== "market"}><SkillCatalog scope={scope} active={open && tab === "market"} busy={busy} onBusy={setBusy} onInstalled={async skill => {
         await refresh(); setTab("mine");
         if (skill.available) { onSelect?.(skill.id); message.success(onSelect ? "技能已安装到个人库并选中" : `${scopeLabel}已安装`); }

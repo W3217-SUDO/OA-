@@ -95,6 +95,8 @@ def exclusion_reasons(route: APIRoute) -> list[str]:
     path = route.path.lower()
     segments = set(path.strip("/").split("/"))
     reasons = []
+    if "capability-market" in segments and route.endpoint.__name__ != "read_capability_resource":
+        reasons.append("能力目录与安装必须由人工入口管理，模型仅能读取已安装包的参考资料")
     if "auth" in segments:
         reasons.append("认证及账户凭据生命周期，不向模型开放")
     if route.name in _CREDENTIAL_ENDPOINTS:
