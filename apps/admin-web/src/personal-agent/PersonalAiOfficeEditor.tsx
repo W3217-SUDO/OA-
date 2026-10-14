@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { Alert, Button, Modal, message } from "antd";
 import { ExportOutlined, FileWordOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
@@ -33,6 +33,8 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
   const [savedVersion, setSavedVersion] = useState<OfficeSavedVersion | null>(null);
   const [submissionUncertain, setSubmissionUncertain] = useState(false);
   const operationLock = useRef(false);
+  const openedAt = useRef(0);
+  const saveRef = useRef<() => void>(() => undefined);
   const close = () => { if (!disabled && !operationLock.current) onClose(); };
   const prepare = async () => {
     if (disabled || operationLock.current || savedVersion || submissionUncertain) return;
@@ -55,6 +57,7 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
         throw new Error("钉钉编辑地址无效，未打开文件");
       }
       setSession(data);
+      openedAt.current = Date.now();
       if (editorWindow) {
         editorWindow.location.replace(url.href);
         opened = true;
@@ -113,6 +116,24 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
       setError(errorText(failure, "Word 回存或回读未完成，请核对钉钉及 OA 保存状态"));
     } finally { operationLock.current = false; setBusy(null); onBusy(false); }
   };
+  saveRef.current = () => { void save(); };
+  useEffect(() => {
+    if (!session || savedVersion || submissionUncertain || typeof window === "undefined" || typeof document === "undefined") return;
+    const syncOnReturn = () => {
+      // Do not treat the initial popup handoff as a return from DingTalk.
+      if (Date.now() - openedAt.current < 5000) return;
+      saveRef.current();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") syncOnReturn();
+    };
+    window.addEventListener("focus", syncOnReturn);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", syncOnReturn);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [session, savedVersion, submissionUncertain]);
   return <Modal open title="Word 在线编辑" width={640} rootClassName="personal-ai-office-editor"
     closable={!busy && !disabled} maskClosable={!busy && !disabled} keyboard={!busy && !disabled} onCancel={close} destroyOnHidden
     footer={<Button disabled={!!busy || disabled} onClick={close}>关闭</Button>}>
@@ -125,7 +146,7 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
       <ol className="personal-ai-office-steps">
         <li>点击“在线编辑”，系统会直接打开钉钉 Word 编辑器。</li>
         <li>在钉钉完成排版、表格等编辑并等待保存完成。</li>
-        <li>返回 OA 点击“同步已保存内容”，生成新的 OA 文件版本。</li>
+        <li>返回 OA 后系统会自动同步已保存内容并生成新的 OA 文件版本；如果未自动触发，也可点击“同步已保存内容”。</li>
       </ol>
       <div className="personal-ai-office-actions">
         <Button icon={session ? <ReloadOutlined /> : <FileWordOutlined />} loading={busy === "open"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain}
