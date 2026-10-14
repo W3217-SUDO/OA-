@@ -59,3 +59,13 @@ Linux 服务器正式启动前还必须使用真实的私有环境文件运行�
 若预检显示 `Firmware virtualization: False`，说明 Windows 功能虽然安装完成，但 BIOS 的 SVM/VT-x 仍未开启；这一步不能在网页项目或 Docker 配置中代替完成。
 
 当前实现范围与剩余工作见 [`docs/功能实现清单.md`](docs/功能实现清单.md)。
+
+## 模块导航
+
+为了便于学习和理解代码，项目提供三个不参与运行的导航目录：
+
+- [`frontend/`](frontend/)：前端入口，真实源码在 `apps/admin-web/`
+- [`backend/`](backend/)：后端入口，真实源码在 `apps/api-server/`
+- [`aiagent/`](aiagent/)：AI Agent 入口，真实源码分布在 API Agent 模块和 `apps/deepseek-harness-host/`
+
+完整关系见 [`docs/项目结构导览.md`](docs/项目结构导览.md)。
