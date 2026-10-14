@@ -166,9 +166,11 @@ async def edit_space_file(file_id, name, content, identity, db):
 async def save_space_message(body, identity, db):
     from app.core.cases import _case_ai_draft_bytes, _case_ai_draft_name
     from app.areas.personal_agent.service import _user_dir
+    from app.areas.personal_agent.project_workspaces import require_state_access
 
     user = await actual_user(db, identity)
     async with conversations.conversation_operation(_user_dir(user.username), body.conversation_id) as state:
+        await require_state_access(state, identity, db)
         if body.message_index >= len(state["messages"]):
             raise HTTPException(404, "原回答已不在当前会话中")
         message = state["messages"][body.message_index]

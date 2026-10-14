@@ -119,6 +119,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
 
   const runningIds = workspace.runningIds;
   const conversationTitle = state.conversation_title || name || "沪知助手";
+  const currentProject = desktopWorkspace ? workspace.workspaceProjects.find((item) => item.kind === workspace.currentWorkspace?.kind && (item.kind === "personal" || item.case_id === workspace.currentWorkspace?.case_id)) : undefined;
   const decisionBusy = loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId;
   const dismiss = async (action: PendingAction) => {
     setDismissalError("");
@@ -149,6 +150,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           <Button className="assistant-mobile-control" type="text" icon={<ArrowLeftOutlined />} aria-label={returnLabel} onClick={onReturnOverview} />
         </Tooltip>}
         <span className="assistant-bar-summary">
+          {desktopWorkspace && currentProject && <span className="assistant-workspace-current" title={currentProject.title}>{currentProject.kind === "case" ? `${currentProject.serial_no} · ${currentProject.title}` : currentProject.title}</span>}
           {logoSrc && <img className="assistant-brand-logo" src={logoSrc} alt="" width={24} height={24} />}
           <span className="assistant-bar-title">{name || "助手对话"}</span>
           {name && state.conversation_title && <span className="assistant-selected-title" title={state.conversation_title}>{state.conversation_title}</span>}
@@ -283,7 +285,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         </div>
       )}
       <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeId) ?? null} deciding={!!workspace.decisionId} decisionFailure={activeId ? workspace.decisionFailures[activeId] : undefined} onDecide={decide} onClose={() => { setActiveAction(null); setHistoryAction(null); }} />
-      <PersonalAiSpace open={personalSpaceOpen} onClose={() => setPersonalSpaceOpen(false)} revision={workspace.documentRevision} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} onOpenConversation={workspace.selectConversation} onSkillsChanged={workspace.refreshSkills} />
+      <PersonalAiSpace open={personalSpaceOpen} onClose={() => setPersonalSpaceOpen(false)} revision={workspace.documentRevision} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} onOpenConversation={workspace.selectConversation} onSkillsChanged={workspace.refreshSkills} label={desktopWorkspace ? "AI生成文件夹" : undefined} />
       <div className="assistant-composer"
         onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
         onDrop={(event) => {
@@ -292,7 +294,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           void workspace.upload(Array.from(event.dataTransfer.files));
         }}
       >
-        <AssistantWorkspaceTools key={state.conversation_id || "new"} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} />
+        <AssistantWorkspaceTools key={workspace.draftKey} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} />
         <form className="assistant-composer-input" onSubmit={(event) => { event.preventDefault(); submit(); }}>
           <Input.TextArea
             ref={inputRef}
@@ -352,8 +354,6 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         name={name || "AI助手"}
         logoSrc={logoSrc}
         onOpenPersonalSpace={() => setPersonalSpaceOpen(true)}
-        onOpenCases={() => workspaceToolsRef.current?.openCases()}
-        onOpenCaseMaterials={() => workspaceToolsRef.current?.openCaseMaterials()}
         onImportSkills={() => workspaceToolsRef.current?.importSkills()}
         onOpenAgentCenter={onOpenAgentCenter}
         onReopenConfirmation={reopen}

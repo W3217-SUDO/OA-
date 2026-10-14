@@ -625,6 +625,244 @@ test("personal confirmation keeps failed cards and disables all decisions while 
   await act(async () => renderer.unmount());
 });
 
+test("project workspace identity validates explicit scope and isolates empty drafts from conversation drafts", () => {
+  const {
+    PERSONAL_CONVERSATION_WORKSPACE,
+    conversationWorkspaceKey,
+    conversationDraftKey,
+    requireConversationWorkspace,
+    conversationWorkspaceParams,
+  } = loadModule("../personal-agent/conversationWorkspace.ts", {});
+  const personal = requireConversationWorkspace({ kind: "personal" });
+  const firstCase = requireConversationWorkspace({ kind: "case", case_id: 42 });
+  const secondCase = requireConversationWorkspace({ kind: "case", case_id: 43 });
+  assert.equal(personal, PERSONAL_CONVERSATION_WORKSPACE);
+  assert.equal(conversationWorkspaceKey(personal), "personal");
+  assert.equal(conversationWorkspaceKey(firstCase), "case:42");
+  assert.equal(conversationWorkspaceKey(secondCase), "case:43");
+  assert.equal(conversationDraftKey(null, personal), "workspace:personal");
+  assert.equal(conversationDraftKey(undefined, firstCase), "workspace:case:42");
+  assert.notEqual(conversationDraftKey(null, firstCase), conversationDraftKey(null, secondCase), "未创建会话的案件项目草稿不能串空间");
+  assert.equal(conversationDraftKey("CODEX-existing-conversation", firstCase), "CODEX-existing-conversation", "已有会话继续按自身 ID 保存草稿");
+  assert.equal(conversationWorkspaceParams(undefined), undefined, "旧 unscoped 调用不伪造个人空间查询");
+  assert.deepEqual(JSON.parse(JSON.stringify(conversationWorkspaceParams(personal))), { workspace_kind: "personal" });
+  assert.deepEqual(JSON.parse(JSON.stringify(conversationWorkspaceParams(firstCase))), { workspace_kind: "case", workspace_case_id: 42 });
+  for (const invalid of [undefined, null, {}, { kind: "personal", case_id: 42 }, { kind: "case" }, { kind: "case", case_id: 0 }, { kind: "case", case_id: -1 }, { kind: "case", case_id: 1.5 }, { kind: "case", case_id: "42" }, { kind: "case", case_id: Number.MAX_SAFE_INTEGER + 1 }, { kind: "unknown" }]) {
+    assert.throws(() => requireConversationWorkspace(invalid), /会话响应缺少有效的空间归属/, "非法服务端空间归属必须明确失败，不能当作个人空间");
+  }
+});
+
+test("personal conversation requests preserve legacy mode and keep background refresh bound to its original space", async () => {
+  const requests = [], active = [], background = [];
+  const personal = { kind: "personal" }, caseWorkspace = { kind: "case", case_id: 42 };
+  const snapshot = (workspace, id) => ({
+    workspace,
+    workspaces: [{ kind: "personal", title: "个人空间", available: true }, { ...caseWorkspace, title: "测试案件", serial_no: "CODEX-CASE", available: true }],
+    items: [{ id, title: id, workspace }],
+    state: { conversation_id: id, workspace, messages: [], pending_actions: [], dismissed_action_ids: [] },
+  });
+  let wrongScope = false, denyCase = false, delayCase = false, resolveCase;
+  const respond = (options) => options?.params?.workspace_kind === "case" ? snapshot(caseWorkspace, "CODEX-case") : snapshot(personal, options?.params ? "CODEX-personal" : "CODEX-legacy-global");
+  const { usePersonalConversations } = loadModule("../personal-agent/usePersonalConversations.ts", {
+    "../api": { api: {
+      get: async (path, config) => {
+        requests.push({ method: "GET", path, config });
+        if (config?.params?.workspace_kind === "case") {
+          if (denyCase) throw new Error("案件权限已撤销");
+          if (delayCase) return new Promise((resolve) => { resolveCase = resolve; });
+        }
+        return { data: respond(config) };
+      },
+      post: async (path, body, config) => {
+        requests.push({ method: "POST", path, body, config });
+        return { data: wrongScope ? snapshot({ kind: "case", case_id: 43 }, "CODEX-wrong-space") : respond(config) };
+      },
+      delete: async (path, config) => { requests.push({ method: "DELETE", path, config }); return { data: respond(config) }; },
+    } },
+  });
+  let conversations;
+  function Probe() { conversations = usePersonalConversations((state) => active.push(state), (state) => background.push(state)); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  await act(async () => { await conversations.load(); });
+  assert.equal(requests.at(-1).config.params, undefined);
+  assert.equal(active.at(-1).conversation_id, "CODEX-legacy-global", "旧手机/global active 路径继续由原接口响应决定");
+  await act(async () => { await conversations.create(); });
+  assert.equal(requests.at(-1).body, undefined, "旧未分空间的新建不添加虚构 workspace");
+  await act(async () => { await conversations.openWorkspace(personal); });
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).config.params)), { workspace_kind: "personal" });
+  await act(async () => { await conversations.create(); });
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).body)), { workspace: personal });
+  await act(async () => { await conversations.openWorkspace(caseWorkspace); });
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).config.params)), { workspace_kind: "case", workspace_case_id: 42 });
+  await act(async () => { await conversations.create(); });
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).body)), { workspace: caseWorkspace });
+  await act(async () => { await conversations.select("CODEX-case"); });
+  assert.equal(requests.at(-1).path, "/personal-agent/conversations/CODEX-case/select");
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).config.params)), { workspace_kind: "case", workspace_case_id: 42 });
+  await act(async () => { await conversations.remove("CODEX-case"); });
+  assert.equal(requests.at(-1).method, "DELETE");
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).config.params)), { workspace_kind: "case", workspace_case_id: 42 });
+  const applied = active.length;
+  wrongScope = true;
+  await act(async () => { await assert.rejects(conversations.create(), /空间归属不匹配/); });
+  assert.equal(active.length, applied, "不把其他项目响应写入当前会话");
+  assert.equal(conversations.busy, false);
+  assert.equal(conversations.locked(), false, "归属错误仍释放真实切换锁");
+  wrongScope = false;
+  denyCase = true;
+  await act(async () => { await assert.rejects(conversations.openWorkspace(caseWorkspace), /案件权限已撤销/); });
+  assert.equal(conversations.error, "案件权限已撤销");
+  assert.equal(conversations.items.length, 0, "失权失败不能留下旧项目历史");
+  assert.equal(active.at(-1).conversation_id, null);
+  assert.equal(conversations.loading, false);
+  denyCase = false;
+  delayCase = true;
+  const caseView = conversations.capture();
+  let refresh;
+  await act(async () => { refresh = conversations.refresh(caseView); });
+  await act(async () => { await conversations.openWorkspace(personal); });
+  await act(async () => { resolveCase({ data: snapshot(caseWorkspace, "CODEX-case-late") }); await refresh; });
+  assert.equal(active.at(-1).conversation_id, "CODEX-personal");
+  assert.equal(conversations.items[0].id, "CODEX-personal", "旧空间迟到响应不覆盖新空间历史");
+  assert.equal(background.length, 0, "列表 refresh 不替换任何会话运行状态");
+  await act(async () => renderer.unmount());
+});
+
+test("case file selection requires explicit checked documents and preserves failure and material limits", async () => {
+  const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
+  const cases = [{ id: 42, serial_no: "CODEX-CASE", title: "有权案件" }];
+  const documents = [{ id: 201, original_name: "勾选的文件.docx" }, { id: 202, original_name: "未勾选的文件.pdf" }];
+  const originalCase = { id: 43, serial_no: "CODEX-ORIGINAL", title: "原引用案件" };
+  const originalMaterials = [{ id: 301, name: "原引用文件.docx", case_id: 43 }];
+  const requests = [], selected = [], warnings = [], timers = new Map();
+  let timerId = 0, closed = 0, fail = false;
+  const { CaseMaterialsPicker } = loadModule("../personal-agent/CaseMaterialsPicker.tsx", {
+    antd: { Button: component("button"), Empty: component("empty"), Input: component("input"), Modal: ({ children, footer, ...props }) => React.createElement("modal", props, children, footer), Space: component("space"), Spin: component("spin"), Tree: component("tree"), message: { warning: (text) => warnings.push(text) } },
+    "../api": { api: { get: async (path) => { requests.push(path); if (fail) throw new Error("案件文件权限已撤销"); return { data: { documents } }; } } },
+    "../legal/constants": { buildAgentDocumentTree: (items) => items.map((item) => ({ key: `document:${item.id}`, title: item.original_name })) },
+    "./types": { errorText: (error, label) => error.message || label },
+    "./useVisibleWorkspaceCases": { useVisibleWorkspaceCases: () => ({ items: cases, loading: false, error: "", retry() {} }) },
+  }, { window: { setTimeout: (callback) => { const id = ++timerId; timers.set(id, callback); return id; }, clearTimeout: (id) => timers.delete(id) } });
+  const props = {
+    mode: "case", selectedCase: originalCase, selectedMaterials: originalMaterials, privateCount: 11,
+    onCase: () => assert.fail("PC选择案件文件不能用旧整案关联回调"),
+    onMaterials: () => assert.fail("PC选择应原子返回案件与明确文件"),
+    onSelection: (item, materials) => selected.push({ item, materials }),
+    onClose: () => { closed++; },
+  };
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(CaseMaterialsPicker, props)); });
+  assert.equal(renderer.root.findByType("modal").props.rootClassName, "assistant-case-materials-picker");
+  await act(async () => renderer.root.findAllByType("button").find((item) => item.props.className === "workspace-case-option").props.onClick());
+  assert.equal(selected.length, 0, "仅选案件不得自动关联整案或任意文件");
+  await act(async () => { for (const [id, callback] of [...timers]) { timers.delete(id); await callback(); } });
+  assert.deepEqual(requests, ["/case-spaces/42/context"]);
+  const confirm = () => renderer.root.findAllByType("button").find((item) => item.props.type === "primary");
+  assert.deepEqual(Array.from(renderer.root.findByType("tree").props.checkedKeys), []);
+  assert.equal(confirm().props.disabled, true, "加载出文件也必须保持空选");
+  await act(async () => renderer.root.findByType("tree").props.onCheck(["document:201"]));
+  assert.equal(confirm().props.disabled, false);
+  await act(async () => renderer.root.findByType("modal").props.onCancel());
+  assert.equal(selected.length, 0, "取消选案和勾选不能提交部分引用");
+  assert.equal(props.selectedCase, originalCase);
+  assert.equal(props.selectedMaterials, originalMaterials, "取消后保留原案件和具体文件引用");
+  await act(async () => renderer.update(React.createElement(CaseMaterialsPicker, { ...props, mode: null })));
+  await act(async () => renderer.update(React.createElement(CaseMaterialsPicker, props)));
+  await act(async () => renderer.root.findAllByType("button").find((item) => item.props.className === "workspace-case-option").props.onClick());
+  await act(async () => { for (const [id, callback] of [...timers]) { timers.delete(id); await callback(); } });
+  assert.deepEqual(Array.from(renderer.root.findByType("tree").props.checkedKeys), [], "重新打开不能把已取消的选择当成原引用");
+  await act(async () => renderer.root.findByType("tree").props.onCheck(["document:201"]));
+  await act(async () => renderer.root.findByType("tree").props.onCheck(["document:201", "document:202"]));
+  assert.match(warnings.at(-1), /最多选择12份材料/);
+  assert.deepEqual(Array.from(renderer.root.findByType("tree").props.checkedKeys), ["document:201"], "案件材料加本人上传继续共用12份上限");
+  await act(async () => confirm().props.onClick());
+  assert.equal(closed, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(selected)), [{ item: cases[0], materials: [{ id: 201, name: documents[0].original_name, case_id: 42 }] }], "只返回勾选文件，不注入同案其他文件");
+  fail = true;
+  await act(async () => renderer.update(React.createElement(CaseMaterialsPicker, { ...props, mode: "materials", selectedCase: { id: 43, serial_no: "CODEX-DENIED", title: "已失权案件" } })));
+  await act(async () => { for (const [id, callback] of [...timers]) { timers.delete(id); await callback(); } });
+  assert.equal(requests.at(-1), "/case-spaces/43/context");
+  assert.equal(confirm().props.disabled, true);
+  assert.ok(renderer.root.findAll((item) => item.props.className === "workspace-picker-error").some((item) => item.props.children === "案件文件权限已撤销"));
+  assert.equal(selected.length, 1, "失败不能伪造成功或重复引用上案文件");
+  await act(async () => renderer.unmount());
+});
+
+test("project drafts and selected file payload stay scoped when a background generation finishes", async () => {
+  const personal = { kind: "personal" }, caseA = { kind: "case", case_id: 42 }, caseB = { kind: "case", case_id: 43 };
+  const caseRecord = { id: 42, serial_no: "CODEX-CASE-A", title: "测试案件A" };
+  const empty = (workspace) => ({ conversation_id: null, workspace, messages: [], pending_actions: [], dismissed_action_ids: [] });
+  const key = (workspace) => workspace.kind === "personal" ? "personal" : `case:${workspace.case_id}`;
+  const states = new Map(), activeByScope = new Map(), requests = [], generations = [], errors = [];
+  const projects = [{ ...personal, title: "个人空间", available: true }, { ...caseA, title: "测试案件A", available: true }, { ...caseB, title: "测试案件B", available: true }];
+  const snapshot = (workspace) => ({ workspace, workspaces: projects, items: [...states.values()].filter((state) => key(state.workspace) === key(workspace)).map((state) => ({ id: state.conversation_id, title: state.conversation_id, workspace: state.workspace })), state: activeByScope.get(key(workspace)) || empty(workspace) });
+  let finishGeneration;
+  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
+    antd: { ...require("antd"), message: { warning: (text) => errors.push(text), error: (text) => errors.push(text), success() {} } },
+    "../api": { api: {
+      get: async (path, config) => {
+        requests.push({ method: "GET", path, config });
+        if (path === "/agent/skills") return { data: { items: [{ id: "general-office", name: "通用办公", available: true }] } };
+        if (path === "/personal-agent/status") return { data: { ready: true, commands: [{ id: "cases" }] } };
+        assert.equal(path, "/personal-agent/conversations");
+        const params = config?.params;
+        return { data: snapshot(params?.workspace_kind === "case" ? { kind: "case", case_id: params.workspace_case_id } : personal) };
+      },
+      post: async (path, body, config) => {
+        requests.push({ method: "POST", path, body, config });
+        if (path === "/personal-agent/workspaces") return { data: snapshot(body.workspace) };
+        assert.equal(path, "/personal-agent/conversations");
+        const state = { ...empty(body.workspace), conversation_id: "CODEX-generated-A" };
+        states.set(state.conversation_id, state); activeByScope.set(key(body.workspace), state);
+        return { data: snapshot(body.workspace) };
+      },
+    } },
+    "./useConversationRuntime": { useConversationRuntime: () => {
+      const [state, setState] = React.useState(() => empty(personal));
+      return { state, activities: {}, activate: setState, remember() {}, reset() {}, anyRunning: () => false, running: () => false, stopping: () => false, get: (id) => states.get(id),
+        generate: (conversation, payload) => { generations.push({ conversation, payload }); return new Promise((resolve) => { finishGeneration = () => resolve(conversation); }); } };
+    } },
+    "../legal/constants": { aiWordDocumentName: () => "", isAiWordGenerationRequest: () => false, isUsableAiDocumentContent: () => false },
+    "../legal/services/agentDocumentConfirmation": { confirmCaseAgentDocument: () => assert.fail("材料引用不能自动保存业务文档") },
+  });
+  let workspace;
+  function Probe() { workspace = usePersonalWorkspace(); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  await act(async () => { await workspace.setProjectMode(true); });
+  await act(async () => workspace.setInput("个人空间未发草稿"));
+  await act(async () => { await workspace.selectWorkspace(caseA); });
+  assert.equal(workspace.input, "", "个人空草稿不能带入案件A");
+  await act(async () => workspace.setInput("案件A未发草稿"));
+  await act(async () => { await workspace.selectWorkspace(personal); });
+  assert.equal(workspace.input, "个人空间未发草稿");
+  await act(async () => { await workspace.selectWorkspace(caseA); });
+  assert.equal(workspace.input, "案件A未发草稿");
+  assert.equal(requests.filter((item) => item.method === "POST" && item.path === "/personal-agent/conversations").length, 0, "登记和切换项目不虚建会话");
+  assert.equal(workspace.caseMaterials.length, 0, "打开案件项目不自动引用文件");
+  await act(async () => workspace.chooseCaseMaterials(caseRecord, [{ id: 201, name: "明确勾选.docx", case_id: 42 }]));
+  let sending;
+  await act(async () => { sending = workspace.send(); });
+  const creation = requests.find((item) => item.method === "POST" && item.path === "/personal-agent/conversations");
+  assert.deepEqual(JSON.parse(JSON.stringify(creation.body)), { workspace: caseA });
+  assert.deepEqual(JSON.parse(JSON.stringify(generations[0].payload.workspace)), caseA);
+  assert.deepEqual(Array.from(generations[0].payload.document_ids), [201], "真实 send payload 仅包含明确选中文件，不注入同案其他文件");
+  assert.equal(generations[0].payload.case_id, 42);
+  await act(async () => { await workspace.selectWorkspace(caseB); });
+  await act(async () => workspace.setInput("案件B当前草稿"));
+  await act(async () => { finishGeneration(); await sending; });
+  const refresh = requests.at(-1);
+  assert.equal(refresh.path, "/personal-agent/conversations");
+  assert.deepEqual(JSON.parse(JSON.stringify(refresh.config.params)), { workspace_kind: "case", workspace_case_id: 42 }, "后台A生成结束只刷新它捕获的A视图");
+  assert.equal(workspace.currentWorkspace.case_id, 43);
+  assert.equal(workspace.state.conversation_id, null);
+  assert.equal(workspace.conversations.length, 0, "A的新会话不能出现在B历史");
+  assert.equal(workspace.input, "案件B当前草稿");
+  assert.deepEqual(errors, []);
+  await act(async () => renderer.unmount());
+});
+
 test("homepage pending summary is shown once and direct cancellation retains failures", async () => {
   const component = (name) => ({ children, ...props }) => React.createElement(name, props, children);
   const List = ({ dataSource, renderItem }) => React.createElement("list", null, dataSource.map((item) => React.cloneElement(renderItem(item), { key: item.id })));
@@ -637,6 +875,7 @@ test("homepage pending summary is shown once and direct cancellation retains fai
     "./AssistantWorkspaceTools": { AssistantWorkspaceTools: component("workspace-tools") },
     "./ConfirmationHistory": { ConfirmationHistory: component("confirmation-history") },
     "./PersonalAiSpace": { PersonalAiSpace: component("personal-ai-space") },
+    "./CaseWorkspaceSelector": { CaseWorkspaceSelector: component("case-workspace-selector") },
     "./ActionConfirmation": { ActionConfirmation: component("action-confirmation") },
   };
   const { default: AssistantPanel } = loadModule("../personal-agent/AssistantPanel.tsx", dependencies);
@@ -703,8 +942,10 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   assert.deepEqual(renderer.root.findAllByType("alert").map((item) => item.props.description), ["A执行结果未知", "B执行结果未知"], "原卡移除也显示所有相关错误，不只最后一条");
   await act(async () => renderer.unmount());
 
-  const requests = [], routes = [];
-  let desktopWorkspace = { ...workspace, status: { ready: true, commands: [{ id: "cases" }] }, selectedCase: { id: 42, serial_no: "CODEX-CASE", title: "可访问案件" }, createConversation() {}, selectConversation() {}, deleteConversation() {} };
+  const requests = [], routes = [], spaces = [], projectModes = [];
+  let desktopWorkspace = { ...workspace, status: { ready: true, commands: [{ id: "cases" }] }, selectedCase: { id: 42, serial_no: "CODEX-CASE", title: "可访问案件" }, currentWorkspace: { kind: "personal" },
+    workspaceProjects: [{ kind: "personal", title: "个人空间", available: true }, { kind: "case", case_id: 42, serial_no: "CODEX-CASE", title: "可访问案件", available: true }, { kind: "case", case_id: 43, serial_no: "CODEX-DENIED", title: "失权案件", available: false, unavailable_reason: "案件权限已撤销" }],
+    selectWorkspace: async (scope) => spaces.push(JSON.parse(JSON.stringify(scope))), setProjectMode: async (enabled) => projectModes.push(enabled), createConversation() {}, selectConversation() {}, deleteConversation() {} };
   const { default: AiChatPage } = loadModule("../personal-agent/AiChatPage.tsx", {
     ...dependencies,
     "./PersonalWorkspaceProvider": { usePersonalWorkspaceContext: () => desktopWorkspace },
@@ -719,21 +960,39 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   assert.equal(renderer.root.findByType("conversation-manager").props.onSelect, desktopWorkspace.selectConversation);
   assert.equal(renderer.root.findAllByType("confirmation-history").length, 1, "历史确认入口移入侧栏且不重复");
   const byClass = name => renderer.root.findAllByType("button").find(item => item.props.className === name);
-  assert.equal(byClass("assistant-workspace-case-entry").props.disabled, false);
-  assert.equal(byClass("assistant-workspace-case-materials").props["aria-label"], "选择案件材料：CODEX-CASE");
+  const selectCaseSpace = () => renderer.root.findAllByType("button").find(item => item.props["aria-label"] === "选择案件空间");
+  const projects = () => renderer.root.findAllByType("button").filter(item => item.props.className === "assistant-workspace-project");
+  assert.deepEqual(projectModes, [true], "PC进入真实默认个人项目模式");
+  assert.equal(selectCaseSpace().props.disabled, false);
+  assert.equal(projects()[0].props.disabled, false);
+  assert.equal(projects()[1].props.disabled, true, "保留失权项目但禁止打开，不用假个人空间掩盖失权");
+  assert.equal(byClass("assistant-workspace-personal-entry").props["aria-current"], "page");
+  assert.equal(byClass("assistant-workspace-case-materials"), undefined, "材料引用不再冒充左栏项目入口");
   await act(async () => { byClass("assistant-workspace-personal-entry").props.onClick(); });
-  assert.equal(renderer.root.findByType("personal-ai-space").props.open, true);
+  assert.deepEqual(spaces.at(-1), { kind: "personal" });
+  assert.equal(renderer.root.findByType("personal-ai-space").props.open, false, "个人空间切换不打开生成文件弹窗");
+  await act(async () => { projects()[0].props.onClick(); });
+  assert.deepEqual(spaces.at(-1), { kind: "case", case_id: 42 });
+  assert.equal(renderer.root.findByType("personal-ai-space").props.open, false, "案件项目也不借用文件弹窗");
+  await act(async () => selectCaseSpace().props.onClick());
+  assert.equal(renderer.root.findByType("case-workspace-selector").props.open, true);
+  await act(async () => { renderer.root.findByType("case-workspace-selector").props.onClose(); });
+  await act(async () => { byClass("assistant-workspace-generated-entry").props.onClick(); });
+  assert.equal(byClass("assistant-workspace-generated-entry").props.children, "AI生成文件夹");
+  assert.equal(renderer.root.findByType("personal-ai-space").props.open, true, "生成文件夹独立复用原受权文件组件");
+  await act(async () => renderer.root.findByType("personal-ai-space").props.onClose());
   await act(async () => { button("智能体中心").props.onClick(); button("返回工作台").props.onClick(); });
   assert.deepEqual(routes, ["agent-center", "dashboard"], "侧栏沿用上层授权的真实导航回调");
   desktopWorkspace = { ...desktopWorkspace, status: { ready: true, commands: [] } };
   await act(async () => { renderer.update(React.createElement(AiChatPage, { ...chatProps, onOpenAgentCenter: undefined })); });
-  assert.equal(byClass("assistant-workspace-case-entry").props.disabled, true, "案件入口使用真实命令权限，而非只改标签");
+  assert.equal(selectCaseSpace().props.disabled, true, "案件入口使用真实命令权限，而非只改标签");
+  assert.ok(projects().every(item => item.props.disabled), "没有命令权限时不能借项目书签绕过");
   assert.equal(byClass("assistant-workspace-case-materials"), undefined, "无案件权限不展示既有选中案件材料入口");
   assert.equal(button("智能体中心"), undefined, "上层未授导航回调时不制造中心入口");
   desktopWorkspace = { ...desktopWorkspace, status: { ready: true, commands: [{ id: "cases" }] }, loadError: "工作区读取失败" };
   await act(async () => { renderer.update(React.createElement(AiChatPage, chatProps)); });
-  assert.equal(byClass("assistant-workspace-case-entry").props.disabled, true);
-  assert.equal(byClass("assistant-workspace-case-materials").props.disabled, true, "工作区读取失败不得继续打开案件材料");
+  assert.equal(selectCaseSpace().props.disabled, true);
+  assert.ok(projects().every(item => item.props.disabled), "工作区读取失败不得借新项目入口继续操作");
   desktopWorkspace = { ...desktopWorkspace, loadError: "" };
   await act(async () => { renderer.update(React.createElement(AiChatPage, { ...chatProps, desktop: false })); });
   assert.equal(renderer.root.findAllByType("aside").length, 0, "手机不挂载PC常驻侧栏");
@@ -741,6 +1000,7 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   assert.equal(renderer.root.findAllByType("confirmation-history").length, 1);
   assert.equal(renderer.root.findAllByType("conversation-manager").length, 1);
   assert.equal(renderer.root.findAllByType("start").length, 1, "手机保留原空态入口");
+  assert.deepEqual(projectModes, [true, false], "离开PC项目模式后恢复旧unscoped路径，不强改手机global active");
   assert.deepEqual(requests, [], "独立AI页面不再请求dashboard suggestions来生成PC卡片");
   await act(async () => renderer.unmount());
 });
@@ -948,7 +1208,7 @@ test("personal decision waits for server stop, serializes duplicate clicks and p
     "../api": { api },
     antd: { ...require("antd"), message: { warning() {}, error() {}, success() {} } },
     "./usePersonalConversations": { usePersonalConversations: (activate) => ({
-      items: [], busy: false, locked: () => false, load: async () => activate(initial), refresh: async () => {},
+      items: [], projects: [], busy: false, loading: false, error: "", capture: () => ({ revision: 0 }), locked: () => false, load: async () => activate(initial), refresh: async () => {},
     }) },
     "../legal/constants": { aiWordDocumentName: () => "", isAiWordGenerationRequest: () => false, isUsableAiDocumentContent: () => false },
     "../legal/services/agentDocumentConfirmation": { confirmCaseAgentDocument: () => assert.fail("不得自动保存业务文档") },
@@ -1002,9 +1262,7 @@ test("personal failed decision synchronizes authoritative conversation without r
   const refreshed = { ...current, pending_actions: [] };
   const calls = [];
   const failure = new AxiosError("请求失败", undefined, undefined, undefined, { status: 409, data: { detail: { status: "failed", error: { detail: "原业务接口已拒绝" } } } });
-  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
-    antd: { ...require("antd"), message: { warning() {}, error() {}, success: () => assert.fail("失败不能伪造成功") } },
-    "../api": { api: {
+  const api = {
       get: async (path, options) => {
         calls.push(["get", path]);
         if (path === "/personal-agent/conversations") {
@@ -1014,9 +1272,14 @@ test("personal failed decision synchronizes authoritative conversation without r
         return { data: path === "/agent/skills" ? { items: [] } : { ready: true } };
       },
       post: async (path) => { calls.push(["post", path]); throw failure; },
-    } },
+  };
+  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
+    antd: { ...require("antd"), message: { warning() {}, error() {}, success: () => assert.fail("失败不能伪造成功") } },
+    "../api": { api },
     "./useConversationRuntime": { useConversationRuntime: () => ({ state: current, activities: {}, anyRunning: () => false, running: () => false, reset() {}, get: () => current, replace: (next) => { current = next; } }) },
-    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], busy: false, locked: () => false, load: async () => {}, refresh: async () => {} }) },
+    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], projects: [], busy: false, loading: false, error: "", capture: () => ({ revision: 0 }), locked: () => false, load: async () => {}, refresh: async () => {},
+      read: async (_view, timeout) => (await api.get("/personal-agent/conversations", { timeout })).data,
+    }) },
     "../legal/constants": {}, "../legal/services/agentDocumentConfirmation": {},
   });
   function Probe() { workspace = usePersonalWorkspace(); return null; }
@@ -1059,7 +1322,7 @@ test("personal action dismissal persists one captured ID batch and resumes only 
       },
     } },
     "./useConversationRuntime": { useConversationRuntime: () => ({ state: current, activities: {}, anyRunning: () => false, running: () => false, reset() {}, get: () => current, replace: (next) => { current = next; } }) },
-    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], busy: false, locked: () => false, load: async () => {}, refresh: async () => {}, select: async (id) => { calls.push(["select", id]); return current; } }) },
+    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], projects: [], busy: false, loading: false, error: "", capture: () => ({ revision: 0 }), locked: () => false, load: async () => {}, refresh: async () => {}, select: async (id) => { calls.push(["select", id]); return current; } }) },
     "../legal/constants": {}, "../legal/services/agentDocumentConfirmation": {},
   });
   function Probe() { workspace = usePersonalWorkspace(); return null; }
@@ -1095,14 +1358,15 @@ test("personal unknown decision state stays actionable only after explicit histo
   const action = { id: "CODEX-unknown", type: "create_task", status: "pending", summary: "待核对" };
   const current = { conversation_id: "CODEX-conversation", messages: [], dismissed_action_ids: [], pending_actions: [action] };
   let posts = 0;
+  const api = {
+    get: async (path) => { if (path === "/personal-agent/conversations") throw new Error("只读状态读取超时"); return { data: path === "/agent/skills" ? { items: [] } : { ready: true } }; },
+    post: async () => { posts++; throw new Error("网络断开，执行结果未知"); },
+  };
   const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
     antd: { ...require("antd"), message: { warning() {}, error() {}, success: () => assert.fail("未知结果不能报告成功") } },
-    "../api": { api: {
-      get: async (path) => { if (path === "/personal-agent/conversations") throw new Error("只读状态读取超时"); return { data: path === "/agent/skills" ? { items: [] } : { ready: true } }; },
-      post: async () => { posts++; throw new Error("网络断开，执行结果未知"); },
-    } },
+    "../api": { api },
     "./useConversationRuntime": { useConversationRuntime: () => ({ state: current, activities: {}, anyRunning: () => false, running: () => false, reset() {}, get: () => current, replace() {} }) },
-    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], busy: false, locked: () => false, load: async () => {}, refresh: async () => {} }) },
+    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], projects: [], busy: false, loading: false, error: "", capture: () => ({ revision: 0 }), locked: () => false, load: async () => {}, refresh: async () => {}, read: async (_view, timeout) => (await api.get("/personal-agent/conversations", { timeout })).data }) },
     "../legal/constants": {}, "../legal/services/agentDocumentConfirmation": {},
   });
   function Probe() { workspace = usePersonalWorkspace(); return null; }
@@ -1124,18 +1388,19 @@ test("personal per-action failure ledger preserves A across B failures, dismissa
   let current = { conversation_id: "CODEX-conversation", messages: [], dismissed_action_ids: [], pending_actions: [a, b] };
   const posts = [];
   let failSelect = true;
-  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
-    antd: { ...require("antd"), message: { warning() {}, error() {}, success: () => assert.fail("未知结果不能报告成功") } },
-    "../api": { api: {
+  const api = {
       get: async (path) => { if (path === "/personal-agent/conversations") throw new Error("只读回查失败"); return { data: path === "/agent/skills" ? { items: [] } : { ready: true } }; },
       post: async (path, body) => {
         posts.push([path, body]);
         if (path.endsWith("/actions/dismiss")) return { data: { state: { ...current, dismissed_action_ids: body.action_ids } } };
         throw new Error(`网络未知：${path}`);
       },
-    } },
+  };
+  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
+    antd: { ...require("antd"), message: { warning() {}, error() {}, success: () => assert.fail("未知结果不能报告成功") } },
+    "../api": { api },
     "./useConversationRuntime": { useConversationRuntime: () => ({ state: current, activities: {}, anyRunning: () => false, running: () => false, reset() {}, get: () => current, replace: (next) => { current = next; } }) },
-    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], busy: false, locked: () => false, load: async () => {}, refresh: async () => {}, select: async () => { if (failSelect) throw new Error("原会话读取失败"); return current; } }) },
+    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], projects: [], busy: false, loading: false, error: "", capture: () => ({ revision: 0 }), locked: () => false, load: async () => {}, refresh: async () => {}, read: async (_view, timeout) => (await api.get("/personal-agent/conversations", { timeout })).data, select: async () => { if (failSelect) throw new Error("原会话读取失败"); return current; } }) },
     "../legal/constants": {}, "../legal/services/agentDocumentConfirmation": {},
   });
   function Probe() { workspace = usePersonalWorkspace(); return null; }
@@ -1178,7 +1443,7 @@ test("personal workspace preserves legacy case Word confirmation and follows exp
     antd: { ...require("antd"), message: { warning() {}, error: (text) => errors.push(text), success() {} } },
     "../api": { api: { get: async (path) => ({ data: path === "/agent/skills" ? { items: [] } : { ready: true } }) } },
     "./useConversationRuntime": { useConversationRuntime: () => ({ state, activities: {}, anyRunning: () => false, running: () => running, reset() {}, get: () => state }) },
-    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], busy: false, locked: () => false, load: async () => {}, refresh: async () => {} }) },
+    "./usePersonalConversations": { usePersonalConversations: () => ({ items: [], projects: [], busy: false, loading: false, error: "", capture: () => ({ revision: 0 }), locked: () => false, load: async () => {}, refresh: async () => {} }) },
     "../legal/constants": { aiWordDocumentName: () => "原文.docx" },
     "../legal/services/agentDocumentConfirmation": { confirmCaseAgentDocument: (value) => { calls.push("case"); caseConfirmation = value; } },
     "./personalAiDocumentConfirmation": { confirmPersonalAiDocument: async (value) => { calls.push("personal"); assert.equal(value.conversationId, "CODEX-conversation"); assert.ok([1, 2].includes(value.messageIndex)); assert.equal(Object.hasOwn(value, "caseId"), false); value.onSaved({ name: "个人文稿.docx" }); } },
@@ -1291,6 +1556,7 @@ test("personal AI mobile tools close their existing popover before opening the s
   }, { window: { matchMedia: () => media } });
   let renderer;
   await act(async () => { renderer = create(React.createElement(AssistantWorkspaceTools, { workspace, onOpenPersonalAiSpace: () => { opened++; } })); });
+  assert.equal(renderer.root.findByType("case-picker").props.onSelection, undefined, "原手机材料流程保持unscoped旧回调");
   assert.equal(opened, 0);
   await act(async () => renderer.root.findByType("popover").props.onOpenChange(true));
   const entry = renderer.root.findAllByType("button").find((item) => item.props.className === "personal-ai-space-mobile-entry");
@@ -1302,6 +1568,25 @@ test("personal AI mobile tools close their existing popover before opening the s
   await act(async () => mediaChange());
   assert.equal(renderer.root.findAllByType("popover").length, 0);
   assert.equal(renderer.root.findAllByType("button").some((item) => item.props.className === "personal-ai-space-mobile-entry"), false, "桌面工具组不重复挂入口");
+  const selections = [];
+  const desktop = { ...workspace, status: { commands: [{ id: "cases" }] }, chooseCaseMaterials: (item, files) => selections.push({ item, files }) };
+  await act(async () => renderer.update(React.createElement(AssistantWorkspaceTools, { workspace: desktop, desktopWorkspace: true, onOpenPersonalAiSpace: () => { opened++; } })));
+  const caseFiles = () => renderer.root.findAllByType("button").find((item) => item.props.className === "assistant-case-select");
+  assert.equal(caseFiles().props.children, "案件文件");
+  assert.equal(renderer.root.findByType("case-picker").props.onSelection, desktop.chooseCaseMaterials, "PC用独立原子回调提交案件与具体文件");
+  await act(async () => caseFiles().props.onClick());
+  assert.equal(renderer.root.findByType("case-picker").props.mode, "case");
+  const item = { id: 42, serial_no: "CODEX-CASE", title: "测试案件" };
+  const files = [{ id: 201, name: "明确选择.docx", case_id: 42 }];
+  await act(async () => renderer.root.findByType("case-picker").props.onSelection(item, files));
+  assert.deepEqual(selections, [{ item, files }]);
+  await act(async () => renderer.root.findByType("case-picker").props.onClose());
+  await act(async () => renderer.update(React.createElement(AssistantWorkspaceTools, { workspace: { ...desktop, loadError: "工作区读取失败" }, desktopWorkspace: true, onOpenPersonalAiSpace() {} })));
+  assert.equal(caseFiles().props.disabled, true);
+  await act(async () => caseFiles().props.onClick());
+  assert.equal(renderer.root.findByType("case-picker").props.mode, null, "读取失败不能打开材料选择器");
+  await act(async () => renderer.update(React.createElement(AssistantWorkspaceTools, { workspace: { ...desktop, status: { commands: [] } }, desktopWorkspace: true, onOpenPersonalAiSpace() {} })));
+  assert.equal(caseFiles(), undefined, "原cases命令权限继续限制输入区案件文件入口");
   await act(async () => renderer.unmount());
 });
 

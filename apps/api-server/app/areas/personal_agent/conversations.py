@@ -11,11 +11,13 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from app.agent_mcp.action_summary import summary_from_preview
+from app.areas.personal_agent.project_workspaces import normalize_workspace, require_membership, state_workspace, workspace_key
 
 
 STATE_LOCK = asyncio.Lock()
 _ACTIVE_OPERATIONS: dict[tuple[Path, str], tuple[asyncio.Task, bool]] = {}
 _CONVERSATION_ID = re.compile(r"^(default|[0-9a-f]{32})$")
+_WORKSPACE_KEY = re.compile(r"^(personal|case:[1-9][0-9]*)$")
 
 
 def _validate_id(conversation_id: str) -> str:
@@ -56,6 +58,17 @@ def _index(directory: Path) -> dict[str, Any]:
             or len(set(ids)) != len(ids) or (active_id is not None and active_id not in ids)
             or (ids and active_id is None)):
         raise HTTPException(status_code=500, detail="个人智能体对话索引格式错误")
+    workspace_active = value.get("workspace_active_ids", {})
+    if (not isinstance(workspace_active, dict)
+            or any(not _WORKSPACE_KEY.fullmatch(key) or (item is not None and item not in ids)
+                   for key, item in workspace_active.items())):
+        raise HTTPException(status_code=500, detail="个人智能体项目索引格式错误")
+    workspaces = value.get("workspaces", [])
+    if not isinstance(workspaces, list):
+        raise HTTPException(500, "个人智能体项目目录格式错误")
+    keys = [workspace_key(normalize_workspace(item, stored=True)) for item in workspaces]
+    if len(set(keys)) != len(keys):
+        raise HTTPException(500, "个人智能体项目目录重复")
     return value
 
 
@@ -64,8 +77,9 @@ def _path(directory: Path, conversation_id: str) -> Path:
     return directory / "session.json" if conversation_id == "default" else directory / "conversations" / f"{conversation_id}.json"
 
 
-def _empty(conversation_id: str | None) -> dict[str, Any]:
+def empty_state(conversation_id: str | None, workspace: dict[str, Any] | None = None) -> dict[str, Any]:
     return {"conversation_id": conversation_id, "conversation_title": "办公对话" if conversation_id == "default" else "新对话",
+            "workspace": normalize_workspace(workspace) if workspace is not None else {"kind": "personal"},
             "messages": [], "pending_actions": [], "structured_results": [], "dismissed_action_ids": [],
             "created_at": "", "updated_at": ""}
 
@@ -92,15 +106,16 @@ def read_state(directory: Path, conversation_id: str | None = None) -> dict[str,
     index = _index(directory)
     selected = conversation_id if conversation_id is not None else index["active_id"]
     if selected is None:
-        return _empty(None)
+        return empty_state(None)
     _validate_id(selected)
     if selected not in index["ids"]:
         raise HTTPException(status_code=404, detail="对话不存在或已删除")
     path = _path(directory, selected)
     if selected == "default" and not path.exists():
-        return _empty(selected)
+        return empty_state(selected)
     value = _read_json(path)
-    state = _empty(selected)
+    state = empty_state(selected)
+    state["workspace"] = state_workspace(value)
     for key in ("messages", "pending_actions", "structured_results"):
         items = value.get(key, [])
         if not isinstance(items, list):
@@ -119,20 +134,43 @@ def read_state(directory: Path, conversation_id: str | None = None) -> dict[str,
     return state
 
 
-def _snapshot(directory: Path) -> dict[str, Any]:
+def _snapshot(directory: Path, workspace: dict[str, Any] | None = None) -> dict[str, Any]:
     index = _index(directory)
     items = []
     for conversation_id in index["ids"]:
         state = read_state(directory, conversation_id)
+        if workspace is not None and state["workspace"] != workspace:
+            continue
         items.append({"id": conversation_id, "title": state["conversation_title"], "message_count": len(state["messages"]),
+                      "workspace": state["workspace"],
                       "updated_at": state["updated_at"] or state["created_at"]})
     items.sort(key=lambda item: item["updated_at"], reverse=True)
-    return {"items": items, "active_id": index["active_id"], "state": read_state(directory)}
+    active_id = index["active_id"]
+    if workspace is not None:
+        key = workspace_key(workspace)
+        remembered = index.get("workspace_active_ids", {})
+        ids = {item["id"] for item in items}
+        if key in remembered:
+            active_id = remembered[key]
+            if active_id is not None and active_id not in ids:
+                raise HTTPException(500, "项目选中对话与真实归属不一致")
+        elif active_id not in ids:
+            active_id = items[0]["id"] if items else None
+    state = read_state(directory, active_id) if active_id is not None else empty_state(None, workspace)
+    registered = index.get("workspaces", [])
+    workspaces = [{"kind": "personal"}, *(item for item in registered if item["kind"] != "personal")]
+    return {"items": items, "active_id": active_id, "state": state,
+            "workspace": workspace or state["workspace"], "workspaces": workspaces}
 
 
-async def list_conversations(directory: Path) -> dict[str, Any]:
+async def list_conversations(directory: Path, workspace: dict[str, Any] | None = None) -> dict[str, Any]:
     async with STATE_LOCK:
-        return _snapshot(directory)
+        return _snapshot(directory, normalize_workspace(workspace) if workspace is not None else None)
+
+
+async def get_conversation_state(directory: Path, conversation_id: str | None = None) -> dict[str, Any]:
+    async with STATE_LOCK:
+        return read_state(directory, conversation_id)
 
 
 async def read_conversation_states(directory: Path) -> list[dict[str, Any]]:
@@ -157,35 +195,63 @@ async def save_action_dismissals(directory: Path, conversation_id: str, action_i
         return read_state(directory, conversation_id)
 
 
-async def create_conversation(directory: Path) -> dict[str, Any]:
+def _remember_workspace(index: dict[str, Any], workspace: dict[str, Any], conversation_id: str | None) -> None:
+    index["workspace_active_ids"] = {**index.get("workspace_active_ids", {}), workspace_key(workspace): conversation_id}
+
+
+def _register_workspace(index: dict[str, Any], workspace: dict[str, Any]) -> None:
+    registered = index.get("workspaces", [])
+    if workspace not in registered:
+        index["workspaces"] = [*registered, workspace]
+
+
+async def register_workspace(directory: Path, workspace: dict[str, Any]) -> dict[str, Any]:
+    workspace = normalize_workspace(workspace)
+    async with STATE_LOCK:
+        index = _index(directory)
+        _register_workspace(index, workspace)
+        _write_json(directory / "conversations.json", index)
+        return _snapshot(directory, workspace)
+
+
+async def create_conversation(directory: Path, workspace: dict[str, Any] | None = None) -> dict[str, Any]:
     async with STATE_LOCK:
         index = _index(directory)
         conversation_id = uuid4().hex
-        state = _empty(conversation_id)
+        state = empty_state(conversation_id, workspace)
         state["created_at"] = datetime.now(timezone.utc).isoformat()
         path = _path(directory, conversation_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(path, state)
         try:
-            _write_json(directory / "conversations.json", {"version": 1, "ids": [*index["ids"], conversation_id], "active_id": conversation_id})
+            index["ids"] = [*index["ids"], conversation_id]
+            if workspace is None or index["active_id"] is None:
+                index["active_id"] = conversation_id
+            _remember_workspace(index, state["workspace"], conversation_id)
+            _register_workspace(index, state["workspace"])
+            _write_json(directory / "conversations.json", index)
         except Exception:
             path.unlink()
             raise
-        return _snapshot(directory)
+        return _snapshot(directory, state["workspace"] if workspace is not None else None)
 
 
-async def select_conversation(directory: Path, conversation_id: str) -> dict[str, Any]:
-    async with STATE_LOCK:
-        read_state(directory, conversation_id)
-        index = _index(directory)
-        index["active_id"] = conversation_id
-        _write_json(directory / "conversations.json", index)
-        return _snapshot(directory)
-
-
-async def delete_conversation(directory: Path, conversation_id: str) -> dict[str, Any]:
+async def select_conversation(directory: Path, conversation_id: str, workspace: dict[str, Any] | None = None) -> dict[str, Any]:
     async with STATE_LOCK:
         state = read_state(directory, conversation_id)
+        require_membership(state, workspace)
+        index = _index(directory)
+        if workspace is None:
+            index["active_id"] = conversation_id
+        _remember_workspace(index, state["workspace"], conversation_id)
+        _write_json(directory / "conversations.json", index)
+        return _snapshot(directory, state["workspace"] if workspace is not None else None)
+
+
+async def delete_conversation(directory: Path, conversation_id: str, workspace: dict[str, Any] | None = None) -> dict[str, Any]:
+    async with STATE_LOCK:
+        state = read_state(directory, conversation_id)
+        require_membership(state, workspace)
         if (directory, conversation_id) in _ACTIVE_OPERATIONS:
             raise HTTPException(status_code=409, detail="该对话正在处理，请完成或停止生成后再删除")
         if state["pending_actions"]:
@@ -195,6 +261,11 @@ async def delete_conversation(directory: Path, conversation_id: str) -> dict[str
         index["ids"] = remaining
         if index["active_id"] == conversation_id:
             index["active_id"] = remaining[0] if remaining else None
+        key = workspace_key(state["workspace"])
+        if index.get("workspace_active_ids", {}).get(key) == conversation_id:
+            project_remaining = [item["id"] for item in _snapshot(directory, state["workspace"])["items"]
+                                 if item["id"] != conversation_id]
+            _remember_workspace(index, state["workspace"], project_remaining[0] if project_remaining else None)
         path = _path(directory, conversation_id)
         # 先移出索引，文件删除失败时恢复索引并明确报错。
         previous = _index(directory)
@@ -204,15 +275,18 @@ async def delete_conversation(directory: Path, conversation_id: str) -> dict[str
         except OSError:
             _write_json(directory / "conversations.json", previous)
             raise
-        return _snapshot(directory)
+        return _snapshot(directory, state["workspace"] if workspace is not None else None)
 
 
 async def save_state(directory: Path, state: dict[str, Any]) -> None:
     async with STATE_LOCK:
         conversation_id = state["conversation_id"]
-        read_state(directory, conversation_id)
+        current = read_state(directory, conversation_id)
         if not conversation_id:
             raise HTTPException(status_code=409, detail="请先新建对话")
+        workspace = normalize_workspace(state["workspace"]) if "workspace" in state else current["workspace"]
+        require_membership(current, workspace)
+        state["workspace"] = current["workspace"]
         if not state["created_at"]:
             state["created_at"] = datetime.now(timezone.utc).isoformat()
         if len(state["messages"]) == 1 and state["messages"][0].get("role") == "user":
@@ -221,9 +295,12 @@ async def save_state(directory: Path, state: dict[str, Any]) -> None:
 
 
 @asynccontextmanager
-async def conversation_operation(directory: Path, conversation_id: str | None, *, cancellable: bool = False) -> AsyncIterator[dict[str, Any]]:
+async def conversation_operation(directory: Path, conversation_id: str | None, *, cancellable: bool = False,
+                                 workspace: dict[str, Any] | None = None) -> AsyncIterator[dict[str, Any]]:
     async with STATE_LOCK:
-        state = read_state(directory, conversation_id)
+        state = (_snapshot(directory, normalize_workspace(workspace))["state"]
+                 if conversation_id is None and workspace is not None else read_state(directory, conversation_id))
+        require_membership(state, workspace)
         if not state["conversation_id"]:
             raise HTTPException(status_code=409, detail="请先新建对话")
         key = (directory, state["conversation_id"])

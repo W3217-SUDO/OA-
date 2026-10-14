@@ -16,6 +16,7 @@ type Props = {
   busy: boolean;
   onOpenConversation: (id: string) => Promise<unknown>;
   onSkillsChanged?: () => Promise<unknown>;
+  label?: string;
 };
 
 function RichTextEditor({ value, onChange, onError }: { value: string; onChange: (value: string) => void; onError: (value: string) => void }) {
@@ -66,7 +67,7 @@ function RichTextEditor({ value, onChange, onError }: { value: string; onChange:
   </div>;
 }
 
-export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversation }: Props) {
+export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversation, label = "个人空间" }: Props) {
   const [page, setPage] = useState(1);
   const [refresh, setRefresh] = useState(0);
   const [space, setSpace] = useState<PersonalAiSpaceInfo | null>(null);
@@ -147,10 +148,10 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
     width={760}
     destroyOnHidden
     rootClassName="personal-ai-space-drawer"
-    title={<span className="personal-ai-space-title">{space ? `${space.owner_name}的个人空间` : "个人空间"}</span>}
+    title={<span className="personal-ai-space-title">{space ? `${space.owner_name}的${label}` : label}</span>}
   >
     <div className="personal-ai-space-content">
-      <div className="personal-ai-space-toolbar"><Tooltip title="刷新个人空间"><Button icon={<ReloadOutlined />} aria-label="刷新个人空间" loading={loading} onClick={() => setRefresh((value) => value + 1)} /></Tooltip>{files && <span>共 {files.total} 个文件</span>}</div>
+      <div className="personal-ai-space-toolbar"><Tooltip title={`刷新${label}`}><Button icon={<ReloadOutlined />} aria-label={`刷新${label}`} loading={loading} onClick={() => setRefresh((value) => value + 1)} /></Tooltip>{files && <span>共 {files.total} 个文件</span>}</div>
       {space && !space.configured && <Alert type="warning" showIcon title="OSS 尚未配置，不能保存新文件" />}
       {error && <Alert type="error" showIcon title="个人空间操作未完成" description={error} />}
       {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} busy={busy} onDownload={(file) => void download(file)} onView={(file) => void openPreview(file)} onEdit={(file) => void openEditor(file)} onConversation={(id) => void openConversation(id)} />}

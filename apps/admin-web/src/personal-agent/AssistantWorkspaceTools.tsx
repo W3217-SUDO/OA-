@@ -9,7 +9,7 @@ import { errorText, type Material, type ResponseMode } from "./types";
 import { MATERIAL_ACCEPT, type usePersonalWorkspace } from "./usePersonalWorkspace";
 import "./assistant-workspace-tools.css";
 
-export type AssistantWorkspaceToolsHandle = { openCases: () => void; openCaseMaterials: () => void; importSkills: () => void };
+export type AssistantWorkspaceToolsHandle = { importSkills: () => void };
 type Props = { workspace: ReturnType<typeof usePersonalWorkspace>; onOpenPersonalAiSpace: () => void; desktopWorkspace?: boolean };
 
 export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle, Props>(function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace, desktopWorkspace = false }, ref) {
@@ -40,7 +40,7 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
     try { await workspace.refreshSkills(); }
     catch (error) { message.error(errorText(error, "技能加载失败")); }
   };
-  useImperativeHandle(ref, () => ({ openCases: () => openPicker("case"), openCaseMaterials: () => openPicker("materials"), importSkills: () => void openSkills() }));
+  useImperativeHandle(ref, () => ({ importSkills: () => void openSkills() }));
 
   const controls = <div className="assistant-context-controls" role={mobile ? "dialog" : undefined} aria-label="对话工具" onKeyDown={(event) => {
     if (mobile && event.key === "Escape") { event.stopPropagation(); setToolsOpen(false); triggerRef.current?.focus(); }
@@ -61,9 +61,9 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
         options={[{ label: "快速", value: "fast" }, { label: "深度", value: "deep" }]}
         onChange={(value) => workspace.setResponseMode(value as ResponseMode)}
       />}
-      {!desktopWorkspace && canUseCases && <Tooltip title={workspace.selectedCase?.title || "关联案件"}>
-        <Button type="text" htmlType="button" className="assistant-case-select" icon={<FolderOpenOutlined />} disabled={busy || !!workspace.loadError} onClick={() => openPicker("case")}>
-          {workspace.selectedCase?.serial_no || "关联案件"}
+      {canUseCases && <Tooltip title={desktopWorkspace ? "选择案件及具体文件" : workspace.selectedCase?.title || "关联案件"}>
+        <Button type="text" htmlType="button" className="assistant-case-select" icon={<FolderOpenOutlined />} disabled={busy || !!workspace.loadError} onClick={() => openPicker(desktopWorkspace && workspace.selectedCase ? "materials" : "case")}>
+          {desktopWorkspace ? `案件文件${workspace.caseMaterials.length ? `（${workspace.caseMaterials.length}）` : ""}` : workspace.selectedCase?.serial_no || "关联案件"}
         </Button>
       </Tooltip>}
       {!desktopWorkspace && workspace.selectedCase && <Tooltip title="选择案件材料">
@@ -101,7 +101,7 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
       }} />
     </div>
     {(workspace.selectedCase || workspace.materials.length > 0 || workspace.caseMaterials.length > 0) && <div className="assistant-context-items">
-      {workspace.selectedCase && <span className="assistant-context-item is-case">
+      {workspace.selectedCase && (!desktopWorkspace || workspace.caseMaterials.length > 0) && <span className="assistant-context-item is-case">
         <FolderOpenOutlined />
         <button type="button" className="assistant-context-name" disabled={busy} title={workspace.selectedCase.title} onClick={() => openPicker("case")}>{workspace.selectedCase.serial_no}</button>
         <Tooltip title="取消案件关联"><Button type="text" htmlType="button" size="small" icon={<CloseOutlined />} disabled={busy} aria-label="取消案件关联" onClick={() => workspace.chooseCase(null)} /></Tooltip>
@@ -114,11 +114,15 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
         <button type="button" className="assistant-context-name" title={item.name} onClick={() => setPreviewMaterial(item)}>{item.name}</button>
         <Tooltip title={`移除${item.name}`}><Button type="text" htmlType="button" size="small" icon={<CloseOutlined />} disabled={busy} aria-label={`移除${item.name}`} onClick={() => {
           if (item.source === "upload") workspace.setMaterials(workspace.materials.filter((value) => value.id !== item.id));
-          else workspace.setCaseMaterials(workspace.caseMaterials.filter((value) => value.id !== item.id));
+          else {
+            const remaining = workspace.caseMaterials.filter((value) => value.id !== item.id);
+            if (desktopWorkspace && !remaining.length) workspace.chooseCase(null);
+            else workspace.setCaseMaterials(remaining);
+          }
         }} /></Tooltip>
       </span>)}
     </div>}
-    <CaseMaterialsPicker mode={pickerMode} onClose={() => setPickerMode(null)} selectedCase={workspace.selectedCase} onCase={workspace.chooseCase} selectedMaterials={workspace.caseMaterials} onMaterials={workspace.setCaseMaterials} privateCount={workspace.materials.length} />
+    <CaseMaterialsPicker mode={pickerMode} onClose={() => setPickerMode(null)} selectedCase={workspace.selectedCase} onCase={workspace.chooseCase} selectedMaterials={workspace.caseMaterials} onMaterials={workspace.setCaseMaterials} privateCount={workspace.materials.length} onSelection={desktopWorkspace ? workspace.chooseCaseMaterials : undefined} />
     <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} skills={workspace.skills} refresh={workspace.refreshSkills} onSelect={workspace.setSkillId} mode="import-only" scope="personal" />
     <MaterialPreview item={previewMaterial} onClose={() => setPreviewMaterial(null)} />
   </>;

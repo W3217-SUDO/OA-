@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { errorText, type WorkspaceMessage, type WorkspaceState } from "./types";
+import { errorText, type ConversationWorkspace, type WorkspaceMessage, type WorkspaceState } from "./types";
 
 type Activity = { progress: string; stopping: boolean };
 type Generation = { controller: AbortController; stopping: boolean; finished: boolean; done: Promise<WorkspaceState | null>; stopRequest?: Promise<WorkspaceState>; stopPromise?: Promise<void> };
-type MessageBody = { content: string; skill_id: string; attachment_ids: number[]; case_id?: number; document_ids: number[]; response_mode: string };
+type MessageBody = { content: string; skill_id: string; attachment_ids: number[]; case_id?: number; document_ids: number[]; response_mode: string; workspace?: ConversationWorkspace };
 const EMPTY: WorkspaceState = { messages: [], pending_actions: [], dismissed_action_ids: [] };
 
 export function useConversationRuntime() {
@@ -21,10 +21,14 @@ export function useConversationRuntime() {
     cache.current.set(id, next);
     if (active.current.conversation_id === id) { active.current = next; renderState(next); }
   };
-  const activate = (next: WorkspaceState) => {
+  const remember = (next: WorkspaceState) => {
     const id = next.conversation_id;
     const selected = id && requests.current.has(id) ? cache.current.get(id) || next : next;
     if (id) cache.current.set(id, selected);
+    return selected;
+  };
+  const activate = (next: WorkspaceState) => {
+    const selected = remember(next);
     active.current = selected;
     renderState(selected);
   };
@@ -147,5 +151,5 @@ export function useConversationRuntime() {
     if (!current) throw new Error("对话运行状态不存在");
     return current;
   };
-  return { state, get, activate, replace, generate, stop, forget, reset, activities, stopping: (id: string) => !!requests.current.get(id)?.stopping, running: (id?: string | null) => !!id && requests.current.has(id), anyRunning: () => !!requests.current.size };
+  return { state, get, activate, remember, replace, generate, stop, forget, reset, activities, stopping: (id: string) => !!requests.current.get(id)?.stopping, running: (id?: string | null) => !!id && requests.current.has(id), anyRunning: () => !!requests.current.size };
 }

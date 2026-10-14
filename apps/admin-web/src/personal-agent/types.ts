@@ -37,12 +37,14 @@ export type ConfirmationRecord = {
 };
 export type ConfirmationHistoryPage = { items: ConfirmationRecord[]; total: number; page: number; page_size: number };
 export type ConfirmationDetail = { item: ConfirmationRecord; action: PendingAction | null; conversation_id: string | null; conversation_title: string | null; can_decide: boolean; request_preview: AgentActionPreview | null };
-export type WorkspaceState = { conversation_id?: string | null; conversation_title?: string; messages: WorkspaceMessage[]; pending_actions: PendingAction[]; dismissed_action_ids: string[]; structured_results?: unknown[] };
-export type WorkspaceConversation = { id: string; title: string; message_count: number; updated_at: string };
-export type ConversationSnapshot = { items: WorkspaceConversation[]; active_id: string | null; state: WorkspaceState };
+export type WorkspaceState = { conversation_id?: string | null; conversation_title?: string; messages: WorkspaceMessage[]; pending_actions: PendingAction[]; dismissed_action_ids: string[]; structured_results?: unknown[]; workspace?: ConversationWorkspace };
+export type WorkspaceConversation = { id: string; title: string; message_count: number; updated_at: string; workspace?: ConversationWorkspace };
+export type WorkspaceProject = { kind: "personal" | "case"; case_id?: number; serial_no?: string; title: string; available: boolean; unavailable_reason?: string };
+export type ConversationSnapshot = { items: WorkspaceConversation[]; active_id: string | null; state: WorkspaceState; workspace?: ConversationWorkspace; workspaces?: WorkspaceProject[]; active_unavailable_reason?: string };
 export type WorkspaceCommand = { id: string; label: string; prompt: string; skill_id: string; icon: string };
 export type WorkspaceStatus = { ready: boolean; model: string; supports_response_modes?: boolean; commands: WorkspaceCommand[]; identity: { display_name?: string; department?: string; role?: string; permission_role?: string; staff_role?: string; position?: string } };
 export type WorkspaceCase = { id: number; serial_no: string; title: string };
+export type ConversationWorkspace = { kind: "personal"; case_id?: never } | { kind: "case"; case_id: number };
 export type WorkRecord = WorkspaceCase & { module?: string; customer: string; status: string; owner: string; deadline?: string; days_remaining?: number | null; priority?: string };
 export type WorkOverview = { todos: [string, number, number, string, number, number][]; my_tasks: WorkRecord[]; pending_contract_approvals: WorkRecord[]; pending_other_approvals: WorkRecord[]; visible_cases: WorkRecord[] };
 

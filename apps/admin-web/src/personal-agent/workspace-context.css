@@ -78,3 +78,124 @@
   .workspace-skill-row > .ant-space { margin-left: auto; max-width: 100%; }
   .workspace-skill-fields { grid-template-columns: 1fr; gap: 0; }
 }
+
+/* 两个项目空间选择弹窗独立适配，不改变原手机聊天或其他业务弹窗。 */
+@media (max-width: 991px) {
+  .assistant-case-materials-picker .ant-modal-title,
+  .assistant-case-workspace-picker .ant-modal-title {
+    padding-inline-end: 32px;
+    overflow-wrap: anywhere;
+  }
+
+  .assistant-case-materials-picker .ant-modal-body,
+  .assistant-case-workspace-picker .ant-modal-body {
+    min-width: 0;
+    min-height: 0;
+    max-height: calc(100dvh - 180px);
+    overflow: auto;
+    overscroll-behavior: contain;
+    scroll-padding-block: 8px;
+  }
+
+  .assistant-case-materials-picker .workspace-picker-content,
+  .assistant-case-workspace-picker .workspace-picker-content {
+    min-width: 0;
+    min-height: min(160px, 45dvh);
+    max-height: 55dvh;
+    overscroll-behavior: contain;
+    scroll-padding-block: 8px;
+  }
+
+  .assistant-case-materials-picker .workspace-section-heading {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .assistant-case-materials-picker .workspace-section-heading > span {
+    flex: 1 1 140px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .assistant-case-materials-picker .ant-modal-footer .ant-space {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .assistant-case-materials-picker .workspace-picker-error,
+  .assistant-case-workspace-picker .ant-alert {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 991px), (pointer: coarse) {
+  .assistant-case-materials-picker .ant-btn,
+  .assistant-case-workspace-picker .ant-btn,
+  .assistant-case-materials-picker .ant-modal-close,
+  .assistant-case-workspace-picker .ant-modal-close {
+    min-width: 44px;
+    min-height: 44px;
+    height: auto;
+    white-space: normal;
+  }
+
+  .assistant-case-materials-picker .ant-input-affix-wrapper,
+  .assistant-case-workspace-picker .ant-input-affix-wrapper {
+    min-height: 44px;
+  }
+
+  .assistant-case-materials-picker .workspace-case-option,
+  .assistant-case-workspace-picker .workspace-case-option {
+    min-height: 44px;
+  }
+
+  .assistant-case-materials-picker .workspace-case-option > div,
+  .assistant-case-workspace-picker .workspace-case-option > div {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .assistant-case-materials-picker .workspace-case-option > .anticon,
+  .assistant-case-workspace-picker .workspace-case-option > .anticon {
+    flex: none;
+  }
+
+  .assistant-case-materials-picker .ant-tree .ant-tree-treenode {
+    align-items: flex-start;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .assistant-case-materials-picker .ant-tree .ant-tree-checkbox,
+  .assistant-case-materials-picker .ant-tree .ant-tree-switcher {
+    display: inline-flex;
+    flex: 0 0 44px;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    line-height: 44px;
+  }
+
+  .assistant-case-materials-picker .ant-tree .ant-tree-node-content-wrapper {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    padding-block: 10px;
+    line-height: 22px;
+    white-space: normal;
+  }
+
+  .assistant-case-materials-picker .ant-tree .ant-tree-title {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .assistant-case-materials-picker .ant-tree .ant-tree-treenode-active .ant-tree-node-content-wrapper {
+    outline: 2px solid #0e7a5f;
+    outline-offset: -2px;
+  }
+}

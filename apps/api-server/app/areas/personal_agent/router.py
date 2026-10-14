@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -19,6 +19,7 @@ from app.areas.personal_agent.workspace import workspace_commands
 from app.areas.personal_agent.response_runtime import ResponseMode, supports_response_modes
 from app.areas.personal_agent.confirmation_history import read_confirmation_detail, read_confirmation_history, project_personal_actions
 from app.areas.personal_agent.action_presentation import dismiss_personal_actions
+from app.areas.personal_agent.project_workspaces import ProjectWorkspace, normalize_workspace
 from app.areas.personal_agent.ai_space import router as ai_space_router
 
 
@@ -34,6 +35,26 @@ class PersonalMessageInput(BaseModel):
     case_id: int | None = Field(default=None, ge=1)
     document_ids: list[int] = Field(default_factory=list, max_length=12)
     response_mode: ResponseMode = "fast"
+    workspace: ProjectWorkspace | None = None
+
+
+class PersonalConversationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    workspace: ProjectWorkspace | None = None
+
+
+class PersonalWorkspaceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    workspace: ProjectWorkspace
+
+
+def conversation_workspace(
+    workspace_kind: Literal["personal", "case"] | None = None,
+    workspace_case_id: Annotated[int | None, Query(ge=1)] = None,
+) -> dict | None:
+    if workspace_kind is None and workspace_case_id is None:
+        return None
+    return normalize_workspace({"kind": workspace_kind, "case_id": workspace_case_id})
 
 
 class PersonalActionDecisionInput(BaseModel):
@@ -144,8 +165,16 @@ async def personal_agent_workspace(identity: dict = Depends(current_identity), d
 
 
 @router.get(f"{settings.api_prefix}/personal-agent/conversations")
-async def personal_agent_conversations(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    return await manage_conversations(await personal_identity(identity, db), db=db)
+async def personal_agent_conversations(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+                                       workspace: dict | None = Depends(conversation_workspace)):
+    return await manage_conversations(await personal_identity(identity, db), db=db, workspace=workspace)
+
+
+@router.post(f"{settings.api_prefix}/personal-agent/workspaces")
+async def personal_agent_register_workspace(body: PersonalWorkspaceInput, identity: dict = Depends(current_identity),
+                                            db: AsyncSession = Depends(get_db)):
+    return await manage_conversations(await personal_identity(identity, db), "register", db=db,
+                                       workspace=body.workspace.model_dump(exclude_none=True))
 
 
 @router.get(f"{settings.api_prefix}/personal-agent/confirmation-history")
@@ -181,18 +210,22 @@ async def personal_agent_action_dismiss(conversation_id: str, body: PersonalActi
 
 
 @router.post(f"{settings.api_prefix}/personal-agent/conversations")
-async def personal_agent_create_conversation(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    return await manage_conversations(await personal_identity(identity, db), "create", db=db)
+async def personal_agent_create_conversation(body: PersonalConversationInput | None = None,
+                                              identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    workspace = body.workspace.model_dump(exclude_none=True) if body and body.workspace is not None else None
+    return await manage_conversations(await personal_identity(identity, db), "create", db=db, workspace=workspace)
 
 
 @router.post(f"{settings.api_prefix}/personal-agent/conversations/{{conversation_id}}/select")
-async def personal_agent_select_conversation(conversation_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    return await manage_conversations(await personal_identity(identity, db), "select", conversation_id, db=db)
+async def personal_agent_select_conversation(conversation_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+                                             workspace: dict | None = Depends(conversation_workspace)):
+    return await manage_conversations(await personal_identity(identity, db), "select", conversation_id, db=db, workspace=workspace)
 
 
 @router.delete(f"{settings.api_prefix}/personal-agent/conversations/{{conversation_id}}")
-async def personal_agent_delete_conversation(conversation_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    return await manage_conversations(await personal_identity(identity, db), "delete", conversation_id, db=db)
+async def personal_agent_delete_conversation(conversation_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+                                             workspace: dict | None = Depends(conversation_workspace)):
+    return await manage_conversations(await personal_identity(identity, db), "delete", conversation_id, db=db, workspace=workspace)
 
 
 @router.post(f"{settings.api_prefix}/personal-agent/conversations/{{conversation_id}}/stop")
@@ -220,7 +253,8 @@ async def personal_agent_message(body: PersonalMessageInput, identity: dict = De
 
     async def run() -> None:
         try:
-            result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta, conversation_id=body.conversation_id, skill_id=body.skill_id, attachment_ids=body.attachment_ids, case_id=body.case_id, document_ids=body.document_ids, response_mode=body.response_mode, on_progress=on_progress), timeout=180)
+            result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta, conversation_id=body.conversation_id, skill_id=body.skill_id, attachment_ids=body.attachment_ids, case_id=body.case_id, document_ids=body.document_ids, response_mode=body.response_mode, on_progress=on_progress,
+                                                               workspace=body.workspace.model_dump(exclude_none=True) if body.workspace is not None else None), timeout=180)
             await queue.put({"type": "state", "state": result["state"]})
         except TimeoutError:
             await queue.put({"type": "error", "detail": "个人智能体本轮处理超时，请查看待确认请求后继续"})

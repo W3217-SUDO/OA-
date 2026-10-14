@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.areas.personal_agent import conversations
+from app.areas.personal_agent.project_workspaces import require_state_access
 from app.areas.personal_agent.confirmation_history import PERSONAL_ACTION_MODULE, project_personal_actions
 from app.agent_mcp.service import ACTION_MODULE
 from app.models import BusinessRecord
@@ -14,6 +15,7 @@ async def dismiss_personal_actions(directory, conversation_id, action_ids, ident
             or len(set(action_ids)) != len(action_ids)):
         raise HTTPException(422, "收起操作需要1至30个不重复的真实操作编号")
     async with conversations.conversation_operation(directory, conversation_id) as state:
+        await require_state_access(state, identity, db)
         actions = {item.get("id"): item for item in state["pending_actions"] if isinstance(item, dict)}
         if not set(action_ids).issubset(actions):
             raise HTTPException(404, "操作卡不存在或已从原会话处理")

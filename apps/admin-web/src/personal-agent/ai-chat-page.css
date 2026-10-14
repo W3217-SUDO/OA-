@@ -81,7 +81,7 @@
 @media (min-width: 992px) {
   .ai-chat-page.is-desktop-workspace {
     --workspace-control-size: 36px;
-    --workspace-content-width: 760px;
+    --workspace-content-width: 1000px;
     --workspace-text: #202321;
     --workspace-muted: #626963;
     --workspace-border: #e4e7e4;
@@ -208,6 +208,148 @@
     border-color: #dde3de;
     background: #e8ece8;
     font-weight: 500;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-projects {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project-heading {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    color: var(--workspace-muted);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 20px;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project-heading > .ant-btn:not(.ant-btn-icon-only) {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project-heading .ant-btn-icon-only {
+    flex: 0 0 var(--workspace-control-size);
+    justify-content: center;
+    width: var(--workspace-control-size);
+    min-width: var(--workspace-control-size);
+    padding: 0;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    min-height: 0;
+    max-height: min(28dvh, 224px);
+    margin: 0;
+    padding: 2px 2px 8px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd2cb transparent;
+    scroll-padding-block: 8px;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-sidebar .assistant-workspace-project {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: var(--workspace-control-size);
+    height: auto;
+    padding: 6px 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--workspace-text);
+    font: inherit;
+    font-size: 13px;
+    line-height: 20px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-sidebar .assistant-workspace-project .anticon {
+    flex: none;
+    color: var(--workspace-muted);
+    font-size: 16px;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project-label {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project-label > b,
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project-label > span {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    font-weight: inherit;
+    line-height: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project-label > span {
+    color: var(--workspace-muted);
+    font-size: 12px;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project:not(:disabled):hover {
+    background: var(--workspace-hover);
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-sidebar .assistant-workspace-project[aria-current="page"],
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-sidebar .assistant-workspace-personal-entry[aria-current="page"] {
+    border-color: #cbded2;
+    background: #e0eee7;
+    box-shadow: inset 2px 0 0 var(--workspace-accent);
+    color: #175d45;
+    font-weight: 600;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-sidebar .assistant-workspace-project[aria-current="page"]:not(:disabled):not(.ant-btn-disabled):hover,
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-sidebar .assistant-workspace-personal-entry[aria-current="page"]:not(:disabled):not(.ant-btn-disabled):hover {
+    border-color: #bcd5c6;
+    background: #d7e8de;
+    color: #175d45;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project:focus-visible {
+    outline: 2px solid var(--workspace-accent);
+    outline-offset: -2px;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project:disabled {
+    background: #f3f4f3;
+    color: #858e86;
+    opacity: 1;
+    cursor: not-allowed;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project:disabled .assistant-workspace-project-label > span {
+    color: inherit;
   }
 
   .ai-chat-page.is-desktop-workspace .assistant-workspace-history {

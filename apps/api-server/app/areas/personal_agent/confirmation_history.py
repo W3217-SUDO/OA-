@@ -13,6 +13,7 @@ from app.agent_mcp.safety import safe_result
 from app.agent_mcp.service import ACTION_MODULE, STATUS_NAMES
 from app.models import BusinessRecord, WorkflowEvent
 from app.areas.personal_agent import conversations
+from app.areas.personal_agent.project_workspaces import state_workspace, workspace_catalog, workspace_key
 
 
 PERSONAL_ACTION_MODULE = "personal_agent_action"
@@ -189,11 +190,17 @@ def _history_item(record, decision_event):
     })
 
 
-async def _action_contexts(directory, identity):
+async def _action_contexts(directory, identity, db):
     contexts = {}
     if directory is None:
         return contexts
-    for state in await conversations.read_conversation_states(directory):
+    states = await conversations.read_conversation_states(directory)
+    scopes = {workspace_key(state_workspace(state)): state_workspace(state) for state in states}
+    catalog = await workspace_catalog(scopes.values(), identity, db)
+    visible = {workspace_key(item) for item in catalog if item["available"]}
+    for state in states:
+        if workspace_key(state_workspace(state)) not in visible:
+            continue
         for action in state["pending_actions"]:
             if not isinstance(action, dict) or action.get("type") not in {"mcp.call", "create_task", "approve_contract"}:
                 continue
@@ -242,7 +249,7 @@ async def read_confirmation_history(identity, db, *, status="", page=1, page_siz
         BusinessRecord.status.in_([name for name, value in STATUS_NAMES.items()
                                   if value == status or (not status and value in HISTORY_STATUSES)]),
     ]
-    contexts = await _action_contexts(directory, identity)
+    contexts = await _action_contexts(directory, identity, db)
     legacy = []
     personal_ids = ["PA-" + key[1] for key in contexts if key[0] == "personal_action"]
     if personal_ids and status in ("", "pending"):
@@ -288,7 +295,7 @@ async def read_confirmation_detail(source, request_id, identity, db, *, director
     ).execution_options(populate_existing=True))
     if record is not None and record.owner != identity["username"]:
         raise HTTPException(403, "确认请求不属于当前账号")
-    contexts = await _action_contexts(directory, identity)
+    contexts = await _action_contexts(directory, identity, db)
     context = contexts.get((source, request_id))
     if record is None:
         if source != "personal_action" or context is None or context[1].get("status") != "pending":

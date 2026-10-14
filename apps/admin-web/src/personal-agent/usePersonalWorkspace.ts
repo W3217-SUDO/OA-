@@ -1,64 +1,61 @@
 import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { message } from "antd";
 import { api } from "../api";
-import { DEFAULT_AGENT_SKILL } from "../agentSkillRouting";
 import { aiWordDocumentName, isAiWordGenerationRequest, isUsableAiDocumentContent } from "../legal/constants";
 import { confirmCaseAgentDocument } from "../legal/services/agentDocumentConfirmation";
 import { confirmPersonalAiDocument } from "./personalAiDocumentConfirmation";
 import { usePersonalConversations } from "./usePersonalConversations";
 import { useConversationRuntime } from "./useConversationRuntime";
-import { errorText, workspaceDocumentSaveTarget, type ConfirmationDetail, type ConversationSnapshot, type DecisionFailure, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
+import { EMPTY_PERSONAL_DRAFT as EMPTY_DRAFT, usePersonalDrafts } from "./usePersonalDrafts";
+import { conversationDraftKey, conversationWorkspaceKey, PERSONAL_CONVERSATION_WORKSPACE, requireConversationWorkspace } from "./conversationWorkspace";
+import { errorText, workspaceDocumentSaveTarget, type ConfirmationDetail, type ConversationWorkspace, type DecisionFailure, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
 
 const SUPPORTED_FILE = /\.(pdf|docx|xlsx|txt|png|jpe?g)$/i;
 export const MATERIAL_ACCEPT = ".pdf,.docx,.xlsx,.txt,.png,.jpg,.jpeg";
-type Draft = { input: string; skillId: string; responseMode: ResponseMode; materials: Material[]; caseMaterials: Material[]; selectedCase: WorkspaceCase | null; savedDocuments: Record<number, string>; decisionResult?: unknown; decisionFailures: Record<string, DecisionFailure> };
-const EMPTY_DRAFT: Draft = { input: "", skillId: DEFAULT_AGENT_SKILL, responseMode: "fast", materials: [], caseMaterials: [], selectedCase: null, savedDocuments: {}, decisionFailures: {} };
+type Draft = typeof EMPTY_DRAFT;
 
 export function usePersonalWorkspace() {
   const [status, setStatus] = useState<WorkspaceStatus | null>(null);
   const [skills, setSkills] = useState<WorkspaceSkill[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const [initialLoading, setLoading] = useState(true);
+  const [initialLoadError, setLoadError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [decisionId, setDecisionId] = useState("");
   const [dismissalId, setDismissalId] = useState("");
   const [documentRevision, setDocumentRevision] = useState(0);
   const [dismissedByConversation, setDismissedByConversation] = useState<Record<string, string[]>>({});
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const draftsRef = useRef<Record<string, Draft>>({});
+  const drafts = usePersonalDrafts();
+  const draftsRef = drafts.ref;
   const uploadLock = useRef(false);
   const decisionLock = useRef(false);
   const dismissalLock = useRef(false);
   const sendStarts = useRef(new Set<string>());
   const documentConfirmations = useRef(new Set<string>());
   const runtime = useConversationRuntime();
+  const conversations = usePersonalConversations(runtime.activate, runtime.remember);
+  const loading = initialLoading || conversations.loading;
+  const loadError = initialLoadError || conversations.error;
   const state = runtime.state;
   const id = state.conversation_id || "";
-  const draft = drafts[id] || EMPTY_DRAFT;
+  const draftKey = conversationDraftKey(id, conversations.workspace);
+  const draft = drafts.items[draftKey] || EMPTY_DRAFT;
   const { input, skillId, responseMode, materials, caseMaterials, selectedCase, savedDocuments, decisionResult, decisionFailures } = draft;
   const sending = !!runtime.activities[id];
   const stopping = !!runtime.activities[id]?.stopping;
-  const conversations = usePersonalConversations(runtime.activate);
-  const updateDraft = <K extends keyof Draft>(target: string, key: K, value: SetStateAction<Draft[K]>) => {
-    const current = draftsRef.current;
-    const previous = current[target] || EMPTY_DRAFT;
-    const next = typeof value === "function" ? (value as (old: Draft[K]) => Draft[K])(previous[key]) : value;
-    draftsRef.current = { ...current, [target]: { ...previous, [key]: next } };
-    setDrafts(draftsRef.current);
-  };
-  const setInput = (value: SetStateAction<string>) => updateDraft(id, "input", value);
+  const updateDraft = drafts.update;
+  const setInput = (value: SetStateAction<string>) => updateDraft(draftKey, "input", value);
   const updateDecisionFailure = (target: string, actionId: string, failure: DecisionFailure | undefined) => updateDraft(target, "decisionFailures", (current) => {
     const next = { ...current };
     if (failure) next[actionId] = failure;
     else delete next[actionId];
     return next;
   });
-  const setSkillId = (value: string) => updateDraft(id, "skillId", value);
-  const setResponseMode = (value: ResponseMode) => updateDraft(id, "responseMode", value);
-  const setMaterials = (value: SetStateAction<Material[]>) => updateDraft(id, "materials", value);
-  const setCaseMaterials = (value: SetStateAction<Material[]>) => updateDraft(id, "caseMaterials", value);
+  const setSkillId = (value: string) => updateDraft(draftKey, "skillId", value);
+  const setResponseMode = (value: ResponseMode) => updateDraft(draftKey, "responseMode", value);
+  const setMaterials = (value: SetStateAction<Material[]>) => updateDraft(draftKey, "materials", value);
+  const setCaseMaterials = (value: SetStateAction<Material[]>) => updateDraft(draftKey, "caseMaterials", value);
   const changeConversation = async (operation: () => Promise<WorkspaceState>) => {
-    if (uploadLock.current || decisionLock.current || dismissalLock.current || loading || sendStarts.current.has("")) throw new Error("请先完成当前文件、确认或收起操作，再切换对话");
+    if (uploadLock.current || decisionLock.current || dismissalLock.current || loading || sendStarts.current.has(draftKey)) throw new Error("请先完成当前文件、确认或收起操作，再切换对话");
     // 返回切换后的会话，便于调用方紧接着把问题发给这条对话。
     return await operation();
   };
@@ -66,16 +63,18 @@ export function usePersonalWorkspace() {
   const refreshSkills = async () => {
     const { data } = await api.get<{ items: WorkspaceSkill[] }>("/agent/skills");
     setSkills(data.items);
-    draftsRef.current = Object.fromEntries(Object.entries(draftsRef.current).map(([key, value]) => [key, { ...value, skillId: data.items.some((item) => item.id === value.skillId && item.available) ? value.skillId : DEFAULT_AGENT_SKILL }]));
-    setDrafts(draftsRef.current);
+    drafts.refreshSkills(data.items);
   };
   const load = async () => {
     if (runtime.anyRunning()) { message.warning("请先停止正在运行的对话再刷新"); return; }
     setLoading(true); setLoadError("");
     try {
       runtime.reset();
-      const [statusResponse] = await Promise.all([api.get<WorkspaceStatus>("/personal-agent/status"), conversations.load(), refreshSkills()]);
-      setStatus(statusResponse.data);
+      const [globalResult] = await Promise.allSettled([
+        Promise.all([api.get<WorkspaceStatus>("/personal-agent/status"), refreshSkills()]).then(([response]) => setStatus(response.data)),
+        conversations.load(),
+      ]);
+      if (globalResult.status === "rejected") throw globalResult.reason;
     } catch (error) { setLoadError(errorText(error, "工作台加载失败")); }
     finally { setLoading(false); }
   };
@@ -98,7 +97,8 @@ export function usePersonalWorkspace() {
     finally { uploadLock.current = false; setUploading(false); }
   };
 
-  const chooseCase = (item: WorkspaceCase | null) => { updateDraft(id, "selectedCase", item); setCaseMaterials([]); };
+  const chooseCase = (item: WorkspaceCase | null) => { updateDraft(draftKey, "selectedCase", item); setCaseMaterials([]); };
+  const chooseCaseMaterials = (item: WorkspaceCase, materials: Material[]) => drafts.chooseMaterials(draftKey, item, materials);
   const saveWord = async (item: WorkspaceMessage, index: number, target = id) => {
     const current = runtime.get(target);
     const source = current.messages[index];
@@ -125,38 +125,39 @@ export function usePersonalWorkspace() {
   // override 用于工作台提醒和快捷问题：它们把完整问题直接交给智能体，不经过输入框。
   // target 用于把问题发给一条刚建的对话，避免沿用闭包里的旧会话。
   const send = async (override?: string, target?: WorkspaceState) => {
+    const view = conversations.capture();
     const targetId = target?.conversation_id || id;
-    const targetDraft = draftsRef.current[targetId] || EMPTY_DRAFT;
+    const targetKey = conversationDraftKey(targetId, view.workspace);
+    const targetDraft = draftsRef.current[targetKey] || EMPTY_DRAFT;
     const { skillId, responseMode, materials, caseMaterials, selectedCase } = targetDraft;
     const content = (override ?? targetDraft.input).trim();
-    if (!content || runtime.stopping(targetId) || sendStarts.current.has(targetId) || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
+    if (!content || runtime.stopping(targetId) || sendStarts.current.has(targetKey) || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
     const skill = skills.find((item) => item.id === skillId && item.available);
     if (!skill) { message.error("所选技能已停用或不存在，请重新选择"); return; }
     // 只锁住启动阶段；模型生成期间允许其他对话独立发送。
-    sendStarts.current.add(targetId);
-    let written = targetId;
+    sendStarts.current.add(targetKey);
+    let written = targetKey;
     let starting = true;
     let beforeSend: Draft | undefined;
     let consumedDraft: Draft | undefined;
     try {
+      if (view.workspace && targetId && conversationWorkspaceKey(requireConversationWorkspace((target || runtime.get(targetId)).workspace)) !== conversationWorkspaceKey(view.workspace)) throw new Error("目标对话不属于当前空间，请重新选择后发送");
       if (runtime.running(targetId)) await runtime.stop(targetId);
-      const conversation = targetId ? runtime.get(targetId) : await conversations.create();
+      const conversation = targetId ? runtime.get(targetId) : await conversations.create(view);
       written = conversation.conversation_id!;
       if (!targetId) {
-        const current = { ...draftsRef.current, [written]: draftsRef.current[""] || targetDraft };
-        delete current[""];
-        draftsRef.current = current;
-        setDrafts(current);
+        drafts.move(targetKey, written);
       }
-      const metadata = { skill_name: skill.name, case_id: selectedCase?.id, case_no: selectedCase?.serial_no };
-      const generation = runtime.generate(conversation, { content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: selectedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast" }, { role: "user", content, ...metadata, attachments: [...materials, ...caseMaterials] }, metadata);
+      const referencedCase = view.workspace && !caseMaterials.length ? null : selectedCase;
+      const metadata = { skill_name: skill.name, case_id: referencedCase?.id, case_no: referencedCase?.serial_no };
+      const generation = runtime.generate(conversation, { content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: referencedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast", ...(view.workspace ? { workspace: view.workspace } : {}) }, { role: "user", content, ...metadata, attachments: [...materials, ...caseMaterials] }, metadata);
       beforeSend = draftsRef.current[written] || EMPTY_DRAFT;
       // 只消费本轮快照，停止等待期间的新输入和新材料留给下一轮。
       if (override === undefined) updateDraft(written, "input", (current) => current === targetDraft.input ? "" : current);
       updateDraft(written, "materials", (current) => current.filter((item) => !materials.some((sent) => sent.id === item.id)));
       updateDraft(written, "caseMaterials", (current) => current.filter((item) => !caseMaterials.some((sent) => sent.id === item.id)));
       consumedDraft = draftsRef.current[written];
-      sendStarts.current.delete(targetId);
+      sendStarts.current.delete(targetKey);
       starting = false;
       const completedState = await generation;
       const finalMessage = completedState?.messages.at(-1);
@@ -171,8 +172,8 @@ export function usePersonalWorkspace() {
       }
       message.error(errorText(error, "智能体处理失败"));
     } finally {
-      if (starting) sendStarts.current.delete(targetId);
-      try { await conversations.refresh(); } catch (error) { message.error(errorText(error, "对话列表刷新失败")); }
+      if (starting) sendStarts.current.delete(targetKey);
+      try { await conversations.refresh(view); } catch (error) { message.error(errorText(error, "对话列表刷新失败")); }
     }
   };
   const stop = async () => { try { await runtime.stop(id); } catch (error) { message.error(errorText(error, "停止生成失败")); } };
@@ -196,7 +197,7 @@ export function usePersonalWorkspace() {
         updateDecisionFailure(id, action.id, { actionId: action.id, message: failureMessage, state: "syncing" });
         // 决定可能已在服务端落库；只读回查会话，不重试写入或把失败当成功。
         try {
-          const { data } = await api.get<ConversationSnapshot>("/personal-agent/conversations", { timeout: 15000 });
+          const data = await conversations.read(conversations.capture(), 15000);
           if (data.state.conversation_id !== id) throw new Error("服务端当前对话已变化，请刷新核对原操作状态");
           runtime.replace(data.state);
           updateDecisionFailure(id, action.id, { actionId: action.id, message: failureMessage, state: "verified" });
@@ -248,9 +249,19 @@ export function usePersonalWorkspace() {
     const failure = draftsRef.current[id]?.decisionFailures[actionId];
     if (failure) updateDecisionFailure(id, actionId, { ...failure, hidden: true });
   };
-  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, savedDocuments, documentRevision, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation,
+  const selectWorkspace = async (workspace: ConversationWorkspace) => {
+    if (uploadLock.current || decisionLock.current || dismissalLock.current || conversations.locked() || loading) throw new Error("请先完成当前文件、确认或切换操作，再打开空间");
+    if (workspace.kind === "case" && loadError) throw new Error("工作区加载失败，请先重试或返回个人空间");
+    return conversations.openWorkspace(workspace, true);
+  };
+  const setProjectMode = async (enabled: boolean) => {
+    try { await conversations.openWorkspace(enabled ? PERSONAL_CONVERSATION_WORKSPACE : undefined); }
+    catch (error) { message.error(errorText(error, "空间切换失败")); }
+  };
+  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, chooseCaseMaterials, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, savedDocuments, documentRevision, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation, draftKey,
+    currentWorkspace: conversations.workspace, workspaceProjects: conversations.projects, selectWorkspace, setProjectMode,
     conversations: conversations.items, conversationBusy: conversations.busy, runningIds: Object.keys(runtime.activities),
-    createConversation: () => changeConversation(conversations.create), selectConversation: (target: string) => target === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(target)),
-    deleteConversation: (target: string) => changeConversation(async () => { const next = await conversations.remove(target); runtime.forget(target); const updated = { ...draftsRef.current }; delete updated[target]; draftsRef.current = updated; setDrafts(updated); return next; }),
+    createConversation: () => changeConversation(() => conversations.create()), selectConversation: (target: string) => target === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(target)),
+    deleteConversation: (target: string) => changeConversation(async () => { const next = await conversations.remove(target); runtime.forget(target); drafts.remove(target); return next; }),
   };
 }
