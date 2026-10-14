@@ -182,9 +182,9 @@ async def delete_space_file(file_id, expected_sha256, identity, db):
         raise HTTPException(409, "文件存在不同的删除计划，请人工核对")
     result = {"id": file_id, "status": "deleted", "blob_status": "absent"}
     if record.status == "deleted":
-        if previous is None or previous.get("blob_status") != "absent":
+        if previous is None or previous.get("blob_status") not in {"absent", "retained"}:
             raise HTTPException(409, "文件墓碑缺少已确认的删除证据，请人工核对")
-        return result
+        return {"id": file_id, "status": "deleted", "blob_status": previous.get("blob_status")}
     if record.status not in {"available", *DELETE_STATUSES}:
         raise HTTPException(409, "仅可删除已完成保存的个人文件或显式重试原删除计划")
     attachment, (bucket, key) = await _binding(db, record, user)

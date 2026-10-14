@@ -408,38 +408,22 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         self.assertEqual(len(self.objects), 3)
         self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 3)
 
-    async def test_personal_delete_failure_keeps_plan_attachment_and_explicit_retry(self):
-        from app.areas.personal_agent import ai_space_deletion
-
+    async def test_personal_delete_is_logical_and_retains_attachment_for_cleanup(self):
         original = await self.save()
         file = original["file"]
         original_path = original["attachment"].path
         identity = await self.identity()
-        for uncertain, status in ((False, "delete_failed"), (True, "delete_uncertain")):
-            with self.subTest(status=status), patch.object(ai_space_deletion, "delete_personal_blob", new=AsyncMock(
-                    side_effect=ai_space_deletion.BlobDeleteFailure("隔离删除未确认", uncertain=uncertain))) as delete:
-                with self.assertRaises(HTTPException) as raised:
-                    await ai_space_deletion.delete_space_file(file["id"], file["sha256"], identity, self.db)
-                self.assertEqual(raised.exception.status_code, 502)
-                self.assertEqual(raised.exception.detail["status"], status)
-                delete.assert_awaited_once()
-            # 回滚会过期测试账号，认证替身不能隐式发起异步 ORM 读取。
-            await self.db.refresh(self.actor)
-            record = await self.db.scalar(select(BusinessRecord).where(
-                BusinessRecord.module == FILE_MODULE, BusinessRecord.serial_no == "AIGF-" + file["id"],
-            ).execution_options(populate_existing=True))
-            self.assertEqual(record.status, status)
-            self.assertEqual(record.data["delete_plan"]["blob_status"], "pending")
-            self.assertEqual(record.data["delete_plan"]["path"], original_path)
-            listing = await list_space_files(identity, self.db, page=1, page_size=20)
-            self.assertEqual(listing["items"][0]["status"], status)
-            self.assertTrue(listing["items"][0]["can_delete"])
-            for read in (space_file_record, space_file_bytes):
-                with self.assertRaises(HTTPException) as raised:
-                    await read(file["id"], identity, self.db)
-                self.assertEqual(raised.exception.status_code, 409)
+        result = await ai_space_deletion.delete_space_file(file["id"], file["sha256"], identity, self.db)
+        self.assertEqual(result, {"id": file["id"], "status": "deleted", "blob_status": "retained"})
+        record = await self.db.scalar(select(BusinessRecord).where(
+            BusinessRecord.module == FILE_MODULE, BusinessRecord.serial_no == "AIGF-" + file["id"],
+        ).execution_options(populate_existing=True))
+        self.assertEqual(record.status, "deleted")
+        self.assertEqual(record.data["delete_plan"]["blob_status"], "retained")
         self.assertEqual(self.objects[original_path], b"actual-xls-content")
         self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 1)
+        listing = await list_space_files(identity, self.db, page=1, page_size=20)
+        self.assertEqual(listing["total"], 0)
 
     async def test_office_new_and_unchanged_versions_project_owner_capability_and_link_in_final_transaction(self):
         from app.areas.personal_agent import dingtalk_office_service as office
