@@ -127,6 +127,27 @@ async def _check_space(session):
         raise HTTPException(409, "钉钉空间归属已变化，未继续文件操作")
 
 
+async def _reshare_deleted_dentry(record_id, binding, session, item, content, db):
+    """Recreate only a confirmed-missing DingTalk dentry from the OA source."""
+    extension = binding["office_extension"]
+    remote_name = item["name"][:-(len(extension) + 1)][:150] + "-" + session["id"] + "." + extension
+    dentry = await office.upload_copy(session["space_id"], binding["union_id"], remote_name, content)
+    office.identifier(dentry.get("id"))
+    refreshed = {**session, "dentry_id": dentry["id"], "editor_url": None, "phase": "copying"}
+    record = await _locked(db, record_id)
+    current = _session(record, binding, session["id"])
+    await _store(db, record, refreshed if current.get("phase") == "copying" else {**current, **refreshed})
+    checked = await office.dentry_info(refreshed)
+    copied = await office.download_version(refreshed, checked["version"])
+    if hashlib.sha256(copied).hexdigest() != session["source_sha256"]:
+        raise HTTPException(409, "钉钉副本回读摘要不一致，原 Office 未修改")
+    ready = {**refreshed, "phase": "ready", "copied_version": checked["version"]}
+    record = await _locked(db, record_id)
+    current = _session(record, binding, session["id"])
+    await _store(db, record, ready if current.get("phase") == "copying" else {**current, **ready})
+    return ready
+
+
 async def _uncertain(db, record_id, session_id, phase, binding, error):
     try:
         await db.rollback()
@@ -163,6 +184,23 @@ async def start_office_edit(file_id, expected_sha256, identity, db):
         cached_url = session.get("editor_url")
         await db.commit()
         await _check_space(session)
+        try:
+            await office.dentry_info(session)
+        except HTTPException as error:
+            if error.status_code != 404:
+                raise
+            # The space still exists, but the user removed its dentry.
+            # Re-share the current OA bytes before issuing another URL.
+            try:
+                session = await _reshare_deleted_dentry(record_id, binding, session, item, content, db)
+            except BaseException as reshare_error:
+                await _uncertain(db, record_id, session["id"], "copying", binding, reshare_error)
+                raise
+            url = await office.editor_url(session)
+            record = await _locked(db, record_id)
+            current = _session(record, binding, session["id"])
+            await _store(db, record, {**current, "editor_url": url})
+            return {"session_id": session["id"], "url": url, "name": item["name"], "reshared": True}
         if isinstance(cached_url, str) and cached_url:
             return {"session_id": session["id"], "url": office.provider_url(cached_url, editor=True), "name": item["name"]}
         url = await office.editor_url(session)

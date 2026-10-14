@@ -76,6 +76,13 @@ async def storage_request(method: str, path: str, union_id: str, body: dict | No
         if not 200 <= response.status_code < 300:
             error = response.json()
             code = str(error.get("code", "")) if isinstance(error, dict) else ""
+            normalized_code = code.lower()
+            # DingTalk returns a provider-specific 400 for a dentry that the
+            # user deleted from the editor.  Surface it as a recoverable
+            # missing resource so the service can re-share the OA source.
+            missing_codes = {"paramerror.dentryid", "paramerror.dentry", "notfound", "filenotfound", "dentrynotfound"}
+            if response.status_code in {404, 410} or normalized_code in missing_codes:
+                raise HTTPException(404, "钉钉编辑副本不存在，请重新共享")
             # 不回传包含临时签名或用户资料的供应商原始响应。
             safe_code = code if re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", code) else "provider_error"
             raise HTTPException(403 if response.status_code == 403 else 502,

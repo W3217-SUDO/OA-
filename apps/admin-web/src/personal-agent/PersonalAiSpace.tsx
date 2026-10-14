@@ -69,6 +69,21 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
     catch (failure) { setError(errorText(failure, "文件下载失败")); }
     finally { setDownloadingId(""); }
   };
+  const previewOffice = async (file: PersonalAiFile) => {
+    if (editorBusy || officeOperation.current || deleteLock.current || previewFileId) return;
+    const controller = new AbortController();
+    fileRead.current?.abort(); fileRead.current = controller;
+    setError(""); setPreviewFileId(file.id);
+    try {
+      const { data } = await api.get<Blob>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/download`, { responseType: "blob", signal: controller.signal });
+      if (controller.signal.aborted) return;
+      const kind = /\.(xlsx|xls)$/i.test(file.name) ? "xlsx" : "docx";
+      setPreview({ name: file.name, kind, blob: data });
+    } catch (failure) {
+      if (!controller.signal.aborted) setError(errorText(failure, "文件在线查看加载失败"));
+      setPreviewFileId("");
+    }
+  };
   const openEditor = async (file: PersonalAiFile) => {
     if (editorBusy || officeOperation.current || deleteLock.current) return;
     fileRead.current?.abort();
@@ -120,7 +135,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       <div className="personal-ai-space-toolbar"><Tooltip title={`刷新${label}`}><Button icon={<ReloadOutlined />} aria-label={`刷新${label}`} loading={loading} onClick={() => setRefresh((value) => value + 1)} /></Tooltip>{files && <span>共 {files.total} 个文件</span>}</div>
       {space && !space.configured && <Alert type="warning" showIcon title="OSS 尚未配置，不能保存新文件" />}
       {error && <Alert type="error" showIcon title="个人空间操作未完成" description={error} />}
-      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} deletingId={deleting ? deleteTarget?.id : undefined} latestSavedId={latestSavedId} busy={busy || editorBusy || officeBusy || deleting} onDownload={(file) => void download(file)} onEdit={(file) => void openEditor(file)} onDelete={(file) => { if (!officeOperation.current && !editorBusy && !deleteLock.current) { setDeleteError(""); setDeleteTarget(file); } }} onConversation={(id) => void openConversation(id)} />}
+      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} deletingId={deleting ? deleteTarget?.id : undefined} latestSavedId={latestSavedId} busy={busy || editorBusy || officeBusy || deleting || !!previewFileId} onDownload={(file) => void download(file)} onPreview={(file) => void previewOffice(file)} onEdit={(file) => void openEditor(file)} onDelete={(file) => { if (!officeOperation.current && !editorBusy && !deleteLock.current) { setDeleteError(""); setDeleteTarget(file); } }} onConversation={(id) => void openConversation(id)} />}
       {files && files.total > 0 && <Pagination simple current={files.page} pageSize={files.page_size} total={files.total} disabled={loading} showSizeChanger={false} onChange={setPage} />}
     </div>
     <Modal open={!!preview} title={`在线查看：${preview?.name || ""}`} width={preview?.kind === "pdf" ? 1000 : 860} footer={<Button onClick={closePreview}>关闭</Button>} onCancel={closePreview} destroyOnHidden>
