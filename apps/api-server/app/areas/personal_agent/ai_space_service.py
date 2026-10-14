@@ -116,6 +116,41 @@ async def space_file_bytes(file_id, identity, db):
     return item, content
 
 
+async def space_file_text(file_id, identity, db):
+    from app.core.formatters import _case_ai_draft_text
+
+    await space_file_record(file_id, identity, db)
+    item, content = await space_file_bytes(file_id, identity, db)
+    suffix = str(item["name"]).lower().rsplit(".", 1)[-1] if "." in str(item["name"]) else ""
+    if suffix not in {"docx", "md", "txt"}:
+        raise HTTPException(422, "当前文件格式不支持在线编辑")
+    attachment = await db.get(FileAttachment, item["attachment_id"])
+    if attachment is None:
+        raise HTTPException(404, "生成文件附件已不存在")
+    # Reuse the same DOCX extraction contract as the case AI editor.
+    text = _case_ai_draft_text(attachment, content)
+    return {"id": file_id, "name": item["name"], "content": text, "content_editable": True}
+
+
+async def edit_space_file(file_id, name, content, identity, db):
+    from app.core.cases import _case_ai_draft_bytes, _case_ai_draft_name
+    from app.core.generated_file_storage import save_generated_file
+    from app.core.generated_file_records import actual_user
+
+    record = await space_file_record(file_id, identity, db)
+    actual = await actual_user(db, identity)
+    if (record.data or {}).get("owner_user_id") != actual.id:
+        raise HTTPException(403, "只有文件所属员工可以在线编辑个人 AI 文件")
+    await space_file_text(file_id, identity, db)
+    safe_name = _case_ai_draft_name(name)
+    binary, content_type = _case_ai_draft_bytes(safe_name, content)
+    result = await save_generated_file(
+        db, identity, name=safe_name, content=binary, content_type=content_type,
+        source_kind="personal_edit", conversation_id=(record.data or {}).get("conversation_id"),
+    )
+    return {"file": result["file"], "supersedes": file_id}
+
+
 async def save_space_message(body, identity, db):
     from app.core.cases import _case_ai_draft_bytes, _case_ai_draft_name
     from app.areas.personal_agent.service import _user_dir

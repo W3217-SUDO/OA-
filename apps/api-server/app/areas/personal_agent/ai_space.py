@@ -27,6 +27,12 @@ class PersonalFileSaveInput(BaseModel):
     expected_content_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+class PersonalFileEditInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=255)
+    content: str = Field(max_length=2_000_000)
+
+
 @router.get("")
 async def get_personal_ai_space(owner_user_id: int | None = Query(None, ge=1),
                                 identity=Depends(current_identity), db=Depends(get_db)):
@@ -54,6 +60,22 @@ async def download_personal_ai_file(file_id: str = Path(pattern=r"^[a-f0-9]{32}$
         "Content-Disposition": "attachment; filename*=UTF-8''" + quote(item["name"], safe=""),
         "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
     })
+
+
+@router.get("/files/{file_id}/content")
+async def get_personal_ai_file_content(file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                       identity=Depends(current_identity), db=Depends(get_db)):
+    from app.areas.personal_agent.ai_space_service import space_file_text
+
+    return await space_file_text(file_id, identity, db)
+
+
+@router.post("/files/{file_id}/edit", status_code=201)
+async def edit_personal_ai_file(body: PersonalFileEditInput, file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                identity=Depends(current_identity), db=Depends(get_db)):
+    from app.areas.personal_agent.ai_space_service import edit_space_file
+
+    return await edit_space_file(file_id, body.name, body.content, identity, db)
 
 
 @router.post("/files", status_code=201)
