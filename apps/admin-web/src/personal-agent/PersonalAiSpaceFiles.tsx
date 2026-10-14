@@ -1,5 +1,5 @@
 import { Button, Empty, Tag, Tooltip } from "antd";
-import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, MessageOutlined } from "@ant-design/icons";
+import { DeleteOutlined, DownloadOutlined, EditOutlined, MessageOutlined } from "@ant-design/icons";
 import type { PersonalAiFile } from "./personalAiSpaceApi";
 
 const STATUS_LABELS: Record<PersonalAiFile["status"], string> = { uploading: "保存中", available: "可下载", failed: "保存失败", uncertain: "保存结果待核对", deleting: "删除中", delete_failed: "删除失败", delete_uncertain: "删除结果待核对" };
@@ -15,14 +15,13 @@ const SOURCE_LABELS: Record<string, string> = {
   personal_edit: "在线编辑新版本",
 };
 
-export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestSavedId, busy, onDownload, onView, onEdit, onDelete, onConversation }: {
+export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestSavedId, busy, onDownload, onEdit, onDelete, onConversation }: {
   items: PersonalAiFile[];
   downloadingId: string;
   deletingId?: string;
   latestSavedId?: string;
   busy: boolean;
   onDownload: (item: PersonalAiFile) => void;
-  onView: (item: PersonalAiFile) => void;
   onEdit: (item: PersonalAiFile) => void;
   onDelete: (item: PersonalAiFile) => void;
   onConversation: (id: string) => void;
@@ -43,7 +42,6 @@ export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestS
       <div className="personal-ai-space-file-actions">
         {item.conversation_id && <Tooltip title={item.conversation_id}><Button icon={<MessageOutlined />} disabled={busy} onClick={() => onConversation(item.conversation_id!)}>查看来源会话</Button></Tooltip>}
         {item.status === "available" && item.download_url && <>
-          <Button icon={<EyeOutlined />} disabled={busy || !!downloadingId} onClick={() => onView(item)}>在线查看</Button>
           {/\.(docx|md|txt)$/i.test(item.name) && <Button icon={<EditOutlined />} disabled={busy || !!downloadingId} onClick={() => onEdit(item)}>在线编辑</Button>}
           <Button icon={<DownloadOutlined />} loading={downloadingId === item.id} disabled={busy || (!!downloadingId && downloadingId !== item.id)} onClick={() => onDownload(item)}>下载 {item.name.includes(".") ? item.name.slice(item.name.lastIndexOf(".") + 1).toUpperCase() : "文件"}</Button>
         </>}
