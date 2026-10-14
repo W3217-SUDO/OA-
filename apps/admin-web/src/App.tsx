@@ -1231,6 +1231,7 @@ export default function App() {
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false);
   const [isNarrowViewport, setIsNarrowViewport] = useState(() => window.matchMedia("screen and (max-width: 991.98px)").matches);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [aiSystemNavigationOpen, setAiSystemNavigationOpen] = useState(false);
   const [menuConfig, setMenuConfig] = useState<NavConfig[]>([]);
   const [permissionsReady, setPermissionsReady] = useState(false);
   const [permissionLoadError, setPermissionLoadError] = useState("");
@@ -1266,6 +1267,8 @@ export default function App() {
     ? resolveGrantedMenuRoute(requestedRoute, effectiveMenuItems, grantedMenuKeys, permissionAdministrator)
     : requestedRoute;
   const isChatWorkspace = active === "ai-chat" || (active === "dashboard" && dashboardView === "conversation");
+  const isDesktopAiWorkspace = active === "ai-chat" && !isNarrowViewport;
+  useEffect(() => { setAiSystemNavigationOpen(false); }, [active, isNarrowViewport]);
   const chatViewportRef = useMobileChatViewport(loggedIn && permissionsReady && isChatWorkspace);
   const visibleOpenPages = openPages.filter((item) => isWorkspaceRouteGranted(
     normalizeWorkspaceRoute(item.key), grantedMenuKeys, permissionAdministrator,
@@ -1275,7 +1278,8 @@ export default function App() {
   }, [active, requestedRoute, permissionsReady]);
   const sidebarCollapsed = isNarrowViewport
     ? !mobileSidebarOpen
-    : collapsed && !sidebarHoverExpanded;
+    : isDesktopAiWorkspace ? !aiSystemNavigationOpen : collapsed && !sidebarHoverExpanded;
+  const showSidebarDetails = isNarrowViewport ? mobileSidebarOpen : isDesktopAiWorkspace ? aiSystemNavigationOpen : !collapsed;
   const resetWorkspaceForSession = () => {
     const dashboard = [{ key: "dashboard", label: "工作台" }];
     setContractDetailTarget(null);
@@ -1602,6 +1606,7 @@ export default function App() {
         name={isNarrowViewport ? "Ai" : "AI助手"}
         desktop={!isNarrowViewport}
         onReturnWorkbench={returnToWorkbench}
+        onOpenAgentCenter={isWorkspaceRouteGranted("agent-center", grantedMenuKeys, permissionAdministrator) ? () => navigate("agent-center") : undefined}
         focusRequested={assistantFocusRequested}
         onFocusHandled={() => setAssistantFocusRequested(false)}
       />
@@ -1690,7 +1695,7 @@ export default function App() {
     );
   const currentPage = requestedPage;
   return (
-    <Layout ref={chatViewportRef} className={`app-shell${isChatWorkspace ? " is-chat-workspace" : ""}`}>
+    <Layout ref={chatViewportRef} className={`app-shell${isChatWorkspace ? " is-chat-workspace" : ""}${isDesktopAiWorkspace ? " is-desktop-ai-workspace" : ""}${isDesktopAiWorkspace && aiSystemNavigationOpen ? " is-system-navigation-open" : ""}`}>
       <ConflictReviewHost key={sessionUser?.username || ""} />
       <Header className="topbar">
         <div
@@ -1710,12 +1715,17 @@ export default function App() {
         <Button
           className="sidebar-toggle"
           type="text"
-          aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
-          title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+          aria-label={isDesktopAiWorkspace ? (sidebarCollapsed ? "展开系统导航" : "收起系统导航") : (sidebarCollapsed ? "展开侧栏" : "收起侧栏")}
+          title={isDesktopAiWorkspace ? (sidebarCollapsed ? "展开系统导航" : "收起系统导航") : (sidebarCollapsed ? "展开侧栏" : "收起侧栏")}
+          aria-expanded={!sidebarCollapsed}
           icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
           onClick={() => {
             if (isNarrowViewport) {
               setMobileSidebarOpen((open) => !open);
+              return;
+            }
+            if (isDesktopAiWorkspace) {
+              setAiSystemNavigationOpen((open) => !open);
               return;
             }
             setCollapsed((v) => !v);
@@ -1890,13 +1900,16 @@ export default function App() {
             setIsNarrowViewport(broken);
             if (!broken) setMobileSidebarOpen(false);
           }}
-          collapsedWidth={isNarrowViewport ? 0 : 50}
+          collapsedWidth={isNarrowViewport || isDesktopAiWorkspace ? 0 : 50}
           collapsed={sidebarCollapsed}
-          onMouseEnter={() => collapsed && setSidebarHoverExpanded(true)}
+          trigger={isDesktopAiWorkspace ? null : undefined}
+          inert={isDesktopAiWorkspace && sidebarCollapsed ? true : undefined}
+          aria-hidden={isDesktopAiWorkspace && sidebarCollapsed ? true : undefined}
+          onMouseEnter={() => !isDesktopAiWorkspace && collapsed && setSidebarHoverExpanded(true)}
           onMouseLeave={() => setSidebarHoverExpanded(false)}
           className="sidebar"
         >
-          {(isNarrowViewport ? mobileSidebarOpen : !collapsed) && (
+          {showSidebarDetails && (
             <div className="user-panel">
               <div
                 className="avatar"
@@ -1944,7 +1957,7 @@ export default function App() {
               if (isNarrowViewport) setMobileSidebarOpen(false);
             }}
           />
-          {(isNarrowViewport ? mobileSidebarOpen : !collapsed) && (
+          {showSidebarDetails && (
             <div className="support-tools">
               <div className="support-tools-title">办案辅助工具</div>
               {supportTools.map((item) => (

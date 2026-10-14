@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { Button, Drawer, Empty, Modal, Tooltip, message } from "antd";
+import { useRef, useState, type ReactNode } from "react";
+import { Button, Drawer, Empty, Modal, Spin, Tooltip, message } from "antd";
 import { DeleteOutlined, HistoryOutlined, LoadingOutlined, MessageOutlined, PlusOutlined } from "@ant-design/icons";
 import { errorText, type WorkspaceConversation } from "./types";
 
@@ -7,6 +7,7 @@ type Props = {
   items: WorkspaceConversation[];
   activeId?: string | null;
   busy: boolean;
+  loading?: boolean;
   runningIds: string[];
   // 调用方只等待这些操作完成，不消费返回值，因此对返回的会话状态保持宽松。
   onCreate: () => Promise<unknown>;
@@ -18,14 +19,18 @@ type Props = {
   rowClassName?: string;
   selectClassName?: string;
   showHistoryLabel?: boolean;
+  presentation?: "drawer" | "sidebar";
+  navigation?: ReactNode;
 };
 
-export function ConversationManager({ items, activeId, busy, runningIds, onCreate, onSelect, onDelete,
+export function ConversationManager({ items, activeId, busy, loading = false, runningIds, onCreate, onSelect, onDelete,
   drawerClassName = "workspace-conversation-drawer",
   listClassName = "workspace-conversation-list",
   rowClassName = "workspace-conversation-row",
   selectClassName = "workspace-conversation-select",
   showHistoryLabel = false,
+  presentation = "drawer",
+  navigation,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [modal, contextHolder] = Modal.useModal();
@@ -58,6 +63,28 @@ export function ConversationManager({ items, activeId, busy, runningIds, onCreat
     },
     });
   };
+  const list = <>
+      {!items.length && (loading ? <div className="assistant-conversation-loading" role="status" aria-live="polite" aria-label="正在加载对话"><Spin size="small" /><span>正在加载对话</span></div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />)}
+      <div className={listClassName}>{items.map((item) => <div className={`${rowClassName}${item.id === activeId ? " active" : ""}`} key={item.id}>
+        <button type="button" className={selectClassName} aria-current={item.id === activeId ? "true" : undefined} disabled={busy} onClick={() => void run(() => onSelect(item.id), presentation === "drawer")}>
+          {runningIds.includes(item.id) ? <LoadingOutlined /> : <MessageOutlined />}<span><b title={item.title}>{item.title}</b><small>{runningIds.includes(item.id) ? "正在回答" : `${item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " · " : ""}${item.message_count} 条消息`}</small></span>
+        </button>
+        <Tooltip title={runningIds.includes(item.id) ? "请先停止该对话的回答" : "删除对话"}><Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除对话：${item.title}`} disabled={busy || runningIds.includes(item.id)} onClick={() => remove(item)} /></Tooltip>
+      </div>)}</div>
+  </>;
+  if (presentation === "sidebar") return <>
+    {contextHolder}
+    <div className="assistant-workspace-navigation">
+      <div className="workspace-conversation-controls">
+        <Button icon={<PlusOutlined />} aria-label="新建对话" disabled={busy} onClick={() => create()}><span className="workspace-conversation-label">新建对话</span></Button>
+      </div>
+      {navigation}
+    </div>
+    <section className="assistant-workspace-history" aria-label="历史会话" aria-busy={loading}>
+      <div className="assistant-workspace-history-heading"><HistoryOutlined /><h2>历史会话</h2></div>
+      {list}
+    </section>
+  </>;
   return <>
     {contextHolder}
     <div className="workspace-conversation-controls">
@@ -65,13 +92,7 @@ export function ConversationManager({ items, activeId, busy, runningIds, onCreat
       <Tooltip title="对话列表"><Button size="small" type="text" icon={<HistoryOutlined />} aria-label="对话列表" onClick={() => setOpen(true)}>{showHistoryLabel && <span className="workspace-conversation-label">对话列表</span>}</Button></Tooltip>
     </div>
     <Drawer title="我的对话" placement="right" width="min(360px, 100vw)" open={open} onClose={() => setOpen(false)} className={drawerClassName} extra={<Button icon={<PlusOutlined />} disabled={busy} onClick={() => create(true)}>新建对话</Button>}>
-      {!items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />}
-      <div className={listClassName}>{items.map((item) => <div className={`${rowClassName}${item.id === activeId ? " active" : ""}`} key={item.id}>
-        <button className={selectClassName} aria-current={item.id === activeId ? "true" : undefined} disabled={busy} onClick={() => void run(() => onSelect(item.id), true)}>
-          {runningIds.includes(item.id) ? <LoadingOutlined /> : <MessageOutlined />}<span><b title={item.title}>{item.title}</b><small>{runningIds.includes(item.id) ? "正在回答" : `${item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " · " : ""}${item.message_count} 条消息`}</small></span>
-        </button>
-        <Tooltip title={runningIds.includes(item.id) ? "请先停止该对话的回答" : "删除对话"}><Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除对话：${item.title}`} disabled={busy || runningIds.includes(item.id)} onClick={() => remove(item)} /></Tooltip>
-      </div>)}</div>
+      {list}
     </Drawer>
   </>;
 }

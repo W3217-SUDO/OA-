@@ -4,7 +4,8 @@ import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileW
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import AgentAvatar from "./AgentAvatar";
 import { ConversationManager } from "./ConversationManager";
-import { AssistantWorkspaceTools } from "./AssistantWorkspaceTools";
+import { AssistantWorkspaceTools, type AssistantWorkspaceToolsHandle } from "./AssistantWorkspaceTools";
+import { AssistantWorkspaceSidebar } from "./AssistantWorkspaceSidebar";
 import { ActionConfirmation } from "./ActionConfirmation";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { PersonalAiSpace } from "./PersonalAiSpace";
@@ -43,11 +44,13 @@ type Props = {
   name?: string;
   logoSrc?: string;
   returnLabel?: string;
+  desktopWorkspace?: boolean;
+  onOpenAgentCenter?: () => void;
 };
 
 // 工作台里的个人智能体：对话和输入框合在一个面板内，会话可并行进行；问候语放在工作台顶部。
 const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
-  { workspace, suggestions, focusRequested, onFocusHandled, onReturnOverview, name, logoSrc, returnLabel = "返回工作概况" },
+  { workspace, suggestions, focusRequested, onFocusHandled, onReturnOverview, name, logoSrc, returnLabel = "返回工作概况", desktopWorkspace = false, onOpenAgentCenter },
   ref,
 ) {
   const { status, state, loading, loadError, sending, stopping, input, setInput, send, stop, decide, load } = workspace;
@@ -55,6 +58,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const stickToBottom = useRef(true);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
   const inputRef = useRef<ComponentRef<typeof Input.TextArea>>(null);
+  const workspaceToolsRef = useRef<AssistantWorkspaceToolsHandle>(null);
   const [composing, setComposing] = useState(false);
   const [activeAction, setActiveAction] = useState<PendingAction | null>(null);
   const [decisionError, setDecisionError] = useState("");
@@ -138,10 +142,10 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     catch (error) { setDecisionError(errorText(error, "取消操作失败，请核对实际状态")); }
   };
 
-  return (
-    <section className={`assistant${hasMessages ? "" : " is-empty"}`} aria-label={name || "个人智能体"} ref={ref}>
+  const content = (
+    <>
       <div className="assistant-bar">
-        {onReturnOverview && <Tooltip title={returnLabel}>
+        {!desktopWorkspace && onReturnOverview && <Tooltip title={returnLabel}>
           <Button className="assistant-mobile-control" type="text" icon={<ArrowLeftOutlined />} aria-label={returnLabel} onClick={onReturnOverview} />
         </Tooltip>}
         <span className="assistant-bar-summary">
@@ -157,7 +161,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             {name && state.conversation_title && <small>{state.conversation_title}</small>}
           </span> : conversationTitle}
         </span>
-        <div className="assistant-bar-actions">
+        {!desktopWorkspace && <div className="assistant-bar-actions">
           <Tooltip title="个人 AI 空间"><Button className="personal-ai-space-trigger" type="text" icon={<FolderOpenOutlined />} aria-label="个人 AI 空间" onClick={() => setPersonalSpaceOpen(true)}><span className="personal-ai-space-label">个人 AI 空间</span></Button></Tooltip>
           <ConfirmationHistory onReopen={reopen} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} />
           <Tooltip title="刷新智能体">
@@ -184,7 +188,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             selectClassName="assistant-conversation-select"
             showHistoryLabel
           />
-        </div>
+        </div>}
       </div>
       <div className="assistant-mobile-space-access"><Button icon={<FolderOpenOutlined />} onClick={() => setPersonalSpaceOpen(true)}>个人 AI 空间 · 查看文件</Button></div>
       {loadError && (
@@ -195,8 +199,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       )}
       {!hasMessages && <div className={`assistant-empty-state${logoSrc ? " has-logo" : ""}`}>
         {logoSrc && <img className="assistant-empty-logo" src={logoSrc} alt="" width={56} height={56} />}
-        <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} />
-        <div className="assistant-mobile-empty">
+        {desktopWorkspace ? <div className="assistant-workspace-greeting"><h1>今天想处理什么？</h1></div> : <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} />}
+        {!desktopWorkspace && <div className="assistant-mobile-empty">
           <h2>今天想处理什么？</h2>
           <div className="assistant-mobile-suggestions">
             {suggestions.slice(0, 1).map((item) => <button key={item.kind} type="button" disabled={sendBlocked} onClick={() => submit(item.prompt)}>
@@ -204,7 +208,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             </button>)}
             {shortcuts.slice(0, 2).map((item) => <button key={item.label} type="button" disabled={sendBlocked} onClick={() => submit(item.prompt)}>{item.label}</button>)}
           </div>
-        </div>
+        </div>}
       </div>}
       {hasMessages && (
         <div className="assistant-thread-region">
@@ -288,7 +292,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           void workspace.upload(Array.from(event.dataTransfer.files));
         }}
       >
-        <AssistantWorkspaceTools key={state.conversation_id || "new"} workspace={workspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} />
+        <AssistantWorkspaceTools key={state.conversation_id || "new"} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} />
         <form className="assistant-composer-input" onSubmit={(event) => { event.preventDefault(); submit(); }}>
           <Input.TextArea
             ref={inputRef}
@@ -329,7 +333,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           </div>
         </form>
       </div>
-      <div className="assistant-chips">
+      {!desktopWorkspace && <div className="assistant-chips">
         {suggestions.map((item) => (
           <button key={item.kind} type="button" className="is-context" disabled={sending} onClick={() => submit(item.prompt)}>
             {item.label}<em>{item.count}</em>
@@ -338,7 +342,24 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         {shortcuts.map((item) => (
           <button key={item.label} type="button" disabled={sending} onClick={() => submit(item.prompt)}>{item.label}</button>
         ))}
-      </div>
+      </div>}
+    </>
+  );
+  return (
+    <section className={`assistant${hasMessages ? "" : " is-empty"}${desktopWorkspace ? " is-desktop-workspace" : ""}`} aria-label={name || "个人智能体"} ref={ref}>
+      {desktopWorkspace && <AssistantWorkspaceSidebar
+        workspace={workspace}
+        name={name || "AI助手"}
+        logoSrc={logoSrc}
+        onOpenPersonalSpace={() => setPersonalSpaceOpen(true)}
+        onOpenCases={() => workspaceToolsRef.current?.openCases()}
+        onOpenCaseMaterials={() => workspaceToolsRef.current?.openCaseMaterials()}
+        onImportSkills={() => workspaceToolsRef.current?.importSkills()}
+        onOpenAgentCenter={onOpenAgentCenter}
+        onReopenConfirmation={reopen}
+        onReturnWorkbench={onReturnOverview}
+      />}
+      {desktopWorkspace ? <div className="assistant-workspace-main">{content}</div> : content}
     </section>
   );
 });

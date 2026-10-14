@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button, Popover, Segmented, Select, Tooltip, message } from "antd";
 import { CloseOutlined, ExperimentOutlined, FileOutlined, FolderOpenOutlined, PaperClipOutlined, PlusOutlined } from "@ant-design/icons";
 import { CaseMaterialsPicker } from "./CaseMaterialsPicker";
@@ -9,9 +9,10 @@ import { errorText, type Material, type ResponseMode } from "./types";
 import { MATERIAL_ACCEPT, type usePersonalWorkspace } from "./usePersonalWorkspace";
 import "./assistant-workspace-tools.css";
 
-type Props = { workspace: ReturnType<typeof usePersonalWorkspace>; onOpenPersonalAiSpace: () => void };
+export type AssistantWorkspaceToolsHandle = { openCases: () => void; openCaseMaterials: () => void; importSkills: () => void };
+type Props = { workspace: ReturnType<typeof usePersonalWorkspace>; onOpenPersonalAiSpace: () => void; desktopWorkspace?: boolean };
 
-export function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace }: Props) {
+export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle, Props>(function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace, desktopWorkspace = false }, ref) {
   const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 991px)").matches);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<"case" | "materials" | null>(null);
@@ -28,13 +29,18 @@ export function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace }: Pr
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
-  const openPicker = (mode: "case" | "materials") => { setToolsOpen(false); setPickerMode(mode); };
+  const openPicker = (mode: "case" | "materials") => {
+    if (busy || workspace.loadError || !canUseCases) return;
+    setToolsOpen(false); setPickerMode(mode);
+  };
   const openSkills = async () => {
+    if (busy) return;
     setToolsOpen(false);
     setSkillsOpen(true);
     try { await workspace.refreshSkills(); }
     catch (error) { message.error(errorText(error, "技能加载失败")); }
   };
+  useImperativeHandle(ref, () => ({ openCases: () => openPicker("case"), openCaseMaterials: () => openPicker("materials"), importSkills: () => void openSkills() }));
 
   const controls = <div className="assistant-context-controls" role={mobile ? "dialog" : undefined} aria-label="对话工具" onKeyDown={(event) => {
     if (mobile && event.key === "Escape") { event.stopPropagation(); setToolsOpen(false); triggerRef.current?.focus(); }
@@ -55,20 +61,20 @@ export function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace }: Pr
         options={[{ label: "快速", value: "fast" }, { label: "深度", value: "deep" }]}
         onChange={(value) => workspace.setResponseMode(value as ResponseMode)}
       />}
-      {canUseCases && <Tooltip title={workspace.selectedCase?.title || "关联案件"}>
-        <Button type="text" htmlType="button" className="assistant-case-select" icon={<FolderOpenOutlined />} disabled={busy} onClick={() => openPicker("case")}>
+      {!desktopWorkspace && canUseCases && <Tooltip title={workspace.selectedCase?.title || "关联案件"}>
+        <Button type="text" htmlType="button" className="assistant-case-select" icon={<FolderOpenOutlined />} disabled={busy || !!workspace.loadError} onClick={() => openPicker("case")}>
           {workspace.selectedCase?.serial_no || "关联案件"}
         </Button>
       </Tooltip>}
-      {workspace.selectedCase && <Tooltip title="选择案件材料">
-        <Button type="text" htmlType="button" icon={<FileOutlined />} disabled={busy} aria-label="选择案件材料" onClick={() => openPicker("materials")} />
+      {!desktopWorkspace && workspace.selectedCase && <Tooltip title="选择案件材料">
+        <Button type="text" htmlType="button" icon={<FileOutlined />} disabled={busy || !!workspace.loadError} aria-label="选择案件材料" onClick={() => openPicker("materials")} />
       </Tooltip>}
       <Tooltip title="上传文件">
         <Button type="text" htmlType="button" icon={<PaperClipOutlined />} loading={workspace.uploading} disabled={busy} aria-label="上传文件" onClick={() => { setToolsOpen(false); fileRef.current?.click(); }} />
       </Tooltip>
-      <Tooltip title="管理技能，或从 GitHub 安装">
-        <Button type="text" htmlType="button" className="assistant-skills-manage" icon={<ExperimentOutlined />} disabled={busy} aria-label="管理技能" onClick={() => void openSkills()}>技能</Button>
-      </Tooltip>
+      {!desktopWorkspace && <Tooltip title="导入技能">
+        <Button type="text" htmlType="button" className="assistant-skills-manage" icon={<ExperimentOutlined />} disabled={busy} aria-label="导入技能" onClick={() => void openSkills()}>技能</Button>
+      </Tooltip>}
       {mobile && <Button type="text" htmlType="button" className="personal-ai-space-mobile-entry" icon={<FolderOpenOutlined />} onClick={() => { setToolsOpen(false); onOpenPersonalAiSpace(); }}>个人 AI 空间</Button>}
     </div>;
 
@@ -113,7 +119,7 @@ export function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace }: Pr
       </span>)}
     </div>}
     <CaseMaterialsPicker mode={pickerMode} onClose={() => setPickerMode(null)} selectedCase={workspace.selectedCase} onCase={workspace.chooseCase} selectedMaterials={workspace.caseMaterials} onMaterials={workspace.setCaseMaterials} privateCount={workspace.materials.length} />
-    <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} skills={workspace.skills} refresh={workspace.refreshSkills} onSelect={workspace.setSkillId} />
+    <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} skills={workspace.skills} refresh={workspace.refreshSkills} onSelect={workspace.setSkillId} mode="import-only" scope="personal" />
     <MaterialPreview item={previewMaterial} onClose={() => setPreviewMaterial(null)} />
   </>;
-}
+});
