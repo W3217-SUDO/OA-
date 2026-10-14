@@ -17,7 +17,6 @@ from app.skill_definitions import skill_definition
 from app.user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, custom_skill_public, normalize_custom_skill, parse_uploaded_skill
 
 router = APIRouter()
-BASE = settings.api_prefix + "/agent/global-skills"
 
 
 class GlobalSkillInput(UserAgentSkillInput):
@@ -32,7 +31,7 @@ def formatted(record):
     return {**custom_skill_public(record), "scope": "global"}
 
 
-@router.get(BASE)
+@router.get(settings.api_prefix + "/agent/global-skills")
 async def list_global_skills(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     _, records = await global_skill_store(db)
     manager = can_manage_global(identity)
@@ -40,7 +39,7 @@ async def list_global_skills(identity: dict = Depends(current_identity), db: Asy
             "scope": "global", "can_manage": manager}
 
 
-@router.post(BASE)
+@router.post(settings.api_prefix + "/agent/global-skills")
 async def create_global_skill(body: GlobalSkillInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     require_global_admin(identity)
     try:
@@ -50,7 +49,7 @@ async def create_global_skill(body: GlobalSkillInput, identity: dict = Depends(c
     return formatted(record)
 
 
-@router.post(BASE + "/upload")
+@router.post(settings.api_prefix + "/agent/global-skills/upload")
 async def upload_global_skill(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     require_global_admin(identity)
     content = await file.read(CUSTOM_SKILL_FILE_LIMIT + 1)
@@ -62,14 +61,14 @@ async def upload_global_skill(file: UploadFile = File(...), identity: dict = Dep
     return formatted(record)
 
 
-@router.post(BASE + "/github/preview")
+@router.post(settings.api_prefix + "/agent/global-skills/github/preview")
 async def preview_global_github(body: GitHubSkillPreviewInput, identity: dict = Depends(current_identity)):
     require_global_admin(identity)
     from app.github_agent_skills import preview_github_skill
     return await preview_github_skill(body.url)
 
 
-@router.post(BASE + "/github/install")
+@router.post(settings.api_prefix + "/agent/global-skills/github/install")
 async def install_global_github(body: GitHubSkillInstallInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     require_global_admin(identity)
     from app.github_agent_skills import preview_github_skill
@@ -81,7 +80,7 @@ async def install_global_github(body: GitHubSkillInstallInput, identity: dict = 
     return formatted(record)
 
 
-@router.patch(BASE + "/{skill_id}")
+@router.patch(settings.api_prefix + "/agent/global-skills/{skill_id}")
 async def update_global_skill(skill_id: str, body: GlobalSkillUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     require_global_admin(identity)
     item, records = await global_skill_store(db, lock=True)
@@ -98,7 +97,7 @@ async def update_global_skill(skill_id: str, body: GlobalSkillUpdate, identity: 
     return formatted(records[index])
 
 
-@router.delete(BASE + "/{skill_id}")
+@router.delete(settings.api_prefix + "/agent/global-skills/{skill_id}")
 async def delete_global_skill(skill_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     require_global_admin(identity)
     item, records = await global_skill_store(db, lock=True)
@@ -141,11 +140,11 @@ async def personal_download(skill_id: str, identity: dict = Depends(current_iden
     return downloaded(await personal_definition(skill_id, identity, db))
 
 
-@router.get(BASE + "/{skill_id}/definition")
+@router.get(settings.api_prefix + "/agent/global-skills/{skill_id}/definition")
 async def global_definition(skill_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     return skill_definition(await global_skill_record(skill_id, identity, db), "global")
 
 
-@router.get(BASE + "/{skill_id}/definition/download")
+@router.get(settings.api_prefix + "/agent/global-skills/{skill_id}/definition/download")
 async def global_download(skill_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     return downloaded(await global_definition(skill_id, identity, db))
