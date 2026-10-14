@@ -36,6 +36,15 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
   const close = () => { if (!disabled && !operationLock.current) onClose(); };
   const prepare = async () => {
     if (disabled || operationLock.current || savedVersion || submissionUncertain) return;
+    // Open a tab synchronously so browsers do not classify the later async
+    // navigation as a popup. The URL is filled only after OA confirms the
+    // upload and passes the DingTalk-host validation below.
+    const editorWindow = typeof window !== "undefined" ? window.open("about:blank", "_blank") : null;
+    if (typeof window !== "undefined" && !editorWindow) {
+      setError("浏览器阻止了钉钉编辑页面，请允许本站打开新窗口后重试");
+      return;
+    }
+    let opened = false;
     operationLock.current = true; setBusy("open"); onBusy(true); setError(""); setSession(null);
     try {
       const { data } = await api.post<OfficeSession>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/office/open`,
@@ -46,8 +55,17 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
         throw new Error("钉钉编辑地址无效，未打开文件");
       }
       setSession(data);
+      if (editorWindow) {
+        editorWindow.location.replace(url.href);
+        opened = true;
+      }
     } catch (failure) { setSubmissionUncertain(true); setError(errorText(failure, "钉钉 Word 编辑请求未确认，请核对，勿重复上传")); }
-    finally { operationLock.current = false; setBusy(null); onBusy(false); }
+    finally {
+      if (!opened) {
+        try { editorWindow?.close(); } catch { /* 浏览器可能已接管新窗口 */ }
+      }
+      operationLock.current = false; setBusy(null); onBusy(false);
+    }
   };
   const readSavedVersion = async (version: OfficeSavedVersion) => {
     const saved = version.file;
@@ -111,7 +129,7 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
       </ol>
       <div className="personal-ai-office-actions">
         <Button icon={session ? <ReloadOutlined /> : <FileWordOutlined />} loading={busy === "open"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain}
-          onClick={() => void prepare()}>{session ? "刷新钉钉编辑链接" : "确认上传副本并准备编辑"}</Button>
+          onClick={() => void prepare()}>{session ? "刷新钉钉编辑链接" : "上传副本并打开钉钉编辑"}</Button>
         {session && <Button type="primary" icon={<ExportOutlined />} href={session.url} target="_blank" rel="noopener noreferrer" disabled={!!busy || disabled}>打开钉钉编辑</Button>}
         {session && <Button icon={<SaveOutlined />} loading={busy === "save"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain} onClick={() => void save()}>已在钉钉保存，取回新版本</Button>}
         {savedVersion && <Button icon={<ReloadOutlined />} loading={busy === "read"} disabled={disabled || !!busy} onClick={() => void retryReadback()}>重新读取已回存的新版本</Button>}

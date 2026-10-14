@@ -1764,6 +1764,7 @@ test("Office save verifies the new ID metadata and complete bytes and retries fa
   const saved = { ...file, id: "f".repeat(32), name: "回存Word.docx", status: "available", size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), supersedes: file.id, can_delete: true, download_url: "/new/download" };
   const requests = [], created = [], verified = [], notices = [], busy = [];
   let finishOpen, finishOperation, failMetadata = true, corrupt = false, closed = 0;
+  const popup = { location: { replace: value => { popup.url = value; } }, close: () => { popup.closed = true; } };
   const { PersonalAiOfficeEditor } = loadModule("../personal-agent/PersonalAiOfficeEditor.tsx", {
     antd: { Alert: "alert", Button: "button", Modal: ({ footer, children, ...props }) => React.createElement("modal", props, children, footer), message: { success: value => notices.push(value) } },
     "./types": { errorText: (error, fallback) => error.message || fallback },
@@ -1783,7 +1784,7 @@ test("Office save verifies the new ID metadata and complete bytes and retries fa
         throw new Error("不得读取原ID或受限/content");
       },
     } },
-  }, { URL, Blob, crypto: webcrypto });
+  }, { URL, Blob, crypto: webcrypto, window: { open: () => popup } });
   let renderer;
   await act(async () => { renderer = create(React.createElement(PersonalAiOfficeEditor, { file, onClose: () => { closed++; }, onBusy: value => { busy.push(value); if (!value) finishOperation?.(); }, onVersionCreated: value => created.push(value), onSaved: (value, body) => verified.push({ file: value, blob: body }) })); });
   const button = label => renderer.root.findAllByType("button").find(item => item.props.children === label);
@@ -1794,12 +1795,13 @@ test("Office save verifies the new ID metadata and complete bytes and retries fa
     await complete;
     finishOperation = undefined;
   });
-  await act(async () => { button("确认上传副本并准备编辑").props.onClick(); button("确认上传副本并准备编辑").props.onClick(); });
+  await act(async () => { button("上传副本并打开钉钉编辑").props.onClick(); button("上传副本并打开钉钉编辑").props.onClick(); });
   assert.equal(requests.length, 1, "上传副本连点只发送一次");
   assert.equal(requests[0].body.expected_sha256, file.sha256);
   await act(async () => { renderer.root.findByType("modal").props.onCancel(); button("关闭").props.onClick(); });
   assert.equal(closed, 0, "Office忙态不能提前解除父级互斥");
   await act(async () => { finishOpen({ data: { session_id: "1".repeat(32), name: file.name, url: "https://alidocs.dingtalk.com/CODEX" } }); });
+  assert.equal(popup.url, "https://alidocs.dingtalk.com/CODEX", "上传确认后立即打开钉钉编辑页");
   assert.equal(button("打开钉钉编辑").props.rel, "noopener noreferrer");
   await act(async () => { button("已在钉钉保存，取回新版本").props.onClick(); button("已在钉钉保存，取回新版本").props.onClick(); });
   assert.equal(requests.filter(item => item.method === "POST").length, 2);
@@ -1844,7 +1846,7 @@ test("Office structured writer failures block replay unlike definite prewrite re
     let renderer;
     await act(async () => { renderer = create(React.createElement(PersonalAiOfficeEditor, { file, onClose() {}, onBusy() {}, onVersionCreated: () => assert.fail("失败不登记成功新版本"), onSaved: () => assert.fail("失败不确认读取") })); });
     const button = label => renderer.root.findAllByType("button").find(item => item.props.children === label);
-    await act(async () => { button("确认上传副本并准备编辑").props.onClick(); });
+    await act(async () => { button("上传副本并打开钉钉编辑").props.onClick(); });
     await act(async () => { button("已在钉钉保存，取回新版本").props.onClick(); });
     assert.equal(button("已在钉钉保存，取回新版本").props.disabled, !definite);
     assert.ok(renderer.root.findAllByType("alert").some(item => item.props.description === "回存未完成"));
