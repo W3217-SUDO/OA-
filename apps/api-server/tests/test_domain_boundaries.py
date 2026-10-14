@@ -107,7 +107,7 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         app_digest = hashlib.sha256(b"CODEX-office-app").hexdigest()
         space = {"id": "CODEX-space", "ownerId": "CODEX-space-owner", "ownerType": "USER",
                  "creatorId": "CODEX-union", "corpId": "CODEX-corp", "scene": dingtalk_office_service.SCENE,
-                 "sceneId": f"personal-u{owner_id}-{app_digest[:16]}", "status": "NORMAL"}
+                 "sceneId": f"personal{owner_id}{app_digest[:16]}", "status": "NORMAL"}
         remote = SimpleNamespace(
             member_union_id=AsyncMock(return_value="CODEX-union"),
             storage_request=AsyncMock(return_value={"space": space}),

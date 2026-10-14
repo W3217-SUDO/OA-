@@ -17,7 +17,10 @@ from app.areas.personal_agent.ai_space_service import space_file_bytes, space_fi
 from app.areas.personal_agent import dingtalk_office_client as office
 
 
-SCENE = "oa-personal-word"
+# DingTalk storage scene values are identifiers, not free-form labels.  Keep
+# the scene and its per-user sceneId alphanumeric so the storage API accepts
+# the space creation request across enterprise tenants.
+SCENE = "oapersonalword"
 SESSION_KEY = "dingtalk_office_session"
 
 
@@ -122,7 +125,7 @@ async def start_office_edit(file_id, expected_sha256, identity, db):
         await _check_space(session)
         return {"session_id": session["id"], "url": await office.editor_url(session), "name": item["name"]}
     session_id = uuid4().hex
-    scene_id = f"personal-u{binding['owner_user_id']}-{binding['app_digest'][:16]}"
+    scene_id = f"personal{binding['owner_user_id']}{binding['app_digest'][:16]}"
     session = {**binding, "id": session_id, "phase": "copying", "source_sha256": expected_sha256,
                "scene_id": scene_id, "source_name": item["name"]}
     # 外部写入前持久登记，断网或进程中断后不自动重放非幂等文件提交。
