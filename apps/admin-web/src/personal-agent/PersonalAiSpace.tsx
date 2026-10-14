@@ -98,7 +98,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       api.get<PersonalAiFilePage>("/personal-agent/ai-space/files", { params: { page, page_size: 20 }, signal: controller.signal }),
     ]).then(([, list]) => {
       if (!controller.signal.aborted) setFiles(list.data);
-    }).catch((failure) => { if (!controller.signal.aborted) setError(errorText(failure, "个人 AI 空间加载失败")); })
+    }).catch((failure) => { if (!controller.signal.aborted) setError(errorText(failure, "个人空间加载失败")); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [open, page, refresh, revision]);
@@ -154,12 +154,12 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
     width={760}
     destroyOnHidden
     rootClassName="personal-ai-space-drawer"
-    title={<span className="personal-ai-space-title">{space ? `${space.owner_name}的个人 AI 空间` : "个人 AI 空间"}</span>}
+    title={<span className="personal-ai-space-title">{space ? `${space.owner_name}的个人空间` : "个人空间"}</span>}
   >
     <div className="personal-ai-space-content">
-      <div className="personal-ai-space-toolbar"><Tooltip title="刷新个人 AI 空间"><Button icon={<ReloadOutlined />} aria-label="刷新个人 AI 空间" loading={loading} onClick={() => setRefresh((value) => value + 1)} /></Tooltip>{files && <span>共 {files.total} 个文件</span>}</div>
+      <div className="personal-ai-space-toolbar"><Tooltip title="刷新个人空间"><Button icon={<ReloadOutlined />} aria-label="刷新个人空间" loading={loading} onClick={() => setRefresh((value) => value + 1)} /></Tooltip>{files && <span>共 {files.total} 个文件</span>}</div>
       {space && !space.configured && <Alert type="warning" showIcon title="OSS 尚未配置，不能保存新文件" />}
-      {error && <Alert type="error" showIcon title="个人 AI 空间操作未完成" description={error} />}
+      {error && <Alert type="error" showIcon title="个人空间操作未完成" description={error} />}
       {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} busy={busy} onDownload={(file) => void download(file)} onView={(file) => void openPreview(file)} onEdit={(file) => void openEditor(file)} onConversation={(id) => void openConversation(id)} />}
       {files && files.total > 0 && <Pagination simple current={files.page} pageSize={files.page_size} total={files.total} disabled={loading} showSizeChanger={false} onChange={setPage} />}
     </div>

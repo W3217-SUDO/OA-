@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type Key } from "react";
-import { Button, Empty, Form, Image, Input, List, message, Modal, Select, Space, Spin, Switch, Tag, Tree } from "antd";
-import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, DeleteOutlined, EditOutlined, FolderOpenOutlined, FolderOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined, UploadOutlined } from "@ant-design/icons";
+import { Button, Empty, Image, Input, List, message, Modal, Select, Space, Spin, Tag, Tree } from "antd";
+import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, FolderOpenOutlined, FolderOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
 import { AgentMessageContent } from "./AgentMessageContent";
 import { AgentOperationPreview, agentOperationError, hasAgentOperationPreview, type AgentActionPreview } from "./AgentOperationPreview";
@@ -9,7 +9,8 @@ import { AgentToolResult } from "./AgentToolResult";
 import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
 import { AGENT_DOCUMENT_LIMIT, buildAgentDocumentTree } from "./legal/constants";
 import type { CaseAgentDocument } from "./legal/types";
-import { managedSkills, skillChoiceLabel } from "./personal-agent/skillScope";
+import { skillChoiceLabel } from "./personal-agent/skillScope";
+import { SkillManager } from "./personal-agent/SkillManager";
 import type { WorkspaceSkill } from "./personal-agent/types";
 import "./agent-center.css";
 
@@ -48,9 +49,7 @@ export default function AgentCenterPage({ onOpenPersonalAgent }: { onOpenPersona
   const [input, setInput] = useState("");
   const [skillId, setSkillId] = useState(DEFAULT_AGENT_SKILL);
   const [skillManagerOpen, setSkillManagerOpen] = useState(false);
-  const [skillSaving, setSkillSaving] = useState(false);
-  const [editingSkillId, setEditingSkillId] = useState("");
-  const [skillForm] = Form.useForm();
+  const [catalogSkills, setCatalogSkills] = useState<CustomAgentSkill[]>([]);
   const [screenshots, setScreenshots] = useState<AgentAttachment[]>([]);
   const [documents, setDocuments] = useState<CaseAgentDocument[]>([]);
   const [documentIds, setDocumentIds] = useState<number[]>([]);
@@ -60,7 +59,6 @@ export default function AgentCenterPage({ onOpenPersonalAgent }: { onOpenPersona
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const followResponseRef = useRef(true);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
-  const skillFileInputRef = useRef<HTMLInputElement>(null);
   const screenshotPreviewUrlsRef = useRef(new Map<number, string>());
   const activeAgentRequestRef = useRef<AbortController | null>(null);
   const selectedIdRef = useRef<number | null>(null);
@@ -334,82 +332,13 @@ export default function AgentCenterPage({ onOpenPersonalAgent }: { onOpenPersona
   const refreshSkillCatalog = async () => {
     const { data } = await api.get("/agent/skills");
     const items = (data.items || []) as CustomAgentSkill[];
+    setCatalogSkills(items);
     setStatus((current) => current ? { ...current, skills: items } : current);
     if (!items.some((item) => item.id === skillId && item.available)) setSkillId(DEFAULT_AGENT_SKILL);
-    return items;
   };
   const openSkillManager = async () => {
     setSkillManagerOpen(true);
     try { await refreshSkillCatalog(); } catch (error: any) { message.error(error?.response?.data?.detail || "技能库加载失败"); }
-  };
-  const resetSkillEditor = () => {
-    setEditingSkillId("");
-    skillForm.resetFields();
-  };
-  const editSkill = (skill: CustomAgentSkill) => {
-    setEditingSkillId(skill.id);
-    skillForm.setFieldsValue({
-      name: skill.name,
-      category: skill.category,
-      description: skill.description,
-      instruction: skill.instruction || "",
-      quick_prompts: (skill.quick_prompts || []).join("\n"),
-    });
-  };
-  const saveSkill = async (values: Record<string, string>) => {
-    setSkillSaving(true);
-    const payload = {
-      ...values,
-      quick_prompts: String(values.quick_prompts || "").split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
-    };
-    try {
-      if (editingSkillId) await api.patch(`/agent/skills/${editingSkillId}`, payload);
-      else await api.post("/agent/skills", payload);
-      await refreshSkillCatalog();
-      resetSkillEditor();
-      message.success(editingSkillId ? "技能已更新" : "技能已添加");
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || "技能保存失败");
-    } finally { setSkillSaving(false); }
-  };
-  const uploadSkill = async (file?: File) => {
-    if (!file) return;
-    const form = new FormData();
-    form.append("file", file);
-    setSkillSaving(true);
-    try {
-      const { data } = await api.post("/agent/skills/upload", form);
-      await refreshSkillCatalog();
-      setSkillId(data.id);
-      message.success("技能已上传并选中");
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || "技能上传失败");
-    } finally {
-      setSkillSaving(false);
-      if (skillFileInputRef.current) skillFileInputRef.current.value = "";
-    }
-  };
-  const toggleSkill = async (skill: CustomAgentSkill, enabled: boolean) => {
-    try {
-      await api.patch(`/agent/skills/${skill.id}`, { enabled });
-      await refreshSkillCatalog();
-      message.success(enabled ? "技能已启用" : "技能已停用");
-    } catch (error: any) { message.error(error?.response?.data?.detail || "技能状态更新失败"); }
-  };
-  const deleteSkill = (skill: CustomAgentSkill) => {
-    Modal.confirm({
-      title: `删除技能“${skill.name}”？`,
-      content: "删除后不会影响既有聊天记录。",
-      okText: "删除",
-      okButtonProps: { danger: true },
-      cancelText: "取消",
-      onOk: async () => {
-        await api.delete(`/agent/skills/${skill.id}`);
-        await refreshSkillCatalog();
-        if (editingSkillId === skill.id) resetSkillEditor();
-        message.success("技能已删除");
-      },
-    });
   };
   const pendingActions = useMemo(() => (state?.pending_actions || []).filter((item) => item.status === "pending"), [state]);
   const activeAction = pendingActions[0] || null;
@@ -421,43 +350,12 @@ export default function AgentCenterPage({ onOpenPersonalAgent }: { onOpenPersona
       <div><h2>案件智能体中心</h2><span>案件业务空间</span></div>
       <Space wrap>
         <Button size="small" onClick={onOpenPersonalAgent}>个人智能体</Button>
+        <Button icon={<AppstoreAddOutlined />} onClick={() => void openSkillManager()}>技能包</Button>
         <Tag>客户</Tag><Tag>合同</Tag><Tag>案件</Tag><Tag>线索</Tag><Tag>调查</Tag><Tag>财务</Tag>
       </Space>
     </header>
     <div style={{ padding: "6px 14px", borderBottom: "1px solid #dce2e8", background: "#fff" }}><AgentToolRequests /></div>
-    <Modal open={skillManagerOpen} title="我的技能" width={760} footer={null} onCancel={() => { setSkillManagerOpen(false); resetSkillEditor(); }}>
-      <div className="agent-skill-manager" data-testid="agent-skill-manager">
-        <div className="agent-skill-list">
-          <div className="agent-skill-list-head">
-            <strong>自定义技能</strong>
-            <Space>
-              <input ref={skillFileInputRef} hidden type="file" accept=".json,.md,.markdown,.docx,application/json,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => void uploadSkill(event.target.files?.[0])} />
-              <Button icon={<UploadOutlined />} title="支持 JSON、Markdown 和 Word（.docx），Word 将自动转为 Markdown" loading={skillSaving} onClick={() => skillFileInputRef.current?.click()}>上传</Button>
-              <Button type="primary" icon={<AppstoreAddOutlined />} onClick={resetSkillEditor}>新增</Button>
-            </Space>
-          </div>
-          {managedSkills(skills, "personal").length ? managedSkills(skills, "personal").map((skill) => <div className="agent-skill-row" key={skill.id}>
-            <div><strong>{skill.name}</strong><span>{skill.description}</span><small>{skill.category}</small></div>
-            <Space>
-              <Switch size="small" checked={skill.available} onChange={(checked) => void toggleSkill(skill, checked)} />
-              <Button type="text" icon={<EditOutlined />} title="编辑技能" onClick={() => editSkill(skill)} />
-              <Button type="text" danger icon={<DeleteOutlined />} title="删除技能" onClick={() => deleteSkill(skill)} />
-            </Space>
-          </div>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无自定义技能" />}
-        </div>
-        <Form form={skillForm} layout="vertical" className="agent-skill-form" onFinish={(values) => void saveSkill(values)}>
-          <div className="agent-skill-form-title"><strong>{editingSkillId ? "编辑技能" : "新增技能"}</strong>{editingSkillId ? <Button type="link" onClick={resetSkillEditor}>取消编辑</Button> : null}</div>
-          <div className="agent-skill-form-grid">
-            <Form.Item label="技能名称" name="name" rules={[{ required: true, min: 2, max: 64 }]}><Input /></Form.Item>
-            <Form.Item label="分类" name="category" initialValue="自定义" rules={[{ required: true, max: 32 }]}><Input /></Form.Item>
-          </div>
-          <Form.Item label="说明" name="description" rules={[{ required: true, min: 2, max: 8000 }]}><Input.TextArea autoSize={{ minRows: 2, maxRows: 6 }} /></Form.Item>
-          <Form.Item label="技能指令" name="instruction" rules={[{ required: true, min: 10, max: 64000 }]}><Input.TextArea autoSize={{ minRows: 5, maxRows: 10 }} /></Form.Item>
-          <Form.Item label="快捷指令" name="quick_prompts"><Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} /></Form.Item>
-          <Button type="primary" htmlType="submit" loading={skillSaving}>{editingSkillId ? "保存修改" : "添加技能"}</Button>
-        </Form>
-      </div>
-    </Modal>
+    <SkillManager open={skillManagerOpen} onClose={() => setSkillManagerOpen(false)} mode="manage" scope="personal" skills={catalogSkills} refresh={refreshSkillCatalog} onSelect={setSkillId} />
     <div className="agent-center-layout">
       <aside className="agent-space-list">
         <div className="agent-space-search">

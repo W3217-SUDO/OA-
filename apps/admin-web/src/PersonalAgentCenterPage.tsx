@@ -79,7 +79,8 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
     <header className="personal-agent-header">
       <div className="personal-agent-title"><div className="workspace-brand-icon"><RobotOutlined /></div><h2>智能体中心</h2><span>律所工作台</span></div>
       <Space className="workspace-header-actions" size={8} wrap>
-        <Button className="personal-ai-space-trigger" icon={<FolderOpenOutlined />} onClick={() => setPersonalSpaceOpen(true)}>个人 AI 空间</Button>
+        <Button className="personal-ai-space-trigger" icon={<FolderOpenOutlined />} onClick={() => setPersonalSpaceOpen(true)}>个人空间</Button>
+        <Button icon={<AppstoreAddOutlined />} disabled={busy} onClick={() => void openSkills()}>技能包</Button>
         <Segmented aria-label="切换工作视图" value={view} options={[{ value: "workspace", label: "工作台" }, { value: "chat", label: "对话" }]} onChange={(value) => setView(value as "workspace" | "chat")} />
         <Tooltip title={status?.ready ? `当前模型：${status.model}` : "模型服务未就绪"}><span className={`workspace-service ${status?.ready ? "ready" : ""}`}><i />{status?.ready ? "已连接" : loading ? "连接中" : "未就绪"}</span></Tooltip>
         {canUseCases && <Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={() => onNavigate("case-agent-center")}>案件智能体</Button></Tooltip>}

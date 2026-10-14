@@ -11,6 +11,12 @@
 .workspace-skill-manager > section, .workspace-skill-manager > form { min-width: 0; }
 .workspace-skill-manager > [hidden] { display: none; }
 .workspace-skill-modal .ant-modal-body { max-height: 78dvh; overflow-y: auto; overscroll-behavior: contain; }
+.workspace-skill-file-import { display: grid; gap: 12px; margin-bottom: 12px; min-width: 0; }
+.workspace-skill-file-import > .ant-btn { justify-self: start; }
+.workspace-skill-import-confirmation { min-width: 0; overflow-wrap: anywhere; }
+.workspace-skill-modal .ant-btn { min-width: 44px; min-height: 44px; max-width: 100%; height: auto; white-space: normal; }
+.workspace-skill-import-modal .ant-btn { min-width: 44px; min-height: 44px; max-width: 100%; height: auto; white-space: normal; }
+.workspace-skill-import-modal .ant-modal-confirm-btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .workspace-skill-modal .ant-tabs-tab { min-height: 44px; }
 .workspace-skill-modal .ant-tabs-nav-more { min-width: 44px; min-height: 44px; }
 .workspace-skill-catalog { display: grid; gap: 12px; min-width: 0; }
@@ -69,6 +75,6 @@
   .workspace-github-url { flex-direction: column; }
   .workspace-github-preview > .ant-btn { justify-self: stretch; }
   .workspace-skill-row { flex-wrap: wrap; gap: 8px; }
-  .workspace-skill-row > .ant-space { margin-left: auto; }
+  .workspace-skill-row > .ant-space { margin-left: auto; max-width: 100%; }
   .workspace-skill-fields { grid-template-columns: 1fr; gap: 0; }
 }

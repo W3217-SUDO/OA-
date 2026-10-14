@@ -14,7 +14,6 @@
 .personal-ai-skill-list p, .personal-ai-skill-heading strong { overflow-wrap: anywhere; }
 .personal-ai-skill-heading { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
 .personal-ai-skill-heading strong { flex: 1 1 180px; min-width: 0; }
-.personal-ai-skill-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding-inline: 8px; }
 .personal-ai-skill-definition-content { display: grid; gap: 8px; min-width: 0; }
 .personal-ai-skill-definition-content small { overflow-wrap: anywhere; }
 .personal-ai-skill-definition-content pre { margin: 0; padding: 12px; max-height: 55dvh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: #f4f7f6; }
