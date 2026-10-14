@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { message } from "antd";
 import { api } from "../api";
-import { aiWordDocumentName, isAiWordGenerationRequest, isUsableAiDocumentContent } from "../legal/constants";
+import { aiExcelDocumentName, aiWordDocumentName, isAiSpreadsheetGenerationRequest, isAiWordGenerationRequest, isUsableAiDocumentContent } from "../legal/constants";
 import { confirmCaseAgentDocument } from "../legal/services/agentDocumentConfirmation";
 import { confirmPersonalAiDocument } from "./personalAiDocumentConfirmation";
 import { usePersonalConversations } from "./usePersonalConversations";
@@ -39,7 +39,7 @@ export function usePersonalWorkspace() {
   const id = state.conversation_id || "";
   const draftKey = conversationDraftKey(id, conversations.workspace);
   const draft = drafts.items[draftKey] || EMPTY_DRAFT;
-  const { input, skillId, responseMode, materials, caseMaterials, selectedCase, savedDocuments, decisionResult, decisionFailures } = draft;
+  const { input, skillId, responseMode, materials, caseMaterials, selectedCase, savedDocuments, savedSpreadsheets, decisionResult, decisionFailures } = draft;
   const sending = !!runtime.activities[id];
   const stopping = !!runtime.activities[id]?.stopping;
   const updateDraft = drafts.update;
@@ -122,6 +122,23 @@ export function usePersonalWorkspace() {
     } catch (error) { message.error(errorText(error, "个人文档保存未完成")); }
     finally { documentConfirmations.current.delete(key); }
   };
+  const saveSpreadsheet = async (item: WorkspaceMessage, index: number, target = id) => {
+    const current = runtime.get(target);
+    const source = current.messages[index];
+    if (!target || !source || source.role !== "assistant" || source.content !== item.content || !source.content.trim() || source.failed || source.stopped || (runtime.running(target) && index === current.messages.length - 1)) { message.error("原回答尚未完整生成或已变化，请核对当前会话后保存"); return; }
+    if (!source.can_save_spreadsheet || workspaceDocumentSaveTarget(source) !== "personal") { message.error(source.personal_document_save_error || "当前回答没有可保存的 Excel 表格"); return; }
+    const key = `xlsx:${target}:${index}`;
+    if (documentConfirmations.current.has(key) || draftsRef.current[target]?.savedSpreadsheets[index]) return;
+    documentConfirmations.current.add(key);
+    try {
+      const name = aiExcelDocumentName("", source.content);
+      await confirmPersonalAiDocument({ conversationId: target, messageIndex: index, name, content: source.content, format: "xlsx", onSaved: (file) => {
+        updateDraft(target, "savedSpreadsheets", (current) => ({ ...current, [index]: file.name }));
+        setDocumentRevision((value) => value + 1);
+      } });
+    } catch (error) { message.error(errorText(error, "个人 Excel 保存未完成")); }
+    finally { documentConfirmations.current.delete(key); }
+  };
   // override 用于工作台提醒和快捷问题：它们把完整问题直接交给智能体，不经过输入框。
   // target 用于把问题发给一条刚建的对话，避免沿用闭包里的旧会话。
   const send = async (override?: string, target?: WorkspaceState) => {
@@ -162,6 +179,7 @@ export function usePersonalWorkspace() {
       const completedState = await generation;
       const finalMessage = completedState?.messages.at(-1);
       if (finalMessage?.can_save_document && isAiWordGenerationRequest(content) && isUsableAiDocumentContent(finalMessage.content) && !completedState?.pending_actions.some((action) => action.preview?.path?.endsWith("/ai-space/files"))) saveWord(finalMessage, completedState!.messages.length - 1, written);
+      if (finalMessage?.can_save_spreadsheet && isAiSpreadsheetGenerationRequest(content) && isUsableAiDocumentContent(finalMessage.content) && !completedState?.pending_actions.some((action) => action.preview?.path?.endsWith("/ai-space/files"))) saveSpreadsheet(finalMessage, completedState!.messages.length - 1, written);
     } catch (error) {
       if (beforeSend && consumedDraft) {
         const previous = beforeSend;
@@ -258,7 +276,7 @@ export function usePersonalWorkspace() {
     try { await conversations.openWorkspace(enabled ? PERSONAL_CONVERSATION_WORKSPACE : undefined); }
     catch (error) { message.error(errorText(error, "空间切换失败")); }
   };
-  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, chooseCaseMaterials, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, savedDocuments, documentRevision, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation, draftKey,
+  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, chooseCaseMaterials, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, saveSpreadsheet, savedDocuments, savedSpreadsheets, documentRevision, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation, draftKey,
     currentWorkspace: conversations.workspace, workspaceProjects: conversations.projects, selectWorkspace, setProjectMode,
     conversations: conversations.items, conversationBusy: conversations.busy, runningIds: Object.keys(runtime.activities),
     createConversation: () => changeConversation(() => conversations.create()), selectConversation: (target: string) => target === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(target)),

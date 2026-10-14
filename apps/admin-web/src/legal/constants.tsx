@@ -201,6 +201,20 @@ export const aiWordDocumentName = (request: string, generatedContent = "") => {
   return `${title}-${dayjs().format("YYYYMMDD-HHmmss")}.docx`;
 };
 
+export const isAiSpreadsheetGenerationRequest = (value: string) =>
+  /(?:生成|制作|整理|导出|保存|转成|转换).{0,24}(?:excel|xlsx|电子表格|表格)/i.test(value)
+  || /(?:excel|xlsx|电子表格|表格).{0,16}(?:文件|表格|格式)/i.test(value);
+
+export const aiExcelDocumentName = (request: string, generatedContent = "") => {
+  const explicitTitle = request.match(/标题(?:为|是)?[“"]([^”"]{1,80})[”"]/i)?.[1]?.trim();
+  const generatedTitle = generatedContent.split(/\r?\n/).map((line) => line.replace(/^[#*\s|]+/, "").trim()).find(Boolean)?.slice(0, 60);
+  const cleaned = request.replace(/(?:请|帮我|给我|需要|可以|能否|生成|制作|整理|导出|保存|转成|转换)/g, "")
+    .replace(/(?:excel|xlsx|电子表格|表格|文件|格式)/gi, "")
+    .replace(/[\\/:*?"<>|\r\n]+/g, " ").trim().slice(0, 60);
+  const title = explicitTitle || (/[\p{L}\p{N}]/u.test(cleaned) ? cleaned : "") || generatedTitle || "AI生成表格";
+  return `${title}-${dayjs().format("YYYYMMDD-HHmmss")}.xlsx`;
+};
+
 export const noCaseEventCapabilities: CaseEventCapabilities = { can_create: false, can_edit: false, can_delete: false };
 
 export const AGENT_DOCUMENT_LIMIT = 12;

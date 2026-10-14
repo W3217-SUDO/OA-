@@ -4,7 +4,7 @@ import { agentOperationError, type AgentActionPreview } from "../AgentOperationP
 export type WorkspaceSkill = AgentSkill & { custom?: boolean; enabled?: boolean; instruction?: string; source?: string; sha256?: string; scope?: "system" | "global" | "personal" };
 export type ResponseMode = "fast" | "deep";
 export type Material = { id: number; name: string; case_id?: number };
-export type WorkspaceMessage = { role: "user" | "assistant"; content: string; created_at?: string; skill_name?: string; case_id?: number; case_no?: string; can_save_document?: boolean; can_save_personal_document?: boolean; can_save_case_document?: boolean; personal_document_save_error?: string | null; attachments?: Material[]; failed?: boolean; stopped?: boolean };
+export type WorkspaceMessage = { role: "user" | "assistant"; content: string; created_at?: string; skill_name?: string; case_id?: number; case_no?: string; can_save_document?: boolean; can_save_personal_document?: boolean; can_save_case_document?: boolean; can_save_spreadsheet?: boolean; personal_document_save_error?: string | null; attachments?: Material[]; failed?: boolean; stopped?: boolean };
 
 export function workspaceDocumentSaveTarget(item: WorkspaceMessage): "case" | "personal" | null {
   if (item.can_save_case_document !== undefined || item.can_save_personal_document !== undefined) {

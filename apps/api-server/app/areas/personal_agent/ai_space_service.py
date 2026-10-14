@@ -1,6 +1,7 @@
 """个人 AI 空间查询与人工确认保存，不把生成文件当成正式案卷。"""
 
 import hashlib
+from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi import HTTPException
@@ -190,6 +191,7 @@ async def edit_space_file(file_id, name, content, identity, db):
 
 async def save_space_message(body, identity, db):
     from app.core.cases import _case_ai_draft_bytes, _case_ai_draft_name
+    from app.core.ai_spreadsheet import markdown_table_xlsx
     from app.areas.personal_agent.service import _user_dir
     from app.areas.personal_agent.project_workspaces import require_state_access
 
@@ -204,8 +206,18 @@ async def save_space_message(body, identity, db):
             raise HTTPException(422, "只能保存本人已完整生成的真实回答")
         if hashlib.sha256(content.encode("utf-8")).hexdigest() != body.expected_content_sha256:
             raise HTTPException(409, "原回答内容已变化，请重新核对后确认保存")
-        name = _case_ai_draft_name(body.name)
-        binary, content_type = _case_ai_draft_bytes(name, content)
+        if getattr(body, "format", "word") == "xlsx":
+            name = str(body.name or "").strip()
+            if not name or name != Path(name).name or Path(name).suffix.lower() != ".xlsx":
+                raise HTTPException(422, "Excel 文件名必须以 .xlsx 结尾，且不能包含路径")
+            try:
+                binary = markdown_table_xlsx(content)
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else:
+            name = _case_ai_draft_name(body.name)
+            binary, content_type = _case_ai_draft_bytes(name, content)
         result = await save_generated_file(db, identity, name=name, content=binary, content_type=content_type,
                                            source_kind="assistant_message", conversation_id=body.conversation_id)
         return result["file"]

@@ -2,8 +2,8 @@ import { useRef, useState, type SetStateAction } from "react";
 import { DEFAULT_AGENT_SKILL } from "../agentSkillRouting";
 import type { DecisionFailure, Material, ResponseMode, WorkspaceCase, WorkspaceSkill } from "./types";
 
-type Draft = { input: string; skillId: string; responseMode: ResponseMode; materials: Material[]; caseMaterials: Material[]; selectedCase: WorkspaceCase | null; savedDocuments: Record<number, string>; decisionResult?: unknown; decisionFailures: Record<string, DecisionFailure> };
-export const EMPTY_PERSONAL_DRAFT: Draft = { input: "", skillId: DEFAULT_AGENT_SKILL, responseMode: "fast", materials: [], caseMaterials: [], selectedCase: null, savedDocuments: {}, decisionFailures: {} };
+type Draft = { input: string; skillId: string; responseMode: ResponseMode; materials: Material[]; caseMaterials: Material[]; selectedCase: WorkspaceCase | null; savedDocuments: Record<number, string>; savedSpreadsheets: Record<number, string>; decisionResult?: unknown; decisionFailures: Record<string, DecisionFailure> };
+export const EMPTY_PERSONAL_DRAFT: Draft = { input: "", skillId: DEFAULT_AGENT_SKILL, responseMode: "fast", materials: [], caseMaterials: [], selectedCase: null, savedDocuments: {}, savedSpreadsheets: {}, decisionFailures: {} };
 
 export function usePersonalDrafts() {
   const [items, setItems] = useState<Record<string, Draft>>({});

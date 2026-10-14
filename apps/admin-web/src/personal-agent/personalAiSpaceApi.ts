@@ -35,7 +35,7 @@ export type PersonalAiFilePage = { items: PersonalAiFile[]; total: number; page:
 export type PersonalAiDocument = { id: string; name: string; content: string };
 export type PersonalAiFileEditResult = { file: PersonalAiFile; supersedes: string };
 export type PersonalAiFileDeleteResult = { id: string; status: "deleted"; blob_status: "retained" };
-export type PersonalAiDocumentRequest = { conversation_id: string; message_index: number; name: string; expected_content_sha256: string };
+export type PersonalAiDocumentRequest = { conversation_id: string; message_index: number; name: string; expected_content_sha256: string; format?: "word" | "xlsx" };
 
 export async function personalAiMessageSha256(content: string): Promise<string> {
   if (!globalThis.crypto?.subtle) throw new Error("当前连接不支持安全摘要计算，请使用 HTTPS 或本机安全连接");

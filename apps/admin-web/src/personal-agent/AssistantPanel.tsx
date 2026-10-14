@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Input, List, Tag, Tooltip } from "antd";
-import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileExcelOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import AgentAvatar from "./AgentAvatar";
 import { ConversationManager } from "./ConversationManager";
@@ -245,6 +245,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                         <span className="personal-ai-document-saved"><FileWordOutlined />{documentTarget === "case" ? "已存入案件 AI 空间" : "已存入个人 AI 空间"}</span>
                         {documentTarget === "personal" ? <Button type="link" icon={<FolderOpenOutlined />} onClick={() => setPersonalSpaceOpen(true)}>查看文件</Button> : <Button type="link" icon={<FolderOpenOutlined />} href={`?page=case-detail-${item.case_id}-${encodeURIComponent(item.case_no || "")}`} title="在案件文档的 AI 空间目录中查看">查看案件文件</Button>}
                       </> : <Tooltip title={documentTarget === "case" ? "保存 Word 到案件 AI 空间" : "保存 Word 到个人 AI 空间"}><Button type="text" icon={<FileWordOutlined />} disabled={loading || workspace.conversationBusy} onClick={() => void workspace.saveWord(item, index)}>{documentTarget === "case" ? "保存到案件 AI 空间" : "保存 Word"}</Button></Tooltip>}
+                      {documentTarget === "personal" && item.can_save_spreadsheet && (workspace.savedSpreadsheets[index] ? <span className="personal-ai-document-saved"><FileExcelOutlined />已存入个人 AI 空间</span> : <Tooltip title="将回答中的 Markdown 表格保存为 Excel 到个人 AI 空间"><Button type="text" icon={<FileExcelOutlined />} disabled={loading || workspace.conversationBusy} onClick={() => void workspace.saveSpreadsheet(item, index)}>保存 Excel</Button></Tooltip>)}
                     </div>}
                   </div>
                 </div>

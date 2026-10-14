@@ -25,6 +25,7 @@ class PersonalFileSaveInput(BaseModel):
     message_index: int = Field(ge=0)
     name: str = Field(min_length=1, max_length=255)
     expected_content_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    format: str = Field(default="word", pattern=r"^(word|xlsx)$")
 
 
 class PersonalFileEditInput(BaseModel):
