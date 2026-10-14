@@ -2,7 +2,7 @@
 from copy import deepcopy
 import json
 import re
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 from fastapi import HTTPException
 
@@ -33,6 +33,7 @@ def validate_configuration(value, item):
             for name, server in servers.items():
                 if not isinstance(name, str) or not name.strip() or not isinstance(server, dict):
                     raise HTTPException(422, 'MCP服务名称或配置无效')
+                authentication_link(server.get('authUrl', ''))
                 for key in ('headers', 'env'):
                     fields = server.get(key, {})
                     if not isinstance(fields, dict) or len(fields) > 32:
@@ -93,33 +94,57 @@ def public_configuration(configuration):
 
 
 def public_link(value):
-    if not isinstance(value, str) or len(value) > 2048 or any(char in value for char in '\r\n\0'):
+    if not isinstance(value, str) or len(value) > 2048 or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in value):
         return None
     try:
         url = urlsplit(value)
+        if url.port is not None and not 1 <= url.port <= 65535:
+            return None
     except ValueError:
         return None
-    if url.scheme not in {'https', 'http'} or not url.hostname or url.username or url.password or '${' in value:
+    if url.scheme not in {'https', 'http'} or not url.hostname or url.username is not None or url.password is not None or '${' in value:
         return None
     if any(_SENSITIVE.search(key) for key, _ in parse_qsl(url.query)):
         return None
     return value
 
 
+def authentication_link(value):
+    if value == '':
+        return None
+    url = public_link(value)
+    if url is None:
+        raise HTTPException(422, '获取密钥或账号设置页面必须是有效的HTTP/HTTPS公开链接，不能包含账号密码或密钥参数')
+    return url
+
+
 def configuration_links(configuration):
-    result = []
+    result = {}
+
+    def add_link(label, url, *, preferred=False):
+        parsed = urlsplit(url)
+        key = parsed._replace(path=parsed.path or '/').geturl()
+        if preferred or key not in result:
+            result[key] = {'label': label, 'url': url}
+
     for filename, config in configuration.items():
         if filename == 'mcp.json':
             for name, server in config.get('mcpServers', {}).items():
                 url = public_link(server.get('url'))
                 if url:
-                    result.append({'label': name + ' · 服务地址', 'url': url})
+                    add_link(name + ' · 服务地址', url)
+                    parsed = urlsplit(url)
+                    website_url = urlunsplit((parsed.scheme, parsed.netloc, '/', '', ''))
+                    add_link(name + ' · 打开服务网站', website_url)
+                auth_url = authentication_link(server.get('authUrl', ''))
+                if auth_url:
+                    add_link(name + ' · 获取密钥 / 账号设置', auth_url, preferred=True)
         if filename == 'cli.json' and isinstance(config.get('authUrlDomain'), str):
             domain = config['authUrlDomain']
             url = public_link(domain if '://' in domain else 'https://' + domain)
             if url:
-                result.append({'label': '服务账号授权', 'url': url})
-    return result
+                add_link('服务账号授权', url)
+    return list(result.values())
 
 
 def reference_links(item):

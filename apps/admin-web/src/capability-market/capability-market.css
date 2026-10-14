@@ -41,12 +41,24 @@
 .capability-market-tool-list p { font-size: 13px; }
 .connector-config-panel { min-width: 0; margin-top: 16px; }
 .connector-config-state { display: flex; flex-wrap: wrap; gap: 4px; }
+.connector-config-link-section { margin: 16px 0; padding: 12px 0; border-top: 1px solid #d8dee4; border-bottom: 1px solid #d8dee4; }
+.connector-config-link-section h4 { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.connector-config-link-section .connector-config-links { margin: 12px 0 0; }
 .connector-config-links, .connector-config-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
-.connector-config-links .ant-btn { max-width: 100%; white-space: normal; overflow-wrap: anywhere; height: auto; min-height: 32px; }
+.connector-config-links .ant-btn { max-width: 100%; white-space: normal; overflow-wrap: anywhere; height: auto; min-height: 44px; text-align: left; }
+.connector-config-links .ant-btn > .ant-btn-icon { flex-shrink: 0; }
+.connector-config-links .ant-btn > span:not(.ant-btn-icon) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .connector-config-form fieldset { min-width: 0; border: 0; padding: 0; margin: 20px 0; }
 .connector-config-form legend { width: 100%; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.connector-config-form .ant-form-item { min-width: 0; }
+.connector-config-form .ant-form-item-control-input-content { min-width: 0; }
 .connector-config-form .ant-form-item-label { white-space: normal; overflow-wrap: anywhere; }
+.connector-config-form .ant-form-item-explain { overflow-wrap: anywhere; }
+.connector-config-form .ant-tag { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .connector-config-form .ant-checkbox-wrapper { margin-top: 8px; }
+.connector-config-website-field { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.connector-config-website-field > .ant-input { flex: 1; min-width: 0; }
+.connector-config-website-field > .ant-btn { flex: 0 0 44px; width: 44px; height: 44px; }
 .connector-config-panel .ant-input, .connector-config-panel .ant-input-affix-wrapper, .connector-config-panel .ant-select { max-width: 100%; min-width: 0; }
 .connector-config-panel textarea { font-family: monospace; overflow-wrap: anywhere; }
 .connector-config-checked { color: #57606a; font-size: 12px; overflow-wrap: anywhere; }
@@ -54,6 +66,8 @@
   .connector-config-links { flex-direction: column; }
   .connector-config-links .ant-btn { min-height: 44px; padding: 8px 12px; }
   .connector-config-form .ant-input, .connector-config-form .ant-input-affix-wrapper, .connector-config-form .ant-select { min-height: 44px; }
+  .connector-config-form .ant-input-affix-wrapper .ant-input { min-height: 0; }
+  .connector-config-form .ant-input-password-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; margin: -8px -8px -8px 0; }
   .connector-config-form .ant-checkbox-wrapper { min-height: 44px; display: inline-flex; align-items: center; }
   .connector-config-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .connector-config-actions .ant-btn { width: 100%; min-width: 0; min-height: 44px; padding: 8px; height: auto; white-space: normal; }
