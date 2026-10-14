@@ -166,7 +166,9 @@ async def download_version(session: dict, version: int) -> bytes:
 async def editor_url(session: dict) -> str:
     await dentry_info(session)
     path = "spaces/" + identifier(session["space_id"]) + "/dentries/" + identifier(session["dentry_id"]) + "/openInfos/query"
-    result = await storage_request("POST", path, session["union_id"], {"option": {"type": "EDIT", "waterMark": True}})
+    result = await storage_request("POST", path, session["union_id"], {
+        "option": {"type": "EDIT", "waterMark": True, "checkLogin": True},
+    })
     if not isinstance(result.get("url"), str):
         raise HTTPException(502, "钉钉未返回 Word 编辑地址")
     return provider_url(result["url"], editor=True)
