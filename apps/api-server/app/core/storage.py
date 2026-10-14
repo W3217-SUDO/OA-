@@ -1,5 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 import os
+import re
 from html.parser import HTMLParser
 from shutil import copyfile
 from xml.etree import ElementTree
@@ -505,15 +506,35 @@ async def _ipr_case_file_attachment(case_record: BusinessRecord, attachment_id: 
 
 
 def _docx_bytes(title: str, content: str) -> bytes:
+    def add_runs(paragraph, value: str) -> None:
+        cursor = 0
+        for match in re.finditer(r"(\*\*[^*]+\*\*|\*[^*]+\*)", value):
+            if match.start() > cursor:
+                paragraph.add_run(value[cursor:match.start()])
+            token = match.group(0)
+            run = paragraph.add_run(token[2:-2] if token.startswith("**") else token[1:-1])
+            run.bold = token.startswith("**")
+            run.italic = not token.startswith("**")
+            cursor = match.end()
+        if cursor < len(value):
+            paragraph.add_run(value[cursor:])
+
     document = Document(); document.add_heading(title, level=0)
     for raw in content.splitlines():
         line = raw.strip()
         if not line: continue
-        if line.startswith("### "): document.add_heading(line[4:], level=3)
-        elif line.startswith("## "): document.add_heading(line[3:], level=2)
-        elif line.startswith("# "): document.add_heading(line[2:], level=1)
-        elif line.startswith(("- ", "* ")): document.add_paragraph(line[2:], style="List Bullet")
-        else: document.add_paragraph(line)
+        if line.startswith("### "):
+            paragraph = document.add_heading(level=3); add_runs(paragraph, line[4:])
+        elif line.startswith("## "):
+            paragraph = document.add_heading(level=2); add_runs(paragraph, line[3:])
+        elif line.startswith("# "):
+            paragraph = document.add_heading(level=1); add_runs(paragraph, line[2:])
+        elif line.startswith(("- ", "* ")):
+            paragraph = document.add_paragraph(style="List Bullet"); add_runs(paragraph, line[2:])
+        elif re.match(r"^\d+\. ", line):
+            paragraph = document.add_paragraph(style="List Number"); add_runs(paragraph, re.sub(r"^\d+\. ", "", line))
+        else:
+            paragraph = document.add_paragraph(); add_runs(paragraph, line)
     output = io.BytesIO(); document.save(output); return output.getvalue()
 
 

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Drawer, Form, Input, Modal, Pagination, Spin, Tooltip, message } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { BoldOutlined, ItalicOutlined, OrderedListOutlined, RedoOutlined, ReloadOutlined, UndoOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { errorText } from "./types";
 import { PersonalAiSpaceFiles } from "./PersonalAiSpaceFiles";
@@ -16,6 +16,65 @@ type Props = {
   onOpenConversation: (id: string) => Promise<unknown>;
   onSkillsChanged?: () => Promise<unknown>;
 };
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[character] || character));
+}
+
+function textToHtml(value: string) {
+  return value.split(/\r?\n/).map((line) => `<p>${escapeHtml(line) || "<br>"}</p>`).join("");
+}
+
+function htmlToMarkdown(html: string) {
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  const render = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+    const element = node as HTMLElement;
+    const inner = Array.from(element.childNodes).map(render).join("");
+    const tag = element.tagName.toLowerCase();
+    if (tag === "br") return "\n";
+    if (tag === "strong" || tag === "b") return `**${inner}**`;
+    if (tag === "em" || tag === "i") return `*${inner}*`;
+    if (tag === "li") return `- ${inner.trim()}\n`;
+    if (["p", "div", "h1", "h2", "h3"].includes(tag)) return `${inner.trim()}\n`;
+    if (tag === "ol") return `${Array.from(element.children).map((item, index) => `${index + 1}. ${render(item).replace(/^[- ]+/, "").trim()}`).join("\n")}\n`;
+    if (tag === "ul") return `${inner}`;
+    return inner;
+  };
+  return render(container).replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function RichTextEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const initialized = useRef(false);
+  useEffect(() => {
+    if (editorRef.current && !initialized.current) {
+      editorRef.current.innerHTML = textToHtml(value);
+      initialized.current = true;
+    }
+  }, [value]);
+  const command = (name: string, argument?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(name, false, argument);
+    onChange(htmlToMarkdown(editorRef.current?.innerHTML || ""));
+  };
+  return <div className="personal-ai-rich-editor">
+    <div className="personal-ai-rich-toolbar" role="toolbar" aria-label="文档格式工具栏">
+      <Button size="small" icon={<UndoOutlined />} aria-label="撤销" onMouseDown={(event) => event.preventDefault()} onClick={() => command("undo")} />
+      <Button size="small" icon={<RedoOutlined />} aria-label="重做" onMouseDown={(event) => event.preventDefault()} onClick={() => command("redo")} />
+      <span className="personal-ai-rich-divider" />
+      <Button size="small" icon={<BoldOutlined />} aria-label="加粗" onMouseDown={(event) => event.preventDefault()} onClick={() => command("bold")} />
+      <Button size="small" icon={<ItalicOutlined />} aria-label="斜体" onMouseDown={(event) => event.preventDefault()} onClick={() => command("italic")} />
+      <Button size="small" icon={<UnorderedListOutlined />} aria-label="项目符号" onMouseDown={(event) => event.preventDefault()} onClick={() => command("insertUnorderedList")} />
+      <Button size="small" icon={<OrderedListOutlined />} aria-label="编号列表" onMouseDown={(event) => event.preventDefault()} onClick={() => command("insertOrderedList")} />
+      <Button size="small" onMouseDown={(event) => event.preventDefault()} onClick={() => command("formatBlock", "h2")}>标题</Button>
+    </div>
+    <div ref={editorRef} className="personal-ai-rich-content" contentEditable role="textbox" aria-label="文档正文编辑区" suppressContentEditableWarning onInput={() => onChange(htmlToMarkdown(editorRef.current?.innerHTML || ""))} />
+    <div className="personal-ai-rich-hint">支持直接排版、撤销重做、加粗、斜体和列表；保存会生成个人 AI 空间的新版本。</div>
+  </div>;
+}
 
 export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversation }: Props) {
   const [page, setPage] = useState(1);
@@ -109,7 +168,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
     </Modal>
     <Modal open={!!editor} title={`在线编辑：${editor?.name || ""}`} width={860} okText="保存为新版本" cancelText="取消" confirmLoading={editorSaving} onOk={() => void saveEditor()} onCancel={() => { setEditor(null); editForm.resetFields(); }} destroyOnHidden>
       <Alert type="info" showIcon title="保存会生成个人 AI 空间的新版本，原文件保留不覆盖。" style={{ marginBottom: 12 }} />
-      <Form form={editForm} layout="vertical"><Form.Item name="name" label="文件名" rules={[{ required: true }, { pattern: /\.(docx|md|txt)$/i, message: "仅支持 .docx、.md、.txt" }]}><Input maxLength={255} /></Form.Item><Form.Item name="content" label="文档正文" rules={[{ required: true, message: "请输入文档正文" }]}><Input.TextArea autoSize={{ minRows: 18, maxRows: 30 }} /></Form.Item></Form>
+      <Form form={editForm} layout="vertical"><Form.Item name="name" label="文件名" rules={[{ required: true }, { pattern: /\.(docx|md|txt)$/i, message: "仅支持 .docx、.md、.txt" }]}><Input maxLength={255} /></Form.Item><Form.Item name="content" label="文档正文" rules={[{ required: true, message: "请输入文档正文" }]}><RichTextEditor value={editForm.getFieldValue("content") || ""} onChange={(content) => editForm.setFieldValue("content", content)} /></Form.Item></Form>
     </Modal>
   </Drawer>;
 }

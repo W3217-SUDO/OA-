@@ -44,6 +44,16 @@
 .personal-ai-document-confirmation .ant-modal-confirm-btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .personal-ai-document-preview { max-height: 60dvh; overflow: auto; overflow-wrap: anywhere; }
 .personal-ai-document-preview > pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.personal-ai-rich-editor { border: 1px solid #d9e2e7; border-radius: 8px; overflow: hidden; background: #fff; }
+.personal-ai-rich-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 8px; border-bottom: 1px solid #e6edf0; background: #f7fafb; }
+.personal-ai-rich-toolbar .ant-btn { min-width: 32px; height: 32px; padding-inline: 8px; }
+.personal-ai-rich-divider { width: 1px; height: 22px; margin-inline: 4px; background: #d9e2e7; }
+.personal-ai-rich-content { min-height: 360px; max-height: 52dvh; overflow: auto; padding: 18px 20px; color: #17212b; font-size: 15px; line-height: 1.8; outline: none; }
+.personal-ai-rich-content:focus { box-shadow: inset 0 0 0 2px #b7e3d5; }
+.personal-ai-rich-content h2 { margin: 0 0 12px; font-size: 21px; line-height: 1.4; }
+.personal-ai-rich-content p { min-height: 1.8em; margin: 0 0 8px; }
+.personal-ai-rich-content ul, .personal-ai-rich-content ol { padding-left: 26px; }
+.personal-ai-rich-hint { padding: 8px 12px; border-top: 1px solid #e6edf0; color: #667085; font-size: 12px; }
 
 @media (max-width: 991px) {
   .assistant .assistant-bar .assistant-bar-actions button.personal-ai-space-trigger.ant-btn { display: none; }
