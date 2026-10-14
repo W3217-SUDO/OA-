@@ -133,7 +133,10 @@ async def dentry_info(session: dict) -> dict:
     result = await storage_request("POST", base + "/query", session["union_id"], {})
     dentry = result.get("dentry")
     if (not isinstance(dentry, dict) or dentry.get("id") != session["dentry_id"]
-            or dentry.get("spaceId") != session["space_id"] or dentry.get("type") != "file"
+            or dentry.get("spaceId") != session["space_id"]
+            # DingTalk returns FILE in the storage API (the docs/examples also
+            # use lowercase in places); treat the enum case-insensitively.
+            or str(dentry.get("type", "")).upper() != "FILE"
             or dentry.get("status") != "NORMAL" or str(dentry.get("extension", "")).lower() != "docx"
             or not isinstance(dentry.get("version"), int) or dentry["version"] < 1
             or not isinstance(dentry.get("size"), int) or not 0 < dentry["size"] <= MAX_GENERATED_BYTES):
