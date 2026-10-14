@@ -34,7 +34,7 @@ export type PersonalAiFile = {
 export type PersonalAiFilePage = { items: PersonalAiFile[]; total: number; page: number; page_size: number };
 export type PersonalAiDocument = { id: string; name: string; content: string };
 export type PersonalAiFileEditResult = { file: PersonalAiFile; supersedes: string };
-export type PersonalAiFileDeleteResult = { id: string; status: "deleted"; blob_status: "absent" };
+export type PersonalAiFileDeleteResult = { id: string; status: "deleted"; blob_status: "retained" };
 export type PersonalAiDocumentRequest = { conversation_id: string; message_index: number; name: string; expected_content_sha256: string };
 
 export async function personalAiMessageSha256(content: string): Promise<string> {

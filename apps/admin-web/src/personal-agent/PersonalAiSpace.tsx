@@ -112,7 +112,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       const { data } = await api.delete<PersonalAiFileDeleteResult>(`/personal-agent/ai-space/files/${encodeURIComponent(deleteTarget.id)}`, {
         data: { expected_sha256: deleteTarget.sha256 }, headers: { "X-OA-Agent-Confirmation": "frontend" },
       });
-      if (data.id !== deleteTarget.id || data.status !== "deleted" || data.blob_status !== "absent") throw new Error("删除结果尚未确认，请刷新文件夹核对，未隐藏该文件");
+      if (data.id !== deleteTarget.id || data.status !== "deleted" || data.blob_status !== "retained") throw new Error("删除结果尚未确认，请刷新文件夹核对，未隐藏该文件");
       if (editor?.id === data.id) setEditor(null);
       if (officeFile?.id === data.id) setOfficeFile(null);
       if (previewFileId === data.id) closePreview();
@@ -120,7 +120,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       setDeleteTarget(null);
       if (files) setPage(Math.min(page, Math.max(1, Math.ceil((files.total - 1) / files.page_size))));
       setRefresh((value) => value + 1);
-      message.success(`文件已删除：${deleteTarget.name}`);
+      message.success(`文件已移入待清理：${deleteTarget.name}`);
     } catch (failure) { setDeleteError(errorText(failure, "文件删除未完成，请核对文件状态")); setRefresh((value) => value + 1); }
     finally { deleteLock.current = false; setDeleting(false); }
   };
@@ -155,7 +155,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       confirmLoading={deleting} okButtonProps={{ danger: true, icon: <DeleteOutlined /> }} cancelButtonProps={{ disabled: deleting }}
       closable={!deleting} keyboard={!deleting} maskClosable={!deleting} onOk={() => void deleteFile()} onCancel={() => { if (!deleteLock.current) { setDeleteTarget(null); setDeleteError(""); } }} destroyOnHidden>
       <p>{deleteTarget?.name}</p>
-      <p>将删除此生成文件及其存储内容，不能撤销。其他版本、来源会话和案件原附件不受影响。</p>
+      <p>将从前端隐藏此生成文件，原文件、附件及钉钉编辑副本暂时保留，后续由统一清理任务处理。其他版本、来源会话和案件原附件不受影响。</p>
       {deleteTarget?.name.toLowerCase().endsWith(".docx") && <p>钉钉编辑副本不在本次删除范围。</p>}
       {deleteError && <Alert type="error" showIcon title="删除未完成" description={deleteError} />}
     </Modal>

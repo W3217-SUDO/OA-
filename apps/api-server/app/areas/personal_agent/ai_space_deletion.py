@@ -188,6 +188,22 @@ async def delete_space_file(file_id, expected_sha256, identity, db):
     if record.status not in {"available", *DELETE_STATUSES}:
         raise HTTPException(409, "仅可删除已完成保存的个人文件或显式重试原删除计划")
     attachment, (bucket, key) = await _binding(db, record, user)
+    # Personal-space deletion is intentionally a logical delete.  Keep the
+    # immutable attachment/blob and any DingTalk dentry for the retention
+    # cleanup job; the list query hides records with status=deleted.
+    record.status = "deleted"
+    record.data = {**record.data, "error": None, "deleted_at": _now(),
+                   "delete_plan": {"operation_id": operation_id, "owner_user_id": user.id,
+                                   "requested_by": user.username, "requested_at": _now(),
+                                   "attachment_id": attachment.id, "path": record.data["path"],
+                                   "endpoint": record.data["endpoint"], "bucket": bucket,
+                                   "key": key, "sha256": expected_sha256, "size": record.data["size"],
+                                   "blob_status": "retained", "cleanup_status": "pending"}}
+    await db.commit()
+    return {"id": file_id, "status": "deleted", "blob_status": "retained"}
+
+    # The guarded physical-delete implementation below remains available for
+    # the retention cleanup worker, which will use the persisted plan.
     plan = {"operation_id": operation_id, "owner_user_id": user.id, "requested_by": user.username,
             "requested_at": _now(), "attachment_id": attachment.id, "path": record.data["path"],
             "endpoint": record.data["endpoint"], "bucket": bucket, "key": key,
