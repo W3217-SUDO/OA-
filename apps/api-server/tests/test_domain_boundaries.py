@@ -765,20 +765,25 @@ class PersonalConfirmationBoundaryTest(IsolatedAsyncioTestCase):
             self.assertEqual(raised.exception.status_code, 403, "他人的 PA 存档不能冒充无存档旧请求")
 
     async def test_personal_state_and_conversation_reads_project_without_saving(self):
-        state = self.state()
+        workspace = {"kind": "personal"}
+        state = {**self.state(), "workspace": workspace}
         original = deepcopy(state)
         record = self.request("执行失败")
         db = SimpleNamespace(scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [record])))
         with patch.object(personal_service, "ensure_identity_file", new=AsyncMock(return_value="身份")), \
              patch.object(personal_service, "_read_state", return_value=state), \
              patch.object(personal_service, "_user_dir", return_value=Path("isolated-unit")), \
-             patch.object(personal_service.conversations, "list_conversations", new=AsyncMock(return_value={"state": state, "items": [], "active_id": "default"})), \
+             patch.object(personal_service.conversations, "list_conversations", new=AsyncMock(return_value={
+                 "state": state, "items": [], "active_id": "default", "workspace": workspace, "workspaces": [workspace],
+             })), \
              patch.object(personal_service.conversations, "save_state", new=AsyncMock()) as save:
             identity = {"username": "本人"}
             direct = await personal_service.personal_state(identity, db)
             snapshot = await personal_service.manage_conversations(identity, db=db)
             self.assertEqual(direct["pending_actions"][0]["status"], "failed")
             self.assertEqual(snapshot["state"]["pending_actions"][0]["status"], "failed")
+            self.assertEqual(snapshot["state"]["workspace"], workspace)
+            self.assertEqual(snapshot["workspaces"], [{**workspace, "title": "个人空间", "available": True}])
             self.assertEqual(state, original)
             save.assert_not_awaited()
 
