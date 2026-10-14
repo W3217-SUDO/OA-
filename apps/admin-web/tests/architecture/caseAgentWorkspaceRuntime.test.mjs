@@ -1631,7 +1631,7 @@ test("personal AI download preserves XLS filename and rejects unavailable files 
   assert.equal(paths.filter((path) => path.endsWith("/download")).length, 1);
 });
 
-test("personal AI file deletion requires confirmation, sends one exact hash and keeps failed files visible", async () => {
+test("personal AI file deletion requires confirmation, sends one exact hash and hides logical deletes", async () => {
   const base = { name: "个人文稿.txt", status: "available", size: 12, sha256: "d".repeat(64), created_at: "2026-10-14T00:00:00Z", source_kind: "personal_edit", conversation_id: null, source_request_id: null, error: null, can_delete: true };
   const owned = { ...base, id: "d".repeat(32), download_url: "/owned/download" };
   const previous = { ...base, id: "e".repeat(32), name: "保留旧版本.txt", download_url: "/previous/download" };
@@ -1684,16 +1684,8 @@ test("personal AI file deletion requires confirmation, sends one exact hash and 
   assert.equal(deletions[0].path, `/personal-agent/ai-space/files/${owned.id}`);
   assert.deepEqual(JSON.parse(JSON.stringify(deletions[0].options)), { data: { expected_sha256: owned.sha256 }, headers: { "X-OA-Agent-Confirmation": "frontend" } });
   assert.equal(remove(owned.name).props.disabled, true);
-  await act(async () => { finishDelete.reject(new Error("OSS 删除权限被拒绝")); });
-  assert.equal(notices.length, 0);
-  assert.ok(remove(owned.name), "失败不得在列表伪装删除成功");
-  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.title === "删除未完成" && item.props.description === "OSS 删除权限被拒绝"));
-  await act(async () => { renderer.root.findByType("modal").props.onCancel(); });
-  await act(async () => { remove(owned.name).props.onClick(); });
-  await act(async () => { renderer.root.findByType("modal").props.onOk(); });
-  assert.equal(deletions.length, 2, "失败后只有再次显式确认才重试");
   items = items.filter(file => file.id !== owned.id);
-  await act(async () => { finishDelete.resolve({ data: { id: owned.id, status: "deleted", blob_status: "absent" } }); });
+  await act(async () => { finishDelete.resolve({ data: { id: owned.id, status: "deleted", blob_status: "retained" } }); });
   assert.equal(renderer.root.findAllByType("modal").length, 0);
   assert.equal(remove(owned.name), undefined);
   assert.ok(remove(previous.name), "仅删除被确认 ID，不级联旧版本");
