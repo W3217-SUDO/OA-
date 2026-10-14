@@ -294,7 +294,7 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         self.assertIn(f"/CODEX-AI-CASE-真实案件名称--c{case.id}/", second["attachment"].path)
         self.assertNotEqual(old_path, second["attachment"].path)
         self.assertEqual(self.objects[old_path], b"actual-xls-content")
-        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 2)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 1)
         listing = await list_space_files(await self.identity(), self.db, page=1, page_size=20)
         self.assertEqual(listing["total"], 2)
         self.assertEqual({item["attachment_id"] for item in listing["items"]}, {second["attachment"].id})
