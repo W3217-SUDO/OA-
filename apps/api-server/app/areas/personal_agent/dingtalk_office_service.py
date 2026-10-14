@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE, logger
 from app.core.generated_file_records import FILE_MODULE, actual_user, generated_file_item
-from app.core.generated_file_storage import read_generated_bytes, safe_original_name, save_generated_file
+from app.core.generated_file_storage import MAX_GENERATED_BYTES, read_generated_bytes, safe_original_name, save_generated_file
 from app.core.oss_attachments import oss_put_editor_revision
 from app.data_models.documents import FileAttachment
 from app.core.libreoffice_files import validate_docx
