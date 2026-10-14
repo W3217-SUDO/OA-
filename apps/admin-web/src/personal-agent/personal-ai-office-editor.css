@@ -1,0 +1,19 @@
+.personal-ai-office-editor .ant-modal-title { padding-right: 36px; overflow-wrap: anywhere; }
+.personal-ai-office-editor .ant-modal-close { min-width: 44px; min-height: 44px; }
+.personal-ai-office-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; max-height: 70dvh; overflow-y: auto; }
+.personal-ai-office-file { display: flex; align-items: flex-start; gap: 10px; min-width: 0; color: #234f43; }
+.personal-ai-office-file > .anticon { flex: 0 0 22px; font-size: 22px; line-height: 1.5; }
+.personal-ai-office-file strong { min-width: 0; overflow-wrap: anywhere; font-size: 15px; line-height: 1.5; }
+.personal-ai-office-content .ant-alert { overflow-wrap: anywhere; }
+.personal-ai-office-steps { margin: 0; padding-left: 24px; line-height: 1.8; }
+.personal-ai-office-steps li + li { margin-top: 8px; }
+.personal-ai-office-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.personal-ai-office-actions .ant-btn, .personal-ai-office-editor .ant-modal-footer .ant-btn { min-height: 44px; min-width: 44px; height: auto; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.personal-ai-office-hint { margin: 0; color: #667085; font-size: 13px; line-height: 1.7; }
+@media (max-width: 767px) {
+  .personal-ai-office-editor .ant-modal { max-width: calc(100vw - 24px); margin-inline: auto; top: 16px; padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+  .personal-ai-office-editor .ant-modal-container { padding: 20px 16px; }
+  .personal-ai-office-content { max-height: calc(100dvh - 240px - env(safe-area-inset-bottom)); }
+  .personal-ai-office-actions { flex-direction: column; align-items: stretch; }
+  .personal-ai-office-actions .ant-btn { width: 100%; }
+}

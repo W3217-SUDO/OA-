@@ -4,6 +4,7 @@ import { BoldOutlined, ItalicOutlined, OrderedListOutlined, RedoOutlined, Reload
 import { api } from "../api";
 import { errorText } from "./types";
 import { PersonalAiSpaceFiles } from "./PersonalAiSpaceFiles";
+import { PersonalAiOfficeEditor } from "./PersonalAiOfficeEditor";
 import { AttachmentPreviewContent, type PreviewAttachment } from "../components/common/AttachmentContent";
 import { downloadPersonalAiFile, type PersonalAiFile, type PersonalAiFilePage, type PersonalAiSpaceInfo } from "./personalAiSpaceApi";
 import { personalHtmlToMarkdown, personalMarkdownToHtml, sanitizePersonalEditorHtml } from "./personalAiDocumentCodec";
@@ -77,6 +78,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
   const [downloadingId, setDownloadingId] = useState("");
   const [preview, setPreview] = useState<PreviewAttachment | null>(null);
   const [editor, setEditor] = useState<{ id: string; name: string; content: string } | null>(null);
+  const [officeFile, setOfficeFile] = useState<PersonalAiFile | null>(null);
   const [editorSaving, setEditorSaving] = useState(false);
   const [editorFormatError, setEditorFormatError] = useState("");
   const [editForm] = Form.useForm<{ name: string; content: string }>();
@@ -118,6 +120,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
   };
   const openEditor = async (file: PersonalAiFile) => {
     setError("");
+    if (file.case_id === null && file.name.toLowerCase().endsWith(".docx")) { setOfficeFile(file); return; }
     try {
       const { data } = await api.get<{ id: string; name: string; content: string }>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/content`);
       editForm.setFieldsValue({ name: data.name, content: data.content });
@@ -165,5 +168,6 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       {editorFormatError && <Alert type="error" showIcon title={editorFormatError} />}
       <Form form={editForm} layout="vertical"><Form.Item name="name" label="文件名" rules={[{ required: true }, { pattern: /\.(docx|md|txt)$/i, message: "仅支持 .docx、.md、.txt" }]}><Input maxLength={255} /></Form.Item><Form.Item name="content" label="文档正文" rules={[{ required: true, message: "请输入文档正文" }]}>{editor?.name.toLowerCase().endsWith(".txt") ? <Input.TextArea autoSize={{ minRows: 18, maxRows: 30 }} /> : <RichTextEditor value={editForm.getFieldValue("content") || ""} onChange={(content) => editForm.setFieldValue("content", content)} onError={setEditorFormatError} />}</Form.Item></Form>
     </Modal>
+    {officeFile && <PersonalAiOfficeEditor key={officeFile.id} file={officeFile} onClose={() => setOfficeFile(null)} onSaved={() => setRefresh(value => value + 1)} />}
   </Drawer>;
 }

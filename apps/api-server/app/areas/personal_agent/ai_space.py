@@ -33,6 +33,16 @@ class PersonalFileEditInput(BaseModel):
     content: str = Field(max_length=2_000_000)
 
 
+class PersonalOfficeOpenInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class PersonalOfficeSaveInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    session_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+
+
 @router.get("")
 async def get_personal_ai_space(owner_user_id: int | None = Query(None, ge=1),
                                 identity=Depends(current_identity), db=Depends(get_db)):
@@ -84,3 +94,28 @@ async def save_personal_ai_file(body: PersonalFileSaveInput, request: Request,
     if request.headers.get("x-oa-agent-confirmation") != "frontend" or not origin_allowed(request.headers.get("origin", "")):
         raise HTTPException(403, "请在 OA 前端确认保存，来源或人工确认标识无效")
     return await save_space_message(body, identity, db)
+
+
+def _require_office_confirmation(request: Request):
+    if request.headers.get("x-oa-agent-confirmation") != "frontend" or not origin_allowed(request.headers.get("origin", "")):
+        raise HTTPException(403, "请在 OA 前端确认钉钉文件操作，来源或人工确认标识无效")
+
+
+@router.post("/files/{file_id}/office/open")
+async def open_personal_office_file(body: PersonalOfficeOpenInput, request: Request,
+                                    file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                    identity=Depends(current_identity), db=Depends(get_db)):
+    from app.areas.personal_agent.dingtalk_office_service import start_office_edit
+
+    _require_office_confirmation(request)
+    return await start_office_edit(file_id, body.expected_sha256, identity, db)
+
+
+@router.post("/files/{file_id}/office/save", status_code=201)
+async def save_personal_office_file(body: PersonalOfficeSaveInput, request: Request,
+                                    file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                    identity=Depends(current_identity), db=Depends(get_db)):
+    from app.areas.personal_agent.dingtalk_office_service import save_office_edit
+
+    _require_office_confirmation(request)
+    return await save_office_edit(file_id, body.session_id, identity, db)
