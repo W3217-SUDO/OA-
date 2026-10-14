@@ -1093,7 +1093,7 @@ class PersonalConfirmationBoundaryTest(IsolatedAsyncioTestCase):
                     response = await client.post(path, json=body, headers=valid)
                     self.assertEqual(response.status_code, status)
                     self.assertEqual(response.json(), expected)
-                    operation.assert_awaited_once_with(file_id, argument, identity, None)
+            operation.assert_awaited_once_with(file_id, argument, identity, None, create_copy=False)
 
     def test_office_provider_resources_keep_https_domain_identifier_and_header_boundaries(self):
         from app.areas.personal_agent import dingtalk_office_client as office
