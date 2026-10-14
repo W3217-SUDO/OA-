@@ -121,9 +121,16 @@ async def start_office_edit(file_id, expected_sha256, identity, db):
         session = _session(record, binding)
         if session.get("phase") != "ready":
             raise HTTPException(409, "先前钉钉操作正在进行或结果未确认，禁止重复上传，请人工核对")
+        cached_url = session.get("editor_url")
         await db.commit()
         await _check_space(session)
-        return {"session_id": session["id"], "url": await office.editor_url(session), "name": item["name"]}
+        if isinstance(cached_url, str) and cached_url:
+            return {"session_id": session["id"], "url": office.provider_url(cached_url, editor=True), "name": item["name"]}
+        url = await office.editor_url(session)
+        record = await _locked(db, record_id)
+        current = _session(record, binding, session["id"])
+        await _store(db, record, {**current, "editor_url": url})
+        return {"session_id": session["id"], "url": url, "name": item["name"]}
     session_id = uuid4().hex
     scene_id = f"personal{binding['owner_user_id']}{binding['app_digest'][:16]}"
     session = {**binding, "id": session_id, "phase": "copying", "source_sha256": expected_sha256,
@@ -155,7 +162,11 @@ async def start_office_edit(file_id, expected_sha256, identity, db):
     except BaseException as error:
         await _uncertain(db, record_id, session_id, "copying", binding, error)
         raise
-    return {"session_id": session_id, "url": await office.editor_url(session), "name": item["name"]}
+    url = await office.editor_url(session)
+    record = await _locked(db, record_id)
+    current = _session(record, binding, session_id)
+    await _store(db, record, {**current, "editor_url": url})
+    return {"session_id": session_id, "url": url, "name": item["name"]}
 
 
 async def save_office_edit(file_id, session_id, identity, db):
