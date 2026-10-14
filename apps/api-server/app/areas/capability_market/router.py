@@ -13,9 +13,12 @@ from app.database import get_db
 from app.global_agent_skills import can_manage_global, require_global_admin
 from app.security import current_identity
 from .catalog import catalog, definition, entry, install, installed_records, public_entry, summary
+from .connector_routes import router as connector_router
+from .connector_store import connection_states
 
 
 router = APIRouter(prefix=settings.api_prefix + "/capability-market", tags=["能力中心"])
+router.include_router(connector_router)
 
 
 class InstallInput(BaseModel):
@@ -25,11 +28,13 @@ class InstallInput(BaseModel):
 
 
 @router.get("")
-async def capability_catalog(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def capability_catalog(scope: Literal['personal', 'global'] = 'personal', identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     records = await installed_records(identity, db)
+    connections = await connection_states(scope, identity, db)
     return {"items": [{**public_entry(item), "installed": [{"id": record["id"],
                 "scope": "global" if record["id"].startswith("global-") else "personal"}
-                for record in records if record.get("source") == item["source"]]} for item in catalog()["items"]],
+                for record in records if record.get("source") == item["source"]],
+                "connection": connections.get(item['id'])} for item in catalog()["items"]],
             "source_commit": catalog()["source_commit"], "can_manage_global": can_manage_global(identity),
             "archive_counts": catalog().get("archive_counts")}
 

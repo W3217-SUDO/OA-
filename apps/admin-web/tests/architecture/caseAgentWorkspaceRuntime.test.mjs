@@ -231,6 +231,42 @@ test("capability market previews before install and preserves persisted success 
   await act(async () => { renderer.unmount(); });
 });
 
+test("connector panel saves scoped configuration, preserves credentials and exposes links and failed verification", async () => {
+  const requests = [], changed = [];
+  const configuration = { "mcp.json": { mcpServers: { remote: { type: "streamableHttp", url: "https://example.org/mcp", headers: { Authorization: "" } } } } };
+  const initial = { configuration, revision: "d".repeat(32), saved: true, status: "configured", error: "", last_checked: null, servers: [],
+    secret_fields: [{ path: ["mcp.json", "mcpServers", "remote", "headers", "Authorization"], label: "remote · Authorization", configured: true, template: "" }],
+    links: [{ label: "服务账号授权", url: "https://example.org/login" }] };
+  const Input = Object.assign(props => React.createElement("input", props), { Password: "password", TextArea: "textarea" });
+  const Form = Object.assign(props => React.createElement("form", props), { Item: "form-item" });
+  const { ConnectorConfigPanel } = loadModule("../capability-market/ConnectorConfigPanel.tsx", {
+    antd: { Alert: "alert", Button: "button", Checkbox: "checkbox", Form, Input, Popconfirm: "confirm", Select: "select", Skeleton: "skeleton", Tag: "tag", message: { success() {}, error() {} } },
+    "../personal-agent/types": { errorText: (error, fallback) => error.message || fallback },
+    "../api": { api: {
+      get: async (path, options) => { requests.push({ method: "GET", path, scope: options.params.scope }); return { data: initial }; },
+      put: async (path, body) => { requests.push({ method: "PUT", path, body }); return { data: { ...initial, revision: "e".repeat(32) } }; },
+      post: async (path, body) => { requests.push({ method: "POST", path, body }); return { data: { ok: false, configuration: { ...initial, revision: "e".repeat(32), status: "failed", error: "服务返回HTTP401，请先授权" } } }; },
+    } },
+  }, { structuredClone });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(ConnectorConfigPanel, { itemId: "c".repeat(24), name: "连接器", scope: "personal", onBusy() {}, onChanged: value => changed.push(value) })); });
+  const button = label => renderer.root.findAllByType("button").find(control => control.props.children === label);
+  assert.equal(requests.length, 1, "打开配置不自动连接");
+  assert.equal(requests[0].scope, "personal");
+  assert.equal(button("服务账号授权").props.href, "https://example.org/login");
+  assert.equal(button("服务账号授权").props.target, "_blank");
+  assert.equal(renderer.root.findByType("password").props.value, "", "不显示已保存的凭据");
+  await act(async () => { button("保存配置").props.onClick(); });
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).body.keep_credentials)), [initial.secret_fields[0].path]);
+  assert.equal(requests.at(-1).body.scope, "personal");
+  await act(async () => { button("测试连接").props.onClick(); });
+  assert.equal(requests.at(-1).body.revision, "e".repeat(32));
+  assert.equal(changed.at(-1).status, "failed");
+  assert.ok(renderer.root.findAllByType("alert").some(alert => alert.props.title === "服务返回HTTP401，请先授权"));
+  assert.equal(renderer.root.findAllByType("button").some(control => String(control.props.children).includes("安装到")), false, "连接器不显示技能安装命令");
+  await act(async () => { renderer.unmount(); });
+});
+
 test("personal AI skill directory reads only owned records, previews full saved definition and downloads actual MD response", async () => {
   const requests = [], savedDownloads = [], revoked = [];
   let runtimeRefreshes = 0;

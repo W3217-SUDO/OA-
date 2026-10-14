@@ -70,6 +70,7 @@ export default function AgentAdminPage() {
   const [globalSkills, setGlobalSkills] = useState<WorkspaceSkill[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [capabilityBusy, setCapabilityBusy] = useState(false);
   const [error, setError] = useState("");
   const refreshGlobals = useCallback(async () => {
     const { data } = await api.get<{ items: WorkspaceSkill[]; can_manage: boolean }>("/agent/global-skills");
@@ -96,8 +97,8 @@ export default function AgentAdminPage() {
   const runtime = overview?.runtime;
   return (
     <div className="agent-scope-admin" data-testid="agent-admin-page">
-      <Tabs activeKey={tab} onChange={setTab} items={[{ key: "capabilities", label: "专家、技能、连接器" }, { key: "global", label: "全局技能" }, { key: "overview", label: "运行状态与个人库" }]} />
-      <div hidden={tab !== "capabilities"}><CapabilityMarket active={tab === "capabilities"} scope="global" onInstalled={refreshGlobals} /></div>
+      <Tabs activeKey={tab} onChange={key => { if (!capabilityBusy) setTab(key); }} items={[{ key: "capabilities", label: "专家、技能、连接器", disabled: capabilityBusy }, { key: "global", label: "全局技能", disabled: capabilityBusy }, { key: "overview", label: "运行状态与个人库", disabled: capabilityBusy }]} />
+      <div hidden={tab !== "capabilities"}><CapabilityMarket active={tab === "capabilities"} scope="global" onInstalled={refreshGlobals} onBusy={setCapabilityBusy} /></div>
       {error && <Alert type="error" showIcon title="智能体中心加载未完成" description={error} action={<Button loading={loading} onClick={() => void load()}>重试</Button>} />}
       <div hidden={tab !== "global"}>
         <Card title="全局技能" loading={loading && !overview} extra={<Button loading={loading} icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>}>

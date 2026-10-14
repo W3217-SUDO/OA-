@@ -827,6 +827,8 @@ async def list_system_configs(keyword: str = "", page: int | None = Query(None, 
     )
     _require_admin(identity)
     items = (await db.scalars(select(SystemConfig).order_by(SystemConfig.id))).all()
+    from app.areas.capability_market.connector_store import CONNECTOR_CONFIG_PREFIX
+    items = [item for item in items if not item.key.startswith(CONNECTOR_CONFIG_PREFIX)]
     from app.global_agent_skills import GLOBAL_SKILL_CONFIG_KEY, can_manage_global
     from app.user_agent_skills import USER_SKILL_CONFIG_PREFIX
     if not can_manage_global(identity):

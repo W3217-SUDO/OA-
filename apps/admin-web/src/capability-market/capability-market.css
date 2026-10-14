@@ -39,7 +39,24 @@
 .capability-market-tool-list article { padding: 12px 0; border-bottom: 1px solid #d8dee4; overflow-wrap: anywhere; }
 .capability-market-tool-list h3 { font-size: 14px; margin: 0; }
 .capability-market-tool-list p { font-size: 13px; }
+.connector-config-panel { min-width: 0; margin-top: 16px; }
+.connector-config-state { display: flex; flex-wrap: wrap; gap: 4px; }
+.connector-config-links, .connector-config-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
+.connector-config-links .ant-btn { max-width: 100%; white-space: normal; overflow-wrap: anywhere; height: auto; min-height: 32px; }
+.connector-config-form fieldset { min-width: 0; border: 0; padding: 0; margin: 20px 0; }
+.connector-config-form legend { width: 100%; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.connector-config-form .ant-form-item-label { white-space: normal; overflow-wrap: anywhere; }
+.connector-config-form .ant-checkbox-wrapper { margin-top: 8px; }
+.connector-config-panel .ant-input, .connector-config-panel .ant-input-affix-wrapper, .connector-config-panel .ant-select { max-width: 100%; min-width: 0; }
+.connector-config-panel textarea { font-family: monospace; overflow-wrap: anywhere; }
+.connector-config-checked { color: #57606a; font-size: 12px; overflow-wrap: anywhere; }
 @media (max-width: 767px) {
+  .connector-config-links { flex-direction: column; }
+  .connector-config-links .ant-btn { min-height: 44px; padding: 8px 12px; }
+  .connector-config-form .ant-input, .connector-config-form .ant-input-affix-wrapper, .connector-config-form .ant-select { min-height: 44px; }
+  .connector-config-form .ant-checkbox-wrapper { min-height: 44px; display: inline-flex; align-items: center; }
+  .connector-config-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .connector-config-actions .ant-btn { width: 100%; min-width: 0; min-height: 44px; padding: 8px; height: auto; white-space: normal; }
   .capability-market { padding: 12px 8px 24px; }
   .capability-market-header { display: block; }
   .capability-market-header > .ant-tabs { min-width: 0; }

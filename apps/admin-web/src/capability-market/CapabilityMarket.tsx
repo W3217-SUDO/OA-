@@ -6,12 +6,14 @@ import { errorText, type WorkspaceSkill } from "../personal-agent/types";
 import { skillScopeLabel, type SkillScope } from "../personal-agent/skillScope";
 import "./capability-market.css";
 import { CapabilityAvatar } from "./CapabilityAvatar";
+import { ConnectorConfigPanel, connectionLabel } from "./ConnectorConfigPanel";
 
 type Capability = {
   id: string; kind: "expert" | "team" | "skill" | "connector"; name: string; description: string; category: string;
   author: string; license: string; version: string; tags: string[]; avatar: string; avatar_fetch?: boolean; source: string;
   members: { id: string; name: string; profession: string }[]; unavailable_reason: string; sha256: string;
   installed: { id: string; scope: SkillScope }[];
+  connection?: { status: string; saved: boolean } | null;
 };
 type Definition = Omit<Capability, "installed"> & {
   instruction: string; resources: string[]; license_documents: Record<string, string>;
@@ -48,12 +50,12 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
     if (!active) return;
     const controller = new AbortController();
     setLoading(true); setError("");
-    void api.get<{ items: Capability[] }>("/capability-market", { signal: controller.signal })
+    void api.get<{ items: Capability[] }>("/capability-market", { signal: controller.signal, params: { scope } })
       .then(({ data }) => { if (!controller.signal.aborted) setItems(data.items); })
       .catch(failure => { if (!controller.signal.aborted) setError(errorText(failure, "能力目录加载失败")); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [active, revision]);
+  }, [active, revision, scope]);
 
   useEffect(() => {
     setDetail(null); setDetailError(""); setRefreshPending(null);
@@ -82,7 +84,7 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
   const matching = scoped.filter(item => (category === "全部" || item.category === category)
     && (!mine || item.installed.some(record => record.scope === scope))
     && `${item.name} ${item.description} ${item.author} ${item.tags.join(" ")}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
-  const connectors = items.filter(item => item.kind === "connector" && !mine && `${item.name} ${item.description}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  const connectors = items.filter(item => item.kind === "connector" && (!mine || item.connection?.saved) && `${item.name} ${item.description}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const featured = categories.filter(value => value !== "全部").slice(0, 6).map(value => ({ category: value, items: scoped.filter(item => item.category === value).slice(0, 3) }));
   const current = selected && items.find(item => item.id === selected.id);
   const installed = current?.installed.find(record => record.scope === scope);
@@ -159,18 +161,19 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
       </div>}
       <div className="capability-market-grid">{connectors.slice((page - 1) * 24, page * 24).map(item => <article className="capability-market-card" key={item.id}>
         <div className="capability-market-card-heading"><span className="capability-market-icon"><LinkOutlined /></span><div><h3>{item.name}</h3><small>{item.tags.join(" · ")}</small></div></div>
-        <p>{item.description}</p><footer><span>未连接</span><Button size="small" onClick={() => setSelected(item)}>查看详情</Button></footer>
+        <p>{item.description}</p><footer><span>{connectionLabel(item.connection?.status)}</span><Button size="small" icon={<LinkOutlined />} onClick={() => setSelected(item)}>配置连接</Button></footer>
       </article>)}</div>
       {connectors.length > 24 && <Pagination className="capability-market-pagination" current={page} pageSize={24} total={connectors.length} onChange={setPage} showSizeChanger={false} responsive />}
     </>}
     <Drawer open={active && !!selected} onClose={() => { if (!busy) setSelected(null); }} title={selected?.name} width={680} zIndex={1500} rootClassName="capability-market-detail" maskClosable={!busy} closable={!busy}
-      footer={<div className="capability-market-detail-actions"><Button disabled={busy} onClick={() => setSelected(null)}>关闭</Button>{refreshPending ? <Button type="primary" icon={<ReloadOutlined />} loading={busy} onClick={() => void refreshInstalled()}>刷新技能库</Button> : installed && onSelect ? <Button type="primary" icon={<CheckOutlined />} disabled={busy} onClick={() => { onSelect(installed.id); setSelected(null); }}>使用</Button> : <Button type="primary" icon={<DownloadOutlined />} loading={busy} disabled={!detail || !!detail.unavailable_reason || !!installed} onClick={() => void install()}>{installed ? "已安装" : `安装到${skillScopeLabel(scope)}`}</Button>}</div>}>
+      footer={<div className="capability-market-detail-actions"><Button disabled={busy} onClick={() => setSelected(null)}>关闭</Button>{selected?.kind !== "connector" && (refreshPending ? <Button type="primary" icon={<ReloadOutlined />} loading={busy} onClick={() => void refreshInstalled()}>刷新技能库</Button> : installed && onSelect ? <Button type="primary" icon={<CheckOutlined />} disabled={busy} onClick={() => { onSelect(installed.id); setSelected(null); }}>使用</Button> : <Button type="primary" icon={<DownloadOutlined />} loading={busy} disabled={!detail || !!detail.unavailable_reason || !!installed} onClick={() => void install()}>{installed ? "已安装" : `安装到${skillScopeLabel(scope)}`}</Button>)}</div>}>
       {detailLoading ? <Skeleton active /> : detail && <>
         <p>{detail.description}</p><div className="capability-market-tags"><Tag>{detail.category}</Tag><Tag>{detail.license}</Tag>{detail.version && <Tag>v{detail.version}</Tag>}</div>
         <a href={detail.source} target="_blank" rel="noopener noreferrer">原始来源</a>
-        {detail.unavailable_reason && <Alert type="warning" showIcon title={detail.unavailable_reason} />}
+        {detail.kind === "connector" && <ConnectorConfigPanel key={detail.id} itemId={detail.id} name={detail.name} scope={scope} onBusy={setBusy} onChanged={state => setItems(previous => previous.map(item => item.id === detail.id ? { ...item, connection: { status: state.status, saved: state.saved } } : item))} />}
+        {detail.kind !== "connector" && detail.unavailable_reason && <Alert type="warning" showIcon title={detail.unavailable_reason} />}
         {detail.members.length > 1 && <section><h3><TeamOutlined /> 成员</h3>{detail.members.map(member => <p key={member.id}>{member.name} · {member.profession}</p>)}</section>}
-        {detail.kind === "connector" && <details open><summary>连接配置</summary>{Object.entries(detail.connection_configs).map(([path, config]) => <section key={path}><h4>{path}</h4><pre>{JSON.stringify(config, null, 2)}</pre></section>)}</details>}
+        {detail.kind === "connector" && <details><summary>原始连接配置</summary>{Object.entries(detail.connection_configs).map(([path, config]) => <section key={path}><h4>{path}</h4><pre>{JSON.stringify(config, null, 2)}</pre></section>)}</details>}
         <details open={detail.kind !== "connector"}><summary>{detail.kind === "connector" ? "接入要求" : "完整指令"}</summary><pre>{detail.instruction}</pre></details>
         <details><summary>参考资料（{detail.resources.length}）</summary><ul>{detail.resources.map(path => <li key={path}>{path}</li>)}</ul></details>
         {!!detail.excluded_resources.length && <details><summary>未加载的脚本与验证资料（{detail.excluded_resources.length}）</summary><ul>{detail.excluded_resources.map(path => <li key={path}>{path}</li>)}</ul></details>}

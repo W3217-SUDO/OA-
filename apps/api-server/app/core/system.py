@@ -507,6 +507,9 @@ async def _parameter_reference_examples(item: SystemParameter, db: AsyncSession)
 
 def _validate_system_config(key: str, value: dict) -> dict:
     from app.global_agent_skills import GLOBAL_SKILL_CONFIG_KEY
+    from app.areas.capability_market.connector_store import CONNECTOR_CONFIG_PREFIX
+    if key.startswith(CONNECTOR_CONFIG_PREFIX):
+        raise HTTPException(status_code=409, detail="请在连接器专用入口管理配置和凭据")
     if key == GLOBAL_SKILL_CONFIG_KEY:
         raise HTTPException(status_code=409, detail="请在智能体中心专用入口管理全局技能，不能直接修改技能库配置")
     if key == "customer_share_policy":
