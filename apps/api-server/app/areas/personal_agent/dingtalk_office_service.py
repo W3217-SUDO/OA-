@@ -12,7 +12,7 @@ from app.core.generated_file_records import FILE_MODULE, actual_user, generated_
 from app.core.generated_file_storage import save_generated_file
 from app.core.libreoffice_files import validate_docx
 from app.data_models.identity import User
-from app.data_models.records import BusinessRecord
+from app.data_models.records import BusinessRecord, WorkflowEvent
 from app.areas.personal_agent.ai_space_service import space_file_bytes, space_file_record
 from app.areas.personal_agent import dingtalk_office_client as office
 
@@ -216,6 +216,15 @@ async def save_office_edit(file_id, session_id, identity, db):
         result.data = {**result.data, "supersedes": file_id}
         source.data = {**source.data, SESSION_KEY: {**active, "phase": "ready", "saved_version": version,
                                                   "result_file_id": result.data["file_id"]}}
+        active_db.add(WorkflowEvent(
+            record_id=record_id,
+            action="钉钉在线编辑自动回写",
+            from_status=source.status,
+            to_status=source.status,
+            operator=identity["username"],
+            comment=(f"原文件={file_id}；新版本={result.data['file_id']}；"
+                     f"钉钉副本={session.get('dentry_id', '')}；会话={session_id}"),
+        ))
 
     try:
         result = await save_generated_file(db, identity, name=session["source_name"], content=content,

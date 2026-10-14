@@ -466,6 +466,11 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         self.assertEqual(again["file"]["id"], saved["file"]["id"])
         self.assertTrue(again["file"]["can_delete"])
         self.assertEqual(remote.download_version.await_count, 2, "同一钉钉版本不重复下载或生成 OA 文件")
+        from app.data_models.records import WorkflowEvent
+        events = (await self.db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == source_record_id))).all()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].action, "钉钉在线编辑自动回写")
+        self.assertIn(saved["file"]["id"], events[0].comment)
         self.assertEqual(self.objects[original_path], original_bytes)
         self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 2)
 
