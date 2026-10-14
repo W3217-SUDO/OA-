@@ -85,8 +85,8 @@ export default function AgentAdminPage() {
       setOverview(data);
       await refreshGlobals();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "智能体中心加载失败");
-      setError(errorText(error, "智能体中心加载失败"));
+      message.error(error?.response?.data?.detail || "智能体设置加载失败");
+      setError(errorText(error, "智能体设置加载失败"));
     } finally {
       setLoading(false);
     }
@@ -99,7 +99,7 @@ export default function AgentAdminPage() {
     <div className="agent-scope-admin" data-testid="agent-admin-page">
       <Tabs activeKey={tab} onChange={key => { if (!capabilityBusy) setTab(key); }} items={[{ key: "capabilities", label: "专家、技能、连接器", disabled: capabilityBusy }, { key: "global", label: "全局技能", disabled: capabilityBusy }, { key: "overview", label: "运行状态与个人库", disabled: capabilityBusy }]} />
       <div hidden={tab !== "capabilities"}><CapabilityMarket active={tab === "capabilities"} scope="global" onInstalled={refreshGlobals} onBusy={setCapabilityBusy} /></div>
-      {error && <Alert type="error" showIcon title="智能体中心加载未完成" description={error} action={<Button loading={loading} onClick={() => void load()}>重试</Button>} />}
+      {error && <Alert type="error" showIcon title="智能体设置加载未完成" description={error} action={<Button loading={loading} onClick={() => void load()}>重试</Button>} />}
       <div hidden={tab !== "global"}>
         <Card title="全局技能" loading={loading && !overview} extra={<Button loading={loading} icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>}>
           <p>启用的全局技能可供全所账号选用；个人技能仍只属于原账号，不会迁移到全局。系统内置技能保持只读。</p>

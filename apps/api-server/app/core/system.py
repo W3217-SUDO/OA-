@@ -636,6 +636,8 @@ async def _system_cache_list_payload(keyword: str, page: int | None, page_size: 
 
 def _system_menu_dict(item: SystemMenu) -> dict:
     label = str(item.label or "").strip()
+    if item.key == "agent-center":
+        label = DEFAULT_MENU_LABEL_BY_KEY[item.key]
     if not label or label in {"---", "—", "-"}:
         label = DEFAULT_MENU_LABEL_BY_KEY.get(item.key, "未命名菜单")
     return {

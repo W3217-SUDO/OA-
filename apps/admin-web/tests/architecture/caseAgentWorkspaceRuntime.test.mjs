@@ -366,6 +366,7 @@ test("global skill management entry requires both authorized overview and can_ma
   assert.equal(globalReads, beforeDenied, "管理员overview失败不继续开放全局目录管理");
   assert.equal(manage(), undefined);
   assert.equal(renderer.root.findAllByType("skill-manager").length, 0);
+  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.title === "智能体设置加载未完成" && item.props.description === "管理员权限不足"));
   await act(async () => { renderer.unmount(); });
 });
 
@@ -414,6 +415,11 @@ test("manual new conversation requires one confirmation, cancellation preserves 
   await act(async () => { await confirmations[3].onOk(); confirmations[3].afterClose(); });
   assert.equal(renderer.root.findByType("drawer").props.open, false, "抽屉新建成功才关闭抽屉");
   assert.equal(created.length, 2);
+  await act(async () => renderer.update(React.createElement(ConversationManager, { ...props, presentation: "sidebar", navigation: React.createElement("nav", { "aria-label": "项目导航" }) })));
+  const sidebarSections = renderer.root.findAll((item) => item.props.className === "assistant-workspace-navigation" || item.props.className === "assistant-workspace-history");
+  assert.deepEqual(sidebarSections.map((item) => item.props.className), ["assistant-workspace-navigation", "assistant-workspace-history"], "真实会话组件把整个导航区放在历史会话前");
+  assert.equal(sidebarSections[0].findByType("nav").props["aria-label"], "项目导航");
+  assert.equal(sidebarSections[1].findByType("h2").props.children, "历史会话");
   await act(async () => { renderer.unmount(); });
 });
 
@@ -962,6 +968,11 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   const byClass = name => renderer.root.findAllByType("button").find(item => item.props.className === name);
   const selectCaseSpace = () => renderer.root.findAllByType("button").find(item => item.props["aria-label"] === "选择案件空间");
   const projects = () => renderer.root.findAllByType("button").filter(item => item.props.className === "assistant-workspace-project");
+  const navigationOrder = renderer.root.findByType("conversation-manager").findAll((item) => item.type === "confirmation-history" || (item.type === "button" && (
+    ["assistant-workspace-generated-entry", "assistant-workspace-personal-entry", "assistant-workspace-project"].includes(item.props.className)
+    || ["导入技能", "智能体设置", "案件空间"].includes(item.props.children) || item.props["aria-label"] === "选择案件空间"
+  ))).map((item) => item.type === "confirmation-history" ? "历史确认记录" : item.props.className === "assistant-workspace-project" ? "案件项目" : item.props["aria-label"] === "选择案件空间" ? "添加案件" : item.props.children);
+  assert.deepEqual(navigationOrder, ["AI生成文件夹", "历史确认记录", "导入技能", "智能体设置", "个人空间", "案件空间", "添加案件", "案件项目", "案件项目"], "个人空间、案件标题、添加按钮及全部项目整体移到智能体设置后，不隐藏或拆散项目");
   assert.deepEqual(projectModes, [true], "PC进入真实默认个人项目模式");
   assert.equal(selectCaseSpace().props.disabled, false);
   assert.equal(projects()[0].props.disabled, false);
@@ -981,14 +992,14 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   assert.equal(byClass("assistant-workspace-generated-entry").props.children, "AI生成文件夹");
   assert.equal(renderer.root.findByType("personal-ai-space").props.open, true, "生成文件夹独立复用原受权文件组件");
   await act(async () => renderer.root.findByType("personal-ai-space").props.onClose());
-  await act(async () => { button("智能体中心").props.onClick(); button("返回工作台").props.onClick(); });
+  await act(async () => { button("智能体设置").props.onClick(); button("返回工作台").props.onClick(); });
   assert.deepEqual(routes, ["agent-center", "dashboard"], "侧栏沿用上层授权的真实导航回调");
   desktopWorkspace = { ...desktopWorkspace, status: { ready: true, commands: [] } };
   await act(async () => { renderer.update(React.createElement(AiChatPage, { ...chatProps, onOpenAgentCenter: undefined })); });
   assert.equal(selectCaseSpace().props.disabled, true, "案件入口使用真实命令权限，而非只改标签");
   assert.ok(projects().every(item => item.props.disabled), "没有命令权限时不能借项目书签绕过");
   assert.equal(byClass("assistant-workspace-case-materials"), undefined, "无案件权限不展示既有选中案件材料入口");
-  assert.equal(button("智能体中心"), undefined, "上层未授导航回调时不制造中心入口");
+  assert.equal(button("智能体设置"), undefined, "上层未授导航回调时不制造设置入口，稳定route和权限链不因更名改变");
   desktopWorkspace = { ...desktopWorkspace, status: { ready: true, commands: [{ id: "cases" }] }, loadError: "工作区读取失败" };
   await act(async () => { renderer.update(React.createElement(AiChatPage, chatProps)); });
   assert.equal(selectCaseSpace().props.disabled, true);
@@ -1593,7 +1604,7 @@ test("personal AI mobile tools close their existing popover before opening the s
 test("personal AI space shows known Chinese source labels and preserves unknown source values", () => {
   const { PersonalAiSpaceFiles } = loadModule("../personal-agent/PersonalAiSpaceFiles.tsx", { antd: { Button: () => null, Empty: () => null, Tag: () => null, Tooltip: () => null } });
   const text = (node) => typeof node === "string" || typeof node === "number" ? String(node) : React.Children.toArray(node?.props?.children).map(text).join("");
-  for (const [source, label] of [["mcp_export", "案件导出"], ["mcp_generated", "智能体生成文件"], ["case_draft", "案件AI草稿"], ["case_upload", "案件AI上传"], ["case_migration", "案件AI迁移"], ["assistant_message", "助手回答"], ["personal_identity", "个人身份文件"], ["future_source", "future_source"], ["toString", "toString"]]) {
+  for (const [source, label] of [["mcp_export", "案件导出"], ["mcp_generated", "智能体生成文件"], ["case_draft", "案件AI草稿"], ["case_upload", "案件AI上传"], ["case_migration", "案件AI迁移"], ["assistant_message", "助手回答"], ["personal_identity", "个人身份文件"], ["personal_edit", "在线编辑新版本"], ["future_source", "future_source"], ["toString", "toString"]]) {
     const rendered = PersonalAiSpaceFiles({ items: [{ id: "CODEX-file", name: "CODEX文稿.docx", status: "failed", size: 10, created_at: "2026-10-13T00:00:00Z", source_kind: source, conversation_id: null, source_request_id: null, error: null, download_url: null }], downloadingId: "", busy: false, onDownload: () => assert.fail("来源展示不能下载"), onConversation: () => assert.fail("无来源会话不能导航") });
     assert.ok(text(rendered).includes(label));
     assert.ok(text(rendered).includes("保存时间"));
@@ -1618,6 +1629,229 @@ test("personal AI download preserves XLS filename and rejects unavailable files 
   status = "uncertain";
   await assert.rejects(downloadPersonalAiFile(file), /不能下载/);
   assert.equal(paths.filter((path) => path.endsWith("/download")).length, 1);
+});
+
+test("personal AI file deletion requires confirmation, sends one exact hash and keeps failed files visible", async () => {
+  const base = { name: "个人文稿.txt", status: "available", size: 12, sha256: "d".repeat(64), created_at: "2026-10-14T00:00:00Z", source_kind: "personal_edit", conversation_id: null, source_request_id: null, error: null, can_delete: true };
+  const owned = { ...base, id: "d".repeat(32), download_url: "/owned/download" };
+  const previous = { ...base, id: "e".repeat(32), name: "保留旧版本.txt", download_url: "/previous/download" };
+  const denied = [{ ...base, id: "f".repeat(32), name: "案件原附件.txt", case_id: 42, can_delete: false }, { ...base, id: "1".repeat(32), name: "IDENTITY.md", source_kind: "personal_identity", can_delete: false }];
+  let items = [owned, previous, ...denied], finishDelete;
+  const deletions = [], notices = [];
+  const { PersonalAiSpace } = loadModule("../personal-agent/PersonalAiSpace.tsx", {
+    antd: { Alert: "alert", Button: "button", Drawer: "drawer", Empty: "empty", Pagination: "pagination", Spin: "spin", Tag: "tag", Tooltip: "tooltip",
+      Modal: ({ open, children, ...props }) => open ? React.createElement("modal", props, children) : null, message: { success: value => notices.push(value) } },
+    "./types": { errorText: (error, fallback) => error.message || fallback },
+    "./PersonalAiDocumentEditor": { PersonalAiDocumentEditor: "document-editor" },
+    "../components/common/AttachmentContent": { AttachmentPreviewContent: () => null },
+    "../api": { api: {
+      get: async path => {
+        if (path === "/personal-agent/ai-space") return { data: { configured: true, owner_name: "本人" } };
+        if (path === "/personal-agent/ai-space/files") return { data: { items, total: items.length, page: 1, page_size: 20 } };
+        if (path === `/personal-agent/ai-space/files/${owned.id}/content`) return { data: { id: owned.id, name: owned.name, content: "原版本正文" } };
+        throw new Error(`未预期请求：${path}`);
+      },
+      delete: (path, options) => { deletions.push({ path, options }); return new Promise((resolve, reject) => { finishDelete = { resolve, reject }; }); },
+    } },
+  });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(PersonalAiSpace, { open: true, revision: 0, busy: false, onClose() {}, onOpenConversation: async () => {}, label: "AI生成文件夹" })); });
+  const remove = name => renderer.root.findAllByType("button").find(item => item.props["aria-label"] === `删除生成文件：${name}`);
+  assert.ok(remove(owned.name));
+  for (const file of denied) assert.equal(remove(file.name), undefined, "服务端未授权的案件或身份文件没有删除入口");
+  const row = renderer.root.findAllByType("li").find(item => item.findByType("strong").props.children === owned.name);
+  await act(async () => { row.findAllByType("button").find(item => item.props.children === "在线编辑").props.onClick(); });
+  assert.equal(renderer.root.findByType("document-editor").props.document.id, owned.id);
+  const newVersion = { ...base, id: "2".repeat(32), name: "回读新版本.txt", supersedes: owned.id, download_url: "/new/download" };
+  items = [newVersion, ...items];
+  await act(async () => { renderer.root.findByType("document-editor").props.onVersionCreated(newVersion); });
+  assert.equal(renderer.root.findByType("document-editor").props.document.id, owned.id, "仅创建新版本还不能切换未回读的编辑目标");
+  assert.ok(renderer.root.findAllByType("tag").some(item => item.props.children === "本次保存的新版本"));
+  await act(async () => { renderer.root.findByType("document-editor").props.onSaved(newVersion, { id: newVersion.id, name: newVersion.name, content: "服务端已回读正文" }); });
+  assert.equal(renderer.root.findByType("document-editor").props.document.id, newVersion.id);
+  assert.equal(renderer.root.findByType("document-editor").props.document.content, "服务端已回读正文");
+  await act(async () => { renderer.root.findByType("document-editor").props.onClose(); });
+  await act(async () => { remove(owned.name).props.onClick(); });
+  assert.equal(deletions.length, 0, "打开确认不发送删除");
+  await act(async () => { renderer.root.findByType("modal").props.onCancel(); });
+  assert.equal(deletions.length, 0, "取消确认零请求");
+  await act(async () => { remove(owned.name).props.onClick(); });
+  await act(async () => {
+    const modal = renderer.root.findByType("modal");
+    modal.props.onOk(); modal.props.onOk();
+  });
+  assert.equal(deletions.length, 1, "同一次确认连点只发送一次");
+  assert.equal(deletions[0].path, `/personal-agent/ai-space/files/${owned.id}`);
+  assert.deepEqual(JSON.parse(JSON.stringify(deletions[0].options)), { data: { expected_sha256: owned.sha256 }, headers: { "X-OA-Agent-Confirmation": "frontend" } });
+  assert.equal(remove(owned.name).props.disabled, true);
+  await act(async () => { finishDelete.reject(new Error("OSS 删除权限被拒绝")); });
+  assert.equal(notices.length, 0);
+  assert.ok(remove(owned.name), "失败不得在列表伪装删除成功");
+  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.title === "删除未完成" && item.props.description === "OSS 删除权限被拒绝"));
+  await act(async () => { renderer.root.findByType("modal").props.onCancel(); });
+  await act(async () => { remove(owned.name).props.onClick(); });
+  await act(async () => { renderer.root.findByType("modal").props.onOk(); });
+  assert.equal(deletions.length, 2, "失败后只有再次显式确认才重试");
+  items = items.filter(file => file.id !== owned.id);
+  await act(async () => { finishDelete.resolve({ data: { id: owned.id, status: "deleted", blob_status: "absent" } }); });
+  assert.equal(renderer.root.findAllByType("modal").length, 0);
+  assert.equal(remove(owned.name), undefined);
+  assert.ok(remove(previous.name), "仅删除被确认 ID，不级联旧版本");
+  assert.equal(notices.length, 1);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("personal DOCX enters Office before content extraction and guards folder actions while Office is busy", async () => {
+  const file = { id: "a".repeat(32), name: "含表格原文.docx", case_id: null, owner_user_id: 7, owner_name: "本人", status: "available", size: 20, sha256: "b".repeat(64), created_at: "2026-10-14T00:00:00Z", source_kind: "personal_edit", can_delete: true, download_url: "/original/download" };
+  const saved = { ...file, id: "c".repeat(32), name: "完整新版本.docx", supersedes: file.id, download_url: "/new/download" };
+  const blob = new Blob(["opaque complete DOCX bytes"]);
+  const reads = [];
+  let items = [file], closed = 0, deleted = 0;
+  const { PersonalAiSpace } = loadModule("../personal-agent/PersonalAiSpace.tsx", {
+    antd: { Alert: "alert", Button: "button", Drawer: "drawer", Empty: "empty", Pagination: "pagination", Spin: "spin", Tag: "tag", Tooltip: "tooltip",
+      Modal: ({ open, children, ...props }) => open ? React.createElement("modal", props, children) : null, message: { success() {} } },
+    "./types": { errorText: (error, fallback) => error.message || fallback },
+    "./PersonalAiDocumentEditor": { PersonalAiDocumentEditor: "document-editor" },
+    "./PersonalAiOfficeEditor": { PersonalAiOfficeEditor: "office-editor" },
+    "../components/common/AttachmentContent": { AttachmentPreviewContent: "attachment-preview" },
+    "../api": { api: {
+      get: async (path, options) => {
+        reads.push({ path, options });
+        if (path === "/personal-agent/ai-space") return { data: { configured: true, owner_name: "本人" } };
+        if (path === "/personal-agent/ai-space/files") return { data: { items, total: items.length, page: 1, page_size: 20 } };
+        throw new Error("个人完整 Word 不得读取受限 content");
+      },
+      delete: async () => { deleted++; throw new Error("忙态不能删除"); },
+    } },
+  });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(PersonalAiSpace, { open: true, revision: 0, busy: false, onClose: () => { closed++; }, onOpenConversation: async () => {} })); });
+  await act(async () => { renderer.root.findAllByType("button").find(item => item.props.children === "在线编辑").props.onClick(); });
+  const office = renderer.root.findByType("office-editor");
+  assert.equal(office.props.file.id, file.id);
+  assert.equal(renderer.root.findAllByType("document-editor").length, 0);
+  assert.equal(reads.length, 2, "DOCX进入Office不发起旧/content正文解析");
+  await act(async () => { office.props.onBusy(true); });
+  const remove = () => renderer.root.findAllByType("button").find(item => item.props["aria-label"] === `删除生成文件：${file.name}`);
+  assert.equal(remove().props.disabled, true);
+  await act(async () => { remove().props.onClick(); renderer.root.findByType("drawer").props.onClose(); office.props.onClose(); });
+  assert.equal(deleted, 0);
+  assert.equal(closed, 0);
+  assert.equal(renderer.root.findAllByType("office-editor").length, 1);
+  assert.equal(renderer.root.findAllByType("modal").length, 0, "Office忙态即使旧回调被触发也不打开删除确认");
+  items = [saved, file];
+  await act(async () => { office.props.onVersionCreated(saved); });
+  assert.equal(reads.at(-1).options.params.page, 1);
+  assert.ok(renderer.root.findAllByType("tag").some(item => item.props.children === "本次保存的新版本"));
+  await act(async () => { office.props.onSaved(saved, blob); office.props.onBusy(false); });
+  assert.equal(renderer.root.findAllByType("office-editor").length, 0);
+  assert.equal(renderer.root.findByType("attachment-preview").props.preview.kind, "docx");
+  assert.equal(renderer.root.findByType("attachment-preview").props.preview.name, saved.name);
+  assert.equal(renderer.root.findByType("attachment-preview").props.preview.blob, blob);
+  assert.equal(reads.some(item => item.path.endsWith("/content")), false);
+  await act(async () => { renderer.root.findByType("modal").props.onCancel(); remove().props.onClick(); });
+  assert.ok(renderer.root.findAllByType("p").some(item => item.props.children === "钉钉编辑副本不在本次删除范围。"));
+  await act(async () => { renderer.root.findByType("modal").props.onCancel(); });
+  assert.equal(deleted, 0, "OA删除确认取消不操作OA或远端钉钉副本");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("Office save verifies the new ID metadata and complete bytes and retries failed readback with GET only", async () => {
+  const { createHash, webcrypto } = require("node:crypto");
+  const blob = new Blob(["complete DOCX bytes including opaque table content"]);
+  const bytes = Buffer.from(await blob.arrayBuffer());
+  const file = { id: "d".repeat(32), name: "原Word.docx", owner_user_id: 7, case_id: null, sha256: "e".repeat(64) };
+  const saved = { ...file, id: "f".repeat(32), name: "回存Word.docx", status: "available", size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), supersedes: file.id, can_delete: true, download_url: "/new/download" };
+  const requests = [], created = [], verified = [], notices = [], busy = [];
+  let finishOpen, finishOperation, failMetadata = true, corrupt = false, closed = 0;
+  const { PersonalAiOfficeEditor } = loadModule("../personal-agent/PersonalAiOfficeEditor.tsx", {
+    antd: { Alert: "alert", Button: "button", Modal: ({ footer, children, ...props }) => React.createElement("modal", props, children, footer), message: { success: value => notices.push(value) } },
+    "./types": { errorText: (error, fallback) => error.message || fallback },
+    "../api": { api: {
+      post: (path, body, options) => {
+        requests.push({ method: "POST", path, body, options });
+        if (path.endsWith("/open")) return new Promise(resolve => { finishOpen = resolve; });
+        return Promise.resolve({ data: { file: saved, supersedes: file.id, unchanged: false } });
+      },
+      get: async (path, options) => {
+        requests.push({ method: "GET", path, options });
+        if (path === `/personal-agent/ai-space/files/${saved.id}`) {
+          if (failMetadata) throw new Error("新Word详情暂未读到");
+          return { data: saved };
+        }
+        if (path === `/personal-agent/ai-space/files/${saved.id}/download`) return { data: corrupt ? new Blob([Buffer.alloc(bytes.length, 0)]) : blob };
+        throw new Error("不得读取原ID或受限/content");
+      },
+    } },
+  }, { URL, Blob, crypto: webcrypto });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(PersonalAiOfficeEditor, { file, onClose: () => { closed++; }, onBusy: value => { busy.push(value); if (!value) finishOperation?.(); }, onVersionCreated: value => created.push(value), onSaved: (value, body) => verified.push({ file: value, blob: body }) })); });
+  const button = label => renderer.root.findAllByType("button").find(item => item.props.children === label);
+  // WebCrypto 在原生任务中完成，等待真实忙态结束后再检查完整摘要。
+  const readback = async () => act(async () => {
+    const complete = new Promise(resolve => { finishOperation = resolve; });
+    button("重新读取已回存的新版本").props.onClick();
+    await complete;
+    finishOperation = undefined;
+  });
+  await act(async () => { button("确认上传副本并准备编辑").props.onClick(); button("确认上传副本并准备编辑").props.onClick(); });
+  assert.equal(requests.length, 1, "上传副本连点只发送一次");
+  assert.equal(requests[0].body.expected_sha256, file.sha256);
+  await act(async () => { renderer.root.findByType("modal").props.onCancel(); button("关闭").props.onClick(); });
+  assert.equal(closed, 0, "Office忙态不能提前解除父级互斥");
+  await act(async () => { finishOpen({ data: { session_id: "1".repeat(32), name: file.name, url: "https://alidocs.dingtalk.com/CODEX" } }); });
+  assert.equal(button("打开钉钉编辑").props.rel, "noopener noreferrer");
+  await act(async () => { button("已在钉钉保存，取回新版本").props.onClick(); button("已在钉钉保存，取回新版本").props.onClick(); });
+  assert.equal(requests.filter(item => item.method === "POST").length, 2);
+  assert.equal(requests.find(item => item.path.endsWith("/save")).body.session_id, "1".repeat(32));
+  assert.equal(created[0].id, saved.id);
+  assert.equal(verified.length, 0);
+  assert.equal(notices.length, 0);
+  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.description === "新Word详情暂未读到"));
+  assert.equal(button("已在钉钉保存，取回新版本").props.disabled, true);
+  await act(async () => { button("已在钉钉保存，取回新版本").props.onClick(); });
+  assert.equal(requests.filter(item => item.method === "POST").length, 2);
+  failMetadata = false; corrupt = true;
+  await readback();
+  assert.equal(verified.length, 0, "大小相同但哈希不同不能确认完整Word读取成功");
+  assert.ok(renderer.root.findAllByType("alert").some(item => String(item.props.description).includes("SHA256 不一致")));
+  corrupt = false;
+  await readback();
+  assert.equal(requests.filter(item => item.method === "POST").length, 2, "新版本回读重试没有重复回存POST");
+  assert.equal(verified.length, 1);
+  assert.equal(verified[0].file.id, saved.id);
+  assert.equal(verified[0].blob, blob);
+  assert.equal(notices.length, 1);
+  assert.equal(requests.some(item => item.path.endsWith("/content")), false);
+  assert.ok(requests.filter(item => item.method === "GET").every(item => item.path.includes(saved.id)));
+  assert.equal(busy.at(-1), false);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("Office structured writer failures block replay unlike definite prewrite rejection", async () => {
+  for (const definite of [true, false]) {
+    const file = { id: "2".repeat(32), name: "原Word.docx", owner_user_id: 7, case_id: null, sha256: "3".repeat(64) };
+    let saves = 0;
+    const { PersonalAiOfficeEditor } = loadModule("../personal-agent/PersonalAiOfficeEditor.tsx", {
+      antd: { Alert: "alert", Button: "button", Modal: ({ footer, children, ...props }) => React.createElement("modal", props, children, footer), message: { success: () => assert.fail("未确认的新文件不能提示成功") } },
+      "./types": { errorText: (error, fallback) => error.message || fallback },
+      "../api": { api: { post: async path => {
+        if (path.endsWith("/open")) return { data: { session_id: "4".repeat(32), name: file.name, url: "https://alidocs.dingtalk.com/CODEX" } };
+        saves++;
+        throw new AxiosError("回存未完成", undefined, undefined, undefined, { status: 409, data: { detail: definite ? "回存前置拒绝" : { file_id: "5".repeat(32), status: "uncertain", detail: "对象计划已保留" } } });
+      }, get: async () => assert.fail("失败回存不能读取未确认的新版本") } },
+    }, { URL });
+    let renderer;
+    await act(async () => { renderer = create(React.createElement(PersonalAiOfficeEditor, { file, onClose() {}, onBusy() {}, onVersionCreated: () => assert.fail("失败不登记成功新版本"), onSaved: () => assert.fail("失败不确认读取") })); });
+    const button = label => renderer.root.findAllByType("button").find(item => item.props.children === label);
+    await act(async () => { button("确认上传副本并准备编辑").props.onClick(); });
+    await act(async () => { button("已在钉钉保存，取回新版本").props.onClick(); });
+    assert.equal(button("已在钉钉保存，取回新版本").props.disabled, !definite);
+    assert.ok(renderer.root.findAllByType("alert").some(item => item.props.description === "回存未完成"));
+    await act(async () => { button("已在钉钉保存，取回新版本").props.onClick(); });
+    assert.equal(saves, definite ? 2 : 1, "仅确定未写入的拒绝允许再次人工确认；含file_id/status的计划不得重放");
+    await act(async () => { renderer.unmount(); });
+  }
 });
 
 test("agent workspace releases screenshot URLs on removal and unmount, and reports upload failures", async () => {

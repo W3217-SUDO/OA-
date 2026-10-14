@@ -23,7 +23,7 @@ export function SkillFileImport({ scope, busy, onBusy, refresh, onSelect }: Prop
     if (skill.available) {
       onSelect?.(skill.id);
       message.success(onSelect ? "技能已导入并选中" : `${scopeLabel}已导入`);
-    } else message.info("技能已导入但已停用，当前选择保持不变；请在智能体中心启用后使用");
+    } else message.info("技能已导入但已停用，当前选择保持不变；请在智能体设置启用后使用");
   };
   const upload = async (file: File) => {
     let saved: WorkspaceSkill | null = null;

@@ -7,8 +7,8 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.config import settings
-from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE
-from app.core.generated_file_records import actual_user, generated_file_item
+from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE, logger
+from app.core.generated_file_records import FILE_MODULE, actual_user, generated_file_item
 from app.core.generated_file_storage import save_generated_file
 from app.core.libreoffice_files import validate_docx
 from app.data_models.identity import User
@@ -85,12 +85,25 @@ async def _check_space(session):
         raise HTTPException(409, "钉钉空间归属已变化，未继续文件操作")
 
 
-async def _uncertain(db, record_id, session_id, phase):
-    await db.rollback()
-    record = await _locked(db, record_id)
-    session = (record.data or {}).get(SESSION_KEY)
-    if isinstance(session, dict) and session.get("id") == session_id and session.get("phase") == phase:
-        await _store(db, record, {**session, "phase": "uncertain"})
+async def _uncertain(db, record_id, session_id, phase, binding, error):
+    try:
+        await db.rollback()
+        # 失败审计允许锁定墓碑，只修改原会话状态，不恢复文件或删除计划。
+        record = await db.scalar(select(BusinessRecord).where(
+            BusinessRecord.id == record_id, BusinessRecord.module == FILE_MODULE,
+        ).with_for_update().execution_options(populate_existing=True))
+        if record is None:
+            raise HTTPException(409, "原 Word 元记录不存在，失败审计未完成")
+        session = (record.data or {}).get(SESSION_KEY)
+        if isinstance(session, dict) and session.get("id") == session_id and session.get("phase") == phase:
+            if record.data.get("owner_user_id") != binding["owner_user_id"] or record.data.get("case_id") is not None:
+                raise HTTPException(409, "原 Word 归属已变化，失败审计未更新")
+            session = _session(record, binding, session_id)
+            await _store(db, record, {**session, "phase": "uncertain"})
+    except Exception as audit_error:
+        # 审计失败必须记录，但不能遮蔽 writer 的 file_id/status 或取消、未知异常。
+        error.add_note(f"钉钉编辑失败审计未完成（{type(audit_error).__name__}），请核对原会话与文件保存计划")
+        logger.exception("钉钉编辑失败审计未完成，文件记录=%s，会话=%s", record_id, session_id)
 
 
 async def start_office_edit(file_id, expected_sha256, identity, db):
@@ -136,8 +149,8 @@ async def start_office_edit(file_id, expected_sha256, identity, db):
         session = {**session, "phase": "ready", "copied_version": checked["version"]}
         record = await _locked(db, record_id)
         await _store(db, record, session)
-    except BaseException:
-        await _uncertain(db, record_id, session_id, "copying")
+    except BaseException as error:
+        await _uncertain(db, record_id, session_id, "copying", binding, error)
         raise
     return {"session_id": session_id, "url": await office.editor_url(session), "name": item["name"]}
 
@@ -155,7 +168,8 @@ async def save_office_edit(file_id, session_id, identity, db):
         saved = await space_file_record(session["result_file_id"], identity, db)
         if saved.status != "available":
             raise HTTPException(409, "该版本的 OA 文件尚不可用，请核对保存状态")
-        return {"file": generated_file_item(saved), "supersedes": file_id, "unchanged": True}
+        return {"file": generated_file_item(saved, requesting_user_id=binding["owner_user_id"]),
+                "supersedes": file_id, "unchanged": True}
     content = await office.download_version(session, version)
     if len(content) != dentry["size"]:
         raise HTTPException(409, "钉钉文件大小与版本信息不一致，未保存回 OA")
@@ -173,12 +187,19 @@ async def save_office_edit(file_id, session_id, identity, db):
 
     async def link_result(active_db, attachment):
         source = await _locked(active_db, record_id)
+        if (source.data.get("file_id") != file_id or source.data.get("owner_user_id") != binding["owner_user_id"]
+                or source.data.get("case_id") is not None):
+            raise HTTPException(409, "原 Word 的个人归属已变化，未确认新版本")
         active = _session(source, binding, session_id)
         if active.get("phase") != "saving" or active.get("saving_version") != version:
             raise HTTPException(409, "编辑回存记录已变化，未确认新版本")
         result = await active_db.get(BusinessRecord, attachment.record_id)
-        if result is None or result.data.get("sha256") != digest:
+        if (result is None or result.module != FILE_MODULE or result.status != "available"
+                or result.data.get("owner_user_id") != binding["owner_user_id"] or result.data.get("case_id") is not None
+                or result.data.get("sha256") != digest or result.data.get("source_kind") != "dingtalk_office_edit"
+                or result.data.get("source_request_id") != session_id or result.data.get("attachment_id") != attachment.id):
             raise HTTPException(409, "新 Word 文件关联不完整，未确认回存")
+        result.data = {**result.data, "supersedes": file_id}
         source.data = {**source.data, SESSION_KEY: {**active, "phase": "ready", "saved_version": version,
                                                   "result_file_id": result.data["file_id"]}}
 
@@ -187,7 +208,9 @@ async def save_office_edit(file_id, session_id, identity, db):
                                           content_type=WORD_DOCUMENT_CONTENT_TYPE, source_kind="dingtalk_office_edit",
                                           conversation_id=record.data.get("conversation_id"),
                                           source_request_id=session_id, on_available=link_result)
-    except BaseException:
-        await _uncertain(db, record_id, session_id, "saving")
+    except BaseException as error:
+        await _uncertain(db, record_id, session_id, "saving", binding, error)
         raise
-    return {"file": result["file"], "supersedes": file_id, "unchanged": False}
+    saved = await space_file_record(result["file"]["id"], identity, db)
+    return {"file": generated_file_item(saved, requesting_user_id=binding["owner_user_id"]),
+            "supersedes": file_id, "unchanged": False}

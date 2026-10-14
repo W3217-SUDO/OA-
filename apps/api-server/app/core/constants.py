@@ -115,7 +115,7 @@ COURT_JUDICIAL_KEYS = {
 
 DEFAULT_SYSTEM_MENUS = [
     ("dashboard", "", "控制台", "dashboard", 0),
-    ("agent-center", "", "智能体中心", "robot", 5),
+    ("agent-center", "", "智能体设置", "robot", 5),
     ("seal", "", "用印中心", "file-text", 10), ("seal-my", "seal", "我的用印申请", "", 11), ("seal-audit", "seal", "用印审核", "", 12), ("seal-admin", "seal", "行政用印", "", 13),
     ("task", "", "事务中心", "file-text", 20), ("task-my", "task", "我的任务", "", 21), ("task-dept", "task", "部门任务", "", 22), ("task-company", "task", "公司任务", "", 23), ("vip-tasks", "task", "VIP任务", "", 24),
     ("customer", "", "客户管理", "team", 30), ("customer-new", "customer", "新建客户", "", 31), ("customer-mine", "customer", "我的客户", "", 32), ("customer-recycle", "customer", "个人回收站", "", 33), ("customer-dept", "customer", "部门客户", "", 34), ("customer-dept-recycle", "customer", "部门回收站", "", 35), ("customer-company", "customer", "公司客户", "", 36), ("customer-public", "customer", "公海客户", "", 37), ("customer-shared", "customer", "我的共享客户", "", 38), ("customer-recent-contact", "customer", "最近联系的客户", "", 39), ("customer-recent-update", "customer", "最近更新的客户", "", 40), ("customer-company-recycle", "customer", "公司回收站", "", 41), ("customer-conflict", "customer", "客户利益检索", "", 42),

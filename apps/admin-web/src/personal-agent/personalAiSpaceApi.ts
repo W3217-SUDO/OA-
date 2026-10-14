@@ -16,7 +16,7 @@ export type PersonalAiFile = {
   content_type: string;
   size: number;
   sha256: string;
-  status: "uploading" | "available" | "failed" | "uncertain";
+  status: "uploading" | "available" | "failed" | "uncertain" | "deleting" | "delete_failed" | "delete_uncertain";
   storage_backend: "oss";
   owner_user_id: number;
   owner_name: string;
@@ -27,9 +27,14 @@ export type PersonalAiFile = {
   created_at: string;
   download_url: string | null;
   error: string | null;
+  supersedes?: string | null;
+  can_delete: boolean;
 };
 
 export type PersonalAiFilePage = { items: PersonalAiFile[]; total: number; page: number; page_size: number };
+export type PersonalAiDocument = { id: string; name: string; content: string };
+export type PersonalAiFileEditResult = { file: PersonalAiFile; supersedes: string };
+export type PersonalAiFileDeleteResult = { id: string; status: "deleted"; blob_status: "absent" };
 export type PersonalAiDocumentRequest = { conversation_id: string; message_index: number; name: string; expected_content_sha256: string };
 
 export async function personalAiMessageSha256(content: string): Promise<string> {

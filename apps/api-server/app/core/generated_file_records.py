@@ -165,7 +165,7 @@ async def require_generated_record_access(record, identity, db) -> None:
         await _ensure_record_module(case_id, "case", identity, db)
 
 
-def generated_file_item(record) -> dict:
+def generated_file_item(record, *, requesting_user_id: int | None = None) -> dict:
     data = record.data or {}
     identifier = data["file_id"]
     available = record.status == "available"
@@ -176,6 +176,12 @@ def generated_file_item(record) -> dict:
         "owner_name": data["owner_name"], "source_kind": data["source_kind"],
         "conversation_id": data.get("conversation_id"), "source_request_id": data.get("source_request_id"),
         "case_id": data.get("case_id"), "created_at": record.created_at,
+        "supersedes": data.get("supersedes"),
+        "can_delete": (requesting_user_id is not None and requesting_user_id == data["owner_user_id"]
+                       and data.get("case_id") is None and data["source_kind"] != "personal_identity"
+                       and data.get("attachment_id") is not None
+                       and record.status in {"available", "deleting", "delete_failed", "delete_uncertain"}),
+        "delete_operation_id": (data.get("delete_plan") or {}).get("operation_id"),
         "download_url": f"{settings.api_prefix}/personal-agent/ai-space/files/{identifier}/download" if available else None,
         "error": data.get("error"),
     }

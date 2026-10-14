@@ -73,8 +73,10 @@ async def space_info(identity, db, owner_user_id=None):
 
 async def list_space_files(identity, db, *, page, page_size, owner_user_id=None):
     user = await space_owner(identity, db, owner_user_id)
+    caller = await actual_user(db, identity)
     records = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == FILE_MODULE, BusinessRecord.data["owner_user_id"].as_integer() == user.id,
+        BusinessRecord.status != "deleted",
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all()
     visible = []
     for record in records:
@@ -84,23 +86,30 @@ async def list_space_files(identity, db, *, page, page_size, owner_user_id=None)
             if exc.status_code not in {403, 404}:
                 raise
             continue
-        visible.append(generated_file_item(record))
+        visible.append(generated_file_item(record, requesting_user_id=caller.id))
     return {"items": visible[(page - 1) * page_size:page * page_size], "total": len(visible),
             "page": page, "page_size": page_size}
 
 
-async def space_file_record(file_id, identity, db):
-    record = await db.scalar(select(BusinessRecord).where(
+async def space_file_record(file_id, identity, db, *, lock=False):
+    statement = select(BusinessRecord).where(
         BusinessRecord.module == FILE_MODULE, BusinessRecord.serial_no == "AIGF-" + file_id,
-    ))
+    ).execution_options(populate_existing=True)
+    record = await db.scalar(statement.with_for_update() if lock else statement)
     if record is None:
         raise HTTPException(404, "生成文件不存在")
     await require_generated_record_access(record, identity, db)
+    if record.status == "deleted":
+        raise HTTPException(410, "生成文件已删除")
+    if record.status in {"deleting", "delete_failed", "delete_uncertain"}:
+        raise HTTPException(409, {"file_id": file_id, "status": record.status,
+                                  "operation_id": (record.data.get("delete_plan") or {}).get("operation_id"),
+                                  "detail": record.data.get("error") or "文件正在删除或删除结果待核对，请从列表核对原计划"})
     return record
 
 
 async def space_file_bytes(file_id, identity, db):
-    record = await space_file_record(file_id, identity, db)
+    record = await space_file_record(file_id, identity, db, lock=True)
     item = generated_file_item(record)
     if record.status != "available":
         raise HTTPException(409, {"file_id": file_id, "status": record.status, "detail": "文件尚未完成持久保存"})
@@ -143,6 +152,7 @@ async def edit_space_file(file_id, name, content, identity, db):
     if (record.data or {}).get("owner_user_id") != actual.id:
         raise HTTPException(403, "只有文件所属员工可以在线编辑个人 AI 文件")
     await space_file_text(file_id, identity, db)
+    original = {"record_id": record.id, "sha256": record.data["sha256"], "path": record.data["path"]}
     safe_name = _case_ai_draft_name(name)
     if safe_name.lower().endswith(".docx"):
         from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE
@@ -156,11 +166,26 @@ async def edit_space_file(file_id, name, content, identity, db):
         content_type = WORD_DOCUMENT_CONTENT_TYPE
     else:
         binary, content_type = _case_ai_draft_bytes(safe_name, content)
+    async def link_version(session, attachment):
+        parent = await session.scalar(select(BusinessRecord).where(
+            BusinessRecord.id == original["record_id"], BusinessRecord.module == FILE_MODULE,
+        ).with_for_update().execution_options(populate_existing=True))
+        if (parent is None or parent.status != "available" or parent.data.get("owner_user_id") != actual.id
+                or parent.data.get("sha256") != original["sha256"] or parent.data.get("path") != original["path"]):
+            raise HTTPException(409, "原文件状态已变化，新版本未确认成功，请核对保存计划")
+        version = await session.get(BusinessRecord, attachment.record_id)
+        if (version is None or version.module != FILE_MODULE or version.data.get("owner_user_id") != actual.id
+                or version.data.get("case_id") is not None or version.data.get("source_kind") != "personal_edit"):
+            raise HTTPException(409, "新版本个人归属不一致，未确认保存成功")
+        version.data = {**version.data, "supersedes": file_id}
+
     result = await save_generated_file(
         db, identity, name=safe_name, content=binary, content_type=content_type,
         source_kind="personal_edit", conversation_id=(record.data or {}).get("conversation_id"),
+        on_available=link_version,
     )
-    return {"file": result["file"], "supersedes": file_id}
+    version = await db.get(BusinessRecord, result["attachment"].record_id)
+    return {"file": generated_file_item(version, requesting_user_id=actual.id), "supersedes": file_id}
 
 
 async def save_space_message(body, identity, db):

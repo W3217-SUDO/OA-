@@ -38,11 +38,11 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
       rowClassName="assistant-conversation-row"
       selectClassName="assistant-conversation-select"
       navigation={<>
-        <ConversationWorkspaceNavigation workspace={workspace} />
         <Button type="text" className="assistant-workspace-generated-entry" icon={<FolderOpenOutlined />} onClick={onOpenPersonalSpace}>AI生成文件夹</Button>
         <ConfirmationHistory onReopen={onReopenConfirmation} busy={busy || !!workspace.dismissalId} />
         <Button type="text" icon={<ExperimentOutlined />} aria-label="导入技能" disabled={busy} onClick={onImportSkills}>导入技能</Button>
-        {onOpenAgentCenter && <Button type="text" icon={<RobotOutlined />} onClick={onOpenAgentCenter}>智能体中心</Button>}
+        {onOpenAgentCenter && <Button type="text" icon={<RobotOutlined />} onClick={onOpenAgentCenter}>智能体设置</Button>}
+        <ConversationWorkspaceNavigation workspace={workspace} />
       </>}
     />
     <div className="assistant-workspace-footer">

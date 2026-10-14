@@ -86,6 +86,52 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         args.update(overrides)
         return await generated_storage.save_generated_file(self.db, await self.identity(), **args)
 
+    async def office_edit(self, *, start=True):
+        from docx import Document
+        from app.areas.personal_agent import ai_space_service, dingtalk_office_service
+        from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE
+
+        def word_bytes(text):
+            document = Document()
+            document.add_heading(text, level=1)
+            document.add_table(rows=1, cols=1).cell(0, 0).text = "保留原生 Word 表格，不走文本 codec"
+            output = BytesIO()
+            document.save(output)
+            return output.getvalue()
+
+        self.actor.profile = {"dingtalk_user_id": "CODEX-office-member"}
+        await self.db.commit()
+        original, changed = word_bytes("原 Word"), word_bytes("修改后的 Word")
+        result = await self.save(name="原生文稿.docx", content=original, content_type=WORD_DOCUMENT_CONTENT_TYPE)
+        owner_id = self.actor.id
+        app_digest = hashlib.sha256(b"CODEX-office-app").hexdigest()
+        space = {"id": "CODEX-space", "ownerId": "CODEX-space-owner", "ownerType": "USER",
+                 "creatorId": "CODEX-union", "corpId": "CODEX-corp", "scene": dingtalk_office_service.SCENE,
+                 "sceneId": f"personal-u{owner_id}-{app_digest[:16]}", "status": "NORMAL"}
+        remote = SimpleNamespace(
+            member_union_id=AsyncMock(return_value="CODEX-union"),
+            storage_request=AsyncMock(return_value={"space": space}),
+            upload_copy=AsyncMock(return_value={"id": "CODEX-dentry"}),
+            dentry_info=AsyncMock(return_value={"version": "1", "size": len(original)}),
+            download_version=AsyncMock(return_value=original),
+            editor_url=AsyncMock(return_value="https://alidocs.dingtalk.com/CODEX-office"),
+        )
+        patches = [patch.object(personal_service.settings, "dingtalk_corp_id", "CODEX-corp"),
+                   patch.object(personal_service.settings, "dingtalk_app_key", "CODEX-office-app"),
+                   patch.object(ai_space_service, "read_generated_bytes", new=AsyncMock(side_effect=self.read))]
+        patches.extend(patch.object(dingtalk_office_service.office, name, new=operation)
+                       for name, operation in vars(remote).items())
+        for item in patches:
+            item.start()
+            self.patches.append(item)
+        session = None
+        if start:
+            session = await dingtalk_office_service.start_office_edit(
+                result["file"]["id"], result["file"]["sha256"], await self.identity(), self.db)
+        remote.dentry_info.return_value = {"version": "2", "size": len(changed)}
+        remote.download_version.return_value = changed
+        return result, session, remote, changed
+
     async def test_real_names_stable_owners_and_one_attachment(self):
         first = await self.save()
         self.assertEqual(first["file"]["status"], "available")
@@ -209,6 +255,7 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         self.assertEqual(item.data["owner_user_id"], owner_id)
         listing = await list_space_files(await self.identity(), self.db, page=1, page_size=20, owner_user_id=owner_id)
         self.assertEqual(listing["total"], 1)
+        self.assertFalse(listing["items"][0]["can_delete"], "管理员只读他人目录不投影代删能力")
         from app.core.permissions import _require_record_module_menu
         from app.core.system import _record_module_menu_allowed
         with self.assertRaises(HTTPException) as raised:
@@ -251,6 +298,331 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         listing = await list_space_files(await self.identity(), self.db, page=1, page_size=20)
         self.assertEqual(listing["total"], 2)
         self.assertEqual({item["attachment_id"] for item in listing["items"]}, {second["attachment"].id})
+
+    async def test_personal_edit_links_new_id_reads_changed_content_and_preserves_original_on_failure(self):
+        from app.areas.personal_agent import ai_space_service
+
+        original = await self.save(name="原文件.txt", content="原始正文".encode(), content_type="text/plain")
+        original_path = original["attachment"].path
+        with patch.object(ai_space_service, "read_generated_bytes", new=AsyncMock(side_effect=self.read)):
+            edited = await ai_space_service.edit_space_file(
+                original["file"]["id"], "修改版本.txt", "修改后的正文", await self.identity(), self.db)
+            self.assertNotEqual(edited["file"]["id"], original["file"]["id"])
+            self.assertEqual(edited["supersedes"], original["file"]["id"])
+            self.assertEqual(edited["file"]["supersedes"], original["file"]["id"])
+            self.assertTrue(edited["file"]["can_delete"])
+            new_text = await ai_space_service.space_file_text(edited["file"]["id"], await self.identity(), self.db)
+            old_text = await ai_space_service.space_file_text(original["file"]["id"], await self.identity(), self.db)
+            self.assertEqual(new_text["id"], edited["file"]["id"])
+            self.assertEqual(new_text["content"], "修改后的正文")
+            self.assertEqual(old_text["content"], "原始正文")
+            version = await space_file_record(edited["file"]["id"], await self.identity(), self.db)
+            self.assertEqual(version.data["supersedes"], original["file"]["id"])
+            with patch.object(generated_storage, "save_generated_file", new=AsyncMock(side_effect=HTTPException(503, "保存未确认"))) as save:
+                with self.assertRaises(HTTPException) as raised:
+                    await ai_space_service.edit_space_file(
+                        original["file"]["id"], "失败版本.txt", "不能覆盖原文", await self.identity(), self.db)
+                self.assertEqual(raised.exception.status_code, 503)
+                save.assert_awaited_once()
+            for actor in self.users[1:]:
+                self.actor = actor
+                with self.assertRaises(HTTPException) as raised:
+                    await ai_space_service.edit_space_file(
+                        original["file"]["id"], "越权.txt", "不允许写入", await self.identity(), self.db)
+                self.assertEqual(raised.exception.status_code, 403, "真实管理员也不能代编辑他人版本")
+        self.assertEqual(self.objects[original_path], "原始正文".encode())
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 2)
+
+    async def test_personal_delete_is_exact_idempotent_and_preserves_other_versions(self):
+        from app.areas.personal_agent import ai_space_deletion, ai_space_service
+
+        original = await self.save(name="旧版本.txt", content=b"original", content_type="text/plain")
+        with patch.object(ai_space_service, "read_generated_bytes", new=AsyncMock(side_effect=self.read)):
+            edited = await ai_space_service.edit_space_file(
+                original["file"]["id"], "新版本.txt", "edited", await self.identity(), self.db)
+        target = edited["file"]
+        target_record = await space_file_record(target["id"], await self.identity(), self.db)
+        target_path = target_record.data["path"]
+
+        async def remove_exact(plan):
+            record = await self.db.get(BusinessRecord, target_record.id, populate_existing=True)
+            self.assertEqual(record.status, "deleting")
+            self.assertEqual(record.data["delete_plan"]["operation_id"], plan["operation_id"])
+            self.assertEqual(plan["path"], target_path)
+            self.assertEqual(plan["sha256"], hashlib.sha256(self.objects[target_path]).hexdigest())
+            self.assertEqual(plan["size"], len(self.objects[target_path]))
+            self.objects.pop(target_path)
+            return {"blob_status": "absent", "historical_versions_purged": False}
+
+        with patch.object(ai_space_deletion, "delete_personal_blob", new=AsyncMock(side_effect=remove_exact)) as delete:
+            result = await ai_space_deletion.delete_space_file(target["id"], target["sha256"], await self.identity(), self.db)
+            again = await ai_space_deletion.delete_space_file(target["id"], target["sha256"], await self.identity(), self.db)
+            self.assertEqual(result, {"id": target["id"], "status": "deleted", "blob_status": "absent"})
+            self.assertEqual(again, result)
+            delete.assert_awaited_once()
+        tombstone = await self.db.get(BusinessRecord, target_record.id, populate_existing=True)
+        self.assertEqual(tombstone.status, "deleted")
+        self.assertEqual(tombstone.data["supersedes"], original["file"]["id"])
+        self.assertEqual(tombstone.data["delete_plan"]["blob_status"], "absent")
+        self.assertNotIn(target_path, self.objects)
+        self.assertEqual(self.objects[original["attachment"].path], b"original")
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 1)
+        listing = await list_space_files(await self.identity(), self.db, page=1, page_size=20)
+        self.assertEqual([item["id"] for item in listing["items"]], [original["file"]["id"]])
+        for read in (space_file_record, space_file_bytes):
+            with self.assertRaises(HTTPException) as raised:
+                await read(target["id"], await self.identity(), self.db)
+            self.assertEqual(raised.exception.status_code, 410)
+
+    async def test_personal_delete_rejects_other_owners_case_identity_and_changed_hash_before_blob(self):
+        from app.areas.personal_agent import ai_space_deletion
+
+        owner = self.actor
+        original = await self.save()
+        with patch.object(ai_space_deletion, "delete_personal_blob", new=AsyncMock()) as delete:
+            for actor in self.users[1:]:
+                self.actor = actor
+                with self.assertRaises(HTTPException) as raised:
+                    await ai_space_deletion.delete_space_file(
+                        original["file"]["id"], original["file"]["sha256"], await self.identity(), self.db)
+                self.assertEqual(raised.exception.status_code, 403)
+            self.actor = owner
+            with self.assertRaises(HTTPException) as raised:
+                await ai_space_deletion.delete_space_file(original["file"]["id"], "0" * 64, await self.identity(), self.db)
+            self.assertEqual(raised.exception.status_code, 409)
+            identity_file = await self.save(name="IDENTITY.md", source_kind="personal_identity")
+            with self.assertRaises(HTTPException) as raised:
+                await ai_space_deletion.delete_space_file(
+                    identity_file["file"]["id"], identity_file["file"]["sha256"], await self.identity(), self.db)
+            self.assertEqual(raised.exception.status_code, 409)
+            case = BusinessRecord(module="case", serial_no="CODEX-AI-NO-DELETE", title="隔离案件", owner=owner.username, status="草稿", data={})
+            self.db.add(case)
+            await self.db.commit()
+            with patch("app.core.permissions._require_case_attachment_upload_access", new=AsyncMock()):
+                case_file = await self.save(case_record=case, source_kind="case_draft")
+            with self.assertRaises(HTTPException) as raised:
+                await ai_space_deletion.delete_space_file(
+                    case_file["file"]["id"], case_file["file"]["sha256"], await self.identity(), self.db)
+            self.assertEqual(raised.exception.status_code, 409)
+            delete.assert_not_awaited()
+        self.assertEqual(len(self.objects), 3)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 3)
+
+    async def test_personal_delete_failure_keeps_plan_attachment_and_explicit_retry(self):
+        from app.areas.personal_agent import ai_space_deletion
+
+        original = await self.save()
+        file = original["file"]
+        original_path = original["attachment"].path
+        identity = await self.identity()
+        for uncertain, status in ((False, "delete_failed"), (True, "delete_uncertain")):
+            with self.subTest(status=status), patch.object(ai_space_deletion, "delete_personal_blob", new=AsyncMock(
+                    side_effect=ai_space_deletion.BlobDeleteFailure("隔离删除未确认", uncertain=uncertain))) as delete:
+                with self.assertRaises(HTTPException) as raised:
+                    await ai_space_deletion.delete_space_file(file["id"], file["sha256"], identity, self.db)
+                self.assertEqual(raised.exception.status_code, 502)
+                self.assertEqual(raised.exception.detail["status"], status)
+                delete.assert_awaited_once()
+            # 回滚会过期测试账号，认证替身不能隐式发起异步 ORM 读取。
+            await self.db.refresh(self.actor)
+            record = await self.db.scalar(select(BusinessRecord).where(
+                BusinessRecord.module == FILE_MODULE, BusinessRecord.serial_no == "AIGF-" + file["id"],
+            ).execution_options(populate_existing=True))
+            self.assertEqual(record.status, status)
+            self.assertEqual(record.data["delete_plan"]["blob_status"], "pending")
+            self.assertEqual(record.data["delete_plan"]["path"], original_path)
+            listing = await list_space_files(identity, self.db, page=1, page_size=20)
+            self.assertEqual(listing["items"][0]["status"], status)
+            self.assertTrue(listing["items"][0]["can_delete"])
+            for read in (space_file_record, space_file_bytes):
+                with self.assertRaises(HTTPException) as raised:
+                    await read(file["id"], identity, self.db)
+                self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(self.objects[original_path], b"actual-xls-content")
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 1)
+
+    async def test_office_new_and_unchanged_versions_project_owner_capability_and_link_in_final_transaction(self):
+        from app.areas.personal_agent import dingtalk_office_service as office
+
+        source, session, remote, changed = await self.office_edit()
+        source_record_id = source["attachment"].record_id
+        original_path = source["attachment"].path
+        original_bytes = self.objects[original_path]
+        commit = self.db.commit
+        linked_before_commit = []
+
+        async def inspect_final_commit():
+            versions = (await self.db.scalars(select(BusinessRecord).where(
+                BusinessRecord.module == FILE_MODULE,
+                BusinessRecord.data["source_kind"].as_string() == "dingtalk_office_edit",
+            ))).all()
+            for version in versions:
+                if version.status == "available":
+                    parent = await self.db.get(BusinessRecord, source_record_id)
+                    self.assertEqual(version.data["supersedes"], source["file"]["id"])
+                    self.assertEqual(parent.data[office.SESSION_KEY]["result_file_id"], version.data["file_id"])
+                    linked_before_commit.append(version.data["file_id"])
+            await commit()
+
+        with patch.object(self.db, "commit", new=inspect_final_commit):
+            saved = await office.save_office_edit(source["file"]["id"], session["session_id"], await self.identity(), self.db)
+        self.assertFalse(saved["unchanged"])
+        self.assertNotEqual(saved["file"]["id"], source["file"]["id"])
+        self.assertEqual(saved["file"]["supersedes"], source["file"]["id"])
+        self.assertEqual(saved["supersedes"], source["file"]["id"])
+        self.assertTrue(saved["file"]["can_delete"])
+        self.assertEqual(linked_before_commit, [saved["file"]["id"]])
+        self.assertEqual(saved["file"]["owner_user_id"], self.actor.id)
+        self.assertIsNone(saved["file"]["case_id"])
+        self.assertEqual(saved["file"]["sha256"], hashlib.sha256(changed).hexdigest())
+        _, downloaded = await space_file_bytes(saved["file"]["id"], await self.identity(), self.db)
+        self.assertEqual(downloaded, changed)
+        again = await office.save_office_edit(source["file"]["id"], session["session_id"], await self.identity(), self.db)
+        self.assertTrue(again["unchanged"])
+        self.assertEqual(again["file"]["id"], saved["file"]["id"])
+        self.assertTrue(again["file"]["can_delete"])
+        self.assertEqual(remote.download_version.await_count, 2, "同一钉钉版本不重复下载或生成 OA 文件")
+        self.assertEqual(self.objects[original_path], original_bytes)
+        self.assertEqual(await self.db.scalar(select(func.count()).select_from(FileAttachment)), 2)
+
+    async def test_office_source_and_saved_result_tombstones_block_without_replay(self):
+        from app.areas.personal_agent import dingtalk_office_service as office
+
+        source, session, remote, _ = await self.office_edit()
+        identity = await self.identity()
+        saved = await office.save_office_edit(source["file"]["id"], session["session_id"], identity, self.db)
+        records = {item: await self.db.scalar(select(BusinessRecord).where(
+            BusinessRecord.module == FILE_MODULE, BusinessRecord.serial_no == "AIGF-" + item,
+        )) for item in (source["file"]["id"], saved["file"]["id"])}
+        provider_uploads = remote.upload_copy.await_count
+        object_count = len(self.objects)
+        for target, record in records.items():
+            available_data = deepcopy(record.data)
+            for status in ("deleted", "deleting", "delete_failed", "delete_uncertain"):
+                with self.subTest(target=target, status=status):
+                    plan = {"operation_id": "CODEX-delete-" + target, "blob_status": "absent" if status == "deleted" else "pending"}
+                    record.status = status
+                    record.data = {**record.data, "delete_plan": plan}
+                    await self.db.commit()
+                    if target == source["file"]["id"]:
+                        with self.assertRaises(HTTPException) as raised:
+                            await office.start_office_edit(target, source["file"]["sha256"], identity, self.db)
+                        self.assertEqual(raised.exception.status_code, 410 if status == "deleted" else 409)
+                    with self.assertRaises(HTTPException) as raised:
+                        await office.save_office_edit(source["file"]["id"], session["session_id"], identity, self.db)
+                    self.assertEqual(raised.exception.status_code, 410 if status == "deleted" else 409)
+                    self.assertEqual(record.data["delete_plan"], plan)
+                    self.assertEqual(remote.upload_copy.await_count, provider_uploads)
+                    self.assertEqual(len(self.objects), object_count, "墓碑结果不能切回源文件或另造 OA 新版本")
+            record.status = "available"
+            record.data = available_data
+            await self.db.commit()
+
+    async def test_office_owner_case_binding_and_expected_hash_reject_before_copy(self):
+        from app.areas.personal_agent import dingtalk_office_service as office
+
+        source, session, remote, _ = await self.office_edit()
+        owner = self.actor
+        for actor in self.users[1:]:
+            self.actor = actor
+            for operation in ("open", "save"):
+                with self.subTest(actor=actor.username, operation=operation), self.assertRaises(HTTPException) as raised:
+                    if operation == "open":
+                        await office.start_office_edit(source["file"]["id"], source["file"]["sha256"], await self.identity(), self.db)
+                    else:
+                        await office.save_office_edit(source["file"]["id"], session["session_id"], await self.identity(), self.db)
+                self.assertEqual(raised.exception.status_code, 403)
+        self.actor = owner
+        with self.assertRaises(HTTPException) as raised:
+            await office.start_office_edit(source["file"]["id"], "0" * 64, await self.identity(), self.db)
+        self.assertEqual(raised.exception.status_code, 409)
+        self.actor = self.users[2]
+        case = BusinessRecord(module="case", serial_no="CODEX-OFFICE-CASE", title="可见案件", owner=self.actor.username, status="草稿", data={})
+        self.db.add(case)
+        await self.db.commit()
+        with patch("app.core.permissions._require_case_attachment_upload_access", new=AsyncMock()):
+            case_file = await self.save(case_record=case, source_kind="case_draft")
+        with self.assertRaises(HTTPException) as raised:
+            await office.start_office_edit(case_file["file"]["id"], case_file["file"]["sha256"], await self.identity(), self.db)
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertEqual(remote.upload_copy.await_count, 1)
+
+    async def test_office_copy_failure_preserves_http_unknown_and_cancellation_with_source_tombstone(self):
+        from app.areas.personal_agent import dingtalk_office_service as office
+
+        for failure in (HTTPException(403, "原权限拒绝"), HTTPException(409, "原版本拒绝"),
+                        HTTPException(410, "原删除拒绝"), RuntimeError("原未知错误"), asyncio.CancelledError()):
+            with self.subTest(failure=type(failure).__name__, status=getattr(failure, "status_code", None)):
+                source, _, remote, _ = await self.office_edit(start=False)
+                source_record_id = source["attachment"].record_id
+                plan = {"operation_id": "CODEX-copy-delete", "blob_status": "absent"}
+
+                async def delete_during_upload(*args):
+                    record = await self.db.get(BusinessRecord, source_record_id, populate_existing=True)
+                    record.status = "deleted"
+                    record.data = {**record.data, "delete_plan": plan}
+                    await self.db.commit()
+                    raise failure
+
+                remote.upload_copy.side_effect = delete_during_upload
+                with self.assertRaises(type(failure)) as raised:
+                    await office.start_office_edit(source["file"]["id"], source["file"]["sha256"], await self.identity(), self.db)
+                self.assertIs(raised.exception, failure, "墓碑审计不能把原异常替换成普通 available 锁 409")
+                await self.db.refresh(self.actor)
+                record = await self.db.get(BusinessRecord, source_record_id, populate_existing=True)
+                self.assertEqual(record.status, "deleted")
+                self.assertEqual(record.data["delete_plan"], plan)
+                self.assertEqual(record.data["sha256"], source["file"]["sha256"])
+                self.assertEqual(record.data["source_kind"], source["file"]["source_kind"])
+
+    async def test_office_writer_uncertain_handle_survives_deleted_parent_and_audit_failure(self):
+        from app.areas.personal_agent import dingtalk_office_service as office
+
+        for fail_audit in (False, True):
+            with self.subTest(fail_audit=fail_audit):
+                source, session, _, changed = await self.office_edit()
+                source_record_id = source["attachment"].record_id
+                plan = {"operation_id": "CODEX-writer-delete", "blob_status": "absent"}
+
+                async def delete_before_on_available(*args, **kwargs):
+                    await self.put(*args, **kwargs)
+                    record = await self.db.get(BusinessRecord, source_record_id, populate_existing=True)
+                    record.status = "deleted"
+                    record.data = {**record.data, "delete_plan": plan}
+                    await self.db.commit()
+                    return True
+
+                original_audit = office._uncertain
+
+                async def audit_with_database_failure(*args):
+                    # 只注入审计读取失败，保留真实审计函数的异常记录与原错误保真。
+                    with patch.object(self.db, "scalar", new=AsyncMock(side_effect=RuntimeError("隔离审计失败"))):
+                        await original_audit(*args)
+
+                with patch.object(generated_storage, "oss_put_editor_revision", new=AsyncMock(side_effect=delete_before_on_available)), \
+                        patch.object(office.logger, "exception") as audit_log, \
+                        patch.object(office, "_uncertain", new=audit_with_database_failure if fail_audit else original_audit):
+                    with self.assertRaises(HTTPException) as raised:
+                        await office.save_office_edit(source["file"]["id"], session["session_id"], await self.identity(), self.db)
+                if fail_audit:
+                    audit_log.assert_called_once()
+                    self.assertTrue(any("RuntimeError" in note for note in raised.exception.__notes__))
+                else:
+                    audit_log.assert_not_called()
+                self.assertEqual(raised.exception.status_code, 409)
+                self.assertEqual(raised.exception.detail["status"], "uncertain")
+                file_id = raised.exception.detail["file_id"]
+                self.assertNotEqual(file_id, source["file"]["id"])
+                await self.db.refresh(self.actor)
+                version = await self.db.scalar(select(BusinessRecord).where(
+                    BusinessRecord.module == FILE_MODULE, BusinessRecord.serial_no == "AIGF-" + file_id,
+                ).execution_options(populate_existing=True))
+                self.assertEqual(version.status, "uncertain")
+                self.assertIsNone(version.data["attachment_id"])
+                self.assertEqual(version.data["sha256"], hashlib.sha256(changed).hexdigest())
+                record = await self.db.get(BusinessRecord, source_record_id, populate_existing=True)
+                self.assertEqual(record.status, "deleted")
+                self.assertEqual(record.data["delete_plan"], plan)
 
     async def test_final_commit_failure_keeps_remote_object_and_uncertain_plan(self):
         commit = self.db.commit
@@ -700,6 +1072,89 @@ class PersonalIdentityStorageBoundaryTest(IsolatedAsyncioTestCase):
 
 
 class PersonalConfirmationBoundaryTest(IsolatedAsyncioTestCase):
+    async def test_personal_office_routes_preserve_frontend_confirmation_schema_and_result_contract(self):
+        from fastapi import FastAPI
+        from httpx import ASGITransport, AsyncClient
+        from app.areas.personal_agent import ai_space, dingtalk_office_service
+
+        application = FastAPI()
+        application.include_router(ai_space.router)
+        identity = {"username": "CODEX-office-route-owner"}
+        application.dependency_overrides[ai_space.current_identity] = lambda: identity
+        application.dependency_overrides[ai_space.get_db] = lambda: None
+        file_id, sha256, session_id = "a" * 32, "b" * 64, "c" * 32
+        valid = {"Origin": "http://localhost", "X-OA-Agent-Confirmation": "frontend"}
+        opened = {"session_id": session_id, "name": "原生.docx", "url": "https://alidocs.dingtalk.com/CODEX"}
+        saved = {"file": {"id": "d" * 32, "supersedes": file_id, "can_delete": True}, "supersedes": file_id, "unchanged": False}
+        with patch.object(dingtalk_office_service, "start_office_edit", new=AsyncMock(return_value=opened)) as open_file, \
+                patch.object(dingtalk_office_service, "save_office_edit", new=AsyncMock(return_value=saved)) as save_file:
+            async with AsyncClient(transport=ASGITransport(app=application), base_url="http://isolated.invalid") as client:
+                for route, body, expected, status, operation, argument in (
+                    ("open", {"expected_sha256": sha256}, opened, 200, open_file, sha256),
+                    ("save", {"session_id": session_id}, saved, 201, save_file, session_id),
+                ):
+                    path = personal_service.settings.api_prefix + f"/personal-agent/ai-space/files/{file_id}/office/{route}"
+                    for headers in ({}, {"Origin": "http://localhost"}, {**valid, "Origin": "https://untrusted.invalid"}):
+                        response = await client.post(path, json=body, headers=headers)
+                        self.assertEqual(response.status_code, 403)
+                    for invalid in ({}, {key: "invalid" for key in body}, {**body, "owner_user_id": 1}):
+                        response = await client.post(path, json=invalid, headers=valid)
+                        self.assertEqual(response.status_code, 422)
+                    operation.assert_not_awaited()
+                    response = await client.post(path, json=body, headers=valid)
+                    self.assertEqual(response.status_code, status)
+                    self.assertEqual(response.json(), expected)
+                    operation.assert_awaited_once_with(file_id, argument, identity, None)
+
+    def test_office_provider_resources_keep_https_domain_identifier_and_header_boundaries(self):
+        from app.areas.personal_agent import dingtalk_office_client as office
+
+        self.assertEqual(office.provider_url("https://alidocs.dingtalk.com/CODEX", editor=True), "https://alidocs.dingtalk.com/CODEX")
+        for url in ("http://dingtalk.com/CODEX", "https://dingtalk.com.evil.invalid/CODEX",
+                    "https://account@dingtalk.com/CODEX", "https://dingtalk.com:444/CODEX", "https://aliyuncs.com/CODEX"):
+            with self.subTest(url=url), self.assertRaises(HTTPException) as raised:
+                office.provider_url(url, editor=True)
+            self.assertEqual(raised.exception.status_code, 502)
+        for identifier in ("", "a/b", "a\\b", "a?b", "a\nb", "a" * 257):
+            with self.subTest(identifier=identifier), self.assertRaises(HTTPException):
+                office.identifier(identifier)
+        body = {"protocol": "HEADER_SIGNATURE", "headerSignatureInfo": {
+            "resourceUrls": ["https://storage.aliyuncs.com/CODEX"], "headers": {"x-codex": "isolated"},
+        }}
+        self.assertEqual(office._signed_resource(body), ("https://storage.aliyuncs.com/CODEX", {"x-codex": "isolated"}))
+        body["headerSignatureInfo"]["headers"]["x-codex"] = "value\r\ninjected"
+        with self.assertRaises(HTTPException) as raised:
+            office._signed_resource(body)
+        self.assertEqual(raised.exception.status_code, 502)
+
+    async def test_personal_file_delete_route_requires_exact_hash_trusted_origin_and_frontend_confirmation(self):
+        from fastapi import FastAPI
+        from httpx import ASGITransport, AsyncClient
+        from app.areas.personal_agent import ai_space, ai_space_deletion
+
+        application = FastAPI()
+        application.include_router(ai_space.router)
+        application.dependency_overrides[ai_space.current_identity] = lambda: {"username": "CODEX-route-owner"}
+        application.dependency_overrides[ai_space.get_db] = lambda: None
+        file_id, sha256 = "a" * 32, "b" * 64
+        path = personal_service.settings.api_prefix + f"/personal-agent/ai-space/files/{file_id}"
+        valid = {"Origin": "http://localhost", "X-OA-Agent-Confirmation": "frontend"}
+        result = {"id": file_id, "status": "deleted", "blob_status": "absent"}
+        with patch.object(ai_space_deletion, "delete_space_file", new=AsyncMock(return_value=result)) as delete:
+            async with AsyncClient(transport=ASGITransport(app=application), base_url="http://isolated.invalid") as client:
+                for headers in ({}, {"Origin": "http://localhost"}, {**valid, "Origin": "https://untrusted.invalid"}):
+                    response = await client.request("DELETE", path, json={"expected_sha256": sha256}, headers=headers)
+                    self.assertEqual(response.status_code, 403)
+                delete.assert_not_awaited()
+                for body in ({}, {"expected_sha256": "wrong"}, {"expected_sha256": sha256, "owner_user_id": 1}):
+                    response = await client.request("DELETE", path, json=body, headers=valid)
+                    self.assertEqual(response.status_code, 422)
+                delete.assert_not_awaited()
+                response = await client.request("DELETE", path, json={"expected_sha256": sha256}, headers=valid)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json(), result)
+                delete.assert_awaited_once_with(file_id, sha256, {"username": "CODEX-route-owner"}, None)
+
     def request(self, status, owner="本人"):
         return BusinessRecord(
             id=1, module="agent_mcp_action", serial_no="MCP-request-1", owner=owner,

@@ -213,7 +213,7 @@ const menuItems: NavItem[] = [
   {
     key: "agent-center",
     icon: <RobotOutlined />,
-    label: "智能体中心",
+    label: "智能体设置",
   },
   {
     key: "seal",
@@ -673,7 +673,7 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
       children: investigationChildren,
     };
   }) : built;
-  return normalized.map((item) => item.key === "agent-center" ? { ...item, label: "智能体中心" } : item);
+  return normalized.map((item) => item.key === "agent-center" ? { ...item, label: "智能体设置" } : item);
 }
 
 function flattenMenu(items: NavItem[]): NavItem[] {
@@ -896,7 +896,7 @@ const routePageLabels: Record<string, string> = {
   "system-audit": "操作日志",
   "contract-approver-settings": "审批关系",
   "documents-agent": "AI 智能文档",
-  "agent-center": "智能体中心",
+  "agent-center": "智能体设置",
   "case-agent-center": "案件智能体中心",
   "notary-import-info": "公证信息导入",
   "notary-import-storage": "取证信息文件导入",
@@ -905,7 +905,7 @@ const routePageLabels: Record<string, string> = {
   "notary-query-files": "公证书文件列表",
 };
 
-function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems, personalAgentName = "Ai"): string {
+function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems, personalAgentName = "智能体中心"): string {
   const normalizedKey = normalizeWorkspaceRoute(key);
   if (normalizedKey === "dashboard") return "工作台";
   if (normalizedKey === "ai-chat") return personalAgentName;
@@ -1240,7 +1240,7 @@ export default function App() {
   const [taskUnreadCount, setTaskUnreadCount] = useState(0);
   const [dashboardView, setDashboardView] = useState<DashboardView>("overview");
   const [assistantFocusRequested, setAssistantFocusRequested] = useState(false);
-  const personalAgentName = isNarrowViewport ? "Ai" : "AI助手";
+  const personalAgentName = "智能体中心";
   const effectiveMenuItems = useMemo(
     () => {
       const items = configuredMenuItems(menuConfig);
@@ -1250,7 +1250,7 @@ export default function App() {
         .map((item) => item.children ? { ...item, children: removePersonalAgent(item.children) } : item);
       return removePersonalAgent(items).flatMap((item) => item.key === "dashboard" ? [
         { ...item, label: "工作台" },
-        { key: "ai-chat", icon: <RobotOutlined />, label: "AI助手" },
+        { key: "ai-chat", icon: <RobotOutlined />, label: "智能体中心" },
       ] : [item]);
     },
     [menuConfig, isNarrowViewport],
@@ -1260,7 +1260,7 @@ export default function App() {
   const grantedMenuKeys = useMemo(() => new Set(
     !permissionsReady ? ["dashboard"] : permissionAdministrator
       ? flattenMenu(effectiveMenuItems).map((item) => item.key)
-      // 智能体中心仍是管理员管理页，个人智能体只使用工作台与独立 Ai 入口。
+      // 智能体设置仍是管理员管理页，个人智能体只使用工作台与独立对话入口。
       : ["user-center", ...(sessionUser?.menu_keys || [])].filter((key) => key !== "agent-center"),
   ), [permissionsReady, permissionAdministrator, effectiveMenuItems, sessionUser?.menu_keys]);
   const active = permissionsReady
@@ -1603,7 +1603,7 @@ export default function App() {
       />
     ) : route === "ai-chat" ? (
       <AiChatPage
-        name={isNarrowViewport ? "Ai" : "AI助手"}
+        name={personalAgentName}
         desktop={!isNarrowViewport}
         onReturnWorkbench={returnToWorkbench}
         onOpenAgentCenter={isWorkspaceRouteGranted("agent-center", grantedMenuKeys, permissionAdministrator) ? () => navigate("agent-center") : undefined}
@@ -1773,8 +1773,8 @@ export default function App() {
           />
         </div>
         <Space className="top-actions">
-          <Tooltip title="Ai">
-            <Button type="text" aria-label="Ai" icon={<RobotOutlined />} onClick={openPersonalAgent} />
+          <Tooltip title="智能体中心">
+            <Button type="text" aria-label="智能体中心" icon={<RobotOutlined />} onClick={openPersonalAgent} />
           </Tooltip>
           <Tooltip title="返回工作台">
             <Button
@@ -2027,6 +2027,7 @@ export default function App() {
           type="button"
           className={active === "ai-chat" ? "active" : ""}
           aria-current={active === "ai-chat" ? "page" : undefined}
+          aria-label="智能体中心"
           onClick={openPersonalAgent}
         >
           <img className="mobile-ai-logo" src="/assets/ai-assistant-logo.png" alt="" width={32} height={32} />

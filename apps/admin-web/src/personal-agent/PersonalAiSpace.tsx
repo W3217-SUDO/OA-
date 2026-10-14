@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Drawer, Form, Input, Modal, Pagination, Spin, Tooltip, message } from "antd";
-import { BoldOutlined, ItalicOutlined, OrderedListOutlined, RedoOutlined, ReloadOutlined, UndoOutlined, UnorderedListOutlined } from "@ant-design/icons";
+import { Alert, Button, Drawer, Modal, Pagination, Spin, Tooltip, message } from "antd";
+import { DeleteOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { errorText } from "./types";
 import { PersonalAiSpaceFiles } from "./PersonalAiSpaceFiles";
 import { PersonalAiOfficeEditor } from "./PersonalAiOfficeEditor";
+import { PersonalAiDocumentEditor } from "./PersonalAiDocumentEditor";
 import { AttachmentPreviewContent, type PreviewAttachment } from "../components/common/AttachmentContent";
-import { downloadPersonalAiFile, type PersonalAiFile, type PersonalAiFilePage, type PersonalAiSpaceInfo } from "./personalAiSpaceApi";
-import { personalHtmlToMarkdown, personalMarkdownToHtml, sanitizePersonalEditorHtml } from "./personalAiDocumentCodec";
+import { downloadPersonalAiFile, type PersonalAiDocument, type PersonalAiFile, type PersonalAiFileDeleteResult, type PersonalAiFilePage, type PersonalAiSpaceInfo } from "./personalAiSpaceApi";
 import "./personal-ai-space.css";
 
 type Props = {
@@ -20,54 +20,6 @@ type Props = {
   label?: string;
 };
 
-function RichTextEditor({ value, onChange, onError }: { value: string; onChange: (value: string) => void; onError: (value: string) => void }) {
-  const editorRef = useRef<HTMLDivElement>(null);
-  const lastValue = useRef<string | null>(null);
-  useEffect(() => {
-    if (editorRef.current && value !== lastValue.current) {
-      try {
-        editorRef.current.innerHTML = personalMarkdownToHtml(value);
-        lastValue.current = value;
-        onError("");
-      } catch (failure) { onError(errorText(failure, "文档格式无法在线编辑，原文件未修改")); }
-    }
-  }, [value, onError]);
-  const update = () => {
-    try {
-      const content = personalHtmlToMarkdown(editorRef.current?.innerHTML || "");
-      personalMarkdownToHtml(content);
-      lastValue.current = content;
-      onChange(content); onError("");
-    } catch (failure) { onError(errorText(failure, "文档格式转换失败，原文件未修改")); }
-  };
-  const command = (name: string, argument?: string) => {
-    editorRef.current?.focus();
-    document.execCommand(name, false, argument);
-    update();
-  };
-  return <div className="personal-ai-rich-editor">
-    <div className="personal-ai-rich-toolbar" role="toolbar" aria-label="文档格式工具栏">
-      <Button size="small" icon={<UndoOutlined />} aria-label="撤销" onMouseDown={(event) => event.preventDefault()} onClick={() => command("undo")} />
-      <Button size="small" icon={<RedoOutlined />} aria-label="重做" onMouseDown={(event) => event.preventDefault()} onClick={() => command("redo")} />
-      <span className="personal-ai-rich-divider" />
-      <Button size="small" icon={<BoldOutlined />} aria-label="加粗" onMouseDown={(event) => event.preventDefault()} onClick={() => command("bold")} />
-      <Button size="small" icon={<ItalicOutlined />} aria-label="斜体" onMouseDown={(event) => event.preventDefault()} onClick={() => command("italic")} />
-      <Button size="small" icon={<UnorderedListOutlined />} aria-label="项目符号" onMouseDown={(event) => event.preventDefault()} onClick={() => command("insertUnorderedList")} />
-      <Button size="small" icon={<OrderedListOutlined />} aria-label="编号列表" onMouseDown={(event) => event.preventDefault()} onClick={() => command("insertOrderedList")} />
-      <Button size="small" onMouseDown={(event) => event.preventDefault()} onClick={() => command("formatBlock", "h2")}>标题</Button>
-    </div>
-    <div ref={editorRef} className="personal-ai-rich-content" contentEditable role="textbox" aria-label="文档正文编辑区" suppressContentEditableWarning onInput={update} onPaste={event => {
-      event.preventDefault();
-      try {
-        const html = event.clipboardData.getData("text/html");
-        const safe = html ? sanitizePersonalEditorHtml(html) : personalMarkdownToHtml(event.clipboardData.getData("text/plain"));
-        document.execCommand("insertHTML", false, safe); update();
-      } catch (failure) { onError(errorText(failure, "粘贴内容格式不受支持，原文件未修改")); }
-    }} onDrop={event => { event.preventDefault(); onError("不支持拖入富文本或文件，原文件未修改"); }} />
-    <div className="personal-ai-rich-hint">支持直接排版、撤销重做、加粗、斜体和列表；保存会生成个人 AI 空间的新版本。</div>
-  </div>;
-}
-
 export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversation, label = "个人空间" }: Props) {
   const [page, setPage] = useState(1);
   const [refresh, setRefresh] = useState(0);
@@ -77,12 +29,26 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
   const [error, setError] = useState("");
   const [downloadingId, setDownloadingId] = useState("");
   const [preview, setPreview] = useState<PreviewAttachment | null>(null);
-  const [editor, setEditor] = useState<{ id: string; name: string; content: string } | null>(null);
   const [officeFile, setOfficeFile] = useState<PersonalAiFile | null>(null);
-  const [editorSaving, setEditorSaving] = useState(false);
-  const [editorFormatError, setEditorFormatError] = useState("");
-  const [editForm] = Form.useForm<{ name: string; content: string }>();
-  const close = () => { setPage(1); setSpace(null); onClose(); };
+  const [officeBusy, setOfficeBusy] = useState(false);
+  const officeOperation = useRef(false);
+  const [previewFileId, setPreviewFileId] = useState("");
+  const [editor, setEditor] = useState<PersonalAiDocument | null>(null);
+  const [editorBusy, setEditorBusy] = useState(false);
+  const [latestSavedId, setLatestSavedId] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<PersonalAiFile | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const deleteLock = useRef(false);
+  const fileRead = useRef<AbortController | null>(null);
+  useEffect(() => () => fileRead.current?.abort(), []);
+  const closePreview = () => { if (preview?.url) URL.revokeObjectURL(preview.url); setPreview(null); setPreviewFileId(""); };
+  const close = () => {
+    if (editorBusy || officeOperation.current || deleteLock.current) return;
+    fileRead.current?.abort();
+    closePreview(); setEditor(null); setOfficeFile(null); setDeleteTarget(null); setPage(1); setSpace(null); onClose();
+  };
+  const versionCreated = (file: PersonalAiFile) => { setLatestSavedId(file.id); setPage(1); setRefresh((value) => value + 1); };
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
@@ -104,41 +70,59 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
     finally { setDownloadingId(""); }
   };
   const openPreview = async (file: PersonalAiFile) => {
+    fileRead.current?.abort();
+    const controller = new AbortController(); fileRead.current = controller;
     setError("");
     try {
       const suffix = file.name.toLowerCase().split(".").pop() || "";
       if (["md", "txt"].includes(suffix)) {
-        const { data } = await api.get<{ content: string }>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/content`);
+        const { data } = await api.get<{ content: string }>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/content`, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        setPreviewFileId(file.id);
         setPreview({ name: file.name, kind: "text", text: data.content });
         return;
       }
-      const { data } = await api.get<Blob>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/download`, { responseType: "blob" });
+      const { data } = await api.get<Blob>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/download`, { responseType: "blob", signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setPreviewFileId(file.id);
       const kind = suffix === "docx" ? "docx" : suffix === "pdf" ? "pdf" : suffix === "xlsx" || suffix === "xls" ? "xlsx" : ["png", "jpg", "jpeg", "gif", "webp"].includes(suffix) ? "image" : "unsupported";
       if (kind === "unsupported") { setPreview({ name: file.name, kind, text: "当前格式暂不支持在线查看，请下载后查看。" }); return; }
       setPreview({ name: file.name, kind, blob: data, url: URL.createObjectURL(data) });
-    } catch (failure) { setError(errorText(failure, "文件在线查看失败")); }
+    } catch (failure) { if (!controller.signal.aborted) setError(errorText(failure, "文件在线查看失败")); }
   };
   const openEditor = async (file: PersonalAiFile) => {
+    if (editorBusy || officeOperation.current || deleteLock.current) return;
+    fileRead.current?.abort();
+    const controller = new AbortController(); fileRead.current = controller;
     setError("");
-    if (file.case_id === null && file.name.toLowerCase().endsWith(".docx")) { setOfficeFile(file); return; }
+    if (file.case_id === null && file.name.toLowerCase().endsWith(".docx")) { setEditor(null); setOfficeFile(file); return; }
     try {
-      const { data } = await api.get<{ id: string; name: string; content: string }>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/content`);
-      editForm.setFieldsValue({ name: data.name, content: data.content });
-      setEditorFormatError("");
+      const { data } = await api.get<PersonalAiDocument>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/content`, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (data.id !== file.id) throw new Error("编辑文件标识与所选文件不一致");
+      setOfficeFile(null);
       setEditor(data);
-    } catch (failure) { setError(errorText(failure, "文件在线编辑加载失败")); }
+    } catch (failure) { if (!controller.signal.aborted) setError(errorText(failure, "文件在线编辑加载失败")); }
   };
-  const saveEditor = async () => {
-    if (!editor) return;
-    if (editorFormatError) { message.error(editorFormatError); return; }
-    const values = await editForm.validateFields();
-    setEditorSaving(true);
+  const deleteFile = async () => {
+    if (!deleteTarget || !deleteTarget.can_delete || deleteLock.current || editorBusy || officeOperation.current) return;
+    fileRead.current?.abort();
+    deleteLock.current = true; setDeleting(true); setDeleteError("");
     try {
-      await api.post(`/personal-agent/ai-space/files/${encodeURIComponent(editor.id)}/edit`, values);
-      message.success("已保存为个人 AI 空间新版本，原文件已保留");
-      setEditor(null); editForm.resetFields(); setRefresh((value) => value + 1);
-    } catch (failure) { message.error(errorText(failure, "文件保存失败")); }
-    finally { setEditorSaving(false); }
+      const { data } = await api.delete<PersonalAiFileDeleteResult>(`/personal-agent/ai-space/files/${encodeURIComponent(deleteTarget.id)}`, {
+        data: { expected_sha256: deleteTarget.sha256 }, headers: { "X-OA-Agent-Confirmation": "frontend" },
+      });
+      if (data.id !== deleteTarget.id || data.status !== "deleted" || data.blob_status !== "absent") throw new Error("删除结果尚未确认，请刷新文件夹核对，未隐藏该文件");
+      if (editor?.id === data.id) setEditor(null);
+      if (officeFile?.id === data.id) setOfficeFile(null);
+      if (previewFileId === data.id) closePreview();
+      if (latestSavedId === data.id) setLatestSavedId("");
+      setDeleteTarget(null);
+      if (files) setPage(Math.min(page, Math.max(1, Math.ceil((files.total - 1) / files.page_size))));
+      setRefresh((value) => value + 1);
+      message.success(`文件已删除：${deleteTarget.name}`);
+    } catch (failure) { setDeleteError(errorText(failure, "文件删除未完成，请核对文件状态")); setRefresh((value) => value + 1); }
+    finally { deleteLock.current = false; setDeleting(false); }
   };
   const openConversation = async (id: string) => {
     setError("");
@@ -157,17 +141,27 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       <div className="personal-ai-space-toolbar"><Tooltip title={`刷新${label}`}><Button icon={<ReloadOutlined />} aria-label={`刷新${label}`} loading={loading} onClick={() => setRefresh((value) => value + 1)} /></Tooltip>{files && <span>共 {files.total} 个文件</span>}</div>
       {space && !space.configured && <Alert type="warning" showIcon title="OSS 尚未配置，不能保存新文件" />}
       {error && <Alert type="error" showIcon title="个人空间操作未完成" description={error} />}
-      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} busy={busy} onDownload={(file) => void download(file)} onView={(file) => void openPreview(file)} onEdit={(file) => void openEditor(file)} onConversation={(id) => void openConversation(id)} />}
+      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} deletingId={deleting ? deleteTarget?.id : undefined} latestSavedId={latestSavedId} busy={busy || editorBusy || officeBusy || deleting} onDownload={(file) => void download(file)} onView={(file) => void openPreview(file)} onEdit={(file) => void openEditor(file)} onDelete={(file) => { if (!officeOperation.current && !editorBusy && !deleteLock.current) { setDeleteError(""); setDeleteTarget(file); } }} onConversation={(id) => void openConversation(id)} />}
       {files && files.total > 0 && <Pagination simple current={files.page} pageSize={files.page_size} total={files.total} disabled={loading} showSizeChanger={false} onChange={setPage} />}
     </div>
-    <Modal open={!!preview} title={`在线查看：${preview?.name || ""}`} width={preview?.kind === "pdf" ? 1000 : 860} footer={<Button onClick={() => { if (preview?.url) URL.revokeObjectURL(preview.url); setPreview(null); }}>关闭</Button>} onCancel={() => { if (preview?.url) URL.revokeObjectURL(preview.url); setPreview(null); }} destroyOnHidden>
+    <Modal open={!!preview} title={`在线查看：${preview?.name || ""}`} width={preview?.kind === "pdf" ? 1000 : 860} footer={<Button onClick={closePreview}>关闭</Button>} onCancel={closePreview} destroyOnHidden>
       <AttachmentPreviewContent preview={preview} />
     </Modal>
-    <Modal open={!!editor} title={`在线编辑：${editor?.name || ""}`} width={860} okText="保存为新版本" cancelText="取消" confirmLoading={editorSaving} okButtonProps={{ disabled: !!editorFormatError }} onOk={() => void saveEditor()} onCancel={() => { setEditor(null); editForm.resetFields(); }} destroyOnHidden>
-      <Alert type="info" showIcon title="保存会生成个人 AI 空间的新版本，原文件保留不覆盖。" style={{ marginBottom: 12 }} />
-      {editorFormatError && <Alert type="error" showIcon title={editorFormatError} />}
-      <Form form={editForm} layout="vertical"><Form.Item name="name" label="文件名" rules={[{ required: true }, { pattern: /\.(docx|md|txt)$/i, message: "仅支持 .docx、.md、.txt" }]}><Input maxLength={255} /></Form.Item><Form.Item name="content" label="文档正文" rules={[{ required: true, message: "请输入文档正文" }]}>{editor?.name.toLowerCase().endsWith(".txt") ? <Input.TextArea autoSize={{ minRows: 18, maxRows: 30 }} /> : <RichTextEditor value={editForm.getFieldValue("content") || ""} onChange={(content) => editForm.setFieldValue("content", content)} onError={setEditorFormatError} />}</Form.Item></Form>
+    {editor && <PersonalAiDocumentEditor document={editor} onBusy={setEditorBusy} onClose={() => { if (!editorBusy) setEditor(null); }} onVersionCreated={versionCreated} onSaved={(file, document) => {
+      if (file.case_id === null && file.name.toLowerCase().endsWith(".docx")) { setEditor(null); setOfficeFile(file); }
+      else setEditor(document);
+    }} />}
+    <Modal open={!!deleteTarget} title="确认删除生成文件？" rootClassName="personal-ai-document-confirmation" okText="确认删除" cancelText="取消"
+      confirmLoading={deleting} okButtonProps={{ danger: true, icon: <DeleteOutlined /> }} cancelButtonProps={{ disabled: deleting }}
+      closable={!deleting} keyboard={!deleting} maskClosable={!deleting} onOk={() => void deleteFile()} onCancel={() => { if (!deleteLock.current) { setDeleteTarget(null); setDeleteError(""); } }} destroyOnHidden>
+      <p>{deleteTarget?.name}</p>
+      <p>将删除此生成文件及其存储内容，不能撤销。其他版本、来源会话和案件原附件不受影响。</p>
+      {deleteTarget?.name.toLowerCase().endsWith(".docx") && <p>钉钉编辑副本不在本次删除范围。</p>}
+      {deleteError && <Alert type="error" showIcon title="删除未完成" description={deleteError} />}
     </Modal>
-    {officeFile && <PersonalAiOfficeEditor key={officeFile.id} file={officeFile} onClose={() => setOfficeFile(null)} onSaved={() => setRefresh(value => value + 1)} />}
+    {officeFile && <PersonalAiOfficeEditor key={officeFile.id} file={officeFile} disabled={deleting || editorBusy} onBusy={(value) => { officeOperation.current = value; setOfficeBusy(value); }}
+      onClose={() => { if (!officeOperation.current) setOfficeFile(null); }} onVersionCreated={versionCreated} onSaved={(file, blob) => {
+        closePreview(); setOfficeFile(null); setPreviewFileId(file.id); setPreview({ name: file.name, kind: "docx", blob });
+      }} />}
   </Drawer>;
 }

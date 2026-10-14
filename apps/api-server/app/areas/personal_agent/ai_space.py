@@ -13,7 +13,7 @@ from app.security import current_identity
 from app.areas.personal_agent.ai_space_service import (
     list_space_files, save_space_message, space_file_bytes, space_file_record, space_info,
 )
-from app.core.generated_file_records import generated_file_item
+from app.core.generated_file_records import actual_user, generated_file_item
 
 
 router = APIRouter(prefix=settings.api_prefix + "/personal-agent/ai-space", tags=["个人AI空间"])
@@ -31,6 +31,11 @@ class PersonalFileEditInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=255)
     content: str = Field(max_length=2_000_000)
+
+
+class PersonalFileDeleteInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class PersonalOfficeOpenInput(BaseModel):
@@ -59,7 +64,20 @@ async def get_personal_ai_files(page: int = Query(1, ge=1), page_size: int = Que
 @router.get("/files/{file_id}")
 async def get_personal_ai_file(file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
                                identity=Depends(current_identity), db=Depends(get_db)):
-    return generated_file_item(await space_file_record(file_id, identity, db))
+    record = await space_file_record(file_id, identity, db)
+    user = await actual_user(db, identity)
+    return generated_file_item(record, requesting_user_id=user.id)
+
+
+@router.delete("/files/{file_id}")
+async def delete_personal_ai_file(body: PersonalFileDeleteInput, request: Request,
+                                  file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                  identity=Depends(current_identity), db=Depends(get_db)):
+    from app.areas.personal_agent.ai_space_deletion import delete_space_file
+
+    if request.headers.get("x-oa-agent-confirmation") != "frontend" or not origin_allowed(request.headers.get("origin", "")):
+        raise HTTPException(403, "请在 OA 前端确认删除，来源或人工确认标识无效")
+    return await delete_space_file(file_id, body.expected_sha256, identity, db)
 
 
 @router.get("/files/{file_id}/download")
