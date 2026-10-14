@@ -171,6 +171,16 @@ test("GitHub URL install reports persisted success separately from personal-libr
   assert.equal(requests.filter(item => item.path.endsWith("/install")).length, 1);
   assert.deepEqual(selected, ["personal-docx"]);
   assert.equal(renderer.root.findByType("tabs").props.activeKey, "mine");
+  await act(async () => { renderer.update(React.createElement(SkillManager, { open: true, onClose() {}, mode: "import-only", scope: "global", skills: [{ id: "personal-docx", scope: "personal", custom: true, name: "本人导入技能", available: true, quick_prompts: [] }, { id: "global-one", scope: "global", custom: true, name: "全局示例", quick_prompts: [] }], refresh: async () => {}, onSelect: id => selected.push(id) })); });
+  assert.deepEqual(Array.from(renderer.root.findByType("tabs").props.items, item => item.key), ["mine", "github"], "仅导入入口不提供技能包市场与手工管理页");
+  assert.equal(renderer.root.findAllByType("switch").length, 0);
+  assert.equal(renderer.root.findAllByType("form-item").length, 0);
+  assert.equal(renderer.root.findAllByType("capability-market").length, 0);
+  assert.equal(renderer.root.findAllByType("button").some(item => ["新增技能", "编辑技能", "删除技能"].includes(item.props["aria-label"])), false);
+  const importedNames = renderer.root.findAllByType("b").map(item => item.props.children);
+  assert.ok(importedNames.includes("本人导入技能") && !importedNames.includes("全局示例"), "仅导入模式强制本人作用域，不采纳传入的global");
+  await act(async () => { button("使用").props.onClick(); });
+  assert.deepEqual(selected, ["personal-docx", "personal-docx"], "本人已导入技能仍能真实选用");
   await act(async () => { renderer.update(React.createElement(SkillManager, { open: true, onClose() {}, scope: "global", skills: [{ id: "global-one", scope: "global", custom: true, name: "全局示例", quick_prompts: [] }, { id: "personal-one", scope: "personal", custom: true, name: "个人示例", quick_prompts: [] }], refresh: async () => {} })); });
   const visibleNames = renderer.root.findAllByType("b").map(item => item.props.children);
   assert.ok(visibleNames.includes("全局示例") && !visibleNames.includes("个人示例"), "全局管理列表不暴露个人编辑项");
@@ -181,7 +191,7 @@ test("GitHub URL install reports persisted success separately from personal-libr
   assert.equal(requests.at(-1).path, "/agent/global-skills/github/preview");
   await act(async () => { button("确认安装到全局技能").props.onClick(); });
   assert.equal(requests.at(-1).path, "/agent/global-skills/github/install");
-  assert.deepEqual(selected, ["personal-docx"], "global无onSelect不会改变原个人选中项");
+  assert.deepEqual(selected, ["personal-docx", "personal-docx"], "global无onSelect不会改变原个人选中项");
   await act(async () => { renderer.unmount(); });
 });
 
@@ -267,8 +277,8 @@ test("connector panel saves scoped configuration, preserves credentials and expo
   await act(async () => { renderer.unmount(); });
 });
 
-test("personal AI skill directory reads only owned records, previews full saved definition and downloads actual MD response", async () => {
-  const requests = [], savedDownloads = [], revoked = [];
+test("personal AI skill directory preserves owned definitions and downloads with import-only selection", async () => {
+  const requests = [], savedDownloads = [], revoked = [], selected = [];
   let runtimeRefreshes = 0;
   const content = "---\nname: own-skill\n---\n" + "完整定义\n".repeat(1500);
   const downloadBytes = new Blob([content], { type: "text/markdown" });
@@ -292,7 +302,8 @@ test("personal AI skill directory reads only owned records, previews full saved 
   let renderer;
   await act(async () => { renderer = create(React.createElement(PersonalAiSpaceSkills, { active: false, busy: false })); });
   assert.equal(requests.length, 0, "默认文件Tab不会加载个人技能目录");
-  await act(async () => { renderer.update(React.createElement(PersonalAiSpaceSkills, { active: true, busy: false, onSkillsChanged: async () => { runtimeRefreshes += 1; } })); });
+  const props = { active: true, busy: false, onSkillsChanged: async () => { runtimeRefreshes += 1; }, onSelect: id => selected.push(id) };
+  await act(async () => { renderer.update(React.createElement(PersonalAiSpaceSkills, props)); });
   assert.equal(requests[0].path, "/agent/skills/personal");
   const button = label => renderer.root.findAllByType("button").find(item => item.props.children === label);
   await act(async () => { button("查看完整定义").props.onClick(); });
@@ -306,9 +317,24 @@ test("personal AI skill directory reads only owned records, previews full saved 
   assert.equal(requests.at(-1).options.responseType, "blob");
   assert.deepEqual(savedDownloads, [{ href: "blob:actual-response", filename: "own-skill.md" }]);
   assert.deepEqual(revoked, ["blob:actual-response"]);
-  await act(async () => { renderer.root.findByType("switch").props.onChange(false); });
-  assert.ok(requests.some(item => item.path === "/agent/skills/own" && item.body?.enabled === false));
-  assert.equal(runtimeRefreshes, 1, "个人技能变动后更新原AI助手可选目录");
+  assert.equal(renderer.root.findAllByType("switch").length, 0, "个人目录不再开放用户启停管理");
+  assert.equal(renderer.root.findAllByType("button").some(item => ["编辑技能", "删除技能"].includes(item.props["aria-label"])), false);
+  await act(async () => { button("使用").props.onClick(); });
+  assert.deepEqual(selected, ["own"], "选用本人可用技能，不产生管理写入");
+  await act(async () => { button("导入个人技能").props.onClick(); });
+  const manager = renderer.root.findByType("skill-manager");
+  assert.equal(manager.props.open, true);
+  assert.equal(manager.props.mode, "import-only");
+  assert.equal(manager.props.scope, "personal");
+  assert.equal(manager.props.skills[0].id, "own");
+  assert.equal(manager.props.onSelect, props.onSelect);
+  await act(async () => { await manager.props.refresh(); });
+  assert.equal(requests.at(-1).path, "/agent/skills/personal");
+  assert.equal(runtimeRefreshes, 1, "导入后刷新本人目录与原AI助手可选目录");
+  assert.equal(requests.some(item => Object.hasOwn(item, "body")), false, "查看、下载、选用和刷新均不发送启停PATCH");
+  await act(async () => { renderer.update(React.createElement(PersonalAiSpaceSkills, { ...props, busy: true })); });
+  assert.equal(button("导入个人技能").props.disabled, true);
+  assert.equal(button("使用").props.disabled, true, "工作区忙碌时保留选用阻断");
   assert.equal(requests.filter(item => item.path.includes("ai-space") || item.path.includes("global-skills")).length, 0, "技能目录不传输OSS或其他作用域");
   await act(async () => { renderer.unmount(); });
 });
@@ -604,15 +630,16 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   const List = ({ dataSource, renderItem }) => React.createElement("list", null, dataSource.map((item) => React.cloneElement(renderItem(item), { key: item.id })));
   List.Item = ({ actions, children }) => React.createElement("list-item", null, children, actions);
   List.Item.Meta = ({ title, description }) => React.createElement("list-meta", { title, description }, description);
-  const { default: AssistantPanel } = loadModule("../personal-agent/AssistantPanel.tsx", {
+  const dependencies = {
     antd: { ...require("antd"), Alert: component("alert"), Button: component("button"), Input: { TextArea: component("textarea") }, List, Tag: component("tag"), Tooltip: component("tooltip") },
     "./AssistantStart": { __esModule: true, default: component("start"), shortcuts: [] },
-    "./ConversationManager": { ConversationManager: component("conversation-manager") },
+    "./ConversationManager": { ConversationManager: ({ navigation, ...props }) => React.createElement("conversation-manager", props, navigation) },
     "./AssistantWorkspaceTools": { AssistantWorkspaceTools: component("workspace-tools") },
     "./ConfirmationHistory": { ConfirmationHistory: component("confirmation-history") },
     "./PersonalAiSpace": { PersonalAiSpace: component("personal-ai-space") },
     "./ActionConfirmation": { ActionConfirmation: component("action-confirmation") },
-  });
+  };
+  const { default: AssistantPanel } = loadModule("../personal-agent/AssistantPanel.tsx", dependencies);
   const action = { id: "a1", type: "mcp.call", summary: "为2个案件新增期限提醒", status: "pending" };
   const decisions = [];
   const workspace = {
@@ -674,6 +701,47 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   };
   await act(async () => renderer.update(React.createElement(AssistantPanel, { ...props, workspace: { ...workspace, visibleActions: [], decisionFailures: failures, state: { ...workspace.state, pending_actions: [] } } })));
   assert.deepEqual(renderer.root.findAllByType("alert").map((item) => item.props.description), ["A执行结果未知", "B执行结果未知"], "原卡移除也显示所有相关错误，不只最后一条");
+  await act(async () => renderer.unmount());
+
+  const requests = [], routes = [];
+  let desktopWorkspace = { ...workspace, status: { ready: true, commands: [{ id: "cases" }] }, selectedCase: { id: 42, serial_no: "CODEX-CASE", title: "可访问案件" }, createConversation() {}, selectConversation() {}, deleteConversation() {} };
+  const { default: AiChatPage } = loadModule("../personal-agent/AiChatPage.tsx", {
+    ...dependencies,
+    "./PersonalWorkspaceProvider": { usePersonalWorkspaceContext: () => desktopWorkspace },
+    "../api": { api: { get: async path => { requests.push(path); return { data: { items: [] } }; } } },
+  });
+  const chatProps = { desktop: true, onReturnWorkbench: () => routes.push("dashboard"), focusRequested: false, onFocusHandled() {}, onOpenAgentCenter: () => routes.push("agent-center") };
+  await act(async () => { renderer = create(React.createElement(AiChatPage, chatProps)); });
+  assert.equal(renderer.root.findByType("aside").props["aria-label"], "AI 工作区导航");
+  assert.equal(renderer.root.findAllByType("start").length, 0, "PC不挂载旧快捷卡片组件");
+  assert.equal(renderer.root.findAll(item => item.props.className === "assistant-mobile-suggestions").length, 0, "PC不保留隐藏快捷卡片");
+  assert.equal(renderer.root.findByType("conversation-manager").props.presentation, "sidebar");
+  assert.equal(renderer.root.findByType("conversation-manager").props.onSelect, desktopWorkspace.selectConversation);
+  assert.equal(renderer.root.findAllByType("confirmation-history").length, 1, "历史确认入口移入侧栏且不重复");
+  const byClass = name => renderer.root.findAllByType("button").find(item => item.props.className === name);
+  assert.equal(byClass("assistant-workspace-case-entry").props.disabled, false);
+  assert.equal(byClass("assistant-workspace-case-materials").props["aria-label"], "选择案件材料：CODEX-CASE");
+  await act(async () => { byClass("assistant-workspace-personal-entry").props.onClick(); });
+  assert.equal(renderer.root.findByType("personal-ai-space").props.open, true);
+  await act(async () => { button("智能体中心").props.onClick(); button("返回工作台").props.onClick(); });
+  assert.deepEqual(routes, ["agent-center", "dashboard"], "侧栏沿用上层授权的真实导航回调");
+  desktopWorkspace = { ...desktopWorkspace, status: { ready: true, commands: [] } };
+  await act(async () => { renderer.update(React.createElement(AiChatPage, { ...chatProps, onOpenAgentCenter: undefined })); });
+  assert.equal(byClass("assistant-workspace-case-entry").props.disabled, true, "案件入口使用真实命令权限，而非只改标签");
+  assert.equal(byClass("assistant-workspace-case-materials"), undefined, "无案件权限不展示既有选中案件材料入口");
+  assert.equal(button("智能体中心"), undefined, "上层未授导航回调时不制造中心入口");
+  desktopWorkspace = { ...desktopWorkspace, status: { ready: true, commands: [{ id: "cases" }] }, loadError: "工作区读取失败" };
+  await act(async () => { renderer.update(React.createElement(AiChatPage, chatProps)); });
+  assert.equal(byClass("assistant-workspace-case-entry").props.disabled, true);
+  assert.equal(byClass("assistant-workspace-case-materials").props.disabled, true, "工作区读取失败不得继续打开案件材料");
+  desktopWorkspace = { ...desktopWorkspace, loadError: "" };
+  await act(async () => { renderer.update(React.createElement(AiChatPage, { ...chatProps, desktop: false })); });
+  assert.equal(renderer.root.findAllByType("aside").length, 0, "手机不挂载PC常驻侧栏");
+  assert.equal(renderer.root.findAll(item => item.props.className === "assistant-bar-actions").length, 1);
+  assert.equal(renderer.root.findAllByType("confirmation-history").length, 1);
+  assert.equal(renderer.root.findAllByType("conversation-manager").length, 1);
+  assert.equal(renderer.root.findAllByType("start").length, 1, "手机保留原空态入口");
+  assert.deepEqual(requests, [], "独立AI页面不再请求dashboard suggestions来生成PC卡片");
   await act(async () => renderer.unmount());
 });
 
