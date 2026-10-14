@@ -113,28 +113,28 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
       setError(errorText(failure, "Word 回存或回读未完成，请核对钉钉及 OA 保存状态"));
     } finally { operationLock.current = false; setBusy(null); onBusy(false); }
   };
-  return <Modal open title="钉钉 Word 在线编辑" width={640} rootClassName="personal-ai-office-editor"
+  return <Modal open title="Word 在线编辑" width={640} rootClassName="personal-ai-office-editor"
     closable={!busy && !disabled} maskClosable={!busy && !disabled} keyboard={!busy && !disabled} onCancel={close} destroyOnHidden
     footer={<Button disabled={!!busy || disabled} onClick={close}>关闭</Button>}>
     <div className="personal-ai-office-content">
       <div className="personal-ai-office-file"><FileWordOutlined /><strong>{file.name}</strong></div>
-      <Alert type="info" showIcon title="使用钉钉的 Word 编辑工具"
-        description={`仅把你选定的这份文件副本上传至绑定钉钉账号的独立编辑空间。文件所属人：${file.owner_name}。原文件继续由 OA 保管，不覆盖。`} />
+      <Alert type="info" showIcon title="使用钉钉在线编辑"
+        description={`正在为${file.owner_name}打开钉钉 Word 编辑器。编辑内容保存后，可回到 OA 同步为新版本，原文件保留。`} />
       {savedVersion && <Alert type="warning" showIcon title="OA 新版本已回存；正在核对完整 Word，不能重复回存。" description={`新文件：${savedVersion.file.id}`} />}
       {error && <Alert type="error" showIcon title={submissionUncertain ? "请求结果未确认，请核对，勿重复提交" : "操作未完成"} description={error} />}
       <ol className="personal-ai-office-steps">
-        <li>准备文件副本，然后在新页面打开钉钉。请使用与当前 OA 账号绑定的钉钉账号登录。</li>
-        <li>在钉钉完成排版、表格等编辑，等待钉钉保存完成。</li>
-        <li>返回这里取回已保存的 Word，生成 OA 个人空间新版本。</li>
+        <li>点击“在线编辑”，系统会直接打开钉钉 Word 编辑器。</li>
+        <li>在钉钉完成排版、表格等编辑并等待保存完成。</li>
+        <li>返回 OA 点击“同步已保存内容”，生成新的 OA 文件版本。</li>
       </ol>
       <div className="personal-ai-office-actions">
         <Button icon={session ? <ReloadOutlined /> : <FileWordOutlined />} loading={busy === "open"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain}
-          onClick={() => void prepare()}>{session ? "刷新钉钉编辑链接" : "上传副本并打开钉钉编辑"}</Button>
+          onClick={() => void prepare()}>{session ? "重新打开钉钉编辑" : "在线编辑"}</Button>
         {session && <Button type="primary" icon={<ExportOutlined />} href={session.url} target="_blank" rel="noopener noreferrer" disabled={!!busy || disabled}>打开钉钉编辑</Button>}
-        {session && <Button icon={<SaveOutlined />} loading={busy === "save"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain} onClick={() => void save()}>已在钉钉保存，取回新版本</Button>}
+        {session && <Button icon={<SaveOutlined />} loading={busy === "save"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain} onClick={() => void save()}>同步已保存内容</Button>}
         {savedVersion && <Button icon={<ReloadOutlined />} loading={busy === "read"} disabled={disabled || !!busy} onClick={() => void retryReadback()}>重新读取已回存的新版本</Button>}
       </div>
-      <p className="personal-ai-office-hint">钉钉编辑需要对应文件权限和 Office 服务。关闭此窗口不会自动回存；重新从原文件进入可继续同一编辑副本。</p>
+      <p className="personal-ai-office-hint">钉钉编辑需要对应文件权限和 Office 服务。关闭窗口不会自动同步，请保存后回到 OA 点击“同步已保存内容”。</p>
     </div>
   </Modal>;
 }

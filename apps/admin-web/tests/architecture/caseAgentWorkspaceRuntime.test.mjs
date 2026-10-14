@@ -1795,7 +1795,7 @@ test("Office save verifies the new ID metadata and complete bytes and retries fa
     await complete;
     finishOperation = undefined;
   });
-  await act(async () => { button("上传副本并打开钉钉编辑").props.onClick(); button("上传副本并打开钉钉编辑").props.onClick(); });
+  await act(async () => { button("在线编辑").props.onClick(); button("在线编辑").props.onClick(); });
   assert.equal(requests.length, 1, "上传副本连点只发送一次");
   assert.equal(requests[0].body.expected_sha256, file.sha256);
   await act(async () => { renderer.root.findByType("modal").props.onCancel(); button("关闭").props.onClick(); });
@@ -1803,15 +1803,15 @@ test("Office save verifies the new ID metadata and complete bytes and retries fa
   await act(async () => { finishOpen({ data: { session_id: "1".repeat(32), name: file.name, url: "https://alidocs.dingtalk.com/CODEX" } }); });
   assert.equal(popup.url, "https://alidocs.dingtalk.com/CODEX", "上传确认后立即打开钉钉编辑页");
   assert.equal(button("打开钉钉编辑").props.rel, "noopener noreferrer");
-  await act(async () => { button("已在钉钉保存，取回新版本").props.onClick(); button("已在钉钉保存，取回新版本").props.onClick(); });
+  await act(async () => { button("同步已保存内容").props.onClick(); button("同步已保存内容").props.onClick(); });
   assert.equal(requests.filter(item => item.method === "POST").length, 2);
   assert.equal(requests.find(item => item.path.endsWith("/save")).body.session_id, "1".repeat(32));
   assert.equal(created[0].id, saved.id);
   assert.equal(verified.length, 0);
   assert.equal(notices.length, 0);
   assert.ok(renderer.root.findAllByType("alert").some(item => item.props.description === "新Word详情暂未读到"));
-  assert.equal(button("已在钉钉保存，取回新版本").props.disabled, true);
-  await act(async () => { button("已在钉钉保存，取回新版本").props.onClick(); });
+  assert.equal(button("同步已保存内容").props.disabled, true);
+  await act(async () => { button("同步已保存内容").props.onClick(); });
   assert.equal(requests.filter(item => item.method === "POST").length, 2);
   failMetadata = false; corrupt = true;
   await readback();
@@ -1846,11 +1846,11 @@ test("Office structured writer failures block replay unlike definite prewrite re
     let renderer;
     await act(async () => { renderer = create(React.createElement(PersonalAiOfficeEditor, { file, onClose() {}, onBusy() {}, onVersionCreated: () => assert.fail("失败不登记成功新版本"), onSaved: () => assert.fail("失败不确认读取") })); });
     const button = label => renderer.root.findAllByType("button").find(item => item.props.children === label);
-    await act(async () => { button("上传副本并打开钉钉编辑").props.onClick(); });
-    await act(async () => { button("已在钉钉保存，取回新版本").props.onClick(); });
-    assert.equal(button("已在钉钉保存，取回新版本").props.disabled, !definite);
+    await act(async () => { button("在线编辑").props.onClick(); });
+    await act(async () => { button("同步已保存内容").props.onClick(); });
+    assert.equal(button("同步已保存内容").props.disabled, !definite);
     assert.ok(renderer.root.findAllByType("alert").some(item => item.props.description === "回存未完成"));
-    await act(async () => { button("已在钉钉保存，取回新版本").props.onClick(); });
+    await act(async () => { button("同步已保存内容").props.onClick(); });
     assert.equal(saves, definite ? 2 : 1, "仅确定未写入的拒绝允许再次人工确认；含file_id/status的计划不得重放");
     await act(async () => { renderer.unmount(); });
   }
