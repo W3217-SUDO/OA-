@@ -14,6 +14,7 @@ type Props = {
   revision: number;
   busy: boolean;
   onOpenConversation: (id: string) => Promise<unknown>;
+  onSkillsChanged?: () => Promise<unknown>;
 };
 
 export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversation }: Props) {
