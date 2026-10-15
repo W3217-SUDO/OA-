@@ -43,6 +43,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
   const activeCaseProject = workspace.currentWorkspace?.kind === "case"
     ? workspace.workspaceProjects.find((item) => item.case_id === workspace.currentWorkspace?.case_id && item.available)
     : undefined;
+  const showCaseAgent = canUseCases || !!activeCaseProject;
   const openCaseAgent = () => {
     if (activeCaseProject?.case_id && activeCaseProject.serial_no) {
       onNavigate(`case-detail-${activeCaseProject.case_id}-${encodeURIComponent(activeCaseProject.serial_no)}-agent`);
@@ -96,7 +97,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
         <Button icon={<AppstoreAddOutlined />} disabled={busy} onClick={() => void openSkills()}>技能包</Button>
         <Segmented aria-label="切换工作视图" value={view} options={[{ value: "workspace", label: "工作台" }, { value: "chat", label: "对话" }]} onChange={(value) => setView(value as "workspace" | "chat")} />
         <Tooltip title={status?.ready ? `当前模型：${status.model}` : "模型服务未就绪"}><span className={`workspace-service ${status?.ready ? "ready" : ""}`}><i />{status?.ready ? "已连接" : loading ? "连接中" : "未就绪"}</span></Tooltip>
-        {canUseCases && <Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={openCaseAgent}>案件智能体</Button></Tooltip>}
+        {showCaseAgent && <Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={openCaseAgent}>案件智能体</Button></Tooltip>}
         <ConfirmationHistory onReopen={reopen} busy={navigationBusy || !!workspace.dismissalId} />
         <Tooltip title="刷新工作台与会话"><Button type="text" icon={<ReloadOutlined />} aria-label="刷新工作台与会话" disabled={navigationBusy || !!workspace.runningIds.length} onClick={() => { setRefreshToken((value) => value + 1); void workspace.load(); }} /></Tooltip>
       </Space>
