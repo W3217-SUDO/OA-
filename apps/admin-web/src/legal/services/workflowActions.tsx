@@ -686,7 +686,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             setCounselDetailFinanceLoading(true);
             // 费用列表是案件详情的首屏核心内容，先启动并在其完成时立即回填；
             // 历史、任务、日志等附加面板不得阻塞费用表刷新。
-            const relationPromise = api.get(`/cases/${row.id}/relations`, { params: { clue_page: 1, clue_page_size: 10 } });
+            const relationPromise = api.get(`/cases/${row.id}/relations`, { params: { include: "fees" } });
             void relationPromise.then((response) => {
                 if (clueRequestId !== counselDetailClueRequestRef.current) return;
                 setCounselDetailFinance(response.data?.fees || []);

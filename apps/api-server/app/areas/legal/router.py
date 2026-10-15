@@ -476,6 +476,7 @@ async def list_case_relations(
     clue_page: Annotated[int | None, Query(ge=1)] = None,
     clue_page_size: Annotated[int | None, Query(ge=1, le=200)] = None,
     clue_keyword: str = "",
+    include: str = Query("", pattern="^(|fees|clues)$"),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
@@ -533,7 +534,9 @@ async def list_case_relations(
     # A converted case owns an explicit source-clue relation.  Do not union that
     # relation with stale reverse links left on other clues during migration or
     # an earlier conversion; doing so makes one selected clue look like many.
-    if clue_ids:
+    if include == "fees":
+        clues = []
+    elif clue_ids:
         clue_condition = BusinessRecord.id.in_(clue_ids)
     elif clue_nos:
         clue_condition = BusinessRecord.serial_no.in_(list(dict.fromkeys(clue_nos)))
@@ -567,7 +570,16 @@ async def list_case_relations(
         paged_clues = clues[clue_start:clue_start + effective_clue_page_size]
     else:
         paged_clues = clues
-    refunds = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "refund"))).all())
+    fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
+    refund_condition = [BusinessRecord.module == "refund"]
+    if fee_ids:
+        refund_condition.append(or_(
+            BusinessRecord.data["fee_record_id"].as_integer().in_(fee_ids),
+            BusinessRecord.data["case_fee_id"].as_integer().in_(fee_ids),
+        ))
+    else:
+        refund_condition.append(False)
+    refunds = list((await db.scalars(select(BusinessRecord).where(*refund_condition))).all())
     refunds_by_fee: dict[int, list[BusinessRecord]] = {}
     for refund in refunds:
         try:
@@ -576,14 +588,19 @@ async def list_case_relations(
             fee_id = 0
         if fee_id:
             refunds_by_fee.setdefault(fee_id, []).append(refund)
-    fee_ids, legacy_fee_ids = _case_fee_link_maps(fees)
     fees_by_id = {item.id: item for item in fees}
     active_invoices_by_fee: dict[int, BusinessRecord] = {}
     payment_vouchers_by_id: dict[int, BusinessRecord] = {}
     if fee_ids:
+        invoice_link_condition = or_(
+            BusinessRecord.data["case_fee_id"].as_integer().in_(fee_ids),
+            BusinessRecord.data["case_fee_ids"].contains(list(fee_ids)),
+            BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+        )
         invoices = list((await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "invoice",
             BusinessRecord.status.not_in(INVOICE_RELEASED_STATUSES),
+            invoice_link_condition,
         ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
         for invoice in invoices:
             if (invoice.data or {}).get("purpose") == "付款凭证":
@@ -597,7 +614,10 @@ async def list_case_relations(
         # Allocations are durable links to fees.  Customer names are snapshots and
         # may diverge after a customer rename, so they must not gate case-fee
         # receipt projection.
-        incoming_payments = list((await db.scalars(select(IncomingPayment).order_by(
+        from app.core.json_relation_query import json_scalar_overlap
+        incoming_payments = list((await db.scalars(select(IncomingPayment).where(
+            json_scalar_overlap(IncomingPayment.allocations, fee_ids | set(legacy_fee_ids))
+        ).order_by(
             IncomingPayment.received_date.desc(), IncomingPayment.id.desc(),
         ))).all())
         for payment in incoming_payments:
