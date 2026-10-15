@@ -420,6 +420,7 @@ export default function CaseCenterPage({
   const [counselDetailTasks, setCounselDetailTasks] = useState<TaskRow[]>([]);
   const [counselDetailCustomerTasks, setCounselDetailCustomerTasks] = useState<TaskRow[]>([]);
   const [counselDetailFinance, setCounselDetailFinance] = useState<CaseRow[]>([]);
+  const [counselDetailFinanceLoading, setCounselDetailFinanceLoading] = useState(false);
   const [, setCounselDetailAssistedFees] = useState<CaseAssistedFee[]>([]);
   const [counselDetailAssistedFeePage, setCounselDetailAssistedFeePage] = useState(1);
   const [counselDetailAssistedFeePageSize, setCounselDetailAssistedFeePageSize] = useState(15);
@@ -795,6 +796,7 @@ export default function CaseCenterPage({
     get setCounselLogs() { return setCounselLogs; },
     get setCounselDetailCapabilities() { return setCounselDetailCapabilities; },
     get setCounselDetailFinance() { return setCounselDetailFinance; },
+    get setCounselDetailFinanceLoading() { return setCounselDetailFinanceLoading; },
     get counselDetailFinance() { return counselDetailFinance; },
     get applyCounselDetailCluePageState() { return applyCounselDetailCluePageState; },
     get mergingCase() { return mergingCase; },
@@ -4043,6 +4045,7 @@ export default function CaseCenterPage({
               {key:"firm-fees",label:"律所费用",children:<CaseFeesPanel
                 scope="firm"
                 feeRows={firmFeeRows}
+                loading={counselDetailFinanceLoading}
                 selectedFeeKeys={selectedFirmFeeKeys}
                 setSelectedFeeKeys={setSelectedFirmFeeKeys}
                 selectedFee={selectedFirmFee}
@@ -4064,6 +4067,7 @@ export default function CaseCenterPage({
               {key:"platform-fees",label:"平台费用",children:<CaseFeesPanel
                 scope="platform"
                 feeRows={platformFeeRows}
+                loading={counselDetailFinanceLoading}
                 selectedFeeKeys={selectedPlatformFeeKeys}
                 setSelectedFeeKeys={setSelectedPlatformFeeKeys}
                 selectedFee={selectedPlatformFee}

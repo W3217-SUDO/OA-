@@ -94,6 +94,7 @@ export interface CaseWorkflowDependencies {
     readonly setCounselLogs: React.Dispatch<React.SetStateAction<CaseLogRow[]>>;
     readonly setCounselDetailCapabilities: React.Dispatch<React.SetStateAction<CaseDetailCapabilities>>;
     readonly setCounselDetailFinance: React.Dispatch<React.SetStateAction<CaseRow[]>>;
+    readonly setCounselDetailFinanceLoading: React.Dispatch<React.SetStateAction<boolean>>;
     readonly counselDetailFinance: CaseRow[];
     readonly applyCounselDetailCluePageState: (payload: any, fallbackPage: number, fallbackPageSize: number) => {
         items: any;
@@ -607,7 +608,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         }
     };
     const openCounselDetail = async (row: CaseRow, preferredTab?: string) => {
-        const { isCaseDetailView, initialView, originalPage, originalPageSize, caseQuery, onNavigate, counselDetailClueRequestRef, setCounselDetailClues, setCounselDetailClueKeyword, setCounselDetailClueSearchInput, setCounselDetailCluePage, setCounselDetailCluePageSize, setCounselDetailClueTotal, setCounselDetailCluePages, setActiveCounselDetailTab, setViewingCounselCase, counselDetailCaseIdRef, setLegacyLsHistoryCaseIds, setSelectedCounselAttachmentKeys, setSelectedCounselCaseEventKeys, setActiveCounselDocCategory, setExpandedCounselDocGroups, setCounselDetailHistory, applyCounselDetailTaskPageState, applyCounselDetailCustomerTaskPageState, setCounselDetailAttachments, setCounselDetailCustomerAttachments, setCounselDetailContractAttachments, setCounselDocumentsLoadError, setCounselDocumentFolderTree, setCounselLogs, setCounselDetailCapabilities, setCounselDetailFinance, applyCounselDetailCluePageState } = context;
+        const { isCaseDetailView, initialView, originalPage, originalPageSize, caseQuery, onNavigate, counselDetailClueRequestRef, setCounselDetailClues, setCounselDetailClueKeyword, setCounselDetailClueSearchInput, setCounselDetailCluePage, setCounselDetailCluePageSize, setCounselDetailClueTotal, setCounselDetailCluePages, setActiveCounselDetailTab, setViewingCounselCase, counselDetailCaseIdRef, setLegacyLsHistoryCaseIds, setSelectedCounselAttachmentKeys, setSelectedCounselCaseEventKeys, setActiveCounselDocCategory, setExpandedCounselDocGroups, setCounselDetailHistory, applyCounselDetailTaskPageState, applyCounselDetailCustomerTaskPageState, setCounselDetailAttachments, setCounselDetailCustomerAttachments, setCounselDetailContractAttachments, setCounselDocumentsLoadError, setCounselDocumentFolderTree, setCounselLogs, setCounselDetailCapabilities, setCounselDetailFinance, setCounselDetailFinanceLoading, applyCounselDetailCluePageState } = context;
         if (!isCaseDetailView) {
             sessionStorage.setItem("sunhold:case-detail-tab", preferredTab || "documents");
             const serialNo = String(row.serial_no || `案件-${row.id}`).trim();
@@ -678,6 +679,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             }).finally(() => {
                 if (clueRequestId === counselDetailClueRequestRef.current) context.setCounselDocumentsLoading(false);
             });
+            setCounselDetailFinanceLoading(true);
             const [historyRes, taskRes, customerTaskRes, logRes, capabilityRes, relationRes] = await Promise.allSettled([
                 api.get(`/records/${row.id}/history`),
                 api.get(`/cases/${row.id}/tasks`, {
@@ -707,6 +709,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             setCounselLogs(logRes.status === "fulfilled" ? logRes.value.data.items || [] : []);
             setCounselDetailCapabilities(capabilityRes.status === "fulfilled" ? capabilityRes.value.data || noCaseDetailWriteCapability : noCaseDetailWriteCapability);
             setCounselDetailFinance(relationRes.status === "fulfilled" ? relationRes.value.data.fees || [] : []);
+            setCounselDetailFinanceLoading(false);
             setCounselDetailClues(relationRes.status === "fulfilled" ? relationRes.value.data.clues || [] : []);
             if (relationRes.status === "fulfilled" && clueRequestId === counselDetailClueRequestRef.current) {
                 setViewingCounselCase(current => current?.id === row.id ? { ...current, data: { ...current.data, ...relationRes.value.data.case_data } } : current);
@@ -720,6 +723,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             }
         }
         catch (error: any) {
+            context.setCounselDetailFinanceLoading(false);
             setCounselDetailCapabilities(noCaseDetailWriteCapability);
             message.error(error?.response?.data?.detail || "案件详情加载失败");
         }
