@@ -207,13 +207,13 @@ async def personal_agent_memory(scope: Literal["short", "long"] = "short",
     if scope == "long":
         items = [{**item, "memory_type": "long", "source": "用户明确要求保存"} for item in result["items"]]
     else:
-        state = conversations.read_state(_user_dir(safe_identity["username"]))
         items = []
-        if state.get("memory_summary"):
-            items = [{"id": f"short-{state.get('conversation_id')}", "memory_type": "short",
-                      "content": state["memory_summary"], "source": "当前会话自动压缩",
-                      "conversation_id": state.get("conversation_id"), "permission_scope": "当前用户",
-                      "created_at": state.get("memory_summary_updated_at") or state.get("updated_at")}]
+        for state in conversations.read_conversation_states(_user_dir(safe_identity["username"])):
+            if state.get("memory_summary"):
+                items.append({"id": f"short-{state.get('conversation_id')}", "memory_type": "short",
+                              "content": state["memory_summary"], "source": "会话自动压缩",
+                              "conversation_id": state.get("conversation_id"), "permission_scope": "当前用户",
+                              "created_at": state.get("memory_summary_updated_at") or state.get("updated_at")})
     return {"settings": result["settings"], "items": items,
             "long_term_enabled": bool(result["settings"].get("enabled", True)),
             "recall_limit": int(result["settings"].get("recall_limit", 5))}
