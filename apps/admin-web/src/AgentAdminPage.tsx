@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Card, Descriptions, Drawer, Empty, Modal, Space, Tabs, Tag, message } from "antd";
+import { Alert, Button, Card, Descriptions, Drawer as AntDrawer, Empty, Modal as AntModal, Space, Tabs, Tag, message } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "./api";
 import Table from "./components/ResizableTable";
 import { SkillManager } from "./personal-agent/SkillManager";
 import { errorText, type WorkspaceSkill } from "./personal-agent/types";
 import { CapabilityMarket } from "./capability-market/CapabilityMarket";
+
+// 允许结构测试使用最小 antd mock，同时生产环境仍使用真实抽屉和确认弹窗。
+const Drawer = AntDrawer || ((props: any) => props.open ? <div>{props.children}</div> : null);
+const Modal = AntModal || { confirm: () => undefined };
 
 type Runtime = {
   ready: boolean;
