@@ -458,7 +458,7 @@ DEFAULT_SYSTEM_CONFIGS = {
     },
     "company_profile": {
         "label": "公司设置", "group": "机构配置", "description": "系统抬头、开票和联系信息。",
-        "value": {"name": "上海申浩律师事务所", "code": "31280", "short_code": "SH", "address": "上海市徐汇区华山路1954号浩然高科技大厦", "phone": "021-64484005", "fax": "", "email": "", "postal_code": "", "bank_name": "", "bank_account": "", "bank_address": ""},
+        "value": {"name": "上海沪知律师事务所", "code": "31280", "short_code": "HZ", "address": "上海市徐汇区华山路1954号浩然高科技大厦", "phone": "021-64484005", "fax": "", "email": "", "postal_code": "", "bank_name": "", "bank_account": "", "bank_address": ""},
     },
     "application_settings": {
         "label": "系统配置", "group": "运行配置", "description": "网页端显示与业务运行参数。",

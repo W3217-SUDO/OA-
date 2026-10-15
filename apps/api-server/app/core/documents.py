@@ -1055,7 +1055,7 @@ async def _case_document_context(record: BusinessRecord, db: AsyncSession) -> di
         assistant_phone = str((assistant_user.profile or {}).get("mobile") or "")
     return {
         "company": {
-            "name": str(company.get("name") or "上海申浩律师事务所"),
+            "name": str(company.get("name") or "上海沪知律师事务所"),
             "address": str(company.get("address") or ""),
             "phone": str(company.get("phone") or ""),
         },

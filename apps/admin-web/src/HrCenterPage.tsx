@@ -37,7 +37,7 @@ function EmployeeAvatar({employee,size=96,preview}:{employee?:Employee|null;size
   return <Avatar size={size} src={preview||src||undefined}>{String(employee?.title||'?').slice(0,1)}</Avatar>
 }
 type OrganizationOption={name:string;code?:string;is_active:boolean}
-const companyName='上海申浩律师事务所'
+const companyName='上海沪知律师事务所'
 
 const staffRoleOptions=['合作律师','系统管理员','业务代表','行政流程','财务','授薪律师','财务审核管理','档案审核管理','合伙人律师','专利代理人','商标代理人','前台','实习律师','调查取证员','律师助理','律所财务','知产中心负责人','诉讼部部长','调查部部长','外部合作调查取证员','离职过渡','实习助理','案件审核管理','客户联系人','外部合作调查员','律师+客户审核','实习生-调查部','测试','案例编辑人员','外部案源人'].map(value=>({value,label:value}))
 const systemRoleOf=(staffRole:string)=>staffRole==='系统管理员'?'admin':/审核|负责人|部长|合伙人/.test(staffRole)?'manager':/财务/.test(staffRole)?'auditor':'user'

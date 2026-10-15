@@ -86,7 +86,7 @@ async def list_hr_employees(
             person_name, person_name_missing = _person_display_name(user.display_name, user.username)
             rows.append({
                 "id": -int(user.id), "serial_no": profile.get("employee_no") or f"SYS-{int(user.id):04d}",
-                "title": person_name, "person_display_name": person_name, "display_name_missing": person_name_missing, "customer": profile.get("company") or "上海申浩律师事务所",
+                "title": person_name, "person_display_name": person_name, "display_name_missing": person_name_missing, "customer": profile.get("company") or "上海沪知律师事务所",
                 "status": "在职" if user.is_active else "停用", "owner": user.username,
                 "department": user.department or "", "description": "系统账号（尚未建立独立人事档案）", "created_at": user.created_at,
                 "data": {**profile, "username": user.username, "role": user.role, "is_active": user.is_active, "system_user_id": user.id, "position": profile.get("position") or "系统管理员"},
