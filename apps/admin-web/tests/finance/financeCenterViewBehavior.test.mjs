@@ -277,7 +277,7 @@ test("all settlement states retain readable allocation columns, amounts and link
       const column = byField(field);
       assert.equal(column.render(43166062.63), "43166062.63", field);
       assert.equal(column.render(0), "0.00", field);
-      assert.equal(column.render(null), "—", field);
+      assert.equal(column.render(null), "", field);
       assert.equal(column.align, "right");
       assert.equal(column.className, "finance-money-column");
       assert.ok(column.width >= 96, field);

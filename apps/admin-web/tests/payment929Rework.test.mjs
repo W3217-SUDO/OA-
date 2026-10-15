@@ -62,7 +62,7 @@ test("实际请款列表显示本轮申请金额，保留合同请款及隐藏�
   const render = (data) => column.render(undefined, { data });
   assert.equal(render({ amount: 100, payment_request_amount: 30 }), render({ amount: 30 }));
   assert.equal(render({ amount: 60 }), render({ amount: 100, payment_request_amount: 60 }));
-  assert.equal(render({ payment_request_amount: 30 }), "—");
+  assert.equal(render({ payment_request_amount: 30 }), "");
 });
 
 test("实际审批入口先服务端筛选，完整读取超过200条待办并分离普通费用与合同单", async () => {
@@ -190,14 +190,14 @@ test("案件费用只归一化全值斜杠占位，保留真实零值、原默�
   const columns = createExternalCaseFeeColumns({});
   const cell = (name, data) => columns.find(column => column.title === name).render(undefined, { data });
   for (const placeholder of ["/", "\\", " / ", " \\ ", "///", "\\\\", "/\\/", "            /\\"]) {
-    assert.equal(cell("金额", { amount: placeholder }), "—");
-    assert.equal(cell("申请付款金额", { payment_requested_amount: placeholder }), "—");
+    assert.equal(cell("金额", { amount: placeholder }), "/");
+    assert.equal(cell("申请付款金额", { payment_requested_amount: placeholder }), "/");
     assert.equal(cell("回款日期", { received_at: placeholder }), "");
     assert.equal(cell("回款日期", { cashed_date: placeholder }), "");
   }
   for (const amount of [0, "0", 12.5, "12.50", null, undefined]) {
-    assert.equal(cell("金额", { amount }), amount ?? 0);
-    assert.equal(cell("申请付款金额", { payment_requested_amount: amount }), amount ?? 0);
+    assert.equal(cell("金额", { amount }), amount == null ? "/" : amount);
+    assert.equal(cell("申请付款金额", { payment_requested_amount: amount }), amount == null ? "/" : amount);
   }
   for (const date of ["2026/10/13", "2026\\10\\13", "2026-10-13T12:00:00"]) {
     assert.equal(cell("回款日期", { received_at: date }), date.slice(0, 10));

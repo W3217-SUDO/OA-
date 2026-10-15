@@ -33,6 +33,7 @@ export function FeeReviewDrawer({
   onOpenCaseDetail,
 }: FeeReviewDrawerProps) {
   const isPaymentAudit = initialView === "finance-payment-audit";
+  const renderFeeNumber = (value: unknown) => value === null || value === undefined || value === "" ? "" : reviewNumber(value);
 
   const columns = isPaymentAudit
     ? [
@@ -54,7 +55,7 @@ export function FeeReviewDrawer({
           title: "金额",
           dataIndex: "amount",
           width: 80,
-          render: reviewNumber,
+          render: renderFeeNumber,
         },
         { title: "费用类型", dataIndex: "fee_type", width: 90 },
         { title: "付款备注", dataIndex: "payment_remark", width: 120 },
@@ -99,7 +100,7 @@ export function FeeReviewDrawer({
           title: "基数",
           dataIndex: "base_amount",
           width: 54,
-          render: reviewNumber,
+          render: renderFeeNumber,
         },
         {
           title: (
@@ -110,7 +111,7 @@ export function FeeReviewDrawer({
           ),
           dataIndex: "base_commission",
           width: 54,
-          render: reviewNumber,
+          render: renderFeeNumber,
         },
         {
           title: (
@@ -121,7 +122,7 @@ export function FeeReviewDrawer({
           ),
           dataIndex: "actual_commission",
           width: 54,
-          render: reviewNumber,
+          render: renderFeeNumber,
         },
         {
           title: (
@@ -132,7 +133,7 @@ export function FeeReviewDrawer({
           ),
           dataIndex: "paid_investigation",
           width: 47,
-          render: reviewNumber,
+          render: renderFeeNumber,
         },
         {
           title: (
@@ -143,7 +144,7 @@ export function FeeReviewDrawer({
           ),
           dataIndex: "paid_source",
           width: 47,
-          render: reviewNumber,
+          render: renderFeeNumber,
         },
         {
           title: (
@@ -154,7 +155,7 @@ export function FeeReviewDrawer({
           ),
           dataIndex: "paid_document",
           width: 47,
-          render: reviewNumber,
+          render: renderFeeNumber,
         },
         {
           title: (
