@@ -4,7 +4,7 @@ from datetime import date
 from dataclasses import asdict, dataclass
 
 from fastapi import HTTPException
-from sqlalchemy import String, case, cast, func, or_, select
+from sqlalchemy import String, case, cast, func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -40,8 +40,11 @@ def legacy_archive_application_ids():
     receipt_objects = aliased(LegacyFinanceAllocation)
     audit = aliased(LegacyFinanceAudit)
     case_fee_id = cast(case_fee.source_payload["CaseFeeId"].as_string(), String)
+    case_fee_source_database = func.coalesce(
+        cast(case_fee.source_payload["_source_database"].as_string(), String), ""
+    )
     settled_fees = (
-        select(case_fee_id).select_from(receipt_objects)
+        select(case_fee_id, case_fee_source_database).select_from(receipt_objects)
         .join(receipts, receipts.id == receipt_objects.legacy_finance_record_id)
         .join(case_fee, case_fee_id == receipt_objects.legacy_case_fee_id)
         .where(receipt_objects.source_table == "FAM_AR_Payment_Object",
@@ -50,12 +53,15 @@ def legacy_archive_application_ids():
                case_fee.source_payload["_source_database"].as_string().is_not_distinct_from(
                    header.source_payload["_source_database"].as_string()),
                receipts.source_payload["_source_database"].as_string().is_not_distinct_from(
-                   header.source_payload["_source_database"].as_string()))
-        .group_by(case_fee_id)
+                   case_fee.source_payload["_source_database"].as_string()))
+        .group_by(case_fee_id, case_fee_source_database)
         .having(func.count() == func.sum(case(
             (cast(receipts.source_payload["SettlementStatus"].as_string(), String) == "25", 1), else_=0,
         )))
-        .correlate(header)
+    )
+    source_fee_case_fee_id = cast(source_fee.source_payload["CaseFeeId"].as_string(), String)
+    source_fee_database = func.coalesce(
+        cast(source_fee.source_payload["_source_database"].as_string(), String), ""
     )
     return (
         select(header.legacy_id).distinct()
@@ -77,7 +83,7 @@ def legacy_archive_application_ids():
             audit.audit_flow_node_id == header.source_payload["AuditFlowNodeId"].as_string(),
             audit.audit_round_id == header.source_payload["AuditRoundId"].as_string(),
             LegacyCase.CasePhaseId.not_in((106012, 206012, 306012, 406012, 506012)),
-            source_fee.source_payload["CaseFeeId"].as_string().in_(settled_fees),
+            tuple_(source_fee_case_fee_id, source_fee_database).in_(settled_fees),
         )
     )
 
