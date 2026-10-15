@@ -1707,6 +1707,11 @@ export default function App() {
     );
   const currentPage = requestedPage;
   const refreshCurrentPage = () => {
+    const refreshedPages = active === "dashboard"
+      ? [{ key: "dashboard", label: "工作台" }]
+      : [{ key: "dashboard", label: "工作台" }, { key: active, label: currentPageLabel }];
+    setOpenPages(refreshedPages);
+    localStorage.setItem("sunhold:open-pages", JSON.stringify(refreshedPages));
     setWorkspaceReloadKey((value) => value + 1);
     window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: active }));
     window.dispatchEvent(new CustomEvent("sunhold:menus-updated"));
