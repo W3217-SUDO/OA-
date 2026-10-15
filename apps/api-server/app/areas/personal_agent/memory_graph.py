@@ -23,6 +23,7 @@ _EXPLICIT_MEMORY = re.compile(r"(?:记住|请记住|以后|今后|我的偏好|�
 _TOKEN = re.compile(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9_]{2,}")
 _CATEGORY_FACT = re.compile(r"(?:我叫|我是|我的(?:姓名|名字|公司|职位|职业|所在|生日)|来自|住在)")
 _CATEGORY_PREFERENCE = re.compile(r"(?:偏好|喜欢|习惯|倾向|希望|请用|不要用|优先)")
+_LONG_TERM_COMMAND = re.compile(r"(?:(?:这个|上述|刚才|前面).{0,8}(?:长期记忆|永久记忆)|(?:保存|写入|加入|形成).{0,8}(?:长期记忆|永久记忆))")
 
 
 class MemoryState(TypedDict, total=False):
@@ -108,8 +109,19 @@ def _compact_node(state: MemoryState) -> dict[str, Any]:
 
 
 def _extract_node(state: MemoryState) -> dict[str, Any]:
-    match = _EXPLICIT_MEMORY.search(str(state.get("user_text") or ""))
+    user_text = str(state.get("user_text") or "")
+    match = _EXPLICIT_MEMORY.search(user_text)
     candidate = " ".join(match.group(1).split())[:1_000] if match else None
+    # "这个要形成长期记忆" refers to the immediately preceding user fact or
+    # preference; never store the command itself as a memory item.
+    if _LONG_TERM_COMMAND.search(user_text) and (not candidate or len(candidate) < 8):
+        for message in reversed(state.get("messages", [])):
+            if message.get("role") != "user":
+                continue
+            previous = " ".join(str(message.get("content") or "").split())
+            if previous and not _LONG_TERM_COMMAND.search(previous):
+                candidate = previous[:1_000]
+                break
     return {"candidate": candidate, "category": _classify(candidate) if candidate else None}
 
 

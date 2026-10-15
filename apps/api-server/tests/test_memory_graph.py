@@ -38,3 +38,18 @@ def _assert_structured_memory(tmp_path):
     assert not run_memory_pipeline(
         tmp_path, 7, "d" * 32, 100, [], "案件经验"
     )["recalled"]
+
+
+def test_long_term_command_promotes_previous_user_fact():
+    with tempfile.TemporaryDirectory(prefix="oa-test-memory-command-") as directory:
+        _assert_long_term_command(Path(directory))
+
+
+def _assert_long_term_command(tmp_path):
+    result = run_memory_pipeline(
+        tmp_path, 7, "e" * 32, None,
+        [{"role": "user", "content": "我叫陶威"}],
+        "这个要形成长期记忆",
+    )
+    assert result["created"]["content"] == "我叫陶威"
+    assert result["created"]["memory_category"] == "fact"
