@@ -91,9 +91,9 @@ async def rollback_finance_payment(
     comment = body.comment.strip()
     if is_external_case_fee(item):
         await release_direct_fee_request(item, db)
-    # A rollback from the waiting-payment queue returns to the approval queue;
-    # earlier draft/approval rollback semantics remain unchanged.
-    rollback_status = "待审批" if previous == "待付款" else "草稿"
+    # Every rollback returns to the editable draft state.  The frontend renders
+    # this state as “创建待提交”, so the applicant can edit and submit again.
+    rollback_status = "草稿"
     item.status = rollback_status
     item.data = {
         **(item.data or {}),
