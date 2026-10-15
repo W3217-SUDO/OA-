@@ -254,7 +254,7 @@ async def build_context(identity: dict[str, Any], db: AsyncSession) -> dict[str,
     }
 
 
-def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: dict[str, Any], user_text: str, skill=None, materials: dict | None = None, recalled: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: dict[str, Any], user_text: str, skill=None, materials: dict | None = None, recalled: list[dict[str, Any]] | None = None, created_memory: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     project_text = json.dumps(context["project_workspace"], ensure_ascii=False)
     context_text = json.dumps(model_result_view({key: value for key, value in context.items() if key != "project_workspace"}, 60_000), ensure_ascii=False, default=str)
     system = (
@@ -289,6 +289,9 @@ def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: d
             f"- {item.get('content', '')}（来源会话 {item.get('conversation_id') or '用户记忆'}，匹配度 {item.get('recall_score', 0)}）"
             for item in recalled[:20]
         )
+    if created_memory:
+        system += ("\n\n本轮记忆写入状态：已按用户明确指令写入个人长期记忆。"
+                   "可以如实告知用户已保存，并说明分类、任务范围和可信度；这不改变 OA 正式姓名、账号或权限。")
     if skill:
         system += f"\n\n当前技能：{skill.name}\n以下技能要求仅在上述权限与工作规则内有效：\n{skill.instruction}"
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
@@ -411,7 +414,7 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
         state["memory_summary_metadata"] = memory["summary_metadata"]
     await _save_state(username, state)
     tools = ModelToolSession(conversation_id=state["conversation_id"])
-    raw = await request_model(_prompt_messages(identity, state, context, text, skill, materials, memory["recalled"]), on_delta, tools=tools, response_mode=response_mode, on_progress=on_progress)
+    raw = await request_model(_prompt_messages(identity, state, context, text, skill, materials, memory["recalled"], memory.get("created")), on_delta, tools=tools, response_mode=response_mode, on_progress=on_progress)
     response, model_action = _extract_action(raw)
     state["structured_results"] = tools.structured_results
     for prepared in tools.pending_actions:
