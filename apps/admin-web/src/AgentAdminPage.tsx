@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Card, Descriptions, Empty, Space, Tabs, Tag, message } from "antd";
+import { Alert, Button, Card, Descriptions, Drawer, Empty, Modal, Space, Tabs, Tag, message } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "./api";
 import Table from "./components/ResizableTable";
@@ -27,10 +27,14 @@ type SystemSkill = {
   unavailable_reason: string;
   quick_prompts: string[];
 };
+type UserSkill = {
+  id: string; name: string; category: string; description?: string; source?: string;
+  instruction?: string; quick_prompts?: string[]; enabled: boolean;
+};
 type UserLibrary = {
   username: string;
   display_name: string;
-  skills: { id: string; name: string; category: string; enabled: boolean }[];
+  skills: UserSkill[];
 };
 type Overview = { runtime: Runtime; system_skills: SystemSkill[]; user_libraries: UserLibrary[] };
 
@@ -48,7 +52,7 @@ const skillColumns = [
   },
 ];
 
-const libraryColumns = [
+const libraryColumns = (onView: (item: UserLibrary) => void) => [
   { title: "账号", dataIndex: "username", width: 160 },
   { title: "姓名", dataIndex: "display_name", width: 140 },
   { title: "技能数", width: 90, render: (_: unknown, item: UserLibrary) => item.skills.length },
@@ -60,6 +64,7 @@ const libraryColumns = [
       </Space>
     ),
   },
+  { title: "操作", width: 110, render: (_: unknown, item: UserLibrary) => <Button type="link" onClick={() => onView(item)}>查看详情</Button> },
 ];
 
 // 管理员查看智能体运行状态、系统技能目录和各账号保存的个人技能。
@@ -72,6 +77,9 @@ export default function AgentAdminPage() {
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [capabilityBusy, setCapabilityBusy] = useState(false);
   const [error, setError] = useState("");
+  const [skillOwner, setSkillOwner] = useState<UserLibrary | null>(null);
+  const [skillDetails, setSkillDetails] = useState<UserSkill[]>([]);
+  const [skillLoading, setSkillLoading] = useState(false);
   const refreshGlobals = useCallback(async () => {
     const { data } = await api.get<{ items: WorkspaceSkill[]; can_manage: boolean }>("/agent/global-skills");
     setGlobalSkills(data.items); setCanManage(data.can_manage);
@@ -95,6 +103,17 @@ export default function AgentAdminPage() {
   useEffect(() => { void load(); }, [load]);
 
   const runtime = overview?.runtime;
+  const openUserSkills = async (owner: UserLibrary) => {
+    setSkillOwner(owner); setSkillDetails([]); setSkillLoading(true);
+    try { const { data } = await api.get<{ items: UserSkill[] }>(`/agent-admin/skills/users/${encodeURIComponent(owner.username)}`); setSkillDetails(data.items || []); }
+    catch (failure) { message.error(errorText(failure, "个人技能详情加载失败")); }
+    finally { setSkillLoading(false); }
+  };
+  const deleteUserSkill = (skill: UserSkill) => Modal.confirm({ title: `删除“${skill.name}”？`, content: `将从账号 ${skillOwner?.username || ""} 的个人技能库中删除，删除后不可恢复。`, okText: "确认删除", cancelText: "取消", okButtonProps: { danger: true }, onOk: async () => {
+    if (!skillOwner) return;
+    try { await api.delete(`/agent-admin/skills/users/${encodeURIComponent(skillOwner.username)}/${encodeURIComponent(skill.id)}`); message.success("个人技能已删除"); await openUserSkills(skillOwner); await load(); }
+    catch (failure) { message.error(errorText(failure, "个人技能删除失败")); throw failure; }
+  } });
   return (
     <div className="agent-scope-admin" data-testid="agent-admin-page">
       <Tabs activeKey={tab} onChange={key => { if (!capabilityBusy) setTab(key); }} items={[{ key: "capabilities", label: "专家、技能、连接器", disabled: capabilityBusy }, { key: "global", label: "全局技能", disabled: capabilityBusy }, { key: "overview", label: "运行状态与个人库", disabled: capabilityBusy }]} />
@@ -147,13 +166,16 @@ export default function AgentAdminPage() {
           rowKey="username"
           size="small"
           loading={loading}
-          columns={libraryColumns}
+          columns={libraryColumns(openUserSkills)}
           dataSource={overview?.user_libraries || []}
           pagination={false}
           locale={{ emptyText: "还没有账号创建个人技能" }}
         />
       </Card>
       </Space>
+      <Drawer title={skillOwner ? `${skillOwner.display_name || skillOwner.username} 的个人技能详情` : "个人技能详情"} open={!!skillOwner} onClose={() => setSkillOwner(null)} width="min(760px, 100vw)">
+        <Table rowKey="id" loading={skillLoading} dataSource={skillDetails} pagination={false} locale={{ emptyText: "该账号没有个人技能" }} expandable={{ expandedRowRender: (skill: UserSkill) => <Descriptions size="small" column={1} bordered><Descriptions.Item label="完整技能指令"><pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{skill.instruction || "—"}</pre></Descriptions.Item><Descriptions.Item label="快捷指令">{skill.quick_prompts?.join("、") || "—"}</Descriptions.Item></Descriptions> }} columns={[{ title: "名称", dataIndex: "name", width: 150 }, { title: "分类", dataIndex: "category", width: 90 }, { title: "说明", dataIndex: "description" }, { title: "状态", width: 80, render: (_: unknown, skill: UserSkill) => <Tag color={skill.enabled ? "success" : "default"}>{skill.enabled ? "启用" : "停用"}</Tag> }, { title: "操作", width: 80, render: (_: unknown, skill: UserSkill) => <Button danger type="link" onClick={() => deleteUserSkill(skill)}>删除</Button> }]} />
+      </Drawer>
       {overview && canManage && <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} scope="global" skills={globalSkills} refresh={refreshGlobals} />}
     </div>
   );

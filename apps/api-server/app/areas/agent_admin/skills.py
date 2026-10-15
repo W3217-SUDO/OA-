@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.api_schemas.agents import UserAgentSkillInput, UserAgentSkillUpdate
 from app.areas.personal_agent.router import GitHubSkillInstallInput, GitHubSkillPreviewInput
@@ -14,6 +15,7 @@ from app.global_agent_skills import (
 )
 from app.security import current_identity
 from app.skill_definitions import skill_definition
+from app.models import User
 from app.user_agent_skills import CUSTOM_SKILL_FILE_LIMIT, custom_skill_public, normalize_custom_skill, parse_uploaded_skill
 
 router = APIRouter()
@@ -122,6 +124,36 @@ async def personal_skills(identity: dict = Depends(current_identity), db: AsyncS
     from app.core.documents import _user_agent_skill_store
     _, records = await _user_agent_skill_store(identity["username"], db)
     return {"items": [custom_skill_public(record) for record in records], "scope": "personal"}
+
+
+async def _admin_user(username: str, identity: dict, db: AsyncSession) -> str:
+    require_global_admin(identity)
+    user = await db.scalar(select(User).where(User.username == username.strip(), User.is_active.is_(True)))
+    if user is None:
+        raise HTTPException(404, "账号不存在或已停用")
+    return user.username
+
+
+@router.get(settings.api_prefix + "/agent-admin/skills/users/{username}")
+async def admin_personal_skills(username: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    username = await _admin_user(username, identity, db)
+    from app.core.documents import _user_agent_skill_store
+    _, records = await _user_agent_skill_store(username, db)
+    return {"username": username, "items": [custom_skill_public(record) for record in records]}
+
+
+@router.delete(settings.api_prefix + "/agent-admin/skills/users/{username}/{skill_id}")
+async def admin_delete_personal_skill(username: str, skill_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    username = await _admin_user(username, identity, db)
+    from app.core.documents import _save_user_agent_skills, _user_agent_skill_store
+    _, records = await _user_agent_skill_store(username, db)
+    target = next((record for record in records if record.get("id") == skill_id), None)
+    if target is None:
+        raise HTTPException(404, "个人技能不存在")
+    if str(target.get("source") or "").startswith(("system", "openai/")):
+        raise HTTPException(409, "系统或 OpenAI 技能不允许删除")
+    await _save_user_agent_skills(username, [record for record in records if record.get("id") != skill_id], identity, db)
+    return {"deleted": True, "username": username, "skill_id": skill_id}
 
 
 def downloaded(definition):

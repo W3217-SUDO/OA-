@@ -131,16 +131,17 @@
 }
 /* 手机对话独占父级视口：顶栏和输入不滚动，消息与确认操作各自保留可达的滚动区域。 */
 @media(max-width:991px){
-  .assistant-mobile-space-access{display:flex;flex:none;justify-content:flex-end;min-width:0;padding:0 8px 4px}
-  .assistant-mobile-space-access .ant-btn{display:inline-flex;align-items:center;min-height:44px;max-width:100%;height:auto;white-space:normal;overflow-wrap:anywhere}
+  .assistant-mobile-space-access{display:none}
   .assistant{gap:0;min-width:0;width:100%;padding:0 0 calc(8px + env(safe-area-inset-bottom));border:0;border-radius:0;background:#fff;box-shadow:none;overflow:hidden}
-  .assistant .assistant-bar{flex-wrap:nowrap;justify-content:flex-start;gap:8px;min-height:52px;padding:calc(4px + env(safe-area-inset-top)) 8px 4px}
+  .assistant .assistant-bar{flex-wrap:nowrap;justify-content:flex-start;gap:6px;min-height:58px;padding:calc(7px + env(safe-area-inset-top)) 10px 7px;border-bottom:1px solid #e7eee9;background:#fff}
   .assistant .assistant-bar-summary{display:none}
-  .assistant .assistant-bar-actions{display:flex;flex:none;gap:4px;min-width:0}
+  .assistant .assistant-bar-actions{display:flex;flex:none;gap:2px;min-width:0}
   .assistant .assistant-refresh{order:1}
   .assistant .assistant-mobile-title{display:block;flex:1 1 0;min-width:0;overflow:hidden;color:#18212b;font-size:15px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
   .assistant .assistant-mobile-title.is-branded{display:flex;align-items:center;gap:8px;line-height:20px}
-  .assistant .assistant-bar .assistant-mobile-control.ant-btn,.assistant .assistant-bar .assistant-bar-actions .ant-btn{display:inline-flex;flex:0 0 44px;align-items:center;justify-content:center;box-sizing:border-box;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;border:1px solid #e0eae4;border-radius:8px;background:#f2f7f4;box-shadow:none;color:#28634b;font-size:18px}
+  .assistant .assistant-bar .assistant-mobile-control.ant-btn,.assistant .assistant-bar .assistant-bar-actions .ant-btn{display:inline-flex;flex:0 0 44px;align-items:center;justify-content:center;box-sizing:border-box;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;max-height:44px;padding:0;border:1px solid #e0eae4;border-radius:12px;background:#f3f8f5;box-shadow:none;color:#28634b;font-size:18px}
+  .assistant .assistant-bar .personal-ai-space-label,.assistant .assistant-bar .workspace-conversation-label{display:none}
+  .assistant .assistant-bar .personal-ai-space-trigger.ant-btn{padding:0}
   .assistant .assistant-bar .ant-btn .anticon{font-size:18px;line-height:1}
   .assistant .assistant-bar .ant-btn:not(:disabled):not(.ant-btn-disabled):hover{border-color:#c0d9ca;background:#e7f1eb;color:#1c563e}
   .assistant .assistant-bar .ant-btn:not(:disabled):not(.ant-btn-disabled):active{border-color:#a8c9b5;background:#d8e9de;color:#174b35}
@@ -160,11 +161,11 @@
   .assistant-mobile-suggestions button:disabled{opacity:.5;cursor:not-allowed}
   .assistant-mobile-suggestions em{flex:none;padding:0 6px;border-radius:4px;background:#e7f3ee;color:#0e7a5f;font-size:12px;font-style:normal;font-variant-numeric:tabular-nums;line-height:20px}
   .assistant .assistant-thread-region{flex:1 1 0;min-width:0;min-height:0}
-  .assistant .assistant-thread{flex:1 1 0;gap:20px;max-height:none;padding:16px 16px 8px;overscroll-behavior:contain}
+  .assistant .assistant-thread{flex:1 1 0;gap:18px;max-height:none;padding:18px 14px 10px;overscroll-behavior:contain;background:#fbfdfc}
   .assistant .assistant-message{min-width:0}
   .assistant .assistant-bubble{max-width:90%;font-size:15px}
   .assistant .assistant-message.is-assistant .assistant-bubble{width:100%;max-width:none;padding:0;border:0;border-radius:0;background:transparent}
-  .assistant .assistant-message.is-user .assistant-bubble{border-radius:8px}
+  .assistant .assistant-message.is-user .assistant-bubble{max-width:86%;border-radius:16px 16px 4px 16px}
   .assistant .assistant-message.is-user .assistant-stopped{color:inherit}
   .assistant .assistant-expand{min-height:44px;text-align:left}
   .assistant .assistant-pending{flex:0 1 auto;min-height:0;max-height:min(28%,240px);margin:8px 12px;padding:8px 10px;border-radius:8px;overflow:auto;overscroll-behavior:contain}
