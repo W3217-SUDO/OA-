@@ -125,7 +125,7 @@ def _payment_package_docx_bytes(
     )
     title = "提成付款申请单" if scope == "internal_fee" else "付款申请单"
     document = Document()
-    document.add_heading(title, level=0)
+    document.add_heading(f"上海沪知律师事务所 {title}", level=0)
     meta_rows = [
         ("打包流水号", package.serial_no),
         ("打印日期", f"{datetime.now():%Y-%m-%d}"),
@@ -135,6 +135,8 @@ def _payment_package_docx_bytes(
         ("属性", package_data.get("fee_type") or package_data.get("attribute") or ""),
         ("付款日期", package_data.get("paid_date") or package_data.get("payment_date") or ""),
         ("付款方式", package_data.get("payment_method") or ""),
+        ("开户行", package_data.get("account_bank") or package_data.get("bank_name") or ""),
+        ("银行账号", package_data.get("account") or package_data.get("bank_account") or package_data.get("payee_account") or ""),
         ("付款单据号", package_data.get("writeoff_voucher_no") or package_data.get("invoice_no") or ""),
         ("制单人", package_data.get("submitted_by") or package.owner or ""),
         ("备注", package_data.get("remark") or package_data.get("comment") or package.description or ""),
