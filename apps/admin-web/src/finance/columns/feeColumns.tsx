@@ -5,6 +5,7 @@ import type { FormInstance } from "antd/es/form/hooks/useForm";
 import dayjs from "dayjs";
 import { money, statusColors } from "../constants";
 import type { Fee } from "../types";
+import { displayFeeValue } from "../../financialValueDisplay";
 export function createFeeColumns(context: {
     readonly openCustomerDetail: (customer: unknown, customerNo?: unknown) => Promise<void>;
     readonly openCaseDetail: (caseNo: unknown) => Promise<void>;
@@ -26,7 +27,7 @@ export function createFeeColumns(context: {
             title: "金额", ...moneyColumnStyle("金额"),
             key: "amount",
             width: 120,
-            render: (_: unknown, r: Fee) => (<b>{r.data.amount == null ? "无权限" : money(r.data.amount)}</b>),
+            render: (_: unknown, r: Fee) => (<b>{displayFeeValue(r.data.amount == null ? "" : money(r.data.amount))}</b>),
         },
         { title: "客户", ...moneyColumnStyle("客户"), dataIndex: "customer", width: 180, render: (value: string, r: Fee) => value ? <Button type="link" onClick={() => context.openCustomerDetail(value, r.data.customer_no)}>{value}</Button> : "—" },
         {

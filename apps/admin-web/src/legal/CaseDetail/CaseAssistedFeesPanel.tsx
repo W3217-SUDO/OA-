@@ -1,6 +1,7 @@
 import { Button,Space,Tag } from "antd";
 import Table from "../../components/ResizableTable";
 import type { CaseAssistedFee,CaseDetailCapabilities } from "../types";
+import { displayFeeValue } from "../../financialValueDisplay";
 
 interface CaseAssistedFeesPanelProps {
   assistedFees: CaseAssistedFee[];
@@ -54,13 +55,13 @@ export const CaseAssistedFeesPanel = ({
       locale={{emptyText:<span>没有查询到资助费用信息。</span>}}
       columns={[
         {title:"资助类别",dataIndex:"assisted_type",width:180},
-        {title:"金额",dataIndex:"amount",width:110,align:"right",render:(value:number|null|undefined)=>value === null || value === undefined ? "—" : Number(value).toFixed(2)},
-        {title:"提交日期",dataIndex:"request_date",width:120,render:(value:string)=>value||"—"},
+        {title:"金额",dataIndex:"amount",width:110,align:"right",render:(value:number|null|undefined)=>displayFeeValue(value === null || value === undefined ? "" : Number(value).toFixed(2))},
+        {title:"提交日期",dataIndex:"request_date",width:120,render:(value:string)=>displayFeeValue(value)},
         {title:"提交人",dataIndex:"request_user",width:120,render:(value:string)=>casePersonDisplayName(value)},
         {title:"办理日期",dataIndex:"confirmed_date",width:120,render:(value:string|undefined)=>value||"待办理"},
-        {title:"办理人",dataIndex:"confirmed_user",width:120,render:(value:string|undefined)=>value?casePersonDisplayName(value):"—"},
+        {title:"办理人",dataIndex:"confirmed_user",width:120,render:(value:string|undefined)=>value?casePersonDisplayName(value):""},
         {title:"状态",dataIndex:"status",width:100,render:(value:string)=><Tag color={value === "已办理" ? "green" : "gold"}>{value}</Tag>},
-        {title:"说明",dataIndex:"remark",width:220,ellipsis:true,render:(value:string)=>value||"—"},
+        {title:"说明",dataIndex:"remark",width:220,ellipsis:true,render:(value:string)=>displayFeeValue(value)},
         {title:"操作",key:"actions",fixed:"right",width:180,render:(_:unknown,row:CaseAssistedFee)=><Space size={0}>
           {row.status === "待办理" && capabilities.can_manage_assisted_fees && <Button type="link" onClick={()=>onEditClick(row)}>修改</Button>}
           {row.status === "待办理" && capabilities.can_manage_assisted_fees && <Button type="link" onClick={()=>onConfirmClick(row)}>办理确认</Button>}

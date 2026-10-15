@@ -1,7 +1,7 @@
 import { Button } from "antd";
 import Table from "../components/ResizableTable";
 import { normalizeIncomingPaymentForContract, normalizeInvoiceObject, normalizePaidObject } from "../contractObjectPresentation.mjs";
-import { displayFinancialValue } from "../financialValueDisplay";
+import { displayFinancialValue, displayFeeValue } from "../financialValueDisplay";
 import { amount } from "./constants";
 import type { Contract } from "./types";
 
@@ -15,7 +15,7 @@ interface Props {
 }
 
 const displayAmount = (value?: number) =>
-  Object.is(displayFinancialValue(value), value) ? amount(value) : "—";
+  value == null ? "" : amount(value);
 
 export function ContractFinancialRecords({ viewing, detailReceipts, detailInvoices, detailPayments, personName, onOpenRelatedPayment }: Props) {
   const presentedReceipts = detailReceipts
@@ -117,12 +117,12 @@ export function ContractFinancialRecords({ viewing, detailReceipts, detailInvoic
                 {
                   title: "发票号码",
                   width: 150,
-                  render: (_: unknown, row: Contract) => displayFinancialValue((row.data as any).invoice_no || "—"),
+                  render: (_: unknown, row: Contract) => displayFeeValue((row.data as any).invoice_no),
                 },
                 {
                   title: "开票日期",
                   width: 120,
-                  render: (_: unknown, row: Contract) => displayFinancialValue((row.data as any).invoice_date || "—"),
+                  render: (_: unknown, row: Contract) => displayFeeValue((row.data as any).invoice_date),
                 },
                 {
                   title: "开票金额",
@@ -193,12 +193,12 @@ export function ContractFinancialRecords({ viewing, detailReceipts, detailInvoic
                 {
                   title: "付款日期",
                   width: 120,
-                  render: (_: unknown, row: Contract) => displayFinancialValue((row.data as any).payment_date || "—"),
+                  render: (_: unknown, row: Contract) => displayFeeValue((row.data as any).payment_date),
                 },
                 {
                   title: "付款单据",
                   width: 140,
-                  render: (_: unknown, row: Contract) => displayFinancialValue((row.data as any).payment_reference || "—"),
+                  render: (_: unknown, row: Contract) => displayFeeValue((row.data as any).payment_reference),
                 },
                 {
                   title: "付款金额",
@@ -208,7 +208,7 @@ export function ContractFinancialRecords({ viewing, detailReceipts, detailInvoic
                 {
                   title: "付款类型",
                   width: 120,
-                  render: (_: unknown, row: Contract) => displayFinancialValue((row.data as any).payment_type || "—"),
+                  render: (_: unknown, row: Contract) => displayFeeValue((row.data as any).payment_type),
                 },
                 {
                   title: "付款标的",

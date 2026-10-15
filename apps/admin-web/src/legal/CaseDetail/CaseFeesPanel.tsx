@@ -4,6 +4,7 @@ import Table from "../../components/ResizableTable";
 import type { Key } from "react";
 import { PLATFORM_AGENCY_FEE_SUBTYPE } from "../../caseRelationConsumption.mjs";
 import type { CaseDetailCapabilities,CaseRow } from "../types";
+import { displayFeeValue } from "../../financialValueDisplay";
 
 type CaseFeeScope = "firm" | "platform" | "internal";
 
@@ -118,15 +119,15 @@ export const CaseFeesPanel = ({
       <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1120}} dataSource={feeRows} rowSelection={{selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys}} columns={[
         {title:"收款人",width:130,render:(_:unknown,row:CaseRow)=>casePersonDisplayName?.(row.data.payee||row.data.handler||row.owner,row.data.payee_display_name||row.data.handler_display_name||row.owner_display_name)},
         {title:"提成类型",width:170,render:(_:unknown,row:CaseRow)=>row.data.commission_type||row.data.expense_subtype||row.data.fee_type||"内部费用"},
-        {title:"金额",width:100,align:"right",render:(_:unknown,row:CaseRow)=>row.data.amount??0},
-        {title:"已申请付款金额",width:150,align:"right",render:(_:unknown,row:CaseRow)=>row.data.payment_requested_amount??row.data.applied_amount??0},
-        {title:"已付款金额",width:130,align:"right",render:(_:unknown,row:CaseRow)=>row.data.paid_amount??0},
+        {title:"金额",width:100,align:"right",render:(_:unknown,row:CaseRow)=>displayFeeValue(row.data.amount)},
+        {title:"已申请付款金额",width:150,align:"right",render:(_:unknown,row:CaseRow)=>displayFeeValue(row.data.payment_requested_amount??row.data.applied_amount)},
+        {title:"已付款金额",width:130,align:"right",render:(_:unknown,row:CaseRow)=>displayFeeValue(row.data.paid_amount)},
         {title:"状态",dataIndex:"status",width:100},
-        {title:"提交时间",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.submitted_at||row.created_at||row.data.created_at||"").slice(0,10)||"—"},
-        {title:"通知日期",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.inform_date||row.data.notice_date||"").slice(0,10)||"—"},
-        {title:"付款时间",width:120,render:(_:unknown,row:CaseRow)=>String(row.data.paid_at||row.data.payment_date||"").slice(0,10)||"—"},
+        {title:"提交时间",width:120,render:(_:unknown,row:CaseRow)=>String(displayFeeValue(String(row.data.submitted_at||row.created_at||row.data.created_at||"").slice(0,10)))},
+        {title:"通知日期",width:120,render:(_:unknown,row:CaseRow)=>String(displayFeeValue(String(row.data.inform_date||row.data.notice_date||"").slice(0,10)))},
+        {title:"付款时间",width:120,render:(_:unknown,row:CaseRow)=>String(displayFeeValue(String(row.data.paid_at||row.data.payment_date||"").slice(0,10)))},
         {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName?.(row.owner)},
-        {title:"备注",width:220,render:(_:unknown,row:CaseRow)=>row.description||row.data.remark||"—"},
+        {title:"备注",width:220,render:(_:unknown,row:CaseRow)=>displayFeeValue(row.description||row.data.remark)},
         {title:"操作",width:130,fixed:"right" as const,render:(_:unknown,row:CaseRow)=><Space size={0}>{counselDetailCapabilities.can_edit_finance&&<Button type="link" onClick={()=>editCaseFee?.(row)}>编辑</Button>}{counselDetailCapabilities.can_delete_finance&&<Button type="link" danger onClick={()=>deleteCaseFee?.(row)}>删除</Button>}</Space>},
       ]}/>
       <Space className="case-legacy-bottom-actions">

@@ -5,6 +5,7 @@ import type { FormInstance } from "antd/es/form/hooks/useForm";
 import type { ConfigUpdate } from "antd/es/modal/confirm";
 import { money, statusColors } from "../constants";
 import type { Fee, FinanceFlow } from "../types";
+import { displayFeeValue } from "../../financialValueDisplay";
 export function createInvoiceColumns(context: {
     readonly openCustomerDetail: (customer: unknown, customerNo?: unknown) => Promise<void>;
     readonly openCaseDetail: (caseNo: unknown) => Promise<void>;
@@ -46,7 +47,7 @@ export function createInvoiceColumns(context: {
             title: "金额", ...moneyColumnStyle("金额"),
             key: "amount",
             width: 125,
-            render: (_: unknown, r: FinanceFlow) => r.data.amount == null ? "无权限" : money(r.data.amount),
+            render: (_: unknown, r: FinanceFlow) => displayFeeValue(r.data.amount == null ? "" : money(r.data.amount)),
         },
         {
             title: "交付", ...moneyColumnStyle("交付"),

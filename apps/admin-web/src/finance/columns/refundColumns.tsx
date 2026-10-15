@@ -6,6 +6,7 @@ import type { ConfigUpdate } from "antd/es/modal/confirm";
 import dayjs from "dayjs";
 import { money, statusColors } from "../constants";
 import type { Fee, FinanceFlow } from "../types";
+import { displayFeeValue } from "../../financialValueDisplay";
 export function createRefundColumns(context: {
     readonly openCaseDetail: (caseNo: unknown) => Promise<void>;
     readonly openCustomerDetail: (customer: unknown, customerNo?: unknown) => Promise<void>;
@@ -48,7 +49,7 @@ export function createRefundColumns(context: {
             title: "退款金额", ...moneyColumnStyle("退款金额"),
             key: "amount",
             width: 125,
-            render: (_: unknown, r: FinanceFlow) => r.data.amount == null ? "无权限" : money(r.data.amount),
+            render: (_: unknown, r: FinanceFlow) => displayFeeValue(r.data.amount == null ? "" : money(r.data.amount)),
         },
         {
             title: "退款账户", ...moneyColumnStyle("退款账户"),
@@ -60,13 +61,13 @@ export function createRefundColumns(context: {
             title: "预计到账", ...moneyColumnStyle("预计到账"),
             key: "expected",
             width: 110,
-            render: (_: unknown, r: FinanceFlow) => r.data.expected_date || "—",
+            render: (_: unknown, r: FinanceFlow) => displayFeeValue(r.data.expected_date),
         },
         {
             title: "实际到账", ...moneyColumnStyle("实际到账"),
             key: "actual",
             width: 110,
-            render: (_: unknown, r: FinanceFlow) => r.data.actual_date || "—",
+            render: (_: unknown, r: FinanceFlow) => displayFeeValue(r.data.actual_date),
         },
         {
             title: "退款凭证号", ...moneyColumnStyle("退款凭证号"),

@@ -1,6 +1,6 @@
 import { Button, Space } from "antd";
 import Table from "../components/ResizableTable";
-import { displayFinancialValue } from "../financialValueDisplay";
+import { displayFinancialValue, displayFeeValue } from "../financialValueDisplay";
 import type { Fee, SettlementAllocationDetail } from "./types";
 
 export interface GeneralSettlementExpandedRowProps {
@@ -139,12 +139,12 @@ export function GeneralSettlementExpandedRow({
             { title: "案号", dataIndex: "case_no", width: 132, render: (value) => value ? <Button type="link" onClick={() => openCaseDetail(value)}>{value}</Button> : "—" },
             { title: "阶段", dataIndex: "case_stage", width: 80 },
             { title: <span className="finance-stacked-header"><span>费用</span><span>类型</span></span>, dataIndex: "fee_type", width: 88 },
-            { title: <span className="finance-stacked-header"><span>费用</span><span>总金额</span></span>, dataIndex: "fee_total_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
-            { title: <span className="finance-stacked-header"><span>费用</span><span>分配金额</span></span>, dataIndex: "fee_allocated_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
-            { title: <span className="finance-stacked-header"><span>本笔</span><span>分配金额</span></span>, dataIndex: "current_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
-            { title: <span className="finance-stacked-header"><span>本笔</span><span>分配日期</span></span>, dataIndex: "allocated_at", width: 128, render: (value) => String(displayFinancialValue(value || "")).replace("T", " ") || "—" },
-            { title: <span className="finance-stacked-header"><span>本笔</span><span>结算金额</span></span>, dataIndex: "settlement_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
-            { title: <span className="finance-stacked-header"><span>本笔</span><span>归档费</span></span>, dataIndex: "archive_fee", width: 96, className: "finance-money-column", align: "right", render: (value) => value == null ? "—" : Number(value).toFixed(2) },
+            { title: <span className="finance-stacked-header"><span>费用</span><span>总金额</span></span>, dataIndex: "fee_total_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => displayFeeValue(value == null ? "" : Number(value).toFixed(2)) },
+            { title: <span className="finance-stacked-header"><span>费用</span><span>分配金额</span></span>, dataIndex: "fee_allocated_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => displayFeeValue(value == null ? "" : Number(value).toFixed(2)) },
+            { title: <span className="finance-stacked-header"><span>本笔</span><span>分配金额</span></span>, dataIndex: "current_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => displayFeeValue(value == null ? "" : Number(value).toFixed(2)) },
+            { title: <span className="finance-stacked-header"><span>本笔</span><span>分配日期</span></span>, dataIndex: "allocated_at", width: 128, render: (value) => String(displayFeeValue(value || "")).replace("T", " ") },
+            { title: <span className="finance-stacked-header"><span>本笔</span><span>结算金额</span></span>, dataIndex: "settlement_amount", width: 96, className: "finance-money-column", align: "right", render: (value) => displayFeeValue(value == null ? "" : Number(value).toFixed(2)) },
+            { title: <span className="finance-stacked-header"><span>本笔</span><span>归档费</span></span>, dataIndex: "archive_fee", width: 96, className: "finance-money-column", align: "right", render: (value) => displayFeeValue(value == null ? "" : Number(value).toFixed(2)) },
             { title: "客户", dataIndex: "customer", width: 144, render: (value, detail: SettlementAllocationDetail) => value ? <Button type="link" onClick={() => openCustomerDetail(value, detail.customer_no)}>{value}</Button> : "—" },
             { title: <span className="finance-stacked-header"><span>经办</span><span>律师</span></span>, dataIndex: "handling_lawyer", width: 96, render: (value, detail: SettlementAllocationDetail) => financePersonDisplayNames(detail.handling_lawyers || value, detail.handling_lawyer_display_names || detail.handling_lawyer_display_name) },
             { title: <span className="finance-stacked-header"><span>律师</span><span>助理</span></span>, dataIndex: "assistant", width: 80, render: (value, detail: SettlementAllocationDetail) => financePersonDisplayName(value, detail.assistant_display_name || detail.lawyer_assistant_display_name) },

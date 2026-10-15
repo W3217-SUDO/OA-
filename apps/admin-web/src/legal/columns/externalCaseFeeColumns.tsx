@@ -1,7 +1,7 @@
 import { Button } from "antd";
 import type { TableColumnsType } from "antd";
 import { caseFeeRefundLabel } from "../../caseFeeLegacyProjection.mjs";
-import { displayFinancialValue } from "../../financialValueDisplay";
+import { displayFinancialValue, displayFeeValue } from "../../financialValueDisplay";
 import { caseFeeBillDisplay, caseFeeReceiptApplicable } from "../caseReceiptFiles";
 import type { CaseRow } from "../types";
 
@@ -19,8 +19,9 @@ const firmColumnWeightTotal = firmColumnWeights.reduce((total, weight) => total 
 const firmColumnWidths = firmColumnWeights.map(weight => `${(weight / firmColumnWeightTotal * 96).toFixed(3)}%`);
 
 function formatAmount(value: unknown): string {
-    const amount = Number(value ?? 0);
-    return Number.isFinite(amount) ? amount.toFixed(2) : "—";
+    if (value === null || value === undefined || value === "") return "";
+    const amount = Number(value);
+    return Number.isFinite(amount) ? amount.toFixed(2) : "";
 }
 
 function formatRefund(data: Record<string, unknown>): string {
@@ -42,7 +43,7 @@ function createColumns(context: ExternalCaseFeeColumnContext, firm: boolean): Ta
                 const code = String(row.data.fee_type_code || "").trim();
                 return firm && code ? `(${code}) ${name}` : name;
             } },
-        { title: "金额", width: 100, align: "right" as const, render: (_: unknown, row: CaseRow) => firm ? formatAmount(row.data.amount) : displayFinancialValue(row.data.amount ?? 0) },
+        { title: "金额", width: 100, align: "right" as const, render: (_: unknown, row: CaseRow) => firm ? formatAmount(row.data.amount) : (displayFeeValue(row.data.amount) || "/") },
         { title: "退费", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => firm ? formatRefund(row.data) : caseFeeRefundLabel(row.data) },
         { title: "提交人", width: 120, render: (_: unknown, row: CaseRow) => row.data.submitter_display_name || row.data.submitted_by_display_name || row.data.handler_display_name || row.owner_display_name || context.casePersonDisplayName(row.owner) },
         { title: "提交日期", width: 120, render: (_: unknown, row: CaseRow) => displayFinancialValue(String(row.data.submitted_at || row.created_at || row.data.created_at || "")).slice(0, 10) || "—" },
@@ -76,7 +77,7 @@ function createColumns(context: ExternalCaseFeeColumnContext, firm: boolean): Ta
                         onClick={() => entry.kind === "invoice" ? context.openRelatedInvoice(row) : context.openCaseReceiptFiles(row)}>{entry.label}</Button>
                 </div>)}</div> : "—";
             } },
-        { title: "申请付款金额", width: 130, align: "right" as const, render: (_: unknown, row: CaseRow) => firm ? formatAmount(row.data.payment_requested_amount) : displayFinancialValue(row.data.payment_requested_amount ?? 0) },
+        { title: "申请付款金额", width: 130, align: "right" as const, render: (_: unknown, row: CaseRow) => firm ? formatAmount(row.data.payment_requested_amount) : (displayFeeValue(row.data.payment_requested_amount) || "/") },
     ];
     if (!firm) return columns;
     return columns.map((column, index) => ({

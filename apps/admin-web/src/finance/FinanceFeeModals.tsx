@@ -2,7 +2,7 @@ import { Button, Descriptions, Form, Input, InputNumber, Modal } from "antd";
 import type { FormInstance } from "antd";
 import { FeeTypePicker } from "./FeeTypePicker";
 import { money } from "./constants";
-import { displayFinancialValue } from "../financialValueDisplay";
+import { displayFeeValue } from "../financialValueDisplay";
 import type { FeeEditorFormValues } from "./formTypes";
 import type { Fee, Transaction } from "./types";
 
@@ -61,21 +61,21 @@ export function FeeDetailModal({
               {feeDetail.data.payment_package_context?.status || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="申请日期">
-              {displayFinancialValue(
+              {String(displayFeeValue(
                 feeDetail.data.application_date ||
                 feeDetail.created_at ||
-                "—"
-              ).slice(0, 10)}
+                ""
+              )).slice(0, 10)}
             </Descriptions.Item>
             <Descriptions.Item label="审核日期">
-              {displayFinancialValue(feeDetail.data.audit_date || feeDetail.updated_at || "—").slice(
+              {String(displayFeeValue(feeDetail.data.audit_date || feeDetail.updated_at || "")).slice(
                 0,
                 10,
               )}
             </Descriptions.Item>
             <Descriptions.Item label="申请金额">
               {feeDetail.data.amount == null
-                ? "—"
+                ? ""
                 : money(feeDetail.data.payment_request_amount ?? feeDetail.data.amount)}
             </Descriptions.Item>
             <Descriptions.Item label="费用类型">
@@ -114,7 +114,7 @@ export function FeeDetailModal({
                 : feeDetail.data.payee_display_name || feeDetail.data.payee || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="付款日期">
-              {displayFinancialValue(latestTransaction(feeDetail)?.transaction_date || "—")}
+              {displayFeeValue(latestTransaction(feeDetail)?.transaction_date || "")}
             </Descriptions.Item>
             <Descriptions.Item label="申请人">
               {financePersonDisplayName(

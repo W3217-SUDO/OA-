@@ -1,7 +1,7 @@
 import { moneyColumnStyle } from "../moneyColumns";
 import { Button } from "antd";
 import { money } from "../constants";
-import { displayFinancialValue } from "../../financialValueDisplay";
+import { displayFeeValue } from "../../financialValueDisplay";
 import type { Fee, Transaction } from "../types";
 export function createInternalOriginalColumns(context: {
     readonly internalMineOperation: (_: unknown, row: Fee) => React.JSX.Element;
@@ -26,17 +26,17 @@ export function createInternalOriginalColumns(context: {
         {
             title: "申请日期", ...moneyColumnStyle("申请日期"),
             width: 110,
-            render: (_: unknown, row: Fee) => displayFinancialValue(row.data.application_date || row.created_at || "—").slice(0, 10),
+            render: (_: unknown, row: Fee) => String(displayFeeValue(row.data.application_date || row.created_at || "")).slice(0, 10),
         },
         {
             title: "审核日期", ...moneyColumnStyle("审核日期"),
             width: 110,
-            render: (_: unknown, row: Fee) => displayFinancialValue(row.data.audit_date || row.updated_at || "—").slice(0, 10),
+            render: (_: unknown, row: Fee) => String(displayFeeValue(row.data.audit_date || row.updated_at || "")).slice(0, 10),
         },
         {
             title: "申请金额", ...moneyColumnStyle("申请金额"),
             width: 110,
-            render: (_: unknown, row: Fee) => row.data.amount == null ? "—" : money(row.data.amount),
+            render: (_: unknown, row: Fee) => row.data.amount == null ? "" : money(row.data.amount),
         },
         {
             title: "案件编号", ...moneyColumnStyle("案件编号"),
@@ -52,7 +52,7 @@ export function createInternalOriginalColumns(context: {
         {
             title: "付款日期", ...moneyColumnStyle("付款日期"),
             width: 110,
-            render: (_: unknown, row: Fee) => displayFinancialValue(context.latestTransaction(row)?.transaction_date || "—"),
+            render: (_: unknown, row: Fee) => displayFeeValue(context.latestTransaction(row)?.transaction_date || ""),
         },
         {
             title: "申请人", ...moneyColumnStyle("申请人"),
