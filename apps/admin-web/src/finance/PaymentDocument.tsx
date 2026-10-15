@@ -12,8 +12,15 @@ export function PaymentDocument({ row, printing, onCase, onContract }: {row:any;
   const internal = Boolean(d.application_items);
   const groups = d.document_groups || [{...d, request_no:row.serial_no, items:d.items || d.lines || [d]}];
   const items = internal ? d.application_items.map((entry:any) => ({...entry.data,id:entry.id})) : groups.flatMap((group:any) => group.items || []);
-  const link = (no:any, handler?: (no:string)=>void) => no && handler ? <Button type="link" size="small" onClick={()=>handler(String(no))}>{no}</Button> : show(no);
-  const meta = (fields: [string, any][]) => <div className="payment-meta">{fields.map(([label,value]) => <div key={label}><span>{label}：</span>{value ?? "—"}</div>)}</div>;
+  const copyField = (value:any) => ({ __copyable: true, text: show(value), value });
+  const copyToClipboard = (value:any) => { const text = String(value ?? "").trim(); if (text && typeof navigator !== "undefined") void navigator.clipboard?.writeText(text); };
+  const link = (no:any, handler?: (no:string)=>void) => no && handler
+    ? <Button type="link" size="small" onClick={() => { copyToClipboard(no); handler(String(no)); }}>{no}</Button>
+    : copyField(no);
+  const meta = (fields: [string, any][]) => <div className="payment-meta">{fields.map(([label,value]) => {
+    const copyable = value && typeof value === "object" && value.__copyable ? value : null;
+    return <div key={label}><span>{label}：</span>{copyable ? copyable.text : value ?? "—"}{copyable && <Button type="text" size="small" onClick={() => copyToClipboard(copyable.value)}>复制</Button>}</div>;
+  })}</div>;
   if (printing) return <div className="payment-print-document">
     <h2>{show(d.company_name || "上海沪知律师事务所")}　付款申请单</h2>
     <table className="payment-paper"><tbody>
@@ -57,11 +64,11 @@ export function PaymentDocument({ row, printing, onCase, onContract }: {row:any;
       ...["调查提成","案源提成","文书提成","开庭提成"].map(role => [`${role}(已付)`, d.paid_by_role ? amount(d.paid_by_role[role] || 0) : "—"] as [string,any]),
       ["申请编号",show(row.serial_no)],["申请日期",date(d.application_date || row.created_at)],["审批意见",show(d.approval_comment || d.review_comment)],
     ]) : meta([
-      ["合同编号",link(d.contract_no,onContract)],["申请日期",date(d.application_date || row.created_at)],["合同名称",show(d.contract_name)],["交款人",show(d.payer_display_name || d.payer_name || d.payer)],
-      ["申请编号",show(row.serial_no)],["案源人",show(d.case_source ? d.case_source_display_name || d.case_source : d.source_person_display_name || d.source_person)],["客户名称",show(row.customer)],["备注",show(d.remark || row.description)],
-      ["收款单位",show(d.payee_display_name || d.payee)],["开户行",show(d.account_bank || d.bank_name || d.payee_bank || d.bank)],["账号信息",show(d.account || d.bank_account || d.payee_account)],
+      ["合同编号",link(d.contract_no,onContract)],["申请日期",date(d.application_date || row.created_at)],["合同名称",copyField(d.contract_name)],["交款人",copyField(d.payer_display_name || d.payer_name || d.payer)],
+      ["申请编号",copyField(row.serial_no)],["案源人",copyField(d.case_source ? d.case_source_display_name || d.case_source : d.source_person_display_name || d.source_person)],["客户名称",copyField(row.customer)],["备注",copyField(d.remark || row.description)],
+      ["收款单位",copyField(d.payee_display_name || d.payee)],["开户行",copyField(d.account_bank || d.bank_name || d.payee_bank || d.bank)],["账号信息",copyField(d.account || d.bank_account || d.payee_account)],
     ])}
-    {!internal && meta([["审批意见",show(d.approval_comment || d.review_comment)],["付款日期",date(d.paid_date || d.payment_date)],["单据号",show(d.writeoff_voucher_no || d.invoice_no)],["付款金额",amount(d.paid_amount ?? d.amount)],["付款备注",show(d.payment_remark || d.writeoff_remark)]])}
+    {!internal && meta([["审批意见",copyField(d.approval_comment || d.review_comment)],["付款日期",date(d.paid_date || d.payment_date)],["单据号",copyField(d.writeoff_voucher_no || d.invoice_no)],["付款金额",amount(d.paid_amount ?? d.amount)],["付款备注",copyField(d.payment_remark || d.writeoff_remark)]])}
     <div className="payment-info-tab">付款信息</div>
     <Table className="payment-detail-items" rowKey="key" columns={columns} dataSource={details} size="small" pagination={false} scroll={{ x: "max-content" }} locale={{ emptyText: "暂无明细" }} />
   </div>;
