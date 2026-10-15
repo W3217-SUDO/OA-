@@ -211,7 +211,20 @@ async def internal_application_queue(identity: dict, db: AsyncSession, scope: st
     if scope == "refused":
         conditions.append(BusinessRecord.status.in_(rejected))
     else:
-        conditions.append(BusinessRecord.data["legacy_internal_payment_id"].as_string().in_(legacy_archive_application_ids()))
+        # The legacy archive predicate is a multi-table correlated query.  On
+        # a modern installation there are no legacy finance rows at all, so
+        # running it on every refresh needlessly holds the shared-query lock
+        # until the 30s timeout (the old page then shows “查询结果计算超时”).
+        # Probe the narrow source-table index first and only build the full
+        # legacy predicate when legacy payment headers actually exist.
+        legacy_header_id = await db.scalar(select(LegacyFinanceRecord.id).where(
+            LegacyFinanceRecord.source_table == "FAM_InternalFee_Payment",
+            LegacyFinanceRecord.is_active.is_(True),
+        ).limit(1))
+        if legacy_header_id is None:
+            conditions.append(BusinessRecord.id == -1)
+        else:
+            conditions.append(BusinessRecord.data["legacy_internal_payment_id"].as_string().in_(legacy_archive_application_ids()))
     parents = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(
         BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
     ))).all())
