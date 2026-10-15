@@ -1107,11 +1107,14 @@ async def _invoice_fee_details(identity: dict, db: AsyncSession, *, ids: set[int
 
     if ids is None:
         raise HTTPException(status_code=422, detail="费用明细查询必须限定费用ID")
-    if len(ids) > 100:
+    # PostgreSQL accepts the larger batch used by the shared query helpers;
+    # SQLite keeps the smaller batch required by its variable limit.
+    batch_size = 400 if db.bind is not None and db.bind.dialect.name == "postgresql" else 100
+    if len(ids) > batch_size:
         result = []
         ordered_ids = sorted(ids)
-        for start in range(0, len(ordered_ids), 100):
-            result.extend(await _invoice_fee_details(identity, db, ids=set(ordered_ids[start:start + 100]),
+        for start in range(0, len(ordered_ids), batch_size):
+            result.extend(await _invoice_fee_details(identity, db, ids=set(ordered_ids[start:start + batch_size]),
                 customer=customer, exclude_invoice_id=exclude_invoice_id))
         return result
     rows = await _invoice_case_fee_rows(identity, db, scope="company", ids=ids, customer=customer,
