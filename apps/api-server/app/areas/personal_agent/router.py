@@ -208,7 +208,7 @@ async def personal_agent_memory(scope: Literal["short", "long"] = "short",
         items = [{**item, "memory_type": "long", "source": "用户明确要求保存"} for item in result["items"]]
     else:
         items = []
-        for state in conversations.read_conversation_states(_user_dir(safe_identity["username"])):
+        for state in await conversations.read_conversation_states(_user_dir(safe_identity["username"])):
             if state.get("memory_summary"):
                 items.append({"id": f"short-{state.get('conversation_id')}", "memory_type": "short",
                               "content": state["memory_summary"], "source": "会话自动压缩",
