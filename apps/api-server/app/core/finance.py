@@ -2622,6 +2622,8 @@ async def _general_settlement_rows(
         for payment in payments
     }
     allocations = [allocation for values in allocations_by_payment.values() for allocation in values]
+    if not allocations:
+        return []
     case_ids = {int(row.get("case_id") or 0) for row in allocations if row.get("case_id")}
     case_nos = {str(row.get("case_no") or "").strip() for row in allocations if str(row.get("case_no") or "").strip()}
     cases = list((await db.scalars(select(BusinessRecord).where(
