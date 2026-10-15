@@ -489,6 +489,7 @@ type ReceiptCreateValues = {
   receivedDate: dayjs.Dayjs;
   amount: number;
   method: string;
+  bankSource?: string;
   bankReference?: string;
   contractNo?: string;
   remark?: string;
@@ -530,6 +531,7 @@ export function ReceiptCreatePage({ payment, onSaved, onCancel }: {
       payerName: payment.payer_name, customer: payment.claimed_customer || undefined,
       receivedDate: dayjs(payment.received_date), amount: payment.amount ?? undefined,
       method: /(?:^|；)回款方式：([^；]*)/.exec(payment.remark || "")?.[1] || payment.payment_method || undefined, bankReference: payment.bank_reference,
+      bankSource: payment.bank_source || undefined,
       contractNo: payment.registered_contract_no || undefined,
       remark: (payment.remark || "").split("；").filter((part) => !/^(客户|回款方式)：/.test(part)).join("；"),
     });
@@ -567,6 +569,7 @@ export function ReceiptCreatePage({ payment, onSaved, onCancel }: {
         received_date: formatRequiredDate(values.receivedDate, "回款时间"),
         amount: values.amount,
         payer_name: values.payerName,
+        bank_source: values.bankSource?.trim() || "",
         bank_reference: values.bankReference?.trim() || "",
         customer: values.customer || "",
         contract_no: values.contractNo || "",
@@ -574,7 +577,7 @@ export function ReceiptCreatePage({ payment, onSaved, onCancel }: {
       };
       if (payment) {
         await api.put(`/finance/incoming-payments/${payment.id}`, {
-          ...payload, case_no: payment.case_no || "", bank_source: payment.bank_source || "",
+          ...payload, case_no: payment.case_no || "",
         });
         message.success("回款修改成功");
         onSaved?.();
@@ -669,6 +672,9 @@ export function ReceiptCreatePage({ payment, onSaved, onCancel }: {
         </Form.Item>
         <Form.Item label="回款方式" name="method" rules={[{ required: true, message: "请选择回款方式" }]}>
           <Select options={paymentMethods.map((value) => ({ value, label: value }))} />
+        </Form.Item>
+        <Form.Item label="到账银行名称" name="bankSource" rules={[{ max: 64, message: "到账银行名称不能超过64个字符" }]}>
+          <Input allowClear placeholder="可手动填写，如：中国银行、工商银行" />
         </Form.Item>
         <Form.Item label="银行单号" name="bankReference" rules={[{ min: 2 }]}>
           <Input
