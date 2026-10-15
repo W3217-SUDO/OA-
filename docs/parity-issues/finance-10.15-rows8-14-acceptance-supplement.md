@@ -5,6 +5,7 @@
 - current：`/opt/sunhold-oa/runtime/enterprise/packages/1.1.441`；API/Web active；`https://huzhilawfirm.com/health` 返回 `{"status":"ok"}`。
 - 当前已登录工作台标签刷新至 `https://huzhilawfirm.com/?page=finance-case-fees-refunds`，页面正常显示财务中心费用管理、诉讼费退款页签、真实费用列表和分页，无白屏或加载失败。
 - 总结算无匹配客户筛选生产回读 `422` 用时约 8 秒；无分配明细的结算候选已增加等价短路，避免继续加载全量费用和结算记录。
+- 清理审计发现早先 4 条 CODEX 财务测试记录仍以“已删除”软删除状态留在数据库；本轮已按精确 ID 删除 4 条业务记录及其 16 条测试工作流事件，生产数据库回查为 0，回款和付款包标识也为 0。
 
 ## 真实 CODEX 闭环
 
