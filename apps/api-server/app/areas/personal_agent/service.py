@@ -39,6 +39,7 @@ from app.areas.personal_agent.identity_storage import persist_personal_identity
 from app.areas.personal_agent.confirmation_history import (
     begin_personal_decision, finish_personal_decision, prepare_personal_action, project_personal_actions,
 )
+from app.areas.personal_agent.memory_graph import run_memory_pipeline
 
 
 _WRITE_MARKER = re.compile(r"<personal_action>\s*(\{.*?\})\s*</personal_action>", re.S)
@@ -125,6 +126,7 @@ def _safe_identity_payload(user: User, permissions: dict[str, Any]) -> dict[str,
     roles = user_role_ids(user)
     profile = user.profile or {}
     return {
+        "_actual_user_id": user.id,
         "username": user.username,
         "display_name": user.display_name,
         "department": user.department,
@@ -252,7 +254,7 @@ async def build_context(identity: dict[str, Any], db: AsyncSession) -> dict[str,
     }
 
 
-def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: dict[str, Any], user_text: str, skill=None, materials: dict | None = None) -> list[dict[str, Any]]:
+def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: dict[str, Any], user_text: str, skill=None, materials: dict | None = None, recalled: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     project_text = json.dumps(context["project_workspace"], ensure_ascii=False)
     context_text = json.dumps(model_result_view({key: value for key, value in context.items() if key != "project_workspace"}, 60_000), ensure_ascii=False, default=str)
     system = (
@@ -280,6 +282,13 @@ def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: d
         f"当前项目（project_workspace）：\n{project_text}\n"
         f"当前 OA 摘要：\n{context_text}"
     )
+    if state.get("memory_summary"):
+        system += f"\n\n当前会话历史压缩摘要（仅作上下文，不是权限来源）：\n{str(state['memory_summary'])[:8_000]}"
+    if recalled:
+        system += "\n\n权限过滤后的长期记忆：\n" + "\n".join(
+            f"- {item.get('content', '')}（来源会话 {item.get('conversation_id') or '用户记忆'}，匹配度 {item.get('recall_score', 0)}）"
+            for item in recalled[:20]
+        )
     if skill:
         system += f"\n\n当前技能：{skill.name}\n以下技能要求仅在上述权限与工作规则内有效：\n{skill.instruction}"
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
@@ -388,8 +397,19 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
     with measure_phase("personal_agent.context"):
         context = await build_context(identity, db)
         context["project_workspace"] = await project_workspace_context(state, identity, db)
+    memory_case_id = case_id or (state.get("workspace") or {}).get("case_id")
+    memory_owner_id = identity.get("_actual_user_id")
+    if memory_owner_id is None:
+        memory_owner_id = await db.scalar(select(User.id).where(User.username == username))
+    if memory_owner_id is None:
+        raise HTTPException(status_code=401, detail="当前用户不存在，不能建立记忆上下文")
+    memory = run_memory_pipeline(_user_dir(username), int(memory_owner_id), state["conversation_id"], memory_case_id,
+                                 state["messages"], text, state.get("memory_summary", ""))
+    state["memory_summary"] = memory["summary"]
+    state["memory_summary_updated_at"] = _now() if memory["summary"] else state.get("memory_summary_updated_at", "")
+    await _save_state(username, state)
     tools = ModelToolSession(conversation_id=state["conversation_id"])
-    raw = await request_model(_prompt_messages(identity, state, context, text, skill, materials), on_delta, tools=tools, response_mode=response_mode, on_progress=on_progress)
+    raw = await request_model(_prompt_messages(identity, state, context, text, skill, materials, memory["recalled"]), on_delta, tools=tools, response_mode=response_mode, on_progress=on_progress)
     response, model_action = _extract_action(raw)
     state["structured_results"] = tools.structured_results
     for prepared in tools.pending_actions:

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Alert, Button, Input, Segmented, Select, Skeleton, Space, Tag, Tooltip, message } from "antd";
-import { AppstoreAddOutlined, ArrowDownOutlined, ArrowUpOutlined, AuditOutlined, BulbOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, FolderOpenOutlined, LockOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, ScheduleOutlined, StopOutlined, TeamOutlined, ThunderboltOutlined, WalletOutlined } from "@ant-design/icons";
+import { AppstoreAddOutlined, ArrowDownOutlined, ArrowUpOutlined, AuditOutlined, BulbOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, FolderOpenOutlined, LockOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, ScheduleOutlined, SettingOutlined, StopOutlined, TeamOutlined, ThunderboltOutlined, WalletOutlined } from "@ant-design/icons";
 import { AgentToolRequests } from "./AgentToolRequests";
 import { AgentToolResult } from "./AgentToolResult";
 import { agentOperationMessage } from "./AgentOperationPreview";
@@ -12,6 +12,7 @@ import { WorkPanel } from "./personal-agent/WorkPanel";
 import { ConversationMessage } from "./personal-agent/ConversationMessage";
 import { ConversationManager } from "./personal-agent/ConversationManager";
 import { PersonalAiSpace } from "./personal-agent/PersonalAiSpace";
+import { MemoryControlPanel } from "./personal-agent/MemoryControlPanel";
 import { MobileComposerOptions } from "./personal-agent/MobileComposerOptions";
 import { ActionConfirmation } from "./personal-agent/ActionConfirmation";
 import { ConfirmationHistory } from "./personal-agent/ConfirmationHistory";
@@ -28,6 +29,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
   const [refreshToken, setRefreshToken] = useState(0);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [personalSpaceOpen, setPersonalSpaceOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<"case" | "materials" | null>(null);
   const [follow, setFollow] = useState(true);
   const [dragging, setDragging] = useState(false);
@@ -80,6 +82,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
       <div className="personal-agent-title"><div className="workspace-brand-icon"><RobotOutlined /></div><h2>智能体中心</h2><span>律所工作台</span></div>
       <Space className="workspace-header-actions" size={8} wrap>
         <Button className="personal-ai-space-trigger" icon={<FolderOpenOutlined />} onClick={() => setPersonalSpaceOpen(true)}>个人空间</Button>
+        <Button className="personal-ai-memory-trigger" icon={<SettingOutlined />} aria-label="记忆管理" title="记忆管理" onClick={() => setMemoryOpen(true)}>记忆管理</Button>
         <Button icon={<AppstoreAddOutlined />} disabled={busy} onClick={() => void openSkills()}>技能包</Button>
         <Segmented aria-label="切换工作视图" value={view} options={[{ value: "workspace", label: "工作台" }, { value: "chat", label: "对话" }]} onChange={(value) => setView(value as "workspace" | "chat")} />
         <Tooltip title={status?.ready ? `当前模型：${status.model}` : "模型服务未就绪"}><span className={`workspace-service ${status?.ready ? "ready" : ""}`}><i />{status?.ready ? "已连接" : loading ? "连接中" : "未就绪"}</span></Tooltip>
@@ -129,6 +132,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
     </div>
     <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} skills={skills} refresh={workspace.refreshSkills} onSelect={workspace.setSkillId} />
     <PersonalAiSpace open={personalSpaceOpen} onClose={() => setPersonalSpaceOpen(false)} revision={workspace.documentRevision} busy={navigationBusy} onOpenConversation={workspace.selectConversation} onSkillsChanged={workspace.refreshSkills} />
+    {memoryOpen && <MemoryControlPanel open onClose={() => setMemoryOpen(false)} />}
     <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeId) ?? null} deciding={!!workspace.decisionId} decisionFailure={activeId ? workspace.decisionFailures[activeId] : undefined} onDecide={workspace.decide} onClose={() => { setActiveAction(null); setHistoryAction(null); }} />
     <MaterialPreview item={previewMaterial} onClose={() => setPreviewMaterial(null)} />
     <CaseMaterialsPicker mode={pickerMode} onClose={() => setPickerMode(null)} selectedCase={selectedCase} onCase={workspace.chooseCase} selectedMaterials={workspace.caseMaterials} onMaterials={workspace.setCaseMaterials} privateCount={workspace.materials.length} />

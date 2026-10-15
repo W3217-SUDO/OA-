@@ -81,6 +81,7 @@ def empty_state(conversation_id: str | None, workspace: dict[str, Any] | None = 
     return {"conversation_id": conversation_id, "conversation_title": "办公对话" if conversation_id == "default" else "新对话",
             "workspace": normalize_workspace(workspace) if workspace is not None else {"kind": "personal"},
             "messages": [], "pending_actions": [], "structured_results": [], "dismissed_action_ids": [],
+            "memory_summary": "", "memory_summary_updated_at": "",
             "created_at": "", "updated_at": ""}
 
 
@@ -116,6 +117,8 @@ def read_state(directory: Path, conversation_id: str | None = None) -> dict[str,
     value = _read_json(path)
     state = empty_state(selected)
     state["workspace"] = state_workspace(value)
+    state["memory_summary"] = str(value.get("memory_summary") or "")[:8_000]
+    state["memory_summary_updated_at"] = str(value.get("memory_summary_updated_at") or "")
     for key in ("messages", "pending_actions", "structured_results"):
         items = value.get(key, [])
         if not isinstance(items, list):

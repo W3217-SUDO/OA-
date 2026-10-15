@@ -15,6 +15,8 @@ from app.database import get_db
 from app.security import current_identity
 from app.skill_catalog import CatalogSource
 from app.areas.personal_agent.service import build_context, decide_action, generate_response, manage_conversations, personal_identity, personal_state, stop_response, _user_dir
+from app.areas.personal_agent.memory_graph import delete_memory, list_memories, update_settings
+from app.areas.personal_agent import conversations
 from app.areas.personal_agent.workspace import workspace_commands
 from app.areas.personal_agent.response_runtime import ResponseMode, supports_response_modes
 from app.areas.personal_agent.confirmation_history import read_confirmation_detail, read_confirmation_history, project_personal_actions
@@ -46,6 +48,13 @@ class PersonalConversationInput(BaseModel):
 class PersonalWorkspaceInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     workspace: ProjectWorkspace
+
+
+class MemorySettingsInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool | None = None
+    retention_days: int | None = Field(default=None, ge=1, le=3650)
+    recall_limit: int | None = Field(default=None, ge=0, le=20)
 
 
 def conversation_workspace(
@@ -187,6 +196,44 @@ async def personal_agent_confirmation_history(
     safe_identity = await personal_identity(identity, db)
     return await read_confirmation_history(safe_identity, db, status=status, page=page, page_size=page_size,
                                            directory=_user_dir(safe_identity["username"]))
+
+
+@router.get(f"{settings.api_prefix}/personal-agent/memory")
+async def personal_agent_memory(scope: Literal["short", "long"] = "short",
+                                limit: Annotated[int, Query(ge=1, le=100)] = 50,
+                                identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    safe_identity = await personal_identity(identity, db)
+    result = list_memories(_user_dir(safe_identity["username"]), int(safe_identity["_actual_user_id"]), limit)
+    if scope == "long":
+        items = [{**item, "memory_type": "long", "source": "用户明确要求保存"} for item in result["items"]]
+    else:
+        state = conversations.read_state(_user_dir(safe_identity["username"]))
+        items = []
+        if state.get("memory_summary"):
+            items = [{"id": f"short-{state.get('conversation_id')}", "memory_type": "short",
+                      "content": state["memory_summary"], "source": "当前会话自动压缩",
+                      "conversation_id": state.get("conversation_id"), "permission_scope": "当前用户",
+                      "created_at": state.get("memory_summary_updated_at") or state.get("updated_at")}]
+    return {"settings": result["settings"], "items": items,
+            "long_term_enabled": bool(result["settings"].get("enabled", True)),
+            "recall_limit": int(result["settings"].get("recall_limit", 5))}
+
+
+@router.post(f"{settings.api_prefix}/personal-agent/memory/settings")
+async def personal_agent_memory_settings(body: MemorySettingsInput,
+                                         identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    safe_identity = await personal_identity(identity, db)
+    return {"settings": update_settings(_user_dir(safe_identity["username"]), int(safe_identity["_actual_user_id"]),
+                                          enabled=body.enabled, retention_days=body.retention_days,
+                                          recall_limit=body.recall_limit)}
+
+
+@router.delete(f"{settings.api_prefix}/personal-agent/memory/{{memory_id}}")
+async def personal_agent_memory_delete(memory_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    safe_identity = await personal_identity(identity, db)
+    if not delete_memory(_user_dir(safe_identity["username"]), int(safe_identity["_actual_user_id"]), memory_id):
+        raise HTTPException(status_code=404, detail="记忆不存在或不属于当前用户")
+    return {"id": memory_id, "status": "deleted"}
 
 
 @router.get(f"{settings.api_prefix}/personal-agent/confirmation-history/{{source}}/{{request_id}}")
