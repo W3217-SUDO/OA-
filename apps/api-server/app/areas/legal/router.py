@@ -422,6 +422,54 @@ from app.areas.legal.case_events import (
 router.include_router(case_events_router)
 
 
+@router.get(f"{settings.api_prefix}/cases/{{case_id}}/clues")
+async def list_case_clues(
+    case_id: int,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=200)] = 10,
+    keyword: str = "",
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lightweight paged clue query for the case-detail clue tab."""
+    from app.core.permissions import _ensure_case_read_module, _record_dicts_for_identity
+    case_record = await _ensure_case_read_module(case_id, identity, db)
+    data = case_record.data or {}
+    raw_ids = data.get("investigation_clue_ids") if isinstance(data.get("investigation_clue_ids"), list) else []
+    clue_ids = {
+        int(value) for value in (data.get("clue_id"), data.get("clue_record_id"), data.get("investigation_clue_id"), *raw_ids)
+        if str(value or "").isdigit() and int(value) > 0
+    }
+    raw_nos = data.get("investigation_clue_nos") or data.get("clue_nos") or []
+    if isinstance(raw_nos, str):
+        clue_nos = [value.strip() for value in re.split(r"[,，;；、|]+", raw_nos) if value.strip()]
+    else:
+        clue_nos = [str(value or "").strip() for value in raw_nos if str(value or "").strip()]
+    for value in (data.get("clue_no"), data.get("investigation_clue"), data.get("source_clue_no")):
+        value = str(value or "").strip()
+        if value and value not in clue_nos: clue_nos.append(value)
+    if clue_ids:
+        condition = BusinessRecord.id.in_(clue_ids)
+    elif clue_nos:
+        condition = BusinessRecord.serial_no.in_(list(dict.fromkeys(clue_nos)))
+    else:
+        condition = or_(
+            BusinessRecord.data["case_id"].as_integer() == case_id,
+            BusinessRecord.data["case_record_id"].as_integer() == case_id,
+            BusinessRecord.data["converted_case_id"].as_integer() == case_id,
+            BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
+            BusinessRecord.data["converted_case_no"].as_string() == case_record.serial_no,
+        )
+    clues = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "clue", condition).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
+    needle = keyword.strip().casefold()
+    if needle:
+        clues = [item for item in clues if needle in " ".join(str(value or "") for value in (item.serial_no, item.title, item.customer, item.description, *(item.data or {}).values())).casefold()]
+    total = len(clues)
+    start = (page - 1) * page_size
+    items = await _record_dicts_for_identity(clues[start:start + page_size], identity, db)
+    return {"items": items, "total": total, "page": page, "page_size": page_size, "pages": (total + page_size - 1) // page_size if total else 0}
+
+
 @router.get(f"{settings.api_prefix}/cases/{{case_id}}/relations")
 async def list_case_relations(
     case_id: int,

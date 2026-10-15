@@ -464,8 +464,8 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         const requestId = ++counselDetailClueRequestRef.current;
         setCounselDetailClueLoading(true);
         try {
-            const { data } = await api.get(`/cases/${row.id}/relations`, {
-                params: { clue_page: nextPage, clue_page_size: nextPageSize, clue_keyword: keyword || undefined },
+            const { data } = await api.get(`/cases/${row.id}/clues`, {
+                params: { page: nextPage, page_size: nextPageSize, keyword: keyword || undefined },
             });
             if (!shouldApplyCaseClueResponse({ requestId, currentRequestId: counselDetailClueRequestRef.current, currentCaseId: viewingCounselCase?.id, targetCaseId: row.id }))
                 return null;
