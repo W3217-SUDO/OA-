@@ -101,7 +101,8 @@ async def fee_export_values(rows, identity, db, internal=False):
 
 async def invoice_export_values(rows, identity, db):
     from sqlalchemy import String, cast
-    from app.core.finance import _invoice_fee_details, _invoice_linked_fee_ids, _visible_incoming_payment_statement, _case_fee_display_type, _settlement_fee_kind, _incoming_payment_legacy_summary
+    from app.core.finance import _invoice_fee_details, _invoice_linked_fee_ids, _visible_incoming_payment_statement, _settlement_fee_kind, _incoming_payment_legacy_summary
+    from app.core.formatters import _case_fee_display_type
     from app.core.permissions import _record_scope_conditions
     from app.core.query_batches import _scalars_in_batches
     from app.core.system import _allowed_field_keys

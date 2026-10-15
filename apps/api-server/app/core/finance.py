@@ -1852,10 +1852,15 @@ async def _refund_case_fee_rows(
         assistant=assistant, case_stages=case_stages, fee_types=fee_types,
         ids=selected_ids, scope_authorized_fee_ids=authorized_ids,
     )
+    from app.core.query_batches import _scalars_in_batches
     fee_ids = {int(row["id"]) for row in rows}
-    records = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "finance", BusinessRecord.id.in_(fee_ids),
-    ))).all()) if fee_ids else []
+    records = await _scalars_in_batches(
+        db,
+        fee_ids,
+        lambda batch: select(BusinessRecord).where(
+            BusinessRecord.module == "finance", BusinessRecord.id.in_(batch),
+        ),
+    ) if fee_ids else []
     records_by_id = {item.id: item for item in records}
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     result: list[dict] = []
