@@ -205,14 +205,21 @@ async def personal_agent_memory(scope: Literal["short", "long"] = "short",
     safe_identity = await personal_identity(identity, db)
     result = list_memories(_user_dir(safe_identity["username"]), int(safe_identity["_actual_user_id"]), limit)
     if scope == "long":
-        items = [{**item, "memory_type": "long", "source": "用户明确要求保存"} for item in result["items"]]
+        items = [{**item, "memory_type": "long", "source": item.get("source_label") or "用户明确要求保存"}
+                 for item in result["items"]]
     else:
         items = []
         for state in await conversations.read_conversation_states(_user_dir(safe_identity["username"])):
             if state.get("memory_summary"):
+                metadata = state.get("memory_summary_metadata") or {}
                 items.append({"id": f"short-{state.get('conversation_id')}", "memory_type": "short",
-                              "content": state["memory_summary"], "source": "会话自动压缩",
-                              "conversation_id": state.get("conversation_id"), "permission_scope": "当前用户",
+                              "content": state["memory_summary"], "source": metadata.get("source_label") or "会话自动压缩",
+                              "source_type": metadata.get("source_type") or "conversation_compression",
+                              "memory_category": metadata.get("memory_category") or "temporary_state",
+                              "task_scope": metadata.get("task_scope") or "global",
+                              "permission_scope": metadata.get("permission_scope") or "current_user",
+                              "confidence": metadata.get("confidence", 1.0),
+                              "conversation_id": state.get("conversation_id"),
                               "created_at": state.get("memory_summary_updated_at") or state.get("updated_at")})
     return {"settings": result["settings"], "items": items,
             "long_term_enabled": bool(result["settings"].get("enabled", True)),

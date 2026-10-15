@@ -14,6 +14,11 @@ export type PersonalMemory = {
   created_at?: string | null;
   expires_at?: string | null;
   permission_scope?: string | null;
+  memory_category?: "fact" | "preference" | "experience" | "temporary_state" | null;
+  source_type?: string | null;
+  source_label?: string | null;
+  task_scope?: string | null;
+  confidence?: number | null;
   recall_score?: number | null;
 };
 
@@ -77,7 +82,7 @@ export function MemoryControlPanel({ open, onClose }: { open: boolean; onClose: 
         className="memory-control-list"
         dataSource={items}
         renderItem={(item) => <List.Item actions={scope === "long" ? [<Popconfirm key="delete" title="删除这条长期记忆？" description="删除后不可用于后续召回。" okText="删除" cancelText="取消" onConfirm={() => void remove(item.id)}><Button danger type="text" icon={<DeleteOutlined />} aria-label="删除记忆">删除</Button></Popconfirm>] : undefined}>
-          <List.Item.Meta avatar={item.memory_type === "long" ? <LockOutlined /> : <HistoryOutlined />} title={<div className="memory-control-item-title"><span>{item.content}</span>{item.permission_scope && <Tag>{item.permission_scope}</Tag>}</div>} description={<div className="memory-control-item-meta"><span>{item.source ? `来源：${item.source}` : "来源：当前会话"}</span>{item.conversation_id && <span>会话：{item.conversation_id}</span>}{item.created_at && <span>{new Date(item.created_at).toLocaleString("zh-CN")}</span>}{item.recall_score != null && <span>匹配度：{item.recall_score <= 1 ? `${Math.round(item.recall_score * 100)}%` : item.recall_score}</span>}</div>} />
+          <List.Item.Meta avatar={item.memory_type === "long" ? <LockOutlined /> : <HistoryOutlined />} title={<div className="memory-control-item-title"><span>{item.content}</span>{item.memory_category && <Tag>{({ fact: "事实", preference: "偏好", experience: "经验", temporary_state: "临时状态" } as Record<string, string>)[item.memory_category] || item.memory_category}</Tag>}{item.permission_scope && <Tag>{item.permission_scope}</Tag>}</div>} description={<div className="memory-control-item-meta"><span>{item.source ? `来源：${item.source}` : "来源：当前会话"}</span>{item.task_scope && <span>任务范围：{item.task_scope}</span>}{item.confidence != null && <span>可信度：{Math.round(item.confidence * 100)}%</span>}{item.conversation_id && <span>会话：{item.conversation_id}</span>}{item.created_at && <span>{new Date(item.created_at).toLocaleString("zh-CN")}</span>}{item.recall_score != null && <span>匹配度：{item.recall_score <= 1 ? `${Math.round(item.recall_score * 100)}%` : item.recall_score}</span>}</div>} />
         </List.Item>}
       /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error ? "未能读取记忆" : scope === "short" ? "当前没有短期上下文" : "还没有长期记忆"} />}
     </div>

@@ -82,6 +82,9 @@ def empty_state(conversation_id: str | None, workspace: dict[str, Any] | None = 
             "workspace": normalize_workspace(workspace) if workspace is not None else {"kind": "personal"},
             "messages": [], "pending_actions": [], "structured_results": [], "dismissed_action_ids": [],
             "memory_summary": "", "memory_summary_updated_at": "",
+            "memory_summary_metadata": {"memory_category": "temporary_state", "source_type": "conversation_compression",
+                                         "source_label": "会话自动压缩", "task_scope": "global",
+                                         "permission_scope": "current_user", "confidence": 1.0},
             "created_at": "", "updated_at": ""}
 
 
@@ -119,6 +122,9 @@ def read_state(directory: Path, conversation_id: str | None = None) -> dict[str,
     state["workspace"] = state_workspace(value)
     state["memory_summary"] = str(value.get("memory_summary") or "")[:8_000]
     state["memory_summary_updated_at"] = str(value.get("memory_summary_updated_at") or "")
+    metadata = value.get("memory_summary_metadata")
+    if isinstance(metadata, dict):
+        state["memory_summary_metadata"] = metadata
     for key in ("messages", "pending_actions", "structured_results"):
         items = value.get(key, [])
         if not isinstance(items, list):

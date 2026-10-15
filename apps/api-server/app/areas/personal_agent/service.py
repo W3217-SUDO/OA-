@@ -407,6 +407,8 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
                                  state["messages"], text, state.get("memory_summary", ""))
     state["memory_summary"] = memory["summary"]
     state["memory_summary_updated_at"] = _now() if memory["summary"] else state.get("memory_summary_updated_at", "")
+    if memory.get("summary_metadata"):
+        state["memory_summary_metadata"] = memory["summary_metadata"]
     await _save_state(username, state)
     tools = ModelToolSession(conversation_id=state["conversation_id"])
     raw = await request_model(_prompt_messages(identity, state, context, text, skill, materials, memory["recalled"]), on_delta, tools=tools, response_mode=response_mode, on_progress=on_progress)

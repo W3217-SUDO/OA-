@@ -1,8 +1,9 @@
-"""LangGraph-backed short/long memory pipeline for the personal assistant.
+"""LangGraph-backed structured short/long memory for the personal assistant.
 
-Memory is deliberately conservative: only explicit user requests such as
-"记住/以后/我的偏好" create long-term memories. Recall is filtered by the
-authenticated owner and optional case scope before anything reaches the model.
+Short memory is task-local compressed context. Long memory is deliberately
+conservative and stores only an explicit user request, classified as a fact,
+preference, or reusable experience. Every item carries provenance, time,
+confidence, task scope, and permission scope before it can be recalled.
 """
 
 from __future__ import annotations
@@ -20,6 +21,8 @@ from langgraph.graph import END, START, StateGraph
 _MEMORY_FILE = "memories.json"
 _EXPLICIT_MEMORY = re.compile(r"(?:记住|请记住|以后|今后|我的偏好|我习惯|保存这个偏好|记下来)[：:，,\s]*(.+)", re.I | re.S)
 _TOKEN = re.compile(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9_]{2,}")
+_CATEGORY_FACT = re.compile(r"(?:我叫|我是|我的(?:姓名|名字|公司|职位|职业|所在|生日)|来自|住在)")
+_CATEGORY_PREFERENCE = re.compile(r"(?:偏好|喜欢|习惯|倾向|希望|请用|不要用|优先)")
 
 
 class MemoryState(TypedDict, total=False):
@@ -32,6 +35,7 @@ class MemoryState(TypedDict, total=False):
     summary: str
     recalled: list[dict[str, Any]]
     candidate: str | None
+    category: str | None
 
 
 def _now() -> str:
@@ -40,6 +44,31 @@ def _now() -> str:
 
 def _empty() -> dict[str, Any]:
     return {"version": 1, "settings": {"enabled": True, "retention_days": 365, "recall_limit": 5}, "items": []}
+
+
+def _task_scope(conversation_id: str | None, case_id: int | None, category: str) -> str:
+    if case_id:
+        return f"case:{case_id}"
+    # Facts, preferences, and reusable experiences are global personal memory;
+    # the conversation id remains provenance, not an authorization shortcut.
+    return "global"
+
+
+def _classify(content: str) -> str:
+    if _CATEGORY_PREFERENCE.search(content):
+        return "preference"
+    if _CATEGORY_FACT.search(content):
+        return "fact"
+    return "experience"
+
+
+def _terms(text: str) -> set[str]:
+    """Build stable lexical/semantic-lite terms for Chinese and Latin text."""
+    terms: set[str] = set(_TOKEN.findall(text.lower()))
+    for span in re.findall(r"[\u4e00-\u9fff]+", text.lower()):
+        terms.update(span)
+        terms.update(span[index:index + 2] for index in range(len(span) - 1))
+    return terms
 
 
 def _read(path: Path) -> dict[str, Any]:
@@ -80,7 +109,8 @@ def _compact_node(state: MemoryState) -> dict[str, Any]:
 
 def _extract_node(state: MemoryState) -> dict[str, Any]:
     match = _EXPLICIT_MEMORY.search(str(state.get("user_text") or ""))
-    return {"candidate": " ".join(match.group(1).split())[:1_000] if match else None}
+    candidate = " ".join(match.group(1).split())[:1_000] if match else None
+    return {"candidate": candidate, "category": _classify(candidate) if candidate else None}
 
 
 def _recall_node(state: MemoryState) -> dict[str, Any]:
@@ -89,7 +119,7 @@ def _recall_node(state: MemoryState) -> dict[str, Any]:
     settings = data["settings"]
     if not settings.get("enabled", True):
         return {"recalled": []}
-    query = set(_TOKEN.findall(str(state.get("user_text") or "").lower()))
+    query = _terms(str(state.get("user_text") or ""))
     case_id = state.get("case_id")
     owner = int(state.get("owner_user_id") or 0)
     cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, min(int(settings.get("retention_days", 365)), 3650)))
@@ -105,7 +135,15 @@ def _recall_node(state: MemoryState) -> dict[str, Any]:
         item_case = item.get("case_id")
         if item_case not in (None, case_id):
             continue
-        tokens = set(_TOKEN.findall(str(item.get("content") or "").lower()))
+        task_scope = str(item.get("task_scope") or (f"case:{item_case}" if item_case else "global"))
+        if task_scope.startswith("case:") and task_scope != f"case:{case_id}":
+            continue
+        if task_scope.startswith("conversation:") and task_scope != f"conversation:{state.get('conversation_id')}":
+            continue
+        permission_scope = str(item.get("permission_scope") or "personal")
+        if permission_scope not in {"personal", "case", "current_user"}:
+            continue
+        tokens = _terms(str(item.get("content") or ""))
         score = len(query & tokens)
         if score or not query:
             candidates.append({**item, "recall_score": score})
@@ -128,7 +166,8 @@ def _graph():
 _MEMORY_GRAPH = _graph()
 
 
-def _save_candidate(directory: Path, owner_user_id: int, conversation_id: str | None, case_id: int | None, candidate: str | None) -> dict[str, Any] | None:
+def _save_candidate(directory: Path, owner_user_id: int, conversation_id: str | None, case_id: int | None,
+                    candidate: str | None, category: str | None) -> dict[str, Any] | None:
     if not candidate:
         return None
     path = directory / _MEMORY_FILE
@@ -137,9 +176,13 @@ def _save_candidate(directory: Path, owner_user_id: int, conversation_id: str | 
     if not settings.get("enabled", True):
         return None
     now = _now()
-    item = {"id": uuid4().hex, "kind": "long", "content": candidate, "owner_user_id": owner_user_id,
-            "conversation_id": conversation_id, "case_id": case_id, "permission_scope": "case" if case_id else "personal",
-            "created_at": now, "updated_at": now, "deleted_at": None}
+    category = category if category in {"fact", "preference", "experience"} else "experience"
+    item = {"id": uuid4().hex, "kind": "long", "content": candidate, "memory_category": category,
+            "owner_user_id": owner_user_id, "conversation_id": conversation_id, "case_id": case_id,
+            "task_scope": _task_scope(conversation_id, case_id, category),
+            "permission_scope": "case" if case_id else "personal", "source_type": "explicit_user",
+            "source_label": "用户明确要求保存", "source_conversation_id": conversation_id,
+            "confidence": 0.95, "created_at": now, "updated_at": now, "deleted_at": None}
     data["items"] = [*data["items"], item][-500:]
     _write(path, data)
     return item
@@ -150,8 +193,13 @@ def run_memory_pipeline(directory: Path, owner_user_id: int, conversation_id: st
     result = _MEMORY_GRAPH.invoke({"directory": str(directory), "owner_user_id": owner_user_id,
                                    "conversation_id": conversation_id, "case_id": case_id,
                                    "messages": messages, "user_text": user_text, "summary": summary})
-    item = _save_candidate(directory, owner_user_id, conversation_id, case_id, result.get("candidate"))
-    return {"summary": result.get("summary", ""), "recalled": result.get("recalled", []), "created": item}
+    item = _save_candidate(directory, owner_user_id, conversation_id, case_id, result.get("candidate"), result.get("category"))
+    summary_metadata = {"memory_category": "temporary_state", "source_type": "conversation_compression",
+                       "source_label": "会话自动压缩", "task_scope": _task_scope(conversation_id, case_id, "temporary_state"),
+                       "permission_scope": "case" if case_id else "current_user", "confidence": 1.0,
+                       "updated_at": _now()}
+    return {"summary": result.get("summary", ""), "summary_metadata": summary_metadata,
+            "recalled": result.get("recalled", []), "created": item}
 
 
 def list_memories(directory: Path, owner_user_id: int, limit: int = 50) -> dict[str, Any]:
