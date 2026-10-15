@@ -47,11 +47,12 @@ type Props = {
   returnLabel?: string;
   desktopWorkspace?: boolean;
   onOpenAgentCenter?: () => void;
+  onOpenCaseAgent?: (caseId: number, serialNo: string) => void;
 };
 
 // 工作台里的个人智能体：对话和输入框合在一个面板内，会话可并行进行；问候语放在工作台顶部。
 const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
-  { workspace, suggestions, focusRequested, onFocusHandled, onReturnOverview, name, logoSrc, returnLabel = "返回工作概况", desktopWorkspace = false, onOpenAgentCenter },
+  { workspace, suggestions, focusRequested, onFocusHandled, onReturnOverview, name, logoSrc, returnLabel = "返回工作概况", desktopWorkspace = false, onOpenAgentCenter, onOpenCaseAgent },
   ref,
 ) {
   const { status, state, loading, loadError, sending, stopping, input, setInput, send, stop, decide, load } = workspace;
@@ -122,6 +123,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const runningIds = workspace.runningIds;
   const conversationTitle = state.conversation_title || name || "沪知助手";
   const currentProject = desktopWorkspace ? workspace.workspaceProjects.find((item) => item.kind === workspace.currentWorkspace?.kind && (item.kind === "personal" || item.case_id === workspace.currentWorkspace?.case_id)) : undefined;
+  const currentCaseProject = currentProject?.kind === "case" && currentProject.serial_no ? currentProject : undefined;
   const decisionBusy = loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId;
   const dismiss = async (action: PendingAction) => {
     setDismissalError("");
@@ -165,6 +167,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             {name && state.conversation_title && <small>{state.conversation_title}</small>}
           </span> : conversationTitle}
         </span>
+        {desktopWorkspace && currentCaseProject && onOpenCaseAgent && <Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={() => onOpenCaseAgent(currentCaseProject.case_id!, currentCaseProject.serial_no!)}>案件智能体</Button></Tooltip>}
         {!desktopWorkspace && <div className="assistant-bar-actions">
           <Tooltip title="个人 AI 空间"><Button className="personal-ai-space-trigger" type="text" icon={<FolderOpenOutlined />} aria-label="个人 AI 空间" onClick={() => setPersonalSpaceOpen(true)}><span className="personal-ai-space-label">个人 AI 空间</span></Button></Tooltip>
           <ConfirmationHistory onReopen={reopen} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} />

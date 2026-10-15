@@ -10,9 +10,10 @@ type Props = {
   name?: string;
   desktop?: boolean;
   onOpenAgentCenter?: () => void;
+  onOpenCaseAgent?: (caseId: number, serialNo: string) => void;
 };
 
-export default function AiChatPage({ onReturnWorkbench, focusRequested, onFocusHandled, name = "Ai", desktop = false, onOpenAgentCenter }: Props) {
+export default function AiChatPage({ onReturnWorkbench, focusRequested, onFocusHandled, name = "Ai", desktop = false, onOpenAgentCenter, onOpenCaseAgent }: Props) {
   const workspace = usePersonalWorkspaceContext();
   useEffect(() => {
     if (!desktop) return;
@@ -29,6 +30,7 @@ export default function AiChatPage({ onReturnWorkbench, focusRequested, onFocusH
         workspace={workspace}
         desktopWorkspace={desktop}
         onOpenAgentCenter={onOpenAgentCenter}
+        onOpenCaseAgent={onOpenCaseAgent}
         suggestions={[]}
         focusRequested={focusRequested}
         onFocusHandled={onFocusHandled}

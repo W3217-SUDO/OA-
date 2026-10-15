@@ -1625,6 +1625,7 @@ export default function App() {
         desktop={!isNarrowViewport}
         onReturnWorkbench={returnToWorkbench}
         onOpenAgentCenter={isWorkspaceRouteGranted("agent-center", grantedMenuKeys, permissionAdministrator) ? () => navigate("agent-center") : undefined}
+        onOpenCaseAgent={(caseId, serialNo) => navigate(`case-detail-${caseId}-${encodeURIComponent(serialNo)}-agent`)}
         focusRequested={assistantFocusRequested}
         onFocusHandled={() => setAssistantFocusRequested(false)}
       />
