@@ -22,11 +22,13 @@ export type PersonalMemory = {
   recall_score?: number | null;
 };
 
+type MemoryAudit = { id: string; occurred_at: string; action: string; memory_id?: string | null; memory_category?: string | null; task_scope?: string | null; permission_scope?: string | null; content_snapshot?: string | null; detail?: Record<string, unknown> };
 type MemoryResponse = { items: PersonalMemory[]; total?: number; long_term_enabled?: boolean; recall_limit?: number };
 
 export function MemoryControlPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [scope, setScope] = useState<"short" | "long">("short");
+  const [scope, setScope] = useState<"short" | "long" | "audit">("short");
   const [items, setItems] = useState<PersonalMemory[]>([]);
+  const [audit, setAudit] = useState<MemoryAudit[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -35,6 +37,10 @@ export function MemoryControlPanel({ open, onClose }: { open: boolean; onClose: 
   const load = async () => {
     setLoading(true); setError("");
     try {
+      if (scope === "audit") {
+        const { data } = await api.get<{ items: MemoryAudit[] }>("/personal-agent/memory/audit", { params: { limit: 100 } });
+        setAudit(Array.isArray(data.items) ? data.items : []); setItems([]); return;
+      }
       const { data } = await api.get<MemoryResponse>("/personal-agent/memory", { params: { scope, limit: 50 } });
       setItems(Array.isArray(data.items) ? data.items : []);
       if (typeof data.long_term_enabled === "boolean") setEnabled(data.long_term_enabled);
@@ -62,6 +68,7 @@ export function MemoryControlPanel({ open, onClose }: { open: boolean; onClose: 
     finally { setSaving(false); }
   };
 
+  const auditAction: Record<string, string> = { created: "写入", deduplicated: "去重更新", conflict_resolved: "冲突替换", expired: "过期", revoked: "撤销" };
   return <Drawer
     open={open}
     onClose={onClose}
@@ -74,11 +81,13 @@ export function MemoryControlPanel({ open, onClose }: { open: boolean; onClose: 
     <div className="memory-control">
       <Alert showIcon type="info" message="记忆只对当前登录账号可见，并在召回前按权限范围过滤。" description="短期记忆用于当前会话上下文；长期记忆可随时停用或删除。" />
       <div className="memory-control-toolbar">
-        <Segmented value={scope} onChange={(value) => setScope(value as "short" | "long")} options={[{ value: "short", label: "短期上下文" }, { value: "long", label: "长期记忆" }]} />
+        <Segmented value={scope} onChange={(value) => setScope(value as "short" | "long" | "audit")} options={[{ value: "short", label: "短期上下文" }, { value: "long", label: "长期记忆" }, { value: "audit", label: "记忆审计" }]} />
         {scope === "long" && <Space size={8}><span className="memory-control-setting-label">允许召回</span><Switch checked={enabled} loading={saving} onChange={(value) => void setMemoryEnabled(value)} /></Space>}
       </div>
       {error && <Alert type="warning" showIcon message="记忆服务未完成请求" description={error} />}
-      {loading ? <Spin className="memory-control-loading" /> : items.length ? <List
+      {loading ? <Spin className="memory-control-loading" /> : scope === "audit" ? (audit.length ? <List className="memory-control-list" dataSource={audit} renderItem={(event) => <List.Item>
+        <List.Item.Meta avatar={<HistoryOutlined />} title={`${auditAction[event.action] || event.action}｜${event.memory_category || "记忆"}`} description={<div className="memory-control-item-meta"><span>{event.content_snapshot || event.memory_id || ""}</span>{event.task_scope && <span>任务范围：{event.task_scope}</span>}{event.permission_scope && <span>权限：{event.permission_scope}</span>}<span>{event.occurred_at && new Date(event.occurred_at).toLocaleString("zh-CN")}</span></div>} />
+      </List.Item>} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无记忆审计记录" />) : items.length ? <List
         className="memory-control-list"
         dataSource={items}
         renderItem={(item) => <List.Item actions={scope === "long" ? [<Popconfirm key="delete" title="删除这条长期记忆？" description="删除后不可用于后续召回。" okText="删除" cancelText="取消" onConfirm={() => void remove(item.id)}><Button danger type="text" icon={<DeleteOutlined />} aria-label="删除记忆">删除</Button></Popconfirm>] : undefined}>

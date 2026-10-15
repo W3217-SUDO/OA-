@@ -406,8 +406,10 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
         memory_owner_id = await db.scalar(select(User.id).where(User.username == username))
     if memory_owner_id is None:
         raise HTTPException(status_code=401, detail="当前用户不存在，不能建立记忆上下文")
+    allowed_case_ids = [int(memory_case_id)] if memory_case_id else []
     memory = run_memory_pipeline(_user_dir(username), int(memory_owner_id), state["conversation_id"], memory_case_id,
-                                 state["messages"], text, state.get("memory_summary", ""))
+                                 state["messages"], text, state.get("memory_summary", ""),
+                                 allowed_case_ids=allowed_case_ids)
     state["memory_summary"] = memory["summary"]
     state["memory_summary_updated_at"] = _now() if memory["summary"] else state.get("memory_summary_updated_at", "")
     if memory.get("summary_metadata"):

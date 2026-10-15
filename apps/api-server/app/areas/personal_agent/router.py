@@ -15,7 +15,7 @@ from app.database import get_db
 from app.security import current_identity
 from app.skill_catalog import CatalogSource
 from app.areas.personal_agent.service import build_context, decide_action, generate_response, manage_conversations, personal_identity, personal_state, stop_response, _user_dir
-from app.areas.personal_agent.memory_graph import delete_memory, list_memories, update_settings
+from app.areas.personal_agent.memory_graph import delete_memory, list_memories, list_memory_audit, update_settings
 from app.areas.personal_agent import conversations
 from app.areas.personal_agent.workspace import workspace_commands
 from app.areas.personal_agent.response_runtime import ResponseMode, supports_response_modes
@@ -233,6 +233,13 @@ async def personal_agent_memory_settings(body: MemorySettingsInput,
     return {"settings": update_settings(_user_dir(safe_identity["username"]), int(safe_identity["_actual_user_id"]),
                                           enabled=body.enabled, retention_days=body.retention_days,
                                           recall_limit=body.recall_limit)}
+
+
+@router.get(f"{settings.api_prefix}/personal-agent/memory/audit")
+async def personal_agent_memory_audit(limit: Annotated[int, Query(ge=1, le=200)] = 100,
+                                      identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    safe_identity = await personal_identity(identity, db)
+    return {"items": list_memory_audit(_user_dir(safe_identity["username"]), int(safe_identity["_actual_user_id"]), limit)}
 
 
 @router.delete(f"{settings.api_prefix}/personal-agent/memory/{{memory_id}}")
