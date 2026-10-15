@@ -251,8 +251,10 @@ async def internal_application_queue(identity: dict, db: AsyncSession, scope: st
     kind = BusinessRecord.data["legacy_kind"].as_string()
     modern_conditions = [BusinessRecord.module == "finance", *access,
                          or_(kind.is_(None), kind.not_in(("internal_payment_line", "internal_fee_source")))]
-    modern_conditions.append(BusinessRecord.status.in_(rejected if scope == "refused" else
-        ("待到账", "待分配", "待结算", "待归档", "待审批")))
+    modern_statuses = rejected if scope == "refused" else (
+        ("待归档",) if scope == "archive" else ("待到账", "待分配", "待结算", "待归档", "待审批")
+    )
+    modern_conditions.append(BusinessRecord.status.in_(modern_statuses))
     modern_ids = set((await db.scalars(select(BusinessRecord.id).where(*modern_conditions))).all())
     child_ids = set((await db.scalars(select(BusinessRecord.id).where(
         BusinessRecord.module == "finance", *access, BusinessRecord.status != "已删除",
