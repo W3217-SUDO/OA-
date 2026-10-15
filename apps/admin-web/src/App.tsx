@@ -1706,6 +1706,11 @@ export default function App() {
       </Card>
     );
   const currentPage = requestedPage;
+  const refreshCurrentPage = () => {
+    setWorkspaceReloadKey((value) => value + 1);
+    window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: active }));
+    window.dispatchEvent(new CustomEvent("sunhold:menus-updated"));
+  };
   return (
     <Layout ref={chatViewportRef} className={`app-shell${isChatWorkspace ? " is-chat-workspace" : ""}${isDesktopAiWorkspace ? " is-desktop-ai-workspace" : ""}${isDesktopAiWorkspace && aiSystemNavigationOpen ? " is-system-navigation-open" : ""}`}>
       <ConflictReviewHost key={sessionUser?.username || ""} />
@@ -1744,6 +1749,7 @@ export default function App() {
           }}
         />
         <Tabs
+          key={`workspace-tabs-${workspaceReloadKey}`}
           className="workspace-tabs topbar-workspace-tabs"
           type="editable-card"
           hideAdd
@@ -1801,7 +1807,7 @@ export default function App() {
               type="text"
               aria-label="刷新当前页"
               icon={<ReloadOutlined />}
-              onClick={() => setWorkspaceReloadKey((value) => value + 1)}
+              onClick={refreshCurrentPage}
             />
           </Tooltip>
           <Dropdown

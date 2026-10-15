@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Table as AntTable } from "antd";
+import { Spin, Table as AntTable } from "antd";
 import type { TableColumnsType, TableProps } from "antd";
 import "./resizable-table.css";
 
@@ -133,7 +133,10 @@ function ResizableTable<RecordType extends object>({ columns, className, resizab
     ? { ...props.scroll, x: "max-content" as const }
     : props.scroll;
   const sticky = props.sticky ?? (scroll?.x !== undefined ? { offsetScroll: 0 } : undefined);
-  return <AntTable<RecordType> {...props} scroll={scroll} sticky={sticky} className={[className, resizable ? "oa-resizable-table" : ""].filter(Boolean).join(" ")} columns={resizedColumns} />;
+  const locale = props.loading
+    ? { ...props.locale, emptyText: <Spin size="small" tip="正在加载数据…" /> }
+    : props.locale;
+  return <AntTable<RecordType> {...props} locale={locale} scroll={scroll} sticky={sticky} className={[className, resizable ? "oa-resizable-table" : ""].filter(Boolean).join(" ")} columns={resizedColumns} />;
 }
 
 const Table = Object.assign(ResizableTable, {
