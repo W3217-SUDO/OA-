@@ -181,6 +181,14 @@ export function feeTypeTreeRows(rows: ParameterRow[]): ParameterRow[] {
 }
 
 export function feeTypeRootName(row: ParameterRow, rows: ParameterRow[]): string {
+  // Imported legacy rows carry the authoritative BAS_Case_FeeType TypeId
+  // projection. Prefer it for the maintenance list so the displayed group
+  // remains identical to the legacy SystemCenter page even when the
+  // normalized catalog has a different parent tree.
+  const legacyGroup = String(row.extra.fee_group || "").trim();
+  if (row.extra.legacy_id !== undefined && row.extra.legacy_id !== null && legacyGroup) {
+    return legacyGroup;
+  }
   const byCode = new Map(rows.map((item) => [item.code, item]));
   const seen = new Set<string>();
   let cursor = row;
