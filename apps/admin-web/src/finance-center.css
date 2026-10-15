@@ -1862,16 +1862,41 @@
 
 .finance-internal-queues .ant-table-cell,
 .finance-internal-queues .ant-table-cell .ant-btn-link {
-  white-space: normal;
+  /* Internal fee queues contain party names and payment units that are often
+     longer than the legacy column budget.  The generic table rule below sets
+     nowrap, so keep this override explicit (and stronger) to prevent text
+     painting over adjacent cells. */
+  white-space: normal !important;
   overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.35;
 }
 .finance-internal-queues .ant-table-cell .ant-btn-link {
   max-width: 100%;
   height: auto;
 }
 .finance-internal-queues .ant-table-cell.finance-money-column {
-  white-space: nowrap;
+  white-space: nowrap !important;
   overflow-wrap: normal;
+}
+
+/* Keep the wide internal-settlement table readable on desktop while allowing
+   the table container to scroll instead of shrinking text into overlap. */
+.finance-original-internal-settle .finance-original-table-wrap
+  .ant-table-content > table {
+  min-width: 2240px !important;
+  table-layout: fixed;
+}
+
+@media (max-width: 720px) {
+  .finance-original-internal-settle .finance-original-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .finance-original-internal-settle .finance-original-table-wrap
+    .ant-table-content > table {
+    min-width: 2240px !important;
+  }
 }
 
 @media (max-width: 1080px) {

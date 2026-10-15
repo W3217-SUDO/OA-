@@ -370,7 +370,8 @@ class LitigationRefundInput(BaseModel):
     case_no: str
     court: str
     original_payment_no: str
-    amount: float = Field(gt=0)
+    # Zero explicitly clears the current court-refund projection.
+    amount: float = Field(ge=0)
     applicant: str
     refund_account_name: str = ""
     refund_bank: str = ""
@@ -387,7 +388,7 @@ class RefundCompleteInput(BaseModel):
 
 
 class RefundAmountUpdateInput(BaseModel):
-    amount: float = Field(gt=0)
+    amount: float = Field(ge=0)
     comment: str = ""
 
 

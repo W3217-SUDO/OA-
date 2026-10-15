@@ -94,6 +94,53 @@ class Batch0917Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status_code,422,result.text)
         async with self.sessions() as db:self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord)),before)
 
+    async def test_zero_court_refund_keeps_historical_agency_fee_and_projects_zero(self):
+        """法院退费归零只清零案件退费投影，不新增或改写历史律师代理费退费。"""
+        body = {
+            'fee_record_id': self.fee_id,
+            'case_no': 'CODEX-0916-case',
+            'customer': 'Batch customer',
+            'court': '法院',
+            'original_payment_no': 'receipt-zero',
+            'amount': 40,
+            'applicant': '回归申请人',
+            'request_key': 'batch0917-zero-refund',
+        }
+        result = await self.client.post(f'{API}/finance/refunds', json=body)
+        self.assertEqual(result.status_code, 201, result.text)
+        refund = result.json()
+        agency_fee_id = refund['data']['refund_fee_id']
+        async with self.sessions() as db:
+            agency_fee = await db.get(BusinessRecord, agency_fee_id)
+            self.assertEqual(agency_fee.data['amount'], 40)
+            before_agency_count = await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+                BusinessRecord.module == 'finance',
+                BusinessRecord.data['refund_record_id'].as_integer() == refund['id'],
+            ))
+            self.assertEqual(before_agency_count, 1)
+
+        result = await self.client.patch(
+            f"{API}/finance/refunds/{refund['id']}/amount",
+            json={'amount': 0, 'comment': '归零回归'},
+        )
+        self.assertEqual(result.status_code, 200, result.text)
+        async with self.sessions() as db:
+            agency_fee = await db.get(BusinessRecord, agency_fee_id)
+            self.assertEqual(agency_fee.data['amount'], 40)
+            after_agency_count = await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+                BusinessRecord.module == 'finance',
+                BusinessRecord.data['refund_record_id'].as_integer() == refund['id'],
+            ))
+            self.assertEqual(after_agency_count, before_agency_count)
+            source_fee = await db.get(BusinessRecord, self.fee_id)
+            self.assertEqual(source_fee.data['refund_amount_override'], 0)
+
+        relations = await self.client.get(f'{API}/cases/{self.case_id}/relations')
+        self.assertEqual(relations.status_code, 200, relations.text)
+        original = next(row for row in relations.json().get('fees', []) if row['id'] == self.fee_id)
+        self.assertEqual(original['data']['refund_amount'], 0)
+        self.assertEqual(original['data']['refund_requested_amount'], 0)
+
     async def test_official_refund_atomic_duplicate_and_projection(self):
         async with self.sessions() as db:
             fee = await db.get(BusinessRecord, self.fee_id)

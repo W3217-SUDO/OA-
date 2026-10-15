@@ -4,6 +4,10 @@ import { financeErrorDetail } from "../financeErrors";
 import type { Fee, FinanceInternalQueueMeta } from "../types";
 
 const internalQueries: Record<string, { path: string; scope?: string; kind?: string }> = {
+  // Internal applications are a separate queue from external payment
+  // management. Keep this route on the paginated internal-fee API so the
+  // menu entry cannot accidentally fall through to finance-payment-mine.
+  "finance-internal-mine": { path: "/finance/internal-fees", scope: "applications" },
   "finance-internal-settle": { path: "/finance/settlements/pending" },
   "finance-internal-archive": { path: "/finance/internal-fees", scope: "archive" },
   "finance-internal-refused": { path: "/finance/internal-fees", scope: "refused" },
@@ -27,6 +31,8 @@ export function internalFinanceQueryRequest(route: string, query: Record<string,
   };
   const fields = route === "finance-internal-settle"
     ? ["customer", "case_no", "court_case_no", "certificate_no", "hearing_lawyer", "assistant", "case_stages", "investigator", "source_person"]
+    : route === "finance-internal-mine"
+      ? ["application", "status", "applicant", "audit", "case_no", "application_no", "customer", "case_stages", "fee_types"]
     : route === "finance-internal-payment"
       ? ["application", "status", "payee", "audit", "case_no", "applicant", "customer", "case_stages", "fee_types"]
       : route === "finance-internal-refused"

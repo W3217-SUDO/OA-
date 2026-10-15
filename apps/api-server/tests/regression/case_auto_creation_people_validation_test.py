@@ -2,6 +2,7 @@
 
 from contextlib import ExitStack
 from copy import deepcopy
+from datetime import datetime
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -9,8 +10,9 @@ from fastapi import HTTPException
 
 from app.areas.investigation.router import batch_create_cases_from_clues
 from app.areas.legal.router import duplicate_case
-from app.models import BusinessRecord, User
+from app.models import BusinessRecord, SystemParameter, User
 from app.models_shared import BatchClueCaseInput
+from app.core.cases import _next_case_serial
 
 
 class ScalarRows:
@@ -93,6 +95,22 @@ class CaseAutoCreationPeopleValidationTest(unittest.IsolatedAsyncioTestCase):
 
     def mock_async(self, name, **kwargs):
         return self.patches.enter_context(patch(name, new_callable=AsyncMock, **kwargs))
+
+    async def test_new_case_serial_uses_hz_prefix_and_ignores_legacy_sh_namespace(self):
+        class SerialRows:
+            def all(self):
+                return ["SHMS2600999", "HZMS2600003", "HZMS2509999"]
+
+        db = unittest.mock.AsyncMock()
+        db.scalar = unittest.mock.AsyncMock(return_value=SystemParameter(
+            category="case_type", code="CIVIL", name="民事案件",
+            extra={"letter_code": "MS"}, is_active=True, sort_order=1,
+        ))
+        db.scalars = unittest.mock.AsyncMock(return_value=SerialRows())
+        serial = await _next_case_serial("民事案件", db)
+        self.assertRegex(serial, r"^HZMS\d{2}\d{5}$")
+        self.assertTrue(serial.startswith(f"HZMS{datetime.now():%y}"))
+        self.assertTrue(serial.endswith("00004"))
 
     async def convert(self, clues, **overrides):
         db = CapturingSession(self.users, clues)

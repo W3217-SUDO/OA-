@@ -641,7 +641,12 @@ async def list_case_relations(
             result_data["cashed_date"] = linked_incoming["received_at"]
         if str((item.data or {}).get("fee_type") or "") in {"官方费用", "代理费"}:
             linked = refunds_by_fee.get(item.id, [])
-            if linked:
+            if (item.data or {}).get("refund_amount_override") is not None:
+                total_refund = round(float((item.data or {}).get("refund_amount_override") or 0), 2)
+                result_data["refund_amount"] = total_refund
+                result_data["refund_requested_amount"] = round(float((item.data or {}).get("refund_requested_amount_override") or total_refund), 2)
+                result_data["refunded_amount"] = 0
+            elif linked:
                 valid_refunds = [refund for refund in linked if refund.status not in {"已驳回", "已作废"}]
                 total_refund = round(sum(float((refund.data or {}).get("amount") or 0) for refund in valid_refunds), 2)
                 refunded_amount = round(sum(float((refund.data or {}).get("amount") or 0) for refund in valid_refunds if refund.status == "已退款"), 2)

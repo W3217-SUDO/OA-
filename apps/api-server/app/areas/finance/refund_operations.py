@@ -93,6 +93,11 @@ async def update_refund_amount(refund_id: int, body: RefundAmountUpdateInput, id
         original_amount = float((fee.data or {}).get("amount") or 0)
         if body.amount > original_amount:
             raise HTTPException(status_code=422, detail="退款金额不能超过原费用金额")
+        if body.amount == 0:
+            # Keep historical refund/agency-fee records for audit, but make
+            # the source litigation-fee projection explicitly zero instead of
+            # re-summing prior attempts into 0.01/50.01.
+            fee.data = {**(fee.data or {}), "refund_amount_override": 0, "refund_requested_amount_override": 0}
     if data.get("refund_fee_id"):
         from app.core.agency_refund import update_agency_refund_fee_amount
         other_refunds = list((await db.scalars(select(BusinessRecord).where(
@@ -102,7 +107,11 @@ async def update_refund_amount(refund_id: int, body: RefundAmountUpdateInput, id
         ))).all())
         if _round_fee_amount(body.amount + sum(float((row.data or {}).get("amount") or 0) for row in other_refunds)) > original_amount:
             raise HTTPException(422, "累计退款金额不能超过原费用金额")
-        await update_agency_refund_fee_amount(item, body.amount, db)
+        # A zero court refund clears this refund's contribution only. Keep any
+        # previously generated lawyer-agency-refund fee untouched, as required
+        # by the fee ledger's historical semantics.
+        if body.amount > 0:
+            await update_agency_refund_fee_amount(item, body.amount, db)
     old_amount = float(data.get("amount") or 0)
     item.data = {**data, "amount": _round_fee_amount(body.amount), "amount_updated_by": identity["username"], "amount_updated_at": datetime.now().isoformat(timespec="seconds")}
     db.add(WorkflowEvent(record_id=item.id, action="修改退款金额", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{old_amount:.2f} → {body.amount:.2f}；{body.comment}"))
@@ -193,7 +202,7 @@ async def create_litigation_refund(body: LitigationRefundInput, identity: dict =
     item = BusinessRecord(module="refund", serial_no=serial, title=f"{body.case_no}{'代理费法院退费' if agency_refund else '诉讼费退款'}", customer=body.customer.strip(), status="草稿", owner=identity["username"], department=user.department, description=body.remark, data=data)
     db.add(item); await db.flush(); db.add(WorkflowEvent(record_id=item.id, action="创建诉讼费退款申请", to_status=item.status, operator=identity["username"], comment=f"{body.court}：{data['amount']:.2f} 元"))
     # 律所官费和代理费法院退费均生成同额代理费退费，保留原费用类型和退费流程。
-    if fee_record and str((fee_record.data or {}).get("expense_scope") or "律所") == "律所":
+    if body.amount > 0 and fee_record and str((fee_record.data or {}).get("expense_scope") or "律所") == "律所":
         from app.core.agency_refund import create_agency_refund_fee
         await create_agency_refund_fee(item, fee_record, identity, db)
     await db.commit(); await db.refresh(item); return await _record_dict_for_identity(item, identity, db)

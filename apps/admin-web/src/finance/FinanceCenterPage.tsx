@@ -3322,7 +3322,10 @@ export default function FinanceCenterPage({
   );
   const activeRouteConfig = routeConfigs[initialView];
   const settlementColumnWidths = [
-    170, 160, 160, 110, 160, 110, 130, 120, 130, 130, 130, 130, 130, 110,
+    // Keep party/unit columns wide enough for real case data.  The table is
+    // intentionally horizontally scrollable; shrinking these columns causes
+    // the long plaintiff/defendant/payment-unit values to overlap neighbors.
+    90, 180, 220, 220, 130, 220, 130, 130, 140, 140, 140, 140, 140, 120,
   ];
   const generalSettlementColumnWidths = [
     80, 160, 104, 176, 104, 96, 96, 96, 96, 96, 96, 96, 96, 96,

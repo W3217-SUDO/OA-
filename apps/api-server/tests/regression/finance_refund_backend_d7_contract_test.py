@@ -55,6 +55,7 @@ class FinanceRefundBackendD7Contract(unittest.IsolatedAsyncioTestCase):
             fee = BusinessRecord(module="finance", serial_no="FEE-D7-001", title="D7 官方费用", customer="D7 客户", status="已付款", owner="refund-user", department="上海分所", data={"amount": 150, "fee_type": "官方费用", "case_no": "CASE-D7", "group_id": "lawfirm"})
             db.add(fee)
             await db.flush()
+            self.fee_id = fee.id
             refunds = [
                 BusinessRecord(module="refund", serial_no="RF-D7-001", title="D7 退款一", customer="D7 客户", status="草稿", owner="refund-user", department="上海分所", data={"amount": 80, "case_no": "CASE-D7", "court": "上海法院", "original_payment_no": "PAY-D7-1", "expected_date": "2026-08-20", "fee_record_id": fee.id, "group_id": "lawfirm", "applicant": "退款申请人", "refund_account_name": "退款账户", "refund_bank": "测试银行", "refund_account": "6222000000000001", "remark": "可退款"}),
                 BusinessRecord(module="refund", serial_no="RF-D7-002", title="D7 退款二", customer="D7 客户二", status="待审批", owner="refund-manager", department="上海分所", data={"amount": 40, "case_no": "CASE-D7-2", "court": "上海法院", "original_payment_no": "PAY-D7-2", "fee_record_id": fee.id, "group_id": "trad"}),
@@ -148,12 +149,18 @@ class FinanceRefundBackendD7Contract(unittest.IsolatedAsyncioTestCase):
         response = await self.client.patch(f"{API}/finance/refunds/{self.refund_ids[0]}/amount", json={"amount": 120, "comment": "调整退款金额"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json()["data"]["amount"], 120)
-        invalid = await self.client.patch(f"{API}/finance/refunds/{self.refund_ids[0]}/amount", json={"amount": 0})
-        self.assertEqual(invalid.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+        zero = await self.client.patch(f"{API}/finance/refunds/{self.refund_ids[0]}/amount", json={"amount": 0, "comment": "归零投影"})
+        self.assertEqual(zero.status_code, status.HTTP_200_OK)
+        self.assertEqual(zero.json()["data"]["amount"], 0)
+        negative = await self.client.patch(f"{API}/finance/refunds/{self.refund_ids[0]}/amount", json={"amount": -1})
+        self.assertEqual(negative.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
         locked = await self.client.patch(f"{API}/finance/refunds/{self.refund_ids[1]}/amount", json={"amount": 10})
         self.assertEqual(locked.status_code, status.HTTP_409_CONFLICT)
         async with self.sessions() as db:
             event = await db.scalar(select(WorkflowEvent).where(WorkflowEvent.record_id == self.refund_ids[0], WorkflowEvent.action == "修改退款金额"))
+            fee = await db.get(BusinessRecord, self.fee_id)
+            self.assertEqual(fee.data["refund_amount_override"], 0)
+            self.assertEqual(fee.data["refund_requested_amount_override"], 0)
         self.assertIsNotNone(event)
 
     async def test_refund_batch_status_preflight_is_atomic(self):

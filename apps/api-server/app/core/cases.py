@@ -859,6 +859,9 @@ async def _case_commission_preview(
     refund_amount = 0.0
     for fee in external_case_fees:
         fee_data = fee.data or {}
+        if fee_data.get("refund_amount_override") is not None:
+            refund_amount += max(float(fee_data.get("refund_amount_override") or 0), 0)
+            continue
         fee_refunds = [item for item in refunds_by_fee.get(fee.id, []) if item.status not in {"已驳回", "已作废"}]
         if fee_refunds:
             requested = sum(float((item.data or {}).get("amount") or 0) for item in fee_refunds)
@@ -1471,7 +1474,11 @@ async def _query_counsel_cases(
 
 
 async def _next_case_serial(case_type: str, db: AsyncSession) -> str:
-    """Generate the compact legacy-style case number: SH + type + YY + 5 digits."""
+    """Generate the compact case number: HZ + type + YY + 5 digits.
+
+    Existing SH/SHNONE records remain readable; only newly generated numbers
+    use the HZ namespace required by the current case-creation contract.
+    """
     parameter_names = {case_type}
     if case_type == "民事案件":
         parameter_names.add("民事争议")
@@ -1482,7 +1489,7 @@ async def _next_case_serial(case_type: str, db: AsyncSession) -> str:
     ).order_by(SystemParameter.sort_order, SystemParameter.id))
     default_codes = {"民事案件": "MS", "刑事案件": "XS", "行政案件及国家赔偿": "XZ", "法律顾问": "GW", "仲裁": "ZC"}
     type_code = str((parameter.extra or {}).get("letter_code") if parameter else default_codes.get(case_type, "AJ")).strip().upper()
-    prefix = f"SH{type_code}{datetime.now():%y}"
+    prefix = f"HZ{type_code}{datetime.now():%y}"
     existing = (await db.scalars(select(BusinessRecord.serial_no).where(
         BusinessRecord.module == "case",
         BusinessRecord.serial_no.like(f"{prefix}%"),
