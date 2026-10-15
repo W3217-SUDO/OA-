@@ -606,12 +606,19 @@ async def list_case_relations(
     # ``律师代理费(退费)`` finance row.  The source official/agency row remains
     # authoritative for the refund workflow, but its refund column must not
     # repeat the same amount in the case-detail table.
+    legacy_source_fee_ids = {
+        item.id for item in fees
+        if (item.data or {}).get("legacy_record")
+        or (item.data or {}).get("legacy_case_fee_id")
+        or (item.data or {}).get("legacy_fee_id")
+    }
     agency_refund_source_ids = {
         int((item.data or {}).get("source_fee_id"))
         for item in fees
         if (item.data or {}).get("refund_fee")
         and str((item.data or {}).get("source_fee_id") or "").isdigit()
         and item.status != "已删除"
+        and int((item.data or {}).get("source_fee_id")) not in legacy_source_fee_ids
     }
     payment_totals = await fee_payment_totals(
         fees, db, source_data_by_id=fee_source_data,
