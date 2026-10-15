@@ -1,10 +1,11 @@
-# 10.15 第8至14行验收补充（1.1.441）
+# 10.15 第8至14行验收补充（1.1.443）
 
-- 生产版本：`1.1.441`
-- 代码提交：`f08f3a92b69d118be4a0908a1af2413ba9f9e0e3`；版本提交：`f0f2d465b06cb009804128755f2471726ac10f9b`
-- current：`/opt/sunhold-oa/runtime/enterprise/packages/1.1.441`；API/Web active；`https://huzhilawfirm.com/health` 返回 `{"status":"ok"}`。
+- 生产版本：`1.1.443`
+- 代码提交：`b869b235dadd44347fe7228a831509d7b2b908a9`；版本提交：`c30651f80e1c7c99a6a185c0a4dcaf3e1e9281af`
+- current：`/opt/sunhold-oa/runtime/enterprise/packages/1.1.443`；API/Web active；`https://huzhilawfirm.com/health` 返回 `{"status":"ok"}`。
 - 当前已登录工作台标签刷新至 `https://huzhilawfirm.com/?page=finance-case-fees-refunds`，页面正常显示财务中心费用管理、诉讼费退款页签、真实费用列表和分页，无白屏或加载失败。
 - 总结算无匹配客户筛选生产回读 `422` 用时约 8 秒；无分配明细的结算候选已增加等价短路，避免继续加载全量费用和结算记录。
+- 1.1.443 使用 PostgreSQL 400 条费用明细批次（SQLite 保持 100 条批次）；生产全量总结算由约 130 秒/网关 504 改为约 37 秒并返回明确业务 409，发票导出返回业务 409，到账查询导出约 26 秒返回业务 409。
 - 清理审计发现早先 4 条 CODEX 财务测试记录仍以“已删除”软删除状态留在数据库；本轮已按精确 ID 删除 4 条业务记录及其 16 条测试工作流事件，生产数据库回查为 0，回款和付款包标识也为 0。
 
 ## 真实 CODEX 闭环
