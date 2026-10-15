@@ -46,19 +46,23 @@ function createColumns(context: ExternalCaseFeeColumnContext, firm: boolean): Ta
         { title: "退费", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => firm ? formatRefund(row.data) : caseFeeRefundLabel(row.data) },
         { title: "提交人", width: 120, render: (_: unknown, row: CaseRow) => row.data.submitter_display_name || row.data.submitted_by_display_name || row.data.handler_display_name || row.owner_display_name || context.casePersonDisplayName(row.owner) },
         { title: "提交日期", width: 120, render: (_: unknown, row: CaseRow) => displayFinancialValue(String(row.data.submitted_at || row.created_at || row.data.created_at || "")).slice(0, 10) || "—" },
-        { title: "回款日期", width: 120, render: (_: unknown, row: CaseRow) => caseFeeReceiptApplicable(row.data, row.title)
-            ? displayFinancialValue(String(row.data.received_at || row.data.cashed_date || "")).slice(0, 10) || "—" : "—" },
+        { title: "回款日期", width: 120, render: (_: unknown, row: CaseRow) => {
+                if (!caseFeeReceiptApplicable(row.data, row.title)) return "/";
+                const rawDate = String(row.data.received_at || row.data.cashed_date || "").trim();
+                if (!rawDate || rawDate === "/" || rawDate === "\\") return "";
+                const normalizedDate = displayFinancialValue(rawDate);
+                return normalizedDate === "—" ? "" : normalizedDate.slice(0, 10);
+            } },
         { title: "回款金额", width: 110, align: "right" as const, render: (_: unknown, row: CaseRow) => {
-                if (!caseFeeReceiptApplicable(row.data, row.title)) return "—";
+                if (!caseFeeReceiptApplicable(row.data, row.title)) return "/";
                 const rawValue = row.data.received_amount ?? row.data.cashed_amount;
                 const normalizedValue = String(rawValue ?? "").trim();
-                const value = normalizedValue && normalizedValue !== "/" && normalizedValue !== "\\"
-                    ? Number(normalizedValue)
-                    : 0;
-                if (!Number.isFinite(value)) return firm ? "—" : 0;
+                if (!normalizedValue || normalizedValue === "/" || normalizedValue === "\\") return "";
+                const value = Number(normalizedValue);
+                if (!Number.isFinite(value)) return "";
                 return value !== 0
                     ? <Button type="link" className={firm ? "case-cell-link case-firm-fee-amount-link" : "case-cell-link"} onClick={() => context.openRelatedIncomingPayment(row)}>{firm ? formatAmount(value) : value}</Button>
-                    : firm ? "0.00" : 0;
+                    : "";
             } },
         { title: "开票日期", width: 160, render: (_: unknown, row: CaseRow) => {
                 const { dates } = caseFeeBillDisplay(row.data);

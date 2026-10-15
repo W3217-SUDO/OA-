@@ -144,7 +144,7 @@ test("案件费用合并票据展示但不改真实发票和付款凭证数据�
   assert.deepEqual(caseFeeBillDisplay({ case_fee_files: [], writeoff_voucher_record_id: 9 }).entries, []);
 });
 
-test("五类第三方回款日期和金额为横线，官费代理费未到账为零并保留真实回款链接", async () => {
+test("五类第三方回款日期和金额为斜杠，其他费用缺数据留空并保留真实回款链接", async () => {
   const { createExternalCaseFeeColumns } = await loadActualModule("../src/legal/columns/externalCaseFeeColumns.tsx");
   let opened;
   const columns = createExternalCaseFeeColumns({ openRelatedIncomingPayment: row => { opened = row.id; } });
@@ -152,16 +152,16 @@ test("五类第三方回款日期和金额为横线，官费代理费未到账�
   for (const name of ["公告费", "公证服务费", "担保费", "鉴定费", "检索费"]) {
     for (const key of ["expense_subtype", "fee_type_name", "case_fee_type_name", "fee_type"]) {
       const row = { title: "独立测试费用", data: { [key]: name, received_amount: 0, received_at: "2026-10-12" } };
-      assert.equal(cell("回款金额", row), "—");
-      assert.equal(cell("回款日期", row), "—");
+      assert.equal(cell("回款金额", row), "/");
+      assert.equal(cell("回款日期", row), "/");
     }
   }
-  assert.equal(cell("回款金额", { data: { receipt_allocation_applicable: false, received_amount: 8 } }), "—");
+  assert.equal(cell("回款金额", { data: { receipt_allocation_applicable: false, received_amount: 8 } }), "/");
   for (const name of ["一审诉讼费", "二审诉讼费", "保全费", "公证费", "代理费", "律师代理费"]) {
     for (const received_amount of [undefined, null, "", "/", "\\", 0]) {
       const row = { title: name, data: { expense_subtype: name, received_amount } };
-      assert.equal(cell("回款金额", row), 0);
-      assert.equal(cell("回款日期", row), "—");
+      assert.equal(cell("回款金额", row), "");
+      assert.equal(cell("回款日期", row), "");
     }
   }
   const row = { id: 12, data: { receipt_allocation_applicable: true, expense_subtype: "律师代理费", received_amount: 20, received_at: "2026-10-12" } };
@@ -192,8 +192,8 @@ test("案件费用只归一化全值斜杠占位，保留真实零值、原默�
   for (const placeholder of ["/", "\\", " / ", " \\ ", "///", "\\\\", "/\\/", "            /\\"]) {
     assert.equal(cell("金额", { amount: placeholder }), "—");
     assert.equal(cell("申请付款金额", { payment_requested_amount: placeholder }), "—");
-    assert.equal(cell("回款日期", { received_at: placeholder }), "—");
-    assert.equal(cell("回款日期", { cashed_date: placeholder }), "—");
+    assert.equal(cell("回款日期", { received_at: placeholder }), "");
+    assert.equal(cell("回款日期", { cashed_date: placeholder }), "");
   }
   for (const amount of [0, "0", 12.5, "12.50", null, undefined]) {
     assert.equal(cell("金额", { amount }), amount ?? 0);
@@ -203,7 +203,7 @@ test("案件费用只归一化全值斜杠占位，保留真实零值、原默�
     assert.equal(cell("回款日期", { received_at: date }), date.slice(0, 10));
     assert.equal(cell("回款日期", { cashed_date: date }), date.slice(0, 10));
   }
-  for (const date of [null, undefined, ""]) assert.equal(cell("回款日期", { received_at: date }), "—");
+    for (const date of [null, undefined, ""]) assert.equal(cell("回款日期", { received_at: date }), "");
 });
 
 test("费用票据前端确认后才DELETE，取消不写，失败明确且保留真实行", async () => {

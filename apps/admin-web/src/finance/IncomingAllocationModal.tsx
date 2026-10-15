@@ -86,8 +86,8 @@ export function IncomingAllocationModal({
     { title: "提交日期", dataIndex: "submission_date", width: 100 },
     { title: "费用类型", dataIndex: "fee_type", width: 125 },
     { title: "总额", dataIndex: "total_amount", width: 90, render: money },
-    { title: "已回", dataIndex: "received_amount", width: 90, render: (_: unknown, row: AllocationCandidate) => isNonAllocatableThirdParty(row) ? "—" : money(row.received_amount) },
-    { title: "待回", dataIndex: "remaining_amount", width: 90, render: (_: unknown, row: AllocationCandidate) => isNonAllocatableThirdParty(row) ? "—" : money(row.remaining_amount) },
+    { title: "已回", dataIndex: "received_amount", width: 90, render: (_: unknown, row: AllocationCandidate) => isNonAllocatableThirdParty(row) ? "/" : money(row.received_amount) },
+    { title: "待回", dataIndex: "remaining_amount", width: 90, render: (_: unknown, row: AllocationCandidate) => isNonAllocatableThirdParty(row) ? "/" : money(row.remaining_amount) },
     {
       title: "本次回款",
       key: "allocation_amount",
