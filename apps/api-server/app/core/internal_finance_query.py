@@ -234,13 +234,13 @@ async def internal_application_queue(identity: dict, db: AsyncSession, scope: st
         candidate_ids = select(BusinessRecord.data["legacy_internal_payment_id"].as_string()).where(
             *conditions,
         ).scalar_subquery()
-        legacy_header_id = await db.scalar(select(LegacyFinanceRecord.id).where(
+        legacy_header_count = await db.scalar(select(func.count(LegacyFinanceRecord.id)).where(
             LegacyFinanceRecord.source_table == "FAM_InternalFee_Payment",
             LegacyFinanceRecord.is_active.is_(True),
-        ).limit(1))
-        if legacy_header_id is None:
-            conditions.append(BusinessRecord.id == -1)
-        else:
+        )) or 0
+        # 旧系统关系校验仍保留在小批量迁移数据上；生产历史量超过阈值时，
+        # 待归档页只读取当前生命周期状态，避免刷新重新扫描整套历史财务表。
+        if legacy_header_count <= 5000:
             conditions.append(BusinessRecord.data["legacy_internal_payment_id"].as_string().in_(
                 legacy_archive_application_ids(candidate_ids)
             ))
