@@ -1,4 +1,5 @@
 export const caseFeeRefundLabel = (data = {}) => {
+  if (data.refund_display_suppressed) return "0";
   if (String(data.refund_status || "").toUpperCase() === "R100" || data.refund_not_required) {
     return "不再办理退费";
   }

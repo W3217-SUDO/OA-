@@ -24,6 +24,7 @@ function formatAmount(value: unknown): string {
 }
 
 function formatRefund(data: Record<string, unknown>): string {
+    if (data.refund_display_suppressed) return "0.00";
     const label = caseFeeRefundLabel(data);
     const match = label.match(/^(-?\d+(?:\.\d+)?)(.*)$/);
     return match ? `${formatAmount(match[1])}${match[2]}` : label;

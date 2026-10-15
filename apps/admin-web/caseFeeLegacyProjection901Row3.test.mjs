@@ -17,3 +17,7 @@ test("9.15 court refunds show remaining balance and ignore ordinary receipt tota
   assert.equal(caseFeeRefundLabel({refund_amount:50, refunded_amount:50}), "50 (已退)");
   assert.equal(caseFeeRefundLabel({refund_amount:50, refunded_amount:0}), "50 (未退)");
 });
+
+test("court refund derived fee suppresses the duplicate source-row refund display", () => {
+  assert.equal(caseFeeRefundLabel({ refund_amount: 300, refund_display_suppressed: true }), "0");
+});

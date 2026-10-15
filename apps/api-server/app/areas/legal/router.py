@@ -602,6 +602,17 @@ async def list_case_relations(
     from app.core.system import _allowed_field_keys
     allowed_fields = await _allowed_field_keys(identity, db)
     fee_source_data = {item.id: _legacy_case_fee_projection(item.data or {}) for item in fees}
+    # Court refunds for a law-firm fee create a dedicated derived
+    # ``律师代理费(退费)`` finance row.  The source official/agency row remains
+    # authoritative for the refund workflow, but its refund column must not
+    # repeat the same amount in the case-detail table.
+    agency_refund_source_ids = {
+        int((item.data or {}).get("source_fee_id"))
+        for item in fees
+        if (item.data or {}).get("refund_fee")
+        and str((item.data or {}).get("source_fee_id") or "").isdigit()
+        and item.status != "已删除"
+    }
     payment_totals = await fee_payment_totals(
         fees, db, source_data_by_id=fee_source_data,
     ) if allowed_fields is None or "finance.amount" in allowed_fields else {}
@@ -659,6 +670,8 @@ async def list_case_relations(
                 float(result_data.get("refund_amount") or result_data.get("refund_requested_amount") or 0),
                 max(float(result_data.get("refunded_amount") or 0), float((item.data or {}).get("refunded_amount") or 0)),
             )
+            if item.id in agency_refund_source_ids:
+                result_data["refund_display_suppressed"] = True
         result["data"] = result_data
         return apply_fee_payment_projection(result, payment_totals, allowed_fields)
 
