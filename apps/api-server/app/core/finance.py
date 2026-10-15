@@ -2309,6 +2309,7 @@ async def _internal_fee_rows(
     case_stages: str,
     fee_types: str,
     ids: set[int] | None = None,
+    skip_lifecycle: bool = False,
 ) -> list[dict]:
     from app.core.permissions import (
         _record_scope_conditions,
@@ -2383,7 +2384,7 @@ async def _internal_fee_rows(
     selected_stages = {value.strip() for value in case_stages.split(",") if value.strip()}
     selected_types = {value.strip() for value in fee_types.split(",") if value.strip()}
     personal_names = {str(identity.get("username", "")).strip(), str(identity.get("display_name", "")).strip()} - {""}
-    lifecycle_statuses = await _case_commission_lifecycle_statuses(fees, db)
+    lifecycle_statuses = {} if skip_lifecycle else await _case_commission_lifecycle_statuses(fees, db)
 
     def contains(value: object, needle: str) -> bool:
         return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()

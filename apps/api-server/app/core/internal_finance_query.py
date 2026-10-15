@@ -264,6 +264,7 @@ async def internal_application_queue(identity: dict, db: AsyncSession, scope: st
         identity, db, scope="queue", ids=modern_ids | child_ids, case_no="", handling_lawyer="",
         assistant="", source_person="", customer="", customer_manager="", investigator="",
         payment_status="", paid_from=None, paid_to=None, payee="", case_stages="", fee_types="",
+        skip_lifecycle=scope == "archive",
     )
     children: dict[int, list[dict]] = {}
     for row in all_rows:
