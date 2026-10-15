@@ -114,6 +114,10 @@ export const CaseAgentDrawer = ({
     setActiveAction(null);
   };
   const actionDisabled = (action: CaseAgentAction) => Boolean(agentDecisionLoading) || (action.type !== "mcp.call" && !counselDetailCapabilities.can_write);
+  const selectedSkill = (agentStatus?.skills || []).find((item) => item.id === agentSkillId);
+  const quickPrompts = selectedSkill?.quick_prompts?.length
+    ? selectedSkill.quick_prompts
+    : ["概括案件现状", "检查最近期限风险", "汇总合同与费用", "列出尚未完成的任务"];
   return (
     <Drawer
       className="case-agent-drawer"
@@ -182,7 +186,7 @@ export const CaseAgentDrawer = ({
           <div ref={agentMessagesEndRef} />
         </div>
         {!agentLoading && !agentState?.messages?.length && agentStatus?.ready && <div className="case-agent-suggestions">
-          {["概括案件现状", "检查最近期限风险", "汇总合同与费用", "列出尚未完成的任务"].map((text) => <Button key={text} size="small" onClick={() => void sendCaseAgentMessage(text)}>{text}</Button>)}
+          {quickPrompts.map((text) => <Button key={text} size="small" onClick={() => void sendCaseAgentMessage(text)}>{text}</Button>)}
         </div>}
         <div className="case-agent-composer">
           {agentMaterialPickerOpen && <div className="case-agent-material-tree" aria-label="从案件文件夹选择本轮材料">
