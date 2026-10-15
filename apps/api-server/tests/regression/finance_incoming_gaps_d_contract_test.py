@@ -136,6 +136,27 @@ class FinanceIncomingGapsDContractTest(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual(locked.status_code, status.HTTP_409_CONFLICT)
 
+    async def test_incoming_payment_delete_role_matrix_and_terminal_guard(self):
+        """回款删除只允许三类财务角色，已分配记录必须被终态门禁拦截。"""
+        for role in ("manager", "auditor"):
+            payment_id = await self._create_payment(reference=f"CODEX-FINANCE-D-DELETE-{role}")
+            app.dependency_overrides[current_identity] = lambda role=role: {"username": f"finance-d-{role}", "role": role, "display_name": role, "department": "上海分所"}
+            response = await self.client.delete(f"{API}/finance/incoming-payments/{payment_id}")
+            self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT, response.text)
+
+        ordinary_id = await self._create_payment(reference="CODEX-FINANCE-D-DELETE-user")
+        app.dependency_overrides[current_identity] = lambda: USER
+        forbidden = await self.client.delete(f"{API}/finance/incoming-payments/{ordinary_id}")
+        self.assertEqual(forbidden.status_code, status.HTTP_403_FORBIDDEN)
+
+        terminal_id = await self._create_payment(
+            reference="CODEX-FINANCE-D-DELETE-terminal", status_value="已分配", allocated_amount=1,
+            allocations=[{"amount": 1}],
+        )
+        app.dependency_overrides[current_identity] = lambda: ADMIN
+        terminal = await self.client.delete(f"{API}/finance/incoming-payments/{terminal_id}")
+        self.assertEqual(terminal.status_code, status.HTTP_409_CONFLICT)
+
     async def test_refund_candidates_and_refund_claim_flow(self):
         fee = BusinessRecord(module="finance", serial_no="CODEX-FINANCE-D-FEE", title="CODEX D 法院诉讼费", customer="CODEX D 客户", status="已付款", owner="finance-d-admin", department="上海分所", data={"amount": 300, "fee_type": "官方费用", "case_no": "CODEX-FINANCE-D-CASE", "court": "上海市宝山区人民法院"})
         not_paid = BusinessRecord(module="finance", serial_no="CODEX-FINANCE-D-FEE2", title="CODEX D 未付款官费", customer="CODEX D 客户", status="待审批", owner="finance-d-admin", department="上海分所", data={"amount": 200, "fee_type": "官方费用", "case_no": "CODEX-FINANCE-D-CASE2", "court": "上海市浦东新区人民法院"})

@@ -809,9 +809,12 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
 
 @router.delete(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_incoming_payment(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    if identity.get("role") != "admin": raise HTTPException(status_code=403, detail="仅管理员可删除银行到账")
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="仅管理者、财务端或财务审核端可删除银行到账")
     item = await db.get(IncomingPayment, payment_id)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
+    if item.status not in {"待认领", "待分配"} or item.allocated_amount > 0 or item.allocations:
+        raise HTTPException(status_code=409, detail="已到账、已领取、已分配、已开票、已结算或已归档的数据不能删除；如需调整请走财务审核流程")
     active_settlement = (await _active_settlements_by_receipt(db, {item.id})).get(item.id)
     if active_settlement:
         raise HTTPException(status_code=409, detail=f"到账已关联{active_settlement.status}结算 {active_settlement.serial_no}，不能删除")
