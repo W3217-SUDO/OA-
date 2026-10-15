@@ -3781,6 +3781,18 @@ async def get_record(record_id: int, scope: str = Query("", pattern="^(|audit)$"
     return await _record_dict_for_identity(record, identity, db)
 
 
+@router.get(f"{settings.api_prefix}/records/{{record_id}}/shell")
+async def get_record_shell(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """Return the lightweight case shell needed to paint the detail workspace."""
+    from app.core.permissions import _can_search_all_cases_from_global_search, _ensure_case_read_visible, _require_record_module_menu
+    from app.core.system import _allowed_field_keys, _record_dict
+
+    record = await _ensure_case_read_visible(record_id, identity, db)
+    if record.module != "case" or not await _can_search_all_cases_from_global_search(identity, db):
+        await _require_record_module_menu(record.module, identity, db, action="查看")
+    return _record_dict(record, await _allowed_field_keys(identity, db))
+
+
 @router.get(f"{settings.api_prefix}/records/{{record_id}}/history")
 async def record_history(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.formatters import (

@@ -631,14 +631,18 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 setActiveCounselDetailTab(preferredTab || storedTab || "documents");
             if (storedTab)
                 sessionStorage.removeItem("sunhold:case-detail-tab");
-            // 基础案件详情必须先打开；历史、附件、提醒等附加面板不能因为单点失败
-            // 阻断案号关联、搜索或通知进入详情。
-            const recordRes = await api.get(`/records/${row.id}`);
-            if (clueRequestId !== counselDetailClueRequestRef.current)
-                return;
-            const detailRecord = recordRes.data as CaseRow;
+            // 先用列表/轻量 shell 数据绘制详情壳；完整人员、合同和费用投影
+            // 在后台补齐，不能阻塞标签栏、文档目录和首屏骨架。
+            const detailRecord = row as CaseRow;
             setViewingCounselCase(detailRecord);
             counselDetailCaseIdRef.current = detailRecord.id;
+            void api.get(`/records/${row.id}`).then((response) => {
+                if (clueRequestId !== counselDetailClueRequestRef.current) return;
+                const fullRecord = response.data as CaseRow;
+                setViewingCounselCase((current) => current?.id === fullRecord.id
+                    ? { ...current, ...fullRecord, data: { ...current.data, ...fullRecord.data } }
+                    : current);
+            }).catch(() => undefined);
             void api.get<{
                 legacy_case_id: number;
             }>(`/legacy-ls-history/current-records/${detailRecord.id}`)

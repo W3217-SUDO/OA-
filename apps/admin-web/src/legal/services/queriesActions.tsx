@@ -267,7 +267,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             let initialCaseItems: CaseRow[] = [];
             if (shouldLoadInitialRecord) {
                 const caseRes = isCaseDetailView && detailRouteId > 0
-                    ? await api.get(`/records/${detailRouteId}`)
+                    ? await api.get(`/records/${detailRouteId}/shell`)
                     : await api.get("/records", {
                         params: { module: "case", page_size: 100, archive_view: archiveView },
                     });
