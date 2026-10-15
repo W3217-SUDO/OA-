@@ -91,12 +91,16 @@ async def rollback_finance_payment(
     comment = body.comment.strip()
     if is_external_case_fee(item):
         await release_direct_fee_request(item, db)
-    item.status = "草稿"
+    # A rollback from the waiting-payment queue returns to the approval queue;
+    # earlier draft/approval rollback semantics remain unchanged.
+    rollback_status = "待审批" if previous == "待付款" else "草稿"
+    item.status = rollback_status
     item.data = {
         **(item.data or {}),
         "rollback_comment": comment,
         "rolled_back_by": identity["username"],
         "rolled_back_at": changed_at,
+        "payment_status": rollback_status,
     }
     db.add(WorkflowEvent(
         record_id=item.id,

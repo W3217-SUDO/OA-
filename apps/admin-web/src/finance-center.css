@@ -1,6 +1,9 @@
 .finance-rule {
   margin-bottom: 15px;
 }
+.finance-copy-value { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; }
+.finance-copy-value > span { overflow-wrap: anywhere; }
+.finance-copy-value .ant-btn { min-width: 28px; height: 28px; padding: 0 4px; }
 .finance-receipt-cell {
   display: block;
   min-width: 0;
@@ -51,6 +54,21 @@
 .finance-allocation-modal .ant-modal-body {
   max-height: calc(100vh - 150px);
   overflow: auto;
+}
+/* The application shell keeps a 280px navigation rail on desktop.  Keep
+   allocation work inside the content viewport so the rail and global search
+   remain usable while the modal is open. */
+.finance-allocation-modal .ant-modal-wrap,
+.finance-allocation-modal .ant-modal-mask {
+  left: 280px;
+  width: calc(100% - 280px);
+}
+@media (max-width: 991px) {
+  .finance-allocation-modal .ant-modal-wrap,
+  .finance-allocation-modal .ant-modal-mask {
+    left: 0;
+    width: 100%;
+  }
 }
 .finance-allocation-section {
   margin-bottom: 12px;

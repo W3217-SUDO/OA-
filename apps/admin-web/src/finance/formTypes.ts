@@ -63,6 +63,7 @@ export interface IncomingPaymentFormValues {
   amount: number;
   payer_name: string;
   bank_reference: string;
+  bank_source?: string;
   remark?: string;
 }
 

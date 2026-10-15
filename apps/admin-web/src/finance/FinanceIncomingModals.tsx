@@ -79,6 +79,9 @@ export function IncomingRegistrationModal({
           >
             <Input />
           </Form.Item>
+          <Form.Item label="到账银行名称" name="bank_source">
+            <Input placeholder="例如：上海沪知招行；支持手动填写" />
+          </Form.Item>
           <Form.Item label="银行摘要/备注" name="remark">
             <Input.TextArea rows={3} />
           </Form.Item>

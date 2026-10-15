@@ -624,9 +624,22 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
     ))
     total = _round_fee_amount(sum(entry.amount for entry in body.allocations)); remaining_payment = _round_fee_amount(item.amount - item.allocated_amount)
     if total > remaining_payment + 0.001: raise HTTPException(status_code=409, detail=f"分配金额超过到账未分配余额 {remaining_payment:.2f} 元")
-    if any(entry.is_refund for entry in body.allocations):
+    # A single bank receipt may legitimately contain ordinary fees and a
+    # lawyer-fee refund.  The legacy path used to route the whole request to
+    # the court-refund handler as soon as one row was marked as a refund,
+    # silently dropping the ordinary rows.  Process the refund subset first,
+    # then continue through the ordinary allocation path with the same
+    # receipt, so both selected rows are persisted and projected to the case.
+    refund_entries = [entry for entry in body.allocations if entry.is_refund]
+    ordinary_entries = [entry for entry in body.allocations if not entry.is_refund]
+    if refund_entries:
         from app.core.finance_batch_parity import allocate_court_refund
-        return await allocate_court_refund(item, body, claimed_customer_record, identity, db)
+        refund_body = body.model_copy(update={"allocations": refund_entries})
+        await allocate_court_refund(item, refund_body, claimed_customer_record, identity, db)
+        if not ordinary_entries:
+            return await _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
+        await db.refresh(item)
+        body = body.model_copy(update={"allocations": ordinary_entries})
     prepared: list[tuple[IncomingPaymentAllocationItem, ReceivablePlan, BusinessRecord, BusinessRecord | None, BusinessRecord | None, list[dict]]] = []
     plan_totals: dict[int, float] = {}
     fee_totals: dict[int, float] = {}

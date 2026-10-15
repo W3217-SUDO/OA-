@@ -5,6 +5,7 @@ import { displayFinancialValue } from "../../financialValueDisplay";
 import type { Fee } from "../types";
 export function createPaymentAuditOriginalColumns(context: {
     readonly setFeeReviewTargets: React.Dispatch<React.SetStateAction<Fee[]>>;
+    readonly openPaymentDetail?: (row: Fee) => Promise<void>;
     readonly financePersonDisplayName: (identity: unknown, displayName?: unknown) => string;
     readonly openCaseDetail: (caseNo: unknown) => Promise<void>;
     readonly openContractDetail: (contractNo: unknown) => Promise<void>;
@@ -18,6 +19,12 @@ export function createPaymentAuditOriginalColumns(context: {
             render: (value: string, row: Fee) => (<Button type="link" onClick={() => context.setFeeReviewTargets([row])}>
           {value}
         </Button>),
+        },
+        {
+            title: "操作", ...moneyColumnStyle("操作"), width: 80,
+            render: (_: unknown, row: Fee) => context.openPaymentDetail
+                ? <Button type="link" onClick={() => void context.openPaymentDetail?.(row)}>查看</Button>
+                : "—",
         },
         {
             title: "类型", ...moneyColumnStyle("类型"),

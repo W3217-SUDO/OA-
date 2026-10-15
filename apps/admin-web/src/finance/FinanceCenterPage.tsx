@@ -2375,6 +2375,7 @@ export default function FinanceCenterPage({
   });
   const paymentAuditOriginalColumns = createPaymentAuditOriginalColumns({
     get setFeeReviewTargets() { return setFeeReviewTargets; },
+    get openPaymentDetail() { return openPaymentDetail; },
     get financePersonDisplayName() { return financePersonDisplayName; },
     get openCaseDetail() { return openCaseDetail; },
     get openContractDetail() { return openContractDetail; },

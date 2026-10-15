@@ -4,6 +4,7 @@ import Table from "../components/ResizableTable";
 import { api } from "../api";
 import { money } from "./constants";
 import { displayFinancialValue } from "../financialValueDisplay";
+import { CopyValue } from "./CopyValue";
 
 type Allocation = { index: number; case_no: string; contract_no: string; case_title: string; case_type: string; court_keywords: string; fee_type: string; case_stage: string; plaintiff: string; defendant: string; fee_amount: number | null; fee_received: number | null; fee_remaining: number | null; amount: number; allocated_at: string };
 type Result = { payment: { receipt_no: string; payer_name: string; received_date: string; amount: number; allocated_amount: number; remaining_amount: number; bank_reference: string; claimed_customer: string; claimant_display_name: string; contract_no: string; payment_method: string; remark: string }; items: Allocation[]; revision: string; can_cancel: boolean };
@@ -52,8 +53,8 @@ export function IncomingAllocationRecordsPage({ paymentId, onClose, onChange, on
       { key: "customer", label: "客户名称", children: payment?.claimed_customer },
       { key: "method", label: "回款方式", children: payment?.payment_method },
       { key: "claimant", label: "领取人", children: payment?.claimant_display_name },
-      { key: "contract", label: "合同号", children: payment?.contract_no },
-      { key: "remark", label: "备注", children: payment?.remark, span: 2 },
+      { key: "contract", label: "合同号", children: <CopyValue value={payment?.contract_no} /> },
+      { key: "remark", label: "备注", children: <CopyValue value={payment?.remark} />, span: 2 },
     ]} />
     <Space wrap style={{ margin: "16px 0" }}>
       <Input placeholder="案号、法院、原告、被告、案件名称" value={keyword} onChange={e => setKeyword(e.target.value)} style={{ width: 270 }} />
