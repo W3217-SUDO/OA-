@@ -536,6 +536,7 @@ async def list_case_relations(
     # an earlier conversion; doing so makes one selected clue look like many.
     if include == "fees":
         clues = []
+        clue_condition = BusinessRecord.id == -1
     elif clue_ids:
         clue_condition = BusinessRecord.id.in_(clue_ids)
     elif clue_nos:
