@@ -593,9 +593,10 @@ async def list_case_relations(
     active_invoices_by_fee: dict[int, BusinessRecord] = {}
     payment_vouchers_by_id: dict[int, BusinessRecord] = {}
     if fee_ids:
+        from app.core.json_relation_query import json_scalar_overlap
         invoice_link_condition = or_(
             BusinessRecord.data["case_fee_id"].as_integer().in_(fee_ids),
-            BusinessRecord.data["case_fee_ids"].contains(list(fee_ids)),
+            json_scalar_overlap(BusinessRecord.data, fee_ids | set(legacy_fee_ids)),
             BusinessRecord.data["case_no"].as_string() == case_record.serial_no,
         )
         invoices = list((await db.scalars(select(BusinessRecord).where(
