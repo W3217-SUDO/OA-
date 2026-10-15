@@ -55,6 +55,7 @@ import { createReconcileColumns } from "./columns/reconcileColumns";
 import { createRefundColumns } from "./columns/refundColumns";
 import { createTransactionColumns } from "./columns/transactionColumns";
 import { createRouteConfigs } from "./config/routeConfigs";
+import { printFinanceDocument } from "./printWindow";
 import { originalFinanceRoutes, originalFinanceTitles } from "./config/routeMetadata";
 import {
 effectivePaymentQuery,
@@ -4450,7 +4451,7 @@ export default function FinanceCenterPage({
           >
             下载 Word
           </Button>
-          <Button type="link" onClick={() => window.print()}>
+          <Button type="link" onClick={() => printFinanceDocument()}>
             打印
           </Button>
           <Button size="small" onClick={() => setPaymentPrintPreview(null)}>
@@ -4460,7 +4461,7 @@ export default function FinanceCenterPage({
       </div>
       <div className="finance-payment-print-sheet" aria-label="付款申请单">
         <div className="finance-payment-print-heading">
-          <strong>上海申浩律师事务所</strong>
+          <strong>上海沪知律师事务所</strong>
           <h2>付款申请单</h2>
         </div>
         <table className="finance-payment-print-meta">
@@ -4594,7 +4595,7 @@ export default function FinanceCenterPage({
               </Button>
             )}
             {(!paymentPackagePreview || paymentPackagePreview.submitted) && (
-              <Button type="link" onClick={() => window.print()}>
+              <Button type="link" onClick={() => printFinanceDocument()}>
                 打印
               </Button>
             )}
@@ -4612,7 +4613,7 @@ export default function FinanceCenterPage({
         </div>
         <div className="finance-payment-print-sheet" aria-label="提成付款申请单">
           <div className="finance-payment-print-heading">
-            <strong>上海申浩律师事务所</strong>
+          <strong>上海沪知律师事务所</strong>
             <h2>提成付款申请单</h2>
           </div>
           <table className="finance-payment-print-meta">

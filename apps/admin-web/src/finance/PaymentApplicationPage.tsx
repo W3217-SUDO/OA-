@@ -5,6 +5,7 @@ import { api } from "../api";
 import "./payment-application.css";
 import { PaymentDocument } from "./PaymentDocument";
 import { paymentMethodOptions } from "./constants";
+import { printFinanceDocument } from "./printWindow";
 
 export function PaymentApplicationPage({ record, onClose, onChange, onCase, onContract }: { record: any; onClose: () => void; onChange: () => Promise<void>; onCase?: (no: string) => void; onContract?: (no: string) => void }) {
   const [row, setRow] = useState(record);
@@ -31,7 +32,7 @@ export function PaymentApplicationPage({ record, onClose, onChange, onCase, onCo
       setRow((await api.get(`/finance/payment-workflow/${response.data.id}/document`)).data);
       await onChange();
       message.success("已提交至待核销列表");
-      if (printAfter) window.setTimeout(() => window.print(), 100);
+      if (printAfter) window.setTimeout(() => printFinanceDocument(), 100);
     } catch (error: any) { message.error(error?.response?.data?.detail || "提交失败"); }
     finally { setBusy(false); }
   };
@@ -57,7 +58,7 @@ export function PaymentApplicationPage({ record, onClose, onChange, onCase, onCo
       <Button onClick={onClose}>返回列表</Button>
       {!internal && <Button onClick={() => setPrinting(!printing)}>{printing ? "查看请款单" : "付款单打印"}</Button>}
       {waiting && canSubmitPayment && <><Button type="primary" loading={busy} onClick={() => void submit(false)}>提交</Button>{printing && <Button loading={busy} onClick={() => void submit(true)}>提交并打印</Button>}</>}
-      {printing && !waiting && <Button onClick={() => window.print()}>打印</Button>}
+      {printing && !waiting && <Button onClick={() => printFinanceDocument()}>打印</Button>}
       {pending && canWriteoffPayment && <Button type="primary" onClick={() => { form.setFieldsValue({ amount: data.amount, paid_date: dayjs(), payment_method: "自动扣款" }); setWriting(true); }}>核销</Button>}
     </Space></div>
     <PaymentDocument row={row} printing={printing} onCase={onCase} onContract={onContract} />

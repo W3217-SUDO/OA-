@@ -19,6 +19,14 @@
 .payment-print-total { padding: 16px 8px; border: 1px solid #ddd; }
 .payment-print-total span { float: right; }
 .payment-print-signatures { display: flex; justify-content: space-between; margin: 40px 10px; }
+@media (max-width: 600px) {
+  .payment-application-page { padding: 10px; }
+  .payment-screen-actions { justify-content: stretch; overflow-x: auto; padding-bottom: 4px; }
+  .payment-screen-actions .ant-space { min-width: max-content; }
+  .payment-print-document { min-width: 720px; overflow-x: auto; }
+  .payment-print-document h2 { font-size: 20px; }
+  .payment-print-signatures { gap: 24px; min-width: 680px; }
+}
 @media print {
   body:has(.payment-application-page) * { visibility: hidden; }
   .payment-print-document, .payment-print-document * { visibility: visible; }

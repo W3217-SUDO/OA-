@@ -15,7 +15,7 @@ export function PaymentDocument({ row, printing, onCase, onContract }: {row:any;
   const link = (no:any, handler?: (no:string)=>void) => no && handler ? <Button type="link" size="small" onClick={()=>handler(String(no))}>{no}</Button> : show(no);
   const meta = (fields: [string, any][]) => <div className="payment-meta">{fields.map(([label,value]) => <div key={label}><span>{label}：</span>{value ?? "—"}</div>)}</div>;
   if (printing) return <div className="payment-print-document">
-    <h2>{show(d.company_name || "上海申浩律师事务所")}　付款申请单</h2>
+    <h2>{show(d.company_name || "上海沪知律师事务所")}　付款申请单</h2>
     <table className="payment-paper"><tbody>
       <tr><th>打包流水号</th><td>{show(d.payment_package_no || "提交时生成")}</td><th>打印日期</th><td>{date(new Date().toISOString())}</td><td colSpan={4}></td></tr>
       <tr><th>收款单位</th><td colSpan={2}>{show(d.payee_display_name || d.payee)}</td><th>付款总金额</th><td>{amount(d.amount)}</td><th>属性</th><td colSpan={2}>{show(groups[0]?.fee_type)}</td></tr>
