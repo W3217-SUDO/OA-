@@ -262,14 +262,19 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                 : initialView === "case-archive-refused"
                     ? "refused"
                     : undefined;
-            const caseRes = await api.get("/records", {
-                params: { module: "case", page_size: 100, archive_view: archiveView },
-            });
-            setCases(caseRes.data.items);
-            void loadCaseCapabilities(caseRes.data.items as CaseRow[]);
+            const caseRes = isCaseDetailView && detailRouteId > 0
+                ? await api.get(`/records/${detailRouteId}`)
+                : await api.get("/records", {
+                    params: { module: "case", page_size: 100, archive_view: archiveView },
+                });
+            const initialCaseItems = isCaseDetailView && detailRouteId > 0
+                ? [caseRes.data as CaseRow]
+                : caseRes.data.items as CaseRow[];
+            setCases(initialCaseItems);
+            void loadCaseCapabilities(initialCaseItems);
             const detailTarget = consumeCaseDetailTarget();
             if (detailTarget && !isCreateView) {
-                let linkedCase = (caseRes.data.items as CaseRow[]).find((row) => (detailTarget.id && row.id === detailTarget.id) ||
+                let linkedCase = initialCaseItems.find((row) => (detailTarget.id && row.id === detailTarget.id) ||
                     (detailTarget.serial_no && row.serial_no === detailTarget.serial_no));
                 if (!linkedCase && detailTarget.serial_no) {
                     const { data } = await api.get("/records", {
@@ -283,7 +288,7 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                     message.warning("未找到关联案件或当前账号无权查看");
             }
             else if (isCaseDetailView && detailRouteId > 0) {
-                let linkedCase = (caseRes.data.items as CaseRow[]).find((row) => row.id === detailRouteId);
+                let linkedCase = initialCaseItems.find((row) => row.id === detailRouteId);
                 if (!linkedCase) {
                     try {
                         const { data } = await api.get(`/records/${detailRouteId}`);
