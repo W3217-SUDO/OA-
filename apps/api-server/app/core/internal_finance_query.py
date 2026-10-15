@@ -30,7 +30,7 @@ class InternalApplicationFilters:
         return asdict(self)
 
 
-def legacy_archive_application_ids():
+def legacy_archive_application_ids(candidate_ids=None):
     """还原旧4010主单、当前审核轮次、案件阶段和回款全结算谓词。"""
     header = aliased(LegacyFinanceRecord)
     source_fee = aliased(LegacyFinanceRecord)
@@ -63,6 +63,12 @@ def legacy_archive_application_ids():
     source_fee_database = func.coalesce(
         cast(source_fee.source_payload["_source_database"].as_string(), String), ""
     )
+    conditions = [
+        header.source_table == "FAM_InternalFee_Payment", header.is_active.is_(True),
+        header.status_code.in_(("1", "2")),
+    ]
+    if candidate_ids is not None:
+        conditions.append(header.legacy_id.in_(candidate_ids))
     return (
         select(header.legacy_id).distinct()
         .join(objects, objects.legacy_finance_record_id == header.id)
@@ -70,8 +76,7 @@ def legacy_archive_application_ids():
         .join(LegacyCase, LegacyCase.CaseId == source_fee.source_payload["CaseId"].as_integer())
         .join(audit, audit.legacy_finance_record_id == header.id)
         .where(
-            header.source_table == "FAM_InternalFee_Payment", header.is_active.is_(True),
-            header.status_code.in_(("1", "2")),
+            *conditions,
             # 迁移批次的 kind 命名不同；业务实体以实际来源表和主单外键确定。
             objects.source_table == "FAM_InternalFee_Payment_Object",
             source_fee.source_table == "FAM_InternalFee",
@@ -223,6 +228,9 @@ async def internal_application_queue(identity: dict, db: AsyncSession, scope: st
         # until the 30s timeout (the old page then shows “查询结果计算超时”).
         # Probe the narrow source-table index first and only build the full
         # legacy predicate when legacy payment headers actually exist.
+        candidate_ids = select(BusinessRecord.data["legacy_internal_payment_id"].as_string()).where(
+            *conditions,
+        ).scalar_subquery()
         legacy_header_id = await db.scalar(select(LegacyFinanceRecord.id).where(
             LegacyFinanceRecord.source_table == "FAM_InternalFee_Payment",
             LegacyFinanceRecord.is_active.is_(True),
@@ -230,7 +238,9 @@ async def internal_application_queue(identity: dict, db: AsyncSession, scope: st
         if legacy_header_id is None:
             conditions.append(BusinessRecord.id == -1)
         else:
-            conditions.append(BusinessRecord.data["legacy_internal_payment_id"].as_string().in_(legacy_archive_application_ids()))
+            conditions.append(BusinessRecord.data["legacy_internal_payment_id"].as_string().in_(
+                legacy_archive_application_ids(candidate_ids)
+            ))
     parents = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(
         BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
     ))).all())
