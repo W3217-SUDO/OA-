@@ -973,6 +973,12 @@ function readWorkspaceRouteFromLocation() {
 
 function readOpenPages(active: string): OpenPage[] {
   try {
+    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    if (navigation?.type === "reload") {
+      return active === "dashboard"
+        ? [{ key: "dashboard", label: "工作台" }]
+        : [{ key: "dashboard", label: "工作台" }, { key: active, label: resolveWorkspacePageLabel(active) }];
+    }
     const stored = JSON.parse(localStorage.getItem("sunhold:open-pages") || "[]") as OpenPage[];
     const valid = Array.from(new Map(
       stored
@@ -1707,11 +1713,6 @@ export default function App() {
     );
   const currentPage = requestedPage;
   const refreshCurrentPage = () => {
-    const refreshedPages = active === "dashboard"
-      ? [{ key: "dashboard", label: "工作台" }]
-      : [{ key: "dashboard", label: "工作台" }, { key: active, label: currentPageLabel }];
-    setOpenPages(refreshedPages);
-    localStorage.setItem("sunhold:open-pages", JSON.stringify(refreshedPages));
     setWorkspaceReloadKey((value) => value + 1);
     window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: active }));
     window.dispatchEvent(new CustomEvent("sunhold:menus-updated"));
