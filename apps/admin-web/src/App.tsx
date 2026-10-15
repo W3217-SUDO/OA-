@@ -1906,7 +1906,7 @@ export default function App() {
       </Header>
       <Layout className="app-body">
         <Sider
-          width={280}
+          width={220}
           breakpoint="lg"
           onBreakpoint={(broken) => {
             setIsNarrowViewport(broken);

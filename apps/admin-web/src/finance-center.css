@@ -260,6 +260,21 @@
   background: #f1f1f1 !important;
   border-color: #ddd !important;
 }
+/* 财务列表在纵向滚动时保留表头和合计行，金额汇总无需反复回到页面顶部查看。 */
+.finance-original-table-wrap .ant-table-thead > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+.finance-original-panel tr[class*="grand-total"] > td,
+.finance-original-panel tr[class*="page-total"] > td,
+.finance-original-panel .ant-table-summary > tr > td {
+  position: sticky;
+  top: 36px;
+  z-index: 3;
+  background: #fffdf0 !important;
+  box-shadow: 0 1px 0 #d8d8d8;
+}
 .finance-stacked-header {
   display: inline-flex;
   flex-direction: column;
