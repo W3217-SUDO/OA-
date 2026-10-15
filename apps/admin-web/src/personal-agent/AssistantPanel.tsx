@@ -6,6 +6,7 @@ import AgentAvatar from "./AgentAvatar";
 import { ConversationManager } from "./ConversationManager";
 import { AssistantWorkspaceTools, type AssistantWorkspaceToolsHandle } from "./AssistantWorkspaceTools";
 import { AssistantWorkspaceSidebar } from "./AssistantWorkspaceSidebar";
+import { MemoryControlPanel } from "./MemoryControlPanel";
 import { ActionConfirmation } from "./ActionConfirmation";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { PersonalAiSpace } from "./PersonalAiSpace";
@@ -65,6 +66,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const [historyAction, setHistoryAction] = useState<{ conversationId: string; actionId: string } | null>(null);
   const [dismissalError, setDismissalError] = useState("");
   const [personalSpaceOpen, setPersonalSpaceOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const hasMessages = state.messages.length > 0;
   const lastMessage = state.messages[state.messages.length - 1];
   const sendBlocked = loading || !!loadError || !status?.ready || workspace.conversationBusy || workspace.uploading || !!workspace.decisionId || stopping || composing;
@@ -295,7 +297,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           void workspace.upload(Array.from(event.dataTransfer.files));
         }}
       >
-        <AssistantWorkspaceTools key={workspace.draftKey} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} />
+        <AssistantWorkspaceTools key={workspace.draftKey} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} onOpenMemory={() => setMemoryOpen(true)} />
         <form className="assistant-composer-input" onSubmit={(event) => { event.preventDefault(); submit(); }}>
           <Input.TextArea
             ref={inputRef}
@@ -355,12 +357,14 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         name={name || "AI助手"}
         logoSrc={logoSrc}
         onOpenPersonalSpace={() => setPersonalSpaceOpen(true)}
+        onOpenMemory={() => setMemoryOpen(true)}
         onImportSkills={() => workspaceToolsRef.current?.importSkills()}
         onOpenAgentCenter={onOpenAgentCenter}
         onReopenConfirmation={reopen}
         onReturnWorkbench={onReturnOverview}
       />}
       {desktopWorkspace ? <div className="assistant-workspace-main">{content}</div> : content}
+      {memoryOpen && <MemoryControlPanel open onClose={() => setMemoryOpen(false)} />}
     </section>
   );
 });

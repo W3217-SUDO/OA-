@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button, Popover, Segmented, Select, Tooltip, message } from "antd";
-import { CloseOutlined, ExperimentOutlined, FileOutlined, FolderOpenOutlined, PaperClipOutlined, PlusOutlined } from "@ant-design/icons";
+import { CloseOutlined, ExperimentOutlined, FileOutlined, FolderOpenOutlined, PaperClipOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
 import { CaseMaterialsPicker } from "./CaseMaterialsPicker";
 import { MaterialPreview } from "./MaterialPreview";
 import { SkillManager } from "./SkillManager";
@@ -10,9 +10,9 @@ import { MATERIAL_ACCEPT, type usePersonalWorkspace } from "./usePersonalWorkspa
 import "./assistant-workspace-tools.css";
 
 export type AssistantWorkspaceToolsHandle = { importSkills: () => void };
-type Props = { workspace: ReturnType<typeof usePersonalWorkspace>; onOpenPersonalAiSpace: () => void; desktopWorkspace?: boolean };
+type Props = { workspace: ReturnType<typeof usePersonalWorkspace>; onOpenPersonalAiSpace: () => void; onOpenMemory?: () => void; desktopWorkspace?: boolean };
 
-export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle, Props>(function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace, desktopWorkspace = false }, ref) {
+export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle, Props>(function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace, onOpenMemory, desktopWorkspace = false }, ref) {
   const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 991px)").matches);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<"case" | "materials" | null>(null);
@@ -75,6 +75,7 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
       {!desktopWorkspace && <Tooltip title="导入技能">
         <Button type="text" htmlType="button" className="assistant-skills-manage" icon={<ExperimentOutlined />} disabled={busy} aria-label="导入技能" onClick={() => void openSkills()}>技能</Button>
       </Tooltip>}
+      {onOpenMemory && <Button type="text" htmlType="button" icon={<SettingOutlined />} aria-label="记忆管理" onClick={() => { setToolsOpen(false); onOpenMemory(); }}>记忆管理</Button>}
       {mobile && <Button type="text" htmlType="button" className="personal-ai-space-mobile-entry" icon={<FolderOpenOutlined />} onClick={() => { setToolsOpen(false); onOpenPersonalAiSpace(); }}>个人 AI 空间</Button>}
     </div>;
 

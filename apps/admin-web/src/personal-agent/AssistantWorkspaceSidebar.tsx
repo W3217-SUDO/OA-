@@ -1,5 +1,5 @@
 import { Button, Tooltip } from "antd";
-import { ArrowLeftOutlined, ExperimentOutlined, FolderOpenOutlined, ReloadOutlined, RobotOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ExperimentOutlined, FolderOpenOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from "@ant-design/icons";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { ConversationManager } from "./ConversationManager";
 import { ConversationWorkspaceNavigation } from "./ConversationWorkspaceNavigation";
@@ -11,13 +11,14 @@ type Props = {
   name: string;
   logoSrc?: string;
   onOpenPersonalSpace: () => void;
+  onOpenMemory: () => void;
   onImportSkills: () => void;
   onOpenAgentCenter?: () => void;
   onReopenConfirmation: (detail: ConfirmationDetail) => Promise<void>;
   onReturnWorkbench?: () => void;
 };
 
-export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onImportSkills, onOpenAgentCenter, onReopenConfirmation, onReturnWorkbench }: Props) {
+export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onOpenMemory, onImportSkills, onOpenAgentCenter, onReopenConfirmation, onReturnWorkbench }: Props) {
   const busy = workspace.loading || workspace.stopping || workspace.uploading || !!workspace.decisionId || workspace.conversationBusy;
   return <aside className="assistant-workspace-sidebar" aria-label="AI 工作区导航">
     <div className="assistant-workspace-brand">
@@ -39,6 +40,7 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
       selectClassName="assistant-conversation-select"
       navigation={<>
         <Button type="text" className="assistant-workspace-generated-entry" icon={<FolderOpenOutlined />} onClick={onOpenPersonalSpace}>AI生成文件夹</Button>
+        <Button type="text" icon={<SettingOutlined />} aria-label="记忆管理" onClick={onOpenMemory}>记忆管理</Button>
         <ConfirmationHistory onReopen={onReopenConfirmation} busy={busy || !!workspace.dismissalId} />
         <Button type="text" icon={<ExperimentOutlined />} aria-label="导入技能" disabled={busy} onClick={onImportSkills}>导入技能</Button>
         {onOpenAgentCenter && <Button type="text" icon={<RobotOutlined />} onClick={onOpenAgentCenter}>智能体设置</Button>}
