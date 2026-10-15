@@ -925,7 +925,7 @@ function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems, pe
   if (workspace) return workspace.label;
   if (normalizedKey.startsWith("case-new-")) return "新建案件";
   if (normalizedKey.startsWith("case-detail-")) {
-    const match = normalizedKey.match(/^case-detail-\d+-(.+)$/);
+    const match = normalizedKey.replace(/-agent$/, "").match(/^case-detail-\d+-(.+)$/);
     if (match?.[1]) {
       try {
         return decodeURIComponent(match[1]);

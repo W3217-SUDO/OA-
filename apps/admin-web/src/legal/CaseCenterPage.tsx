@@ -273,7 +273,9 @@ export default function CaseCenterPage({
   const isCreateView = initialView === "case-new" || initialView.startsWith("case-new-");
   const stageStatistics = useStageStatistics(initialView.endsWith("-stage"));
   const isCaseDetailView = initialView.startsWith("case-detail-");
-  const detailRouteMatch = initialView.match(/^case-detail-(\d+)-(.+)$/);
+  const opensAgentFromRoute = isCaseDetailView && initialView.endsWith("-agent");
+  const detailRouteView = opensAgentFromRoute ? initialView.slice(0, -"-agent".length) : initialView;
+  const detailRouteMatch = detailRouteView.match(/^case-detail-(\d+)-(.+)$/);
   const detailRouteId = Number(detailRouteMatch?.[1] || 0);
   const createRouteType = initialView.endsWith("criminal") ? "刑事案件"
     : initialView.endsWith("administrative") ? "行政案件及国家赔偿"
@@ -1862,6 +1864,13 @@ export default function CaseCenterPage({
     refreshCounselDetailAttachments,
     selectCounselDocCategory,
   });
+  const routeAgentOpenedRef = useRef(false);
+  useEffect(() => { routeAgentOpenedRef.current = false; }, [initialView]);
+  useEffect(() => {
+    if (!opensAgentFromRoute || routeAgentOpenedRef.current || !viewingCounselCase) return;
+    routeAgentOpenedRef.current = true;
+    openCaseAgent(viewingCounselCase);
+  }, [opensAgentFromRoute, viewingCounselCase?.id]);
 
   const toggleCounselDocGroup = (category: string) => {
     setExpandedCounselDocGroups((current) => ({ ...current, [category]: !(current[category] ?? category.startsWith("legacy-case-folder:")) }));
