@@ -3,6 +3,7 @@
 - 生产版本：`1.1.440`
 - 代码提交：`d56517bd8c8dc075129e551848206f06373cd084`；版本提交：`289f4d5774efc502f3ac92e052d08e7ae2fb2828`
 - current：`/opt/sunhold-oa/runtime/enterprise/packages/1.1.440`；API/Web active；`https://huzhilawfirm.com/health` 返回 `{"status":"ok"}`。
+- 当前已登录工作台标签刷新至 `https://huzhilawfirm.com/?page=finance-case-fees-refunds`，页面正常显示财务中心费用管理、诉讼费退款页签、真实费用列表和分页，无白屏或加载失败。
 
 ## 真实 CODEX 闭环
 
