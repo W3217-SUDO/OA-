@@ -1,0 +1,150 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.CRM.ViewModels.Customer.ContactsListModel
+
+@{
+    var display = "display:block";
+
+    if (@Model.CustomerContactsList != null && @Model.CustomerContactsList.Count > 0)
+    {
+        display = "display:none";
+    }
+}
+<form id="postForm" action="">
+    <div id="customerContactsGridSection" class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table table-hover' id="tblContactsList" width="100%">
+                <colgroup>
+                    <col style="width: 4%">
+                    <col style="width: 6%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 6%">
+                    <col style="width: 6%">
+                    <col style="width: 6%">
+                    <col style="width: 6%">
+                    <col style="width: 6%">
+                    <col style="width: 6%">
+                    <col style="width: 6%">
+                    <col style="width: 6%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>姓名</th>
+                        <th>职务 </th>
+                        <th>项目角色</th>
+                        <th>办公电话</th>
+                        <th>移动电话</th>
+                        <th>IM</th>
+                        <th>邮箱</th>
+                        <th>是否接收邮件</th>
+                        <th>是否需要联系</th>
+                        <th>是否有效</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.CustomerContactsList != null)
+                    {
+                        foreach (var item in Model.CustomerContactsList)
+                        {
+                            <tr>
+                                <td>
+                                    <span>@(Model.CustomerContactsList.IndexOf(item) + 1)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@item.Contacts</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@item.ContactsTitle</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@item.ProjectRole</span>
+                                </td>
+                                <td style="text-align: left">
+                                    <span>@item.OfficePhone</span>
+                                </td>
+                                <td style="text-align: left; ">
+                                    <span>@item.MobilePhone</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@item.IM</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@item.Email</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(item.IsReceivedEmail ? "是" : "否")</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(item.IsContacted ? "是" : "否")</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(item.IsActived ? "是" : "否") </span>
+                                </td>
+                                <td style="text-align: center">
+                                    @if (Model.IsView == true)
+                                    {
+                                        <a href="javascript:void(0)" onclick='javascript:customer.Customer.CustomerContacts.View(@item.ContactsId);'>查看</a>
+                                    }
+                                    else
+                                    {
+                                        <a href="javascript:void(0)" onclick='javascript:customer.Customer.CustomerContacts.Open(@item.ContactsId);'>编辑</a>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+                <tfoot class="ng-scope" style="@display">
+                    <tr>
+                        <td colspan="12">
+                            <div class="pull-left"></div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box contacts">
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            <div class="simple-grid-none-data-wrap" style="@display">
+                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                        <div class="text-size-16 tip-text inline-block">
+
+                         @if(Model.IsView == true)
+                             {
+                                <span class="margin-left ng-binding">没有查询到联系人 </span>
+                                <span class="ng-binding"></span>
+                             }
+                             else
+                             {
+                                <span class="margin-left ng-binding">没有查询到联系人，可以去</span>
+                                <a href="javascript:void(0);" class="ng-binding"  style="color: #039" id="btnCustomerContactsCreate">新建联系人</a>
+                                <span class="ng-binding"></span>
+                             }
+                         
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    @if (Model.IsView == false)
+    { 
+            <div class="contextMenu" id="contactsMenu" style="display: none;">
+                <ul style="width:150px">
+                    <li id="create">新建</li>
+                    <li id="refresh">刷新</li>
+                </ul>
+            </div>
+    }
+
+    @Html.HiddenFor(m => m.SearchCondition.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+</form>

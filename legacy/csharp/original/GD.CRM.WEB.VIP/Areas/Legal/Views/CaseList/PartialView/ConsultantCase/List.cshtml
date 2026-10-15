@@ -1,0 +1,253 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type;
+@using Dchien.Legal.Entity.System;
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseList.CaseListModel
+ 
+<script>
+    $(function () {
+         $("[data-toggle='tooltip']").tooltip();
+    });
+</script>
+<style type="text/css">
+    .webuploader-pick {
+        position: relative;
+        display: inline-block;
+        cursor: pointer;
+        background: #f7f7f7;
+        padding: 10px 15px;
+        color: #333;
+        text-align: center;
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .webuploader-pick-hover {
+        background: #8b9aa3;
+    }
+
+    .filePicker div:nth-child(2) {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    .instance-list-name-width {
+        min-width: 185px;
+        max-width: 200px;
+        padding-right: 0 !important;
+        word-wrap: break-word;
+    }
+
+    .aps-table th {
+        padding: 4px 4px;
+        width: 138px;
+        border: 1px solid #eee;
+    }
+
+    .aps-table td {
+        padding: 4px 4px 4px 4px;
+        border: 1px solid #eee;
+    }
+
+    td {
+        white-space: nowrap;
+    }
+</style>
+<table id="" class="aps-table aps-widget aps-ani-transition" style="width:100%">
+    <colgroup>
+        <col style="width: 3%">
+        <col style="width: 10%">
+        <col style="width: 15%">
+        <col style="width: 15%">
+        <col style="width: 15%">
+        <col style="width: 8%">
+        <col style="width: 12%">
+        <col style="width: 8%">
+        <col style="width: 8%">
+        <col style="width: 8%">
+        <col style="width: 6%">
+        <col style="width: 6%">
+        <col style="width: 17px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th width="10">
+                <input type="checkbox" id="chkCaseAll" name="chkCaseAll">
+            </th>
+            <th style="text-align: center">
+                案件编号
+                <span>
+                    <span class="aps-state-hidden"></span>
+                    <span data-field="T.caseNo" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                        <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                        <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                           style="top:9px">
+                        </i>
+                    </span>
+                </span>
+            </th>
+
+            @if (Model.SearchCondition.PageId == PageId.PageId_1001103040
+                                          || Model.SearchCondition.PageId == PageId.PageId_1001102040
+                                          || Model.SearchCondition.PageId == PageId.PageId_100110140)
+            {
+                <th style="text-align: center">顾问类型</th>
+                                                <th style="text-align: center;" colspan="2">客户</th>
+                                                <th style="text-align: center" colspan="3">顾问期限</th>
+
+            }
+            else
+            {
+                <th style="text-align: center">案由</th>
+                                                <th style="text-align: center">原告</th>
+                                                <th style="text-align: center">被告</th>
+                                                <th style="text-align: center">案件阶段</th>
+                                                <th style="text-align: center">法院名称</th>
+                                                <th style="text-align: center">
+                                                    开庭时间
+                                                    <span>
+                                                        <span class="aps-state-hidden"></span>
+                                                        <span data-field="T.lawfulDay" class="aps-widget aps-ani-transition aps-sort  aps-state-visible">
+                                                            <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                            <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                               style="top:9px">
+                                                            </i>
+                                                        </span>
+                                                    </span>
+                                                </th>
+            }
+
+            <th style="text-align: center">经办律师 </th>
+            <th style="text-align: center">律师助理</th>
+            <th style="text-align: center">案源人</th>
+            <th style="text-align: center">剩余时间</th>
+            <th></th>
+        </tr>
+    </thead>
+
+</table>
+
+<div id="divCaseList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+
+    <table id="tblCaseList" class="aps-table aps-widget aps-ani-transition" style="width:100%">
+        <colgroup>
+            <col style="width: 3%">
+            <col style="width: 10%">
+            <col style="width: 15%">
+            <col style="width: 15%">
+            <col style="width: 15%">
+            <col style="width: 8%">
+            <col style="width: 12%">
+            <col style="width: 8%">
+            <col style="width: 8%">
+            <col style="width: 8%">
+            <col style="width: 6%">
+            <col style="width: 6%">
+        </colgroup>
+
+        <tbody>
+            <tr style="display: none">
+                <td>
+                    &nbsp;
+                </td>
+                <td style="text-align: center"></td>
+
+
+                @if (Model.SearchCondition.PageId == PageId.PageId_1001103040
+     || Model.SearchCondition.PageId == PageId.PageId_1001102040
+     || Model.SearchCondition.PageId == PageId.PageId_100110140)
+                {
+                    <td style="text-align: center"></td>
+                                                    <td style="text-align: left" colspan="2"></td>
+                                                    <td style="text-align: center" colspan="2"></td>
+                }
+                else
+                {
+                    <td style="text-align: left"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+                }
+
+                <td style="text-align: center"></td>
+                <td style="text-align: center"></td>
+                <td style="text-align: center"></td>
+                <td style="text-align: center"></td>
+            </tr>
+            <tr style="display: none">
+                <td>
+                    &nbsp;
+                </td>
+                <td style="text-align: center"></td>
+
+
+                @if (Model.SearchCondition.PageId == PageId.PageId_1001103040
+        || Model.SearchCondition.PageId == PageId.PageId_1001102040
+        || Model.SearchCondition.PageId == PageId.PageId_100110140)
+                {
+                    <td style="text-align: center"></td>
+                                                    <td style="text-align: left" colspan="2"></td>
+                                                    <td style="text-align: center" colspan="3"></td>
+                }
+                else
+                {
+                    <td style="text-align: left"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+                }
+
+                <td style="text-align: center"></td>
+                <td style="text-align: center"></td>
+                <td style="text-align: center"></td>
+                <td style="text-align: center"></td>
+            </tr>
+        </tbody>
+        <tfoot class="" style="display: none">
+            <tr style="border: 1px solid #E1E6EB;">
+                <td width="1">
+                    <input type="checkbox" id="chkCaseAll" name="chkCaseAll">
+                </td>
+                <td colspan="11">
+                    <div class="pull-left" style="position:absolute;z-index: 1000;">
+                        @*<input type="button" id="btnCaseExportToExcel" class="btn btn-default" style="height:32px" value="导出Excel" />*@
+
+                        <div class="inline-block dropdown" style="margin-left: 4px">
+                            <div class="divdropdown dropdown ng-scope">
+                                <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                    导出案件
+                                    <span class="caret"></span>
+                                </button>
+                                <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+                                    <li>
+                                        <a href="javascript:;" id="btnCaseExportToExcel" onclick="javascript:void(0);">
+                                            <span style="font-size:12px">导出选中</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="javascript:;" id="btnAllCaseExportToExcel" onclick="javascript:void(0);">
+                                            <span style="font-size:12px">导出全部</span>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+ 
+ 
+
+                    </div>
+                    <div class="">
+                        <div class="pull-right page-box Caselist">
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        </tfoot>
+
+    </table>
+
+</div>

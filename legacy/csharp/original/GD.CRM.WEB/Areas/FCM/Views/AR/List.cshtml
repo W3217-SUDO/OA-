@@ -1,0 +1,253 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@using Dchien.Legal.Service.BAS.Type
+@model Dchien.Legal.Web.Areas.FCM.ViewModels.AR.ListModel
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script src="@Url.Content("~/Scripts/FCM/Contract/FCM.Contract.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/FCM/Contract/FCM.Contract.AR.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>应收账款统计</h5>
+                            </div>
+                        </div>
+                      
+
+                        <div class="pull-left   col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FCM/AR/List")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                              
+                                <table class="search_table"  style="width: 500px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px;" />
+                                        <col style="width: 200px" />
+                                        <col />
+                                    </colgroup>
+                                    <tr>
+
+                                        <th>
+                                            合同主体：
+                                        </th>
+                                        <td>
+                                            @*@Html.TextBoxFor(m => m.SearchCondition.ContractName, new { @class = "form-control", @placeholder = "合同名称", @style = "width:97.2%" })*@
+
+                                            @Html.DropDownListFor(m => m.SearchCondition.GroupId, ContractTypeService.Instance.GetContractGroupList(true), new { maxlength = 60, @class = "form-control select", @style = "width:97.2%" })
+
+
+                                        </td>
+                                        <th>
+                                            合同编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractNo, new { @class = "form-control", @placeholder = "合同编号", @style = "" })
+                                        </td>
+                                        <th>
+                                            合同日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractBeginDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractEndDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户名称", @style = "width:97.2%" })
+                                        </td>
+                                        <th>
+                                            案件编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @placeholder = "案号", @style = "" })
+                                        </td>
+                                        <th>
+                                            案源人：
+                                        </th>
+                                        <td>
+                                            @Html.HiddenFor(m => m.SearchCondition.BusinessOwner, new { @class = "form-control", @style = "" })
+                                            @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, new { @class = "form-control", @style = "width:87%" })
+
+                                            <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                        </th>
+                                        <td>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnARListSearch">
+                                                <span>查询</span>
+                                            </a>
+                                
+                                        </td>
+                                    </tr>
+                                </table>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection">
+                                <table  class="aps-table aps-widget aps-ani-transition ">
+                                    <colgroup>
+                                        <col style="width: 4%">
+                                        <col style="width: 10%">
+                                        <col style="width: 20%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 10%">
+                                        <col style="width: 8%">
+                                        <col style="width: 15%">
+                                        <col style="width: 17px">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align: center"><input type="checkbox" onclick="javascript: contract.Contract.Selected(this);" id="chkContractAll" name="chkContractAll"></th>
+                                            <th style="text-align: center">合同号</th>
+                                            <th style="text-align: center">合同名称</th>
+                                            <th style="text-align: center">合同状态</th>
+                                            <th style="text-align: center">官费<br>支付金额</th>
+                                            <th style="text-align: center">官费<br>到账金额</th>
+                                            <th style="text-align: center">官费<br>未到金额</th>
+                                            <th style="text-align: center">官费<br>亏损金额</th>
+                                            <th style="text-align: center">代理费<br>总金额</th>
+                                            <th style="text-align: center">代理费<br>到账金额</th>
+                                            <th style="text-align: center">代理费<br>待收金额</th>
+                                            <th style="text-align: center">案源人</th>
+                                            <th style="text-align: center">客户管理人</th>
+                                            <th style="text-align: center">签订日期</th>
+                                            <th style="text-align: center">客户名称</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+        
+                                </table>
+                                <div class="simple-grid-none-data-wrap">
+                                    <div class="simple-grid-none-data text-center  ">
+                                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                            <div class="text-size-16 tip-text inline-block">
+                                                <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                                <span class="">。</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id='divList' style="border-top: 0; overflow-x:hidden; overflow-y: scroll;">
+                                    <table id="tblContractList" class="aps-table aps-widget aps-ani-transition ">
+                                        <colgroup>
+                                            <col style="width: 4%">
+                                            <col style="width: 10%">
+                                            <col style="width: 20%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 10%">
+                                            <col style="width: 8%">
+                                            <col style="width: 15%">
+                                        </colgroup>
+ 
+                                        <tbody>
+                                            <tr style='display:none'>
+                                                <td>
+                                                    &nbsp;
+                                                </td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left;white-space:nowrap"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: left;white-space:nowrap"></td>
+                                                <td style="text-align: left;white-space:nowrap"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left;white-space:nowrap"></td>
+                                            </tr>
+                                            <tr style='display:none'>
+                                                <td>
+                                                    &nbsp;
+                                                </td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left;white-space:nowrap"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: left;white-space:nowrap"></td>
+                                                <td style="text-align: left;white-space:nowrap"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left;white-space:nowrap"></td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="" style="display: none">
+                                            <tr>
+                                                <td><input type="checkbox" onclick="javascript: contract.Contract.Selected(this);" id="chkContractAll" name="chkContractAll"></td>
+                                                <td colspan="14">
+                                                    <div class="pull-left"><input type="button" id="btnARListExportToExcel" class="btn btn-default" style="height:32px" value="导出Excel" /></div>
+                                                    <div class="">
+                                                        <div class="pull-right page-box contractlist">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                             </div>
+                         
+                        </div>
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+     
+                    <div style="display: none;" id="divUserList">
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

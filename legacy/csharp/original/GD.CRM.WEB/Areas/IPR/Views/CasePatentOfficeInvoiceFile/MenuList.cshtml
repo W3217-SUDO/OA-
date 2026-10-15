@@ -1,0 +1,209 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service.FAM.AR.CaseFee
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+    var menus = MenuService.Instance.GetMenusByCurrentUser();
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main" >
+    <div class="product-nav-scene product-nav-main-scene" >
+        <div class="product-nav-title ng-binding" >专利转票</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001008001) != null)
+                {
+                    actived = id == PageId.PageId_1001008001 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                           
+                                <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeInvoiceFile/List", PageId.PageId_1001008001)) class="ng-scope" >
+                                    <div class="nav-icon"></div>
+                                    @{
+                                        var serach = new CaseFeeFileSearchCondition();
+                                        serach.UserId = LoginHelper.GetUserName();
+                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                        //serach.FeeTypeIds.Add((int)CaseFeeType.FeeType1);
+                                        serach.FeeTypeIds.Add((int)CaseFeeType.FeeType11002);
+                                        serach.FeeTypeIds.Add((int)CaseFeeType.FeeType21002);
+                                        serach.FeeTypeIds.Add((int)CaseFeeType.FeeType31002);
+
+                                        serach.PageId = PageId.PageId_1001008001;
+                                        serach.IsTransmitted = false;
+                                        serach.HasInvocieFile = true;
+
+                                        var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                    }
+                                    <div class="nav-title ng-binding" >转申请费收据(@totalCount)</div>
+                                </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001008002) != null)
+                {
+                    actived = id == PageId.PageId_1001008002 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeInvoiceFile/List", PageId.PageId_1001008002)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType12001);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType22001);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType32001);
+
+                                    serach.PageId = PageId.PageId_1001008002;
+                                    serach.IsTransmitted = false;
+                                    serach.HasInvocieFile = true;
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" >转代理费发票(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001008003) != null)
+                {
+                    actived = id == PageId.PageId_1001008003 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeInvoiceFile/List", PageId.PageId_1001008003)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType11008);
+                                    serach.PageId = PageId.PageId_1001008003;
+                                    serach.IsTransmitted = false;
+                                    serach.HasInvocieFile = true;
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" >转实质审查费收据(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001008004) != null)
+                {
+
+                    actived = id == PageId.PageId_1001008004 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeInvoiceFile/List", PageId.PageId_1001008004)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType11010);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType21010);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType31010);
+
+                                    serach.PageId = PageId.PageId_1001008004;
+                                    serach.IsTransmitted = false;
+                                    serach.HasInvocieFile = true;
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" >转变更费收据(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+                
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001008005) != null)
+                {
+
+                    actived = id == PageId.PageId_1001008005 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeInvoiceFile/List", PageId.PageId_1001008005)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType11015);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType21015);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType31015);
+                                    serach.PageId = PageId.PageId_1001008005;
+                                    serach.IsTransmitted = false;
+                                    serach.HasInvocieFile = true;
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" >转授权费收据(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001008006) != null)
+                {
+
+                    actived = id == PageId.PageId_1001008006 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeInvoiceFile/List", PageId.PageId_1001008006)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                @{
+
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType11009);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType21009);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType31009);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType34);
+                                    serach.PageId = PageId.PageId_1001008006;
+                                    serach.IsTransmitted = false;
+                                    serach.HasInvocieFile = true;
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" >转复审申请费收据(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001008099) != null)
+                {
+                    actived = id == PageId.PageId_1001008099 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeInvoiceFile/List", PageId.PageId_1001008099)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding" >转其他官费收据</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+ 
+</div>

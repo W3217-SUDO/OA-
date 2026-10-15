@@ -1,0 +1,96 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Newtonsoft.Json.Linq
+
+@using Dchien.Legal.Service.FCM.Contract
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseFee.CaseFeeModel
+
+<div class="modal fade" id="caseFeeModal">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            @using (Html.BeginForm("CreateUpdate", "CaseFee", FormMethod.Post, new { id = "caseFee", @class = "form-horizontal" }))
+            {
+                <div class="modal-header">
+                    <button type="button" class="close" onclick="javascript: $('#caseFeeModal').modal('hide');">×</button>
+                    <h5 class="modal-title ">新建费用</h5>
+                </div>
+                <div class="modal-body">
+                    <div>
+                        <div class="form-group">
+                            <label for="CaseFileTypeId" class="col-sm-3 control-label">
+                                <span class="text-danger">*</span>
+                                <span class="">合同号</span>
+                            </label>
+                            <div class="col-sm-6">
+
+                                @Html.DropDownListFor(m => m.CaseFee.ContractNo, ContractService.Instance.GetContractListByCustomerNo(Model.CustomerNo), new { maxlength = 60, @class = "form-control select", style = "height:28px; " })
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="form-group">
+                            <label for="CaseFileTypeId" class="col-sm-3 control-label">
+                                <span class="text-danger">*</span>
+                                <span class="">费用类型</span>
+                            </label>
+                            <div class="col-sm-6">
+                                @Html.HiddenFor(m => m.CaseFee.CaseFeeTypeId)
+                                @Html.HiddenFor(m => m.CaseFee.FeeTypeId)
+                                @Html.TextBoxFor(m => m.CaseFee.CaseFeeTypeName, new { @class = "form-control", @autocomplete = "off", style = "height:28px; " })
+                            </div>
+                            <div style="float: left; padding-top: 7px; padding-left: 1px;">
+                                <div style="float: left; padding-top: 7px; padding-left: 1px;">
+                                    <a id="lnkCaseFeeTypeIdForOffice" style="color: #039" href="javascript:void(0)">官费</a>|
+                                    <a id="lnkCaseFeeTypeIdForNonOffice" style="color: #039" href="javascript:void(0)">代理费</a>|
+                                    <a id="lnkCaseFeeTypeIdForOther" style="color: #039" href="javascript:void(0)">其他费用</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+ 
+                    <div>
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                <span class="text-danger">*</span>
+                                <span class="spanreferencedate">金额</span>
+                            </label>
+                            <div class="col-sm-6">
+                                <span>@Html.TextBoxFor(m => m.CaseFee.Amount, new { @class = "form-control", @unselectable = "on",  style = "height:28px; " })</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="form-group">
+                            <label for="CaseEvent_EventContent" class="col-sm-3 control-label">
+                                <span class="text-danger ng-binding"></span>
+                                <span class="ng-binding">备注</span>
+                            </label>
+                            <div class="col-sm-6">
+                                @Html.TextAreaFor(m => m.CaseFee.Remark, new { @required = "true", maxlength = 1000, rows = 2, style = "width:100%" })
+                            </div>
+                        </div>
+                    </div>
+
+                        <div class="divCaseFeeTypeList"></div>
+
+                        <div class="i_common_select" id="div_CaseFeeTypeList" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                <div class="modal-footer">
+                    <input class="btn btn-primary " type="button" id="btnCaseFeeCreateUpdate" value="确定" />
+                    <input class="btn btn-default " type="button"  value="取消" onclick="javascript: $('#caseFeeModal').modal('hide');"/>
+                </div>
+
+            }
+        </div>
+
+    </div>
+</div>
+
+

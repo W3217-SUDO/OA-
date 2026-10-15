@@ -1,0 +1,342 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.BAS
+
+@model Dchien.Legal.Web.Areas.AWS.ViewModels.OfficialDocument.OfficialDocumentListModel
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/FCM/Contract/FCM.Contract.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/AWS/OfficialDocument/AWS.OfficialDocument.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/AWS/OfficialDocument/AWS.OfficialDocument.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>用印申请列表</h5>
+                            </div>
+                        </div>
+
+                        <div class="pull-left  col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.TotalCount, new { name = "TotalCount" })
+                                @Html.HiddenFor(m => m.SearchCondition.Sorting)
+
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px;" />
+                                        <col style="width: 220px" />
+                                        <col>
+                                    </colgroup>
+
+                                    <tr>
+                                        <th style="text-align: left">
+                                            申请编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.OfficialDocumentNo, "{0:yyyy-MM-dd}", new { @class = "form-control", @style = "width:95%" })
+                                        </td>
+                                        <th style="text-align: left">
+                                            申请人：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, "{0:yyyy-MM-dd}", new { @class = "form-control", @style = "width:95%" })
+                                        </td>
+                                        <th style="text-align: left">
+                                            申请日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ApplicationDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.ApplicationDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th style="text-align: left">
+                                             案件编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.NotarialNo, new { @class = "form-control", @style = "width:95%" })
+                                        </td>
+                                        <th style="text-align: left">
+                                            合同编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, new { @class = "form-control", @style = "width:95%" })
+                                        </td>
+
+                                        <th style="text-align: left">
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @style = "width:97.3%" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th style="text-align: left">
+                                            用印状态：
+                                        </th>
+                                        <td>
+                                        @if (Model.SearchCondition.PageId == PageId.PageId_8101003003)
+                                        {
+                                            @Html.DropDownListFor(m => m.SearchCondition.OfficialDocumentStatus, Dchien.Legal.Service.BAS.Type.OfficalDocumentStatusService.Instance.GetOfficalDocumentStatusList(true), new { @class = "form-control select", style = "width:95%" })
+                                        }
+                                        else
+                                        {
+                                            @Html.DropDownListFor(m => m.SearchCondition.OfficialDocumentStatus, Dchien.Legal.Service.BAS.Type.OfficalDocumentStatusService.Instance.GetOfficalDocumentStatusList(true), new { @disabled = true, @class = "form-control select", style = "width:95%" })
+
+                                        }
+                                       </td>
+                                        <th style="text-align: left">
+                                            用印类型：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.OfficialDocumentType, Dchien.Legal.Service.BAS.Type.OfficalDocumentTypeService.Instance.GetOfficalDocumentTypeList(true), new { @class = "form-control select", style = "width:95%" })
+                                         </td>
+                                        <th style="text-align: left">
+                                            文件名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseFileName, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:97.3%" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="text-align: left"></td>
+                                        <td style="text-align: left">
+                                            <div class="form-group">
+                                                <a href="javascript:void(0);" class="btn btn-primary " id="btnOfficialDocumentSearch">
+                                                    <span>查询</span>
+                                                </a>
+                                             </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </form>
+                        </div>
+
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="ng-scope">
+                            <div class="gridSection" id="officialdocumentgridSection">
+                                <table   class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 10%">
+                                        <col style="width:6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 8%">
+                                        <col style="width: 6%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 30%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 15%">                                   
+                                        <col style="width: 17px">
+                                    </colgroup>
+                                <thead>
+                                    <tr>
+                                        <td><input type="checkbox" id="chkOfficialDocumentAll"  onclick="javascript: officialDocument.OfficialDocuments.Selected(this);" name="chkOfficialDocumentAll"></td>
+                                        <th style="text-align: center">
+                                            编号
+                                        </th>
+                                        <th style="text-align: left">
+                                            申请人
+                                        </th>
+                                        <th style="text-align: left">
+                                            申请时间
+                                            <span>
+                                                <span class="aps-state-hidden"></span>
+                                                <span data-field="T.ApplicationDate" class="aps-widget aps-ani-transition aps-sort  aps-state-visible">
+                                                    <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                    <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                       style="top:9px">
+                                                    </i>
+                                                </span>
+                                            </span>
+                                        </th>
+
+                                        <th style="text-align: center">
+                                            用印状态
+                                        </th>
+                                        <th style="text-align: left">
+                                            用印类型
+                                        </th>
+                                        <th style="text-align: left">
+                                            印章类型
+                                        </th>
+                                        <th style="text-align: center">
+                                            文件数
+                                        </th>
+                                        <th style="text-align: left">
+                                            案号
+                                        </th>
+                                        <th style="text-align: left">
+                                           合同号
+                                        </th>
+                                        <th style="text-align: left">
+                                            客户
+                                        </th>
+ 
+                                        <th style="text-align: center">
+                                            审核人
+                                        </th>
+
+                                        <th style="text-align: center">
+                                            审核时间
+                                            <span>
+                                                <span class="aps-state-hidden"></span>
+                                                <span data-field="T.AuditTime" class="aps-widget aps-ani-transition aps-sort  aps-state-visible">
+                                                    <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                    <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                       style="top:9px">
+                                                    </i>
+                                                </span>
+                                            </span>
+                                        </th>
+
+                                        <th style="text-align: center">
+                                            审核意见
+                                        </th>
+
+                                        <th></th>
+                                    </tr>
+
+                                </thead>
+ 
+                                </table>
+                                <div id="divList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                                    <table id="tblOfficialDocumentList" class="aps-table aps-widget aps-ani-transition ">
+                                        <colgroup>
+                                            <col style="width: 3%">
+                                            <col style="width: 10%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 8%">
+                                            <col style="width: 6%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width:30%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 15%">
+                                        </colgroup>
+                                        
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: center;"></td>
+                                                <td style="text-align: left;white-space:nowrap;"></td>
+                                                <td style="text-align: left;white-space:nowrap;"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left"></td>
+                                                @*<td style="text-align: left"></td>*@
+                                                <td style="text-align: center"></td>
+
+                                            </tr>
+
+                                            <tr style="display: none">
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: center;"></td>
+                                                <td style="text-align: left;white-space:nowrap;"></td>
+                                                <td style="text-align: left;white-space:nowrap;"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left"></td>
+                                                @*<td style="text-align: left"></td>*@
+                                                <td style="text-align: center"></td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="ng-scope" style="display:none">
+                                            <tr>
+                                                <td><input type="checkbox" id="chkOfficialDocumentAll" onclick="javascript: officialDocument.OfficialDocuments.Selected(this);" name="chkOfficialDocumentAll"></td>
+                                                <td colspan="13">
+                                                    <div class="pull-left" style="position:absolute;z-index: 1000;">
+                                                        @if (Model.SearchCondition.PageId == PageId.PageId_8101001001)
+                                                        {
+                                                            <input type="button" id="btnOfficialDocumentCreateUpdate" class="btn btn-default" style="height:32px" value="申请用印" />
+                                                            <input type="button" id="btnOfficialDocumentEdit" class="btn btn-default" style="height:32px" value="修改" />
+                                                            <input type="button" id="btnOfficialDocumentRollback" class="btn btn-default" style="height:32px" value="撤回" />
+                                                        }
+                                                        @if (Model.SearchCondition.PageId == PageId.PageId_8101001002)
+                                                        {
+                                                            <input type="button" id="btnOfficialDocumentRollback" class="btn btn-default" style="height:32px" value="撤回" />
+                                                        }
+                                                        @if (Model.SearchCondition.PageId == PageId.PageId_8101003001)
+                                                        {
+                                                            <input type="button" id="btnOfficialDocumentPrint" class="btn btn-default" style="height:32px" value="标记用印" />
+                                                            <input type="button" id="btnOfficialDocumentDownload" class="btn btn-default" style="height:32px" value="打包下载" />
+                                                        }
+                                                    </div>
+                                                    <div class="ng-scope">
+                                                        <div class="pull-right page-box officialdocument">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                    <div class="simple-grid-none-data-wrap">
+                                        <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                                            <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                                <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                                <div class="text-size-16 tip-text inline-block">
+                                                    @if (Model.SearchCondition.PageId == PageId.PageId_8101001001)
+                                                    {
+                                                        <span class="margin-left ng-binding">没有查询到符合条件的记录，可以去</span>
+                                                        <a href="javascript:void(0);" class="ng-binding" style="color: #039" id="btnOfficialDocumentCreateUpdate">申请用印</a>
+                                                        <span class="ng-binding">。</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="margin-left ng-binding">没有查询到符合条件的记录</span>
+                                                        <span class="ng-binding">。</span>
+                                                    }
+
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                              
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    
+        <div id="sidebox" class="sidebox active" style="overflow-y:auto;width: 30%; min-width: 700px;display:none">
+            <div class="sidebox-content" ></div>
+        </div>
+    </div>
+</div>

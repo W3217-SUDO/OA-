@@ -1,0 +1,267 @@
+﻿
+@model Dchien.Legal.Web.Areas.RPT.ViewModels.Report.CountFileListModel
+
+<script src="@Url.Content("~/Scripts/RPT/FileCount/RPT.FileCount.Report.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+
+        <div ng-transclude="">
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5 class="ng-binding">文件数量统计</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12">
+                            <form class="form-inline" id="postForm">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.TextAreaFor(m => m.SearchCondition.PageId, new { @style="display:none" })
+                                    <div class="simple-form-field">
+                                        <div class="form-group ">
+                                            <label class="control-label">
+                                                <span  class="text-danger "></span>
+                                                <span class="">文件上传日期：</span>
+                                            </label>
+                                            <div class="form-control-wrap">
+                                                @Html.TextBoxFor(m => m.SearchCondition.UploadDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                                -
+                                                @Html.TextBoxFor(m => m.SearchCondition.UploadDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            </div>
+                                        </div>
+
+                                            <div class="form-group ">
+                                                <label class="control-label">
+                                                    <span  class="text-danger "></span>
+                                                    <span class="">代理人：</span>
+                                                </label>
+                                                <div class="form-control-wrap">
+                                                    @Html.HiddenFor(m => m.SearchCondition.UploadUser, new { @class = "form-control", @style = "" })
+                                                    @Html.TextBoxFor(m => m.SearchCondition.UploadUserName, new { @class = "form-control", @style = "" })
+                                                </div>
+                                            </div>
+                                    </div>
+
+                                <div class="simple-form-field">
+                                    <div class="form-group">
+                                        <label class="control-label">
+                                            <span class="">
+                                            </span>
+                                        </label>
+                                        <div class="form-control-wrap text-right">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnFileCountSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </div>
+                                        <div class="form-control-wrap text-right" style="display:none">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnFileCountExportToExcel">
+                                                <span>导出</span>
+                                            </a>
+                                        </div>
+
+                                    </div>
+                                </div>
+                                <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                    <div class="i_common_wrap">
+                                        <div class="i_common_list"></div>
+                                    </div>
+                                </div>
+                  
+                            </form>
+
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="ng-scope">
+                            <div class="gridSection" id="customergridSection">
+                                <table id="" class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 17px">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>
+                                                序号
+                                    
+                                            </th>
+                                            <th>
+                                                代理人姓名
+                                                <span>
+                                                    <span class="aps-state-hidden"></span>
+                                                    <span  class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                        
+                                                    </span>
+                                                </span>
+                                            </th>
+                                            <th>
+                                                补正数量
+                                                <br />
+                                                (3310013)
+                                            </th>
+                                            <th>
+                                                主动补正数量
+                                                <br />
+                                                (3310076)
+                                            </th>
+
+                                            <th>
+                                                第一次审查意见数量
+                                                <br />
+                                                (3310007)
+                                            </th>
+                                            <th>
+                                                第N次审查意见数量
+                                                <br />
+                                                (3310074)
+                                            </th>
+
+                                            <th>
+                                                翻译
+                                               
+                                                <br />
+                                                (3310075) 
+                                            </th>
+
+                                            <th>
+                                                复审文件
+                                                <br />
+                                                (3310016)
+                                            </th>
+
+
+                                            <th>
+                                                无效文件
+                                                <br />
+                                                (3310015)
+                                            </th>
+                                            
+
+                                            <th>
+                                                发明专利
+                                            </th>
+                                            <th>
+                                                实用新型
+                                            </th>
+
+                                
+                                            <th>
+                                                外观设计
+                                            </th>
+                                            <th>
+                                                总量
+                                            </th>
+                                            <th></th>
+                                        </tr>
+                                        
+                                    </thead>
+
+                                </table>
+
+                                <div id="divContextList" style="border-top: 0px; margin-top: -1px; overflow-x:hidden; overflow-y: scroll; ">
+                                        <table id="tblFileCountList" class="aps-table aps-widget aps-ani-transition ">
+                                            <colgroup>
+                                                <col style="width: 3%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                        
+                                            </colgroup>
+   
+                                            <tbody>
+                                                <tr style="display: none">
+                                                    <td></td>
+                                                    <td style="text-align:left">
+                                                        &nbsp;
+                                                    </td>
+
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr style="display: none">
+                                                    <td></td>
+                                                    <td style="text-align:left">
+                                                        &nbsp;
+                                                    </td>
+
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                </tr>
+                                            </tbody>
+                                            <tfoot class="ng-scope" style="display: none">
+                                                <tr>
+                                                    <td colspan="13">
+                                                        <div class="pull-left"></div>
+                                                        <div class="ng-scope">
+                                                            <div class="pull-right page-box customer">
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="simple-grid-none-data-wrap">
+                                    <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                            <div class="text-size-16 tip-text inline-block">
+                                                <span class="margin-left ng-binding">没有查询到符合条件的记录</span>
+                                                <span class="ng-binding">。</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+

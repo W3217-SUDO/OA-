@@ -1,0 +1,108 @@
+﻿@using Dchien.Legal.Entity.System
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+</style>
+
+
+<div class="slide-panels">
+    <div class="slide-panel active medium">
+        <div class="slide-panel-content">
+            <div class="panel-header">
+                <h5>案件合并</h5>
+                <a class="panel-close" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');">
+                    <i class="next-icon next-icon-close next-small" style="font-size: 0px;">close</i>
+                </a>
+                <div class="head-custom"></div>
+            </div>
+            <div class="placeholder">...</div>
+            <div class="panel-body">
+                <div class="panel-body-content">
+                    <div class="page-overview-panel-apply">
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ">
+
+                                <div class="">
+                                    <div class="">
+                                        <div class="">
+                                            <style type="text/css" class="">
+                                                .tableWrapper .table {
+                                                    margin-bottom: 0px;
+                                                }
+
+                                                .table-hover tbody tr.trWarapper:hover td {
+                                                    background-color: #FCF8E2;
+                                                }
+                                            </style>
+                                            <div class="">
+                                                <div class="alert alert-info clearfix" style="padding: 8px 12px 0px;line-height: 18px;margin-bottom: 6px;border-radius: 0px">
+                                                    <div class="pull-left">
+                                                        <span>温馨提示</span> ：
+                                                    </div>
+                                                    <div class="pull-left">
+                                                        <p>1. <span>输入同一客户下待合并案件编号.</span> </p>
+                                                        <p>2. <span>合并时将待合并的案件费用，内部费用，案件文档合并到本案中.</span> </p>
+                                                        <p>3. <span>合并成功后，会自动将输入的案件删除.</span> </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div role="grid" class="next-form next-medium">
+                                    <div class="margin-top-3"></div>
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">待合并案件编号：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+                                            <span data-meta="Field" class="next-input next-medium" style="float:left;height:27px; line-height:27px; width :100%;">
+                                                <input autocomplete="off" class="form-control inline-block " id="Dest_CaseNo" name="Dest.CaseNo" placeholder="请输入案件编号。" style="height:27px; line-height:27px;width:100%" type="text" value="">
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel-footer">
+            <div class="btn-con">
+
+                <input type="button" class="btn   btn-primary" style="border-radius: 0;padding: 0 16px; height: 32px;line-height: 30px; font-size: 12px; border-width: 1px;" onclick="javascript: c.Cases.Case.MergeCase.Merge();" value="确定" />
+                <input type="button" class="btn  btn-normal" style="border-radius: 0;
+                                                                        padding: 0 16px;
+                                                                        height: 32px;
+                                                                        line-height: 30px;
+                                                                        font-size: 12px;
+                                                                        border-width: 1px;" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');" value="取消" />
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+

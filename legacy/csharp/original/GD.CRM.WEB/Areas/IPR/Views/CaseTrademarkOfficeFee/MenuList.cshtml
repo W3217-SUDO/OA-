@@ -1,0 +1,143 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service.FAM.AR.CaseFee
+
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+    var menus = MenuService.Instance.GetMenusByCurrentUser();
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene" >
+        <div class="product-nav-title ng-binding" >商标通知缴费</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001011001) != null)
+                {
+                    actived = id == PageId.PageId_1001011001 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFee/List", PageId.PageId_1001011001)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType41001);
+                                    serach.PageId = PageId.PageId_1001011001;
+                                    //serach.IsTransmitted = false;
+                                    serach.IsCashed = false;
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">缴纳商标申请费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001011002) != null)
+                {
+                    actived = id == PageId.PageId_1001011002 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFee/List", PageId.PageId_1001011002)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType41003);
+                                    serach.PageId = PageId.PageId_1001011002;
+                                    //serach.IsTransmitted = false;
+                                    serach.IsCashed = false;
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">缴纳商标异议费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                                    }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001011003) != null)
+                {
+                    actived = id == PageId.PageId_1001011003 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFee/List", PageId.PageId_1001011003)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType41015);
+                                    serach.PageId = PageId.PageId_1001011003;
+                                    //serach.IsTransmitted = false;
+                                    serach.IsCashed = false;
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">缴纳商标复审费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                                    }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001011004) != null)
+                {
+                    actived = id == PageId.PageId_1001011004 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFee/List", PageId.PageId_1001011004)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType41005);
+                                    serach.PageId = PageId.PageId_1001011004;
+                                    //serach.IsTransmitted = false;
+                                    serach.IsCashed = false;
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">缴纳商标续展费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                                    }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001011099) != null)
+                {
+                    actived = id == PageId.PageId_1001011099 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFee/List", PageId.PageId_1001011099)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding" style="width:188px">缴纳其他官费</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+ 
+            </ul>
+        </div>
+    </div>
+ 
+</div>

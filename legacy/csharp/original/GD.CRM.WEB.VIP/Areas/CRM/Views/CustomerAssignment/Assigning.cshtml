@@ -1,0 +1,82 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.CRM.ViewModels.CustomerAssignment.CustomerAssignmentModel
+
+<div class="modal fade" id="customerAssignmentModal">
+    <div class="modal-dialog">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                @using (Html.BeginForm("CustomerAssignment", "Assigning", FormMethod.Post, new { id = "customerAssigning", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerId)
+                    <div class="modal-header">
+                        <button type="button" class="close" id="btnCustomerAssigningClose">×</button>
+                        <h5 class="modal-title ng-binding">客户分配</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                     <span class="ng-binding">客户编码</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextBoxFor(m => m.Customer.CustomerBasic.CustomerNo,new {@readonly=true, @class = "form-control", @unselectable = "on" })
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="ng-binding">客户名称</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextBoxFor(m => m.Customer.CustomerBasic.CustomerName, new { @readonly = true, @class = "form-control", @unselectable = "on" })
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="ng-binding">原客戶管理人</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.HiddenFor(m => m.Customer.CustomerControlling.CustomerOwner)
+                                    @Html.TextBoxFor(m => m.Customer.CustomerControlling.CustomerOwnerName, new { @readonly = true, @class = "form-control", @unselectable = "on" })
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="ng-binding">现客戶管理人</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.HiddenFor(m => m.AssigningCustomerOwner)
+                                    @Html.TextBoxFor(m => m.AssigningCustomerOwnerName, new { @class = "form-control", @unselectable = "on" })
+                                    <div class="i_common_select" id="divModelAssociateUserList" style="display: none;">
+                                        <div class="i_common_wrap">
+                                            <div class="i_common_list"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display: none;" id="divModelUserList">
+                        </div>
+
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button" id="btnCustomerAssigning" value="确定" />
+                        <input class="btn btn-default ng-binding" type="button" id="btnCustomerAssigningCancel" value="取消" />
+                    </div>
+                }
+
+  
+            </div>
+        </div>
+
+
+    </div>
+</div>
+
+
+
+
+

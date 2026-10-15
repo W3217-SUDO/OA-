@@ -1,0 +1,57 @@
+﻿@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+}
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">我审批的合同</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @{ actived = action == "PendingList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class=" ng-isolate-scope">
+                        <a href=@Url.Content("~/CMS/ContractAudit/PendingList") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">待审批合同</div>
+                            <div class="nav-extend">
+                                <span class="ng-isolate-scope">
+                                    <span class="deadline-leftdays-normal ng-scope ng-binding">5</span>
+                                </span>
+                            </div>
+                        </a>
+                    </div>
+                </li>
+                @{ actived = action == "RejectedList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/CMS/ContractAudit/RejectedList") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">已驳回合同</div>
+                        </a>
+                    </div>
+                </li>
+                @{ actived = action == "ApprovedList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/CMS/ContractAudit/ApprovedList") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">已审批合同</div>
+                        </a>
+                    </div>
+                </li>
+
+            </ul>
+        </div>
+    </div>
+
+</div>

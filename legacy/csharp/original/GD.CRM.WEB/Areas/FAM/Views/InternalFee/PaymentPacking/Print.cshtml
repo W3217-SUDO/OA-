@@ -1,0 +1,170 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service.BAS
+@using Dchien.Legal.Service.Legal.Case
+@using Dchien.Legal.Service.FAM.InternalFee
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.InternalFee.Payment.Packing.PrintModel
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/report.css")" />
+
+<style>
+    .input_table td {
+        border: 1px solid #000;
+        text-align: center;
+        padding: 2px;
+        background: #fff;
+    }
+</style>
+<script src="@Url.Content("~/Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>付款单打印</h5>
+                                @Html.HiddenFor(m => m.Packing.PaymentPackingBasic.PackingId)
+                                @Html.HiddenFor(m => m.Packing.PaymentPackingBasic.PackageNo)
+                            </div>
+                            <div class="pull-right">
+                                <a href="javascript:void(0);" class="btn btn-primary ng-isolate-scope" id="btnPaymentPrint">
+                                    <span>打印</span>
+                                </a>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="ng-scope">
+                                <div class="ng-scope">
+                                    <div class="case-section-main clearfix" style="padding-top:10px">
+                                        <!-- 左侧 -->
+                                        <div class="case-section-left" style="padding-right: 30%;">
+                                            <div class="case-section-wrap">
+                                                <div class="case-section-product">
+                                                    <!-- product section -->
+                                                    <div class="product-container">
+                                                        <div class="product-section">
+                                                            <div class="section-content clearfix" style="padding: 0;">
+                                                                <div class="ng-scope">
+                                                                    <table class="input-table" style='width:100%; align-content:center'>
+                                                                        <colgroup>
+                                                                            <col style="width:93px;">
+                                                                            <col style="width:158px;">
+                                                                            <col style="width:85px;" />
+                                                                            <col style="width:100px;">
+                                                                            <col style="width:85px;">
+                                                                            <col style="width:83px;">
+
+                                                                        </colgroup>
+                                                                        <tbody>
+                                                                            <tr style="height:29px;">
+                                                                                <td style="text-align: center; font-weight: bold; font-size: 14pt; font-family: 华文楷体; height: 27px;" colspan="8">
+                                                                                    @Dchien.Legal.Service.CompanyService.Instance.GetCompany().CompanyName &nbsp; 提成付款申请单
+                                                                                </td>
+                                                                            </tr>
+                                                                            <tr style="height:19px;">
+                                                                                <td class="fh tac bw pl2 b1" style="line-height:130%;">打包流水号：</td>
+                                                                                <td class="fh tac bw pl2 b1" style="line-height:130%;">@Model.Packing.PaymentPackingBasic.PackageNo</td>
+                                                                                <td class="fh tac bw pl2 b1" style="line-height:130%;">打印日期：</td>
+                                                                                <td class="fh tac bw pl2 b1" style="line-height:130%;">@DateTime.Now.ToString("yyyy-MM-dd")</td>
+                                                                                <td class="fh tac bw pl2 b1" style="line-height:130%;">付款总金额：</td>
+                                                                                <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" colspan="3">￥@Model.Packing.PaymentPackingBasic.PackingAmount</td>
+                                                                            </tr>
+
+                                                                            @if (Model.Packing != null && Model.Packing.PaymentObjects != null && Model.Packing.PaymentObjects.Any())
+                                                                            {
+                                                                                foreach (var item in Model.Packing.PaymentObjects)
+                                                                                {
+                                                                                    <tr style="height:19px;">
+                                                                                        <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">案号</td>
+                                                                                        <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;" colspan="2">案件名称</td>
+                                                                                        <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">付款金额</td>
+                                                                                        <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">提成类型</td>
+                                                                                        <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">收款人</td>
+                                                                                        <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;" colspan="2">备注</td>
+                                                                                    </tr>
+                                                                                    foreach (var paymentItem in item.PaymentObjects)
+                                                                                    {
+                                                                                        var internalFee = InternalFeeService.Instance.GetInternalFee(paymentItem.InternalFeeId.Value);
+                                                                                        var c = CaseService.Instance.GetCaseBasic(paymentItem.CaseNo);
+
+                                                                                        <tr style="height:19px;">
+                                                                                            <td class="fh tac bw pl2 b1" style="line-height:130%;">@paymentItem.CaseNo</td>
+                                                                                            <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="2">@c.Basic.CaseName</td>
+                                                                                            <td class="fh tac bw fwb pl2 b1" style="line-height:130%;">￥@(paymentItem.InternalFeePaidAmount.HasValue ? paymentItem.InternalFeePaidAmount.Value.ToString("###,##0.00") : "0")</td>
+                                                                                            <td class="fh tac bw pl2 b1" style="line-height:130%;">@(Dchien.Legal.Service.BAS.Type.CaseTypeService.Instance.GetCaseFeeType(paymentItem.InternalFeeTypeId.Value).FeeTypeName)</td>
+                                                                                            <td class="fh tac bw pl2 b1" style="line-height:130%;">@internalFee.PaymentObjectName</td>
+                                                                                            <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="2">@internalFee.Remark</td>
+                                                                                        </tr>
+
+                                                                                    }
+                                                                                    <tr style="height:19px;">
+                                                                                        <td class="fh tac bw pl2 b1" style="line-height:130%;" id="B8-0-958">备注：</td>
+                                                                                        <td class="fh bw pl2 b1" style="line-height:130%;" colspan="7" id="C8-0-958">@item.PaymentBasic.Remark</td>
+                                                                                    </tr>
+                                                                                        <tr style="height:19px;">
+                                                                                            <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3">小计</td>
+                                                                                            <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="5">￥@item.PaymentBasic.PaidAmount.ToString("###,##0.00")</td>
+                                                                                        </tr>
+                                                                                }
+
+                                                                            }
+
+                                                                            <tr style="height:19px;">
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                            </tr>
+                                                                            <tr style="height:19px;">
+                                                                                <td class="fh bw pl2 b0" style="line-height:130%;">收款人签字：</td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                                <td class="fh bw pl2 b0" style="line-height:130%;">审批人签字：</td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                                <td class="fh bw pl2 b0" style="line-height:130%;">出纳签字：</td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                                <td class="fh bw pl2 b0"></td>
+                                                                            </tr>
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                            </div>
+
+                                        </div>
+                                        <div class="case-section-right" style='width:30%; '>
+                                            <div class="case-section-wrap">
+                                                <div id='divInvoiceInfo' class="case-section-product">
+                                                    <!-- product section -->
+                                                    <div class="product-container">
+                                                        <div class="product-section">
+                                                            <div class="section-content clearfix" style='padding:0px'>
+                                                                <div class="ng-scope">
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

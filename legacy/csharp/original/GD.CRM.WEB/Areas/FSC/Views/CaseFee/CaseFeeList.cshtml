@@ -1,0 +1,278 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseFee.CaseFeeListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/index.css")" />
+
+@*<script src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.InternalFee.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>*@
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body"  style="overflow-y:hidden">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                    <h5>待结算案件费用</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 180px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 240px" />
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            案件编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+
+                                        <th>
+                                            经办律师：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseLawyer, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            律师助理：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseAssistant, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+                                    </tr>
+
+ 
+
+                                    <tr>
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            合同编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractNo, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+                       
+                                        <th>
+                                             结算状态：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.PaymentPaidStatus, CommonService.Instance.GetInternalFeePaymentPaidStatusList(true), new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+                                    <tr>
+
+
+                                        <th>
+                                             
+                                        </th>
+                                
+
+
+                                        <td>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnSearch">
+                                                <span>查询</span>
+                                            </a>
+                                            <a href="javascript:void(0);" class="btn btn-default " id="btnSearchClear">
+                                                <span>清空</span>
+                                            </a>
+
+
+                                        </td>
+                                    </tr>
+
+
+                                </table>
+
+                                <div class='divcaseconditioncasetypes'></div>
+                                <div class='divcaseconditioncasephases'></div>
+                                <div class='divcaseconditioncasefeetypes'></div>
+
+                            </form>
+                        </div>
+
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection" id="paymentgridSection">
+                                <table   class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 16%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 17px">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>
+                                                <input type="checkbox" id="chkCaseFeeAll" name="chkCaseFeeAll">
+                                            </th>
+                                            <th style="text-align: center">案件编号</th>
+                                            <th style="text-align: center">合同号</th>
+                                            <th style="text-align: center">客户名称</th>
+                                            <th style="text-align: center">个案确认金额</th>
+                                            <th style="text-align: center">代理费确认金额</th>
+                                            <th style="text-align: center">代理费结算金额</th>
+                                            <th style="text-align: center">官费确认金额</th>
+                                            <th style="text-align: center">官费结算金额</th>
+                                            <th style="text-align: center">扣归档费</th>
+                                            <th style="text-align: center">归档费</th>
+                                            <th style="text-align: center">支付金额</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                   
+                       
+                                </table>
+                                <div id="divList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                                    <table id="tblInternalFeeList" class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                        <colgroup>
+                                            <col style="width: 3%">
+                                            <col style="width: 10%">
+                                            <col style="width: 15%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+
+                                        </colgroup>
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td>
+                                                    &nbsp;
+                                                </td>
+
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+
+                                            </tr>
+                                            <tr style="display: none">
+                                                <td>
+                                                    &nbsp;
+                                                </td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+
+                                            </tr>
+                                        </tbody>
+
+                                        <tfoot class="" style="display: none">
+                                            <tr>
+                                                <td width="1">
+                                                    <input type="checkbox" id="chkInternalFeeAll" name="chkInternalFeeAll">
+                                                </td>
+                                                <td colspan="11">
+                                                    
+                                                        <div class="pull-left" style="position:absolute;z-index: 1000;">
+                                                            <div class="inline-block dropdown" style="margin-left: 4px">
+                                                                <div class="dropdown ng-scope">
+                                                                    <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                                                        导出
+                                                                        <span class="caret"></span>
+                                                                    </button>
+                                                                    <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+                                                                        <li>
+                                                                            <a href="javascript:;" id="btnInternalFeeExportSelected" onclick="javascript:void(0);">
+                                                                                <span style="font-size:12px">导出选中</span>
+                                                                            </a>
+                                                                        </li>
+                                                                        <li>
+                                                                            <a href="javascript:;" id="btnInternalFeeExportAll" onclick="javascript:void(0);">
+                                                                                <span style="font-size:12px">导出全部</span>
+                                                                            </a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    
+                                                    <div class="">
+                                                        <div class="pull-right page-box internalFeeList">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

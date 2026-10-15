@@ -1,0 +1,31 @@
+﻿@using Dchien.Legal.Service.BAS.Type
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+
+ 
+@{
+    if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_110)
+    {
+        Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Litigant.cshtml", Model);
+    }
+    else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_130)
+    {
+        Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Litigant.cshtml", Model);
+    }
+    else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_150)
+    {
+        Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Litigant.cshtml", Model);
+    }
+
+    else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_120)
+    {
+        Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Litigant.cshtml", Model);
+    }
+
+    else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_140)
+    {
+        Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Litigant.cshtml", Model);
+    }
+}
+
+

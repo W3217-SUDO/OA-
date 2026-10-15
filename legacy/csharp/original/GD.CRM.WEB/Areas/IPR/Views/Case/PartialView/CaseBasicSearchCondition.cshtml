@@ -1,0 +1,375 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseSearchConditionModel
+
+@{
+    object htmlAttribute = new { required = "false" };
+}
+
+<style>
+
+</style>
+
+<div class="ng-scope">
+    <div class="casesearch-section-main clearfix">
+        <div>
+            <div class="casesearch-section-wrap">
+                <div class="casesearch-section-product">
+                    <!-- product section -->
+                    <div class="product-container">
+                        <div class="product-section">
+                            <!--</div>--><!--</div>-->
+                            <div class="section-head casesearch-cursor-pointer">
+                                <a class="ng-binding">
+                                    @Html.CheckBoxFor(m => m.Search.HasCaseBasicSearchCondition, new { style = "vertical-align: middle; " })<span class="list-title-em" style="vertical-align: middle; ">基本信息</span>
+                                </a>
+                                <span style="padding-left: 50px">
+
+                                    @Html.CheckBoxFor(m => m.Search.IsUnionCaseBasicSearchCondition, new { style = "vertical-align: middle; " })@Html.LabelFor(m => m.Search.IsUnionCaseBasicSearchCondition)
+                                    @Html.CheckBoxFor(m => m.Search.IsNotUnionCaseBasicSearchCondition, new { style = "vertical-align: middle; " })@Html.LabelFor(m => m.Search.IsNotUnionCaseBasicSearchCondition)
+
+                                    @*<input type="checkbox" style="vertical-align: middle; "><label style="vertical-align: middle; ">并集</label>
+                                        <input type="checkbox" style="vertical-align: middle; "><label style="vertical-align: middle; ">交集</label>*@
+                                </span>
+                            </div>
+                            <div class="section-content clearfix" style='margin: 0 16px;'>
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <div style="float:left;width:50%">
+                                            <label class="control-label" style="float:left;width:30%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCaseType, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.HasCaseType)
+                                            </label>
+                                            <div style="float: left; width: 50%">
+                                                @{
+                                                    var caseTypeIds = string.Empty;
+                                                    var caseTypeNames = string.Empty;
+                                                    if (@Model != null && @Model.Search != null && @Model.Search.CaseBasicSearchCondition != null)
+                                                    {
+                                                        if (@Model.Search.CaseBasicSearchCondition.CaseTypeId != null && @Model.Search.CaseBasicSearchCondition.CaseTypeId.Any())
+                                                        {
+                                                            caseTypeIds = string.Join(",", @Model.Search.CaseBasicSearchCondition.CaseTypeId);
+                                                        }
+
+                                                        if (@Model.Search.CaseBasicSearchCondition.CaseTypeName != null && @Model.Search.CaseBasicSearchCondition.CaseTypeName.Any())
+                                                        {
+                                                            caseTypeNames = string.Join(",", @Model.Search.CaseBasicSearchCondition.CaseTypeName);
+                                                        }
+                                                    }
+                                                }
+
+                                                @Html.TextBoxFor(m => caseTypeNames, new { @id = "Search_CaseBasicSearchCondition_CaseType" })
+                                                @Html.HiddenFor(m => caseTypeIds, new { @id = "hid_Search_CaseBasicSearchCondition_CaseType" })
+                                            </div>
+                                            <label style="float: left; width: 20%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCaseType, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCaseType)
+                                            </label>
+                                        </div>
+
+                                        <div style="float:left;width:50%">
+                                            <label class="control-label" style="float:left;width:30%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCaseOriginPeople, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.CaseOriginPeople)
+                                            </label>
+                                            <div style="float: left; width: 50%">
+                                                @Html.HiddenFor(m => m.Search.CaseBasicSearchCondition.CaseOriginPeople)
+                                                @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseOriginPeopleName)
+                                            </div>
+                                            <label style="float: left; width: 20%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCaseOriginPeople, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCaseOriginPeople)
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        
+                                        @{
+                                            var casePhaseIds = string.Empty;
+                                            var casePhaseNames = string.Empty;
+                                            if (@Model != null && @Model.Search != null && @Model.Search.CaseBasicSearchCondition != null)
+                                            {
+                                                if (@Model.Search.CaseBasicSearchCondition.CasePhaseId != null && @Model.Search.CaseBasicSearchCondition.CasePhaseId.Any())
+                                                {
+                                                    casePhaseIds = string.Join(",", @Model.Search.CaseBasicSearchCondition.CasePhaseId);
+                                                }
+
+                                                if (@Model.Search.CaseBasicSearchCondition.CasePhaseName != null && @Model.Search.CaseBasicSearchCondition.CasePhaseName.Any())
+                                                {
+                                                    casePhaseNames = string.Join(",", @Model.Search.CaseBasicSearchCondition.CasePhaseName);
+                                                }
+                                            }
+                                        }
+
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCasePhase, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.CasePhaseId)
+                                        </label>
+                                        <div style="float:left;width:75%">
+                                            @Html.TextBoxFor(m => casePhaseNames, new { @id = "Search_CaseBasicSearchCondition_CasePhase", @style = "width: 99%" })
+                                            @Html.HiddenFor(m => casePhaseIds, new { @id = "hid_Search_CaseBasicSearchCondition_CasePhase" })
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCasePhase, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCasePhase)
+
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <div style="float:left;width:50%">
+                                            <label class="control-label" style="float:left;width:30%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCaseOfficer, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.CaseOfficer)
+                                            </label>
+                                            <div style="float:left;width:50%">
+                                                @Html.HiddenFor(m => m.Search.CaseBasicSearchCondition.CaseOfficer, htmlAttribute)
+                                                @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseOfficerName, htmlAttribute)
+                                            </div>
+                                            <label style="float: left; width: 20%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCaseOfficer, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCaseOfficer)
+                                            </label>
+                                        </div>
+                                        <div style="float:left;width:50%">
+                                            <label class="control-label" style="float:left;width:30%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasProcurator, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.Procurator)
+                                            </label>
+                                            <div style="float:left;width:50%">
+                                                @Html.HiddenFor(m => m.Search.CaseBasicSearchCondition.Procurator, htmlAttribute)
+                                                @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.ProcuratorName, htmlAttribute)
+                                            </div>
+                                            <label style="float: left; width: 20%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInProcurator, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInProcurator)
+                                            </label>
+
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+
+                                        <div style="float:left;width:50%">
+                                            <label class="control-label" style="float:left;width:30%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCopywriter, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.Copywriter)
+                                            </label>
+                                            <div style="float:left;width:50%">
+                                                @Html.HiddenFor(m => m.Search.CaseBasicSearchCondition.Copywriter, htmlAttribute)
+                                                @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CopywriterName, htmlAttribute)
+                                            </div>
+                                            <label style="float: left; width: 20%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCopywriter, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCopywriter)
+
+                                            </label>
+                                        </div>
+
+                                        <div style="float:left;width:50%">
+                                            <label class="control-label" style="float:left;width:30%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCaseInventor, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.CaseInventor)
+                                            </label>
+                                            <div style="float:left;width:50%">
+                                                @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseInventor, htmlAttribute)
+                                            </div>
+                                            <label style="float: left; width: 20%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCaseInventor, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCaseInventor)
+
+                                            </label>
+                                        </div>
+
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+
+                                        <div style="float:left;width:50%">
+                                            <label class="control-label" style="float:left;width:30%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCaseRequestNo, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.CaseRequestNo)
+                                            </label>
+                                            <div style="float:left;width:50%">
+                                                @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseRequestNo, htmlAttribute)
+                                            </div>
+                                            <label style="float: left; width: 20%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCaseRequestNo, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCaseRequestNo)
+
+                                            </label>
+                                        </div>
+
+                                        <div style="float:left;width:50%">
+                                            <label class="control-label" style="float:left;width:30%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCaseProposer, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.CaseProposer)
+                                            </label>
+                                            <div style="float:left;width:50%">
+                                                @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseProposer, htmlAttribute)
+                                            </div>
+                                            <label style="float: left; width: 20%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCaseProposer, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCaseProposer)
+
+                                            </label>
+                                        </div>
+
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <div style="float:left;width:50%">
+                                            <label class="control-label" style="float:left;width:30%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCaseCustomerNo, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.CaseCustomerNo)
+                                            </label>
+                                            <div style="float:left;width:50%">
+                                                @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseCustomerNo, htmlAttribute)
+                                            </div>
+                                            <label style="float: left; width: 20%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCaseCustomerNo, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCaseCustomerNo)
+
+                                            </label>
+                                        </div>
+
+
+                                        <div style="float:left;width:50%">
+                                            <label class="control-label" style="float:left;width:30%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasPriority, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.HasPriority)
+                                            </label>
+                                            <div style="float:left;width:50%">
+
+                                            </div>
+                                            <label style="float: left; width: 20%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInHasPriority, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInHasPriority)
+
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @{
+                                    htmlAttribute = new { @class = "input_time", @onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" };
+                                }
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCaseRegisterDate, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.CaseRegisterDateFrom)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseRegisterDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            <span>-</span>
+                                            @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseRegisterDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCaseRegisterDate, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCaseRegisterDate)
+
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCaseRequestDate, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.CaseRequestDateFrom)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseRequestDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            <span>-</span>
+                                            @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseRequestDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCaseRequestDate, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCaseRequestDate)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasAuthorizationDate, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.AuthorizationDateFrom)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.AuthorizationDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            <span>-</span>
+                                            @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.AuthorizationDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInAuthorizationDate, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInAuthorizationDate)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasDeadline, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.DeadlineFrom)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.DeadlineFrom, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            <span>-</span>
+                                            @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.DeadlineTo, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInDeadline, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInDeadline)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.HasCaseSubmitDate, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.CaseSubmitDateFrom)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseSubmitDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            <span>-</span>
+                                            @Html.TextBoxFor(m => m.Search.CaseBasicSearchCondition.CaseSubmitDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseBasicSearchCondition.NotInCaseSubmitDate, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseBasicSearchCondition.NotInCaseSubmitDate)
+
+                                        </label>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+
+
+
+

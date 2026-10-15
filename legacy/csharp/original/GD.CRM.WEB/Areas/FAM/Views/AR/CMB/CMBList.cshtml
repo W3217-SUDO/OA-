@@ -1,0 +1,226 @@
+﻿
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AR.CMB.CMBListModel
+
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/index.css")" />
+
+
+<script src="@Url.Content("~/Scripts/Common/jquery.form.js")" type="text/javascript"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/FAM/AR/FAM.CMB.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="viewFramework-product">
+ 
+    <div class="viewFramework-product-body" style="background:#ffffff">
+        <div class="console-container ng-scope">
+            <div class="row ng-scope">
+                <div class="col-sm-12">
+                    <div class="console-title console-title-border clearfix">
+                        <div class="pull-left">
+                            <h5 class="ng-binding">招商银行到账列表</h5>
+                        </div>
+                    </div>
+                    <div class="pull-left  col-sm-12" style="margin-top:1px">
+ 
+                        <div class="pull-left   col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 200px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 60px" />
+                                        <col>
+                                    </colgroup>
+ 
+                                    <tr>
+
+                                        <th style="text-align:left">
+                                            对方户名：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.PayerName, new { @class = "form-control", @style = "width:87%" })
+                                        </td>
+
+                                        <th style="text-align:left">
+                                            对方账号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.PayerBankNo, new { @class = "form-control", @style = "" })
+                                        </td>
+
+                        
+                                    </tr>
+                                    <tr>
+                                        <th style="text-align:left">
+                                            到账日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CashedDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.CashedDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                        </td>
+
+                                        <th style="text-align:left">
+                                            导入状态：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.Status, Dchien.Legal.Service.FAM.AR.CMB.PaymentStatusService.Instance.GetPaymentStatusList(true), new { @class = "form-control", style = "width:95%" })
+
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            
+                                        </th>
+                                        <td colspan="4">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnSearch">
+                                                <span>查询</span>
+                                            </a>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnFileUpload">
+                                                <span>上传</span>
+                                            </a>
+                                        </td>
+
+                                        <td colspan="4">
+                                            <label class="control-label">
+                                                <span style='color:red;text-align:right' id="message"></span>
+                                            </label>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </form>
+                        </div>
+
+  
+                    </div>
+                </div>
+
+                <div class="col-sm-12">
+                    <div class="ng-isolate-scope">
+                        <div class="ng-scope">
+                            <div class="gridSection">
+                                <table id="tblPaymentList" class="aps-table aps-widget aps-ani-transition ">
+
+                                    <colgroup>
+                                        <col style="width: 3%" />
+                                        <col style="width: 10%" />
+                                        <col style="width: 10%" />
+                                        <col style="width: 10%" />
+                                        <col style="width: 12%" />
+                                        <col style="width: 6%" />
+                                        <col style="width: 8%" />
+                                        <col style="width: 16%" />
+                                        <col style="width: 8%" />
+                                        <col style="width: 10%" />
+                                        <col style="width: 16%" />
+                                        <col style="width: 6%" />
+                                    
+                                    </colgroup>
+
+                                    <thead>
+                                        <tr>
+                                            <th width="10">
+                                                <input type="checkbox" id="chkPaymentAll" name="chkPaymentAll">
+                                            </th>
+                                            <th style="text-align: center">交易类型<br>回款方式</th>
+                                            <th style="text-align: center">交易日期<br>回款日期</th>
+                                            <th style="text-align: center">付款人账号<br>回款账号</th>
+                                            <th style="text-align: center">付款人名称<br>回款单位</th>
+                                            <th style="text-align: center">交易金额<br>回款金额</th>
+                                            <th style="text-align: center">交易流水号<br>银行单号</th>
+                                            <th style="text-align: center">摘要</th>
+                                            <th style="text-align: center">用途</th>
+                                            <th style="text-align: center">交易附言</th>
+                                            <th style="text-align: center">备注</th>
+                                            <th style="text-align: center">状态</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                        
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="ng-scope" style="display: none">
+                                        <tr>
+                                            <td width="10">
+                                                <input type="checkbox" id="chkPaymentAll" name="chkPaymentAll">
+                                            </td>
+
+                                            <td colspan="11">
+                                                <div class="pull-left">
+                                                    <input type="button" id="btnPaymentDelete" class="btn btn-default" style="height:32px" value="删除" />
+                                                    <input type="button" id="btnPaymentIn" class="btn btn-default" style="height:32px" value="导入" />
+                                                </div>
+                                                <div class="ng-scope">
+                                                    <div class="pull-right page-box paymentList">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+</div>
+

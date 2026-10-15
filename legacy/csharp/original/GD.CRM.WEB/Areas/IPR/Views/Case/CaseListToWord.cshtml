@@ -1,0 +1,222 @@
+﻿@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseListModel
+
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<script src="@Url.Content("~/Scripts/IPR/Case/Case.ToWord.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>案件导出</h5>
+                            </div>
+                        </div>
+
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FAM/AR/List")">
+                                @Html.HiddenFor(m => m.SearchCondition.Keyword, new { name = "Keyword" })
+                                @Html.HiddenFor(m => m.SearchCondition.ReminderTypeId, new { name = "ReminderTypeId" })
+                                @Html.HiddenFor(m => m.SearchCondition.CategoryTypeId, new { name = "CategoryTypeId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.CustomerId, new { name = "CustomerId" })
+                                <table class="search_table" style="width: 100%">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+
+                                        <th>
+                                            案号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNos, new { @class = "form-control", @placeholder = "案件编号(多个用逗号分隔)" })
+                                        </td>
+                                        <th>
+                                            申请日：
+                                        </th>
+                                        <td colspan="3">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseRequestDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:120px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseRequestDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:120px" })
+                                            @Html.CheckBoxFor(m => m.SearchCondition.SearchByMonthAndDay, new { style = "vertical-align:middle" })
+                                            <label class="control-label">
+                                                <span class="">按月日</span>
+                                            </label>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            <span contenteditable="" class="text-danger ">*</span>客户：
+                                        </th>
+                                        <td>
+                                            <input autocomplete="off" type="text" class="form-control ng-pristine ng-valid ng-valid-required" placeholder="客户编号或客户名称" id="txtCustomerNo">
+                                        </td>
+                                        <th>
+                                            案件阶段：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CasePhaseName, new { @class = "form-control" })
+                                            @Html.HiddenFor(m => m.SearchCondition.CasePhaseId)
+                                        </td>
+                                        <td style="text-align:left" colspan="2">
+                                            <a href="javascript:void(0);" class="btn btn-primary ng-isolate-scope" id="btnCaseSearch">
+                                                <span>查询</span>
+                                            </a>
+                                            <a href="javascript:void(0);" class="btn btn-primary ng-isolate-scope" id="btnCreate">
+                                                <span>生成文档</span>
+                                            </a>
+                                        </td>
+                     
+                                    </tr>
+                                </table>
+                            </form>
+                        </div>
+
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="ng-isolate-scope">
+                            <div class="ng-scope">
+                                <div class="gridSection">
+                                    <table id="tblCaseList" class="table table-hover">
+                                        
+                                        <colgroup>
+                                            <col style="width: 3%">
+                                            <col style="width: 10%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 10%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 5.5%">
+                                            <col style="width: 4%">
+                                            <col style="width: 4%">
+                                        </colgroup>
+
+                                        <thead>
+                                            <tr>
+                                                <th width="10">
+                                                    <input type="checkbox" id="chkCaseAll" class="ng-pristine ng-valid">
+                                                </th>
+                                                <th style="text-align: center">案件编号</th>
+                                                <th style="text-align: center">案件类型</th>
+                                                <th style="text-align: center">案件阶段</th>
+                                                <th style="text-align: center">申请号</th>
+                                                <th style="text-align: center">申请日</th>
+                                                <th style="text-align: center">受理日</th>
+                                                <th style="text-align: center">案源人</th>
+                                                <th style="text-align: center">案源日</th>
+                                                <th style="text-align: center">立案日</th>
+                                                <th style="text-align: center">登记号</th>
+                                                <th style="text-align: center">授权日</th>
+                                                <th style="text-align: center">代理人</th>
+                                                <th style="text-align: center">撰稿人</th>
+                                                <th style="text-align: center">处理人</th>
+                                                <th style="text-align: center">截止日</th>
+                                                <th style="text-align: center">优先权</th>
+                                                <th style="text-align: center">是否涉外</th>
+                                              
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td>
+                                                    &nbsp;
+                                                </td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                @*<td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>*@
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                               
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="ng-scope" style="display: none">
+                                            <tr>
+                                                <td colspan="18">
+                                                    <div class="pull-left"></div>
+                                                    <div class="ng-scope">
+                                                        <div class="pull-right page-box Caselist">
+
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+
+                                <div class="simple-grid-none-data-wrap">
+                                    <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                            <div class="text-size-16 tip-text inline-block">
+                                                <span class="margin-left ng-binding" ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                                <span class="ng-binding">。</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="casetoword"></div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                    <div class='divcaseconditioncasephases'></div>
+                    <div class='divcaseconditioncasetypes'></div>
+
+                </div>
+            </div>
+        </div>
+ 
+        <div class="contextMenu" id="exportingMenu" style="display: none;">
+            <ul >
+                <li id="exportToWord">生成文档</li>
+            </ul>
+        </div>
+    </div>
+</div>

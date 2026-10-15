@@ -1,0 +1,271 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Service
+
+@using Dchien.Legal.Entity.IPR.Case
+
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">专利监控</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @{ actived = id == PageId.PageId_1001002001 ? "class=active" : ""; }
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002001") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                var serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType1;
+                                serach.PageId = "1001002001";
+                                serach.PageName = "申请费";
+
+                                var totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                             }
+                            <div class="nav-title ng-binding">申请费(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002002 ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002002") class="ng-scope">
+                            <div class="nav-icon"></div>
+
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType2;
+                                serach.PageId = "1001002002";
+                                serach.PageName = "提实审费";
+
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+
+                            <div class="nav-title ng-binding">提实审费(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002003 ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002003") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType3;
+                                serach.PageId = "1001002003";
+                                serach.PageName = "办登费";
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">办登费(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002004 ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002004") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType4;
+                                serach.PageId = "1001002004";
+                                serach.PageName = "年费";
+
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">年费(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002005 ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002005") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType5;
+                                serach.PageId = "1001002005";
+                                serach.PageName = "年费滞纳金";
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">年费滞纳金(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002006 ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002006") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType6;
+                                serach.PageId = "1001002006";
+                                serach.PageName = "优先权费";
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">优先权费(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002007 ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002007") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType7;
+                                serach.PageId = "1001002007";
+                                serach.PageName = "补充优先权";
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">补充优先权(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002008 ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002008") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType8;
+                                serach.PageId = PageId.PageId_1001002008;
+                                serach.PageName = "专利补正";
+
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">专利补正(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+
+                @{ actived = id == PageId.PageId_1001002009 ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002009") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType9;
+                                serach.PageId = PageId.PageId_1001002009;
+                                serach.PageName = "提复审及缴费";
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">提复审及缴费(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002010 ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002010") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType10;
+                                serach.PageId = PageId.PageId_1001002010;
+                                serach.PageName = "缴项目变更费";
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">缴项目变更费(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002011 ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002011") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType11;
+                                serach.PageId = PageId.PageId_1001002011;
+                                serach.PageName = "专利补充证据";
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">专利补充证据(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002017 ? "class=active" : ""; }
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/PatentCaseList/List/1001002017") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType17;
+                                serach.PageId = PageId.PageId_1001002017;
+                                serach.PageName = "著作权补正";
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">著作权补正(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+            </ul>
+        </div>
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

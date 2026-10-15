@@ -1,0 +1,37 @@
+﻿.search-bar .simple-form-field {
+    display: inline-block;
+    vertical-align: middle;
+    *vertical-align: auto;
+    *zoom: 1;
+    *display: inline;
+    margin-bottom: 0;
+    vertical-align: middle;
+    width: 33%;
+}
+
+    .search-bar .simple-form-field .form-group {
+        clear: both;
+    }
+
+        .search-bar .simple-form-field .form-group label {
+            text-align: right;
+            line-height: 28px;
+        }
+
+.form-inline .simple-form-field {
+    margin: 4px 8px 4px 0px;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.form-inline .form-control-wrap {
+    display: inline-block;
+}
+
+.text-question {
+    color: #ccc;
+}
+
+.dialog-icon-color {
+    color: #09c;
+}

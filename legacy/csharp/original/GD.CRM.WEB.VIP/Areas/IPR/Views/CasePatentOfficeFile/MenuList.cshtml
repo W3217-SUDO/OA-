@@ -1,0 +1,755 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.IPR.Case
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+    var menus = MenuService.Instance.GetMenusByCurrentUser();
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main" style="width:220px">
+    <div class="product-nav-scene product-nav-main-scene" style="width: 220px">
+        <div class="product-nav-title ng-binding" style="width: 220px">专利转文</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007001) != null)
+                {
+                    actived = id == PageId.PageId_1001007001 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                                <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007001)) class="ng-scope"style="width:220px">
+                                    <div class="nav-icon"></div>
+                                    @{
+                                        var serach = new CaseFileSearchCondition();
+                                        serach.UserId = LoginHelper.GetUserName();
+                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_200101);
+                                        serach.PageId = PageId.PageId_1001007001;
+                                        serach.IsTransmitted = false;
+
+                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                    }
+                                    <div class="nav-title ng-binding" style="width:188px">转专利申请受理通知书(@totalCount)</div>
+                                </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007002) != null)
+                {
+                    actived = id == PageId.PageId_1001007002 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007002)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200021);
+                                    serach.PageId = PageId.PageId_1001007002;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转费用减缓审批通知(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007003) != null)
+                {
+                    actived = id == PageId.PageId_1001007003 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007003)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_3310362);
+                                    serach.PageId = PageId.PageId_1001007003;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转受理通知书纸件(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007004) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007004 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007004)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210304);
+                                    serach.PageId = PageId.PageId_1001007004;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转发明专利申请初步审查合格通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+                
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007005) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007005 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007005)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210305);
+                                    serach.PageId = PageId.PageId_1001007005;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转发明专利申请公布通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007006) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007006 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007006)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210307);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210308);
+
+                                    serach.PageId = PageId.PageId_1001007006;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转发明专利申请进入实质审查阶段通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007007) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007007 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007007)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210306);
+                                    serach.PageId = PageId.PageId_1001007007;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转实质审查请求期限届满前通知(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007008) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007008 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007008)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200028);
+                                    serach.PageId = PageId.PageId_1001007008;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转手续合格通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007009) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007009 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007009)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210302);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_220302);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_230301);
+
+                                    serach.PageId = PageId.PageId_1001007009;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转补正通知(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007010) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007010 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007010)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.CaseTypeIds.Add((int)CaseType.Invention);
+                                    serach.CaseTypeIds.Add((int)CaseType.CaseType15);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210401);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210402);
+                                    serach.PageId = PageId.PageId_1001007010;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转第一次审查意见通知书(发明)(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007030) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007030 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007030)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.CaseTypeIds.Add((int)CaseType.UtilityModel);
+                                    serach.CaseTypeIds.Add((int)CaseType.Design);
+                                    serach.CaseTypeIds.Add((int)CaseType.CaseType16);
+                                    serach.CaseTypeIds.Add((int)CaseType.CaseType17);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210401);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210402);
+                                    serach.PageId = PageId.PageId_1001007030;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转第一次审查意见通知书(实用外观)(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                 }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007011) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007011 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007011)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_220301);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_230302);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210403);
+                                    serach.PageId = PageId.PageId_1001007011;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转第N次审查意见通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007012) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007012 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007012)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200029);
+                                    serach.PageId = PageId.PageId_1001007012;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转办理手续补正通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007013) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007013 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007013)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200305);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210407);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_210408);
+                                    serach.PageId = PageId.PageId_1001007013;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转驳回决定(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007014) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007014 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007014)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200026);
+                                    serach.PageId = PageId.PageId_1001007014;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转恢复权利请求审批通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007015) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007015 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007015)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200032);
+                                    serach.PageId = PageId.PageId_1001007015;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转办理恢复权利手续补正通知(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007016) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007016 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007016)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200701);
+                                    serach.PageId = PageId.PageId_1001007016;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转缴费通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007017) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007017 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007017)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_3310008);
+                                    serach.PageId = PageId.PageId_1001007017;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转专利证书通知(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007018) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007018 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007018)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200022);
+                                    serach.PageId = PageId.PageId_1001007018;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转视为撤回通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007019) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007019 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007019)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200601);
+                                    serach.PageId = PageId.PageId_1001007019;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转视为放弃取得专利权通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007020) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007020 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007020)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200302);
+                                    serach.PageId = PageId.PageId_1001007020;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转视为未要求优先权通知(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007021) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007021 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007021)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200023);
+                                    serach.PageId = PageId.PageId_1001007021;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转视为未提出通知(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007022) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007022 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007022)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200602);
+                                    serach.PageId = PageId.PageId_1001007022;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转授权及缴纳授权费通知(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007023) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007023 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007023)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_3310363);
+                                    serach.PageId = PageId.PageId_1001007023;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转授权通知纸件(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007024) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007024 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007024)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200905);
+                                    serach.PageId = PageId.PageId_1001007024;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转复审请求受理通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007025) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007025 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007025)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_200702);
+                                    serach.PageId = PageId.PageId_1001007025;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转专利权终止(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001007099) != null)
+                {
+
+                    actived = id == PageId.PageId_1001007099 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFile/List", PageId.PageId_1001007099)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+
+                                    serach.CaseTypeIds.Add((int)CaseType.Invention);
+                                    serach.CaseTypeIds.Add((int)CaseType.UtilityModel);
+                                    serach.CaseTypeIds.Add((int)CaseType.Design);
+
+                                    serach.CaseTypeIds.Add((int)CaseType.CaseType15);
+                                    serach.CaseTypeIds.Add((int)CaseType.CaseType16);
+                                    serach.CaseTypeIds.Add((int)CaseType.CaseType17);
+
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200101);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200021);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_3310362);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_210304);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_210305);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_210307);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_210308);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_210306);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200028);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_210302);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_220302);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_230301);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_210401);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_210402);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_220301);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_230302);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200029);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200305);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_210407);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_210408);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200026);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200032);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200701);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_3310008);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200022);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200601);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200302);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200023);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200602);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_3310363);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200905);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200702);
+
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200103);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_200105);
+                                    serach.NotInFileTypeIds.Add((int)CaseFileType.FileType_210403);
+
+                                    serach.PageId = PageId.PageId_1001007099;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转其他官文(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                 }
+
+            </ul>
+        </div>
+    </div>
+ 
+</div>

@@ -1,0 +1,180 @@
+﻿@using Dchien.Legal.Service.Legal.Case
+@using Dchien.Legal.Service.BAS.Type
+@using Dchien.Legal.Service.FAM.AR.CaseFee
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AR.ReceivedPayment.PaymentObjectListModel
+
+<div id="dv_List">
+    <div class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: 4px; overflow-x: hidden; overflow-y: auto; ">
+          
+            <table class='table table-hover' id="tblARObjectList" width="100%">
+                <colgroup>
+                    <col style="width: 5%">
+                    <col style="width: 18%">
+                    <col style="width: 25%">
+                    <col style="width: 18%">
+                    <col style="width: 15%">
+                    <col style="width: 10%">
+                    <col style="width: 12%">
+                    <col style="width: 10%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>原告</th>
+                        <th>被告</th>
+                        <th>法院</th>
+                        <th>法院案号</th>
+                        <th>案号</th>
+                        <th>费用类型</th>
+                        <th>通知日期</th>
+                        <th>总额</th>
+                        <th>缴款金额</th>
+                        <th>回款金额</th>
+                        <th>退费金额</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var i = 1; }
+                    @if (Model.Payment != null && Model.Payment.PaymentObjects != null)
+                    {
+                        var caseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+
+                        foreach (var item in Model.Payment.PaymentObjects)
+                        {
+                            var caseInfo = CaseService.Instance.GetCase(item.CaseNo);
+                            var caseFeeInfo = CaseFeeService.Instance.GetCaseFeeByCaseFeeId(item.CaseFeeId);
+                            <tr>
+                                <td>
+                                     <span><input name='chkCaseFeeId' id='chkCaseFeeId' type='checkbox' caseid=@item.CaseId caseno=@item.CaseNo customerno=@caseInfo.Basic.CustomerNo casefeeid=@item.CaseFeeId /> @(i++)</span>
+                                </td>
+                                <td style="text-align: left">
+                                    <span>@caseInfo.Basic.AppellantNames</span>
+                                </td>
+                                <td style="text-align: left">
+                                    <span>@caseInfo.Basic.AppelleeNames</span>
+                                </td>
+
+                                @if (caseFeeInfo.CaseFeeTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseFeeType.FeeType_11010020)
+                                {
+                                    <td style="text-align: left">
+                                        <span>@caseInfo.Basic.FirstIntanceCourtName</span>
+                                    </td>
+                                    <td style="text-align: left">
+                                        <span>@caseInfo.Basic.FirstIntanceCaseNo</span>
+                                    </td>
+                                }
+                                else if (caseFeeInfo.CaseFeeTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseFeeType.FeeType_11010030)
+                                {
+                                    <td style="text-align: left">
+                                        <span>@caseInfo.Basic.SecondIntanceCourtName</span>
+                                    </td>
+                                    <td style="text-align: left">
+                                        <span>@caseInfo.Basic.SecondIntanceCaseNo</span>
+                                    </td>
+                                }
+                                else
+                                {
+                                    <td style="text-align: left">
+                                        <span>@caseInfo.Basic.OfficialCourtName</span>
+                                    </td>
+                                    <td style="text-align: left">
+                                        <span>@caseInfo.Basic.OfficialNo</span>
+                                    </td>
+                                }
+
+                                <td style="text-align: center;">
+                                    <a href="javascript:void(0)" onclick="javascript: $.case.View('@caseInfo.Basic.CaseNo')">@caseInfo.Basic.CaseNo</a>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span>@caseFeeInfo.CaseFeeTypeName</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span>@caseFeeInfo.InformDate.Value.ToString("yyyy-MM-dd")</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span>@caseFeeInfo.Amount</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span>@caseFeeInfo.PaidAmount</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(caseFeeInfo.CashedAmount.HasValue ? caseFeeInfo.CashedAmount.Value : 0)</span>
+                                </td>
+            
+                                <td style="text-align: center">
+                                    <span>@((caseFeeInfo.RefundAmount.HasValue ? caseFeeInfo.RefundAmount.Value : 0) - (caseFeeInfo.RefundedAmount.HasValue ? caseFeeInfo.RefundedAmount.Value : 0))</span>
+                                </td>
+                            </tr>
+                        }
+                        @*<tr>
+                            <td>
+                             </td>
+                            <td style="text-align: center">
+                             </td>
+                            <td style="text-align: center">
+                             </td>
+                            <td style="text-align: center;">
+                             </td>
+                            <td style="text-align: center;">
+                             </td>
+                            <td style="text-align: center;">
+                             </td>
+                            <td style="text-align: center;">
+                             </td>
+                            <td style="text-align: center"></td>
+                            <td style="text-align: center">
+                                @Model.Payment.PaymentObjects.Sum(item => (item.CaseFeePayAmount.HasValue ? item.CaseFeePayAmount.Value : 0))
+                            </td>
+                            <td style="text-align: center">
+                             </td>
+                    
+                            <td style="text-align: center;">
+                             </td>
+                            <td style="text-align: center;"></td>
+                        </tr>*@
+                    }
+                </tbody>
+
+                <tfoot class="" style="display: none">
+                    <tr>
+                        <td></td>
+                        <td colspan="11">
+
+                            <div class="pull-left">
+                                 <input type="button" id="btnPaymentMatchedPush" class="btn btn-default" style="height:32px" value="领取" /> 
+                            </div>
+                         
+                            <div class="">
+                                <div class="pull-right page-box paymentList">
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <div class="simple-grid-none-data-wrap">
+            <div class="simple-grid-none-data text-center  ">
+                <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                    <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                    <div class="text-size-16 tip-text inline-block">
+                        <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                        <span class="">。</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @Html.HiddenFor(m => m.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => m.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => m.PageSize, new { name = "PageSize" })
+
+</div>
+

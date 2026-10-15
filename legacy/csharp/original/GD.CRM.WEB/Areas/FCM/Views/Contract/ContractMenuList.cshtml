@@ -1,0 +1,51 @@
+﻿@using Dchien.Legal.Entity.System
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+}
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">我的合同</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @if (action == "ContractView".ToLower())
+                {
+                    <li class='active'>
+                        <div class="ng-isolate-scope">
+                            <a href='javascript:void(0);' class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">合同查看</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+              
+                <li >
+                    <div class=" ng-isolate-scope">
+                        
+                            <a href=@Url.Content(string.Format("~/{0}/FCM/Contract/ContractList", PageId.PageId_4001002)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">我的合同</div>
+                                <div class="nav-extend">
+                                    <span class="ng-isolate-scope">
+                                        <span class="deadline-leftdays-normal ng-scope ng-binding"></span>
+                                    </span>
+                                </div>
+                            </a>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+</div>

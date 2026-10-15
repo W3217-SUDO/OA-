@@ -1,0 +1,81 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type
+@using Dchien.Legal.Entity.Legal.Case;
+
+@model Dchien.Legal.VipWeb.Areas.Legal.ViewModels.Case.CaseModel
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.Court.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+        /*.bootstrap-tagsinput span {
+            line-height: 1.4;
+        }*/
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+</style>
+<div class="modal fade" id="casCustomerAddInOperatorModal" >
+    <div class="modal-dialog" style="width:450px" >
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                @using (Html.BeginForm("CustomerAddInEdit", "Case", FormMethod.Post, new { id = "casCustomerAddInOperator", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript: $('#casCustomerAddInOperatorModal').modal('hide');">×</button>
+                        <h5 class="modal-title ng-binding">项目联络人</h5>
+                    </div>
+                    <div class="modal-body">
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span>姓名：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    <input autocomplete="off"  class="form-control inline-block " id="CustomerAddInOpertorName" name="CustomerAddInOpertorName" placeholder="姓名" style="height:29px;width:100%" type="text" value="">
+                                </div>
+                            </div>
+
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+
+                                <span>职务：</span>
+                            </label>
+                            <div class="col-sm-7">
+                              <input autocomplete="off"  class="form-control inline-block " id="CustomerAddInOpertorTitle" name="CustomerAddInOpertorTitle" placeholder="职务" style="height:29px;width:100%" type="text" value="">
+
+                            </div>
+                        </div>
+
+                        
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                <span>电话：</span>
+                            </label>
+                            <div class="col-sm-7">
+                                <input autocomplete="off" class="form-control inline-block " id="CustomerAddInOpertorMobilePhone" name="CustomerAddInOpertorMobilePhone" placeholder="电话" style="height:29px;width:100%" type="text" value="">
+                            </div>
+                        </div>
+                       
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button"    onclick="javascript: c.Cases.Case.CustomerAddIn.Operator.CreateUpdate();" value="确定" />
+                        <input class="btn btn-default ng-binding" type="button"    onclick="javascript: $('#casCustomerAddInOperatorModal').modal('hide');"  value="取消" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+   
+</div>

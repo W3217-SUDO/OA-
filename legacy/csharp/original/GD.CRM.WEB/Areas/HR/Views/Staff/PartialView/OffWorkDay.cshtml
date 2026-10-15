@@ -1,0 +1,85 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.HR.ViewModels.Staff.OffWorkDayModel
+
+<div class="modal fade" id="offWorkDayModal" >
+        <div class="modal-dialog">
+            <div class="modal-content" ng-transclude="">
+                <div class="ng-scope">
+                    @using (Html.BeginForm("OffWorkDay", "OffWorkDay", FormMethod.Post, new { id = "offWorkDayForm", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                    {
+                        @Html.HiddenFor(m => m.StaffId)
+                        <div class="modal-header">
+                            <button type="button" class="close" id="btnOffWorkDayClose">×</button>
+                            <h5 class="modal-title ng-binding">请假信息</h5>
+                        </div>
+                        <div class="modal-body">
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="text-danger">*</span>
+                                    <span class="">请假开始时间</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextBoxFor(m => m.OffWorkDay.OffWorkBeginDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="text-danger">*</span>
+                                    <span class="">请假结束时间</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextBoxFor(m => m.OffWorkDay.OffWorkEndDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="text-danger">*</span>
+                                    <span class="">请假小时数</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextBoxFor(m => m.OffWorkDay.OffWorkHours, new { @class = "form-control" })
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="text-danger">*</span>
+                                    <span class="">请假类型</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.DropDownListFor(m => m.OffWorkDay.OffWorkDayType, CommonService.Instance.GetOffWorkDayTypeList(), new { @class = "form-control", @style = "width:100%" })
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="form-group">
+                                    <label  class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding"></span>
+                                        <span class="ng-binding">备注</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextAreaFor(m => m.OffWorkDay.Remark, new { @required = "true", maxlength = 1000, rows = 4, style = "width:120%" })
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                        <div class="modal-footer">
+                            <input class="btn btn-primary ng-binding" type="button" id="btnOffWorkDayCreateUpdate" value="确定" />
+                           <input class="btn btn-default ng-binding" type="button" id="btnOffWorkDayCancel" value="取消" />
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+</div>
+
+
+

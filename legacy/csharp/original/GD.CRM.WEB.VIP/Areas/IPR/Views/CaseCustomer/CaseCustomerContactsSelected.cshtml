@@ -1,0 +1,123 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseCustomerContactsSelectedModel
+
+@{
+    var display = "display:block";
+
+    if (@Model.ContactsList != null && @Model.ContactsList.Count > 0)
+    {
+        display = "display:none";
+    }
+}
+<script type="text/javascript">
+
+</script>
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+
+<div class="modal fade" id="caseCustomerContactsModal">
+    <div class="modal-dialog" style="width:1200px">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" id="btnCustomerContactsClose">×</button>
+                <h5 class="modal-title">选择联系人</h5>
+            </div>
+            <div class="modal-body" style='padding:10px'>
+                <form id="caseCustomerContactsListForm" class="form-inline ng-valid">
+ 
+                </form>
+                <div class="gridSection">
+                    <table id="tblCustomerContactsList" class="table table-hover" style="padding-bottom:0px">
+
+                        <colgroup>
+                            <col style="width: 8%">
+                            <col style="width: 8%">
+                            <col style="width: 8%">
+                            <col style="width: 8%">
+                            <col style="width: 8%">
+                            <col style="width: 14%">
+                            <col style="width: 45%">
+                 
+                           
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th>技术联系人</th>
+                                <th>文件联系人</th>
+                                <th>姓名 </th>
+                                <th>办公电话</th>
+                                <th>移动电话</th>
+                                <th>邮箱</th>
+                                <th>联系地址</th>
+                              
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Model.ContactsList != null)
+                            {
+                                foreach (var item in Model.ContactsList.OrderByDescending(x => x.ContactsId))
+                                {
+                                    <tr>
+                                       
+                                        <td style="text-align: center">
+                                            <input type="checkbox" name="chkTechnologyContactsId" value="@item.ContactsId">   
+                                        </td>
+                                        <td>
+                                            <input type="checkbox" name="chkDocumentContactsId" value="@item.ContactsId">
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span>@item.Contacts</span>
+                                        </td>
+                                        <td style="text-align: center">
+                                           <span> @item.OfficePhone</span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span>@item.MobilePhone</span>
+                                        </td>
+
+                                        <td style="text-align: center">
+                                            <span>@item.Email</span>
+                                        </td>
+
+                                        <td style="text-align: center">
+                                            <span>@item.ContactAddress</span>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                        <tfoot class="ng-scope" style="display:none">
+                            <tr>
+                                <td colspan="6">
+                                    <div class="pull-left"></div>
+                                    <div class="ng-scope">
+                                        <div class="pull-right page-box casefile">
+
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+
+                    <div class="simple-grid-none-data-wrap" style="@display">
+                        <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                            <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                <div class="text-size-16 tip-text inline-block">
+                                    <span class="margin-left ng-binding"></span>没有查询到联系人
+                                    <span class="ng-binding">.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <input class="btn btn-primary ng-binding" type="button" id="btnCustomerContactsSelected" value="确定" />
+                <input type="button" class="btn btn-default ng-binding" id="btnCustomerContactsCancle" value="取消" />
+            </div>
+        </div>
+    </div>
+</div>
+

@@ -1,0 +1,65 @@
+﻿@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var caseTypeId = string.Empty;
+    var invoiceTypeId = string.Empty;
+
+    if (!string.IsNullOrEmpty(this.Request["caseTypeId"]))
+    {
+        caseTypeId = this.Request["caseTypeId"].ToLower();
+    }
+    if (!string.IsNullOrEmpty(this.Request["invoiceTypeId"]))
+    {
+        invoiceTypeId = this.Request["invoiceTypeId"].ToLower();
+    }
+    var actived = "active";
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">收发文台</div>
+        <div class="ng-isolate-scope"></div>
+
+        <div class="product-nav-list">
+            <ul class="top-level">
+                
+                @{ actived = action == "PatentOfficeFileImport".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/FI/PatentOffice/PatentOfficeFileImport") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">专利官文导入</div>
+                        </a>
+                    </div>
+                </li>
+                
+                @{ actived = action == "PatentOfficeFileList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/FI/PatentOffice/PatentOfficeFileList") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">专利官文查询</div>
+                        </a>
+                    </div>
+                </li>
+                
+                @{ actived = action == "PatentOfficeFileList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/FI/PatentOffice/PatentOfficeFileList") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">未匹配专利官文</div>
+                        </a>
+                    </div>
+                </li>
+
+            </ul>
+        </div>
+
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

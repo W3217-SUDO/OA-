@@ -1,0 +1,76 @@
+﻿@{
+    ViewBag.Title = "new case";
+}
+
+@using Dchien.Legal.Common
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Web.Areas.IPR.ViewModels.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.ServiceStack.Text
+
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseModel
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+ 
+ <div class="viewFramework-product  viewFramework-product-col-1" style='background: #eaedf1;'>
+    <div class="casesearch"></div>
+    <div class="viewFramework-product-navbar ng-scope">
+        @{
+            var model = new CaseSearchResultListModel();
+            model.SearchCondition = JsonSerializer.DeserializeFromString<CaseSearchCondition>(Model.Keyword);
+            if (model.SearchCondition == null)
+            {
+                model.SearchCondition = new CaseSearchCondition();
+                model.SearchCondition.PageId = PageId.PageId_1001001015;
+            }
+            model.SearchCondition.PageNo = model.SearchCondition.PageNo == 0 ? 1 : model.SearchCondition.PageNo;
+            model.SearchCondition.PageSize = model.SearchCondition.PageSize == 0 ? 20 : model.SearchCondition.PageSize;
+            model.CaseList = CaseSearchService.Instance.GetCaseList(model.SearchCondition);
+            //if ((!model.SearchCondition.CaseId.HasValue || model.SearchCondition.CaseId == 0) && model.CaseList.Any())
+            //{
+            //    model.SearchCondition.CaseId = model.CaseList.First().CaseBasicInfo.CaseId;
+            //}
+
+            ViewBag.BodyClass = "message-center";
+
+            Html.RenderPartial("PartialView/CaseSearchResultList", model);
+        }
+
+    </div>
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="viewFramework-product-body">
+        @{
+            if (model.SearchCondition.CaseId.HasValue && model.SearchCondition.CaseId.Value > 0)
+            {
+                Html.RenderPartial("CaseInfo", Model);
+            }
+            else if (model.CaseList.Any())
+            {
+                var m = new CaseModel();
+                m.Case = CaseService.Instance.GetCase(model.CaseList.First().CaseBasicInfo.CaseId);
+                model.SearchCondition.CaseId = model.CaseList.First().CaseBasicInfo.CaseId;
+                m.CaseId = m.Case.CaseBasicInfo.CaseId;
+                Html.RenderPartial("CaseInfo", m);
+            }
+            else
+            {
+                Html.RenderPartial("CaseInfo", Model);
+            }
+        }
+    </div>
+   
+</div>

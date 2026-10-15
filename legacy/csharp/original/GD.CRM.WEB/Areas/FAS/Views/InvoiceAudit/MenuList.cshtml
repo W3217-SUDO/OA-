@@ -1,0 +1,60 @@
+﻿@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+
+    var actived = "active";
+
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">开票审批</div>
+        <div class="ng-isolate-scope"></div>
+
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+ 
+
+                @{   actived = (controller == "InvoiceAudit".ToLower() && action == "PendingList".ToLower()) ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/FAM/InvoiceAudit/PendingList") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">待审批开票</div>
+                        </a>
+                    </div>
+                </li>
+                
+                @{   actived = (controller == "InvoiceAudit".ToLower() && action == "RejectedList".ToLower()) ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/FAM/InvoiceAudit/RejectedList") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">已拒绝开票</div>
+                        </a>
+                    </div>
+                </li>
+                
+                @{   actived = (controller == "InvoiceAudit".ToLower() && action == "ApprovedList".ToLower()) ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/FAM/InvoiceAudit/ApprovedList") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">已审批开票</div>
+                        </a>
+                    </div>
+                </li>
+
+               
+
+            </ul>
+        </div>
+
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

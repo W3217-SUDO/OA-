@@ -1,0 +1,132 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.FAM.Invoice
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.IPR.Case
+@model Dchien.Legal.Web.Areas.CMS.ViewModels.Contract.ContractObjectListModel
+<form id="postForm" action="">
+    <div class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+
+            <table class='table table-hover' id="tblContractObjectList" width="100%">
+
+                <tbody>
+                    @{
+                        var caseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+                        var casePhases = CaseTypeService.Instance.GetAllCasePhases();
+                    }
+                    @if (Model.ContractObjects != null && Model.ContractObjects != null)
+                    {
+                        foreach (var item in Model.ContractObjects)
+                        {
+                            var caseInfo = CaseService.Instance.GetCaseBasic(item.CaseId.Value);
+                            var caseFeeIdList = (item.CaseOfficeFeeId.HasValue ? item.CaseOfficeFeeId.Value.ToString() : "") 
+                                    + "," + (item.CaseNonOfficeFeeId.HasValue ? item.CaseNonOfficeFeeId.Value.ToString() : "")
+                                    + "," + (item.CaseCommissionFeeId.HasValue ? item.CaseCommissionFeeId.Value.ToString() : "");
+
+                            <tr >
+                                <th style="text-align: center; background-color: rgb(153,255,204);">
+                                    案件类型：
+                                </th>
+                                <th style="text-align: center; background-color: rgb(153,255,204);">
+                                    @CaseTypeService.Instance.GetCaseType(caseInfo.CaseBasicInfo.CaseTypeId).CaseTypeName
+                                </th>
+                                <th style="text-align: center; background-color: rgb(153,255,204);">
+                                    案件名称：
+                                </th>
+                                <th style="text-align: center; background-color: rgb(153,255,204);" colspan="2">
+                                    @caseInfo.CaseBasicInfo.CaseName
+                                </th>
+                                <th style="text-align: center; background-color: rgb(153,255,204);">
+                                    案号：
+                                </th>
+                                <th style="text-align: center;; background-color: rgb(153,255,204);">
+                                    @caseInfo.CaseBasicInfo.CaseNo
+                                </th>
+                                <th style="text-align: center; background-color: rgb(153,255,204);">
+                                    完结状态
+                                </th>
+                                <th style="text-align: center; background-color: rgb(153,255,204);">
+                                   操作
+                                </th>
+                            </tr>
+                            <tr>
+                                <td style="text-align: center">
+                                    <span>@(item.CaseOfficeFeeTypeId.HasValue ? caseFeeTypes.FirstOrDefault(x => x.FeeTypeId == item.CaseOfficeFeeTypeId).FeeTypeName : "官费")</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(item.CaseOfficeFeeAmount)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(item.CaseNonOfficeFeeTypeId.HasValue ? caseFeeTypes.FirstOrDefault(x => x.FeeTypeId == item.CaseNonOfficeFeeTypeId).FeeTypeName : "代理费")</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@(item.CaseNonOfficeFeeAmount)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    佣金费
+                                </td>
+                                <td style="text-align: center;">
+                                    <span>@(item.CaseCommissionFeeAmount)</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span>@(item.CaseFeeTotalAmount)</span>
+                                </td>
+                                <td style="text-align: center;" rowspan="3">
+                                    <span>@(item.CaseFeeIsArchived ? "已完结" : "未完结") </span>
+                                </td>
+                                <td style="text-align: center;" rowspan="3">
+                                    <span>@Html.CheckBoxFor(m => item.CaseFeeIsArchived, new { @caseFeeIds = caseFeeIdList })</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="text-align: center">
+                                    已支付
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(item.CaseOfficeFeePaidAmount)</span>
+                                </td>
+                                <td style="text-align: center"></td>
+                                <td style="text-align: center"></td>
+                                <td style="text-align: center">
+                                    已支付
+                                </td>
+                                <td style="text-align: center;">
+                                    <span>@(item.CaseCommissionFeePaidAmount)</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span>@(item.CaseFeeTotalPaidAmount)</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="text-align: center">
+                                    已开票
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(item.CaseOfficeFeeInvoicedAmount)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    已开票
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(item.CaseNonOfficeFeeInvoicedAmount)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    已开票
+                                </td>
+                                <td style="text-align: center;">
+                                    <span>@(item.CaseCommissionFeeInvoicedAmount)</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span>@(item.CaseFeeTotalInvoicedAmount)</span>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</form>

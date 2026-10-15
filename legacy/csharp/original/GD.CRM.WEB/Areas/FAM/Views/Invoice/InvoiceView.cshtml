@@ -1,0 +1,498 @@
+﻿@using Dchien.Legal.BizModel.FAM.Invoice
+@using Dchien.Legal.Service.FAM.Invoice
+@using Dchien.Legal.Service.Legal.Case
+@using Dchien.Legal.Service.BAS.Type
+@using Dchien.Legal.Service.FAM.AR.CaseFee
+@using Dchien.Legal.Service.FCM.Contract;
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.Invoice.InvoiceCreateModel
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/FAM/Invoice/FAM.Invoice.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/FAM/Invoice/FAM.Invoice.View.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div class="console-container ng-scope">
+            <div class="ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ng-scope">
+                                <div class="console-title console-title-border clearfix">
+                                    <h5 class="pull-left">开票信息</h5>
+
+                                </div>
+                                <div class="table-viewer-header clearfix" style="margin-top: 12px">
+                                    <span class="table-viewer-topbar-title">
+                                        发票内容
+                                    </span>
+                                    <div class="pull-right table-viewer-topbar-content"></div>
+
+                                </div>
+                                <div class="info-panel">
+
+                                    <div class="row" style="margin-top:4px">
+
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span> 发票类别</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceTypeName)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceName)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceName)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.CustomerCompanyCode)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.CustomerCompanyCode)
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>公司电话</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.CustomerPhone)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>银行账号</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.CustomerBankAccount)
+                                            </span>
+                                        </div>
+                                        <div class="col-sm-4 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.CustomerBankName)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.CustomerBankName)
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div class="row" style="margin-top:4px">
+
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceAmount)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceAmount)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceOverAmount)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceOverAmount)
+                                            </span>
+                                        </div>
+
+                                        @*<div class="col-sm-4">
+                                                <span class="text-explode">
+                                                    <span>省市</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.Province)
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.City)
+                                                    <div id="district">
+                                                        <select class="form-control" disabled style="width:100px;display:inline" id="province" name="province"></select>
+                                                        <select class="form-control" disabled style="width:100px;display:inline" id="city" name="city"></select>
+                                                    </div>
+                                                </span>
+                                            </div>*@
+
+                                        <div class="col-sm-6 ">
+                                            <span class="text-explode">
+                                                <span>开票地址</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.CustomerBusinessAddress)
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div class="table-viewer-header clearfix" style="margin-top: 12px">
+                                    <span class="table-viewer-topbar-title">
+                                        申请信息
+                                    </span>
+                                    <div class="pull-right table-viewer-topbar-content"></div>
+
+                                </div>
+                                <div class="info-panel">
+          
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceApplicant)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceApplicantName)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2">
+                                            <span class="text-explode">
+
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceApplicationNo)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceApplicationNo)
+                                            </span>
+                                        </div>
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceApplicationDate)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayFor(m => m.Invoice.InvoiceBasic.InvoiceApplicationDate)
+                                            </span>
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Customer.CustomerBasic.CustomerName)</span>  <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Customer.CustomerBasic.CustomerName)
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-2">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceNo)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceNo)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceStatusName)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceStatusName)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceHolder)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceHolder)
+                                            </span>
+                                        </div>
+
+                                    </div>
+
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-10">
+                                            <span class="text-explode">
+                                                <span>申请备注</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.Remark)
+                                            </span>
+                                        </div>
+
+                                    </div>
+
+                                    <div class="row" style="margin-top:4px">
+
+                                        <div class="col-sm-10 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoicedOpinion)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span style="color:red">
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoicedOpinion)
+                                            </span>
+                                        </div>
+
+                                    </div>
+
+
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="table-viewer-header clearfix" style="margin-top: 12px">
+                            <span class="table-viewer-topbar-title">
+                                服务项
+                            </span>
+                            <div class="pull-right table-viewer-topbar-content"></div>
+
+                        </div>
+
+                        <div id="divInvoiceService" class="gridSection" style="padding-top: 0px; ">
+                            <table class="table table-hover table-fixed-header" id='tblInvoiceServiceList' style='width:100%;padding:0px;margin: 0px;border: 0px'>
+                                <colgroup>
+                                    <col style="width: 5%;" />
+                                    <col style="width: 40%;" />
+                                    @*<col style="width: 10%;" />*@
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                </colgroup>
+                                <thead class='header'>
+                                    <tr>
+                                        <th style="text-align: center">序号</th>
+                                        <th style="text-align: center">服务名称</th>
+                                        @*<th style="text-align: center">类型</th>*@
+                                        <th style="text-align: center">数量</th>
+                                        <th style="text-align: center">单价</th>
+                                        <th style="text-align: center">金额</th>
+                                        <th style="text-align: center">税率</th>
+                                        <th style="text-align: center">税额</th>
+
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{ var k = 1;
+                                        var serviceTypes = InvoiceServiceTypeService.Instance.GetAllInvoiceServiceTypes();
+                                    }
+                                    @foreach (var item in Model.Invoice.InvoiceServices)
+                                    {
+                                        var serviceType = serviceTypes.FirstOrDefault(x => x.ServiceTypeId == item.ServiceTypeId);
+                                        <tr>
+                                            <td>
+                                                <span>@(k++)</span>
+                                            </td>
+                                            <td style="text-align: center">
+                                                <span>@item.ServiceName</span>
+                                            </td>
+                                            @*<td style="text-align: center">
+                                                    <span>@(serviceType == null ? string.Empty : serviceType.ServiceTypeName)</span>
+                                                </td>*@
+                                            <td style="text-align: center; ">
+                                                <span>@item.Quantity</span>
+                                            </td>
+                                            <td style="text-align: center">
+                                                <span>@item.UnitPrice</span>
+                                            </td>
+                                            <td style="text-align: center">
+                                                <span>@item.Amount</span>
+                                            </td>
+                                            <td style="text-align: center">
+                                                <span>@item.TaxRate</span>
+                                            </td>
+                                            <td style="text-align: center">
+                                                <span>@item.TaxAmount</span>
+                                            </td>
+                                        </tr>
+                                    }
+
+                                    <tr>
+                                        <td>
+                                            <span>合计:</span>
+                                        </td>
+                                        @*<td style="text-align: center"></td>*@
+                                        <td style="text-align: center"></td>
+                                        <td style="text-align: center; "></td>
+                                        <td style="text-align: center">
+                                            <span></span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span>@Model.Invoice.InvoiceServices.Sum(f => f.Amount)</span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span> </span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span> </span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="case-section-wrap" style="padding-top: 12px;">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <ul class="nav nav-tabs">
+                                            <li id="liContractObjectList" class='active'><a href="javascript:void(0);" id="btnContractObjectList">合同信息</a></li>
+                                            <li class="pull-right" style="border:none">
+                                                <div style="margin-top:3px">
+                                                    <div style="text-align: inherit;">
+                                                        <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                        <div class="section-content clearfix">
+                                            <div class="product-col ng-scope" style="width: 100%">
+
+                                                <div id="dv_List">
+                                                    <div class="gridSection">
+                                                        <table class='table table-hover' style="margin-bottom:0px;" width="100%">
+                                                            <colgroup>
+                                                                <col style="width: 4%">
+                                                                <col style="width: 10%">
+                                                                <col style="width: 10%">
+                                                                <col style="width: 10%">
+                                                                <col style="width: 30%">
+                                                                <col style="width: 15%">
+                                                                <col style="width: 15%">
+                                                                <col style="width: 10%">
+                                                                <col style="width: 10%">
+                                                                <col style="width: 10%">
+                                                                <col style="width: 17px">
+                                                            </colgroup>
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>序号</th>
+                                                                    <th>合同编号</th>
+                                                                    <th>外部合同号</th>
+                                                                    <th>案件类型</th>
+                                                                    <th>案件名称</th>
+                                                                    <th>案号</th>
+                                                                    <th>费用类型</th>
+                                                                    <th>金额</th>
+                                                                    <th>到账金额</th>
+                                                                    <th>开票金额</th>
+                                                                    <th></th>
+                                                                </tr>
+                                                            </thead>
+                                                        </table>
+                                                        <div id='divContextList' style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                                                            <table class='table table-hover' id="tblInvoiceObjectList" width="100%">
+                                                                <colgroup>
+                                                                    <col style="width: 4%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 30%">
+                                                                    <col style="width: 15%">
+                                                                    <col style="width: 15%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 10%">
+
+                                                                </colgroup>
+
+                                                                <tbody>
+
+                                                                    @if (Model.Invoice != null && Model.Invoice.InvoiceObjects != null)
+                                                                    {
+                                                                        var i = 1;
+                                                                        var caseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+                                                                        foreach (var item in Model.Invoice.InvoiceObjects.OrderBy(x => x.CaseNo))
+                                                                        {
+                                                                            var caseInfo = CaseService.Instance.GetCaseBasic(item.CaseNo);
+                                                                            var caseFee = CaseFeeService.Instance.GetCaseFeeByCaseFeeId(item.CaseFeeId.Value);
+                                                                            var contract = ContractService.Instance.GetContractBasicByNo(caseFee.ContractNo);
+
+                                                                            <tr>
+                                                                                <td>
+                                                                                    <span>@(i++)</span>
+                                                                                </td>
+                                                                                <td style="text-align: center;">
+                                                                                    @*<span>@caseInfo.Basic.CaseNo</span>*@
+                                                                                    <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                                                       href="javascript:void();">@caseFee.ContractNo</a>
+                                                                                </td>
+                                                                                <td style="text-align: center;">
+                                                                                    @*<span>@caseInfo.Basic.CaseNo</span>*@
+                                                                                    <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                                                       href="javascript:void();">@contract.ContractBasicInfo.RefContractNo</a>
+                                                                                </td>
+                                                                                <td style="text-align: center">
+                                                                                    <span>@CaseTypeService.Instance.GetCaseType(caseInfo.Basic.CaseTypeId.Value).CaseTypeName</span>
+                                                                                </td>
+                                                                                <td style="text-align: left">
+                                                                                    <span>@caseInfo.Basic.CaseName</span>
+                                                                                </td>
+                                                                                <td style="text-align: center;">
+                                                                                    @*<span>@caseInfo.Basic.CaseNo</span>*@
+                                                                                    <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                                                       href="javascript:$.case.View('@caseInfo.Basic.CaseNo')">@caseInfo.Basic.CaseNo</a>
+                                                                                </td>
+
+                                                                                <td style="text-align: center">
+                                                                                    <span>@(item.CaseFeeTypeId.HasValue && item.CaseFeeTypeId != -100 ? caseFeeTypes.FirstOrDefault(x => x.FeeTypeId == item.CaseFeeTypeId).FeeTypeName : "")</span>
+                                                                                </td>
+                                                                                <td style="text-align: center;">
+                                                                                    <span>@(item.CaseFeeAmount.ToString())</span>
+                                                                                </td>
+                                                                                <td style="text-align: center;">
+                                                                                    <span><a href="javascript:void(0);" onclick="javascript: invoice.Invoice.ViewReceviedPayment(@caseFee.CaseFeeId);">@(caseFee.CashedAmount.HasValue ? caseFee.CashedAmount.Value : 0) </a></span>
+                                                                                    @*<span>@(item.CaseFeeCashedAmount.ToString())</span>*@
+                                                                                </td>
+                                                                                <td style="text-align: center">
+                                                                                    <span>@(item.CaseFeeInvoicedAmount.HasValue ? item.CaseFeeInvoicedAmount.Value : 0)</span>
+                                                                                </td>
+
+                                                                            </tr>
+                                                                        }
+                                                                    }
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+

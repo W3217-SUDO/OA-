@@ -1,0 +1,103 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.FAS.ViewModels.Cashed.CaseFeeAppliedListModel
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        //cashed.AppliedList();
+    })
+</script>
+<div class="modal fade" id="appliedListModal">
+    <div class="modal-dialog" style="width: 60%;">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" data-ng-click="close(false)" aria-hidden="true" id="btnAppliedListClose">×</button>
+                    <h5 class="modal-title ng-binding">历史分配记录</h5>
+                </div>
+                <div class="modal-body">
+                    <div>
+                        <div class="ng-isolate-scope">
+                            <div class="ng-scope">
+                                <div>
+                                    <div class="searchSection inline-block"></div>
+                                    <div>
+                                        <form id="appliedListForm" action="@Url.Content("~/FAS/Cashed/AppliedList")">
+                                            @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                            @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                            @Html.HiddenFor(m => m.SearchCondition.CashedId)
+                                        </form>
+                                    </div>
+                                    <div class="tagSearchSection inline-block margin-left"></div>
+                                </div>
+                                <div class="gridSection">
+                                    <table id="tblAppliedList" class="table table-hover" >
+                                        <thead>
+                                            <tr>
+                                                <th><input type="checkbox" id="chkAppliedIdAll" ></th>
+                                                <th>合同号</th>
+                                                <th>案号</th>
+                                                <th>申请号</th>
+                                                <th>费用类型</th>
+                                                <th>金额</th>
+                                                <th>分配金额</th>
+                                                <th>分配人</th>
+                                                <th>分配时间</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td>
+                                                </td>
+                                                <td>
+                                                </td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="ng-scope" style="display: none">
+                                            <tr>
+                                                <td colspan="9">
+                                                    <div class="pull-left"></div>
+                                                    <div class="ng-scope">
+                                                        <div class="pull-right" id="appliedlistpaging">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+
+                                <div class="simple-grid-none-data-wrap">
+                                    <div class="simple-grid-none-data text-center  ">
+                                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                            <div class="text-size-16 tip-text inline-block">
+                                                <span class="margin-left " ng-bind-html="vm.msg">暂无分配记录</span>
+                                                <span class="">。</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    
+                    <button class="btn btn-primary " id="btnAppliedCancel">取消到账</button>
+
+                    <button class="btn btn-default ng-binding" id="btnAppliedListCancel">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

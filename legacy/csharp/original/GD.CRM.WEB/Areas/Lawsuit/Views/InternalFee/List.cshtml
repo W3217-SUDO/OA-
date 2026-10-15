@@ -1,0 +1,129 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.FAM.AR.CaseFee
+@using Dchien.Legal.Entity.Lawsuit.Case
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.InternalFee.InternalListModel
+
+<form id="postForm" action="">
+    <div id="casegridSection" class="gridSection">
+        <div class="context" id='divContextList' style="overflow-y: auto; ">
+            <table class="table table-hover " id="tblCaseFee" style='width: 100%; margin-top: 0px; margin-bottom: 0px;'>
+                <colgroup>
+                    <col style="width: 3%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+
+                    <col style="width: 10%">
+                    <col style="width: 30%">
+                </colgroup>
+
+                <thead>
+                    <tr>
+                        <th>
+                        </th>
+                        <th>
+                            付款对象
+                        </th>
+                        <th>
+                            费用类型
+                        </th>
+                        <th>
+                            金额
+                        </th>
+                        <th>
+                            付款时间
+                        </th>
+                        <th>
+                            提交人
+                        </th>
+                        <th>
+                            备注
+                        </th>
+     
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    @if (Model.InternalFeeList != null && Model.InternalFeeList.Any())
+                    {
+                        foreach (var item in Model.InternalFeeList)
+                        {
+                            <tr class="caseFee">
+                                <td>
+                                    <input type="checkbox" value="@item.InternalFeeId">
+                                </td>
+                                <td>
+                                    <span>@item.PaymentObjectName</span>
+                                </td>
+                                <td>
+                                    <span>@item.FeeTypeName </span>
+                                </td>
+                                <td>
+                                    <span> @(item.Amount) </span>
+                                </td>
+                                <td>
+                                    <span>@(item.PaymentDate.HasValue ? item.PaymentDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                                </td>
+                                <td>
+                                    <span>@item.RequestUserName</span>
+                                </td>
+                 
+                                <td>
+                                    <span>@item.Remark</span>
+                                </td>
+                            </tr>
+                        }
+                    }
+
+                </tbody>
+
+                <tfoot class="ng-scope" style="display: none">
+                    <tr>
+                        <td colspan="7">
+                            <div class="pull-left"><span style="display: inline-block; vertical-align: middle; zoom: 1; padding: 8px 16px; color: red; "></span></div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box casefee">
+
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            <div class="simple-grid-none-data-wrap">
+                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                        <div class="text-size-16 tip-text inline-block">
+                            <span class="margin-left ng-binding"></span>没有查询到结算信息。
+
+                            @if (CommonService.Instance.CheckPermission((int)Permission.CreateCaseFeeInform))
+                            {
+                                <a href="javascript:void(0);" class="ng-binding" id="btnInternalFeeCreate">新增结算费</a>
+                            }
+                            <span class="ng-binding"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+    <div class="contextMenu" id="feeMenu" style="display: none;">
+        <ul>
+            <li id="create">新增结算费</li>
+            <li id="refresh">刷新</li>
+        </ul>
+    </div>
+
+    @Html.HiddenFor(m => Model.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => Model.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => Model.PageSize, new { name = "PageSize" })
+</form>

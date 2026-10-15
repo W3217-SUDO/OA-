@@ -1,0 +1,17 @@
+﻿@{
+    ViewBag.Title = "new case";
+}
+@using Dchien.Legal.Common
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<div class="viewFramework-product" style='background: #eaedf1;'>
+    <div class="viewFramework-product-body" style="overflow-y:auto">
+        @{
+            Html.RenderPartial("CaseInfo");
+        }
+    </div>
+   
+</div>

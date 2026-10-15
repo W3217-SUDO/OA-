@@ -1,0 +1,117 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseLawFirmSelectedModel
+
+@{
+    object htmlAttribute = null;
+}
+
+<div class="modal fade" id="caseLawFirmModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" style="width:850px">
+        <div class="modal-content" >
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" data-ng-click="close(false)" aria-hidden="true" id="btnLawFirmClose">×</button>
+                    <h5 class="modal-title ng-binding">选择律所</h5>
+                </div>
+                <div class="modal-body" style='padding:10px'>
+                    <div>
+                        <div class="ng-isolate-scope">
+                            <div class="ng-scope">
+                                <div>
+                                    <div class="searchSection inline-block"></div>
+                                    <div>
+                                        <form id="caseLawFirmListForm" action="@Url.Content("~/IPR/Case/CaseLawFirmListSelected")">
+                                            @Html.HiddenFor(m => m.CaseId, new { name = "PageSize" })
+                                            @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                            @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                        </form>
+                                    </div>
+                                    <div class="tagSearchSection inline-block margin-left"></div>
+                                </div>
+
+                                <div class="gridSection">
+                                    <table id="tblLawFirmList" class="table table-hover" >
+                                        <thead>
+                                            <tr>
+                                                <th width="10">
+                                                    <input type="checkbox" id="chkLawFirmAll" class="ng-pristine ng-valid">
+                                                </th>
+                                                <th>
+                                                    律所编号
+                                                </th>
+                                                <th>
+                                                    律所名称
+                                                </th>
+                                                <th>
+                                                    注册地址
+                                                </th>
+                                                <th>
+                                                    律所邮编
+                                                </th>
+                                                <th>
+                                                    律所电话
+                                                </th>
+                                                <th>
+                                                    律所传真
+                                                </th>
+                                                <th>
+                                                    律所邮箱
+                                                </th>
+                                                <th>
+                                                    国家地区
+                                                </th>
+                                                <th>
+                                                    机构代码
+                                                </th>
+                                                <th>
+                                                    律所代码
+                                                </th>
+                                                <th>
+                                                    营业地址
+                                                </th>
+
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td>
+                                                    &nbsp;
+                                                </td>
+                                                <td></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="ng-scope" style="display: none">
+                                            <tr>
+                                                <td colspan="12">
+                                                    <div class="pull-left"></div>
+                                                    <div class="ng-scope">
+                                                        <div class="pull-right page-box">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary ng-binding" id="btnLawFirmConfirm">确定</button>
+                    <button class="btn btn-default ng-binding" id="btnLawFirmCancel">取消</button>
+                </div>
+        </div>
+    </div>
+</div>
+

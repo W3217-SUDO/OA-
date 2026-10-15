@@ -1,0 +1,225 @@
+﻿@using Dchien.Legal.BizModel.CMS.Contract
+@model Dchien.Legal.Web.Areas.CMS.ViewModels.Contract.ContractModel
+
+<div class="case-section-wrap">
+    <div class="case-section-product">
+        <!-- product section -->
+        <div class="product-container">
+            <div class="product-section">
+                @using (Html.BeginForm("ContractView", "Contract", FormMethod.Post, new { id = "contractForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="section-content clearfix" style="padding: 0;">
+                        <div class="ng-scope">
+                            @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractGuid)
+                            @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                            <table class="input_table" style='width:100%'>
+                                <colgroup>
+                                    <col style="width: 8%;" />
+                                    <col style="width: 12%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 12%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 12%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 12%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 12%;" />
+                                </colgroup>
+                                <tr>
+                                    <th colspan="10" style="text-align: center">
+                                        <span style='font-weight: bold; font-size: 10pt; '>合同信息-查看</span>
+                                    </th>
+                                </tr>
+                                <tr>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.CustomerName)
+                                    </th>
+                                    <td colspan="3">
+                                        @Html.HiddenFor(m => m.Contract.ContractBasicInfo.CustomerId)
+
+                                        @if (Model.Contract != null && Model.Contract.ContractBasicInfo.CustomerId.HasValue)
+                                        {
+                                            @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.CustomerName, new { @class = "input_text case-form-control", @unselectable = "on", @readonly = true })
+                                        }
+                                        else
+                                        {
+                                            @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.CustomerName, new { @class = "input_text case-form-control", @unselectable = "on" })
+                                        }
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.CustomerNo)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.CustomerNo, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.AuditDate)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.AuditDate, "{0:yyyy-MM-dd}", new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                    </th>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractName)
+                                    </th>
+                                    <td colspan="3">
+                                        @if (Model.Contract != null && Model.Contract.ContractBasicInfo.CustomerId.HasValue)
+                                        {
+                                            @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.ContractName, new { @class = "input_text case-form-control", @unselectable = "on", @readonly = true })
+                                        }
+                                        else
+                                        {
+                                            @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.ContractName, new { @class = "input_text case-form-control", @unselectable = "on" })
+                                        }
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.ContractNo, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on", @placeholder = "自动生成" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                    </th>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <th rowspan="2">
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.TotalAmount)
+                                    </th>
+                                    <td rowspan="2">
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.TotalAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.CaseOfficeFeeAmount)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.CaseOfficeFeeAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.CashedTimes)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.CashedTimes, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.PaidTimes)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.PaidTimes, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.InvoicedTimes)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.InvoicedTimes, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                <tr>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.CaseNonOfficeFeeAmount)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.CaseNonOfficeFeeAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.CashedAmount)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.CashedAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.PaidCaseFeeAmount)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.PaidCaseFeeAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.InvoicedAmount)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.InvoicedAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.APAmount)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.APAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.CaseCommissionAmount)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.CaseCommissionAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.ARAmount)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.ARAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.UnPaidCaesFeeAmount)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.UnPaidCaesFeeAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Contract.ContractBasicInfo.InvoiceAmount)
+                                    </th>
+                                    <td>
+                                        @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.InvoiceAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+<div class="case-section-wrap" style="padding-top: 0;">
+    <div class="case-section-product">
+        <!-- product section -->
+        <div class="product-container">
+            <div class="product-section">
+                <ul class="nav nav-tabs">
+                    <li id="liContractObjectList" class='active'><a href="javascript:void(0);" id="btnContractObjectList">合同标的</a></li>
+                    @*<li id="liContractEventList"><a href="javascript:void(0);" id="btnContractEventList">回款记录</a></li>
+                    <li id="liContractEventList"><a href="javascript:void(0);" id="btnContractEventList">开票记录</a></li>
+                    <li id="liContractEventList"><a href="javascript:void(0);" id="btnContractEventList">付款记录</a></li>*@
+                    <li id="liContractEventList"><a href="javascript:void(0);" id="btnContractEventList">事项记录</a></li>
+                    <li id="liContractFileList"><a href="javascript:void(0);" id="btnContractFileList">合同附件</a></li>
+                    <li id="liContractAuditList"><a href="javascript:void(0);" id="btnContractAuditList">审批信息</a></li>
+                    <li class="pull-right" style=" border:none">
+                        <div style="margin-top:3px">
+                            <div style="text-align: inherit;">
+                                <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                    <input class="btn btn-primary ng-binding" type="button" id="btnContractExportToExcel" value="导出Excel" />
+                                </div>
+                            </div>
+                        </div>
+                    </li>
+                </ul>
+                <div class="section-content clearfix">
+                    <div class="product-col ng-scope" style="width: 100%">
+                        <div id="dv_List">
+                            
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

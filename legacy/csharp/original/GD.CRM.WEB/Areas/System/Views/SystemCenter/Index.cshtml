@@ -1,0 +1,72 @@
+﻿@model Dchien.Legal.Web.Areas.System.ViewModels.SystemCenter.CustomerTypeModel
+
+<script src="@Url.Content("~/Scripts/System/SystemCenter/CustomerType.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("MenuList");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="viewFramework-product-body">
+        <!-- product body -->
+        <div>
+            <div class="console-container ng-scope">
+                <div class="basicinfo ng-scope">
+                    <!--main table-->
+                    <div class="console-title console-title-border drds-detail-title clearfix">
+                        <h5>客户共享时间设置</h5>
+                    </div>
+                    <div class="alert alert-info">请完善以下信息,方便我们更好的为您服务</div>
+                    <div class="basicinfo-bd">
+                        <form id="customerTypeform" class="form-horizontal ">
+                            <fieldset>
+
+                                @if (Model.CaseCustomerTypeList != null)
+                                {
+                                    foreach (var item in Model.CaseCustomerTypeList)
+                                    {
+                                        <div class="form-group">
+                                            @Html.HiddenFor(m => item.CustomerTypeId, new { name = "CustomerTypeId" })
+                                          
+                                            <label class="col-sm-4 control-label label-width">
+                                                @*<span class="text-danger">*</span>*@
+                                                <span>@item.CustomerTypeName (天)</span>
+                                                <span>：</span>
+                                            </label>
+                                            <div class="col-sm-4 row">
+                                                @Html.TextBoxFor(m => item.SharedDays, new { @class = "form-control", @style = "width:80%" ,   
+                                                @onkeyup="javascript:this.value=this.value.replace(/\\D/g,'')",
+                                                @onafterpaste="this.value=this.value.replace(/\\D/g,'')"  })
+                                            </div>
+
+                                        </div>
+                                    }
+                                }
+
+                            </fieldset>
+
+                            <div class="form-group">
+                                <label class="col-sm-4 control-label label-width"></label>
+                                <div class="col-sm-8 row clearfix">
+                                    <input class="btn btn-primary ng-binding" type="button" id="btnCreateUpdate" value="保存" />
+                                </div>
+                            </div>
+                        </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>

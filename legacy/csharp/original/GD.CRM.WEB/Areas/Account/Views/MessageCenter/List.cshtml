@@ -1,0 +1,87 @@
+﻿@using Dchien.Legal.Entity.System
+@{ 
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var typeId = string.Empty;
+    if (ViewContext.HttpContext.Request.Params["typeId"] != null)
+    {
+        typeId = ViewContext.HttpContext.Request.Params["typeId"].ToString().ToLower();
+    }
+
+    var actived = "active";
+}
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script src="@Url.Content("~/Scripts/Account/MessageCenter/Message.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">站内消息</div>
+        <div class="ng-isolate-scope"></div>
+
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @{ actived = string.IsNullOrEmpty(typeId) ? "class=active" : "";}
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                       
+                            <a href=@Url.Content(string.Format("~/{0}/Account/MessageCenter/Index", PageId.PageId_2001002)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">全部消息</div>
+                            </a>
+                    </div>
+                </li>
+
+                @{ actived = typeId == "1".ToLower() ? "class=active" : "";}
+
+                <li @actived>
+                    <div class=" ng-isolate-scope">
+                        
+                            <a href=@Url.Content(string.Format("~/{0}/Account/MessageCenter/Index?typeId=1", PageId.PageId_2001002)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">未读消息</div>
+                                <div class="nav-extend">
+                                    <span class="ng-isolate-scope">
+                                        <span class="total-unread-count-un"></span>
+                                    </span>
+                                </div>
+                            </a>
+                    </div>
+                </li>
+
+                @{ actived = typeId == "2".ToLower() ? "class=active" : "";}
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content(string.Format("~/{0}/Account/MessageCenter/Index?typeId=2", PageId.PageId_2001002)) class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">已读消息</div>
+                        </a>
+                    </div>
+                </li>
+                
+                @{ actived = typeId == "3".ToLower() ? "class=active" : "";}
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content(string.Format("~/{0}/Account/MessageCenter/Index?typeId=3", PageId.PageId_2001002)) class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">已发送消息</div>
+                        </a>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>
+
+

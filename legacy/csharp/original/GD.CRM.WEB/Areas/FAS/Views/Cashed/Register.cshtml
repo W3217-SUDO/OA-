@@ -1,0 +1,130 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.IPR.Case
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.Cashed.RegisterModel
+ 
+<script src="@Url.Content("~/Scripts/FAM/Cashed/FAM.Cashed.Register.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="modal fade" id="cashedRegisterModal">
+    <div class="modal-dialog" style="width:50%">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                @using (Html.BeginForm("Register", "Cashed", FormMethod.Post, new { id = "cashedRegister", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" id="btnCashedRegisterClose">×</button>
+                        <h5 class="modal-title ">登记到账</h5>
+                    </div>
+
+                    <div class="modal-body">
+                        <div>
+
+                            <div class="form-group">
+                                <div class="col-sm-12">
+                                    <div class="gridSection">
+                                        <table id="tblCashedFeeItemList" class="table table-hover" style='width:100%'>
+                                            <colgroup>
+                                                <col style="width: 10%">
+                                                <col style="width: 6%">
+                                                <col style="width: 6%">
+                                                <col style="width: 6%">
+                                                <col style="width: 6%">
+                                                <col style="width: 10%">
+
+                                                <col style="width: 6%">
+                                            </colgroup>
+                                            <thead>
+                                                <tr>
+                                                    <th>客户名称</th>
+                                                    <th>到账时间</th>
+                                                    <th>到账金额</th>
+                                                    <th>到账方式</th>
+                                                    <th>银行单号</th>
+                                                    <th>备注</th>
+                                                    <th>操作</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @if (Model.CashedList != null && Model.CashedList.Count > 0)
+                                                {
+                                                    foreach (var item in Model.CashedList)
+                                                    {
+
+                                                        <tr>
+           
+                                                            <td>
+                                                                @Html.TextBoxFor(m => item.CustomerName, new { @class = "item_CustomerName form-control", })
+                                                                @Html.HiddenFor(m => item.CustomerNo, new { @class = "item_CustomerNo form-control", })
+                                                                @Html.HiddenFor(m => item.CustomerId, new { @class = "item_CustomerId form-control", })
+                                                            </td>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => item.CashedDate, "{0:yyyy-MM-dd}", new
+                                                                {
+                                                                    @class = "input_time form-control",
+                                                                    onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})"
+                                                                })
+                                                            </td>
+
+                                                            <td>
+                                                                @Html.TextBoxFor(m => item.Amount, new
+                                                                {
+                                                                    @class = "form-control",
+                                                                    @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                                                    @onafterpaste = "this.value=this.value.replace(/\\D/g,'')"
+                                                                })
+                                                            </td>
+                                                            <td>
+                                                                @Html.DropDownListFor(m => item.PaymentMode, PaymentModeService.Instance.GetPaymentModeList(PaymentType.Cashed), new { @class = "form-control" })
+                                                            </td>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => item.BillNo, new
+                                                                {
+                                                                    @class = "form-control"
+                                                                })
+                                                            </td>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => item.Remark, new
+                                                                {
+                                                                    @class = "form-control"
+                                                                })
+                                                            </td>
+                                                            <td>
+                                                                <input type="button" value="增加" class="btn_cashed_add" />
+                                                                <input type="button" value="移除" class="btn_cashed_remove" />
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="modal-footer">
+                        <input class="btn btn-primary " type="button" id="btnCashedRegisterCreate" value="确定" />
+                        <input class="btn btn-default " type="button" id="btnCashedRegisterCancel" value="取消" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+
+

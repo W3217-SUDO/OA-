@@ -1,0 +1,64 @@
+﻿@using Dchien.Legal.Service.FCM.Contract
+@using Dchien.Legal.Web.Areas.FCM.ViewModels.Contract
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div class="console-container ng-scope">
+            <div class="ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+
+                        <div class="console-title console-title-border clearfix">
+                            <h5 class="pull-left">合同查看</h5>
+
+                        </div>
+
+                        @{
+                            var model = new ContractModel();
+                            var contractLoadFailed = false;
+
+                            try
+                            {
+                                if (!string.IsNullOrEmpty(ViewBag.ContractNo))
+                                {
+                                    model.Contract = ContractService.Instance.GetContractByNo(ViewBag.ContractNo);
+                                }
+                                else
+                                {
+                                    model.Contract = ContractService.Instance.GetContractById(ViewBag.ContractId);
+                                }
+                            }
+                            catch (NullReferenceException)
+                            {
+                                contractLoadFailed = true;
+                            }
+
+                            if (!contractLoadFailed && model.Contract != null)
+                            {
+                                <script type="text/javascript" src="@Url.Content("~/Scripts/FCM/Contract/FCM.Contract.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+                                <script type="text/javascript" src="@Url.Content("~/Scripts/FCM/Contract/FCM.Contract.View.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+                                Html.RenderPartial("~/Areas/FCM/Views/Contract/ContractInfo.cshtml", model);
+                            }
+                            else
+                            {
+                                <div class="alert alert-info" style="margin-top: 15px;">
+                                    未查询到有效合同，合同可能已停用或尚未同步。
+                                </div>
+                            }
+                        }
+                    </div>
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

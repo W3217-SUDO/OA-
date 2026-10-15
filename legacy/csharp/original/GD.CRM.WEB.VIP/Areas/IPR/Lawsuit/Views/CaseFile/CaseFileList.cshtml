@@ -1,0 +1,169 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseFileListModel
+
+@{
+    var display = "display:block";
+   
+    if (@Model.CaseFiles != null && @Model.CaseFiles.Count > 0)
+    {
+        display = "display:none";
+    }
+}
+
+<form id="postForm" action="">
+    <div id="casegridSection" class="gridSection">
+        <table id='tblCaseFileHeader' class="list_table" style=' width: 100%; margin-top: 0px; margin-bottom: 0px;'>
+            <colgroup>
+                <col style="width: 5%" />
+                <col style="width: 8%" />
+                <col style="width: 8%" />
+                <col style="width: 20%" />
+                <col style="width: 25%" />
+                @*<col style="width: 8%" />*@
+                <col style="width: 10%" />
+                <col style="width: 5%" />
+            </colgroup>
+            <thead>
+                <tr>
+                    <th style="text-align: center">
+                        序号
+                    </th>
+                    <th style="text-align: center">
+                        案件编号
+                    </th>
+                    <th style="text-align: center">
+                        上传人
+                    </th>
+                    <th style="text-align: left">
+                        类别
+                    </th>
+                    <th style="text-align: left">
+                        文件名称
+                    </th>
+                    @*<th>
+                        文件大小
+                    </th>*@
+                    <th style="text-align: center">
+                        文档日期
+                    </th>
+                    <th style="text-align: center">
+                        锁定
+                    </th>
+                </tr>
+            </thead>
+
+        </table>
+        <div class="context" id='divContextList' style="height: 555px; overflow-y: auto; ">
+            <table class="list_table" id="tblCaseFile" style=' width:100%; margin-top: -1px; margin-bottom: 0px;'>
+                <colgroup>
+                    <col style="width: 5%" />
+                    <col style="width: 8%" />
+                    <col style="width: 8%" />
+                    <col style="width: 20%" />
+                    <col style="width: 25%" />
+                    @*<col style="width: 8%" />*@
+                    <col style="width: 10%" />
+                    <col style="width: 5%" />
+                </colgroup>
+
+                <tbody>
+                    @if (Model.CaseFiles != null)
+                    {
+                        foreach (var item in Model.CaseFiles)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="fileId" style="display:none">@item.FileId</span>
+                                    <span>@item.SortingIndex</span>
+                                </td>
+                                <td>
+                                    <span>@item.CaseNo</span>
+                                </td>
+                                <td>
+                                    <span>@item.UploadingUserName</span>
+                                </td>
+                                <td style="text-align: left">
+                                    <span>(@item.FileTypeId)@item.FileTypeName</span>
+                                </td>
+                                <td style="text-align: left">
+                                    <span>@item.FileName</span>
+                                </td>
+                                @*<td>
+                                <span>@item.FileSize KB</span>
+                            </td>*@
+                                <td>
+                                    <span>@item.UploadingTime.ToString("yyyy-MM-dd")</span>
+                                </td>
+                                <td>
+                                    <span>@(item.IsActive ? "是" : "否")</span>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+                <tfoot class="ng-scope" style="display:none">
+                    <tr>
+                        <td colspan="7">
+                            <div class="pull-left"></div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box casefile">
+
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+
+            </table>
+            <div class="simple-grid-none-data-wrap" style="@display">
+                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                        <div class="text-size-16 tip-text inline-block">
+                            <span class="margin-left ng-binding"></span>没有查询到案件文档，可以去
+                            <a href="javascript:void(0);" class="ng-binding"  style="color: #039" id="btnCaseFileCreate">新建文档</a>
+                            <span class="ng-binding"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Your custom menu with dropdown-menu as default styling -->
+    <div class="contextMenu" id="fileMenu" style="display: none;">
+        <ul style="width:150px">
+            @if (CommonService.Instance.CheckPermission((int)Permission.ViewCaseFile))
+            {
+                 <li id="view"> 查看</li>
+            }
+           
+            @if (CommonService.Instance.CheckPermission((int)Permission.CreateCaseFile))
+            {
+                <li id="create">新建</li>
+            }
+           
+            @if (CommonService.Instance.CheckPermission((int)Permission.UnlockCaseFile))
+            {
+                <li id="unlock">解锁</li>
+            }
+
+            @if (CommonService.Instance.CheckPermission((int)Permission.DeleteCaseFile))
+            {
+                <li id="delete">删除</li>
+            }
+
+            <li id="refresh">刷新</li>
+        </ul>
+    </div>
+
+    @Html.HiddenFor(m => m.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => m.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => m.PageSize, new { name = "PageSize" })
+
+</form>
+

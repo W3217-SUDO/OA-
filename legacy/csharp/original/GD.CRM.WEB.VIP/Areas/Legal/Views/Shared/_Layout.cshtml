@@ -1,0 +1,182 @@
+﻿@using Dchien.Legal.Infrastructure
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.HR.Staff
+@using Dchien.Legal.Service.BAS.Type
+@using Dchien.Legal.Service.BAS.NotaryOffice
+@using Dchien.ServiceStack.Text
+@{
+
+    var caseTypes = CaseTypeService.Instance.GetAllCaseTypes();
+    var caseFileTypes = CaseTypeService.Instance.GetAllCaseFileTypes();
+    var casePhaseTypes = CaseTypeService.Instance.GetAllCasePhases();
+    var caseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+
+    var caseTypesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseTypes);
+    var casePhasesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(casePhaseTypes);
+    var caseFileTypesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseFileTypes);
+    var caseFeeTypesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseFeeTypes.FindAll(x => x.IsActived));
+
+    var caseTaskTypes = TaskTypeService.Instance.GetAllTaskTypes();
+    var caseTaskTypesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseTaskTypes);
+
+    var notaryOffices = NotaryOfficeService.Instance.GetAllNotaryOffices();
+    var notaryOfficesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(notaryOffices);
+
+    //var menus = MenuService.Instance.GetMenusByCurrentUser();
+
+}
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="data-spm" content="5176" />
+    <meta name="referrer" content="origin" />
+    <meta name="aplus-rate-ahot" content="0.5" />
+    <meta name="aplus-rate-ahot-res" content="0.5" />
+    <title>律师协作平台-管理控制台首页</title>
+    <link rel="shortcut icon" href="@Url.Content("~/icon.ico")" type="image/x-icon" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/base.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    @*<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/assets/css/ace.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />*@
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/assets/css/font-awesome.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/assets/css/ace-skins.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/angular-growl.min.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/normalize.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/console.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/chosen.min.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    @*<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/fileinput/default.css")" />*@
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/fileinput/fileinput.css")" media="all" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/fileinput/fileinput-rtl.css")" media="all" />
+
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/index.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/ticketSystem/detail.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/ticketSystem/tip.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/ticketSystem/common.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/console.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+    <script src="@Url.Content("~/Scripts/Common/jquery-3.3.1.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/bootstrap.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery.contextmenu.r2.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/chosen.jquery.min.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+    <script src="@Url.Content("~/Scripts/Common/json.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery.ipr.fn.extend.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery.messager.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery.slimscroll.min.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/DatePicker4.6/WdatePicker.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/base.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery-citys.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+    @*<script src="@Url.Content("~/Scripts/Common/jquery-citys.js")" type="text/javascript"></script>*@
+
+    <script src="@Url.Content("~/Scripts/Common/fileinput/fileinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+    <script src="@Url.Content("~/Scripts/Common/fileinput/locales/zh.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+    @*<script src="@Url.Content("~/Scripts/Account/MessageCenter/Message.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>*@
+
+    <script src="@Url.Content("~/Scripts/TP/Task/Legal.Task.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery.form.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+
+    @*<!--[if lt IE 8]>
+        <script src="@Url.Content("~/Scripts/Common/browser-not-supported-ie8.js")"></script>
+        <![endif]-->
+        <!--[if lt IE 8]>
+        <script src="@Url.Content("~/Scripts/Common/browser-not-supported.js")"></script>
+        <![endif]-->*@
+    <script type="text/javascript">
+
+        var AP_ROOT = '@Url.Content("~/")';
+        //var AP_PAGE_ID = '@Guid.NewGuid()';
+
+        var GV_LS = {
+            OfficeOnlineUrl: 'https://view.officeapps.live.com/op/view.aspx?src=',
+            IPROnlineUrl: '@System.Configuration.ConfigurationManager.AppSettings["ipronlineurl"]',
+            OnlineUrl: '@System.Configuration.ConfigurationManager.AppSettings["onlineurl"]',
+            TaskOfficer:'@System.Configuration.ConfigurationManager.AppSettings["TaskOfficer"]',
+            TaskOfficerName:'@System.Configuration.ConfigurationManager.AppSettings["TaskOfficerName"]',
+            CaseTypes: @Html.Raw(caseTypesToJosn),
+            CaseFileTypes: @Html.Raw(caseFileTypesToJosn),
+            CasePhaseTypes: @Html.Raw(casePhasesToJosn),
+            CaseTaskTypes: @Html.Raw(caseTaskTypesToJosn),
+            CaseFeeTypes: @Html.Raw(caseFeeTypesToJosn),
+            NotaryOffices: @Html.Raw(notaryOfficesToJosn),
+            @*CaseFeeInvoiceStatus: @Html.Raw(caseFeeInvoiceStatusToJosn),*@
+        };
+
+    </script>
+    <style type="text/css"></style>
+    @{
+
+        var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+        var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+        var areaName = ViewContext.RouteData.DataTokens["area"] == null ? "" : ViewContext.RouteData.DataTokens["area"].ToString().ToLower();
+        var id = string.Empty;
+        if (ViewContext.RouteData.Values.ContainsKey("id"))
+        {
+            id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+        }
+    }
+
+    <script type="text/javascript">
+        AP_PAGE_ID = ('@id' == '' ? "1000001" : '@id');
+    </script>
+
+    <script type="text/javascript">
+            var require = {
+                "config": {
+                    "site": {
+                        "name": "DchienAdmin",
+                        "cdnurl": "@Url.Content("~/")",
+                        "version": "1.0.0",
+                        "timezone": "Asia/Shanghai",
+                        "languages": {
+                            "backend": "zh-cn",
+                            "frontend": "zh-cn"
+                        }
+                    },
+                    "upload": {
+                        "cdnurl": "./",
+                        "uploadurl": "data/upload.json",
+                        "bucket": "dchienbucket",
+                        "maxsize": "10mb",
+                        "mimetype": "*",
+                        "multipart": {
+                            "policy": "REDACTED_ARCHIVE_ONLY",
+                            "signature": "043eaf09c0319b1a9a11d06511bfdc4e",
+                            "bucket": "yourbucketname",
+                            "save-key": "/uploads/{year}{mon}{day}/{filemd5}{.suffix}",
+                            "expiration": 1500526573,
+                            "notify-url": "http://sh.021ipr.com/notify"
+                        },
+                        "multiple": false
+                    },
+                    "modulename": "admin",
+                    "controllername": "index",
+                    "actionname": "index",
+                    "jsname": "backend/index",
+                    "moduleurl": "./",
+                    "language": "zh-cn",
+                    "referer": null
+                }
+            };
+    </script>
+
+</head>
+<body>
+    <div class='viewFramework-body-product'>@RenderBody()</div>
+    <div class="slide-panel-container show-panel"></div>
+    @*<script src="@Url.Content("~/assets/js/require.js")" data-main="@Url.Content("~/assets/js/require-backend.min.js")"></script>*@
+</body>
+</html>

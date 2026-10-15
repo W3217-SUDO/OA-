@@ -1,0 +1,85 @@
+﻿@model Dchien.Legal.Web.Areas.CIT.ViewModels.InvestigationClue.InvestigationClueEvidenceModel
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+
+ 
+</style>
+
+<div class="modal fade" id="investigationClueEvidenceModal">
+    <div class="modal-dialog" style="width:660px">
+        <div class="modal-content">
+            <div class="ng-scope">
+                @using (Html.BeginForm("MultiCreateUpdate", "InvestigationClueEvidence", FormMethod.Post, new { id = "investigationClueEvidence", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    @Html.HiddenFor(m => m.InvestigationClueEvidence.Basic.ClueGuid)
+                    @Html.HiddenFor(m => m.InvestigationClueEvidence.Basic.EvidenceGuid)
+
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript: $('#investigationClueEvidenceModal').modal('hide');">×</button>
+                        <h5 class="modal-title ng-binding">取证</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="">
+                            <div class="form-horizontal margin-top-3 ">
+                                <div class="form-group">
+                                    <label class="col-sm-3 control-label">
+                                        <span class="text-danger">*</span>
+                                        <span>取证机构：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+                                            @Html.TextBoxFor(m => m.InvestigationClueEvidence.Basic.NotaryOrganization,
+                                                                            new
+                                                                            {
+                                                                                @readonly=true,
+                                                                                placeholder = "取证机构",
+                                                                                style = "height:24px;width:90%",
+                                                                                autocomplete = "off"
+                                                                            })
+
+                                            @Html.HiddenFor(m => m.InvestigationClueEvidence.Basic.NotarialNo)
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="col-sm-3 control-label">
+                                        <span class="text-danger">*</span>
+                                        <span>取证时间：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+
+                                            @Html.TextBoxFor(m => m.InvestigationClueEvidence.Basic.EvidenceDate, "{0:yyyy-MM-dd}",
+                                             new
+                                             {
+                                                 placeholder = "取证时间",
+                                                 style = "height:24px;width:90%",
+                                                 autocomplete = "off",
+                                                 @onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})"
+                                             })
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="divNotaryOffices"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button" onclick="javascript: investigation.Investigations.Investigation.Evidences.Evidence.MultiCreateUpdate(false);" value="确定" />
+                        <input class="btn btn-default ng-binding" type="button" onclick="javascript: $('#investigationClueEvidenceModal').modal('hide');" value="取消" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

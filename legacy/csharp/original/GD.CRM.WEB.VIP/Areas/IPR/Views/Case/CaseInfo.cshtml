@@ -1,0 +1,827 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Web.Areas.IPR.ViewModels.Case
+@using Dchien.Legal.Service.HR.Staff
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseModel
+@{
+    object htmlAttribute = null;
+
+    var staffs = StaffService.Instance.GetStaffList();
+    var lst = staffs.FindAll(x => x.StaffBasic.IsActived).GroupBy(x => x.StaffBasic.DepartmentId)
+    .ToList();
+
+    var departments = Dchien.Legal.Service.DepartmentService.Instance.GetAllDepartments();
+
+}
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/components.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/typeahead.bundle.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/IPR/Case/Case.Create.CaseInfo.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<script type="text/javascript">
+
+    var canCreateCase = '@CommonService.Instance.CheckPermission((int)Permission.CreateCase)';
+    var canUpdateCase = '@CommonService.Instance.CheckPermission((int)Permission.UpdateCase)';
+    var equalCaseOfficer = '@LoginHelper.GetUserName().Equals(Model.Case.CaseBasicInfo.CaseOfficer)';
+
+    @{
+        var displayForHasForeign = Model.Case.CaseBasicInfo.HasForeign ? "" : "display:none";
+    }
+    $(document).ready(function () {
+        $("#CaseInventor").tagsinput({
+            trimValue: true
+        });
+        $("#CaseDesigner").tagsinput({
+            trimValue: true
+        });
+
+        var inventor = $('#Case_CaseBasicInfo_CaseInventor').val();
+        if (inventor.trim() != "") {
+            var inventors = inventor.split(',');
+            $.each(inventors, function (index, value) {
+                $("#CaseInventor").tagsinput('add', value);
+            });
+        }
+        var designer = $('#Case_CaseBasicInfo_CaseDesigner').val();
+        if (designer.trim() != "") {
+            var designers = designer.split(',');
+            $.each(designers, function (index, value) {
+                $("#CaseDesigner").tagsinput('add', value);
+            });
+        }
+
+        caseInfo.ViewOnly();
+    });
+
+</script>
+<style>
+    p {
+        margin: 0 0 5px;
+    }
+
+    input.input_text, textarea, select, input.input_time {
+        border: 1px solid #ccc;
+    }
+
+
+    input.input_text, textarea, input.input_time {
+        padding: 2px 2px 2px 3px;
+    }
+
+    input.input_text, textarea, input.input_time {
+        background-color: #fff;
+    }
+
+    .case-form-control {
+        /*border-radius: 0px;*/
+        -webkit-transition: none;
+        transition: none;
+        font-size: 12px;
+        width: 100%;
+        height: 24px;
+    }
+
+
+
+    table td, th {
+        padding: 0px 0;
+        /* border-bottom: 1px dotted #D6D6D6; */
+        vertical-align: middle;
+    }
+
+    .input_table th {
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        text-align: left;
+    }
+
+    .multi-select .value .element {
+        border: 0px solid #999;
+        margin: 0;
+        padding: 2px;
+    }
+
+    .multi-select .value {
+        border: 0px solid #999;
+    }
+
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 1px;
+        border: 0px solid #ccc;
+        box-shadow: none;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 45px;
+        }
+
+        .bootstrap-tagsinput .tag [data-role="remove"] {
+            margin-left: 5px;
+            cursor: pointer;
+        }
+
+            .bootstrap-tagsinput .tag [data-role="remove"]:after {
+                content: "x";
+                padding: 0px 0px;
+            }
+</style>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<div>
+    <div class="ng-scope">
+        <div class="ng-scope">
+            <div class="case-notice-margin" style='display:none'>
+                <div class="console-global-notice">
+                    <div class="console-global-notice-list">
+                        <div class="alert alert-success console-global-notice-item">
+                            <div class="clearfix console-global-notice-item-inner">
+                                <div class="console-global-notice-content ng-binding">
+                                    控制台计划于2016年6月1日开始不再保障IE8浏览器下的可用性。建议您尽快升级浏览器，或者使用Chrome、Firefox。
+                                </div>
+                                <div class="console-global-notice-nomore">
+                                    <a href="javascript:;" class="btn btn-default btn-xs">不再显示</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            @*<div class="console-container" style="background-color: #F5F6FA; padding-left:6px;padding-right:6px">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="console-title">
+                                <div class="pull-left">
+                                    <h5>案件信息</h5>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>*@
+
+            <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                <span class="table-viewer-topbar-title">
+                    案件信息
+                </span>
+                <div class="pull-right table-viewer-topbar-content"></div>
+
+            </div>
+
+            <div class="case-section-main clearfix">
+                <!-- 左侧 -->
+                <div class="case-section-left" style="padding-right: 15%;">
+                    <div class="case-section-wrap">
+                        <div class="case-section-product">
+                            <!-- product section -->
+                            <div class="product-container">
+                                <div class="product-section">
+                                    @using (Html.BeginForm("CaseInfo", "Case", FormMethod.Post, new { id = "caseForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                                    {
+
+                                        <div class="section-content clearfix" style='padding:0'>
+                                            <div class="ng-scope">
+                                                @Html.HiddenFor(m => m.CurrentSelectedListTypeId)
+                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseId)
+                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.CompanyId)
+                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.PushOfficerRemak)
+                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.DeadlineLeftDays)
+                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.ReminderDate, "{0:yyyy-MM-dd}", new { @style = "display:none" })
+                                                @{
+                                                    var customerIds = string.Empty;
+                                                    if (Model.Case != null && Model.Case.CaseCustomers != null && Model.Case.CaseCustomers.Any())
+                                                    {
+                                                        customerIds = string.Join(",", Model.Case.CaseCustomers.Select(x => x.CustomerBasic.CustomerId).ToList());
+                                                    }
+                                                }
+                                                @Html.HiddenFor(m => customerIds, new { @id = "Case_CaseBasicInfo_CustomerIds" })
+
+                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.LeadRate)
+                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.CopyRate)
+                                                <table class="input_table" style='width:100%'>
+                                                    <colgroup>
+                                                        <col style="width: 8%;" />
+                                                        <col style="width: 10%" />
+                                                        <col style="width: 8%;" />
+                                                        <col style="width: 23%" />
+                                                        <col style="width: 8%;" />
+                                                        <col style="width: 13%" />
+                                                        <col style="width: 8%;" />
+                                                        <col style="width: 13%" />
+                                                        <col style="width: 13%" />
+                                                    </colgroup>
+                                                    <tr>
+                                                        <th>
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseNo)
+                                                        </th>
+                                                        <td>
+                                                            @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseNo, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on", @placeholder = "自动生成" })
+                                                        </td>
+                                                        <th>
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseTypeId)
+                                                        </th>
+                                                        <td>
+                                                            @Html.DropDownListFor(m => m.Case.CaseBasicInfo.CaseTypeId, CaseTypeService.Instance.GetCaseTypeList(), new { maxlength = 60, @class = "form-control" })
+                                                        </td>
+                                                        <th>
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.CasePhaseId)
+                                                        </th>
+                                                        <td>
+                                                            @{
+                                                                htmlAttribute = new { maxlength = 60, @class = "form-control" };
+                                                            }
+                                                            @Html.DropDownListFor(m => m.Case.CaseBasicInfo.CasePhaseId, CaseTypeService.Instance.GetCasePhaseList(@Model.Case.CaseBasicInfo.CaseTypeId), htmlAttribute)
+                                                        </td>
+                                                        <th>
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseRegisterDate)
+                                                        </th>
+                                                        <td>
+                                                            @*@Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseRegisterDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", @placeholder = "自动生成" })*@
+                                                            @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseRegisterDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", required = "true" })
+                                                        </td>
+                                                        <td rowspan="6" style='padding-left: 5px; vertical-align: top'>
+                                                            <p>
+                                                                @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasPriority, new { style = "vertical-align:middle" })
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.HasPriority)
+                                                            </p>
+                                                            <div class="spanTrademarkIdsPriority">
+                                                                <p>
+                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTradeFirstRequest, new { style = "vertical-align:middle" })
+                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTradeFirstRequest)
+                                                                </p>
+                                                                <p>
+                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTradeBaseOnExhibition, new { style = "vertical-align:middle" })
+                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTradeBaseOnExhibition)
+                                                                </p>
+                                                                <p>
+                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTradeReplenish, new { style = "vertical-align:middle" })
+                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTradeReplenish)
+                                                                </p>
+                                                            </div>
+                                                            <p>
+                                                                @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasForeign, new { style = "vertical-align:middle" })
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.HasForeign)
+                                                            </p>
+                                                            <div class="spanHasRelief">
+                                                                <p>
+                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasRelief, new { style = "vertical-align:middle" })
+                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasRelief)
+                                                                </p>
+                                                            </div>
+                                                            <div class="spanHasAdvanced">
+                                                                <p>
+                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasAdvanced, new { style = "vertical-align:middle" })
+                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasAdvanced)
+                                                                </p>
+                                                            </div>
+                                                            <div class="spanHasRequestView">
+                                                                <p>
+                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasRequestView, new { style = "vertical-align:middle" })
+                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasRequestView)
+                                                                </p>
+                                                            </div>
+                                                            <div class="spanHasPrivateInventor">
+                                                                <p>
+                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasPrivateInventor, new { style = "vertical-align:middle" })
+                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasPrivateInventor, new { id = "lbl_Case_CaseBasicInfo_HasPrivateInventor" })
+                                                                </p>
+                                                            </div>
+                                                            <div class="spanHasIU">
+                                                                <p>
+                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasIU, new { style = "vertical-align:middle" })
+                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasIU)
+                                                                </p>
+                                                            </div>
+                                                            <div class="spanHasTradeColorProtected">
+                                                                <p>
+                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTradeColorProtected, new { style = "vertical-align:middle" })
+                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTradeColorProtected)
+                                                                </p>
+                                                            </div>
+                                                            <div class="spanHasTradeVoiceProtected">
+                                                                <p>
+                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTradeVoiceProtected, new { style = "vertical-align:middle" })
+                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTradeVoiceProtected)
+                                                                </p>
+                                                            </div>
+                                                            <div class="spanHasTrade3DProtected">
+                                                                <p>
+                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTrade3DProtected, new { style = "vertical-align:middle" })
+                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTrade3DProtected)
+                                                                </p>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <th>
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseRequestNo, new { @id = "lblCaseRequestNo" })
+                                                        </th>
+                                                        <td>
+                                                            @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseRequestNo, new { @class = "input_text case-form-control" })
+                                                        </td>
+                                                        <th>
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseName, new { @id = "lblCaseTypeIdName" })
+                                                        </th>
+                                                        <td>
+                                                            @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseName, new { maxlength = 60, @class = "input_text case-form-control" })
+                                                        </td>
+                                                        <th>
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseRequestDate, new { @id = "lblCaseRequestDate" })
+                                                        </th>
+                                                        <td>
+                                                            @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseRequestDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                        </td>
+                                                        <th>
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.AuthorizationDate)
+                                                        </th>
+                                                        <td>
+                                                            @Html.TextBoxFor(m => m.Case.CaseBasicInfo.AuthorizationDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <th>
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseOriginPeople)
+                                                        </th>
+                                                        <td>
+                                                            @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseOriginPeople)
+                                                            @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseOriginPeopleName, new { @class = "input_text case-form-control", @autocomplete = "off", @unselectable = "on" })
+                                                        </td>
+                                                        <th>
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.Procurator)
+                                                        </th>
+                                                        <td>
+                                                            @Html.HiddenFor(m => m.Case.CaseBasicInfo.Procurator)
+                                                            @Html.TextBoxFor(m => m.Case.CaseBasicInfo.ProcuratorName, new { @class = "input_text case-form-control", @autocomplete = "off", @unselectable = "on" })
+                                                        </td>
+                                                        <th>
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.Copywriter)
+                                                        </th>
+                                                        <td>
+                                                            @Html.HiddenFor(m => m.Case.CaseBasicInfo.Copywriter)
+                                                            @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CopywriterName, new { @class = "input_text case-form-control ", @autocomplete = "off", @unselectable = "on" })
+                                                        </td>
+                                                        @*<th>
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseSubmitter)
+                                                            </th>
+                                                            <td>
+                                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseSubmitter)
+                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseSubmitterName, new { @readonly = true, @class = "input_text case-form-control", @autocomplete = "off", @unselectable = "on" })
+                                                            </td>*@
+
+
+
+                                                        @if (Model.Case.CaseBasicInfo.CaseTypeId == (int)CaseType.Invention
+                    || Model.Case.CaseBasicInfo.CaseTypeId == (int)CaseType.UtilityModel
+                    || Model.Case.CaseBasicInfo.CaseTypeId == (int)CaseType.Design)
+                                                        {
+                                                            <th>
+
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.FirstAnnualYear)
+                                                            </th>
+                                                            <td>
+                                                                @Html.DropDownListFor(m => m.Case.CaseBasicInfo.FirstAnnualYear, CaseAnnualYearService.Instance.GetAnnualYearList(true, (CaseType)Model.Case.CaseBasicInfo.CaseTypeId), new { @class = "form-control" })
+                                                           @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseOfficer)
+                                                             </td>
+
+                                                        }
+                                                        else
+                                                        {
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseOfficer)
+                                                            </th>
+                                                                <td>
+                                                                    @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseOfficer)
+                                                                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseOfficerName, new { @class = "input_text form-control", @autocomplete = "off", @unselectable = "on" })
+                                                                </td>
+                                                        }
+
+
+                                                    </tr>
+                                                    <tr>
+                                                        <th>
+                                                            <span class="spanCaseCommon">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseOriginDate)
+                                                            </span>
+                                                            <span class="spanTrademarkIds">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.FirstInstanceDate)
+                                                            </span>
+                                                        </th>
+                                                        <td>
+                                                            <span class="spanCaseCommon">
+                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseOriginDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                            </span>
+                                                            <span class="spanTrademarkIds">
+                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.FirstInstanceDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                            </span>
+                                                        </td>
+
+                                                        <th>
+                                                            <span class="spanCaseCommon">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.RefCaseNo)
+                                                            </span>
+                                                            <span class="spanTrademarkIds">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.TradeTypeId)
+                                                            </span>
+                                                        </th>
+                                                        <td>
+                                                            <span class="spanCaseCommon">
+                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.RefCaseNo, new { @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </span>
+                                                            <span class="spanTrademarkIds">
+                                                                @Html.DropDownListFor(m => m.Case.CaseBasicInfo.TradeTypeId, CaseTypeService.Instance.GetTradeTypeList(true), new { maxlength = 60, @class = "case-form-control select" })
+                                                            </span>
+                                                        </td>
+                                                        <th>
+                                                            <span class="spanCaseCommon spanCardNo">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CardNo)
+                                                            </span>
+                                                            <span class="spanTrademarkIds">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.TrademarkIds)
+                                                            </span>
+                                                            <span class="spanCaseCopyright">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseRegisterNo)
+                                                            </span>
+                                                        </th>
+                                                        <td>
+                                                            <span class="spanCaseCommon spanCardNo">
+                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CardNo, new
+                                                           {
+                                                               maxlength = 60,
+                                                               @class = "input_text case-form-control",
+                                                               @placeholder = "禁止输入空格及特殊字符串.",
+                                                               @onkeyup = "javascript:this.value=this.value.replace(/\\s+/g,'')",
+                                                               @onafterpaste = "this.value=this.value.replace(/\\s+/gg,'')"
+                                                           })
+                                                            </span>
+                                                            <span class="spanTrademarkIds">
+                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.TrademarkIds, new { maxlength = 60, @class = "input_text case-form-control" })
+                                                            </span>
+                                                            <span class="spanCaseCopyright">
+                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseRegisterNo, new { maxlength = 60, @class = "input_text case-form-control" })
+                                                            </span>
+                                                        </td>
+                                                        @*<th>
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseSubmitDate)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseSubmitDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                            </td>*@
+
+
+                                                        @if (Model.Case.CaseBasicInfo.CaseTypeId == (int)CaseType.Invention
+                                                        || Model.Case.CaseBasicInfo.CaseTypeId == (int)CaseType.UtilityModel
+                                                        || Model.Case.CaseBasicInfo.CaseTypeId == (int)CaseType.Design)
+                                                        {
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CostSlowRate)
+                                                            </th>
+                                                            <td>
+                                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.Deadline)
+                                                                @Html.DropDownListFor(m => m.Case.CaseBasicInfo.CostSlowRate, CaseAnnualYearService.Instance.GetCostSlowRateList(false), new { @class = "form-control" })
+                                                            </td>
+                                                        }
+                                                        else
+                                                        {
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.Deadline)
+                                                            </th>
+                                                                <td>
+                                                                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.Deadline, "{0:yyyy-MM-dd}", new { @class = "input_text form-control", @unselectable = "on" })
+                                                                </td>
+
+                                                        }
+
+                                                    </tr>
+                                                    <tr>
+                                                        <th>
+                                                            <span class="Case_CaseBasic_ApplicantName">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.ApplicantName)
+                                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.FirstApplicantId)
+                                                            </span>
+                                                        </th>
+
+
+                                                        <td colspan="3" rowspan="1" style="word-break: break-all; word-wrap: break-word; white-space: normal;">
+
+                                                            @if (!string.IsNullOrEmpty(Model.Case.CaseBasicInfo.CaseNo))
+                                                            {
+                                                            <div class="bootstrap-tagsinput">
+                                                                @if (Model.Case != null && Model.Case.CaseCustomers != null && Model.Case.CaseCustomers.Any())
+                                                                    {
+                                                                        var customer = Model.Case.CaseCustomers.FirstOrDefault(x => x.CustomerBasic.CustomerId == Model.Case.CaseBasicInfo.FirstApplicantId);
+                                                                        if (customer != null)
+                                                                        {
+                                                                    <span class="tag label label-info" style="margin-right:8px">
+                                                                        @if (CommonService.Instance.CheckPermission((int)Permission.ViewCaseCustomer))
+                                                                                {
+                                                                                <a name="casecustomer" style='color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
+                                                                                   customerid="@customer.CustomerBasic.CustomerId" customerno="@customer.CustomerBasic.CustomerNo" customername="@customer.CustomerBasic.CustomerName"
+                                                                                   title="@customer.CustomerBasic.CustomerName" data-toggle="tooltip" data-container="body"
+                                                                                   href="javascript:caseInfo.CaseCustomer.ViewCustomer(@customer.CustomerBasic.CustomerId);"
+                                                                                   target="_blank">@customer.CustomerBasic.CustomerName</a>
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                <a name="casecustomer" style='color:white;width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
+                                                                                   customerid="@customer.CustomerBasic.CustomerId" customerno="@customer.CustomerBasic.CustomerNo" customername="@customer.CustomerBasic.CustomerName"
+                                                                                   title="@customer.CustomerBasic.CustomerName" data-toggle="tooltip" data-container="body"
+                                                                                   href="javascript:void(0);" target="_blank">@customer.CustomerBasic.CustomerName</a>
+                                                                                }
+                                                                        <span class="customerremove" data-role="remove"></span>
+                                                                    </span>
+
+                                                                        }
+
+                                                                        foreach (var customerT in Model.Case.CaseCustomers.FindAll(x => x.CustomerBasic.CustomerId != Model.Case.CaseBasicInfo.FirstApplicantId))
+                                                                        {
+                                                                    <span class="tag label label-info" style="margin-right:8px">
+                                                                        @if (CommonService.Instance.CheckPermission((int)Permission.ViewCaseCustomer))
+                                                                                {
+                                                                                <a name="casecustomer" style='color:white;width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
+                                                                                   customerid="@customerT.CustomerBasic.CustomerId" customerno="@customerT.CustomerBasic.CustomerNo" customername="@customerT.CustomerBasic.CustomerName"
+                                                                                   title="@customerT.CustomerBasic.CustomerName" data-toggle="tooltip" data-container="body"
+                                                                                   href="javascript:caseInfo.CaseCustomer.ViewCustomer(@customerT.CustomerBasic.CustomerId);" target="_blank">@customerT.CustomerBasic.CustomerName</a>
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                <a name="casecustomer" style='color:white;width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
+                                                                                   customerid="@customerT.CustomerBasic.CustomerId" customerno="@customerT.CustomerBasic.CustomerNo" customername="@customerT.CustomerBasic.CustomerName"
+                                                                                   title="@customerT.CustomerBasic.CustomerName" data-toggle="tooltip" data-container="body"
+                                                                                   href="javascript:void(0);" target="_blank">@customerT.CustomerBasic.CustomerName</a>
+                                                                                }
+                                                                        <span class="customerremove" data-role="remove"></span>
+                                                                    </span>
+                                                                        }
+
+                                                                    }
+                                                                <input type="text" placeholder="Add" style="width: 80px;margin-left: 6px;" id="Case_CaseBasicInfo_ApplicantInput" autocomplete="off" size="1">
+                                                                <div class="label" style="float:right;"><a style="color:green;" title="新增申请人" data-toggle="tooltip" data-container="body" href="javascript:void(0);"><span class="btn_applicant_add fa fa-user-plus"></span></a></div>
+                                                            </div>
+                                                            }
+
+                                                        </td>
+
+                                                        <th rowspan="1">
+                                                            <span class="spanCaseInventor">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseInventor, new { @id = "lblCaseInventor" })
+                                                            </span>
+                                                            <span class="spanCaseDesigner" style="display: none">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseDesigner)
+                                                            </span>
+                                                            <span class="spanTrademarkIds" style="display: none">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.TradeProductService)
+                                                            </span>
+                                                        </th>
+                                                        <td colspan="3" rowspan="1" style="word-break: break-all; word-wrap: break-word; white-space: normal; ">
+                                                            <span class="spanCaseInventor">
+                                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseInventor)
+                                                                <input type="text" id="CaseInventor" disabled="disabled" />
+                                                            </span>
+                                                            <span class="spanCaseDesigner" style="display: none">
+
+                                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseDesigner)
+                                                                <input type="text" id="CaseDesigner" disabled="disabled" />
+                                                            </span>
+                                                            <span class="spanTrademarkIds" style="display: none">
+                                                                @Html.TextAreaFor(m => m.Case.CaseBasicInfo.TradeProductService, new { maxlength = 600, @class = "input_text case-form-control", style = "width:100%; height:42px" })
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <th rowspan="1">
+                                                            @Html.LabelFor(m => m.Case.CaseBasicInfo.Customer)
+                                                            @Html.HiddenFor(m => m.Case.CaseBasicInfo.Customer)
+                                                            @Html.HiddenFor(m => m.Case.CaseBasicInfo.CustomerId)
+                                                            @Html.HiddenFor(m => m.Case.CaseBasicInfo.CustomerNo)
+                                                        </th>
+                                                        <td rowspan="1" colspan="3" style="word-break: break-all; word-wrap: break-word; white-space: normal; padding-top:0px;padding-bottom:0px">
+                                                            @if (!string.IsNullOrEmpty(Model.Case.CaseBasicInfo.CaseNo))
+                                                            {
+                                                                <div class="bootstrap-tagsinput">
+                                                                    <span class="tag label label-info" style="background-color:#181e20 !important;">
+                                                                        @if (CommonService.Instance.CheckPermission((int)Permission.ViewCaseCustomer))
+                                                                        {
+                                                                            <a style='color:white;width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
+                                                                               title="@Model.Case.CaseBasicInfo.CustomerName" data-toggle="tooltip" data-container="body"
+                                                                               href="javascript:caseInfo.CaseCustomer.ViewCustomer(@Model.Case.CaseBasicInfo.CustomerId);"
+                                                                               target="_blank">@Model.Case.CaseBasicInfo.CustomerName</a>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <a style='color:white;width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
+                                                                               title="@Model.Case.CaseBasicInfo.CustomerName" data-toggle="tooltip"
+                                                                               data-container="body" href="javascript:void(0);"
+                                                                               target="_blank">
+                                                                                @Model.Case.CaseBasicInfo.CustomerName
+                                                                            </a>
+                                                                        }
+                                                                    </span>
+                                                                </div>
+                                                            }
+
+                                                        </td>
+                                                        <th>
+                                                            <span class="Case_CaseBasic_LawFirm" style="@displayForHasForeign">
+                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.LawFirm)
+                                                            </span>
+                                                        </th>
+                                                        <td colspan="3">
+                                                            <span class="Case_CaseBasic_LawFirm" style="@displayForHasForeign">
+                                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.LawFirm)
+                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.LawFirmName, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </span>
+                                                        </td>
+
+                                                    </tr>
+                                                </table>
+                                            </div>
+                                        </div>
+                                                                }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="case-section-wrap">
+                        <div class="case-section-product">
+                            <!-- product section -->
+                            <div class="product-container">
+                                <div class="product-section">
+                                    <ul class="nav nav-tabs">
+                                        <li id="liCaseFileList"><a href="javascript:void(0);" id="btnCaseFileList">文档信息</a></li>
+                                        <li id="liARCaseFeeList"><a href="javascript:void(0);" id="btnARCaseFeeList">费用明细</a></li>
+                                        @*<li id="liAPCaseFeeList"><a href="javascript:void(0);" id="btnAPCaseFeeList">应付账款</a></li>*@
+                                        <li id="liCaseAssistedFeeList"><a href="javascript:void(0);" id="btnCaseAssistedFeeList">资助明细</a></li>
+                                        <li id="liCaseCustomerContactsList"><a href="javascript:void(0);" id="btnCaseCustomerContactsList">案件联系人</a></li>
+                                        <li id="liCaseLogList"><a href="javascript:void(0);" id="btnCaseLogList">系统日志</a></li>
+                                        <li id="liCaseTaskList"><a href="javascript:void(0);" id="btnCaseTaskList">案件任务</a></li>
+                                        <li class="pull-right" style="border:none">
+                                            <div style="margin-top:3px">
+                                                <div style="text-align: inherit;">
+                                                    <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                        @if (CommonService.Instance.CheckPermission((int)Permission.CreateCase))
+                                                        {
+                                                            //如有创建权限则显示 该按钮
+                                                            @*<input class="btn btn-primary ng-binding" type="button" id="btnCaseCreateNew" value="新建" />*@
+                                                        }
+
+                                                        @if (CommonService.Instance.CheckPermission((int)Permission.CreateUpdateCaseRate))
+                                                        {
+                                                            <input class="btn btn-primary ng-binding" type="button" id="btnCaseRateSet" value="提成" />
+                                                        }
+                                                        @if (!string.IsNullOrEmpty(Model.Case.CaseBasicInfo.CaseNo) && (LoginHelper.IsAdmin() || CommonService.Instance.CheckPermission((int)Permission.UpdateCase) || LoginHelper.GetUserName().Equals(Model.Case.CaseBasicInfo.CaseOfficer)))
+                                                        {
+                                                            <input class="btn btn-primary ng-binding" type="button" id="btnCaseRenewal" value="修改" />
+                                                            <input class="btn btn-primary ng-binding" type="button" id="btnCaseCreateUpdate" value="保存" />
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    </ul>
+                                    <div class="section-content clearfix">
+                                        <div class="product-col ng-scope" style="width: 100%">
+                                            <div id="dv_List">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="case-section-right" style='width: 15%; '>
+                    <div class="case-section-wrap" id='divCaseIcon' style="display:none">
+                        <div class="case-section-trends" style='overflow-y: auto;padding:8px;'>
+                            <div>
+                                @*<link rel="stylesheet" href="//g.alicdn.com/ali-mod/dchien-lego-console-product-update/0.0.9/index.css">*@
+                                <link rel="stylesheet" href="@Url.Content("~/Resource/css/dchien-lego-console-update.css")" />
+                                <div class="dchien-lego-console-product-update J_Module">
+                                    <div class="module-wrap J_tb_lazyload">
+                                        <div class="caseicon">
+                                            @{
+                                                var caseIconFile = CaseFileService.Instance.GetCaseIconFile(Model.Case.CaseBasicInfo.CaseId);
+
+                                                <a id="caseIcon" href="@Url.Content(caseIconFile.FileName)" target="_blank">
+                                                    <img id="imgLicense" width="100%" height="170px" src="@Url.Content(caseIconFile.FileName)">
+                                                </a>
+                                            }
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="case-section-wrap">
+                        <div id='divCaseEvents' class="case-section-trends" style='overflow-y: auto;padding:8px; height: 420px'>
+                            <div>
+                                @*<link rel="stylesheet" href="//g.alicdn.com/ali-mod/dchien-lego-console-product-update/0.0.9/index.css">*@
+                                <link rel="stylesheet" href="@Url.Content("~/Resource/css/dchien-lego-console-update.css")" />
+                                <div class="dchien-lego-console-product-update J_Module">
+                                    <div class="module-wrap J_tb_lazyload">
+                                        <div class="product-fun-update-hd">
+                                            案件提醒
+                                            &nbsp; &nbsp;
+                                            @if (CommonService.Instance.CheckPermission((int)Permission.CreateCaseEvent))
+                                            {
+                                                <span><a href="javascript:void(0)" style="color: #039" id="btnCaseEventCreate">新增</a></span>
+                                            }
+                                            &nbsp;
+                                            @if (CommonService.Instance.CheckPermission((int)Permission.CancelCaseEvent))
+                                            {
+                                                <span><a href="javascript:void(0)" id="btnCaseEventNotInCreate">设定</a></span>
+                                            }
+                                        </div>
+                                        <div class="caseevents">
+                                            @{
+                                                var caseEventModel = new CaseEventListModel();
+                                                caseEventModel.CaseId = Model.CaseId;
+                                                caseEventModel.CaseEvents = Model.Case.CaseEvents;
+                                                Html.RenderPartial("PartialView/CaseEventList", caseEventModel);
+                                            }
+                                        </div>
+                                        <div class="caseevent"></div><!--案件提醒新建-->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="case-section-wrap">
+                        <div id='divCaseLogs' class="case-section-trends" style='overflow-y: auto;padding:8px;height: 420px'>
+                            <div>
+                                @*<link rel="stylesheet" href="//g.alicdn.com/ali-mod/dchien-lego-console-product-update/0.0.9/index.css">*@
+                                <link rel="stylesheet" href="@Url.Content("~/Resource/css/dchien-lego-console-update.css")" />
+                                <div class="dchien-lego-console-product-update J_Module">
+                                    <div class="module-wrap J_tb_lazyload">
+                                        <div class="product-fun-update-hd">
+                                            案件日志&nbsp; &nbsp;&nbsp;<span><a href="javascript:void(0)" style="color: #039" id="btnCaseLogCreate">新增日志</a></span>
+                                        </div>
+                                        <div class="caselogs">
+                                            @{
+                                                var caseLogModel = new CaseLogListModel();
+                                                caseLogModel.CaseId = Model.CaseId;
+                                                caseLogModel.CaseLogs = Model.Case.CaseLogs;
+                                                Html.RenderPartial("PartialView/CaseLogList", caseLogModel);
+                                            }
+                                        </div>
+                                        <div class="caselog"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                    <div class="i_common_wrap">
+                        <div class="i_common_list"></div>
+                    </div>
+                </div>
+                <div class="i_common_select" id="divAssociateApplicantList" style="display: none;">
+                    <div class="i_common_wrap">
+                        <div class="i_common_list"></div>
+                    </div>
+                </div>
+                @*<div style="display: none;" id="divUserList">
+                        @Html.Partial("~/Areas/IPR/Views/IPRBase/UserList.cshtml")
+                    </div>*@
+                <div style="display: none;" id="div_Case_CaseBasicInfo_Deadline">
+                    @*@Html.Partial("~/Views/IPRBase/CfgCaseDeadline.cshtml")*@
+                </div>
+                <div style="display: none;" id="divUserListForProcurator">
+                    <div class="i_common_box" style='width:300px'>
+                        <div class="i_common_hd">
+                            从下列用户中选择
+                            <input type="hidden" id="hidUserId">
+                            <input type="hidden" id="hidUserName">
+                        </div>
+                        <div class="i_common_bd">
+                            <ul class="i_common_ul layoutfix">
+                                @if (staffs != null && staffs.Count > 0)
+                                {
+                                    foreach (var staff in staffs.FindAll(x => !string.IsNullOrEmpty(x.StaffBasic.PatentAgentLicenceNo)))
+                                    {
+                                <li style='width: 80px'><div><input type='checkbox' userid="@staff.StaffBasic.StaffName" username="REDACTED_ARCHIVE_ONLY" /><lable>@staff.StaffBasic.StaffChName</lable></div></li>
+                                    }
+
+                                <li id="btnClear" style='width: 80px'><a href="javascript:void(0)" name="">清空</a></li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

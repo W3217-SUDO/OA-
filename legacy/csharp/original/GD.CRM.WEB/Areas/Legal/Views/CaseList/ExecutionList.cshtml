@@ -1,0 +1,853 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type;
+@using Dchien.Legal.Entity.System;
+@using Dchien.Legal.Service.BAS 
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseList.CaseListModel
+
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+}
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.ExecutionList.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Resource/webuploader/webuploader.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.core.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.excheck.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.exedit.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/webuploader/webuploader.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/zTree/zTreeStyle.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<style type="text/css">
+    ul.ztree {
+        margin-top: 0px;
+        border-right: 0px solid #e1e6eb;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    .ztree li {
+        line-height: 20px;
+    }
+
+        .ztree li a {
+            width: 150px;
+            height: 20px;
+            padding-top: 0px;
+        }
+
+            .ztree li a:hover {
+                text-decoration: none;
+                background-color: #E7E7E7;
+            }
+
+            .ztree li a span.button.switch {
+                visibility: hidden;
+            }
+
+    .ztree.showIcon li a span.button.switch {
+        visibility: hidden;
+    }
+
+    .ztree li a.curSelectedNode {
+        background-color: #D4D4D4;
+        border: 0;
+        height: 20px;
+    }
+
+    .ztree li span {
+        line-height: 20px;
+    }
+
+        .ztree li span.button {
+            margin-top: 2px;
+        }
+
+            .ztree li span.button.switch {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.add {
+                margin-left: 2px;
+                margin-right: -1px;
+                background-position: -144px 0;
+                vertical-align: top;
+                *vertical-align: middle;
+            }
+
+
+            /*.ztree li span.button {background-image:url("./left_menuForOutLook.png"); *background-image:url("./left_menuForOutLook.gif")}*/
+
+            .ztree li span.button.ico_docu {
+                background-position: -110px -16px;
+            }
+
+            .ztree li span.button.switch.level0 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.switch.level1 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+    /*.ztree li span.button.noline_open {background-position: 0 0;}
+    .ztree li span.button.noline_close {background-position: -18px 0;}
+    .ztree li span.button.noline_open.level0 {background-position: 0 -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}*/
+
+    .node_name {
+        margin-left: 10px;
+    }
+
+    div#rMenu {
+        position: absolute;
+        visibility: hidden;
+        top: 0;
+        background-color: #555;
+        text-align: left;
+        padding: 2px;
+    }
+
+        div#rMenu ul li {
+            margin: 1px 0;
+            padding: 0 5px;
+            cursor: pointer;
+            list-style: none outside none;
+            background-color: #DFDFDF;
+        }
+</style>
+
+<script>
+    $(function () {
+         $("[data-toggle='tooltip']").tooltip();
+    });
+</script>
+<style type="text/css">
+    .webuploader-pick {
+        position: relative;
+        display: inline-block;
+        cursor: pointer;
+        background: #f7f7f7;
+        padding: 10px 15px;
+        color: #333;
+        text-align: center;
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .webuploader-pick-hover {
+        background: #8b9aa3;
+    }
+
+    .filePicker div:nth-child(2) {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    .instance-list-name-width {
+        min-width: 185px;
+        max-width: 200px;
+        padding-right: 0 !important;
+        word-wrap: break-word;
+    }
+
+    .aps-table th {
+        padding: 4px 4px;
+        width: 138px;
+        border: 0px solid #eee;
+    }
+
+    .aps-table td {
+        padding: 4px 4px 4px 4px;
+        border: 0px solid #eee;
+    }
+
+    td {
+        white-space: nowrap;
+    }
+</style>
+
+<SCRIPT type="text/javascript">
+
+     function zTreeOnClick(event, treeId, treeNode) {
+        if (treeNode.id != null)
+        {
+            var subCasePhases = $.lsCasePhase.getSubCasePhases(treeNode.id)
+            var subCasePhaseIds = new Array();
+            var subCasePhaseNames = new Array();
+
+            $.each(subCasePhases, function (i, f) {
+                subCasePhaseIds.push(f.CasePhaseId);
+                subCasePhaseNames.push(f.CasePhaseName);
+            });
+
+            $("#SearchCondition_CasePhaseId").val(subCasePhaseIds.join(','));
+            $("#SearchCondition_CasePhaseName").val(subCasePhaseNames.join(','));
+        }
+
+        $("#SearchCondition_PageNo").val(1);
+        $("#SearchCondition_PageSize").val(10);
+        c.Cases.List();
+    };
+
+    var setting = {
+        view: {
+            showLine: false,
+            addHoverDom: addHoverDom,
+            removeHoverDom: removeHoverDom,
+            selectedMulti: false
+        },
+        edit: {
+            enable: true,
+            showRemoveBtn: false,
+            showRenameBtn: false,
+            showUploadBtn: false
+
+        },
+        data: {
+            simpleData: {
+                enable: true
+             }
+        },
+        callback: {
+            onClick: zTreeOnClick
+
+        }
+    };
+
+    var log, className = "dark";
+
+    function getTime() {
+        var now = new Date(),
+        h = now.getHours(),
+        m = now.getMinutes(),
+        s = now.getSeconds(),
+        ms = now.getMilliseconds();
+        return (h + ":" + m + ":" + s + " " + ms);
+    }
+
+    var newCount = 1;
+    function addHoverDom(treeId, treeNode) {
+        return false;
+    };
+    function removeHoverDom(treeId, treeNode) {
+    };
+    function selectAll() {
+        var zTree = $.fn.zTree.getZTreeObj("caseListTree");
+        zTree.setting.edit.editNameSelectAll = $("#selectAll").attr("checked");
+    }
+
+    $(document).ready(function () {
+
+        var data = {
+            caseTypeId: $("#SearchCondition_CaseTypeId").val()
+        };
+        $.ajaxPost(AP_ROOT + AP_PAGE_ID + "/Legal/CasePhase/GetCasePhaseList", data, function (response) {
+            if (response.IsSuccess) {
+                if (response.Data.PhaseCaseCounts.length > 0)
+                {
+                    var zNodes = [];
+                    $.each(response.Data.PhaseCaseCounts, function (i, phase) {
+                        var node = {};
+                        node.id = phase.Item1.CasePhaseId;
+                        node.pId = phase.Item1.ParentPhaseId;
+                        node.name = phase.Item1.CasePhaseName + "【" + phase.Item2 + "】";
+                        node.open = false;
+
+                        zNodes.push(node);
+                    });
+
+                    $.fn.zTree.init($("#caseListTree"), setting, zNodes);
+                    var zTree = $.fn.zTree.getZTreeObj("caseListTree");
+                    $("#selectAll").bind("click", selectAll);
+
+                }
+            }
+        });
+    });
+
+</SCRIPT>
+
+@{
+
+    var viewFramework_style = "viewFramework-product-col-1";
+
+    if (id == "1001103040" || id == "1001102040" || id == "100110140")
+    {
+        viewFramework_style = "";
+    }
+
+}
+
+<div class="viewFramework-product ">
+
+
+
+    <div class="viewFramework-product-body" name="dropbox" id="dropbox" style="overflow-y:hidden">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>案件列表</h5>
+                            </div>
+
+                            <div class="pull-right">
+                                <a href="javascript:void(0);" class="btn advancedBtnSearch" onclick="javascript: $('.advancedSearch').show(); $('.commonBtnSearch').show(); $('.advancedBtnSearch').hide(); c.ResetSize();">
+                                    高级搜索
+                                </a>
+                                <a href="javascript:void(0);" style="display:none" class="btn commonBtnSearch" onclick="javascript: $('.advancedSearch').hide(); $('.commonBtnSearch').hide(); $('.advancedBtnSearch').show(); c.ResetSize();">
+                                    普通搜索
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="pull-left  col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/Legal/CaseList/List")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.CustomerNo, new { name = "CustomerNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.Sorting)
+                                @Html.HiddenFor(m => m.SearchCondition.CaseTypeId)
+
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 190px" />
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 40px;" />
+                                        <col style="width: 30px" />
+                                        <col />
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            原告：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.AppellantName, new { @class = "form-control", @autocomplete = "off", @placeholder = "原告", @style = "width:91.7%" })
+                                        </td>
+
+                                        <th>
+                                            案件编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNos, new { @class = "form-control", @autocomplete = "off", @placeholder = "案件编号", @style = "width:90%" })
+                                        </td>
+
+
+                                        <th>
+                                            取证机构：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.NotaryOrganization, new { @class = "form-control", @autocomplete = "off", @placeholder = "取证机构", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            关键字：
+                                        </th>
+                                        <td colspan="3">
+                                            @Html.TextBoxFor(m => m.SearchCondition.Keyword, new { @class = "form-control", @autocomplete = "off", @placeholder = "案号、法院号、案件名、客户名、任务内容", @style = "width:90%" })
+                                        </td>
+
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            被告：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.AppelleeName, new { @class = "form-control", @autocomplete = "off", @placeholder = "被告", @style = "width:91.7%" })
+                                        </td>
+
+                                        <th>
+                                            经办律师：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseLawyer, new { @class = "form-control", @autocomplete = "off", @placeholder = "经办律师", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            公证书号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.NotarialNo, new { @class = "form-control", @autocomplete = "off", @placeholder = "公证书号", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            执行进度：
+                                        </th>
+                                        <td colspan="3">
+                                            @Html.DropDownListFor(m => m.SearchCondition.ExecutionStatus, Dchien.Legal.Service.BAS.Type.ExecutionStatusService.Instance.GetExecutionStatusList(true), new { @class = "form-control", style = "width:90%" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+
+                                        <th>
+                                            开庭律师：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CourtLawyer, new { @class = "form-control", @autocomplete = "off", @placeholder = "开庭律师", @style = "width:91.7%" })
+                                        </td>
+                                        <th>
+                                            律师助理：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseAssistant, new { @class = "form-control", @autocomplete = "off", @placeholder = "律师助理", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            调查员：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvestigatorName, new { @class = "form-control", @autocomplete = "off", @placeholder = "调查员", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            法院名称：
+                                        </th>
+                                        <td colspan="3">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CourtName, new { @class = "form-control", @autocomplete = "off", @placeholder = "法院名称", @style = "width:90%" })
+                                        </td>
+
+                                    </tr>
+                                    <tr class="advancedSearch" style="display:none">
+
+                                        <th>
+                                            案源时间：
+                                        </th>
+
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseRegisterDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", @autocomplete = "off", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseRegisterDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", @autocomplete = "off", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                        </td>
+
+                                        @*<th>
+                    侵权方式：
+                </th>
+                <td>
+                    @Html.DropDownListFor(m => m.SearchCondition.BusinessType, DictionaryTypeService.Instance.GetInvestigationBusinessTypeList(true), new { @class = "form-control select", @style = "width:90%" })
+                </td>*@
+
+                                        <th>
+                                            侵权渠道：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.ChannelType, DictionaryTypeService.Instance.GetElectroniccommerceChannelList(true), new { @class = "form-control select", style = "width:90%" })
+                                        </td>
+
+
+                                        <th>
+                                            仓库：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.WarehouseName, new { @class = "form-control", @autocomplete = "off", @placeholder = "仓库", @style = "width:90%" })
+                                        </td>
+
+                                        <th>
+                                            文档名称：
+                                        </th>
+                                        <td colspan="3">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseFileName, new { @class = "form-control", @autocomplete = "off", @placeholder = "文档名称", @style = "width:90%" })
+                                        </td>
+
+
+                                    </tr>
+                                    <tr class="advancedSearch" style="display:none">
+                                        <th>
+                                            开庭时间：
+                                        </th>
+
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.LawfulDayFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.LawfulDayTo, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                        </td>
+
+                                        <th>
+                                            侵权区域：
+                                        </th>
+
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.StoreAddress, new { @class = "form-control", @autocomplete = "off", @placeholder = "侵权区域", @style = "width:90%" })
+                                        </td>
+
+                                        <th>
+                                            库位：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.StorageLocationName, new { @class = "form-control", @autocomplete = "off", @placeholder = "库位", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            日志内容：
+                                        </th>
+                                        <td colspan="3">
+                                            @Html.TextBoxFor(m => m.SearchCondition.LogContent, new { @class = "form-control", @autocomplete = "off", @placeholder = "日志内容", @style = "width:90%" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                        </th>
+                                        <td>
+                                            <div class="form-group">
+                                                <a href="javascript:void(0);" class="btn btn-primary " id="btnCaseSearch">
+                                                    <span>查询</span>
+                                                </a>
+                                                <a href="javascript:void(0);" class="btn btn-default " id="btnCaseSearchReset">
+                                                    <span>重置</span>
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <div class='divcaseconditioncasephases' style='overflow-y: scroll; '>
+                                    <div id="divCasePhaseCheckBoxList" style="display:none" class='i_common_box'>
+                                        <div class='i_common_hd'>
+                                            从下列案件阶段中选择
+                                            <input type='hidden' id='hidCasePhaseId'>
+                                            <input type='hidden' id='hidCasePhaseName'>
+                                        </div>
+                                        <div class='i_common_bd'>
+                                            <ul id='casePhaseTree' class='ztree' style="max-height:600px"></ul>
+                                            <div class="pull-right">
+                                                <input class='btn btn-primary' type='button' id='btnCasePhaseSelected' value='确定' />
+                                                <input class='btn btn-default' type='button' value='取消' />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class='divcaseconditioncasetypes'></div>
+                                <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                    <div class="i_common_wrap">
+                                        <div class="i_common_list"></div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection">
+                                <table id="" class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 10%">
+                                        <col style="width: 25%">
+                                        <col style="width: 15%">
+                                        <col style="width: 12%">
+                                        <col style="width: 12%">
+                                        <col style="width: 12%">
+                                        <col style="width:10%">
+                                        <col style="width:10%">
+                                        <col style="width: 17px">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th width="10">
+                                                <input type="checkbox" id="chkCaseAll" name="chkCaseAll">
+                                            </th>
+                                            <th style="text-align: left">
+                                                基本信息
+                                                <span>
+                                                    <span class="aps-state-hidden"></span>
+                                                    <span data-field="T.caseNo" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                        <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                        <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                           style="top:9px">
+                                                        </i>
+                                                    </span>
+                                                </span>
+                                            </th>
+
+                                            <th style="text-align: left">当事人信息</th>
+                                            <th style="text-align: left">法院信息</th>
+                                            <th style="text-align: left">法官信息</th>
+                                            <th style="text-align: left">委托律师</th>
+                                            <th style="text-align: left">判决信息</th>
+                                            <th style="text-align: left">进度时长
+                                                <span class="aps-state-hidden"></span>
+                                                <span data-field="T.ExecutionStatusStartTime" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                    <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                    <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                       style="top:9px">
+                                                    </i>
+                                                </span>
+                                                </span>
+                                            </th>
+                                            <th style="text-align: left">操作</th>
+                                             <th></th>
+                                        </tr>
+                                    </thead>
+
+                                </table>
+
+                                <div id="divCaseList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+
+                                    <table id="tblCaseList" class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                        <colgroup>
+                                            <col style="width: 3%">
+                                            <col style="width: 10%">
+                                            <col style="width: 25%">
+                                            <col style="width: 15%">
+                                            <col style="width: 12%">
+                                            <col style="width: 12%">
+                                            <col style="width: 12%">
+                                            <col style="width:10%">
+                                            <col style="width:10%">
+                                        </colgroup>
+
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td>
+                                                    &nbsp;
+                                                </td>
+                                                <td style="text-align: left" class="instance-list-name-width"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                            </tr>
+                                            <tr style="display: none">
+                                                <td>
+                                                    &nbsp;
+                                                </td>
+                                                <td style="text-align: left" class="instance-list-name-width"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="" style="display: none">
+                                            <tr style="border: 1px solid #E1E6EB;">
+                                                <td width="1">
+                                                    <input type="checkbox" id="chkCaseAll" name="chkCaseAll">
+                                                </td>
+                                                <td colspan="8">
+                                                    <div class="pull-left" style="position:absolute;z-index: 1000;">
+                                                        @*<input type="button" id="btnCaseExportToExcel" class="btn btn-default" style="height:32px" value="导出Excel" />*@
+
+                                                        <div class="inline-block dropdown" style="margin-left: 4px">
+                                                            <div class="divdropdown dropdown ng-scope">
+                                                                <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                                                    导出
+                                                                    <span class="caret"></span>
+                                                                </button>
+                                                                <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+                                                                    <li>
+                                                                        <a href="javascript:;" id="btnCaseExportToExcel" onclick="javascript:void(0);">
+                                                                            <span style="font-size:12px">导出选中</span>
+                                                                        </a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" id="btnAllCaseExportToExcel" onclick="javascript:void(0);">
+                                                                            <span style="font-size:12px">导出全部</span>
+                                                                        </a>
+                                                                    </li>
+
+                                                                    <li>
+                                                                        <a href="javascript:;" id="btnCaseListExportToExcelForManifest" onclick="javascript:void(0);">
+                                                                            <span style="font-size:12px">导出交接清单</span>
+                                                                        </a>
+                                                                    </li>
+
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="filePicker btn btn-default" style="padding-top:1.5px;padding-bottom:1.5px; height:32px;">上传文件</div>
+                                                        @if (Model.SearchCondition.PageId == PageId.PageId_1001103010
+                                                        || Model.SearchCondition.PageId == PageId.PageId_1001103020
+                                                        || Model.SearchCondition.PageId == PageId.PageId_1001103030
+                                                        || Model.SearchCondition.PageId == PageId.PageId_1001103040)
+                                                        {
+                                                            <input type="button" id="btnCaseDelete" class="btn btn-default" style="height:32px" value="删除案件" />
+                                                        }
+
+                                                        <div class="divdropdown inline-block dropdown" style="margin-left: 4px">
+                                                            <div class="dropdown ng-scope">
+                                                                <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                                                    更多操作
+                                                                    <span class="caret"></span>
+                                                                </button>
+                                                                <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFiles.CaseFile.MultiOpen($.checkbox.vals('chkCaseId'));">
+                                                                            <span style="font-size:12px">上传案件文档</span>
+                                                                        </a>
+                                                                    </li>
+                                                                    <li class="dropdown-submenu">
+                                                                        <a tabindex="-1" href="javascript:;">新增律所费用</a>
+                                                                        <ul class="dropdown-menu">
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate($.checkbox.vals('chkCaseId'), $.lsCaseFeeType.TypeId.OfficeFee, $.lsGroupId.Lawfirm);">
+                                                                                    <span>新增官费</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate($.checkbox.vals('chkCaseId'), $.lsCaseFeeType.TypeId.Nonparty, $.lsGroupId.Lawfirm);">
+                                                                                    <span>新增第三方费用</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate($.checkbox.vals('chkCaseId'), $.lsCaseFeeType.TypeId.NonOfficeFee, $.lsGroupId.Lawfirm);">
+                                                                                    <span>新增代理费</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate($.checkbox.vals('chkCaseId'), $.lsCaseFeeType.TypeId.CommissionFee, $.lsGroupId.Lawfirm);">
+                                                                                    <span>新增其他费用</span>
+                                                                                </a>
+                                                                            </li>
+                                                                        </ul>
+                                                                    </li>
+
+
+                                                                    <li class="dropdown-submenu">
+                                                                        <a tabindex="-1" href="javascript:;">新增平台费用</a>
+                                                                        <ul class="dropdown-menu">
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate($.checkbox.vals('chkCaseId'), $.lsCaseFeeType.TypeId.OfficeFee, $.lsGroupId.Trad);">
+                                                                                    <span>新增官费</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate($.checkbox.vals('chkCaseId'), $.lsCaseFeeType.TypeId.Nonparty, $.lsGroupId.Trad);">
+                                                                                    <span>新增第三方费用</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate($.checkbox.vals('chkCaseId'), $.lsCaseFeeType.TypeId.NonOfficeFee, $.lsGroupId.Trad);">
+                                                                                    <span>新增代理费</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate($.checkbox.vals('chkCaseId'), $.lsCaseFeeType.TypeId.CommissionFee, $.lsGroupId.Trad);">
+                                                                                    <span>新增其他费用</span>
+                                                                                </a>
+                                                                            </li>
+                                                                        </ul>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.InternalFees.InternalFee.MultiOpen($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">新增内部费用</span></a>
+                                                                    </li>
+                                                                    <li class="dropdown-submenu">
+                                                                        <a tabindex="-1" href="javascript:;">批量修改</a>
+                                                                        <ul class="dropdown-menu">
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.Participant.Open($.checkbox.vals('chkCaseId'));">
+                                                                                    <span>修改开庭律师</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.Participant.Open($.checkbox.vals('chkCaseId'));">
+                                                                                    <span>修改经办律师</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.Participant.Open($.checkbox.vals('chkCaseId'));">
+                                                                                    <span>修改律师助理</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CasePhases.CasePhase.Open($.checkbox.vals('chkCaseId'));">
+                                                                                    <span>修改案件阶段</span>
+                                                                                </a>
+                                                                            </li>
+                                                                        </ul>
+                                                                    </li>
+
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFiles.CaseFile.AuthorizationLetter.Create($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">生成授权委托书</span></a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFiles.CaseFile.LawyersLetter.Create($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">生成律所函</span></a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFiles.CaseFile.IdentificationLetter.Create($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">生成身份证明</span></a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFiles.CaseFile.SettlementList.Create($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">生成结算提成表</span></a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3) ;return false;} c.Cases.Case.CaseTasks.CaseTask.OpenTasks($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">案件任务</span></a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseLogs.CaseLog.Open($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">案件日志</span></a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.ExportSelectedToExcelForQRCode($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">导出案件打印表</span></a>
+                                                                    </li>
+                                         
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+
+                                                        <input type="button" id="btnExecutionStatusChange" class="btn btn-default" style="height:32px" value="修改进度" />
+
+                                                    </div>
+                                                    <div class="">
+                                                        <div class="pull-right page-box Caselist">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+
+                                </div>
+
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="sidebox" class="sidebox active" style="overflow-y: auto; width: 30%; min-width: 700px;display:none">
+                        <div class="sidebox-content"></div>
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

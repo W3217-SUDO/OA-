@@ -1,0 +1,111 @@
+<?xml version='1.0' encoding='utf-8'?>
+<configuration xmlns:ns0="urn:schemas-microsoft-com:asm.v1">
+  <configSections>
+    <section name="dataConfiguration" type="REDACTED_ARCHIVE_ONLY" />
+    <sectionGroup name="common">
+      <section name="logging" type="REDACTED_ARCHIVE_ONLY" />
+    </sectionGroup>
+    <section name="log4net" type="REDACTED_ARCHIVE_ONLY" />
+  </configSections>
+  <dataConfiguration defaultDatabase="REDACTED_ARCHIVE_ONLY" />
+  <connectionStrings>
+    <add name="PRD_CRM_GD_20200211" connectionString="REDACTED_ARCHIVE_ONLY" providerName="REDACTED_ARCHIVE_ONLY" />
+  </connectionStrings>
+  <common>
+    <logging>
+      <factoryAdapter type="REDACTED_ARCHIVE_ONLY">
+        <arg key="configType" value="REDACTED_ARCHIVE_ONLY" />
+        <arg key="configFile" value="REDACTED_ARCHIVE_ONLY" />
+      </factoryAdapter>
+    </logging>
+  </common>
+  <appSettings>
+    <add key="REDACTED_ARCHIVE_ONLY" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="CookieDesKey" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="ReleaseNo" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="EnableLoginCaptcha" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="REDACTED_ARCHIVE_ONLY" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="REDACTED_ARCHIVE_ONLY" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="PreserveLoginUrl" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="ClientValidationEnabled" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="UnobtrusiveJavaScriptEnabled" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="ipronlineurl" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="onlineurl" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="PatentOfficeFiles" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="CaseFiles" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="CustomerFiles" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="ContractFiles" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="TaskOfficer" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="TaskOfficerName" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="DefaultCaseLawyer" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="DefaultCaseLawyerName" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="maxUploadFileSize" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="QuanmingServerUrl" value="REDACTED_ARCHIVE_ONLY" />
+    <add key="QuanmingToken" value="REDACTED_ARCHIVE_ONLY" />
+  </appSettings>
+  <system.web>
+    <httpRuntime maxRequestLength="REDACTED_ARCHIVE_ONLY" useFullyQualifiedRedirectUrl="REDACTED_ARCHIVE_ONLY" executionTimeout="REDACTED_ARCHIVE_ONLY" minFreeThreads="REDACTED_ARCHIVE_ONLY" minLocalRequestFreeThreads="REDACTED_ARCHIVE_ONLY" appRequestQueueLimit="REDACTED_ARCHIVE_ONLY" enableVersionHeader="REDACTED_ARCHIVE_ONLY" />
+    <httpHandlers>
+    </httpHandlers>
+    <pages enableSessionState="REDACTED_ARCHIVE_ONLY">
+      <namespaces>
+        <add namespace="REDACTED_ARCHIVE_ONLY" />
+        <add namespace="REDACTED_ARCHIVE_ONLY" />
+        <add namespace="REDACTED_ARCHIVE_ONLY" />
+        <add namespace="REDACTED_ARCHIVE_ONLY" />
+        <add namespace="REDACTED_ARCHIVE_ONLY" />
+        <add namespace="REDACTED_ARCHIVE_ONLY" />
+      </namespaces>
+    </pages>
+    <compilation debug="REDACTED_ARCHIVE_ONLY" targetFramework="REDACTED_ARCHIVE_ONLY">
+      <assemblies>
+        <add assembly="REDACTED_ARCHIVE_ONLY" />
+      </assemblies>
+    </compilation>
+    <trace enabled="REDACTED_ARCHIVE_ONLY" localOnly="REDACTED_ARCHIVE_ONLY" />
+    <httpCookies httpOnlyCookies="REDACTED_ARCHIVE_ONLY" />
+    <trust level="REDACTED_ARCHIVE_ONLY" originUrl="REDACTED_ARCHIVE_ONLY" />
+    <authentication mode="REDACTED_ARCHIVE_ONLY" />
+    <customErrors mode="REDACTED_ARCHIVE_ONLY" />
+  </system.web>
+  <system.web.extensions>
+    <scripting>
+      <webServices>
+        <jsonSerialization maxJsonLength="REDACTED_ARCHIVE_ONLY" />
+      </webServices>
+    </scripting>
+  </system.web.extensions>
+  <system.webServer>
+    <security>
+      <requestFiltering>
+        <requestLimits maxAllowedContentLength="REDACTED_ARCHIVE_ONLY" />
+      </requestFiltering>
+    </security>
+    <validation validateIntegratedModeConfiguration="REDACTED_ARCHIVE_ONLY" />
+    <modules runAllManagedModulesForAllRequests="REDACTED_ARCHIVE_ONLY" />
+    <handlers>
+      <remove name="ExtensionlessUrlHandler-ISAPI-4.0_32bit" />
+      <remove name="ExtensionlessUrlHandler-ISAPI-4.0_64bit" />
+      <remove name="ExtensionlessUrlHandler-Integrated-4.0" />
+      <add name="ExtensionlessUrlHandler-ISAPI-4.0_32bit" path="REDACTED_ARCHIVE_ONLY" verb="REDACTED_ARCHIVE_ONLY" modules="REDACTED_ARCHIVE_ONLY" scriptProcessor="REDACTED_ARCHIVE_ONLY" preCondition="REDACTED_ARCHIVE_ONLY" responseBufferLimit="REDACTED_ARCHIVE_ONLY" />
+      <add name="ExtensionlessUrlHandler-ISAPI-4.0_64bit" path="REDACTED_ARCHIVE_ONLY" verb="REDACTED_ARCHIVE_ONLY" modules="REDACTED_ARCHIVE_ONLY" scriptProcessor="REDACTED_ARCHIVE_ONLY" preCondition="REDACTED_ARCHIVE_ONLY" responseBufferLimit="REDACTED_ARCHIVE_ONLY" />
+      <add name="ExtensionlessUrlHandler-Integrated-4.0" path="REDACTED_ARCHIVE_ONLY" verb="REDACTED_ARCHIVE_ONLY" type="REDACTED_ARCHIVE_ONLY" preCondition="REDACTED_ARCHIVE_ONLY" />
+    </handlers>
+    <staticContent>
+      <remove fileExtension="REDACTED_ARCHIVE_ONLY" />
+      <mimeMap fileExtension="REDACTED_ARCHIVE_ONLY" mimeType="REDACTED_ARCHIVE_ONLY" />
+    </staticContent>
+  </system.webServer>
+  <runtime>
+    <ns0:assemblyBinding>
+      <ns0:dependentAssembly>
+        <ns0:assemblyIdentity name="System.Web.Mvc" publicKeyToken="REDACTED_ARCHIVE_ONLY" culture="REDACTED_ARCHIVE_ONLY" />
+        <ns0:bindingRedirect oldVersion="REDACTED_ARCHIVE_ONLY" newVersion="REDACTED_ARCHIVE_ONLY" />
+      </ns0:dependentAssembly>
+      <ns0:dependentAssembly>
+        <ns0:assemblyIdentity name="Newtonsoft.Json" publicKeyToken="REDACTED_ARCHIVE_ONLY" culture="REDACTED_ARCHIVE_ONLY" />
+        <ns0:bindingRedirect oldVersion="REDACTED_ARCHIVE_ONLY" newVersion="REDACTED_ARCHIVE_ONLY" />
+      </ns0:dependentAssembly>
+    </ns0:assemblyBinding>
+  </runtime>
+</configuration>

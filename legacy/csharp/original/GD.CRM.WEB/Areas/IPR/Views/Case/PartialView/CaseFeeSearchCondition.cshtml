@@ -1,0 +1,199 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseSearchConditionModel
+
+@{
+    object htmlAttribute = null;
+}
+<div class="ng-scope">
+    <div class="casesearch-section-main clearfix">
+        
+        <div >
+            <div class="casesearch-section-wrap">
+                <div class="casesearch-section-product">
+                    <!-- product section -->
+                    <div class="product-container">
+                        <div class="product-section">
+                            <!--</div>--><!--</div>-->
+                            <div class="section-head casesearch-cursor-pointer">
+                                <a class="ng-binding">
+                                    @Html.CheckBoxFor(m => m.Search.HasCaseFeeSearchCondition, new { style = "vertical-align: middle; " })<span class="list-title-em" style="vertical-align: middle; ">财务数据</span>
+                                </a>
+                                <span style="padding-left: 50px">
+                                    @Html.CheckBoxFor(m => m.Search.IsUnionCaseFeeSearchCondition, new { style = "vertical-align: middle; " })@Html.LabelFor(m => m.Search.IsUnionCaseFeeSearchCondition)
+                                    @Html.CheckBoxFor(m => m.Search.IsNotUnionCaseFeeSearchCondition, new { style = "vertical-align: middle; " })@Html.LabelFor(m => m.Search.IsNotUnionCaseFeeSearchCondition)
+                                </span>
+                            </div>
+
+                            <div class="section-content clearfix" style='margin: 0 16px;'>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.HasInformDate, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.InformDateFrom)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => m.Search.CaseFeeSearchCondition.InformDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            <span>-</span>
+                                            @Html.TextBoxFor(m => m.Search.CaseFeeSearchCondition.InformDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.NotInInformDate, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.NotInInformDate)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.HasGainedDate, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.GainedDateFrom)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => m.Search.CaseFeeSearchCondition.GainedDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            <span>-</span>
+                                            @Html.TextBoxFor(m => m.Search.CaseFeeSearchCondition.GainedDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.NotInGainedDate, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.NotInGainedDate)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.HasResponseUser, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.ResponseUserName)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.HiddenFor(m => m.Search.CaseFeeSearchCondition.ResponseUser)
+                                            @Html.TextBoxFor(m => m.Search.CaseFeeSearchCondition.ResponseUserName)
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.NotInResponseUser, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.NotInResponseUser)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.HasBillNo, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.BillNo)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => m.Search.CaseFeeSearchCondition.BillNo)
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.NotInBillNo, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.NotInBillNo)
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        @{
+                                            var caseFeeInvoiceStatusIds = string.Empty;
+                                            var caseFeeInvoiceStatusNames = string.Empty;
+                                            if (@Model != null && @Model.Search != null && @Model.Search.CaseFeeSearchCondition != null)
+                                            {
+                                                if (@Model.Search.CaseFeeSearchCondition.BillStatusId != null && @Model.Search.CaseFeeSearchCondition.BillStatusId.Any())
+                                                {
+                                                    caseFeeInvoiceStatusIds = string.Join(",", @Model.Search.CaseFeeSearchCondition.BillStatusId);
+                                                }
+
+                                                if (@Model.Search.CaseFeeSearchCondition.BillStatusName != null && @Model.Search.CaseFeeSearchCondition.BillStatusName.Any())
+                                                {
+                                                    caseFeeInvoiceStatusNames = string.Join(",", @Model.Search.CaseFeeSearchCondition.BillStatusName);
+                                                }
+                                            }
+                                        }
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.HasBillStatus, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.HasBillStatus)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => caseFeeInvoiceStatusNames, new { @id = "Search_CaseFeeSearchCondition_BillStatus" })
+                                            @Html.HiddenFor(m => caseFeeInvoiceStatusIds, new { @id = "hid_Search_CaseFeeSearchCondition_BillStatus", @style = "width: 99%" })
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.NotInBillStatus, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.NotInBillStatus)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.HasBillDate, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.BillDateFrom)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => m.Search.CaseFeeSearchCondition.BillDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            <span>-</span>
+                                            @Html.TextBoxFor(m => m.Search.CaseFeeSearchCondition.BillDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.NotInBillDate, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.NotInBillDate)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        
+                                        @{
+                                            var caseFeeTypeIds = string.Empty;
+                                            var caseFeeTypeNames = string.Empty;
+                                            if (@Model != null && @Model.Search != null && @Model.Search.CaseFeeSearchCondition != null)
+                                            {
+                                                if (@Model.Search.CaseFeeSearchCondition.FeeTypeId != null && @Model.Search.CaseFeeSearchCondition.FeeTypeId.Any())
+                                                {
+                                                    caseFeeTypeIds = string.Join(",", @Model.Search.CaseFeeSearchCondition.FeeTypeId);
+                                                }
+
+                                                if (@Model.Search.CaseFeeSearchCondition.FeeTypeName != null && @Model.Search.CaseFeeSearchCondition.FeeTypeName.Any())
+                                                {
+                                                    caseFeeTypeNames = string.Join(",", @Model.Search.CaseFeeSearchCondition.FeeTypeName);
+                                                }
+                                            }
+                                        }
+
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.HasFeeTypeId, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.HasFeeTypeId)
+                                        </label>
+                                        <div style="float:left;width:52%">
+             
+                                            @Html.TextBoxFor(m => caseFeeTypeNames, new { @id = "Search_CaseFeeSearchCondition_CaseFeeType" })
+                                            @Html.HiddenFor(m => caseFeeTypeIds, new { @id = "hid_Search_CaseFeeSearchCondition_CaseFeeType", @style = "width: 99%" })
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeSearchCondition.NotInFeeTypeId, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeSearchCondition.NotInFeeTypeId)
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+ 
+    </div>
+</div>
+
+
+
+
+
+

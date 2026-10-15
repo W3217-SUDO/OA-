@@ -1,0 +1,296 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@using Dchien.Legal.Service.IPR.Case
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.Cashed.IndexModel
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/FAM/Cashed/Cashed.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/components.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+
+<script type="text/javascript">
+
+</script>
+
+<style>
+    input.input_text, textarea, select, input.input_time {
+        border: 1px solid #ccc;
+    }
+
+    /*select {
+        color: rgb(84, 84, 84);
+        background-color: rgb(235, 235, 228);
+    }*/
+
+    input.input_text, textarea, input.input_time {
+
+        padding: 2px 2px 2px 3px;
+    }
+
+    input.input_text, textarea, input.input_time {
+        background-color: #fff;
+    }
+
+    .case-form-control {
+        /*border-radius: 0px;*/
+        -webkit-transition: none;
+        transition: none;
+        font-size: 12px;
+        width: 100%;
+        height: 24px;
+    }
+
+    .case-section-product .product-container .product-section .section-content .content-table td {
+        padding-left: 1px;
+    }
+
+    table td, th {
+        padding: 0px 0;
+        /* border-bottom: 1px dotted #D6D6D6; */
+        vertical-align: middle;
+    }
+
+    .input_table th {
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        text-align: left;
+    }
+
+    .case-section-wrap {
+        padding: 8px;
+    }
+
+    .case-section-main {
+        margin: 0 6px;
+        padding: 0px;
+        position: relative;
+    }
+</style>
+
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+
+ 
+    <div class="viewFramework-product viewFramework-product-col-1" style='background: #eaedf1;'>
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("MenuList");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body">
+        <div class="case-section-main clearfix">
+            <!-- 左侧 -->
+            <div class="case-section-left" style="padding-right: 52%;">
+                <div class="case-section-wrap" style="padding:0px;padding-right:8px">
+                    <div class="case-section-product">
+                        <div class="product-container">
+                            <div class="product-section">
+                                <ul class="nav nav-tabs">
+                                    <li  class='active'><a href="javascript:void(0);" >到账信息</a></li>
+
+                                    <li class="pull-right" style=" border:none">
+                                        <div style="margin-top:3px">
+                                            <div style="text-align: inherit;">
+                                                <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                                <div class="section-content clearfix">
+                                    <div class="product-col ng-scope" style="width: 100%">
+                                        <div ng-transclude="">
+                                            <div class="console-container ">
+                                                <div class="row ">
+                                                    <div class="col-sm-12" style="padding:0px">
+                                                        <div class="pull-left margin-top-1 col-sm-12" style="padding:0px">
+                                                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FAM/AR/List")">
+
+                                                                <div class="simple-form-field">
+
+                                                                    <div class="form-group ">
+                                                                        <label class="control-label">
+                                                                            <span contenteditable="" class="text-danger "></span>
+                                                                            <span class="">客户名称：</span>
+                                                                        </label>
+                                                                        <div class="form-control-wrap">
+                                                                            @Html.TextBoxFor(m => m.CashedSearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户名称", @style = "width:100px" })
+                                                                            @Html.HiddenFor(m => m.CashedSearchCondition.CustomerNo, new { @class = "form-control" })
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div class="form-group ">
+                                                                        <label class="control-label">
+                                                                            <span class="">到账日期：</span>
+                                                                        </label>
+                                                                        <div class="form-control-wrap">
+                                                                            @Html.TextBoxFor(m => m.CashedSearchCondition.CashedDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                                                        </div>
+                                                                        <label class="control-label">
+                                                                            <span class="">-</span>
+                                                                        </label>
+                                                                        <div class="form-control-wrap">
+                                                                            @Html.TextBoxFor(m => m.CashedSearchCondition.CashedDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="simple-form-field  ">
+                                                                    <div class="form-group  ">
+                                                                        <label class="  control-label">
+                                                                            <span class="">
+                                                                            </span>
+                                                                        </label>
+                                                                        <div class="form-control-wrap text-right">
+                                                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnCashedListSearch">
+                                                                                <span>查询</span>
+                                                                            </a>
+                                                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnCashedFeeApply">
+                                                                                <span>分配</span>
+                                                                            </a>
+                                                                        </div>
+                                                                    </div>
+
+                                                                </div>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-sm-12">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div id="dv_Left_List">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="case-section-right" style='width: 52%;'>
+                <div class="case-section-wrap" style="padding:0px;">
+                    <div class="case-section-product">
+                        <!-- product section -->
+                        <div class="product-container">
+                            <div class="product-section">
+                                <ul class="nav nav-tabs">
+                                    <li class='active'><a href="javascript:void(0);">未确认费用信息</a></li>
+                                    <li class="pull-right" style=" border:none">
+                                        <div style="margin-top:3px">
+                                            <div style="text-align: inherit;">
+                                                <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                                <div class="section-content clearfix">
+                                    <div class="product-col ng-scope" style="width: 100%">
+                                        
+                                        <div ng-transclude="">
+                                            <div class="console-container ">
+                                                <div class="row ">
+                                                    <div class="col-sm-12" style="padding:0px">
+                                                        <div class="pull-left margin-top-1 col-sm-12" style="padding:0px">
+                                                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FAM/AR/List")">
+     
+                                                                <div class="simple-form-field">
+                                                                    <div class="form-group ">
+                                                                        <label class="control-label">
+                                                                            <span contenteditable="" class="text-danger "></span>
+                                                                            <span class="">合同号：</span>
+                                                                        </label>
+                                                                        <div class="form-control-wrap">
+                                                                            @Html.TextBoxFor(m => m.CashUnsettledSearchCondition.ContractNo, new { @class = "form-control", @style = "width:100px" })
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="form-group ">
+                                                                        <label class="control-label">
+                                                                            <span contenteditable="" class="text-danger "></span>
+                                                                            <span class="">案号：</span>
+                                                                        </label>
+                                                                        <div class="form-control-wrap">
+                                                                            @Html.TextBoxFor(m => m.CashUnsettledSearchCondition.CaseNo, new { @class = "form-control", @style = "width:80px" })
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div class="form-group ">
+                                                                        <label class="control-label">
+                                                                            <span contenteditable="" class="text-danger "></span>
+                                                                            <span class="">费用类型：</span>
+                                                                        </label>
+                                                                        <div class="form-control-wrap">
+                                                                            @Html.DropDownListFor(m => m.CashUnsettledSearchCondition.CaseFeeTypeId, CaseTypeService.Instance.GetCaseFeeTypeList(false), new { @class = "form-control" ,@style = "width:100px"})
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div class="simple-form-field  ">
+                                                                    <div class="form-group  ">
+                                                                        <label class="  control-label">
+                                                                            <span class="">
+                                                                            </span>
+                                                                        </label>
+                                                                        <div class="form-control-wrap text-right">
+                                                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnCashUnsettledListSearch">
+                                                                                <span>查询</span>
+                                                                            </a>
+                                                                        </div>
+                                                                    </div>
+
+                                                                </div>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-sm-12">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div id="dv_Right_List">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                <div class="i_common_wrap">
+                    <div class="i_common_list"></div>
+                </div>
+            </div>
+
+            <div class="i_common_select" id="div_customer" style="display: none;">
+                <div class="i_common_wrap">
+                    <div class="i_common_list"></div>
+                </div>
+            </div>
+            
+            <div class="divCaseFeeTypeList"></div>
+
+        </div>
+    </div>
+</div>
+
+

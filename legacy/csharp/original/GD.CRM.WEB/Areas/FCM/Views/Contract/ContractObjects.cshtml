@@ -1,0 +1,140 @@
+﻿@using Dchien.Legal.Service.Legal.Case
+@using Dchien.Legal.BizModel.Legal.Case
+@using Dchien.Legal.Service.BAS.Type
+
+@model Dchien.Legal.Web.Areas.FCM.ViewModels.Contract.ContractObjectListModel
+
+<script type="text/javascript">
+    $(function () {
+        $("[data-toggle='tooltip']").tooltip();
+    });
+</script>
+
+<table class='table table-hover' id="tblContractObjectList" width="100%">
+    <colgroup>
+        <col style="width: 4%">
+        <col style="width:10%">
+        <col style="width: 10%">
+        <col style="width: 20%">
+        <col style="width: 10%">
+        <col style="width: 8%">
+        <col style="width: 8%">
+        <col style="width: 8%">
+        <col style="width: 20%">
+        <col style="width: 6%">
+ 
+    </colgroup>
+    <thead>
+        <tr>
+            <th>序号</th>
+            <th>案件类型</th>
+            <th>案号</th>
+            <th>案件名称</th>
+            <th>案件阶段</th>
+            <th>费用类型</th>
+            <th>费用金额</th>
+            <th>客戶管理人</th>
+            <th>备注</th>
+            <th>日志</th>
+        </tr>
+    </thead>
+    <tbody>
+    @{
+        var i = 1;
+        var caseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+        var casePhases = CaseTypeService.Instance.GetAllCasePhases();
+    }
+    @if (Model.ContractObjects != null && Model.ContractObjects != null)
+    {
+        var lst = new List<BizCase>();
+
+        foreach (var item in Model.ContractObjects)
+        {
+            var caseInfo = lst.FirstOrDefault(x => x.Basic.CaseId == item.CaseId.Value);
+
+            if (caseInfo == null)
+            {
+                caseInfo = CaseService.Instance.GetCaseBasic(item.CaseNo);
+            }
+
+            <tr>
+                <td>
+                    <span>@(i++)</span>
+                </td>
+                <td style="text-align: center">
+                    <span>@CaseTypeService.Instance.GetCaseType(caseInfo.Basic.CaseTypeId.Value).CaseTypeName</span>
+                </td>
+                <td style="text-align: center;">
+                    <span>
+                        <a style='color: #06c; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' title="@(string.IsNullOrEmpty(caseInfo.Basic.CaseName) ? "无案件名称" : caseInfo.Basic.CaseName)"
+                           data-toggle="tooltip" data-container="body"
+                           data-original-title="@(string.IsNullOrEmpty(caseInfo.Basic.CaseName) ? "无案件名称" : caseInfo.Basic.CaseName)"
+                           data-placement="bottom" onclick='javascript:caseInfo.View(@caseInfo.Basic.CaseId,"@caseInfo.Basic.CaseNo");'>@caseInfo.Basic.CaseNo</a>
+                    </span>
+                  
+                   
+                </td>
+                <td style="text-align: left;">
+                    <span>@caseInfo.Basic.CaseName</span>
+                </td>
+    
+                <td style="text-align: center;">
+                    <span>@(casePhases.FirstOrDefault(x => x.CasePhaseId == caseInfo.Basic.CasePhaseId) == null ? string.Empty : casePhases.FirstOrDefault(x => x.CasePhaseId == caseInfo.Basic.CasePhaseId).CasePhaseName)</span>
+                </td>
+
+                <td style="text-align: center">
+                    <span>@(caseFeeTypes.FirstOrDefault(x => x.FeeTypeId == item.CaseFeeTypeId) == null ? string.Empty : caseFeeTypes.FirstOrDefault(x => x.FeeTypeId == item.CaseFeeTypeId).FeeTypeName)</span>
+                </td>
+  
+                <td style="text-align: center">
+                    <span>@(item.CaseFeeAmount)</span>
+                </td>
+
+                <td style="text-align: center">
+                    <span>@caseInfo.Basic.BusinessOwnerName</span>
+                </td>
+                 
+                <td style="text-align: left">
+                    <span style='width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' title="@item.Remark"
+                          data-toggle="tooltip" data-container="body"
+                          data-original-title="@item.Remark">@(item.Remark)</span>
+                    </td>
+                
+                <td style="text-align: center">
+
+                    @{
+                        var contractObjectLogs = Dchien.Legal.Service.FCM.Contract.ContractService.Instance.GetContractObjectLogs(item.ContractId.Value, item.BatchNo);
+
+                        if (contractObjectLogs != null && contractObjectLogs.Any())
+                        {
+                            <a style="color:#06C;" text-overflow="" ellipsis;="" white-space="" nowrap;'="" title="查看历史" data-toggle="tooltip" data-container="body" data-placement="bottom" href="javascript:void(0);" batchno="@(item.BatchNo)" onclick="javascript:contract.Draft.Objects.ObjectItem.Log.List(this);"><span class="btn_ar_history  glyphicon glyphicon-list"></span></a>
+                        }
+                 
+                    }
+
+                   </tr>
+        }
+    }
+    </tbody>
+
+    <tfoot class="ng-scope" style="display:none">
+        <tr>
+            <td colspan="10">
+                <div class="pull-left"></div>
+                <div class="ng-scope">
+                    <div class="pull-right page-box contractObjects">
+
+                    </div>
+                </div>
+            </td>
+        </tr>
+    </tfoot>
+
+</table>
+
+@Html.HiddenFor(m => m.TotalCount, new { name = "TotalCount" })
+@Html.HiddenFor(m => m.PageNo, new { name = "PageNo" })
+@Html.HiddenFor(m => m.PageSize, new { name = "PageSize" })
+
+
+

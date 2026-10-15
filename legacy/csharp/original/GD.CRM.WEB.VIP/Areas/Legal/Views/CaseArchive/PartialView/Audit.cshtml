@@ -1,0 +1,89 @@
+﻿<div class="slide-panels">
+    <div class="slide-panel active medium">
+        <div class="slide-panel-content">
+            <div class="panel-header">
+                <h5>归档审核</h5>
+                <a class="panel-close" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');">
+                    <i class="next-icon next-icon-close next-small" style="font-size: 0px;">close</i>
+                </a>
+                <div class="head-custom"></div>
+            </div>
+            <div class="placeholder">...</div>
+            <div class="panel-body">
+                <div class="panel-body-content">
+                    <div class="page-overview-panel-apply">
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ">
+
+                                <div class="">
+                                    <div class="">
+                                        <div class="">
+                                            <style type="text/css" class="">
+                                                .tableWrapper .table {
+                                                    margin-bottom: 0px;
+                                                }
+
+                                                .table-hover tbody tr.trWarapper:hover td {
+                                                    background-color: #FCF8E2;
+                                                }
+                                            </style>
+                                            <div class="">
+                                                <div class="alert alert-info clearfix" style="padding: 8px 12px 0px;line-height: 18px;margin-bottom: 6px;border-radius: 0px">
+                                                    <div class="pull-left">
+                                                        <span>温馨提示</span> ：
+                                                    </div>
+                                                    <div class="pull-left">
+                                                        <p>1. <span>请检查待归档案件材料是否齐全.</span> </p>
+                                                        <input type="hidden" id="archiveTypeId" />
+                                                     </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <div class="col-sm-12" style="padding:0px">
+                                        <div class="gridSection">
+                                            <table class="aps-table aps-widget aps-ani-transition " id="tblObjects" width="100%">
+                                                <colgroup>
+                                                    <col style="width: 10%">
+                                                    <col style="width: 8%">
+                                                    <col style="width: 30%">
+                                                    <col style="width: 5%">
+                                                </colgroup>
+                                                <thead>
+                                                    <tr>
+                                                        <th>案号</th>
+                                                        <th>案件阶段</th>
+                                                        <th><span><a href="javascript:void(0);" onclick="javascript: c.Cases.Case.Archive.Application.Objects.ObjectItem.SyncRemark();">审核备注</a></span></th>
+                                                        <th>操作</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel-footer">
+            <div class="btn-con">
+                <input type="button" class="btn   btn-primary" style="border-radius: 0;padding: 0 16px; height: 32px;line-height: 30px; font-size: 12px; border-width: 1px;" onclick="javascript: c.Cases.Case.Archive.Audit.Approved(null);" value="同意" />
+                <input type="button" class="btn   btn-primary" style="border-radius: 0;padding: 0 16px; height: 32px;line-height: 30px; font-size: 12px; border-width: 1px;" onclick="javascript: c.Cases.Case.Archive.Audit.Rejected(null);" value="拒绝" />
+                <input type="button" class="btn  btn-normal" style="border-radius: 0;
+                                                                        padding: 0 16px;
+                                                                        height: 32px;
+                                                                        line-height: 30px;
+                                                                        font-size: 12px;
+                                                                        border-width: 1px;" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');" value="取消" />
+            </div>
+        </div>
+    </div>
+</div>
+

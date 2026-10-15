@@ -1,0 +1,1042 @@
+﻿@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.CMS.ViewModels.Patent.ContractModel
+@{
+    ViewBag.Title = "起草合同";
+}
+<link rel="stylesheet" href="http://175.102.13.246:8080/WebReport/ReportServer?op=emb&resource=finereport.css" />
+<link rel="stylesheet" href="http://175.102.13.246:8080/WebReport/ReportServer?op=emb&resource=toolbar.css" />
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<script src="@Url.Content("~/Scripts/CMS/Contract/Patent/CMS.Contract.Patent.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<style>
+    /*body {
+        text-align: center;
+    }*/
+
+    .divcenter {
+        margin: 0 auto;
+        width: 400px;
+        height: 100px;
+        border: 1px solid #000;
+    }
+</style>
+
+<script type="text/javascript">
+
+    $(document).ready(function () {
+
+        $(function () {
+
+            if ($("#divContract").length > 0) {
+                $("#divContract").css("height", $(window).height() - $("#divContract").offset().top);
+            }
+        });
+    });
+
+</script>
+
+<div class="viewFramework-product  viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("~/Areas/CMS/Views/Contract/MenuList.cshtml");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="viewFramework-product-body" style="overflow-y:hidden">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>新建国内专利代理长期合同</h5>
+                                <a href="javascript:void(0);" class="btn btn-primary" id="btnDraft">
+                                    <span>保存草稿</span>
+                                </a>
+                                <a href="javascript:void(0);" class="btn btn-primary" id="btnSubmit">
+                                    <span>提交审批</span>
+                                </a>
+                            </div>
+        
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div id="divContract"  style="overflow-y: auto; padding: 10px; background-repeat: no-repeat; width: 740px; height: auto; background-size: 100%">
+                            <table class="x-table" id="tblContract" style="table-layout: fixed; width: 100%; overflow-y: scroll" cellspacing="0" id="0" cellpadding="0">
+                                <colgroup>
+                                    <col style="width:76px;" >
+                                    <col style="width:72px;">
+                                    <col style="width:72px;" >
+                                    <col style="width:115px;" >
+                                    <col style="width:78px;">
+                                    <col style="width:66px;" >
+                                    <col style="width:111px;" >
+                                    <col style="width:59px;" >
+                                </colgroup>
+                                <tbody>
+                                    <tr style="height:11px;"  >
+                                        <td class="fh bw pl2 br0 bbw3 bbss bbcb bl0 bt0" style="line-height:130%;" colspan="8" id="A1-0-0" ></td>
+                                    </tr>
+                                    <tr style="height:19px;" >
+                                        <td class="fh bw pl2 b0"  ></td>
+                                        <td class="fh bw pl2 b0" ></td>
+                                        <td class="fh bw pl2 b0" col="2"  ></td>
+                                        <td class="fh bw pl2 b0" col="3"  ></td>
+                                        <td class="fh bw pl2 b0"  ></td>
+                                        <td class="fh bw pl2 b0" col="5"  ></td>
+                                        <td class="fh bw pl2 b0" col="6"  ></td>
+                                        <td class="fh bw pl2 b0" col="7" ></td>
+                                    </tr>
+                                    <tr style="height:41px;"  >
+                                        <td class="fh bw fwb f16-0 pl2 b0" style="line-height:130%;" colspan="6" >
+                                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 国内专利代理长期合同 &nbsp;
+                                        </td>
+                                        <td class="fh tar bw pl2 b0" style="line-height:130%;"  colspan="2" >编号：自动生成</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"   colspan="8" >本《国内专利代理长期合同》（下称“本合同”）由以下双方签署：</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0 test" style="line-height:130%;" >甲方：</td>
+                                        <td class="fh bw fwb f10-0 pl2 b0 watermarkCell test" style="padding-left: 0px; line-height: 130%; padding-right: 0px; color: rgb(204, 204, 204);"colspan="7" >
+                                            @Html.TextBoxFor(m => m.ACustomer.CustomerName, new {  @style = "width:100%" })
+                                            @Html.HiddenFor(m => m.ACustomer.CustomerId)
+                                            @Html.HiddenFor(m => m.ACustomer.CustomerNo)
+                                        </td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" >联系人：</td>
+                                        <td class="fh bw f10-0 pl2 b0 watermarkCell" style="padding-left: 0px; line-height: 130%; padding-right: 0px; color: rgb(204, 204, 204);"  colspan="2">
+                                            @Html.TextBoxFor(m => m.ACustomer.DefaultContacts.Contacts, new { @style = "width:90%" })
+                                        </td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" >联系电话和邮箱：</td>
+                                        <td class="fh bw f10-0 pl2 b0 watermarkCell" style="padding-left: 0px; line-height: 130%; padding-right: 0px; color: rgb(204, 204, 204);"colspan="2" >
+                                            @Html.TextBoxFor(m => m.ACustomer.DefaultContacts.ContactTelphone, new { @style = "width:90%" })
+                                        </td>
+                                        <td class="fh bw f10-0 pl2 b0 watermarkCell" style="padding-left: 0px; line-height: 130%; padding-right: 0px; color: rgb(204, 204, 204);"  colspan="2" >@Html.TextBoxFor(m => m.ACustomer.DefaultContacts.ContactEmail, new { @style = "width:100%" })</td>
+                                    </tr>
+                                    <tr style="height:30px;" tridx="6" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   >联系地址：</td>
+                                        <td class="fh bw f10-0 pl2 b0 watermarkCell" style="padding-left: 0px; line-height: 130%; padding-right: 0px; color: rgb(204, 204, 204);"  colspan="7" >@Html.TextBoxFor(m => m.ACustomer.DefaultContacts.ContactAddress, new { @style = "width:100%" })</td>
+                                    </tr>
+                                    <tr style="height:19px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;" >乙方：</td>
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;"   colspan="7">@Html.TextBoxFor(m => m.BCustomer.CompanyName, new { @style = "width:100%" })</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" >联系人：</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2">@Html.TextBoxFor(m => m.BCustomer.Contracts, new { @style = "width:90%" })</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" >联系电话和邮箱：</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;"   colspan="2"  >@Html.TextBoxFor(m => m.BCustomer.ContractPhone, new { @style = "width:90%" })</td>
+                                        <td class="fh bw f10-0 pl2 b0 watermarkCell" style="padding-left: 0px; line-height: 130%; padding-right: 0px; color: rgb(204, 204, 204);" colspan="2"> @Html.TextBoxFor(m => m.BCustomer.ContractEmail, new { @style = "width:100%" }) </td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" >联系地址：</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;"   colspan="7" >@Html.TextBoxFor(m => m.BCustomer.ContractAddress, new { @style = "width:100%" })</td>
+                                    </tr>
+                                    <tr style="height:19px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;">鉴于：</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8"> &nbsp;&nbsp; 甲方（或甲方指定的权利人）拟向中华人民共和国知识产权局提出专利申请或办理其他专利事务，需要乙</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8">方提供专利代理和相关法律服务；</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   colspan="8"> &nbsp;&nbsp; 乙方作为中国国家知识产权局备案专利代理机构（代码：@Html.TextBoxFor(m => m.BCustomer.CompanyShortCode, new { @style = "width:30px" })），依照《中华人民共和国合同法》、</td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   colspan="8">《中华人民共和国专利法》及其他相关法律法规，愿意根据本合同约定的条款和条件接受甲方的委托，向甲方</td>
+                                    </tr>
+                                    <tr style="height:30px;"  >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8">提供专利代理服务和相关法律服务，并依据相关法规与实务经验，向甲方进行法律风险提示，尽最大努力维护</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8">甲方权益。</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8"> &nbsp;&nbsp; 因此，经双方协商一致，达成如下协议，以资双方共同遵照执行。本合同为长期合同，约定乙方各项收费</td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" >标准和服务内容，乙方按甲方的指示开展专利代理工作并执行本合同条款。</td>
+                                    </tr>
+                                    <tr style="height:18px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:31px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;" colspan="4" >第一条：委办范围</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" > &nbsp;&nbsp; 乙方根据甲方所提供之资料，进行下述勾选的专利代理工作。</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh tar bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;"  >@Html.CheckBoxFor(m => m.ContractScope.ContractScope1, new { style = "vertical-align:middle" })</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="7"  >检索并撰写专利申请文件，整理申请资料，提交至中国知识产权局，完成专利申请工作，取得专</td>
+                                    </tr>
+                                    <tr style="height:30px;" tridx="25" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   colspan="7"  >利受理文书及专利号，并负责从国家知识产权局及时传递通知文书给甲方。</td>
+                                    </tr>
+                                    <tr style="height:31px;" tridx="26" >
+                                        <td class="fh tar bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;"  >@Html.CheckBoxFor(m => m.ContractScope.ContractScope2, new { style = "vertical-align:middle" })</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   colspan="7"  >依据甲方指示，免费代缴专利申请费，并办理后续流程及代缴费事宜。（价格参见附件1）</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh tar bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;"  >@Html.CheckBoxFor(m => m.ContractScope.ContractScope3, new { style = "vertical-align:middle" })</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"    colspan="7"  >从中国知识产权局接收受审查意见，并做出专利答辩直至专利审定，即办理登记通知书或者驳回</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   colspan="7"  >通知书为止。</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh tar bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;" >@Html.CheckBoxFor(m => m.ContractScope.ContractScope4, new { style = "vertical-align:middle" })</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="7" >待专利授权后，提供年费监控服务及接受委托代缴专利年费。（另行签署年费监控协议）</td>
+                                    </tr>
+                                    <tr style="height:31px;" >
+                                        <td class="fh tar bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;" >@Html.CheckBoxFor(m => m.ContractScope.ContractScope5, new { style = "vertical-align:middle" })</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="2" >其他委办事项：</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;"  colspan="5" >1、免费协助甲方办理所能享受的各项资助和补贴</td>
+                                    </tr>
+                                    <tr style="height:18px;"  >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"> </td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"  colspan="4" >第二条：委办费用及支付约定</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 双方约定，付款方式为银行转账。（货币单位：人民币元）</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" > &nbsp;&nbsp; 乙方账号：</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;" colspan="8"> &nbsp;&nbsp; 银行帐户：@Html.TextBoxFor(m => m.BCustomer.CompanyName, new { @style = "width:50%" })</td>
+                                    </tr>
+                                    <tr style="height:31px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;" colspan="8"> &nbsp;&nbsp; 开户银行：@Html.TextBoxFor(m => m.BCustomer.BankName, new { @style = "width:50%" })</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 银行帐号：@Html.TextBoxFor(m => m.BCustomer.BankAccount, new { @style = "width:50%" })</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 下表为常规项目收费标准（仅指代理费部分，专利局收取各项费用按国家标准，可以由乙方代为缴纳）：</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width:100%" colspan="8">
+                                            <table style="width: 100%;" align="center" id='tblContractApplicationFeeList'>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw f10-0 pl2 b1" width="150px" style="background-color:rgb(192,192,192);line-height:130%;" colspan="1">专利类型</td>
+                                                    <td class="fh tac bw f10-0 pl2 b1" width="150px" style="background-color:rgb(192,192,192);line-height:130%;" colspan="1">申请费</td>
+                                                    <td class="fh tac bw f10-0 pl2 b1" width="150px" style="background-color:rgb(192,192,192);line-height:130%;" colspan="1">代理费</td>
+                                                    <td class="fh tac bw f10-0 pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;" colspan="6">备注</td>
+                                                </tr>
+                                                <tr style="height:31px;">
+                                                    <td class="fh tac bw f10-0 pl2 b1" style="line-height:130%;">发明专利</td>
+                                                    <td class="fh tac bw f10-0 pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">950</td>
+                                                    <td class="fh tac bw f10-0 pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" casetypeid="1" caseofficefeetypeid="1" casenonofficefeetypeid="0"><input  style="width:100px" type="text" value="4000"></td>
+                                                    <td class="fh bw f10-0 pl2 b1" style="padding-left:10px;line-height:130%;padding-right:10px;" align="center" colspan="6"><input style="width:100%" class="remark" type="text" value=""></td>
+                                                </tr>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw f10-0 pl2 b1" style="line-height:130%;">实用新型专利</td>
+                                                    <td class="fh tac bw f10-0 pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">500</td>
+                                                    <td class="fh tac bw f10-0 pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" casetypeid="2" caseofficefeetypeid="1" casenonofficefeetypeid="0"><input style="width:100px" type="text" value="3000"></td>
+
+                                                    <td class="fh bw f10-0 pl2 b1" style="padding-left:10px;line-height:130%;padding-right:10px;" align="center" colspan="6"><input style="width:100%" class="remark" type="text" value=""></td>
+                                                </tr>
+
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw f10-0 pl2 b1" style="line-height:130%;">外观设计专利</td>
+                                                    <td class="fh tac bw f10-0 pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">800</td>
+                                                    <td class="fh tac bw f10-0 pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" casetypeid="3" caseofficefeetypeid="1" casenonofficefeetypeid="0"><input style="width:100px" type="text" value="1000"></td>
+                                                    <td class="fh bw f10-0 pl2 b1" style="padding-left:10px;line-height:130%;padding-right:10px;" align="center" colspan="6"><input style="width:100%" type="text" class="remark" value=""></td>
+                                                </tr>
+                                                <tr style="height:130px;">
+                                                    @*<td class="fh bw f10-0 pl2 b0" style="line-height:130%;" cv="&quot;付款备注：&quot;" id="A44-0-0" row="43" fmt="T">付款备注：</td>*@
+                                                    <td class="fh bw f10-0 pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" colspan="8">1、甲方在收到乙方送达的中国专利局下发的《专利申请受理通知书》后5个工作日内，及时支付相应代理费给乙方。逾期则按每日0.1%支付利息支付给乙方。<br>2、甲方如委托乙方代缴专利局费用，需提前支付给乙方。<br>3、乙方应按约定，及时交付给甲方发票和国家知识产权局收款收据。</td>
+                                                </tr>
+
+                                            </table>
+                                        </td>
+                                    </tr>
+
+                                    <tr style="height:19px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" > &nbsp;&nbsp; 甲方如需委托乙方代为缴纳专利代理的官方费用，应及时将款项汇入乙方账号，乙方在缴费后，应及时将</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" >收据原件交给甲方。</td>
+                                    </tr>
+                                    <tr style="height:31px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8"> &nbsp;&nbsp; 本合同履行过程中，因甲方要求乙方提供本合同约定之外的服务，例如与审查员面谈，以及在专利审查过程</td>
+                                    </tr>
+                                    <tr style="height:32px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" >中的为了争取授权的额外服务，每次产生的费用，均由乙方事先邮件通知甲方，征得甲方同意后方可办理。为</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >此，双方可另行约定价格及付款时间。</td>
+                                    </tr>
+                                    <tr style="height:32px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8"> &nbsp;&nbsp; 双方约定，如因甲方明确指示需要办理的专利申请或者其他服务事项，在乙方已经办理并且无过错的情况</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >下，甲方擅自取消或者终止申请（办理），甲方应按本合同约定，支付相应代理费给乙方，并弥补乙方因此造</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8">成的损失。</td>
+                                    </tr>
+                                    <tr style="height:32px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8"> &nbsp;&nbsp; 本条款没有约定的服务事项，收费标准参见合同附件1。合同附件1中的收费与本条款有冲突的，以本条</td>
+                                    </tr>
+                                    <tr style="height:32px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" >款为准。合同附件1没有列出的服务项目，双方自行协商价格。甲方应在指示乙方后的5个工作日内支付款项</td>
+                                    </tr>
+                                    <tr style="height:31px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" >给乙方，乙方收到款项后应及时办理。</td>
+                                    </tr>
+                                    <tr style="height:18px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" > &nbsp; </td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"  colspan="4" >第三条：指示的有效性：</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8"> &nbsp;&nbsp; 甲方应按乙方要求提供有关代理业务的材料，甲方就该代理业务对乙方的要求应在委托指示中明示，合作</td>
+                                    </tr>
+                                    <tr style="height:32px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8">过程中甲方的补充要求可以以各种便捷方式进行。甲乙双方所有指示以书面形式（包括信函、传真、电子邮件</td>
+                                    </tr>
+                                    <tr style="height:30px;"  >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8">等）都作为最终法律依据。</td>
+                                    </tr>
+                                    <tr style="height:32px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 任何一项专利申请的发起，由甲方书面或者电子邮件通知乙方，乙方按本合同的约定完成甲方委托的代理</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >工作，甲方则按本合同的约定，及时支付款项。</td>
+                                    </tr>
+                                    <tr style="height:19px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;" colspan="8" >第四条：合作的时间性</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 业务合作过程中，双方应主动、及时地答复和完成对方提出的相关问题和请求，所期望的答复期限应于相应</td>
+                                    </tr>
+                                    <tr style="height:32px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" >函电中列出；被请求方应在所要求的预定时限内完成相应工作。如不能完成，应在事先与对方沟通。在甲方不</td>
+                                    </tr>
+                                    <tr style="height:32px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" >能按期对乙方的请示给出指示的情况下，须及时通知乙方采取必要措施，保持专利申请/专利处于对甲方较</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >有利的状态。甲方应配合乙方在相应的期限内提供所需的证明文件及办理委托手续。</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 乙方承诺，从收到齐全的专利申请材料起，至完成专利检索和初稿撰写交至甲方审阅，原则上不超过15个</td>
+                                    </tr>
+                                    <tr style="height:32px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   colspan="8" >工作日，否则甲方有权单方面终止此项申请而不必支付代理费给乙方，但因甲方没有及时回应（例如需要补充</td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >材料，技术沟通等）导致的时间延误不在此列。</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 双方签署本协议时，甲方已知晓专利年费的相关规定，除非与乙方签署专利年费监控协议，否则甲方自行</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" >承担因逾期缴纳专利年费产生的滞纳金和相应法律责任。</td>
+                                    </tr>
+                                    <tr style="height:19px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >第五条：文件的传达</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   colspan="8" > &nbsp;&nbsp; 转达涉及专利局官方文件时，乙方应保证在收到文件后5个工作日内及时传达至甲方，并在随后的适当期限</td>
+                                    </tr>
+                                    <tr style="height:32px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8">内对甲方的处理工作提供咨询和建议，且给甲方留出适当采取措施的时间。如文件需要翻译（例如对比文</td>
+                                    </tr>
+                                    <tr style="height:32px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   colspan="8" >献），应甲方要求，乙方可将文书正文译成汉语且提供法律意见，但甲方应支付相应费用，费用标准见合同</td>
+                                    </tr>
+                                    <tr style="height:32px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8">附件1。乙方应将有关证明材料的原件及时提供甲方，包括受理通知书、证书、审查意见通知书、补正书等；</td>
+                                    </tr>
+                                    <tr style="height:31px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   colspan="8">不能提供原件的，应甲方要求，可提供复印件。</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8"> &nbsp; 因中国知识产权局专利电子申请的普及，以及文件传递的时效性，乙方将相关通知书和文档的电子件（含</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" >扫描件）发送到甲方联系人的电子邮箱，视为通知文件的及时传达。</td>
+                                    </tr>
+                                    <tr style="height:19px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >第六条：联络方式</td>
+                                    </tr>
+                                    <tr style="height:31px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" > &nbsp;&nbsp; 以信函、传真、电话、电子邮件进行，具有签字的信函、传真、电子邮件可视为有效性的法律依据。双方如</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >变更联系方式，都应及时告知对方，否则应承担应此延误期限所导致损失的法律责任。</td>
+                                    </tr>
+                                    <tr style="height:19px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;" colspan="8">第七条：保密约定及责任</td>
+  
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 因本合同的履行而知悉另一方的资料和信息，应视作该方的商业秘密，除非法律要求或事先取得该方的书面</td>
+                                    </tr>
+                                    <tr style="height:32px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" >许可，不得将其披露给任何第三方或用于本合同以外的用途。乙方在完成甲方的委托后，因及时将相关资料归</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8">还甲方或者按甲方要求及时销毁资料。</td>
+                                    </tr>
+                                    <tr style="height:31px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 双方必须严格履行保密义务，一旦出现泄密，损失方可诉之于法律。</td>
+                                    </tr>
+                                    <tr style="height:19px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"> </td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >第八条：信息的真实性</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 甲方依法宣誓甲方所提供资料的真实及完整，并且是甲方是专利权人、发明人或者是专利权人、发明人的合</td>
+                                    </tr>
+                                    <tr style="height:32px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >法委托人。若不真实，乙方可单方面终止合同，并将甲方付给乙方的金额扣除已发生的费用后退还给甲方。</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8">乙方依法宣誓遵守专利代理相关法律法规，恪守职业道德，尽力维护委托人的合法利益。</td>
+                                    </tr>
+                                    <tr style="height:19px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8"></td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;" colspan="8" >第九条：文件的确认</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" > &nbsp;&nbsp; 新申请文件在提交前，应交甲方确认并保证留给甲方充足的审查时间。其他递交文件（特别是涉及权利的文</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   colspan="8" >件），也应交甲方确认。乙方在得到甲方书面或者邮件确认后才能提交上述资料到国家知识产权局。</td>
+                                    </tr>
+                                    <tr style="height:19px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"  colspan="8">第十条：违约责任</td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 在代理过程中，如果因为乙方过错导致案件的时限被耽误，或者应该授权的专利被驳回，给甲方造成损失，</td>
+                                    </tr>
+                                    <tr style="height:32px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >乙方应依法承担相应责任；如果因为甲方过错导致案件的期限被耽误或者文件传送受阻，乙方不承担相应责任。</td>
+                                    </tr>
+                                    <tr style="height:19px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >第十一条：纠纷解决方式</td>
+                                    </tr>
+                                    <tr style="height:32px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" > &nbsp;&nbsp; 因本协议或与本协议有关的任何争议，建议双方协商解决。协商不成的，可以直接向乙方办公所在地人民</td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0"  colspan="8" >法院起诉。</td>
+                                    </tr>
+                                    <tr style="height:19px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"   colspan="8" >第十二条：协议的期限、变更与解除</td>
+                                    </tr>
+                                    <tr style="height:30px;" tridx="112" id="r-112-0">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" > &nbsp;&nbsp; 此协议一式两份，双方各执一份，附件与此协议具有同等法律效力，自签订之日起有效，至新协议替换或甲</td>
+                                    </tr>
+                                    <tr style="height:32px;" tridx="113" id="r-113-0">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8" >乙双方书面解除本合同时终止。在合同有效期间，甲方可随时解除与乙方的委托关系，有权要求乙方退回其预</td>
+                                    </tr>
+                                    <tr style="height:31px;" tridx="114" id="r-114-0">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8">付费用的余款。本协议经双方同意签署后生效。</td>
+                                    </tr>
+                                    <tr style="height:19px;" tridx="115" id="r-115-0">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8"></td>
+                                    </tr>
+                                    <tr style="height:30px;" tridx="116" id="r-116-0">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" colspan="8">第十三条：除本合同所列举条文之外并无其他约定，双方若另有约定的，可以补充在第十四条或者第十五条，</td>
+                                    </tr>
+                                    <tr style="height:30px;" tridx="117" id="r-117-0">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"   colspan="8" >如果与前款条文有冲突的，以第十四条和第十五条为准。</td>
+                                    </tr>
+                                    <tr style="height:19px;" tridx="118" id="r-118-0">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  colspan="8" ></td>
+                                    </tr>
+                                    <tr style="height:30px;" tridx="119" id="r-119-0">
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"  colspan="8" >第十四条：合同条款的补充</td>
+                                    </tr>
+                                    <tr style="height:30px;" tridx="120" id="r-120-0">
+                                        
+                                        <td class="fh bw f10-0 pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" rowspan="3" 
+                                            colspan="8" >
+                                            @Html.TextAreaFor(m => m.Remark, new { maxlength = 600, @class = "input_text case-form-control", style = "width:100%; height:90px" })
+                                        </td>
+                                    </tr>
+                                    <tr style="height:31px;" ></tr>
+                                    <tr style="height:30px;" ></tr>
+                                    <tr style="height:19px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"   colspan="8" >第十五条：手写备注区域</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" rowspan="5"  colspan="8"></td>
+                                    </tr>
+                                    <tr style="height:31px;" ></tr>
+                                    <tr style="height:30px;" ></tr>
+                                    <tr style="height:30px;"></tr>
+                                    <tr style="height:30px;"></tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;" colspan="3" >（以下无正文，为签字区）</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                    </tr>
+                                    <tr style="height:19px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:19px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" >甲方：</td>
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;" colspan="3">@Html.TextBoxFor(m => m.ACustomer.CustomerName, new { @style = "width:90%" })</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" >乙方：</td>
+                                        <td class="fh bw fwb f10-0 pl2 b0" style="line-height:130%;"  colspan="3" >@Html.TextBoxFor(m => m.BCustomer.CompanyName, new { @style = "width:90%" })</td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" >代表人：</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2">@Html.TextBoxFor(m => m.ACustomer.DefaultContacts.Contacts, new { @style = "width:100%" })</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;">代表人：</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2" >@Html.TextBoxFor(m => m.BusinessOwner, new { @style = "width:100%" })</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                    </tr>
+                                    <tr style="height:30px;" >
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" >日期：</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2" > 
+                                            @Html.TextBoxFor(m => m.ContractDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control",@style = "width:100%", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" >日期：</td>
+                                        <td class="fh bw f10-0 pl2 b0" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2" >
+                                            @Html.TextBoxFor(m => m.ContractDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", @style = "width:100%", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                    </tr>
+                                    <tr style="height:30px;">
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"  ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;" ></td>
+                                        <td class="fh bw f10-0 pl2 b0" style="line-height:130%;"></td>
+                                    </tr>
+                                    <tr style="height:31px;" >
+                                        <td class="fh tac bw fwb pl2 b0" style="line-height:130%;" colspan="8" >附件1、其他专利代理收费清单（单位：人民币元）</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="width:100%" colspan="8">
+                                            <table id="tblContractCaseFeeList" style="width: 100%;" align="center">
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;" >类型</td>
+                                                    <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;"  colspan="3" >费用内容</td>
+                                                    <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;" >官费（参考）</td>
+                                                    <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;" >代理费用</td>
+                                                    <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;"colspan="2" >备注</td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" rowspan="4"  >申请阶段</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="2">权利要求附加费 </td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >从第11项起，每项 </td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >150</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >200</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" ></td>
+                                                </tr>
+
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" rowspan="2"  colspan="2" >说明书附加费</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >从第31页起，每页</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >50</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >500</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2"></td>
+                                                </tr>
+                                                <tr style="height:31px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >从第301页起，每页</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >100</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">800</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"  colspan="2"></td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="2" >优先权要求费</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >每项</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">80</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >500</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"></td>
+                                                </tr>
+
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" rowspan="2" >发明初审</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;"  colspan="3" >提前公开</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" >0</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">100</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" ></td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" colspan="3" >提出实质性审查请求</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" >2500/750/375</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >300</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" ></td>
+                                                </tr>
+                                                <tr style="height:31px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >发明实审</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3" >主动修改</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >1500</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"  colspan="2">应申请人要求主动修改</td>
+                                                </tr>
+
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" rowspan="2">答复审查意见</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" colspan="3" >发明专利</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" >0</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >3000</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" rowspan="2"  colspan="2" >多次，答复至授权或者驳回<br>不含外文对比文件的翻译费</td>
+                                                </tr>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;"  colspan="3"  >实用新型和外观设计专利</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" >0</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">2000</td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" rowspan="2"  >授权阶段</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"colspan="3" >发明专利</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >255+年费</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">200</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" rowspan="2" colspan="2">代缴授权费和年费，代领证书</td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3" >实用新型和外观设计专利</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">205+年费</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >100</td>
+                                                </tr>
+                                                <tr style="height:31px;" >
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" rowspan="2" >年费监控</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" colspan="3">发明专利</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" >0</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >400</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2" >监控20年</td>
+                                                </tr>
+
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;"colspan="3" >实用新型和外观设计专利</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" >0</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >200</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2" >监控10年</td>
+                                                </tr>
+
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;">年费代缴</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" colspan="3">代缴年费，每次每件</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;">按国家标准</td>
+                                                    <td class="fh tac bw fwb pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" casetypeid="1,2,3" caseofficefeetypeid="3" casenonofficefeetypeid="0"><input style="width:100px" type="text" value="100"></td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:10px;line-height:130%;padding-right:10px;" colspan="2"><input style="width:100%" type="text" class="remark" value="有年费监控的，50/次"></td>
+                                                </tr>
+
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >专利复审</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"colspan="3" >发明/实用/外观，每件</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >1000/300/300</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >3000-5000</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >按难易程度及工作量定价</td>
+                                                </tr>
+                                                <tr style="height:31px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  >专项工作</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3" >侵权评估、检索分析、专项报告等，每小时</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">500-1000</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2" >按难易程度及工作量定价</td>
+                                                </tr>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" rowspan="14"  >其他</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3" > 录著项目变更</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >200</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">200</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"  colspan="2" >变更发明人、权利人，转让</td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3">代理机构变更</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >50</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >50</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" ></td>
+                                                </tr>
+
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3" >专利许可实施备案</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">300</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"  colspan="2"></td>
+                                                </tr>
+                                                <tr style="height:31px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3">专利登记簿副本办理</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">500</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"  colspan="2"></td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3" > 恢复权利</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >1000</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >300</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"  colspan="2"></td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3" >主动撤回专利申请</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >500</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"></td>
+                                                </tr>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3" >制图或修图，每幅</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">300-500</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"  colspan="2"></td>
+                                                </tr>
+                                                <tr style="height:31px;" >
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;"colspan="3" >撰写申请文件/答复审查意见加急费</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >1000-2000</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2" >4-6个工作日内完成撰写</td>
+                                                </tr>
+
+
+
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" colspan="3">发明专利申请前检索报告</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">1500-3000</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">委托专利局审查员进行</td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3" >延长期限请求费-第一个月</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >300</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >300</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" rowspan="2"  colspan="2">对同一个期限，最多延长两个月</td>
+                                                </tr>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3" >延长期限请求费-第二个月</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">2000</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >300</td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3" >实用新型或外观专利权评估报告</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >2400</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >1000</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2"></td>
+                                                </tr>
+                                                <tr style="height:31px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"colspan="3" >文字翻译费（中译英/英译中）每千字</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">500/300</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2">其他语种价格面议</td>
+                                                </tr>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3">知识产权-专题培训，每天</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">5000</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"  colspan="2">不含差旅费</td>
+                                                </tr>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" rowspan="3" >专利无效宣告</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3">专利无效宣告请求费（发明/实用或外观）</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">3000/1500</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">面议</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" rowspan="2" colspan="2">按难易程度及工作量定价</td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3" >专利答复无效宣告请求</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >
+                                                        面议
+                                                    </td>
+                                                </tr>
+                                                <tr style="height:31px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3"> 专利无效的口审，每次</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >0</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">10000</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"colspan="2" >
+                                                        不包括差旅费
+                                                    </td>
+                                                </tr>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" rowspan="2" >PCT国际申请</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3">PCT国际阶段</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >12000</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">8000</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"  colspan="2" >官费视汇率以及申请文件而定</td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3" >PCT国家阶段-指定国申请</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >待定</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" >待定</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" colspan="2" >视指定国情况而定</td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" rowspan="6" >发明专利年费</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"colspan="3">1-3年，每年</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >900</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;">100</td>
+                                                    <td class="fh bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" rowspan="6" colspan="2">费用减免只能免前六次年费，<br>减免85%，多个申请人减免70%</td>
+                                                </tr>
+                                                <tr style="height:31px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3">4-6年，每年</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >1200</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" ></td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"colspan="3">7-9年，每年</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;">2000</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" ></td>
+                                                </tr>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3" >10-12年，每年</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >4000</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"></td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3" >13-15年，每年</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >6000</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"></td>
+                                                </tr>
+                                                <tr style="height:31px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3">16-20年，每年</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >8000</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"></td>
+                                                </tr>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" rowspan="4" >实用或外观<br>专利年费</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3">1-3年，每年</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >600</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"></td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" rowspan="4" colspan="2" >费用减免只能免前六次年费，<br>减免85%，多个申请人减免70%</td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3">4-5年，每年</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >900</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;"></td>
+                                                </tr>
+                                                <tr style="height:30px;" >
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="3" >6-8年，每年</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >1200</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" ></td>
+                                                </tr>
+                                                <tr style="height:30px;">
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;"  colspan="3" >9-10年，每年</td>
+                                                    <td class="fh tac bw pl2 b1" style="line-height:130%;" >2000</td>
+                                                    <td class="fh tac bw pl2 b1" style="padding-left:0;line-height:130%;padding-right:0;" ></td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                    <tr style="height:31px;">
+                                        <td class="fh bw pl2 b0" style="line-height:130%;"   colspan="8" >*其他业务报价（涉外、加急、包授权、疑难案件等），请联系销售代表，或致电400-680-3773，索取更多资料，谢谢！</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="i_common_select" id="div_customer" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>

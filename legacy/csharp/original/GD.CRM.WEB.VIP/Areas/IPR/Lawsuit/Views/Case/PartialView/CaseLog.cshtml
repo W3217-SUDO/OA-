@@ -1,0 +1,57 @@
+﻿@using SunHold.Legal.Common
+@using SunHold.Legal.Service
+
+@model SunHold.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseLogModel
+
+@{
+    object htmlAttribute = null;
+}
+
+<div class="modal fade" id="caseLogModal" >
+ 
+    <div class="modal-dialog" >
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                @using (Html.BeginForm("CaseLog", "Case", FormMethod.Post, new { id = "caseLog", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    @Html.HiddenFor(m => m.CaseId)
+
+
+                    <div class="modal-header">
+                        <button type="button" class="close" id="btnCaseLogClose">×</button>
+                        <h5 class="modal-title ng-binding">案件日志</h5>
+                    </div>
+                        @*<div style="padding-left:10px;padding-right:10px">
+                            <div class="margin-top-2 alert alert-info">
+                                <b>提醒：</b><span style="color:#F00" class="ng-binding"></span>
+                            </div>
+                        </div>*@
+                    <div class="modal-body">
+                        <div>
+                            <div class="form-group">
+                                <label for="CaseLog_Content" class="col-sm-3 control-label">
+                                    <span class="text-danger ng-binding">*</span>
+                                    <span class="ng-binding">日志内容</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextAreaFor(m => m.CaseLog.Content, new { @required = "true", maxlength = 1000, rows=4,style = "width:120%" })
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button" id="btnCaseLog" value="确定" />
+                        <input class="btn btn-default ng-binding" type="button" id="btnCaseLogCancel" value="取消" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+   
+</div>
+
+@*<div tabindex="-1" class="modal fade  in" ng-class="{in: animate}" ng-style="{'z-index': 1050 + index*10, display: 'block'}" ng-click="close($event)" modal-window="" index="0" animate="animate" style="z-index: 1050; display: block;"><div class="modal-dialog"><div class="modal-content" ng-transclude=""><div bindonce="" class="ng-scope"><div class="modal-header"><button type="button" class="close" data-dismiss="modal" data-ng-click="close(false)" aria-hidden="true">×</button><h5 class="modal-title ng-binding">提示</h5></div><div class="modal-body"><div><span class="text-size-32 icon-yes-1 text-info" style="color: #09c !important"></span> <span style="display:inline;margin-bottom: 10px;margin-left: 10px;vertical-align:6px;font-size: 15px">索取发票成功！<!-- ngIf: invoiceTypeNg == 'PAPER' --><span ng-if="invoiceTypeNg == 'PAPER'" class="ng-scope">发票将在3个工作日内寄出。</span><!-- end ngIf: invoiceTypeNg == 'PAPER' --><!-- ngIf: invoiceTypeNg != 'PAPER' --></span></div></div><div class="modal-footer"><button class="btn btn-default" data-ng-click="close(false)"><span bo-bind="'invoice.partials.applyInvoiceSuccess.sure'|translate">确定</span><!--确定--></button></div></div></div></div></div>*@
+@*<div tabindex="-1" class="modal fade  in" ng-class="{in: animate}" ng-style="{'z-index': 1050 + index*10, display: 'block'}" ng-click="close($event)" modal-window="" index="0" animate="animate" style="z-index: 1050; display: block;"><div class="modal-dialog"><div class="modal-content" ng-transclude=""><div class="console-message-dialog ng-scope"><div class="modal-header"><button type="button" class="close" data-dismiss="modal" data-ng-click="close(false)" z-index="-1" aria-hidden="true">×</button><h5 class="modal-title ng-binding">错误提示</h5></div><div class="modal-body clearfix"><div class="col-sm-1 text-center"><span class="text-size-32 icon-no-2 text-warning" ng-class="iconClass"></span></div><div class="col-sm-11 breakall"><p ng-bind-html="message" class="ng-binding">加急失败，请稍后再试！</p></div></div><div class="modal-footer"><!-- ngRepeat: btn in buttons --><button ng-repeat="btn in buttons" ng-click="eventHandler(btn.result)" class="btn ng-scope ng-binding btn-primary" ng-class="btn.cssClass">确定</button><!-- end ngRepeat: btn in buttons --></div></div></div></div></div>*@
+
+
+

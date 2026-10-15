@@ -1,0 +1,61 @@
+﻿@model Dchien.Legal.Web.Areas.TP.ViewModels.Task.TaskMessageListModel
+
+@if (Model.Messages != null && Model.Messages.Any())
+{
+    foreach (var message in Model.Messages)
+    {
+        <div class="col-sm-12 clearfix message-item ng-scope" style="@(!message.MessageRead && message.NotificationObject == Dchien.Legal.Service.LoginHelper.GetUserName() ? "background:lightyellow":"")">
+            <div class="clearfix ng-scope">
+                <div class="user-icon">
+                    <img class="ng-scope" width="40" height="40" ng-src="@Url.Content("~/Resource/images/avatar.png")"
+                         src="@Url.Content("~/Resource/images/avatar.png")">
+                </div>
+                <div class="item-content col-sm-10"  style="white-space:normal">
+                    <div class="ng-scope ng-binding text-bold">
+                        <span class="text-size-14 ng-scope">
+                            <span class="ng-scope ng-binding">@message.SenderName</span>
+                            <span>:</span>
+                        </span>
+
+                        <span style="@(message.MessageTypeId == (int)Dchien.Legal.Entity.TP.Task.TaskMessageType.MessageType_100100111 ? "color:green" : "")">
+                            @message.Content
+                        </span>
+
+                        @if (message.AttachList != null && message.AttachList.Any())
+                        {
+                            <br>
+                            <span  >
+                                <span class="ticket-attachment">
+                                    @foreach (var attach in message.AttachList)
+                                    {
+                                        <span>
+                                            <a class='attach' href='javascript:void(0);' onclick="javascript: task.Tasks.Task.Files.File.View(@attach.FileId, '@attach.TaskGuid', '@attach.FileName');">@attach.FileName</a>
+                                        </span>
+                                        <br>
+                                    }
+                                </span>
+                            </span>
+                        }
+                    </div>
+
+                    <br>
+                    <div class="item-time text-explode ng-binding">@message.SendTime.ToString("yyyy-MM-dd HH:mm:ss")
+                        <span class="pull-right">
+
+                            @if (message.MessageRead && message.NotificationObject == Dchien.Legal.Service.LoginHelper.GetUserName())
+                            {
+                                @*<a href="javascript:void(0);" onclick="javascript: task.Tasks.Task.Messages.Message.MarkUnRead('@message.MessageGuid');">未读</a>*@
+                                <input type="button" class="btn btn-primary " onclick="javascript: task.Tasks.Task.Messages.Message.MarkUnRead('@message.MessageGuid');" value="标记未读" />
+                            }
+                            else if (!message.MessageRead && message.NotificationObject == Dchien.Legal.Service.LoginHelper.GetUserName())
+                            {
+                                @*<a href="javascript:void(0);" onclick="javascript: task.Tasks.Task.Messages.Message.MarkRead('@message.MessageGuid');">标记已读</a>*@
+                                <input type="button" class="btn btn-primary " onclick="javascript: task.Tasks.Task.Messages.Message.MarkRead('@message.MessageGuid');" value="标记已读" />
+                            }
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}

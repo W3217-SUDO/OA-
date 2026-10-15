@@ -1,0 +1,328 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.BAS.Type
+@using Dchien.Legal.Entity.FAM.AR.CaseFee
+@using Dchien.Legal.Entity.Legal.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.Legal.Case
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseFee.CaseFeeListModel
+
+<form id="postForm" action="">
+    <div id="casegridSection" class="gridSection">
+        <div class="context" id='divContextList' style="overflow-y: auto; ">
+            <table class="table table-hover " id="tblCaseFee" style='width: 100%; margin-top: 0px; margin-bottom: 0px;'>
+                <colgroup>
+                    <col style="width: 3%">
+                    <col style="width: 12%">
+                    <col style="width: 15%">
+                    <col style="width: 7%">
+                    <col style="width: 10%">
+                    <col style="width: 12%">
+                    <col style="width: 9%">
+                    <col style="width: 9%">
+                    <col style="width: 7%">
+        
+                    <col style="width: 9%">
+                    <col style="width: 10%">
+                    <col style="width: 7%">
+                 </colgroup>
+
+                <thead>
+                    <tr>
+                        <th>
+                        </th>
+                        <th>
+                            合同编号
+                        </th>
+                        <th style="text-align: left">
+                            费用类型
+                        </th>
+                        <th>
+                            金额
+                        </th>
+                        <th>
+                           退费
+                        </th>
+                        <th>
+                            提交人
+                        </th>
+   
+                        <th>
+                            提交日期
+                        </th>
+                        <th>
+                            回款日期
+                        </th>
+                        <th>
+                            回款金额
+                        </th>
+              
+                        <th>
+                            开票日期
+                        </th>
+                        <th>
+                            发票号
+                        </th>
+                        <th>
+                            申请付款金额
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    @if (Model.CaseFeeList != null && Model.CaseFeeList.Any())
+                    {
+                        var c = CaseService.Instance.GetCase(Model.CaseFeeList.First().CaseNo);
+
+                        foreach (var item in Model.CaseFeeList)
+                        {
+                            <tr class="caseFee">
+                                <td>
+                                    <input type="checkbox" name="chkCaseFeeId" feetypeid="@item.FeeTypeId" casefeetypeid="@item.CaseFeeTypeId" contractid="@item.ContractId" batchNo="@item.BatchNo" casefeetypename="@item.CaseFeeTypeName" value="@item.CaseFeeId">
+                                </td>
+                                <td>
+                                   @if (c.Basic.BusinessOwner == LoginHelper.GetUserName())
+                                   {
+                                        <a style='color: #039' href="javascript:void(0);" onclick="javascript:contract.Contracts.Contract.View('@item.ContractNo'); "><span>@item.ContractNo </span></a>
+                                   }
+                                   else
+                                   {
+                                        <span>@item.ContractNo</span> 
+                                   }
+
+                                </td>
+                                <td class="feeId" style="display:none">
+                                    @Html.HiddenFor(m => item.CaseFeeId)
+                                    @Html.HiddenFor(m => item.ContractId)
+                                    @Html.HiddenFor(m => item.CaseNo)
+                                    @Html.HiddenFor(m => item.BatchNo)
+                                    @Html.HiddenFor(m => item.InvoiceFile.InvoiceFileName)
+                                    @*@(Model.CaseFees.IndexOf(item) + 1)*@
+                                    @item.CaseFeeId
+                                </td>
+                                @*<td>
+                                <span>@item.CaseNo</span>
+                            </td>*@
+                                <td style="text-align: left">
+                                        (@item.CaseFeeTypeId) 
+                                        @item.CaseFeeTypeName
+                                </td>
+                                <td style="text-align: right">
+                                    <span> @(item.Amount.HasValue ? item.Amount.Value.ToString() : "0") </span>
+                                </td>
+
+                                <td style="text-align: right">
+                                    <span>
+                                        @(item.RefundAmount.HasValue ? item.RefundAmount.Value.ToString() : "0")
+                                        @{
+                                            var text_desc = "";
+                                            if (item.RefundAmount > 0 && item.RefundAmount == item.RefundedAmount)
+                                            {
+                                                text_desc = "(已退)";
+                                            }
+                                            else if (item.RefundAmount > 0)
+                                            {
+                                                text_desc = "(未退)";
+                                            }
+                                        }
+                                        @text_desc
+                                    </span>
+                                </td>
+                                <td>
+                                    <span>@item.RequestUserName</span>
+                                </td>
+                                <td>
+                                    <span>@(item.InformDate.HasValue ? item.InformDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                                </td>
+                                @*<td>
+                                    <span>@item.CashedResponseUserName</span>
+                                </td>*@
+                                @if (item.FeeTypeId == (int)CaseFeeTypeId.Nonparty && !(item.CashedAmount > 0))
+                                {
+                                    <td>
+                                        <span>/</span>
+                                    </td>
+
+                                    <td style="text-align: right">
+
+                                        <span>/</span>
+                                    </td>
+                                }
+                                else
+                                {
+                                    <td>
+                                        <span>@(item.CashedDate.HasValue ? item.CashedDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                                    </td>
+
+                                    <td style="text-align: right">
+
+                                        <span><a href="javascript:void(0);" onclick="javascript: c.Cases.Case.CaseFees.Payment.ViewReceviedPayment(@item.CaseFeeId);">@(item.CashedAmount.HasValue ? item.CashedAmount.Value : 0) </a></span>
+                                    </td>
+                                }
+
+  
+
+                                @*<td>
+                                    <span>@(item.InvoiceFile != null ? item.InvoiceFile.InvoiceResponseUserName : string.Empty)</span>
+
+                                </td>*@
+                                <td>
+                                    <span>@(item.InvoiceFile != null && item.InvoiceFile.InvoiceDate.HasValue ? item.InvoiceFile.InvoiceDate.Value.ToString("yyyy-MM-dd") : string.Empty)</span>
+
+                                </td>
+                                <td style="white-space:nowrap">
+                                    @{
+                                        if (item.PaymentMode == (int)CaseFeePaymentMode.ByCustomer )
+                                        {
+                                                <span>客户自缴</span>
+                                        }
+                                        else if (item.InvoiceFile != null)
+                                        {
+                                            <a style='color: #039' href="javascript:void(0);" onclick="javascript:c.Cases.Case.CaseFees.Invoice.File.Open('@item.CaseFeeGuid'); "><span>@item.InvoiceFile.InvoiceNo </span></a>
+                                        }
+                                    }
+                                </td>
+                                <td>
+                                    <span> @(item.PaidAmount.HasValue ? item.PaidAmount.Value.ToString() : "") </span>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+
+                <tfoot class="" style="display:none;position:relative;z-index: 99;">
+                    <tr>
+                        <td><input type="checkbox" onclick="javascript: c.Cases.Case.CaseFiles.Selected(this);" id="chkCaseFeeAll" name="chkCaseFeeAll"></td>
+                        <td colspan="11">
+                            <div class="pull-left" style="position:absolute;z-index: 1000;">
+                                @{ var dropup = Model.CaseFeeList != null && Model.CaseFeeList.Count > 5 ? "dropup" : ""; }
+                                <div class="inline-block @dropup" style="margin-left: 4px">
+                                    <div class="dropdown ng-scope">
+                                        <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                            新增平台费用
+                                            <span class="caret"></span>
+                                        </button>
+                                        <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+                                            <li>
+                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate(new Array($('#Case_Basic_CaseNo').val()), $.lsCaseFeeType.TypeId.OfficeFee, $.lsGroupId.Trad);">
+                                                    <span>新增官费</span>
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate(new Array($('#Case_Basic_CaseNo').val()), $.lsCaseFeeType.TypeId.Nonparty, $.lsGroupId.Trad);">
+                                                    <span>新增第三方费用</span>
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate(new Array($('#Case_Basic_CaseNo').val()), $.lsCaseFeeType.TypeId.NonOfficeFee, $.lsGroupId.Trad);">
+                                                    <span>新增代理费</span>
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate(new Array($('#Case_Basic_CaseNo').val()), $.lsCaseFeeType.TypeId.CommissionFee, $.lsGroupId.Trad);">
+                                                    <span>新增其他费用</span>
+                                                </a>
+                                            </li>
+
+                                            <li>
+                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.InternalFees.InternalFee.MultiOpenByCaseFee($.checkbox.vals('chkCaseFeeId'), true);">
+                                                    <span>新建提成(选择代理费)</span>
+                                                </a>
+                                            </li>
+
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div class="inline-block @dropup" style="margin-left: 4px">
+                                    <div class="dropdown ng-scope">
+                                        <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                            其他操作
+                                            <span class="caret"></span>
+                                        </button>
+                                        <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+
+                                            <li>
+                                                <a href="javascript:;" onclick='javascript: var chkCaseFeeIds = $.checkbox.vals("chkCaseFeeId");   if (chkCaseFeeIds.length == 0) { $.showModalMessageBox("请选择费用.");  return false;} c.Cases.Case.CaseFees.Refund.Open(chkCaseFeeIds[0]);'>
+                                                    <span>法院退费</span>
+                                                </a>
+                                            </li>
+                             
+                                            <li>
+                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.PaymentApply.Open($.lsGroupId.Trad);">
+                                                    <span>申请付款</span>
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.Invoice.Apply($.lsGroupId.Trad);">
+                                                    <span>申请开票</span>
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="javascript:;" onclick='javascript:  var chkCaseFeeIds = $.checkbox.vals("chkCaseFeeId");  if (chkCaseFeeIds.length == 0) { $.showModalMessageBox("请选择费用.");  return false;}  c.Cases.Case.CaseFees.CaseFee.Edit(chkCaseFeeIds[0]);'>
+                                                    <span>修改</span>
+                                                </a>
+                                            </li>
+
+                                            <li>
+                                                <a href="javascript:;" onclick='javascript:  var chkCaseFeeIds = $.checkbox.vals("chkCaseFeeId");  if (chkCaseFeeIds.length == 0) { $.showModalMessageBox("请选择费用.");  return false;}  c.Cases.Case.CaseFees.CaseFee.Delete(chkCaseFeeIds[0]);'>
+                                                    <span>删除</span>
+                                                </a>
+                                            </li>
+                       
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                @*<input type="button" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.Open();" class="btn btn-default" style="height:32px" value="新增" />*@
+                                @*<input type="button" class="btn btn-default" id="btnCaseFeeEdit" style="height:32px" value="修改" />
+                                <input type="button" id="btnCaseFeePayment" class="btn btn-default" style="height:32px" value="申请付款" />
+                                <input type="button" id="btnCaseFeeInvoice" class="btn btn-default" style="height:32px" value="申请开票" />
+                                <input type="button" id="btnCaseFeeRefund" class="btn btn-default" style="height:32px" value="法院退费" />*@
+                            </div>
+                            <div >
+                                <div class="pull-right page-box casefee">
+
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            <div class="simple-grid-none-data-wrap">
+                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                        <div class="text-size-16 tip-text inline-block">
+                            <span class="margin-left ng-binding"></span>没有查询到费用信息。
+
+                            <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate(new Array($('#Case_Basic_CaseNo').val()), $.lsCaseFeeType.TypeId.OfficeFee, $.lsGroupId.Trad);">
+                                <span>新增官费</span>
+                            </a>
+ 
+                            <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate(new Array($('#Case_Basic_CaseNo').val()), $.lsCaseFeeType.TypeId.Nonparty, $.lsGroupId.Trad);">
+                                <span>新增第三方费用</span>
+                            </a>                            
+
+                            <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate(new Array($('#Case_Basic_CaseNo').val()), $.lsCaseFeeType.TypeId.NonOfficeFee, $.lsGroupId.Trad);">
+                                <span>新增代理费</span>
+                            </a>
+
+                            <a href="javascript:;" onclick="javascript: c.Cases.Case.CaseFees.CaseFee.MultiCreate(new Array($('#Case_Basic_CaseNo').val()), $.lsCaseFeeType.TypeId.CommissionFee, $.lsGroupId.Trad);">
+                                <span>新增其他费用</span>
+                            </a>
+
+                            <span ></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @Html.HiddenFor(m => Model.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => Model.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => Model.PageSize, new { name = "PageSize" })
+</form>

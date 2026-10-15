@@ -1,0 +1,102 @@
+﻿@using SunHold.Legal.Common
+@model SunHold.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseSearchConditionModel
+
+@{
+    object htmlAttribute = null;
+}
+
+<div class="ng-scope">
+    <div class="casesearch-section-main clearfix">
+        <!-- 左侧 -->
+        <div >
+            <div class="casesearch-section-wrap">
+                <div class="casesearch-section-product">
+                    <!-- product section -->
+                    <div class="product-container">
+                        <div class="product-section">
+                            <!--</div>--><!--</div>-->
+ 
+                            <div class="section-head casesearch-cursor-pointer">
+                                <a class="ng-binding">
+                                    @Html.CheckBoxFor(m => m.Search.HasCaseAssistedFeeSearchCondition, new { style = "vertical-align: middle; " })<span class="list-title-em" style="vertical-align: middle; ">资助信息</span>
+                                </a>
+                                <span style="padding-left: 50px">
+                                    @Html.CheckBoxFor(m => m.Search.IsUnionCaseAssistedFeeSearchCondition, new { style = "vertical-align: middle; " })@Html.LabelFor(m => m.Search.IsUnionCaseAssistedFeeSearchCondition)
+                                    @Html.CheckBoxFor(m => m.Search.IsNotUnionCaseAssistedFeeSearchCondition, new { style = "vertical-align: middle; " })@Html.LabelFor(m => m.Search.IsNotUnionCaseAssistedFeeSearchCondition)
+                                </span>
+                            </div>
+
+                            <div class="section-content clearfix" style='margin: 0 16px;'>
+                                <div class="ng-scope">
+
+                                    <div>
+                                        <div class="form-group" style="padding-bottom: 20px">
+                                            <label class="control-label" style="float:left;width:15%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseAssistedFeeSearchCondition.HasResponseUser, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseAssistedFeeSearchCondition.ResponseUser)
+                                            </label>
+                                            <div style="float:left;width:52%">
+                                                @Html.HiddenFor(m => m.Search.CaseAssistedFeeSearchCondition.ResponseUser)
+                                                @Html.TextBoxFor(m => m.Search.CaseAssistedFeeSearchCondition.ResponseUserName)
+                                            </div>
+                                            <label style="float: left; width: 10%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseAssistedFeeSearchCondition.NotInResponseUser, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseAssistedFeeSearchCondition.NotInResponseUser)
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div class="form-group" style="padding-bottom: 20px">
+                                            <label class="control-label" style="float:left;width:15%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseAssistedFeeSearchCondition.HasRequestDate, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseAssistedFeeSearchCondition.RequestDateFrom)
+                                            </label>
+                                            <div style="float:left;width:52%">
+                                                @Html.TextBoxFor(m => m.Search.CaseAssistedFeeSearchCondition.RequestDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                <span>-</span>
+                                                @Html.TextBoxFor(m => m.Search.CaseAssistedFeeSearchCondition.RequestDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+
+
+                                            </div>
+                                            <label style="float: left; width: 10%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseAssistedFeeSearchCondition.NotInRequestDate, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseAssistedFeeSearchCondition.NotInRequestDate)
+
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div class="form-group" style="padding-bottom: 20px">
+                                            <label class="control-label" style="float:left;width:15%">
+                                                @Html.CheckBoxFor(m => m.Search.CaseAssistedFeeSearchCondition.HasResponseDate, new { @class = "has" })
+                                                @Html.LabelFor(m => m.Search.CaseAssistedFeeSearchCondition.ResponseDateFrom)
+                                            </label>
+                                            <div style="float:left;width:52%">
+                                                @Html.TextBoxFor(m => m.Search.CaseAssistedFeeSearchCondition.ResponseDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                <span>-</span>
+                                                @Html.TextBoxFor(m => m.Search.CaseAssistedFeeSearchCondition.ResponseDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+
+
+                                            </div>
+                                            <label style="float: left; width: 10%" class=" control-label">
+                                                @Html.CheckBoxFor(m => m.Search.CaseAssistedFeeSearchCondition.NotInResponseDate, new { @class = "notin" })
+                                                @Html.LabelFor(m => m.Search.CaseAssistedFeeSearchCondition.NotInResponseDate)
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+

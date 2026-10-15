@@ -1,0 +1,189 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Newtonsoft.Json.Linq
+
+<SCRIPT type="text/javascript">
+    var setting = {
+        view: {
+            showLine: false,
+        },
+        check: {
+            enable: true,
+            chkStyle: "radio",
+            radioType: "all"
+        },
+
+        callback: {
+            onClick: zTreeOnClick,
+ 
+        },
+        data: {
+            simpleData: {
+                enable: true
+            }
+        }
+    };
+
+    function zTreeOnClick(event, treeId, treeNode) {
+        var treeObj = $.fn.zTree.getZTreeObj("caseFileTypeTree");
+        treeObj.checkNode(treeNode, true, true);
+    };
+
+	$(document).ready(function () {
+		var data = {
+		    caseNo: $("#Case_Basic_CaseNo").val()
+		};
+		$.ajaxPost(AP_ROOT + AP_PAGE_ID + "/Legal/CaseFileType/GetCaseFileTypeListForChange", data, function (response) {
+		    if (response.IsSuccess) {
+		        if (response.Data.CaseFileTypes.length > 0) {
+		            var zNodes = [];
+		            $.each(response.Data.CaseFileTypes, function (i, fileType) {
+		                var node = {};
+		                node.id = fileType.FileTypeId;
+		                node.pId = fileType.ParentFileTypeId;
+		                node.name = fileType.FileTypeName;
+		                node.open = true;
+		                node.typeId = fileType.TypeId;
+		                zNodes.push(node);
+		            });
+
+		            $.fn.zTree.init($("#caseFileTypeTree"), setting, zNodes);
+		            var zTree = $.fn.zTree.getZTreeObj("caseFileTypeTree");
+		            $("#selectAll").bind("click", selectAll);
+		        }
+		    }
+		});
+	});
+</SCRIPT>
+
+ 
+<style type="text/css">
+        ul.ztree {
+            margin-top: 0px;
+            border-right: 1px solid #e1e6eb;
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+
+        /*.ztree * {font-size: 10pt;font-family:"Microsoft Yahei",Verdana,Simsun,"Segoe UI Web Light","Segoe UI Light","Segoe UI Web Regular","Segoe UI","Segoe UI Symbol","Helvetica Neue",Arial}*/
+        .ztree li {
+            line-height: 20px;
+        }
+
+            .ztree li a {
+                width: 200px;
+                height: 20px;
+                padding-top: 0px;
+            }
+
+                .ztree li a:hover {
+                    text-decoration: none;
+                    background-color: #E7E7E7;
+                }
+
+                .ztree li a span.button.switch {
+                    visibility: hidden;
+                }
+
+        .ztree.showIcon li a span.button.switch {
+            visibility: hidden;
+        }
+
+        .ztree li a.curSelectedNode {
+            background-color: #D4D4D4;
+            border: 0;
+            height: 20px;
+        }
+
+        .ztree li span {
+            line-height: 20px;
+        }
+
+            .ztree li span.button {
+                margin-top: 2px;
+            }
+
+                .ztree li span.button.switch {
+                    width: 15px;
+                    height: 10px;
+                    margin-bottom: 2px;
+                }
+
+                .ztree li span.button.add {
+                    margin-left: 2px;
+                    margin-right: -1px;
+                    background-position: -144px 0;
+                    vertical-align: top;
+                    *vertical-align: middle;
+                }
+
+
+                .ztree li span.button.ico_docu {
+                    background-position: -110px -16px;
+                }
+
+                .ztree li span.button.switch.level0 {
+                    width: 15px;
+                    height: 10px;
+                    margin-bottom: 2px;
+                }
+
+                .ztree li span.button.switch.level1 {
+                    width: 15px;
+                    height: 10px;
+                    margin-bottom: 2px;
+                }
+        /*.ztree li span.button.noline_open {background-position: 0 0;}
+    .ztree li span.button.noline_close {background-position: -18px 0;}
+    .ztree li span.button.noline_open.level0 {background-position: 0 -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}*/
+
+        .node_name {
+            margin-left: 10px;
+        }
+
+        div#rMenu {
+            position: absolute;
+            visibility: hidden;
+            top: 0;
+            background-color: #555;
+            text-align: left;
+            padding: 2px;
+        }
+
+            div#rMenu ul li {
+                margin: 1px 0;
+                padding: 0 5px;
+                cursor: pointer;
+                list-style: none outside none;
+                background-color: #DFDFDF;
+            }
+</style>
+
+<div class="modal fade" id="caseFileTypeModal">
+    <div class="modal-dialog" style="width:400px">
+        <div class="modal-content">
+            @using (Html.BeginForm("FileType", "CaseFile", FormMethod.Post, new { id = "caseFile", enctype = "multipart/form-data", @class = "form-horizontal" }))
+            {
+                <div class="modal-header">
+                    <button type="button" class="close"   onclick="javascript: $('#caseFileTypeModal').modal('hide');">×</button>
+                    <h5 class="modal-title ">变更文档目录</h5>
+                </div>
+
+                <div class="modal-body">
+                    <div style="height: 345px;overflow-y: scroll; "><ul id="caseFileTypeTree" class="ztree"></ul></div>
+                </div>
+
+                <div class="modal-footer">
+                    <input class="btn btn-primary" type="button" id="btnCaseFileTypeChanged" value="确定" />
+                    <input class="btn btn-default"  type="button"  value="取消" onclick="javascript: $('#caseFileTypeModal').modal('hide');"/>
+                </div>
+
+            }
+        </div>
+
+    </div>
+</div>
+
+

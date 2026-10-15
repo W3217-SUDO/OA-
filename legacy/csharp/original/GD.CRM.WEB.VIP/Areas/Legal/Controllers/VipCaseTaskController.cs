@@ -1,0 +1,102 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Web.Mvc;
+using Dchien.Legal.Common;
+using Dchien.Legal.Web.Areas.Legal.ViewModels.Case;
+using Dchien.Legal.Web.Controllers;
+using Dchien.Legal.Web.Models;
+using Dchien.Legal.BizModel.TP.Task;
+using Dchien.Legal.Service.TP.VipTask;
+
+
+namespace Dchien.Legal.Web.Areas.Legal.Controllers
+{
+    [CheckUserLogin]
+    public class VipCaseTaskController : BaseController
+    {
+        internal Log Logger = new Log("Legal.Controllers.VipCaseTaskController");
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="caseId"></param>
+        /// <param name="pageNo"></param>
+        /// <param name="pageSize"></param>
+        /// <returns></returns>
+        [HttpPost]
+        public ActionResult CaseTaskList(long caseId, int? pageNo, int? pageSize)
+        {
+            var caseModel = new CaseTaskListModel();
+            caseModel.PageNo = pageNo.HasValue ? pageNo.Value : 1;
+            caseModel.PageSize = pageSize.HasValue ? pageSize.Value : 15;
+            caseModel.CaseId = caseId;
+
+            if (caseId > 0)
+            {
+                caseModel.CaseTasks = TaskService.Instance.GetTaskList(caseId);
+                caseModel.TotalCount = caseModel.CaseTasks.Count;
+                caseModel.CaseTasks = caseModel.CaseTasks.Any()
+                    ? caseModel.CaseTasks.Skip(caseModel.PageSize * (caseModel.PageNo - 1))
+                        .Take(caseModel.PageSize)
+                        .OrderByDescending(x => x.TaskId)
+                        .ToList()
+                    : new List<BizTask>();
+            }
+
+            return PartialView("CaseTaskList", caseModel);
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="taskId"></param>
+        /// <returns></returns>
+        public ActionResult CaseTask(long? taskId)
+        {
+            var caseModel = new CaseTaskModel();
+
+            if (taskId.HasValue)
+            {
+                caseModel.CaseTask = TaskService.Instance.GetTask(taskId.Value);
+            }
+            else
+            {
+                caseModel.CaseTask = new BizTask();
+                caseModel.CaseTask.TaskPriority = Entity.TP.Task.TaskPriority.Top1;
+                caseModel.CaseTask.TaskBeginTime = DateTime.Now;
+                caseModel.CaseTask.TaskEndTime = DateTime.Now.AddDays(1);
+            }
+
+            return PartialView("CaseTask", caseModel);
+        }
+ 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="model"></param>
+        /// <returns></returns>
+        [HttpPost]
+        [CheckUserLogin]
+        public ActionResult CaseTaskCreate(CaseTaskModel model)
+        {
+            var response = new PostResponse();
+
+            //var contactsList = CaseCustomerService.Instance.GetCaseCustomerContactsList(model.CaseTask.CaseId);
+
+            //if (contactsList.Any(x => x.Item1 == (int)Dchien.Legal.Entity.IPR.Case.CaseCustomerContactsType.Technology)
+            //    || Dchien.Legal.Service.CommonService.Instance.CheckPermission((int)Permission.CreateTask))
+            //{
+                TaskService.Instance.TaskCreateUpdate(model.CaseTask);
+                response.Message = "";
+                response.IsSuccess = true;
+            //}
+            //else
+            //{
+            //    response.Message = "无案件技术联系人,不允许发布任务.";
+            //    response.IsSuccess = false;
+            //}
+            return Json(response);
+        }
+    }
+}

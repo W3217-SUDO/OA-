@@ -1,0 +1,242 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.ParticipantEditModel
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.Basic.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+ 
+<div class="slide-panels">
+    <div class="slide-panel active medium">
+        <div class="slide-panel-content">
+            <div class="panel-header">
+                <h5>批量修改</h5>
+                <a class="panel-close" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');">
+                    <i class="next-icon next-icon-close next-small" style="font-size: 0px;">close</i>
+                </a>
+                <div class="head-custom"></div>
+            </div>
+            <div class="placeholder">...</div>
+            <div class="panel-body">
+                <div class="panel-body-content">
+                    <div class="page-overview-panel-apply">
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ">
+             
+                                <div class="ng-isolate-scope">
+
+                                    <div class="">
+                                        <div class="console-step row step-bar" style="margin-bottom: 8px">
+                                            <div class="step col-md-6  step-first step-active">
+                                                <span class="">信息填写</span>
+                                            </div>
+                                            <div class="step col-md-6  step-end">
+                                                <span class="">信息提交</span>
+                                            </div>
+   
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div  class="">
+                                    <div class="">
+                                        <div class="">
+                                            <style type="text/css" class="">
+                                                .tableWrapper .table {
+                                                    margin-bottom: 0px;
+                                                }
+
+                                                .table-hover tbody tr.trWarapper:hover td {
+                                                    background-color: #FCF8E2;
+                                                }
+                                            </style>
+                                            <div class="">
+                                                <div class="alert alert-info clearfix" style="padding: 8px 12px 0px;line-height: 18px;margin-bottom: 6px;border-radius: 0px">
+                                                    <div class="pull-left">
+                                                        <span>温馨提示</span> ：
+                                                    </div>
+                                                    <div class="pull-left">
+                                                        <p>1. <span>开庭律师，经办律师，律师助理如为空则保持原数据不变.</span> </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div role="grid" class="next-form next-medium">
+                                    <div class="margin-top-1"></div>
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">已选择案件：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+                                            <div class="bootstrap-tagsinput">
+
+                                                @if (Model.CaseNos != null && Model.CaseNos.Any())
+                                                {
+                                                    var i = 0;
+                                                    foreach (var caseNo in Model.CaseNos)
+                                                    {
+                                                        <span class="tag label label-info">
+                                                            <a name="casename" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                               caseno="@caseNo" data-toggle="tooltip" data-container="body" href="javacript:void(0);"
+                                                               target="_blank" data-original-title="@caseNo">@caseNo</a>
+                                                            <span class="caseremove" data-role="remove"></span>
+                                                        </span>
+                                                        i++;
+                                                    }
+                                                }
+
+                                                <input type="text" readonly class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="CaseNo_Input" autocomplete="off" size="1">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="margin-top-1"></div>
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">开庭律师：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+
+                                            <div class="bootstrap-tagsinput">
+                                            @if (CommonService.Instance.CheckPermission((int)Permission.EditCaseLawer))
+                                            {
+                                                <input type="text" placeholder="开庭律师" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_CourtLawyer_Input" autocomplete="off" size="1">
+                                            }
+                                            else
+                                            {
+                                                <input type="text" placeholder="开庭律师" readonly class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_CourtLawyer_Input" autocomplete="off" size="1">
+
+                                            }
+                                                <div class="i_common_select" id="div_courtlawyerlist" style="display: none;">
+                                                    <div class="i_common_wrap">
+                                                        <div class="i_common_list"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
+
+                                    <div class="margin-top-1"></div>
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">经办律师：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+
+                                            <div class="bootstrap-tagsinput">
+                                                @if (CommonService.Instance.CheckPermission((int)Permission.EditCaseLawer))
+                                                {
+                                                   <input type="text" placeholder="经办律师" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_CaseLawyer_Input" autocomplete="off" size="1">
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" placeholder="经办律师" readonly class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_CaseLawyer_Input" autocomplete="off" size="1">
+                                                }
+                                                <div class="i_common_select" id="div_lawyerlist" style="display: none;">
+                                                    <div class="i_common_wrap">
+                                                        <div class="i_common_list"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
+
+                                    <div class="margin-top-1"></div>
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">律师助理：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+                                            <div class="bootstrap-tagsinput">
+                                                @if (CommonService.Instance.CheckPermission((int)Permission.EditCaseLawer))
+                                                {
+                                                    <input type="text" placeholder="律师助理" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_CaseAssistant_Input" autocomplete="off" size="1">
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" placeholder="律师助理" readonly class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_CaseAssistant_Input" autocomplete="off" size="1">
+                                                }
+                                                <div class="i_common_select" id="div_assistantlist" style="display: none;">
+                                                    <div class="i_common_wrap">
+                                                        <div class="i_common_list"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="margin-top-1"></div>
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">案源人：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+                                            <div class="bootstrap-tagsinput">
+                                                @if (CommonService.Instance.CheckPermission((int)Permission.EditCaseLawer))
+                                                {
+                                                    <input type="text" placeholder="案源人" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_BusinessOwner_Input" autocomplete="off" size="1">
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" placeholder="案源人" readonly class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_BusinessOwner_Input" autocomplete="off" size="1">
+                                                }
+                                                <div class="i_common_select" id="div_businessownerlist" style="display: none;">
+                                                    <div class="i_common_wrap">
+                                                        <div class="i_common_list"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="margin-top-1"></div>
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">案件阶段：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+                                            @Html.DropDownListFor(m => m.CasePhaseId, Dchien.Legal.Service.BAS.Type.CasePhaseService.Instance.GetCasePhaseList(Model.CaseTypeId.Value,true), new { maxlength = 60, @class = "form-control select", style = "height:29px; " })
+                                        </div>
+                                    </div>
+
+                                    <div class="margin-top-1"></div>
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">诉讼标的：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+                                            @Html.TextBoxFor(m => m.LitigationAmount, new { maxlength = 60, @class = "form-control select", style = "height:29px; " })
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-footer">
+                <div class="btn-con">
+                    <input type="button" id="btnParticipantCreateUpdate" class="btn   btn-primary" style="border-radius: 0;
+                                                                                                    padding: 0 16px;
+                                                                                                    height: 32px;
+                                                                                                    line-height: 30px;
+                                                                                                    font-size: 12px;
+                                                                                                    border-width: 1px;" value="提交" />
+                    <input type="button" class="btn  btn-normal" style="border-radius: 0;
+                                                                        padding: 0 16px;
+                                                                        height: 32px;
+                                                                        line-height: 30px;
+                                                                        font-size: 12px;
+                                                                        border-width: 1px;" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');" value="取消" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

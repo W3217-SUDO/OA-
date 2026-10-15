@@ -1,0 +1,96 @@
+﻿@model Dchien.Legal.Web.Areas.CIT.ViewModels.InvestigationClue.InvestigationClueEvidenceListModel
+
+<form id="postForm" action="">
+    <div class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table table-hover' id="tblInvestigationClueEvidenceList" width="100%">
+                <colgroup>
+                    <col style="width: 3%">
+                    <col style="width: 15%">
+                    <col style="width: 6%">
+                    <col style="width: 10%">
+                    <col style="width: 6%">
+                    <col style="width: 6%">
+                    <col style="width: 6%">
+                    <col style="width: 6%">
+                    <col style="width: 5%">
+                  
+                </colgroup>
+                <thead>
+                    <tr>
+                        <td><input type="checkbox" id="chkClueEvidenceAll" name="chkClueEvidenceAll"></td>
+                        <th style="text-align: center">
+                            公证书号
+                        </th>
+                        <th style="text-align: center">
+                            取证时间
+                        </th>
+                        <th style="text-align: center">
+                            取证机构
+                        </th>
+                        <th style="text-align: center">
+                            发票号
+                        </th>
+                        <th style="text-align: center">
+                            仓库
+                        </th>
+                        <th style="text-align: center">
+                            库位
+                        </th>
+                        <th style="text-align: center">
+                            状态
+                        </th>
+                        <th style="text-align: center">
+                            文件
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="display: none">
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                    </tr>
+                </tbody>
+                <tfoot class="ng-scope" style="display:none">
+                    <tr>
+                        <td><input type="checkbox" id="chkClueEvidenceAll" name="chkClueEvidenceAll"></td>
+                        <td colspan="8">
+                            <div class="pull-left">
+                                <input type="button" id="btnInvestigationClueEvidenceDelete" class="btn btn-default" style="height:32px" value="删除" />
+                                @*<input type="button" id="btnInvestigationClueEvidenceRefresh" onclick="javascript: investigation.Investigations.Investigation.Evidences.List();" class="btn btn-default" style="height:32px" value="刷新" />*@
+                                <input type="button" id="btnInvestigationClueEvidenceEdit"  class="btn btn-default" style="height:32px" value="修改" />
+                            </div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box investigationclueevidence">
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            <div class="simple-grid-none-data-wrap none-investigationclueevidence">
+                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                        <div class="text-size-16 tip-text inline-block">
+                            <span class="margin-left ng-binding"></span>没有查询到取证信息。
+                           
+                            <span class="ng-binding"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @Html.HiddenFor(m => m.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => m.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => m.PageSize, new { name = "PageSize" })
+</form>
+

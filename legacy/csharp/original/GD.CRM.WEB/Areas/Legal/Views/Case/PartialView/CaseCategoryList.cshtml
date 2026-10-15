@@ -1,0 +1,114 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseCategoryListModel
+
+<style>
+    a {
+        color: black;
+        text-decoration: none;
+    }
+
+    a:hover {
+        color: black;
+        text-decoration: none;
+    }
+</style>
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Lawsuit/Case/Case.Create.CategoryList.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding ">
+            我的案件
+            <a href="javascrtipt:void(0);" id="btnCaseList">
+                <span class="icon-ecs" style="vertical-align:top"></span>
+            </a>
+            <input type="hidden" id="hidCaseCategoryTypeId" value="-1">
+        </div>
+       
+
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @if (Model.CaseCategoryTypeList != null)
+                {
+                    foreach (var item in Model.CaseCategoryTypeList)
+                    {
+                        var selected = item.CategoryTypeId == Model.CaseCategoryTypeId;
+                        var selectedClass = item.CategoryTypeId == Model.CaseCategoryTypeId ? "class=active" : "";
+                        var dropMenu = item.CaseNoList != null && item.CaseNoList.Count > 0 ? "class=J-drop-menu" : "";
+
+                        // <li @dropMenu>
+                        <li class=J-drop-menu>
+                            <a href="javascript:void(0);" class="J-drop-menu-herf" @selectedClass>
+                                @Html.HiddenFor(m => item.CategoryTypeId)
+                                <div class="nav-icon">
+
+                                    @if (item.CaseNoList != null && item.CaseNoList.Count > 0 && selected)
+                                    {
+                                        <span class="icon-arrow-right"></span>
+                                    }
+                                    else if (item.CaseNoList != null && item.CaseNoList.Count > 0)
+                                    {
+                                        <span class="icon-arrow-down"></span>
+                                    }
+                                    else
+                                    {
+                                        <span class="icon-arrow-down"></span>
+                                    }
+
+                                </div>
+
+                                <div class="nav-title ng-binding">@item.CategoryTypeName (@item.CaseCount)
+                                            
+                                </div>
+
+                                @*<div class="nav-extend">
+                                    <span class="ng-isolate-scope">
+                                        <span class="total-count">@item.CaseCount</span>
+                                    </span>
+                                </div>*@
+                            </a>
+
+                            <ul>
+                                @if (item.CaseNoList != null && item.CaseNoList.Count > 0)
+                                {
+    
+                                    foreach (var caseNo in item.CaseNoList)
+                                    {
+                                        <li>
+                                            <div>
+                                                <a href="javascript:void(0);">
+                                                    <div class="nav-icon"></div>
+                                                    <div class="nav-text-indent">@caseNo</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                    }
+                                }
+
+                            </ul>
+                        </li>
+                    }
+                }
+            </ul>
+        </div>
+
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+    
+    <div class="caseCategoryContextMenu" id="caseCategoryMenu" style="display: none;">
+        <ul>
+            <li id="create">新建配置</li>
+            <li id="modify">修改配置</li>
+            <li id="delete">删除配置</li>
+
+        </ul>
+    </div>
+</div>
+

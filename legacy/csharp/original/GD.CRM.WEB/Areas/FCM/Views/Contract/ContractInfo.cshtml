@@ -1,0 +1,266 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@model Dchien.Legal.Web.Areas.FCM.ViewModels.Contract.ContractModel
+
+
+<div ui-view="myTicket">
+    <div class="ticket-detail ng-scope">
+
+        @Html.HiddenFor(m => m.Contract.ContractBasicInfo.CustomerId)
+        @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+        @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractGuid)
+
+        <div class="info-panel" style="margin-top:6px">
+            <div class="row" style="margin-top:4px">
+
+                <div class="col-sm-2">
+                    <span class="text-explode">
+                        <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.CustomerNo)</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.CustomerNo)
+                    </span>
+                </div>
+
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.AuditDate)</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayFor(m => m.Contract.ContractBasicInfo.AuditDate)
+                    </span>
+                </div>
+
+                <div class="col-sm-3 ">
+                    <span class="text-explode">
+                        <span> @Html.LabelFor(m => m.Contract.ContractBasicInfo.CustomerName)</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.HiddenFor(m => m.Contract.ContractBasicInfo.CustomerId)
+                        @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                        @if (Model.Contract != null && Model.Contract.ContractBasicInfo.CustomerId.HasValue)
+                        {
+                            @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.CustomerName)
+                        }
+                        else
+                        {
+                            @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.CustomerName)
+                        }
+                    </span>
+                </div>
+            </div>
+
+            <div class="row" style="margin-top:4px">
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractNo)</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                    </span>
+                </div>
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName)</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName)
+                    </span>
+                </div>
+                <div class="col-sm-3 ">
+                    <span class="text-explode">
+                        <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractName)</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @if (Model.Contract != null && Model.Contract.ContractBasicInfo.CustomerId.HasValue)
+                        {
+                            @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractName)
+                        }
+                        else
+                        {
+                            @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractName)
+                        }
+                    </span>
+                </div>
+            </div>
+
+        </div>
+        <div class="info-panel" style="margin-top:4px">
+
+            <div class="row" style="margin-top:4px">
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>官费支付金额</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.PaidCaseOfficeFeeAmount)
+                    </span>
+                </div>
+
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>官费到账金额</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.CashedCaseOfficeFeeAmount)
+                    </span>
+                </div>
+
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>官费未到金额</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.UnCashedCaseOfficeFeeAmount)
+                    </span>
+                </div>
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>官费亏损金额</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.DeficitCaseOfficeFeeAmount)
+                    </span>
+                </div>
+
+            </div>
+
+            <div class="row" style="margin-top:4px">
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>代理费总金额</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.CaseNonOfficeFeeAmount)
+                    </span>
+                </div>
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>代理费到账金额</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.CashedCaseNonOfficeFeeAmount)
+                    </span>
+                </div>
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>代理费待收金额</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.UnCashedCaseNonOfficeFeeAmount)
+                    </span>
+                </div>
+
+            </div>
+            <div class="row" style="margin-top:4px">
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>其他金额</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.CaseCommissionFeeAmount)
+                    </span>
+                </div>
+
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>其他金额已支付</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.PaidCaseCommissionFeeAmount)
+                    </span>
+                </div>
+
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>其他金额待支付</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.UnPaidCaseCommissionFeeAmount)
+                    </span>
+                </div>
+            </div>
+
+            <div class="row" style="margin-top:4px">
+
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>发票已开金额</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.InvoicedAmount)
+                    </span>
+                </div>
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>发票应开金额</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.UnInvoicedAmount)
+                    </span>
+                </div>
+
+                <div class="col-sm-2 ">
+                    <span class="text-explode">
+                        <span>发票高开金额</span>
+                        <span>:</span>
+                    </span>
+                    <span>
+                        @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.InvoiceOverAmount)
+                    </span>
+                </div>
+            </div>
+ 
+        </div>
+    </div>
+</div>
+
+
+<div class="case-section-wrap" style="padding-top: 12px;">
+    <div class="case-section-product">
+        <!-- product section -->
+        <div class="product-container">
+            <div class="product-section">
+                <ul class="nav nav-tabs">
+                    <li id="liContractObjectList" class='active'><a href="javascript:void(0);" id="btnContractObjectList">合同标的</a></li>
+                    <li id="liContractEventList"><a href="javascript:void(0);" id="btnContractEventList">事项记录</a></li>
+                    <li id="liContractFileList"><a href="javascript:void(0);" id="btnContractFileList">合同附件</a></li>
+                    <li id="liContractAuditList"><a href="javascript:void(0);" id="btnContractAuditList">审批信息</a></li>
+                    <li class="pull-right" style="border:none">
+                        <div style="margin-top:3px">
+                            <div style="text-align: inherit;">
+                                <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                    <input class="btn btn-primary ng-binding" type="button" id="btnContractExportToExcel" value="导出Excel" />
+                                </div>
+                            </div>
+                        </div>
+                    </li>
+                </ul>
+                <div class="section-content clearfix">
+                    <div class="product-col ng-scope" style="width: 100%">
+                        <div id="dv_List">
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

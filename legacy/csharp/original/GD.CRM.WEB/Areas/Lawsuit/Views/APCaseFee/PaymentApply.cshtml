@@ -1,0 +1,137 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.AR.CaseFeeListModel
+
+<script src="@Url.Content("~/Scripts/Common/jquery.form.js")" type="text/javascript"></script>
+
+<div class="modal fade" id="paymentApplyModal">
+    <div class="modal-dialog" style="width:45%">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                @using (Html.BeginForm("PaymentApplyCreate", "APCaseFee", FormMethod.Post, new { id = "paymentApply", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" id="btnPaymentApplyClose">×</button>
+                        <h5 class="modal-title ng-binding">付款申请</h5>
+                    </div>
+
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <div class="col-sm-12">
+                                <div class="gridSection">
+                                    <table class='table table-hover' id="tblContractObjectList" width="100%">
+                                        <colgroup>
+                                            <col style="width: 12%">
+                                            <col style="width: 12%">
+                                            <col style="width: 8%">
+                                            <col style="width: 10%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 15%">
+                                            <col style="width: 5%">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>申请编号</th>
+                                                <th>付款类型</th>
+                                                <th>待付金额</th>
+                                                <th>本次金额</th>
+                                                <th>付款单位</th>
+                                                <th>帐号信息</th>
+                                                <th>交款人全称</th>
+                                                <th>备注</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @{ var i = 1; }
+                                            @if (Model.Payment != null && Model.Payment.PaymentObjects != null)
+                                            {
+                                                var caseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+
+                                                foreach (var item in Model.Payment.PaymentObjects)
+                                                {
+                                                    var caseInfo = CaseService.Instance.GetCaseBasic(item.CaseId);
+
+                                                    <tr>
+                                                        <td>
+                                                            <span>@(i++)</span>
+                                                        </td>
+                                                        <td style="text-align: center">
+                                                            <span>@(caseInfo.CaseBasicInfo.CaseTypeId.HasValue ? CaseTypeService.Instance.GetCaseType(caseInfo.CaseBasicInfo.CaseTypeId.Value).CaseTypeName : string.Empty)</span>
+                                                        </td>
+                                                        <td style="text-align: center">
+                                                            <span>@caseInfo.CaseBasicInfo.CaseName</span>
+                                                        </td>
+                                                        <td style="text-align: center;">
+                                                            <span>@caseInfo.CaseBasicInfo.CaseNo</span>
+                                                        </td>
+                                                        <td style="text-align: center;">
+                                                            <span>@(item.CaseOfficeFeeTypeId.HasValue ? caseFeeTypes.FirstOrDefault(x => x.FeeTypeId == item.CaseOfficeFeeTypeId).FeeTypeName : "")</span>
+                                                        </td>
+                                                        <td style="text-align: center;">
+                                                            <span>@(item.CaseOfficeFeeOpenPayAmount.HasValue ? item.CaseOfficeFeeOpenPayAmount.Value : 0)</span>
+                                                        </td>
+                                                        <td style="text-align: center;">
+                                                            <input class='form-control' id='item_CaseOfficeFeePayAmount' name='item_CaseOfficeFeePayAmount'
+                                                                   onafterpaste="this.value=this.value.replace(/\D/g,'')"
+                                                                   onkeyup="javascript:this.value=this.value.replace(/\D/g,'')"
+                                                                   caseofficefeeamount=@(item.CaseOfficeFeeAmount.HasValue?item.CaseOfficeFeeAmount.Value : 0)
+                                                                   caseofficefeepaidamount=@(item.CaseOfficeFeePaidTotalAmount.HasValue ? item.CaseOfficeFeePaidTotalAmount.Value : 0)
+                                                                   caseofficefeecashedamount=@(item.CaseOfficeFeeCashedAmount.HasValue ? item.CaseOfficeFeeCashedAmount.Value : 0)
+                                                                   caseofficefeeopenpayamount=@(item.CaseOfficeFeeOpenPayAmount.HasValue ? item.CaseOfficeFeeOpenPayAmount.Value:0)
+                                                                   caseofficefeeprepaidtotalamount=@(item.CaseOfficeFeePrePaidTotalAmount.HasValue?item.CaseOfficeFeePrePaidTotalAmount.Value :0)
+                                                                   caseofficefeeprepaidamount=@(item.CaseOfficeFeePrePaidAmount.HasValue ? item.CaseOfficeFeePrePaidAmount.Value : 0)
+                                                                   caseofficefeeid=@item.CaseOfficeFeeId
+                                                                   type='text'
+                                                                   value='@item.CaseOfficeFeePayAmount'>
+                                                        </td>
+                                                        <td style="text-align: center">
+                                                            <span>@(item.CaseCommissionFeeOpenPayAmount.HasValue ? item.CaseCommissionFeeOpenPayAmount.Value : 0)</span>
+                                                        </td>
+                                                        <td style="text-align: center;">
+                                                            <input class='form-control' id='item_CaseCommissionFeePayAmount' name='item_CaseCommissionFeePayAmount'
+                                                                   onafterpaste="this.value=this.value.replace(/\D/g,'')"
+                                                                   onkeyup="javascript:this.value=this.value.replace(/\D/g,'')"
+                                                                   casecommissionfeeamount=@(item.CaseCommissionFeeAmount.HasValue ? item.CaseCommissionFeeAmount.Value : 0)
+                                                                   casecommissionfeepaidamount=@(item.CaseCommissionFeePaidTotalAmount.HasValue ? item.CaseCommissionFeePaidTotalAmount.Value :0)
+                                                                   casecommissionfeecashedamount=@(item.CaseCommissionFeeCashedAmount.HasValue ? item.CaseCommissionFeeCashedAmount.Value:0)
+                                                                   casecommissionfeeopenpayamount=@(item.CaseCommissionFeeOpenPayAmount.HasValue ? item.CaseCommissionFeeOpenPayAmount.Value:0)
+                                                                   casecommissionfeeprepaidtotalamount=@(item.CaseCommissionFeePrePaidTotalAmount.HasValue ? item.CaseCommissionFeePrePaidTotalAmount.Value:0)
+                                                                   casecommissionfeeprepaidamount=@(item.CaseCommissionFeePrePaidAmount.HasValue ? item.CaseCommissionFeePrePaidAmount.Value : 0)
+                                                                   casecommissionfeeid=@item.CaseCommissionFeeId
+                                                                   type='text'
+                                                                   value='@item.CaseCommissionFeePayAmount'>
+                                                        </td>
+                                                        <td style="text-align: center">
+                                                            <input id="item_PaymentApply" name='item_PaymentApply' type='checkbox' caseid="@caseInfo.CaseBasicInfo.CaseId" caseno="@caseInfo.CaseBasicInfo.CaseNo">
+                                                        </td>
+                                                        <td style="text-align: center">
+                                                            <span id="item_PaymentRemark" style="color:red"></span>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            }
+                                        </tbody>
+
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button" id="btnPaymentApply" value="提交" />
+                        <input class="btn btn-default ng-binding" type="button" id="btnPaymentApplyCancel" value="取消" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+</div>
+
+
+
+
+

@@ -1,0 +1,287 @@
+﻿@using Dchien.Legal.Service.FAM.InternalFee;
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.InternalFee.Payment.PaymentModel
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div>
+            <div class="console-container ng-scope">
+                <div class="ng-scope">
+                    <div class="row ng-scope">
+                        <div class="col-sm-12">
+                            <div ui-view="myTicket">
+                                <div class="ticket-detail ng-scope">
+                                    <div class="console-title console-title-border clearfix">
+                                        <h5 class="pull-left">申请付款</h5>
+
+                                    </div>
+                                    <div class="margin-top-3"></div>
+                                    <div style="margin-top:12px" class="ng-isolate-scope">
+                                        <div class="console-step row step-bar">
+                                            <div class="step col-md-3 ng-scope step-first">
+                                                <span class="">付款信息查看</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope  ">
+                                                <span class="">提交申请</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope ">
+                                                <span class="">财务审批</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-end step-active">
+                                                <span class="">财务付款</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="info-panel" style="margin-top:12px">
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>案件编号</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Case.Basic.CaseNo)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-3 ">
+                                                <span class="text-explode">
+                                                    <span>案件名称</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Case.Basic.CaseName)
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>合同编号</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.HiddenFor(m => m.Case.Basic.CaseId)
+                                                    @Html.HiddenFor(m => m.Case.Basic.CaseNo)
+                                                    @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                                                    @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerId)
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerNo)
+                                                    @Html.HiddenFor(m => m.Payment.PaymentBasic.ApplicationNo)
+                                                    @Html.HiddenFor(m => m.Payment.PaymentBasic.ApplicationDate)
+
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-3 ">
+                                                <span class="text-explode">
+                                                    <span>合同名称</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractName)
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>客户编号</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Customer.CustomerBasic.CustomerNo)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-3 ">
+                                                <span class="text-explode">
+                                                    <span>客户名称</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Customer.CustomerBasic.CustomerName)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>客户管理人</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Case.Basic.BusinessOwnerName)
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>调查提成(已付)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Payment.PaymentBasic.Total_Amount_11040070)
+                                                </span>
+                                            </div>
+
+
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>案源提成(已付)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Payment.PaymentBasic.Total_Amount_11040020)
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>文书提成(已付)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Payment.PaymentBasic.Total_Amount_11040030)
+                                                </span>
+                                            </div>
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>开庭提成(已付)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Payment.PaymentBasic.Total_Amount_11040040)
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>申请编号</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span class="">
+                                                    @Html.DisplayTextFor(m => m.Payment.PaymentBasic.ApplicationNo)
+                                                </span>
+                                            </div>
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>申请日期</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    <span class=""> @Html.DisplayFor(m => m.Payment.PaymentBasic.ApplicationDate) </span>
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-4">
+                                                <span class="text-explode">
+                                                    <span>审批意见</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span style="color:red"> @Html.DisplayTextFor(m => m.Payment.Audit.AuditContent) </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+ 
+                            <div class="case-section-wrap" style="padding-top: 12px">
+                                <div class="case-section-product">
+                                    <!-- product section -->
+                                    <div class="product-container">
+                                        <div class="product-section">
+                                            <ul class="nav nav-tabs">
+                                                <li id="liContractObjectList" class='active'><a href="javascript:void(0);" id="btnContractObjectList">付款信息</a></li>
+                                                <li class="pull-right" style=" border:none">
+                                                    <div style="margin-top:3px">
+                                                        <div style="text-align: inherit;">
+                                                            <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </li>
+                                            </ul>
+                                            <div class="section-content clearfix">
+                                                <div class="product-col ng-scope" style="width: 100%">
+                                                    <div id="dv_List">
+                                                        <div class="gridSection">
+                                                            <div id='divContextList' style="overflow-y: auto;  overflow-x: hidden; overflow-y: auto; ">
+                                                                <table class='table table-hover' id="tblAPObjectList" width="100%">
+                                                                    <colgroup>
+                                                                        <col style="width: 4%">
+                                                                        <col style="width: 10%">
+                                                                        <col style="width: 10%">
+                                                                        <col style="width: 8%">
+                                                                        <col style="width: 8%">
+                                                                        <col style="width: 20%">
+                                                                    </colgroup>
+                                                                    <thead>
+                                                                        <tr>
+                                                                            <th>序号</th>
+                                                                            <th>支付对象</th>
+                                                                            <th>提成类型</th>
+                                                                            <th>金额</th>
+                                                                            <th>本次支付</th>
+                                                                            <th>备注</th>
+                                                                        </tr>
+                                                                    </thead>
+ 
+
+                                                                    <tbody>
+                                                                        @{ var i = 1; }
+                                                                        @if (Model.Payment != null && Model.Payment.PaymentObjects != null)
+                                                                        {
+                                                                            foreach (var item in Model.Payment.PaymentObjects.OrderBy(x => x.CaseNo))
+                                                                            {
+                                                                                var internalFee = InternalFeeService.Instance.GetInternalFee(item.InternalFeeId.Value);
+
+                                                                                <tr>
+                                                                                    <td>
+                                                                                        <span>@(i++)</span>
+                                                                                    </td>
+                                                                                    <td style="text-align: center">
+                                                                                        <span>@internalFee.PaymentObjectName</span>
+                                                                                    </td>
+
+                                                                                    <td style="text-align: center;">
+                                                                                        <span>@internalFee.FeeTypeName</span>
+                                                                                    </td>
+
+                                                                                    <td style="text-align: center;">
+                                                                                        <span>@(item.InternalFeeAmount.HasValue ? item.InternalFeeAmount.Value : 0)</span>
+                                                                                    </td>
+                                                                                    <td style="text-align: center; padding:0px">
+                                                                                        <span style="color:blue">@(item.InternalFeePaidAmount.HasValue ? item.InternalFeePaidAmount.Value : 0)</span>
+                                                                                    </td>
+
+                                                                                    <td style="text-align: center">
+                                                                                        <span id="item_PaymentRemark" style="color:red">@(internalFee.Remark)</span>
+                                                                                    </td>
+                                                                                </tr>
+                                                                            }
+                                                                        }
+                                                                    </tbody>
+                                                               
+
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

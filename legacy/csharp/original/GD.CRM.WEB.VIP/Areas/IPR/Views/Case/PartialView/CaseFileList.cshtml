@@ -1,0 +1,183 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service;
+@using Dchien.Legal.Service.IPR.Case
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseFileListModel
+
+@{
+    var display = "display:block";
+   
+    if (@Model.CaseFiles != null && @Model.CaseFiles.Count > 0)
+    {
+        display = "display:none";
+    }
+}
+
+<form id="postForm" action="">
+    <div id="casegridSection" class="gridSection">
+
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table table-hover' id="tblCaseFile" width="100%">
+                <colgroup>
+                    <col style="width: 5%">
+                    <col style="width: 8%">
+                    <col style="width: 25%">
+                    <col style="width: 30%">
+                    <col style="width: 10%">
+                    <col style="width: 5%">
+
+                </colgroup>
+
+                <thead>
+                    <tr>
+                        <th style="text-align: center">
+                            序号
+                        </th>
+                        <th style="text-align: center">
+                            上传人
+                        </th>
+                        <th style="text-align: left">
+                            文档类型
+                        </th>
+                        <th style="text-align: left">
+                            文件名称
+                        </th>
+                        <th style="text-align: center">
+                            文档日期
+                        </th>
+                        <th style="text-align: center">
+                            待转文
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody>
+                    @if (Model.CaseFiles != null)
+                        {
+
+                            var officeFileTypes = CaseTypeService.Instance.GetAllCaseFileTypes().FindAll(x => x.IsOfficeFileType);
+                            foreach (var item in Model.CaseFiles)
+                            {
+
+                            <tr>
+
+                                <td>
+                                    <span class="fileId" style="display:none">@item.FileId</span>
+                                    <span class="fileName" style="display:none">@item.FileName</span>
+                                    <span class="caseNo" style="display:none">@item.CaseNo</span>
+                                    <span>@(Model.CaseFiles.IndexOf(item) + 1)</span>
+                                </td>
+                                @*<td>
+                                <span>@item.CaseNo</span>
+                            </td>*@
+                                <td style="text-align: center">
+                                    <span>@item.UploadingUserName</span>
+                                </td>
+                                <td style="text-align: left">
+                                    @if (officeFileTypes.Exists(x => x.FileTypeId == item.FileTypeId))
+                                    {
+                                        <span style="color:chocolate">(@item.FileTypeId)@item.FileTypeName</span>
+                                    }
+                                    else
+                                    {
+                                        <span>(@item.FileTypeId)@item.FileTypeName</span>
+                                    }
+                                </td>
+                                <td style="text-align: left; ">
+                                    <span >@item.FileName</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@item.UploadingTime.ToString("yyyy-MM-dd")</span>
+                                </td>
+               
+                                <td style="text-align: center">
+                                    <span>@(!item.IsTransmitted && officeFileTypes.Any(x => x.FileTypeId == item.FileTypeId) ? "是" : "否")</span>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+                <tfoot class="ng-scope" style="display:none">
+                    <tr>
+                        <td colspan="6">
+                            <div class="pull-left"></div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box casefile">
+
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <div class="simple-grid-none-data-wrap" style="@display">
+                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                        <div class="text-size-16 tip-text inline-block">
+                            <span class="margin-left ng-binding"></span>没有查询到案件文档，可以去
+                            <a href="javascript:void(0);" class="ng-binding"  style="color: #039" id="btnCaseFileCreate">上传文档</a>
+                            <span class="ng-binding"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+
+    <!-- Your custom menu with dropdown-menu as default styling -->
+    <div class="contextMenu" id="fileMenu" style="display: none;">
+        <ul style="width:150px">
+            @if (CommonService.Instance.CheckPermission((int)Permission.CreateCaseFile))
+            {
+                <li id="create">上传</li>
+            }
+            @if (CommonService.Instance.CheckPermission((int)Permission.ViewCaseFile))
+            {
+                <li id="view"> 查看</li>
+                <li id="download"> 下载</li>
+            }
+            @if (CommonService.Instance.CheckPermission((int)Permission.ToWordCaseFile))
+            {
+                @*<li id="toword">生成转文文档</li>*@
+            }
+           
+            @*@if (CommonService.Instance.CheckPermission((int)Permission.UnlockCaseFile))
+            {
+                <li id="unlock">解锁</li>
+            }*@
+            
+            @if (CommonService.Instance.CheckPermission((int) Permission.RemoveHedgingFile))
+            {
+                <li id="tagTransformed">标记已转</li>
+            }
+
+            @*@if (CommonService.Instance.CheckPermission((int)Permission.DeleteCaseFile))
+            {
+                <li id="delete">删除</li>
+            }*@
+
+            <li id="delete">删除</li>
+
+            @if (CommonService.Instance.CheckPermission((int)Permission.CaseFile_CPC))
+            {
+                <li id="cpc">生成申请文件</li>
+            }
+
+            <li id="refresh">刷新</li>
+        </ul>
+    </div>
+
+    @Html.HiddenFor(m => m.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => m.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => m.PageSize, new { name = "PageSize" })
+
+</form>
+

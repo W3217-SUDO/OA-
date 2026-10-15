@@ -1,0 +1,33 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type;
+@using Dchien.Legal.Entity.System;
+
+@{
+    ViewBag.Title = "Word";
+    Layout = null;
+}
+
+<script type="text/javascript">
+    function Save() {
+        document.getElementById("PageOfficeCtrl1").WebSave();
+    }
+    function Save() {
+        document.getElementById("PageOfficeCtrl1").WebSave();
+    }
+    function showRevision() {
+        document.getElementById("PageOfficeCtrl1").ShowRevisions = true;
+    }
+    function hideRevision() {
+        document.getElementById("PageOfficeCtrl1").ShowRevisions = false;
+    }
+</script>
+
+<script type="text/javascript" src="@Url.Content("~/pageoffice/js/jquery.min.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/pageoffice/js/pageoffice.js.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+@*<script type="text/javascript" src="../pageoffice/js/jquery.min.js"></script>
+    <script type="text/javascript" src="../pageoffice/js/pageoffice.js" id="po_js_main"></script>*@
+
+@Html.Raw(ViewBag.EditorHtml)
+
+

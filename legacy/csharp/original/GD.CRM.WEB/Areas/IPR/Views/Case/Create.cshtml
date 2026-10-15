@@ -1,0 +1,509 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Web.Areas.IPR.ViewModels.Case
+@using Dchien.Legal.Service.HR.Staff
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseModel
+@{
+    var title = "案件新建";
+    var staffs = StaffService.Instance.GetStaffList();
+    var lst = staffs.FindAll(x => x.StaffBasic.IsActived).GroupBy(x => x.StaffBasic.DepartmentId)
+    .ToList();
+}
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+</style>
+
+
+<div class="modal fade" id="caseModal" tabindex="-1">
+    <div class="modal-dialog" style="width:1100px">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" data-ng-click="close(false)" aria-hidden="true" id="btnCaseClose">×</button>
+                    <h5 class="modal-title ng-binding">@title</h5>
+                </div>
+
+                <div class="modal-body" style="padding:10px;">
+                    <form class="form-horizontal ng-invalid ng-invalid-required" id="caseForm">
+                        <link rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+                        <div style="background: #eaedf1;">
+                            <div class="ng-scope">
+                                <div class="case-section-main clearfix">
+                                    <!-- 左侧 -->
+                                    <div class="case-section-left" style="padding-right:0px">
+                                        <div class="case-section-wrap">
+                                            <div class="case-section-product">
+                                                <div class="product-container">
+                                                    <div class="product-section">
+                                                        @*<div class="section-head case-cursor-pointer">
+                                                                <a class="ng-binding">
+                                                                    <span class="list-title-em">基本信息</span>
+                                                                </a>
+                                                            </div>*@
+                                                        <div class="section-content " style="margin-bottom:0px;">
+
+                                                            <div class="ng-scope">
+                                                                <div class="gridSection">
+                                                                    <table class="input_table" style='width:100%'>
+                                                                        <colgroup>
+                                                                            <col style="width: 8%;" />
+                                                                            <col style="width: 15%" />
+                                                                            <col style="width: 10%;" />
+                                                                            <col style="width: 22%" />
+                                                                            <col style="width: 8%;" />
+                                                                            <col style="width: 15%" />
+                                                                            <col style="width: 11%;" />
+                                                                        </colgroup>
+                                                                        <tr>
+
+                                                                            <th>
+                                                                                <span class="text-danger ng-binding">*</span>
+                                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseTypeId)
+                                                                                <input id="OrgCase_CaseBasicInfo_CaseId" type="hidden" value="">
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.DropDownListFor(m => m.Case.CaseBasicInfo.CaseTypeId, CaseTypeService.Instance.GetCaseTypeList(), new { maxlength = 60, @class = "case-form-control select" })
+                                                                            </td>
+                                                                            <th>
+                                                                                <span class="text-danger ng-binding">*</span>
+                                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CasePhaseId)
+                                                                            </th>
+                                                                            <td>
+
+                                                                                @Html.DropDownListFor(m => m.Case.CaseBasicInfo.CasePhaseId, CaseTypeService.Instance.GetCasePhaseList(@Model.Case.CaseBasicInfo.CaseTypeId), new { maxlength = 60, @class = "case-form-control" })
+                                                                            </td>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.AuthorizationDate)
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.AuthorizationDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                                            </td>
+                                                                            <td rowspan="6" style='padding-left: 5px; vertical-align: top'>
+                                                                                <p style="margin-bottom:1px">
+                                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasPriority, new { style = "vertical-align:middle" })
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasPriority)
+                                                                                </p>
+                                                                                <div class="spanTrademarkIdsPriority">
+                                                                                    <p style="margin-bottom:1px">
+                                                                                        @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTradeFirstRequest, new { style = "vertical-align:middle" })
+                                                                                        @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTradeFirstRequest)
+                                                                                    </p>
+                                                                                    <p style="margin-bottom:1px">
+                                                                                        @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTradeBaseOnExhibition, new { style = "vertical-align:middle" })
+                                                                                        @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTradeBaseOnExhibition)
+                                                                                    </p>
+                                                                                    <p style="margin-bottom:1px">
+                                                                                        @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTradeReplenish, new { style = "vertical-align:middle" })
+                                                                                        @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTradeReplenish)
+                                                                                    </p>
+                                                                                </div>
+                                                                                <p style="margin-bottom:1px">
+                                                                                    @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasForeign, new { style = "vertical-align:middle" })
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.HasForeign)
+                                                                                </p>
+                                                                                <div class="spanHasRelief">
+                                                                                    <p style="margin-bottom:1px">
+                                                                                        @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasRelief, new { style = "vertical-align:middle" })
+                                                                                        @Html.LabelFor(m => m.Case.CaseBasicInfo.HasRelief)
+                                                                                    </p>
+                                                                                </div>
+                                                                                <div class="spanHasAdvanced">
+                                                                                    <p style="margin-bottom:1px">
+                                                                                        @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasAdvanced, new { style = "vertical-align:middle" })
+                                                                                        @Html.LabelFor(m => m.Case.CaseBasicInfo.HasAdvanced)
+                                                                                    </p>
+                                                                                </div>
+                                                                                <div class="spanHasRequestView">
+                                                                                    <p style="margin-bottom:1px">
+                                                                                        @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasRequestView, new { style = "vertical-align:middle" })
+                                                                                        @Html.LabelFor(m => m.Case.CaseBasicInfo.HasRequestView)
+                                                                                    </p>
+                                                                                </div>
+                                                                                <div class="spanHasPrivateInventor">
+                                                                                    <p style="margin-bottom:1px">
+                                                                                        @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasPrivateInventor, new { style = "vertical-align:middle" })
+                                                                                        @Html.LabelFor(m => m.Case.CaseBasicInfo.HasPrivateInventor, new { id = "lbl_Case_CaseBasicInfo_HasPrivateInventor" })
+                                                                                    </p>
+                                                                                </div>
+                                                                                <div class="spanHasIU">
+                                                                                    <p>
+                                                                                        @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasIU, new { style = "vertical-align:middle" })
+                                                                                        @Html.LabelFor(m => m.Case.CaseBasicInfo.HasIU)
+                                                                                    </p>
+                                                                                </div>
+                                                                                <div class="spanHasTradeColorProtected">
+                                                                                    <p style="margin-bottom:1px">
+                                                                                        @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTradeColorProtected, new { style = "vertical-align:middle" })
+                                                                                        @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTradeColorProtected)
+                                                                                    </p>
+                                                                                </div>
+                                                                                <div class="spanHasTradeVoiceProtected">
+                                                                                    <p style="margin-bottom:1px">
+                                                                                        @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTradeVoiceProtected, new { style = "vertical-align:middle" })
+                                                                                        @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTradeVoiceProtected)
+                                                                                    </p>
+                                                                                </div>
+                                                                                <div class="spanHasTrade3DProtected">
+                                                                                    <p style="margin-bottom:1px">
+                                                                                        @Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTrade3DProtected, new { style = "vertical-align:middle" })
+                                                                                        @Html.LabelFor(m => m.Case.CaseBasicInfo.HasTrade3DProtected)
+                                                                                    </p>
+                                                                                </div>
+                                                                            </td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseRequestNo, new { @id = "lblCaseRequestNo" })
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseRequestNo, new { @class = "input_text case-form-control" })
+                                                                            </td>
+                                                                            <th>
+                                                                                <span class="text-danger ng-binding">*</span>
+                                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseName, new { @id = "lblCaseTypeIdName" })
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseName, new { maxlength = 60, @class = "input_text case-form-control", @placeholder = "专利案件名不允许有空格.", })
+                                                                            </td>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseRequestDate, new { @id = "lblCaseRequestDate" })
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseRequestDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                                            </td>
+
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                <span class="spanCaseCommon">
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseOriginDate)
+                                                                                </span>
+                                                                                <span class="spanTrademarkIds">
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.FirstInstanceDate)
+                                                                                </span>
+                                                                            </th>
+                                                                            <td>
+                                                                                <span class="spanCaseCommon">
+                                                                                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseOriginDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                                                </span>
+                                                                                <span class="spanTrademarkIds">
+                                                                                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.FirstInstanceDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                                                </span>
+                                                                            </td>
+                                                                            <th>
+                                                                                <span class="text-danger ng-binding">*</span>
+                                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.Procurator)
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.Procurator)
+                                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.ProcuratorName, new { @class = "input_text case-form-control", @autocomplete = "off", @unselectable = "on" })
+                                                                            </td>
+                                                                            <th>
+                                                                                <span class="text-danger ng-binding">*</span>
+                                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.Copywriter)
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.Copywriter)
+                                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CopywriterName, new { @class = "input_text case-form-control ", @autocomplete = "off", @unselectable = "on" })
+                                                                            </td>
+                                                                            @*<th>
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseSubmitter)
+                                                                                </th>
+                                                                                <td>
+                                                                                    @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseSubmitter)
+                                                                                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseSubmitterName, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                                                </td>*@
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseOriginPeople)
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseOriginPeople)
+                                                                                @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseOriginPeopleName, new { @class = "input_text case-form-control", @autocomplete = "off", @unselectable = "on" })
+                                                                            </td>
+                                                                            <th>
+                                                                                <span class="spanCaseCommon">
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.RefCaseNo)
+                                                                                </span>
+                                                                                <span class="spanTrademarkIds">
+                                                                                    <span class="text-danger ng-binding">*</span>
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.TradeTypeId)
+                                                                                </span>
+                                                                            </th>
+                                                                            <td>
+                                                                                <span class="spanCaseCommon">
+                                                                                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.RefCaseNo, new { @class = "input_text case-form-control", @unselectable = "on" })
+                                                                                </span>
+                                                                                <span class="spanTrademarkIds">
+                                                                                    @Html.DropDownListFor(m => m.Case.CaseBasicInfo.TradeTypeId, CaseTypeService.Instance.GetTradeTypeList(true), new { maxlength = 60, @class = "case-form-control select" })
+                                                                                </span>
+                                                                            </td>
+                                                                            <th>
+                                                                                <span class="spanCaseCommon spanCardNo">
+                                                                                    <span class="text-danger ng-binding">*</span>
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.CardNo)
+                                                                                </span>
+                                                                                <span class="spanTrademarkIds">
+                                                                                    <span class="text-danger ng-binding">*</span>
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.TrademarkIds)
+                                                                                </span>
+                                                                                <span class="spanCaseCopyright">
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseRegisterNo)
+                                                                                </span>
+                                                                            </th>
+                                                                            <td>
+                                                                                <span class="spanCaseCommon spanCardNo">
+                                                                                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CardNo, new
+                                                                               {
+                                                                                   maxlength = 60,
+                                                                                   @class = "input_text case-form-control",
+                                                                                   @placeholder = "不允许有空格及特殊字符串.",
+                                                                                   @onkeyup = "javascript:this.value=this.value.replace(/\\s+/g,'')",
+                                                                                   @onafterpaste = "this.value=this.value.replace(/\\s+/gg,'')"
+                                                                               })
+                                                                                </span>
+                                                                                <span class="spanTrademarkIds">
+                                                                                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.TrademarkIds, new { maxlength = 60, @class = "input_text case-form-control" })
+                                                                                    <span class="text-danger ng-binding">*</span>
+                                                                                </span>
+                                                                                <span class="spanCaseCopyright">
+                                                                                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseRegisterNo, new { maxlength = 60, @class = "input_text case-form-control" })
+                                                                                </span>
+                                                                            </td>
+                                                                            @*<th>
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseSubmitDate)
+                                                                                </th>
+                                                                                <td>
+                                                                                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseSubmitDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                                                </td>*@
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                <span class="Case_CaseBasic_ApplicantName">
+                                                                                    <span class="text-danger ng-binding">*</span>
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.ApplicantName)
+                                                                                    @Html.HiddenFor(m => m.Case.CaseBasicInfo.FirstApplicantId)
+                                                                                </span>
+                                                                            </th>
+
+
+                                                                            <td colspan="5" rowspan="1" style="word-break: break-all; word-wrap: break-word; white-space: normal;">
+                                                                                <div class="bootstrap-tagsinput">
+                                                                                    @if (Model.Case != null && Model.Case.CaseCustomers != null && Model.Case.CaseCustomers.Any())
+                                                                                    {
+                                                                                        var customer = Model.Case.CaseCustomers.FirstOrDefault(x => x.CustomerBasic.CustomerId == Model.Case.CaseBasicInfo.FirstApplicantId);
+                                                                                        if (customer != null)
+                                                                                        {
+                                                                                            <span class="tag label label-info" style="margin-right:8px">
+                                                                                                @if (CommonService.Instance.CheckPermission((int)Permission.ViewCaseCustomer))
+                                                                                                {
+                                                                                                    <a name="casecustomer" style='color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
+                                                                                                       customerid="@customer.CustomerBasic.CustomerId" customerno="@customer.CustomerBasic.CustomerNo" customername="@customer.CustomerBasic.CustomerName"
+                                                                                                       title="@customer.CustomerBasic.CustomerName" data-toggle="tooltip" data-container="body"
+                                                                                                       href="javascript:caseInfo.CaseCustomer.ViewCustomer(@customer.CustomerBasic.CustomerId);"
+                                                                                                       target="_blank">@customer.CustomerBasic.CustomerName</a>
+                                                                                                }
+                                                                                                else
+                                                                                                {
+                                                                                                    <a name="casecustomer" style='color:white;width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
+                                                                                                       customerid="@customer.CustomerBasic.CustomerId" customerno="@customer.CustomerBasic.CustomerNo" customername="@customer.CustomerBasic.CustomerName"
+                                                                                                       title="@customer.CustomerBasic.CustomerName" data-toggle="tooltip" data-container="body"
+                                                                                                       href="javascript:void(0);" target="_blank">@customer.CustomerBasic.CustomerName</a>
+                                                                                                }
+                                                                                                <span class="customerremove" data-role="remove"></span>
+                                                                                            </span>
+
+                                                                                        }
+
+                                                                                        foreach (var customerT in Model.Case.CaseCustomers.FindAll(x => x.CustomerBasic.CustomerId != Model.Case.CaseBasicInfo.FirstApplicantId))
+                                                                                        {
+                                                                                            <span class="tag label label-info" style="margin-right:8px">
+                                                                                                @if (CommonService.Instance.CheckPermission((int)Permission.ViewCaseCustomer))
+                                                                                                {
+                                                                                                    <a name="casecustomer" style='color:white;width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
+                                                                                                       customerid="@customerT.CustomerBasic.CustomerId" customerno="@customerT.CustomerBasic.CustomerNo" customername="@customerT.CustomerBasic.CustomerName"
+                                                                                                       title="@customerT.CustomerBasic.CustomerName" data-toggle="tooltip" data-container="body"
+                                                                                                       href="javascript:caseInfo.CaseCustomer.ViewCustomer(@customerT.CustomerBasic.CustomerId);" target="_blank">@customerT.CustomerBasic.CustomerName</a>
+                                                                                                }
+                                                                                                else
+                                                                                                {
+                                                                                                    <a name="casecustomer" style='color:white;width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
+                                                                                                       customerid="@customerT.CustomerBasic.CustomerId" customerno="@customerT.CustomerBasic.CustomerNo" customername="@customerT.CustomerBasic.CustomerName"
+                                                                                                       title="@customerT.CustomerBasic.CustomerName" data-toggle="tooltip" data-container="body"
+                                                                                                       href="javascript:void(0);" target="_blank">@customerT.CustomerBasic.CustomerName</a>
+                                                                                                }
+                                                                                                <span class="customerremove" data-role="remove"></span>
+                                                                                            </span>
+                                                                                        }
+
+                                                                                    }
+                                                                                    <input type="text" placeholder="add one" style="width: 80px;" id="Case_CaseBasicInfo_ApplicantInput" autocomplete="off" size="1">
+                                                                                    <div class="label" style="float:right;"><a style="color:green;"   title="新增申请人" data-toggle="tooltip" data-container="body" href="javascript:void(0);"><span class="btn_applicant_add fa fa-user-plus"></span></a></div>
+                                                                                </div>
+                                                                            </td>
+
+                                          
+                                                                        </tr>
+                                                                        <tr>
+
+                                                                            <th rowspan="2">
+                                                                                <span class="spanCaseInventor">
+                                                                                    <span class="text-danger ng-binding">*</span>
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseInventor, new { @id = "lblCaseInventor" })
+                                                                                </span>
+                                                                                <span class="spanCaseDesigner" style="display: none">
+                                                                                    <span class="text-danger ng-binding">*</span>
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseDesigner)
+                                                                                </span>
+                                                                                <span class="spanTrademarkIds" style="display: none">
+                                                                                    <span class="text-danger ng-binding">*</span>
+                                                                                    @Html.LabelFor(m => m.Case.CaseBasicInfo.TradeProductService)
+                                                                                </span>
+                                                                            </th>
+                                                                            <td colspan="5" rowspan="1" style="word-break: break-all; word-wrap: break-word; white-space: normal; ">
+                                                                                <span class="spanCaseInventor">
+                                                                                    @Html.TextAreaFor(m => m.Case.CaseBasicInfo.CaseInventor,
+                                                                                   new
+                                                                                   {
+                                                                                       maxlength = 600,
+                                                                                       @class = "input_text case-form-control",
+                                                                                       style = "width:100%;height:60px",
+                                                                                       @placeholder = "",
+                                                                                       @onkeyup = "javascript:this.value=this.value.replace(/\\s+/g,'')",
+                                                                                       @onafterpaste = "this.value=this.value.replace(/\\s+/gg,'')"
+                                                                                   })
+
+
+                                                                                </span>
+                                                                                @*<div class="inline">
+                                                                                        <div class="tags"><input type="text" name="tags" id="form-field-tags" value="Tag Input Control" placeholder="发明人" style="display: none;"><input type="text" placeholder="发明人"></div>
+                                                                                    </div>*@
+
+                                                                                <span class="spanCaseDesigner" style="display: none">
+                                                                                    @Html.TextAreaFor(m => m.Case.CaseBasicInfo.CaseDesigner,
+                                                                                   new
+                                                                                   {
+                                                                                       maxlength = 600,
+                                                                                       @class = "input_text case-form-control",
+                                                                                       style = "width:100%;height:60px",
+                                                                                       @placeholder = "",
+                                                                                       @onkeyup = "javascript:this.value=this.value.replace(/\\s+/g,'')",
+                                                                                       @onafterpaste = "this.value=this.value.replace(/\\s+/gg,'')"
+                                                                                   })
+                                                                                </span>
+                                                                                <span class="spanTrademarkIds" style="display: none">
+                                                                                    @Html.TextAreaFor(m => m.Case.CaseBasicInfo.TradeProductService,
+                                                                                   new
+                                                                                   {
+                                                                                       maxlength = 600,
+                                                                                       @class = "input_text case-form-control",
+                                                                                       style = "width:100%;  height:60px"
+                                                                                   })
+                                                                                </span>
+                                                                            </td>
+
+                                                                        </tr>
+
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    @*<div class="case-section-right" style="width: 220px">
+                                            <div class="case-section-wrap" style="padding:1px">
+                                                <div class="case-section-product">
+                                                    <div class="product-container">
+                                                        <div class="product-section">
+                                                            <div class="section-head case-cursor-pointer">
+                                                                <a class="ng-binding">
+                                                                    <span class="list-title-em">商标图标</span>
+                                                                </a>
+                                                            </div>
+                                                            <div class="section-content clearfix">
+                                                                <div class="ng-scope">
+                                                                    <div class="gridSection">
+                                                                        <a id="aimgLicense" href="#" target="_blank">
+                                                                            <img id="imgLicense" width="100%" height="161px" src="">
+                                                                        </a>
+
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                        </div>*@
+
+                                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                        <div class="i_common_wrap">
+                                            <div class="i_common_list"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="i_common_select" id="divAssociateApplicantList" style="display: none;">
+                                        <div class="i_common_wrap">
+                                            <div class="i_common_list"></div>
+                                        </div>
+                                    </div>
+
+                                    <div style="display: none;" id="divUserList">
+                                        <div class="i_common_box" style='width:300px'>
+                                            <div class="i_common_hd">
+                                                从下列用户中选择
+                                                <input type="hidden" id="hidUserId">
+                                                <input type="hidden" id="hidUserName">
+                                            </div>
+                                            <div class="i_common_bd">
+                                                <ul class="i_common_ul layoutfix">
+                                                    @if (staffs != null && staffs.Count > 0)
+                                                    {
+                                                        foreach (var staff in staffs.FindAll(x => !string.IsNullOrEmpty(x.StaffBasic.PatentAgentLicenceNo)))
+                                                        {
+                                                            <li style='width: 80px'><div><input type='checkbox' userid="@staff.StaffBasic.StaffName" username="REDACTED_ARCHIVE_ONLY" /><lable>@staff.StaffBasic.StaffChName</lable></div></li>
+                                                        }
+
+                                                        <li id="btnClear" style='width: 80px'><a href="javascript:void(0)" name="">清空</a></li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style="display: none;" id="div_Case_CaseBasicInfo_Deadline"> </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <input class="btn btn-default ng-binding" type="button" id="btnCaseCopy" value="导入案件" />
+                    <input class="btn btn-primary ng-binding" type="button" id="btnCaseCreateUpdateNext" value="保存并新建" />
+                    <input class="btn btn-primary ng-binding" type="button" id="btnCaseCreateUpdate" value="保存" />
+                    <button class="btn btn-default ng-binding" id="btnCaseCancle">关闭</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

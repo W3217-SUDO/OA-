@@ -1,0 +1,70 @@
+﻿.aliyun-lego-console-product-update .module-wrap .product-fun-update-hd {
+  color: #34383c;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eaedf1;
+  font-weight: bold;
+}
+.aliyun-lego-console-product-update .module-wrap .product-fun-update-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.aliyun-lego-console-product-update .module-wrap .product-fun-update-list dt {
+  margin: 18px 0 16px;
+  color: #999;
+}
+.aliyun-lego-console-product-update .module-wrap .month-list li {
+  padding-left: 14px;
+  height: 29px;
+  position: relative;
+  margin-left: 3px;
+}
+.aliyun-lego-console-product-update .module-wrap .month-list li.border {
+  border-left: 1px solid #efefef;
+}
+.aliyun-lego-console-product-update .module-wrap .month-list li i.li-icon {
+  width: 6px;
+  height: 6px;
+  background: url(https://img.alicdn.com/tps/TB1_Jj8LFXXXXbKaXXXXXXXXXXX-6-6.jpg) no-repeat;
+  position: absolute;
+  top: 7px;
+  left: -3px;
+  -webkit-transition: all 0.3s;
+  -moz-transition: all 0.3s;
+  -o-transition: all 0.3s;
+  transition: all 0.3s;
+}
+.aliyun-lego-console-product-update .module-wrap .month-list li:hover i.li-icon {
+  background-image: url(https://img.alicdn.com/tps/TB1mZ7oLFXXXXaVXFXXXXXXXXXX-6-6.jpg);
+}
+.aliyun-lego-console-product-update .module-wrap .month-list li a {
+  height: 100%;
+  display: inline-block;
+  color: #666;
+}
+.aliyun-lego-console-product-update .module-wrap .month-list li a:hover {
+  text-decoration: none;
+  color: #00a2ca;
+}
+.aliyun-lego-console-product-update .module-wrap .month-list li .date {
+  margin-right: 12px;
+  color: #ccc;
+}
+.aliyun-lego-console-product-update .module-wrap .month-list li.first {
+  height: 24px;
+}
+.aliyun-lego-console-product-update .module-wrap .month-list li.first a,
+.aliyun-lego-console-product-update .module-wrap .month-list li.first span {
+  position: relative;
+  top: -6px;
+}
+.aliyun-lego-console-product-update .module-wrap .month-list li.first i.li-icon {
+  top: 0px;
+}
+.aliyun-lego-console-product-update .module-wrap .month-list li.last {
+  height: 13px;
+}
+.aliyun-lego-console-product-update .module-wrap .more {
+  margin: 10px 0;
+  text-align: right;
+  padding-right: 10px;
+}

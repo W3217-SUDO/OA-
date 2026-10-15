@@ -1,0 +1,100 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseCauseListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+ 
+<div class="modal fade" id="caseCauseModal">
+    <div class="modal-dialog" style="width:800px">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" id="btnCauseClose">×</button>
+                <h5 class="modal-title">选择案由</h5>
+            </div>
+            <div class="modal-body" style='padding:10px'>
+                <form id="caseCauseListForm" class="form-inline ng-valid " action="@Url.Content("~/Lawsuit/CaseCause/CaseCauseListSelected")">
+                    @Html.HiddenFor(m => m.CaseId, new { name = "CaseId" })
+                    @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                    @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+
+                    @Html.Hidden("selectedId")
+                    @Html.Hidden("selectedName")
+
+                    <div class="simple-form-field">
+                        <div class="form-group ">
+                            <label class="control-label">
+                                <span contenteditable="" class="text-danger "></span>
+                                <span class="">案由：</span>
+                            </label>
+                            <div class="form-control-wrap">
+                                @Html.TextBoxFor(m => m.SearchCondition.CauseName, new { @class = "form-control", @placeholder = "案由", style = "width: 300px" })
+                            </div>
+                        </div>
+                    </div>
+                    <div class="simple-form-field  ">
+                        <div class="form-group  ">
+                            <label class="  control-label">
+                                <span class="">
+                                </span>
+                            </label>
+                            <div class="form-control-wrap text-right">
+                                <a href="javascript:void(0);" class="btn btn-primary " id="btnCauseSearch">
+                                    <span>查询</span>
+                                </a>
+                                <a href="javascript:void(0);" class="btn btn-primary " id="btnCauseSelected">
+                                    <span>选择</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+                <div class="gridSection">
+                    <table id="tblCauseList" class="table table-hover" style="padding-bottom:0px">
+                        <colgroup>
+                            <col style="width: 10%">
+                            <col style="width: 10%">
+                            <col style="width: 80%">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th width="10">
+                                    
+                                </th>
+                                <th>
+                                    案由编号
+                                </th>
+                                <th>
+                                    案由
+                                </th>
+         
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="display: none">
+                                <td>
+                                    &nbsp;
+                                </td>
+                                <td style="text-align: center"></td>
+                                 <td style="text-align: left"></td>
+                            </tr>
+                        </tbody>
+                        <tfoot class="ng-scope" style="display: none">
+                            <tr>
+                                <td colspan="3">
+                                    <div class="pull-left"></div>
+                                    <div class="ng-scope">
+                                        <div class="pull-right page-box causes">
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                    <button class="btn btn-default ng-binding" id="btnCauseCancle">取消</button>
+            </div>
+        </div>
+    </div>
+</div>
+

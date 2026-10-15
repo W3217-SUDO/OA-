@@ -1,0 +1,390 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.BAS.Type
+
+@model Dchien.Legal.Web.Areas.FCM.ViewModels.Contract.ListModel
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script src="@Url.Content("~/Scripts/AWS/OfficialDocument/AWS.OfficialDocument.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/FCM/Contract/FCM.Contract.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/FCM/Contract/FCM.Contract.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body" style="overflow-y:hidden">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>合同查询</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left  col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FCM/Contract/ContractList")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 80px;" />
+                                        <col style="width: 220px" />
+                                        <col style="width: 80px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px" />
+                                        <col style="width: 160px" />
+                                    </colgroup>
+                                    <tr>
+
+                                        <th>
+                                            合同名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractName, new { @class = "form-control", @placeholder = "合同名称", @style = "width:97.2%" })
+                                        </td>
+                                        <th>
+                                            合同编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractNo, new { @class = "form-control", @placeholder = "合同编号", @style = "" })
+                                        </td>
+
+                                        <th>
+                                            合同类型：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.ContractType, ContractTypeService.Instance.GetContractTypeList(true), new { maxlength = 60, @class = "form-control select", @style = "width:100%" })
+                               
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户名称", @style = "width:97.2%" })
+                                        </td>
+                                        <th>
+                                            案件编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @placeholder = "案号", @style = "" })
+                                        </td>
+                                        <th>
+                                            收费类型：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.ChargingType, ContractTypeService.Instance.GetContractChargingTypeList(true), new { maxlength = 60, @class = "form-control select", @style = "width:100%" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+
+                                        <th>
+                                            合同日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractBeginDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractEndDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+
+                                        @if (Model.SearchCondition.PageId != Dchien.Legal.Entity.System.PageId.PageId_4001002)
+                                        {
+                                            <th>
+                                                案源人：
+                                            </th>
+                                            <td>
+                                                @Html.HiddenFor(m => m.SearchCondition.BusinessOwner, new { @class = "form-control", @style = "" })
+                                                @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, new { @class = "form-control", @style = "" })
+
+                                                <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                                    <div class="i_common_wrap">
+                                                        <div class="i_common_list"></div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        }
+                                        else
+                                        {
+                                            <th>
+                                                案源人：
+                                            </th>
+                                            <td>
+                                                @Html.HiddenFor(m => m.SearchCondition.BusinessOwner, new { @class = "form-control", @style = "" })
+                                                @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, new { @class = "form-control", @disabled = true, @style = "" })
+                                            </td>
+                                        }
+                                        @*<th>
+                                            合同状态：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.ContractStatus, ContractTypeService.Instance.GetContractStatusList(true), new { maxlength = 60, @class = "form-control select", @style = "width:100%" })
+                                        </td>*@
+                                        <th>
+                                            合同主体：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.GroupId, ContractTypeService.Instance.GetContractGroupList(true), new { maxlength = 60, @class = "form-control select", @style = "width:100%" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            
+                                        </th>
+                                        <td >
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnContractSearch">
+                                                <span>查询</span>
+                                            </a>
+ 
+                                        </td>
+                                    </tr>
+                                </table>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection" id="contractgridSection">
+                                <table class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                    <colgroup>
+                                        <col style="width: 4%">
+                                        <col style="width: 9%">
+                                        <col style="width: 20%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 17px">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align: center"><input type="checkbox" onclick="javascript: contract.Contract.Selected(this);" id="chkContractAll" name="chkContractAll"></th>
+                                            <th style="text-align: center">合同号</th>
+                                            <th style="text-align: center">合同名称</th>
+                                            <th style="text-align: center">合同主体</th>
+                                            <th style="text-align: center">合同状态</th>
+                                            <th style="text-align: center">案源人</th>
+                                            <th style="text-align: center">官费<br>支付金额</th>
+                                            <th style="text-align: center">官费<br>到账金额</th>
+                                            <th style="text-align: center">官费<br>未到金额</th>
+                                            <th style="text-align: center">官费<br>亏损金额</th>
+                                            <th style="text-align: center">代理费<br>总金额</th>
+                                            <th style="text-align: center">代理费<br>到账金额</th>
+                                            <th style="text-align: center">代理费<br>待收金额</th>
+                                            <th style="text-align: center">其他金额</th>
+                                            <th style="text-align: center">其他金额<br>已支付</th>
+                                            <th style="text-align: center">其他金额<br>待支付</th>
+                                            <th style="text-align: center">发票<br>已开金额</th>
+                                            <th style="text-align: center">发票<br>应开金额</th>
+                                            <th style="text-align: center">发票<br>高开金额</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                                <div class="simple-grid-none-data-wrap">
+                                    <div class="simple-grid-none-data text-center  ">
+                                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                            <div class="text-size-16 tip-text inline-block">
+                                                <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                                <span class="">。</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="divList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                                        <table id="tblContractList" class="aps-table aps-widget aps-ani-transition ">
+                                            <colgroup>
+                                                <col style="width: 4%">
+                                                <col style="width: 9%">
+                                                <col style="width: 20%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                            </colgroup>
+                                            @*<thead>
+                                                <tr>
+                                                    <th style="text-align: center"><input type="checkbox" onclick="javascript: contract.Contract.Selected(this);" id="chkContractAll" name="chkContractAll"></th>
+                                                    <th style="text-align: center">合同号</th>
+                                                    <th style="text-align: center">合同名称</th>
+                                                    <th style="text-align: center">合同状态</th>
+                                                    <th style="text-align: center">案源人</th>
+                                                    <th style="text-align: center">官费<br>支付金额</th>
+                                                    <th style="text-align: center">官费<br>到账金额</th>
+                                                    <th style="text-align: center">官费<br>未到金额</th>
+                                                    <th style="text-align: center">官费<br>亏损金额</th>
+                                                    <th style="text-align: center">代理费<br>总金额</th>
+                                                    <th style="text-align: center">代理费<br>到账金额</th>
+                                                    <th style="text-align: center">代理费<br>待收金额</th>
+                                                    <th style="text-align: center">其他金额</th>
+                                                    <th style="text-align: center">其他金额<br>已支付</th>
+                                                    <th style="text-align: center">其他金额<br>待支付</th>
+                                                    <th style="text-align: center">发票<br>已开金额</th>
+                                                    <th style="text-align: center">发票<br>应开金额</th>
+                                                    <th style="text-align: center">发票<br>高开金额</th>
+                                                </tr>
+                                            </thead>*@
+                                            <tbody>
+                                                <tr style='display:none'>
+                                                    <td>
+                                                        &nbsp;
+                                                    </td>
+                                            
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                </tr>
+
+                                                <tr style='display:none'>
+                                                    <td>
+                                                        &nbsp;
+                                                    </td>
+
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                </tr>
+
+                                            </tbody>
+                                            <tfoot class="" style="display: none">
+                                                <tr>
+                                                    <td><input type="checkbox" onclick="javascript: contract.Contract.Selected(this);" id="chkContractAll" name="chkContractAll"></td>
+                                                    <td colspan="18">
+                                                        <div class="pull-left">
+
+                                                            <input type="button" id="btnContractListExportToExcel" class="btn btn-default" style="height:32px" value="导出Excel" />
+
+                                                            <input type="button"  id="btnContractView"  class="btn btn-default" style="height:32px" value="合同查看" />
+
+                                                           @if (PageId.PageId_4001002 == Model.SearchCondition.PageId || CommonService.Instance.CheckPermission((int)Permission.Contract_Edit))
+                                                           {
+                                                                <input type="button" id="btnContractEdit" class="btn btn-default" style="height:32px" value="合同变更" />
+                                                                <input type="button" id="btnContractToOfficialDocumentAudit" class="btn btn-default" style="height:32px" value="合同用印" />
+                                                           }
+                                                            @if (PageId.PageId_4001002 == Model.SearchCondition.PageId || CommonService.Instance.CheckPermission((int)Permission.Contract_PaymentApply))
+                                                            {
+                                                                <input type="button" id="btnContractPaymentApply" class="btn btn-default" style="height:32px" value="合同付款" />
+                                                            }
+                                                            @if (PageId.PageId_4001002 == Model.SearchCondition.PageId || CommonService.Instance.CheckPermission((int)Permission.Contract_InvoiceApply))
+                                                            {
+                                                                <input type="button" id="btnContractInvoiceApply" class="btn btn-default" style="height:32px" value="合同开票" />
+                                                            }
+
+                                                            @if (PageId.PageId_4001002 == Model.SearchCondition.PageId)
+                                                            {
+                                                                <input type="button" id="btnCaseCreate" class="btn btn-default" style="height:32px" value="新建案件" />
+                                                                <input type="button" id="btnTaskCreate" class="btn btn-default" style="height:32px" value="新建调查任务" />
+                                                            }
+
+                                                            @if (PageId.PageId_4001007 == Model.SearchCondition.PageId)
+                                                            {
+                                                                <input type="button" id="btnContractDelete" class="btn btn-default" style="height:32px" value="删除合同" />
+                                                            }
+
+                                                            <input type="button" id="btnContractArchive" class="btn btn-default" style="height:32px" value="合同归档" />
+
+                                                        </div>
+                                                        <div class="">
+                                                            <div class="pull-right page-box contractlist">
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                  </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="contextMenu" id="contractMenu" style="display: none;">
+                        <ul style="width:150px">
+                            <li id="view">合同查看</li>
+                            @if (PageId.PageId_4001002 == Model.SearchCondition.PageId || CommonService.Instance.CheckPermission((int)Permission.Contract_Edit))
+                            {
+                               <li id="edit">合同变更</li>
+                            }
+                            @if (PageId.PageId_4001002 == Model.SearchCondition.PageId || CommonService.Instance.CheckPermission((int)Permission.Contract_PaymentApply))
+                            {
+                                <li id="paymentapply">合同付款</li>
+                            }
+                    
+                            @if (PageId.PageId_4001002 == Model.SearchCondition.PageId || CommonService.Instance.CheckPermission((int)Permission.Contract_InvoiceApply))
+                            {
+                                <li id="invoiceapply">合同开票</li>
+                            }
+
+                            <li id="archive">合同归档</li>
+                        </ul>
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                    <div style="display: none;" id="divUserList">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

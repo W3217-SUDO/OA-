@@ -1,0 +1,43 @@
+﻿@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+
+    var actived = "active";
+
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">新建合同</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @{ actived = action == "Draft".ToLower() && controller == "Patent".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/CMS/Patent/Draft") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">国内专利代理长期合同</div>
+                        </a>
+                    </div>
+                </li>
+                
+                @{ actived = action == "Draft".ToLower() && controller == "Contract".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/CMS/Contract/Draft") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">其他</div>
+                        </a>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

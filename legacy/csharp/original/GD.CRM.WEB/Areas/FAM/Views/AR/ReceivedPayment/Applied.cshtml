@@ -1,0 +1,407 @@
+﻿@model Dchien.Legal.Web.Areas.FAM.ViewModels.AR.ReceivedPayment.PaymentAppliedModel
+<script type="text/javascript" src="@Url.Content("~/Scripts/FAM/AR/FAM.AR.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/FAM/AR/FAM.AR.AppliedList.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.core.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.excheck.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.exedit.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/zTree/zTreeStyle.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+<style type="text/css">
+    ul.ztree {
+        margin-top: 0px;
+        border-right: 0px solid #e1e6eb;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    .ztree li {
+        line-height: 20px;
+    }
+
+        .ztree li a {
+            width: 150px;
+            height: 20px;
+            padding-top: 0px;
+        }
+
+            .ztree li a:hover {
+                text-decoration: none;
+                background-color: #E7E7E7;
+            }
+
+            .ztree li a span.button.switch {
+                visibility: hidden;
+            }
+
+    .ztree.showIcon li a span.button.switch {
+        visibility: hidden;
+    }
+
+    .ztree li a.curSelectedNode {
+        background-color: #D4D4D4;
+        border: 0;
+        height: 20px;
+    }
+
+    .ztree li span {
+        line-height: 20px;
+    }
+
+        .ztree li span.button {
+            margin-top: 2px;
+        }
+
+            .ztree li span.button.switch {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.add {
+                margin-left: 2px;
+                margin-right: -1px;
+                background-position: -144px 0;
+                vertical-align: top;
+                *vertical-align: middle;
+            }
+
+
+            /*.ztree li span.button {background-image:url("./left_menuForOutLook.png"); *background-image:url("./left_menuForOutLook.gif")}*/
+
+            .ztree li span.button.ico_docu {
+                background-position: -110px -16px;
+            }
+
+            .ztree li span.button.switch.level0 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.switch.level1 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+    /*.ztree li span.button.noline_open {background-position: 0 0;}
+    .ztree li span.button.noline_close {background-position: -18px 0;}
+    .ztree li span.button.noline_open.level0 {background-position: 0 -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}*/
+
+    .node_name {
+        margin-left: 10px;
+    }
+
+    div#rMenu {
+        position: absolute;
+        visibility: hidden;
+        top: 0;
+        background-color: #555;
+        text-align: left;
+        padding: 2px;
+    }
+
+        div#rMenu ul li {
+            margin: 1px 0;
+            padding: 0 5px;
+            cursor: pointer;
+            list-style: none outside none;
+            background-color: #DFDFDF;
+        }
+</style>
+ 
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div>
+            <div class="console-container ng-scope">
+                <div class="ng-scope">
+                    <div class="row ng-scope">
+                        <div class="col-sm-12">
+                            <div ui-view="myTicket">
+                                <div class="ticket-detail ng-scope">
+                                    <div class="console-title console-title-border clearfix">
+                                        <h5 class="pull-left">已分配回款</h5>
+
+                                    </div>
+                                    <div class="table-viewer-header clearfix" style="margin-top: 12px">
+                                        <span class="table-viewer-topbar-title">
+                                            回款信息
+                                        </span>
+                                        <div class="pull-right table-viewer-topbar-content"></div>
+
+                                    </div>
+                                 
+                                    <div class="info-panel" >
+
+                                        <div class="row" style="margin-top:4px">
+
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    @Html.HiddenFor(m => m.Payment.PaymentBasic.PaymentId)
+                                                    <span>@Html.LabelFor(m => m.Payment.PaymentBasic.PayerName)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayFor(m => m.Payment.PaymentBasic.PayerName)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Payment.PaymentBasic.CashedDate)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayFor(m => m.Payment.PaymentBasic.CashedDate)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Payment.PaymentBasic.InvoiceNo)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayFor(m => m.Payment.PaymentBasic.InvoiceNo)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Payment.PaymentBasic.PaymentModeName)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayFor(m => m.Payment.PaymentBasic.PaymentModeName)
+                                                </span>
+                                            </div>
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Payment.PaymentBasic.ContractNo)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayFor(m => m.Payment.PaymentBasic.ContractNo)
+                                                </span>
+                                            </div>                                         
+                    
+                                        </div>
+                    
+                                        <div class="row" style="margin-top:4px">
+
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Payment.PaymentBasic.CustomerName)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayFor(m => m.Payment.PaymentBasic.CustomerName)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Payment.PaymentBasic.CashedAmount)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayFor(m => m.Payment.PaymentBasic.CashedAmount)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Payment.PaymentBasic.AppliedAmount)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    <label id="Payment_PaymentBasic_AppliedAmount"> @Html.DisplayFor(m => m.Payment.PaymentBasic.AppliedAmount)</label>
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Payment.PaymentBasic.UnAppliedAmount)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    <label id="Payment_PaymentBasic_UnAppliedAmount"> @Html.DisplayFor(m => m.Payment.PaymentBasic.UnAppliedAmount)</label>
+                                                </span>
+                                            </div>
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Payment.PaymentBasic.ReceiverName)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayFor(m => m.Payment.PaymentBasic.ReceiverName)
+                                                </span>
+                                            </div>
+
+
+                                        </div>
+
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-12">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Payment.PaymentBasic.Remark)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayFor(m => m.Payment.PaymentBasic.Remark)
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <div class="table-viewer-header clearfix" style="margin-top: 12px">
+                                <span class="table-viewer-topbar-title">
+                                    费用分配明细
+                                </span>
+                                <div class="pull-right table-viewer-topbar-content"></div>
+
+                            </div>
+
+                            <div id="divStaffExperience" class="gridSection" style="padding-top: 4px;">
+                                <form class="form-inline ng-valid " id="postForm">
+                                    @Html.HiddenFor(m => m.SearchCondition.PaymentId, new { name = "PaymentId" })
+                                    @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                    @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+
+                                    <table class="search_table" style="width: 100%">
+                                        <colgroup>
+                                            <col style="width: 60px;" />
+                                            <col style="width: 160px" />
+                                            <col style="width: 60px" />
+                                            <col style="width: 160px" />
+                                            <col style="width: 60px" />
+                                            <col style="width: 160px" />
+                                            <col style="width: 80px" />
+                                            <col style="width: 160px" />
+                                            <col style="width: 80px" />
+                                            <col style="width: 160px" />
+                                            <col style="width: 80px" />
+                                            <col style="width: 160px" />
+                                            <col>
+                                        </colgroup>
+                                        <tr>
+                                            <th>
+                                                关键字：
+                                            </th>
+                                            <td colspan="5">
+                                                @Html.TextBoxFor(m => m.SearchCondition.Keyword, new { @class = "form-control", @style = "width:99%", @placeholder = "案号、法院号、法院、原告、被告、案件名称" })
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th>
+                                                案件阶段：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.CasePhaseName, new { @class = "form-control", @autocomplete = "off", @placeholder = "案件阶段" })
+                                                @Html.HiddenFor(m => m.SearchCondition.CasePhaseId)
+
+                                                <div class='divcaseconditioncasephases' style='overflow-y: scroll; '>
+                                                    <div id="divCasePhaseCheckBoxList" style="display:none" class='i_common_box'>
+                                                        <div class='i_common_hd'>
+                                                            从下列案件阶段中选择
+                                                            <input type='hidden' id='hidCasePhaseId'>
+                                                            <input type='hidden' id='hidCasePhaseName'>
+                                                        </div>
+                                                        <div class='i_common_bd'>
+                                                            <ul id='casePhaseTree' class='ztree' style="max-height:600px"></ul>
+                                                            <div class="pull-right">
+                                                                <input class='btn btn-primary' type='button' id='btnCasePhaseSelected' value='确定' />
+                                                                <input class='btn btn-default' type='button' value='取消' />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <th>
+                                                费用类型：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.CaseFeeTypeName, new { @class = "form-control", @autocomplete = "off", @placeholder = "费用类型", @style = "width:100%" })
+                                                @Html.HiddenFor(m => m.SearchCondition.CaseFeeTypeId)
+                                                <div class='divcaseconditioncasefeetypes' style='overflow-y: scroll; '>
+                                                    <div id="divCaseFeeTypeCheckBoxList" style="display:none" class='i_common_box'>
+                                                        <div class='i_common_hd'>
+                                                            从下列案件费用中选择
+                                                            <input type='hidden' id='hidCaseFeeTypeId'>
+                                                            <input type='hidden' id='hidCaseFeeTypeName'>
+                                                        </div>
+                                                        <div class='i_common_bd'>
+                                                            <ul id='caseFeeTypeTree' class='ztree' style="max-height:600px"></ul>
+                                                            <div class="pull-right">
+                                                                <input class='btn btn-primary' type='button' id='btnCaseFeeTypeSelected' value='确定' />
+                                                                <input class='btn btn-default' type='button' id='btnCaseFeeTypeCancel' value='取消' />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            <th>
+                                                费用金额：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.AmountFrom, new
+                                           {
+                                               @class = "form-control",
+                                               @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                               @onafterpaste = "this.value=this.value.replace(/\\D/g,'')",
+                                               @style = "width:70px"
+                                           })
+                                                -
+                                                @Html.TextBoxFor(m => m.SearchCondition.AmountTo, new
+                                           {
+                                               @class = "form-control",
+                                               @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                               @onafterpaste = "this.value=this.value.replace(/\\D/g,'')",
+                                               @style = "width:70px"
+                                           })
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <th>
+
+                                            </th>
+                                            <td colspan="3">
+
+                                  
+                                                <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentObjectAppliedSearch">
+                                                    <span>查询</span>
+                                                </a>
+                                                <a href="javascript:void(0);" class="btn btn-default " id="btnPaymentSearchClear">
+                                                    <span>清空</span>
+                                                </a>
+                                                <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentAppliedCancel">
+                                                    <span>取消分配</span>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    </table>
+
+                                </form>
+
+
+                                <div class='divcaseconditioncasetypes'></div>
+                                <div class='divcaseconditioncasephases'></div>
+                                <div class='divcaseconditioncasefeetypes'></div>
+
+                                <div id="dv_List"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

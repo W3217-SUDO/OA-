@@ -1,0 +1,272 @@
+﻿@using Dchien.Legal.Entity.System
+
+@model Dchien.Legal.Web.Areas.TP.ViewModels.Task.TaskModel
+
+
+@*<script src="@Url.Content("~/Scripts/TP/Task/Legal.Task.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>*@
+<script src="@Url.Content("~/Scripts/TP/Task/Legal.Task.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+</style>
+
+
+<div class="slide-panels">
+    <div class="slide-panel active medium">
+        <div class="slide-panel-content">
+            <div class="panel-header">
+                <h5>案件任务</h5>
+                <a class="panel-close"  onclick="javascript: task.Tasks.Task.Close();" >
+                    <i class="next-icon next-icon-close next-small" style="font-size: 0px;">close</i>
+                </a>
+                <div class="head-custom"></div>
+            </div>
+            <div class="placeholder">...</div>
+            <div class="panel-body" >
+                <div class="panel-body-content">
+                    <div class="page-overview-panel-apply">
+
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ">
+                                <div class="ng-isolate-scope">
+                                    <div class="console-step row step-bar">
+                                        @if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Pending)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-active">
+                                                <span class="ng-binding">任务已分派</span>
+                                            </div>
+
+                                            <div class="step col-md-3 ng-scope  ">
+                                                <span class="ng-binding">任务处理中</span>
+                                            </div>
+
+                                            <div class="step col-md-3 ng-scope ">
+                                                <span class="ng-binding">任务完成</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-end">
+                                                <span class="ng-binding">待确认处理结果</span>
+                                            </div>
+
+                                        }
+                                        else if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Processing)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-pass ">
+                                                <span class="ng-binding">任务处理中</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope  step-active">
+                                                <span class="ng-binding">任务转交</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope">
+                                                <span class="ng-binding">任务完成</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-end">
+                                                <span class="ng-binding">待确认处理结果</span>
+                                            </div>
+                                        }
+                                        else if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Finished)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-pass ">
+                                                <span class="ng-binding">任务已分派</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope  step-pass">
+                                                <span class="ng-binding">任务处理中</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope  step-pass">
+                                                <span class="ng-binding">任务完成</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope  step-active step-end">
+                                                <span class="ng-binding">任务重启</span>
+                                            </div>
+                                        }
+
+                                        else if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Rejected)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-pass ">
+                                                <span class="ng-binding">任务已分派</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-pass">
+                                                <span class="ng-binding">任务处理中</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope   step-pass ">
+                                                <span class="ng-binding">任务已拒绝</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope  step-active step-end">
+                                                <span class="ng-binding">任务重启</span>
+                                            </div>
+                                        }
+
+                                        else if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Stoped)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-pass ">
+                                                <span class="ng-binding">任务已分派</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-pass">
+                                                <span class="ng-binding">任务处理中</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope   step-pass ">
+                                                <span class="ng-binding">任务已拒绝</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope  step-active step-end">
+                                                <span class="ng-binding">任务重启</span>
+                                            </div>
+                                        }
+
+                                        else if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Checked)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-pass ">
+                                                <span class="ng-binding">任务已分派</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-pass">
+                                                <span class="ng-binding">任务处理中</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-pass">
+                                                <span class="ng-binding">任务完成</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope  step-active step-end">
+                                                <span class="ng-binding">任务已验收</span>
+                                            </div>
+                                        }
+
+                                        @*<div class="step col-md-3 ng-scope step-end">
+                                    <span class="ng-binding">待评价</span>
+                                </div>*@
+                                    </div>
+                                </div>
+
+
+                                <div role="grid" class="next-form next-medium">
+
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">负责人：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+
+                                            <div class="bootstrap-tagsinput">
+                                                <input type="text" placeholder="负责人" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Task_Officer_Input" autocomplete="off" size="1">
+                                                <div class="i_common_select" id="div_officerlist" style="display: none;">
+                                                    <div class="i_common_wrap">
+                                                        <div class="i_common_list"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">协作人：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+                                            <div class="bootstrap-tagsinput">
+                                                <input type="text" placeholder="协作人" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Task_Associates_Input" autocomplete="off" size="1">
+                                                <div class="i_common_select" id="div_associateslist" style="display: none;">
+                                                    <div class="i_common_wrap">
+                                                        <div class="i_common_list"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">任务时间：</label>
+                                        </div>
+
+
+
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+                                            <div style="float:left;height:29px;width:50%;padding-right:10px">
+                                                <div><input class="form-control input_time inline-block " id="Task_NodeBeginTime" name="Task.NodeBeginTime" onfocus="WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd HH:mm:ss'})" placeholder="开始时间" required="true" style="height:29px; " type="text" value="@DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")" /></div>
+                                            </div>
+                                            <div style="float:right;height:29px;width:50%;padding-left:10px">
+                                                <input class="form-control input_time inline-block " id="Task_NodeEndTime" name="Task.NodeEndTime" onfocus="WdatePicker({ doubleCalendar: true, dateFmt: 'yyyy-MM-dd HH:mm:ss' })" placeholder="结束时间" required="true" style="height:29px; " type="text" value="" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">任务描述：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+                                            <span data-meta="Field" class="next-input next-medium" style="width:100%;">
+                                                <textarea type="text" class="form-control" style="width: 100%;" id="Task_NodeContent" rows="5"></textarea>
+                                            </span>
+                                        </div>
+                                    </div>
+
+      
+
+
+
+                                    <div dir="ltr" role="row" class="next-row next-form-item next-medium">
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-5 next-form-item-label">
+                                            <label for="Domain" required="">任务附件：</label>
+                                        </div>
+                                        <div dir="ltr" role="gridcell" class="next-col next-col-18 next-form-item-control">
+                                            <input class="btn btn-default btn-xs " id="btnTaskNodeFileUpload" style="width:80px;overflow: hidden;" value="上传附件">
+                                            @using (Html.BeginForm("TaskFileUpload", "TaskFile", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                                            { 
+                                                @Html.HiddenFor(m => m.Task.TaskId)
+                                                @Html.HiddenFor(m => m.Task.TaskGuid)
+                                                @Html.HiddenFor(m => m.Task.NodeGuid)
+                                                @Html.HiddenFor(m => m.Task.MessageGuid)
+                                                <input type="file" multiple="multiple" id="flTaskNodeFile" name="flTaskNodeFile" accept=".jpg, .jpeg, .bmp, .png, .gif,.txt, .rar, .zip, .doc, .docx, .ini, .conf, .eml, .xlsx, .xls, .pdf" tabindex="-1" style="width: 1px; height: 1px; opacity: 0; position: absolute; padding: 0px; margin: 0px; overflow: hidden;">
+                                            }
+
+                                            <p id="custom5_description" class="help-block">
+                                                <span class="ng-binding">
+                                                </span>
+                                            </p><div class="text-muted">
+                                                附件支持的格式有:'jpg', 'bmp', 'png','gif','txt','rar','zip','doc','docx','ini','conf','eml','pdf', 'xlsx', 'xls'
+                                            </div>
+
+                                            <p></p>
+                                            <div id="attachments"> </div>
+                                            <div class="help-block" style="display:none">上传失败</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                    </div>
+            <div class="panel-footer">
+                <div class="btn-con">
+                    <input type="button" id="btnTaskNodeCreate"  class="btn btn-primary" style="border-radius: 0;
+                                                                                                                                                    padding: 0 16px;
+                                                                                                                                                    height: 32px;
+                                                                                                                                                    line-height: 30px;
+                                                                                                                                                    font-size: 12px;
+                                                                                                                                                    border-width: 1px;"  value="确定"/>
+                    <input type="button" class="btn  btn-normal" onclick="javascript: task.Tasks.Task.Close();"  style="border-radius: 0;
+                                                                                                                                                    padding: 0 16px;
+                                                                                                                                                    height: 32px;
+                                                                                                                                                    line-height: 30px;
+                                                                                                                                                    font-size: 12px;
+                                                                                                                                                    border-width: 1px;"  value="取消" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+

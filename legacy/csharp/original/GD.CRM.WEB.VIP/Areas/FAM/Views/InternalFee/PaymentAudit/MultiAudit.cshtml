@@ -1,0 +1,145 @@
+﻿@using Dchien.Legal.Service.FAM.InternalFee;
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.InternalFee.Payment.PaymentAuditModel
+
+<div class="slide-panels">
+    <div class="slide-panel active medium">
+        <div class="slide-panel-content">
+            <div class="panel-header">
+                <h5>提成审批</h5>
+                <a class="panel-close" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');">
+                    <i class="next-icon next-icon-close next-small" style="font-size: 0px;">close</i>
+                </a>
+                <div class="head-custom"></div>
+            </div>
+            <div class="placeholder">...</div>
+            <div class="panel-body">
+                <div class="panel-body-content">
+                    <div class="page-overview-panel-apply">
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ">
+
+                                    <div class="table-content" style="padding:15px">
+                                    <form class="form-horizontal form-horizontal ">
+                               
+                                        <div class="simple-form-field  ">
+                                            <div class="form-group ">
+
+                                                <div class="col-sm-10">
+                                                    <textarea id="Audit_AuditContent" type="text" class="form-control"
+                                                              rows="3" placeholder="审批意见"
+                                                              name="Audit_AuditContent" required="required"></textarea>
+ 
+                                                </div>
+
+                                                @Html.HiddenFor(m => m.PaymentIds)
+                                            </div>
+                                        </div>
+                                        <div class="simple-form-field  ">
+                                            <div class="form-group simple-form-submit " style="margin-bottom:0px">
+                                                <div class="col-sm-4">
+                                                    <input class="btn btn-primary" type="button" id="btnPaymentApplicationApproved" value="同意" />
+                                                    <input class="btn btn-default" type="button" id="btnPaymentApplicationRejected" value="拒绝" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+ 
+                                <div class="form-group">
+                                    <div class="col-sm-12" style="padding:0px">
+                                        <div class="gridSection">
+                                            <table class="aps-table aps-widget aps-ani-transition " id="tblInternalFeeObjects" width="100%">
+                                                <colgroup>
+                                                    <col style="width: 12%">
+                                                    <col style="width: 8%">
+                                                    <col style="width: 8%">
+                                                    <col style="width: 6%">
+                                                    <col style="width: 8%">
+                                                    <col style="width: 8%">
+                                                    <col style="width: 8%">
+                                                    <col style="width: 8%">
+                                                    
+                                                </colgroup>
+                                                <thead>
+                                                    <tr>
+                                                        <th>案号</th>
+                                                        <th>提成类型</th>
+                                                        <th>支付对象</th>
+                                                        <th>金额</th>
+
+                                                        <th>已付<br>调查费</th>
+                                                        <th>已付<br>案源费</th>
+                                                        <th>已付<br>文书费</th>
+                                                        <th>已付<br>开庭费</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+
+                                                    @if (Model.Payments != null && Model.Payments.Any())
+                                                    {
+                                                        foreach (var payment in Model.Payments)
+                                                        {
+                                                            if (payment.PaymentObjects != null && payment.PaymentObjects.Any())
+                                                            {
+                                                                foreach (var item in payment.PaymentObjects.OrderBy(x => x.CaseNo))
+                                                                {
+                                                                    var internalFee = InternalFeeService.Instance.GetInternalFee(item.InternalFeeId.Value);
+
+                                                                    <tr>
+                                                                        <td style="text-align: center">
+                                                                            <span>@item.CaseNo</span>
+                                                                        </td>
+                                                                        <td style="text-align: center;">
+                                                                            <span>@internalFee.FeeTypeName</span>
+                                                                        </td>
+                                                                        <td style="text-align: center">
+                                                                            <span>@internalFee.PaymentObjectName</span>
+                                                                        </td>
+
+                                                                        <td style="text-align: center; padding:0px">
+                                                                            <span style="color:blue">@(item.InternalFeePaidAmount.HasValue ? item.InternalFeePaidAmount.Value : 0)</span>
+                                                                        </td>
+                                                                        <td style="text-align: center; padding:0px">
+                                                                            <span style="color:red">@(payment.PaymentBasic.Total_Amount_11040070)</span>
+                                                                        </td>
+                                                                        <td style="text-align: center; padding:0px">
+                                                                            <span style="color:red">@(payment.PaymentBasic.Total_Amount_11040020)</span>
+                                                                        </td>
+                                                                        <td style="text-align: center; padding:0px">
+                                                                            <span style="color:red">@(payment.PaymentBasic.Total_Amount_11040030)</span>
+                                                                        </td>
+                                                                        <td style="text-align: center; padding:0px">
+                                                                            <span style="color:red">@(payment.PaymentBasic.Total_Amount_11040040)</span>
+                                                                        </td>
+                                                                    </tr>
+                                                                }
+                                                            }
+
+                                                        }
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel-footer">
+            <div class="btn-con">
+                <input type="button" class="btn  btn-normal" style="border-radius: 0;
+                                                                        padding: 0 16px;
+                                                                        height: 32px;
+                                                                        line-height: 30px;
+                                                                        font-size: 12px;
+                                                                        border-width: 1px;" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');" value="取消" />
+            </div>
+        </div>
+    </div>
+</div>
+

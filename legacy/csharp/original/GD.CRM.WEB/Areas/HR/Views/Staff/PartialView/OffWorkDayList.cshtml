@@ -1,0 +1,120 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.HR.ViewModels.Staff.OffWorkDayListModel
+@{
+    var display = "display:block";
+
+    if (@Model.OffWorkDayList != null && @Model.OffWorkDayList.Count > 0)
+    {
+        display = "display:none";
+    }
+}
+<form id="postForm" action="">
+    <div class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table table-hover' id="tblOffWorkDayList" width="100%">
+                <colgroup>
+                    <col style="width:10%">
+                    <col style="width:10%">
+                    <col style="width: 15%">
+                    <col style="width: 15%">
+                    <col style="width: 40%">
+                    <col style="width: 10%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th style="text-align: center">
+                            请假开始日期
+                        </th>
+                        <th style="text-align: center">
+                            请假结束日期
+                        </th>
+                        <th style="text-align: center">
+                            请假小时
+                        </th>
+                        <th style="text-align: center">
+                            请假类型
+                        </th>
+                        <th style="text-align: center">
+                            备注
+                        </th>
+                        <th style="text-align: center">
+                            操作
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.OffWorkDayList != null && Model.OffWorkDayList.Any())
+                    {
+                        foreach (var item in Model.OffWorkDayList)
+                        {
+                            <tr>
+
+                                <td style="text-align: center">
+                                    <span>@(item.OffWorkBeginDate.HasValue ? item.OffWorkBeginDate.Value.ToString("yyyy-MM-dd") : string.Empty)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(item.OffWorkEndDate.HasValue ? item.OffWorkEndDate.Value.ToString("yyyy-MM-dd") : string.Empty)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@item.OffWorkHours</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@item.OffWorkDayType</span>
+                                </td>
+                                <td style="text-align: left; ">
+                                    <span>@item.Remark</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <a style="color:green;" href="javascript:void(0);">
+                                        <span class="btn_staffoffworkday_add glyphicon glyphicon-plus"  seqId="@item.SeqId"></span>
+                                    </a>
+                                    <a style="color:red;" href="javascript:void(0);">
+                                        <span class="btn_staffoffworkday_remove glyphicon glyphicon-remove" seqid="@item.SeqId"></span>
+                                    </a>
+                                </td>
+
+                            </tr>
+                        }
+                    }
+                </tbody>
+                <tfoot class="ng-scope" style="@display">
+                    <tr>
+                        <td colspan="6">
+                            <div class="pull-left"></div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box offworkday">
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            @if (Model.OffWorkDayList != null && Model.OffWorkDayList.Any())
+            {
+
+            }
+            else
+            {
+                <div class="simple-grid-none-data-wrap">
+                    <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                            <div class="text-size-16 tip-text inline-block">
+                                <span class="margin-left ng-binding"></span>没有查询到请假记录，可以去
+                                <a href="javascript:void(0);" class="ng-binding"  style="color: #039" id="btnOffWorkDayCreate">新建</a>
+                                <span class="ng-binding"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+        </div>
+    </div>
+</form>

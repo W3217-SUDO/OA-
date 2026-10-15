@@ -1,0 +1,32 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+ @{
+     var paymentTypes = Dchien.Legal.Service.FAM.AR.Payment.PaymentTypeService.Instance.GetPaymentTypeList();
+ }
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<div class="i_common_box" style='width:300px'>
+    <div class="i_common_hd">
+        请选择
+        <input type="hidden" id="hidPaymentTypeId">
+        <input type="hidden" id="hidPaymentTypeName">
+    </div>
+    <div class="i_common_bd">
+        <ul class="i_common_ul layoutfix">
+            @if (paymentTypes != null && paymentTypes.Count > 0)
+            {
+                foreach (var p in paymentTypes)
+                {
+                    <li style='width:80px'><a href="javascript:void(0)" paymenttypeid="@p.PaymentTypeId" name="@p.PaymentTypeName">@p.PaymentTypeName</a></li>
+                }
+
+                <li id="btnClear" style='width:80px'><a href="javascript:void(0)" name="">清空</a></li>
+            }
+        </ul>
+    </div>
+</div>
+
+
+

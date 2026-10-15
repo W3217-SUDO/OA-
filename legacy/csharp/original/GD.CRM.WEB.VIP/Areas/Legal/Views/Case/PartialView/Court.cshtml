@@ -1,0 +1,58 @@
+﻿@using Dchien.Legal.Service.BAS.Type
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/citys/city.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<link type="text/css" rel="stylesheet" href=@Url.Content("~/Resource/css/ticketSystem/add.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"]) />
+
+<script src="@Url.Content("~/Scripts/Common/jquery.form.js")" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/citys/jquery.citys.json.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/citys/jquery.citys.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.Court.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+
+        .bootstrap-tagsinput span {
+            line-height: 1.4;
+        }
+</style>
+
+@{
+    if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_110)
+    {
+        Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Court.cshtml", Model);
+    }
+    else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_130)
+    {
+        Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Court.cshtml", Model);
+    }
+    else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_150)
+    {
+        Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Court.cshtml", Model);
+    }
+
+    else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_120)
+    {
+        Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Court.cshtml", Model);
+    }
+
+    else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_140)
+    {
+        Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Court.cshtml", Model);
+    }
+}

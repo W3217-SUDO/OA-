@@ -1,0 +1,57 @@
+﻿@using Dchien.Legal.BizModel.IPR.Case
+@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.IPR.Case
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseLogListModel
+
+<script type="text/javascript">
+    $(function() {
+         $("[data-toggle='tooltip']").tooltip();
+    });
+</script>
+
+
+<form id="postForm" action="">
+
+    @if (Model.CaseLogs != null && Model.CaseLogs.Count > 0)
+    {
+        var lst = Model.CaseLogs.FindAll(x=>x.LogType == (int)CaseLogType.Business).GroupBy(x => new DateTime(x.OperatorDate.Value.Year, x.OperatorDate.Value.Month, 1)).OrderByDescending(x=>x.Key)
+            .ToList();
+
+        foreach (var x in lst)
+        {
+            <dl class="product-fun-update-list" style="margin-top: 0px; margin-bottom: 0px;overflow-x:hidden;max-height:max-content ">
+
+                <dt style="margin-top:3px;margin-bottom: 3px">@x.Key.ToString("yyyy-MM")</dt>
+                <dd>
+                    <ul class="month-list">
+                        @foreach (var item in x.ToList<BizCaseLog>().OrderByDescending(d => d.OperatorDate))
+{
+    <li class="first border" style="margin-top: 20px;">
+        <i class="li-icon"></i>
+        <span style='float: left; top: 0px;' class="date">@(item.OperatorDate.HasValue ? item.OperatorDate.Value.ToString("yyyy-MM-dd") : "")</span>
+
+        @if (Dchien.Legal.Service.HR.Staff.StaffService.Instance.GetStaff(item.Operator) != null)
+        {
+            <a style='width: 300px;float: left; overflow: hidden; top: 0px; text-overflow: ellipsis; white-space: nowrap; ' title="@item.Content"
+               data-toggle="tooltip" data-container='body' data-placement="bottom" onclick="javascript:caseInfo.CaseLog.Open(@item.LogId); " href="javascript:void(0);">
+                @Dchien.Legal.Service.HR.Staff.StaffService.Instance.GetStaff(item.Operator).StaffBasic.StaffChName : @item.Content;
+            </a>
+        }
+        else
+        {
+            <a style='width: 300px;float: left; overflow: hidden; top: 0px; text-overflow: ellipsis; white-space: nowrap; ' title="@item.Content"
+               data-toggle="tooltip" data-container='body' data-placement="bottom" onclick="javascript:caseInfo.CaseLog.Open(@item.LogId); " href="javascript:void(0);">
+                @item.Operator: @item.Content;
+            </a>
+        }
+    </li>
+}
+                    </ul>
+                </dd>
+            </dl>
+        }
+    }
+
+</form>
+

@@ -1,0 +1,162 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.Lawsuit.Case
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.AP.CaseFeeListModel
+<form id="postForm" action="">
+    <div id="casegridSection" class="gridSection">
+        <div class="context" id='divContextList' style="overflow-y: auto; ">
+            <table class="table table-hover " id="tblCaseFee" style='width: 100%; margin-top: 0px; margin-bottom: 0px;'>
+                <colgroup>
+                        <col style="width: 3%">
+                    <col style="width: 8%">
+                        <col style="width: 8%">
+                        <col style="width: 8%">
+                        <col style="width: 6%">
+                        <col style="width: 8%">
+                        <col style="width: 9%">
+                        <col style="width: 9%">
+                        <col style="width: 9%">
+                        <col style="width: 8%">
+                    </colgroup>
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>合同号</th>
+                        <th style="text-align: left">费用类型</th>
+                        <th>提交日期</th>
+                        <th>应付金额</th>
+                        <th>收款人</th>
+                        <th>付款人</th>
+                        <th>付款方式</th>
+                        <th>付款日期</th>
+                        <th>付款发票号</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.CaseFeeList != null && Model.CaseFeeList.Any())
+                    {
+                        foreach (var item in Model.CaseFeeList)
+                        {
+                            <tr>
+                                <td>
+                                    <input type="checkbox" name="chkCaseFeeId" casefeetypeid="@item.CaseFeeTypeId" casefeetypename="@item.CaseFeeTypeName" value="@item.CaseFeeId">
+                                </td>
+                                <td style="text-align: center">
+                                     @item.ContractNo 
+                                </td>
+                                <td class="feeId" style="display: none">
+                                    @Html.HiddenFor(m => item.CaseFeeId)
+                                    @Html.HiddenFor(m => item.CaseFeeGuid)
+                                    @Html.HiddenFor(m => item.CaseNo)
+                                    @Html.HiddenFor(m => item.InvoiceFile.InvoiceFileName)
+                                </td>
+                                <td style="text-align: left">
+                                    <span style='width: 150px; float: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>
+                                        (@item.CaseFeeTypeId)
+                                        @{
+                                            var feeTypeName = item.CaseFeeTypeName;
+                                        }
+                                        @feeTypeName
+                                    </span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(item.InformDate.HasValue ? item.InformDate.Value.ToString("yyyy-MM-dd") : string.Empty)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span> @(item.Amount.HasValue ? item.Amount.Value.ToString() : "0") </span>
+                                </td>
+        
+                                @{
+                                    if (item.PaymentMode == (int)Dchien.Legal.Entity.FAM.AR.CaseFee.CaseFeeStatus.ByCustomer)
+                                    {
+                                        <td style="text-align: center">
+                                            -
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span>-</span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span>客户自缴</span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span>-</span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span>-</span>
+                                        </td>
+                                    }
+                                    else if  (item.Payment != null)
+                                    {
+                                        <td style="text-align: center">
+                                            <span>@item.Payment.PaymentType.OrganizationName</span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span>@item.Payment.PaymentBasic.PayerName</span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span>@item.Payment.PaymentBasic.PaymentModeName</span>
+                                        </td>
+                  
+                                        <td style="text-align: center">
+                                            @(item.Payment.PaymentBasic.PaidDate.HasValue ? item.Payment.PaymentBasic.PaidDate.Value.ToString("yyyy-MM-dd") : string.Empty)
+                                        </td>
+
+                                        <td style="text-align: center">
+                                            @item.Payment.PaymentBasic.InvoiceNo
+                                        </td>
+                                    }
+                                    else
+                                    { 
+                                       <td style="text-align: center">
+                                        </td>
+                                        <td style="text-align: center">
+                                        </td>
+                                        <td style="text-align: center">
+                                        </td>
+                                        <td style="text-align: center">
+                                        </td>
+                                        <td style="text-align: center">
+                                        </td>
+                                    }
+                                }
+
+                            </tr>
+                        }
+                    }
+                </tbody>
+                <tfoot class="ng-scope" style="display: none">
+                    <tr>
+                        <td colspan="10">
+                            <div class="pull-left"><span style="display: inline-block; vertical-align: middle; zoom: 1; padding: 8px 16px; color: red; "></span></div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box casefee">
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            <div class="simple-grid-none-data-wrap">
+                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                        <div class="text-size-16 tip-text inline-block">
+                            <span class="margin-left ng-binding"></span>没有查询到应付账款信息。
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <div class="contextMenu" id="feeMenu" style="display: none;">
+        <ul>
+            <li id="refresh">刷新</li>
+        </ul>
+    </div>
+    @Html.HiddenFor(m => Model.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => Model.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => Model.PageSize, new { name = "PageSize" })
+</form>

@@ -1,0 +1,271 @@
+﻿.message-center .no-data-info {
+    height: 200px;
+    font-size: 18px;
+    padding-top: 90px;
+    margin-top: -21px;
+}
+
+    .message-center .no-data-info .icon-info-1 {
+        color: #0099cc;
+        font-size: 20px;
+    }
+
+.message-center .table-area {
+    height: 320px;
+    padding: 0px;
+    overflow-y: auto;
+}
+
+    .message-center .table-area .table {
+        margin: 0px;
+    }
+
+.message-center .title-unread {
+    color: #000;
+}
+
+    .message-center .title-unread:hover {
+        color: #06c;
+    }
+
+.message-center .title-read {
+    color: #999;
+}
+
+    .message-center .title-read:hover {
+        color: #06c;
+    }
+
+.message-center .column-text {
+    color: #999;
+}
+
+.message-center .state-column {
+    width: 8px;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+    .message-center .state-column .state-unread {
+        font-size: 16px;
+        color: #428bca;
+    }
+
+.message-center .title-column {
+    width: 60%;
+}
+
+.message-center .title-panel-title {
+    float: left;
+}
+
+.message-center .title-panel-operations {
+    line-height: 40px;
+    float: right;
+}
+
+    .message-center .title-panel-operations .title-panel-btn {
+        display: inline-block;
+        border-left: 1px solid #e1e6eb;
+        width: 40px;
+        text-align: center;
+        cursor: pointer;
+    }
+
+        .message-center .title-panel-operations .title-panel-btn span {
+            font-size: 14px;
+            font-weight: bold;
+            vertical-align: text-bottom;
+        }
+
+.message-center .total-unread-count {
+    display: block;
+    padding: 0px 4px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    color: #FFF;
+    margin: 3px 8px 0px 0px;
+    background: #09C;
+    border-radius: 2px;
+}
+
+ .total-unread-count {
+    display: block;
+    padding: 0px 4px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    color: #FFF;
+    margin: 3px 8px 0px 0px;
+    background: #09C;
+    border-radius: 2px;
+}
+
+.message-center .deadline-leftdays-normal {
+    display: block;
+    padding: 0px 4px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    color: #FFF;
+    margin: 4px 4px 0px 0px;
+    background: #09C;
+    border-radius: 2px;
+}
+
+.message-center .deadline-leftdays-warning {
+    display: block;
+    padding: 0px 4px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    color: #FFF;
+    margin: 3px 3px 0px 0px;
+    background: #ff9900;
+    border-radius: 2px;
+}
+
+.message-center .deadline-leftdays-warning-red {
+    display: block;
+    padding: 0px 4px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    color: #FFF;
+    margin: 3px 3px 0px 0px;
+    background: red;
+    border-radius: 2px;
+}
+
+.message-center .deadline-leftdays-warning-green {
+    display: block;
+    padding: 0px 4px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    color: #FFF;
+    margin: 3px 3px 0px 0px;
+    background: green;
+    border-radius: 2px;
+}
+
+
+.message-center .nav-showchild .nav-extend {
+    display: none;
+}
+
+.message-center .nav-showchild ul .nav-extend {
+    display: block;
+}
+
+.message-center .table-with-title .table {
+    margin-top: 0px;
+}
+
+    .message-center .table-with-title .table th:first-child {
+        padding-left: 20px;
+    }
+
+    .message-center .table-with-title .table td:first-child {
+        padding-left: 20px;
+    }
+
+.message-center .table-group-with-title .table {
+    margin-top: 0px;
+    margin-bottom: -1px;
+}
+
+.message-center .table-group-with-title .last-table {
+    margin-bottom: 20px;
+}
+
+.message-center .operation-colunm-width {
+    width: 10%;
+    text-align: right;
+}
+
+.message-center .subcategory-selector {
+    width: auto;
+    margin-right: 10px;
+    display: inline-block;
+}
+
+.message-center .btn-toinstlist {
+    margin-top: 6px;
+}
+
+.message-center .state-selector-item {
+    width: 115px;
+    text-align: center;
+}
+
+.message-center .state-selector-item-nowidth {
+    text-align: center;
+}
+
+.message-center .message-detail-container {
+    padding: 16px 74px;
+    font-size: 14px;
+    line-height: 24px;
+    margin-bottom: 20px;
+}
+
+.sub-valid-padding-left {
+    padding-left: 10px;
+}
+
+.sub-valid-gray {
+    color: #AAA;
+}
+
+.modifyDialogWindow {
+    width: 800px;
+    margin: 30px auto;
+    position: relative;
+    z-index: 1050;
+    width: auto;
+    margin: 0px;
+}
+
+    .modifyDialogWindow .modal-dialog {
+        width: 800px;
+        margin: 30px auto;
+    }
+
+.msgEmpty {
+    text-align: center;
+    line-height: 68px;
+}
+
+.linediv {
+    margin-bottom: 10px;
+}
+
+.xsLabel {
+    font-weight: bold;
+}
+
+.xsSendSuccess {
+    margin-right: 10px;
+    height: 32px;
+    color: #090;
+    background-color: #F2FFEA;
+    border: solid 1px #C7DDB9;
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 14px;
+    padding: 8px 16px;
+}
+
+.xsSendFail {
+    color: #ee2117;
+    margin-right: 10px;
+    height: 32px;
+    background-color: #FFF6F2;
+    border: solid 1px #F1ACAC;
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 14px;
+    padding: 8px 16px;
+}

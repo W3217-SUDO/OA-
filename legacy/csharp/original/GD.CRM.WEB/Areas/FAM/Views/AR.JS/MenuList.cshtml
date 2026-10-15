@@ -1,0 +1,119 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.System
+
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var pageTypeId = ViewContext.RouteData.Values["id"] == null ? "" : ViewContext.RouteData.Values["id"].ToString().ToLower();
+
+    var actived = "active";
+
+    var menus = MenuService.Instance.GetMenusByCurrentUser();
+
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">回款管理</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+                @{
+
+                if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_5001002001) != null)
+                {
+                    actived = action == "PaymentCreate".ToLower() ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                              
+                                    <a href=@Url.Content(string.Format("~/{0}/FAM/AR/List", PageId.PageId_5001002001)) class="ng-scope" >
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">新增回款</div>
+                                    </a>
+                        </div>
+                    </li>
+
+                  }
+                  
+                                      if (action == "PaymentEdit".ToLower())
+                    {
+                        <li class='active'>
+                            <div class="ng-isolate-scope">
+                                <a href='javascript:void(0);' class="ng-scope">
+                                    <div class="nav-icon"></div>
+                                    <div class="nav-title ng-binding">修改回款</div>
+                                </a>
+                            </div>
+                        </li>
+                    }
+                     else if (action == "PaymentPush".ToLower())
+                    {
+                        <li class='active'>
+                            <div class="ng-isolate-scope">
+                                <a href='javascript:void(0);' class="ng-scope">
+                                    <div class="nav-icon"></div>
+                                    <div class="nav-title ng-binding">领取回款</div>
+                                </a>
+                            </div>
+                        </li>
+                    }
+                    
+                    
+                    if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_5001002002) != null)
+                    {
+
+                        actived = (action == "PaymentList".ToLower() && "FAM/AR/PaymentList/5001002002".ToLower().IndexOf(pageTypeId) > -1) ? "class=active" : "";
+
+                        <li @actived>
+                            <div class="ng-isolate-scope">
+                               
+                                    <a href=@Url.Content(string.Format("~/{0}/FAM/AR/PaymentList", PageId.PageId_5001002002)) class="ng-scope">
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">我的回款</div>
+                                    </a>
+                            </div>
+                        </li>
+                    }
+                    
+                   if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_5001002003) != null)
+                    {
+
+                        actived = (action == "PaymentList".ToLower() && "REDACTED_ARCHIVE_ONLY".ToLower().IndexOf(pageTypeId) > -1) ? "class=active" : "";
+
+                        <li @actived>
+                            <div class="ng-isolate-scope">
+                                
+                                    <a href=@Url.Content(string.Format("~/{0}/FAM/AR/PaymentList", PageId.PageId_5001002003)) class="ng-scope">
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">部门回款</div>
+                                    </a>
+                            </div>
+                        </li>
+                    }
+                    
+                   if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_5001002004) != null)
+                    {
+
+                        actived = (action == "PaymentList".ToLower() && "REDACTED_ARCHIVE_ONLY".ToLower().IndexOf(pageTypeId) > -1) ? "class=active" : "";
+
+                        <li @actived>
+                            <div class="ng-isolate-scope">
+                                
+                                    <a href=@Url.Content(string.Format("~/{0}/FAM/AR/PaymentList", PageId.PageId_5001002004)) class="ng-scope">
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">业绩统计</div>
+                                    </a>
+                            </div>
+                        </li>
+                    }
+                }
+
+            </ul>
+        </div>
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

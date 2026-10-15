@@ -1,0 +1,224 @@
+﻿@using Dchien.Legal.Web.Areas.CRM.ViewModels.Customer
+
+@model Dchien.Legal.Web.Areas.CRM.ViewModels.Customer.CustomerSearchingModel
+
+<script src="@Url.Content("~/Scripts/CRM/Customer/CRM.Customer.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div class="console-container ng-scope">
+            <div class="row ng-scope">
+                <div class="col-sm-12">
+                    <div class="console-title console-title-border clearfix">
+                        <div class="pull-left">
+                            <h5>客户利益冲突检索</h5>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-sm-12">
+                    <div>
+                        <div style="margin-top:24px" class="ng-isolate-scope">
+                            <div class="ng-isolate-scope">
+                                <div style="margin: 16px 0" class="console-step row">
+                                    <div class="step col-md-6 step-first step-active">
+                                        <span class="ng-binding">1.输入完整企业名称</span>
+                                    </div>
+                                    <div class="step col-md-6 step-end">
+                                        <span class="ng-binding">2.企业信息</span>
+                                    </div>
+                                   
+                                </div>
+                            </div>
+                            <div ng-repeat="stepView in steps" >
+                                <div>
+                                    <div>
+                                        <style type="text/css" >
+                                            .tableWrapper .table {
+                                                margin-bottom: 0px;
+                                            }
+                                            .table-hover tbody tr.trWarapper:hover td {
+                                                background-color: #FCF8E2;
+                                            }
+                                        </style>
+                                        <div >
+
+                                            <div class="alert alert-info clearfix" style="padding: 8px 12px 0px;line-height: 18px;margin-bottom: 6px;border-radius: 0px">
+                                                <div class="pull-left">
+                                                    <span>温馨提示</span> ：
+                                                </div>
+                                                <div class="pull-left">
+                                                    <p>1. <span>需要输入完整的企业名称，才能查看具体信息.</span> </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="console-box-border" id="divCustomerSearchingStep1" >
+                                <div class="col-padding row-padding margin-bottom-2 usage-record-width">
+                                    <div class="ng-isolate-scope">
+                                        <form novalidate="" class="form-horizontal   ng-scope ng-pristine ng-valid">
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>企业名称</span>：
+                                                </label>
+                                                <div class="col-sm-2">
+                                                    <input autocomplete="off" class="form-control" id="CustomerName"   type="text" value="">
+                                                    <span id="help-info-step1" class="help-block"></span>
+                                                </div>
+                                            </div>
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for=""></label>
+                                                <div class="col-sm-8">
+                                                    <div>
+                                                        <a class="btn btn-default" id="btnCustomerSearching">
+                                                            <span>检索</span>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="console-box-border" id="divCustomerSearchingStep2" style="display:none">
+                                <div class="col-padding row-padding margin-bottom-2 usage-record-width">
+                                    <div class="ng-isolate-scope">
+                                        <form novalidate="" class="form-horizontal   ng-scope ng-pristine ng-valid" >
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>企业名称</span>：
+                                                </label>
+                                                <div class="col-sm-2">
+                                                    @Html.TextBoxFor(m => m.Customer.CustomerBasic.CustomerName,
+                                                   new { @class = "form-control",
+                                                       @readonly = true,
+                                                       @style = "height:28px;border:0px;webkit-box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); ",
+                                                       @autocomplete = "off"
+                                                   })
+                                                    
+                                                </div>
+                                            </div>
+                   
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>最新立案号</span>：
+                                                </label>
+                                                <div class="col-sm-2">
+                                                    @Html.TextBoxFor(m => m.Case.Basic.CaseNo, new {
+                                                   @readonly = true,
+                                                   @class = "form-control",
+                                                   @style = "height:28px;border:0px;webkit-box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); ",
+                                                   @autocomplete = "off" })
+                                                    
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>最新立案日期</span>：
+                                                </label>
+                                                <div class="col-sm-2">
+                                                    @Html.TextBoxFor(m => m.Case.Basic.CaseRegisterDate, new { @readonly = true,
+                                                   @class = "form-control",
+                                                   @style = "height:28px;border:0px;webkit-box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); ",
+                                                   @autocomplete = "off" })
+                                                    
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>原告</span>：
+                                                </label>
+                                                <div class="col-sm-2">
+                                
+
+                                                    @Html.TextBoxFor(m => m.Case.Basic.AppellantNames, new
+                                                                                    {
+                                                                                        @readonly = true,
+                                                                                        @class = "form-control",
+                                                                                        @style = "height:28px;border:0px;webkit-box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); ",
+                                                                                        @autocomplete = "off"
+                                                                                    })
+
+
+
+                                                    
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>被告</span>：
+                                                </label>
+                                                <div class="col-sm-2">
+                                                    @Html.TextBoxFor(m => m.Case.Basic.AppelleeNames, new
+                                                          {
+                                                              @readonly = true,
+                                                              @class = "form-control",
+                                                              @style = "height:28px;border:0px;webkit-box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); ",
+                                                              @autocomplete = "off"
+                                                          })
+                                                </div>
+                                            </div>
+
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>第三人</span>：
+                                                </label>
+                                                <div class="col-sm-2">
+                                                    @Html.TextBoxFor(m => m.Case.Basic.TheThirdNames, new
+                                                   {
+                                                       @readonly = true,
+                                                       @class = "form-control",
+                                                       @style = "height:28px;border:0px;webkit-box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); ",
+                                                       @autocomplete = "off"
+                                                   })
+
+                                                </div>
+                                            </div>
+
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>我方客户</span>：
+                                                </label>
+                                                <div class="col-sm-2">
+                                                    @Html.TextBoxFor(m => m.Case.Basic.CustomerName, new
+                                                    {
+                                                        @readonly = true,
+                                                        @class = "form-control",
+                                                        @style = "height:28px;border:0px;webkit-box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); ",
+                                                        @autocomplete = "off"
+                                                    })
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>客户管理人</span>：
+                                                </label>
+                                                <div class="col-sm-2">
+                                                    @Html.TextBoxFor(m => m.Customer.CustomerBasic.BusinessOwnerName, new { @readonly = true,
+                                                   @class = "form-control",
+                                                   @style = "height:28px;border:0px;webkit-box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075); ",
+                                                   @autocomplete = "off" })
+                                                    
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

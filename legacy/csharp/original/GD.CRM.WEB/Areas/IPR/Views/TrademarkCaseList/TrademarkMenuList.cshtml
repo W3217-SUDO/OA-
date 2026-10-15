@@ -1,0 +1,144 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Service
+
+@using Dchien.Legal.Entity.IPR.Case
+
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">商标监控</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @{ actived = id == PageId.PageId_1001002012 ? "class=active" : ""; }
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/TrademarkCaseList/List/1001002012") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                var serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType12;
+                                var totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                             }
+                            <div class="nav-title ng-binding">商标提出复审(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+ 
+                @{ actived = id == PageId.PageId_1001002013 ? "class=active" : ""; }
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/TrademarkCaseList/List/1001002013") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType13;
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">商标补正(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002014 ? "class=active" : ""; }
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/TrademarkCaseList/List/1001002014") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType14;
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">商标补证据(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+ 
+                @{ actived = id == PageId.PageId_1001002015 ? "class=active" : ""; }
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/TrademarkCaseList/List/1001002015") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType15;
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">商标续展(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == PageId.PageId_1001002016 ? "class=active" : ""; }
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/TrademarkCaseList/List/1001002016") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType16;
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">商标初审公布(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+
+                @{ actived = id == PageId.PageId_1001002023? "class=active" : ""; }
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/IPR/TrademarkCaseList/List/1001002023") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.EventTypeId = (int)CaseEventType.EventType23;
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ng-binding">商标异议答辩(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+
+            </ul>
+        </div>
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

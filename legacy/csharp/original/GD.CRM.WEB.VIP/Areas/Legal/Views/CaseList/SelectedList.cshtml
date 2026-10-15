@@ -1,0 +1,246 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type;
+@using Dchien.Legal.Entity.System;
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseList.CaseListModel
+
+@{ 
+    Layout = null;
+}
+<div class="modal fade" id="caseListModal">
+    <div class="modal-dialog" style="width:1000px">
+        <div class="modal-content" ng-transclude="">
+            <div>
+                @using (Html.BeginForm("SelectedList", "CaseList", FormMethod.Post, new { id = "caseListForm", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript: $('#caseListModal').modal('hide');">×</button>
+                        <h5 class="modal-title ">案件列表</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group" style="margin-top:0px;margin-bottom:0px">
+                            <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                                <div class="col-sm-12 ">
+
+                                    @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                    @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                    @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                    @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                    @Html.HiddenFor(m => m.SearchCondition.Sorting)
+                                    @Html.HiddenFor(m => m.SearchCondition.CaseTypeId)
+
+                                    <table class="search_table" style="width: 600px">
+                                        <colgroup>
+                                            <col style="width: 140px;" />
+                                            <col style="width: 190px" />
+                                            <col style="width: 60px;" />
+                                            <col style="width: 160px" />
+                                            <col style="width: 80px;" />
+                                            <col style="width: 160px" />
+                                            <col style="width: 60px;" />
+                                            <col style="width: 60px" />
+                                            <col style="width: 80px" />
+                                            <col />
+                                        </colgroup>
+                                        <tr>
+                                            <th>
+                                                原告/申请人/公诉机关：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.AppellantName, new { @class = "form-control", @placeholder = "原告", @style = "width:100%" })
+                                            </td>
+
+
+                                            <th>
+                                                案号：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.CaseNos, new { @class = "form-control", @placeholder = "案号", @style = "width:100%" })
+                                            </td>
+
+                                            <th>
+                                                关键字：
+                                            </th>
+                                            <td colspan="2">
+                                                @Html.TextBoxFor(m => m.SearchCondition.Keyword, new { @class = "form-control", @placeholder = "案号、法院号、案件名称、客户名称", @style = "width:100%" })
+                                            </td>
+
+                                        </tr>
+                                        <tr>
+                                            <th>
+                                                被告/被申请人：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.AppelleeName, new { @class = "form-control", @placeholder = "被告", @style = "width:100%" })
+                                            </td>
+
+                                            <th>
+                                                公证书号：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.NotarialNo, new { @class = "form-control", @placeholder = "公证书号", @style = "width:100%" })
+                                            </td>
+
+
+                                            <th>
+                                                法院/机构：
+                                            </th>
+                                            <td colspan="2">
+                                                @Html.TextBoxFor(m => m.SearchCondition.CourtName, new { @class = "form-control", @placeholder = "法院名称", @style = "width:100%" })
+                                            </td>
+                                        </tr>
+                                        <tr>
+
+                                            <th>
+                                                第三人/受害人：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.TheThirdName, new { @class = "form-control", @placeholder = "第三人", @style = "width:100%" })
+                                            </td>
+                                            <th>
+                                                经办律师：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.CaseLawyer, new { @class = "form-control", @placeholder = "经办律师", @style = "width:100%" })
+                                            </td>
+
+                                            <th>
+                                                开庭律师：
+                                            </th>
+                                            <td colspan="2">
+
+                                                @Html.TextBoxFor(m => m.SearchCondition.CourtLawyer, new { @class = "form-control", @placeholder = "开庭律师", @style = "width:100%" })
+                                            </td>
+                                            <td colspan="2">
+                                                <a href="javascript:void(0);" class="btn btn-primary " id="btnCaseListSearch">
+                                                    <span>查询</span>
+                                                </a>
+
+                                            </td>
+                                        </tr>
+
+
+
+                                    </table>
+
+                                    <div class='divcaseconditioncasephases'></div>
+                                    <div class='divcaseconditioncasetypes'></div>
+                                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                        <div class="i_common_wrap">
+                                            <div class="i_common_list"></div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div class="col-sm-12 select-table">
+                                    <div class="">
+                                        <table class="aps-table aps-widget aps-ani-transition ">
+                                            <colgroup>
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 20%">
+                                                <col style="width: 30%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width: 10%">
+                                                <col style="width:17px">
+                                            </colgroup>
+                                            <thead>
+                                                <tr>
+                                                    <th style="text-align: center">
+                                                        案件编号
+                                                        <span>
+                                                            <span class="aps-state-hidden"></span>
+                                                            <span data-field="T.caseNo" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                                <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                                <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                                   style="top:9px">
+                                                                </i>
+                                                            </span>
+                                                        </span>
+                                                    </th>
+
+                                                    <th style="text-align: center">案件阶段</th>
+                                                    <th style="text-align: center">原告</th>
+                                                    <th style="text-align: center">被告</th>
+                                                    <th style="text-align: left">开庭律师 </th>
+                                                    <th style="text-align: left">经办律师 </th>
+                                                    <th style="text-align: left">律师助理</th>
+                                                    <th></th>
+                                                </tr>
+                                            </thead>
+                                        </table>
+                                        <div id="divCaseList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                                            <table id="tblCaseList" class="aps-table aps-widget aps-ani-transition ">
+                                                <colgroup>
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+                                                    <col style="width: 20%">
+                                                    <col style="width: 30%">
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+                                                </colgroup>
+
+                                                <tbody>
+                                                    <tr style="display: none">
+                                                        <td>
+                                                            &nbsp;
+                                                        </td>
+                                                        <td style="text-align: center"></td>
+                                                        <td style="text-align: left"></td>
+                                                        <td style="text-align: left"></td>
+                                                        <td style="text-align: left"></td>
+                                                        <td style="text-align: left"></td>
+                                                        <td style="text-align: left"></td>
+                                                    </tr>
+                                                    <tr style="display: none">
+                                                        <td>
+                                                            &nbsp;
+                                                        </td>
+                                                        <td style="text-align: center"></td>
+                                                        <td style="text-align: left"></td>
+                                                        <td style="text-align: left"></td>
+                                                        <td style="text-align: left"></td>
+                                                        <td style="text-align: left"></td>
+                                                        <td style="text-align: left"></td>
+                                                    </tr>
+                                                </tbody>
+                                                <tfoot class="" style="display: none">
+                                                    <tr>
+
+                                                        <td colspan="7">
+
+                                                            <div class="">
+                                                                <div class="pull-right page-box caselist">
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                        <div class="simple-grid-none-data-wrap">
+                                            <div class="simple-grid-none-data text-center  ">
+                                                <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                                    <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                                    <div class="text-size-16 tip-text inline-block">
+                                                        <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                                        <span class="">。</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                        <div class="modal-footer">
+                            <input class="btn btn-default" onclick="javascript: $('#caseListModal').modal('hide');" type="button" value="关闭" />
+                        </div>
+                        }
+                    </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,116 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.CRM.ViewModels.LawFirm.ContactsModel
+
+@{
+    object htmlAttribute = null;
+    var title = Model.Contacts != null ? "修改联系人" : "新增联系人";
+ }
+
+<script src="@Url.Content("~/Scripts/LawFirm/Contacts.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="modal fade" id="contactsModal" tabindex="-1">
+    <div class="modal-dialog" style="width:550px">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" data-ng-click="close(false)" aria-hidden="true" id="btnContactsClose">×</button>
+                    <h5 class="modal-title ng-binding">@title</h5>
+                </div>
+                @*<div style="padding-left:10px;padding-right:10px">
+                    <div class="margin-top-2 alert alert-info">
+                        <b>提醒：</b><span style="color:#F00" class="ng-binding">@title</span>
+                    </div>
+                </div>*@
+                <div class="modal-body">
+                    @*<form class="form-horizontal ng-invalid ng-invalid-required" id="contactListAddForm">*@
+                    <form class="form-horizontal ng-invalid ng-invalid-required" id="contactsForm">
+
+                        @Html.HiddenFor(m => m.LawFirmId)
+                        @Html.HiddenFor(m => m.ContactsId)
+
+                        <div>
+                            <div class="form-group">
+                                <label for="Contacts_Contacts" class="col-sm-3 control-label">
+                                    <span class="text-danger ng-binding">*</span>
+                                    <span class="ng-binding">联系人</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextBoxFor(m => m.Contacts.Contacts, new { @class = "form-control" })
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="form-group">
+                                <label for="Contacts_ContactAddress" class="col-sm-3 control-label">
+                                    <span class="text-danger ng-binding">*</span>
+                                    <span class="ng-binding">联系地址</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextBoxFor(m => m.Contacts.ContactAddress, new { @class = "form-control" })
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="form-group">
+                                <label for="Contacts_ContactZip" class="col-sm-3 control-label">
+                                    <span class="text-danger ng-binding">*</span>
+                                    <span class="ng-binding">联系邮编</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextBoxFor(m => m.Contacts.ContactZip, new { @class = "form-control" })
+                                    @*@Html.TextAreaFor(m => m.CaseEvent.EventContent, new { @required = "true", maxlength = 1000, rows = 4, style = "width:120%" })*@
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="form-group">
+                                <label for="Contacts_ContactTelphone" class="col-sm-3 control-label">
+                                    <span class="text-danger ng-binding">*</span>
+                                    <span class="ng-binding">联系电话</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextBoxFor(m => m.Contacts.ContactTelphone, new { @class = "form-control" })
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="form-group">
+                                <label for="Contacts_ContactFax" class="col-sm-3 control-label">
+                                    <span class="text-danger ng-binding">*</span>
+                                    <span class="ng-binding">联系传真</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextBoxFor(m => m.Contacts.ContactFax, new { @class = "form-control" })
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="form-group">
+                                <label for="Contacts_ContactEmail" class="col-sm-3 control-label">
+                                    <span class="text-danger ng-binding">*</span>
+                                    <span class="ng-binding">联系EMAIL</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextBoxFor(m => m.Contacts.ContactEmail, new { @class = "form-control" })
+                                </div>
+                            </div>
+                        </div>
+
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary ng-binding" id="btnContactsSubmit">确定</button>
+                    <button class="btn btn-default ng-binding" id="btnContactsCancle">取消</button>
+                </div>
+
+            </div>
+        </div>
+    </div><!-- /.modal -->
+</div>
+
+<div id="licenseUploading" class="licenseUploading"></div>

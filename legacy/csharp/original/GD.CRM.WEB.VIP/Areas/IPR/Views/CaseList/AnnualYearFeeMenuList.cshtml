@@ -1,0 +1,256 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Service
+
+@using Dchien.Legal.Entity.IPR.Case
+
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+    var menus = MenuService.Instance.GetMenusByCurrentUser();
+
+    var startQuarter1 = DateTime.Now.AddMonths(0 - (DateTime.Now.Month - 1) % 3).AddDays(1 - DateTime.Now.Day);
+    var startQuarter = new DateTime(startQuarter1.Year, startQuarter1.Month, startQuarter1.Day);
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ">专利年费</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                   @{actived = id == PageId.PageId_1001015001 ? "class=active" : ""; }
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseList/AnnualYearFeeList", PageId.PageId_1001015001)) class="ng-scope">
+
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.CaseRequestDateFrom = new DateTime(DateTime.Now.Year, 1, 1);
+                                    serach.CaseRequestDateTo = new DateTime(DateTime.Now.Year, 12, 31);
+                                    serach.ByAFM = true;
+                                    serach.SearchByMonthAndDay = true;
+
+                                    var totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                                }
+                                <div class="nav-title ">@(DateTime.Now.ToString("yyyy"))年费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+
+
+                @if (startQuarter.AddMonths(-3) <= new DateTime(DateTime.Now.Year, 1, 1) && startQuarter.AddMonths(9) >new DateTime(DateTime.Now.Year, 1, 1))
+                {
+
+                    actived = id == PageId.PageId_1001015002 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseList/AnnualYearFeeList", PageId.PageId_1001015002)) class="ng-scope">
+
+                                <div class="nav-icon"></div>
+                                @{
+                                    serach = new CaseSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.CaseRequestDateFrom = new DateTime(DateTime.Now.Year, 1, 1);
+                                    serach.CaseRequestDateTo = new DateTime(DateTime.Now.Year, 3, 31);
+                                    serach.ByAFM = true;
+                                    serach.SearchByMonthAndDay = true;
+
+                                    totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                                }
+                                <div class="nav-title ">@(DateTime.Now.ToString("yy"))一季度年费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+@if (startQuarter.AddMonths(-3) <= new DateTime(DateTime.Now.Year, 4, 1) && startQuarter.AddMonths(9) >new DateTime(DateTime.Now.Year, 4, 1))
+{
+
+    actived = id == PageId.PageId_1001015003 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseList/AnnualYearFeeList", PageId.PageId_1001015003)) class="ng-scope">
+
+                                <div class="nav-icon"></div>
+                                @{
+                                    serach = new CaseSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.CaseRequestDateFrom = new DateTime(DateTime.Now.Year, 4, 1);
+                                    serach.CaseRequestDateTo = new DateTime(DateTime.Now.Year, 6, 30);
+                                    serach.ByAFM = true;
+                                    serach.SearchByMonthAndDay = true;
+
+                                    totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                                }
+                                <div class="nav-title ">@(DateTime.Now.ToString("yy"))二季度年费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                                    }
+
+@if (startQuarter.AddMonths(-3) <= new DateTime(DateTime.Now.Year, 7, 1) && startQuarter.AddMonths(9) >new DateTime(DateTime.Now.Year, 7, 1))
+{
+    actived = id == PageId.PageId_1001015004 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseList/AnnualYearFeeList", PageId.PageId_1001015004)) class="ng-scope">
+
+                                <div class="nav-icon"></div>
+                                @{
+                                    serach = new CaseSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.CaseRequestDateFrom = new DateTime(DateTime.Now.Year, 7, 1);
+                                    serach.CaseRequestDateTo = new DateTime(DateTime.Now.Year, 9, 30);
+                                    serach.ByAFM = true;
+                                    serach.SearchByMonthAndDay = true;
+
+                                    totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                                }
+                                <div class="nav-title ">@(DateTime.Now.ToString("yy"))三季度年费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+@if (startQuarter.AddMonths(-3) <= new DateTime(DateTime.Now.Year, 10, 1) && startQuarter.AddMonths(9) >new DateTime(DateTime.Now.Year, 10, 1))
+{
+    actived = id == PageId.PageId_1001015005 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseList/AnnualYearFeeList", PageId.PageId_1001015005)) class="ng-scope">
+
+                                <div class="nav-icon"></div>
+                                @{
+                                    serach = new CaseSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.CaseRequestDateFrom = new DateTime(DateTime.Now.Year, 10, 1);
+                                    serach.CaseRequestDateTo = new DateTime(DateTime.Now.Year, 12, 31);
+                                    serach.ByAFM = true;
+                                    serach.SearchByMonthAndDay = true;
+
+                                    totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                                }
+                                <div class="nav-title ">@(DateTime.Now.ToString("yy"))四季度年费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li> 
+                                    }
+
+@if (startQuarter.AddMonths(-3) <= new DateTime(DateTime.Now.Year+1, 1, 1) && startQuarter.AddMonths(9) >new DateTime(DateTime.Now.Year+1, 1, 1))
+{
+
+    actived = id == PageId.PageId_1001015006 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseList/AnnualYearFeeList", PageId.PageId_1001015006)) class="ng-scope">
+
+                                <div class="nav-icon"></div>
+                                @{
+                                    serach = new CaseSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.CaseRequestDateFrom = new DateTime(DateTime.Now.Year + 1, 1, 1);
+                                    serach.CaseRequestDateTo = new DateTime(DateTime.Now.Year + 1, 3, 31);
+                                    serach.ByAFM = true;
+                                    serach.SearchByMonthAndDay = true;
+
+                                    totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                                }
+                                <div class="nav-title ">@(DateTime.Now.AddYears(1).ToString("yy"))一季度年费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li> 
+                                    }
+@if (startQuarter.AddMonths(-3) <= new DateTime(DateTime.Now.Year + 1, 4, 1) && startQuarter.AddMonths(9) >new DateTime(DateTime.Now.Year+1, 4, 1))
+{
+    actived = id == PageId.PageId_1001015007 ? "class=active" : "";
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content(string.Format("~/{0}/IPR/CaseList/AnnualYearFeeList", PageId.PageId_1001015007)) class="ng-scope">
+
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.CaseRequestDateFrom = new DateTime(DateTime.Now.Year + 1, 4, 1);
+                                serach.CaseRequestDateTo = new DateTime(DateTime.Now.Year + 1, 6, 30);
+                                serach.ByAFM = true;
+                                serach.SearchByMonthAndDay = true;
+
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ">@(DateTime.Now.AddYears(1).ToString("yy"))二季度年费(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+                                }
+
+@if (startQuarter.AddMonths(-3) <= new DateTime(DateTime.Now.Year + 1, 7, 1) && startQuarter.AddMonths(9) >new DateTime(DateTime.Now.Year+1, 7, 1))
+{
+    actived = id == PageId.PageId_1001015008 ? "class=active" : "";
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content(string.Format("~/{0}/IPR/CaseList/AnnualYearFeeList", PageId.PageId_1001015008)) class="ng-scope">
+
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.CaseRequestDateFrom = new DateTime(DateTime.Now.Year + 1, 7, 1);
+                                serach.CaseRequestDateTo = new DateTime(DateTime.Now.Year + 1, 9, 30);
+                                serach.ByAFM = true;
+                                serach.SearchByMonthAndDay = true;
+
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ">@(DateTime.Now.AddYears(1).ToString("yy"))三季度年费(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+}
+@if (startQuarter.AddMonths(-3) <= new DateTime(DateTime.Now.Year + 1, 10, 1) && startQuarter.AddMonths(9) >new DateTime(DateTime.Now.Year+1, 10, 1))
+{
+    actived = id == PageId.PageId_1001015009 ? "class=active" : "";
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content(string.Format("~/{0}/IPR/CaseList/AnnualYearFeeList", PageId.PageId_1001015009)) class="ng-scope">
+
+                            <div class="nav-icon"></div>
+                            @{
+                                serach = new CaseSearchCondition();
+                                serach.UserId = LoginHelper.GetUserName();
+                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                serach.CaseRequestDateFrom = new DateTime(DateTime.Now.Year + 1, 10, 1);
+                                serach.CaseRequestDateTo = new DateTime(DateTime.Now.Year + 1, 12, 31);
+                                serach.ByAFM = true;
+                                serach.SearchByMonthAndDay = true;
+
+                                totalCount = CaseSearchService.Instance.GetCaseListTotalCount(serach);
+                            }
+                            <div class="nav-title ">@(DateTime.Now.AddYears(1).ToString("yy"))四季度年费(@totalCount)</div>
+                        </a>
+                    </div>
+                </li>
+                                }
+
+            </ul>
+        </div>
+    </div>
+
+</div>

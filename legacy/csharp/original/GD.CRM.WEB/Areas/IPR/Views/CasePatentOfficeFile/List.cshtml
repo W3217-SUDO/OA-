@@ -1,0 +1,311 @@
+﻿@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Entity.System;
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseFileListModel
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+}
+
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script src="@Url.Content("~/Scripts/IPR/Case/Case.List.Search.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/IPR/Case/Case.List.CaseFileSearch.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product viewFramework-product-col-3">
+    <div class="viewFramework-product-navbar ng-scope" >
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("MenuList");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse-3 ng-scope" >
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body" >
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>专利官文列表</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FIO/PatentOffice/PatentOfficeFileList")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+
+
+                                <div class="simple-form-field">
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span contenteditable="" class="text-danger "></span>
+                                            <span class="">案号：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNos, new { @class = "form-control", @placeholder = "案件编号或申请号" })
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span contenteditable="" class="text-danger "></span>
+                                            <span class="">客户/申请人：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户/申请人" })
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span contenteditable="" class="text-danger "></span>
+                                            <span class="">状态：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.DropDownListFor(m => m.SearchCondition.IsTransmitted, CommonService.Instance.GetTransmittedStatusList(), new { @class = "form-control", @style = "width:100%" })
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div class="simple-form-field">
+                                    <div class="form-group  ">
+                                        <label class="  control-label">
+                                            <span class="">
+                                            </span>
+                                        </label>
+                                        <div class="form-control-wrap text-right">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnCasePatentOfficeFileSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                    <div class="i_common_wrap">
+                                        <div class="i_common_list"></div>
+                                    </div>
+                                </div>
+
+                            </form>
+
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="ng-isolate-scope">
+                            <div class="ng-scope">
+                                <div class="gridSection">
+                                    <table id="tblCaseFileList" class="table table-hover">
+                                        <colgroup>
+                                            <col style="width: 4%" />
+                                            <col style="width: 5%" />
+                                            <col style="width: 10%" />
+                                            <col style="width: 18%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 15%" />
+                                            <col style="width: 15%" />
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th style="text-align: center">
+                                                    <input type="checkbox" id="chkCaseFileIdAll" class="ng-pristine ng-valid"></span>
+                                                </th>
+
+                                                <th style="text-align: center">状态</th>
+                                                <th style="text-align: center">文件类型</th>
+                                                <th style="text-align: center">文件名称</th>
+                                                <th style="text-align: center">收文日期</th>
+                                                <th style="text-align: center">案号</th>
+                                                <th style="text-align: center">申请号</th>
+                                                <th style="text-align: center">申请日</th>
+                                                <th style="text-align: center">客户</th>
+                                                <th style="text-align: center">发明名称</th>
+
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="ng-scope" style="display: none">
+                                            <tr>
+                                                <td colspan="10">
+                                                    <div class="pull-left"></div>
+                                                    <div class="ng-scope">
+                                                        <div class="pull-right page-box caseFileList">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                                <div class="simple-grid-none-data-wrap">
+                                    <div class="simple-grid-none-data text-center  ">
+                                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                            <div class="text-size-16 tip-text inline-block">
+                                                <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                                <span class="">。</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div class="contextMenu" id="menu" style="display: none;">
+            <ul>
+                @{
+                    if (id == PageId.PageId_1001007001)
+                    {
+                        <li id="transmit" filetypeid="3200101">转专利申请受理通知书</li>
+                    }
+                    else if (id == PageId.PageId_1001007002)
+                    {
+                        <li id="transmit" filetypeid="3200021">转费用减缓审批通知书</li>
+                    }
+                    else if (id == PageId.PageId_1001007003)
+                    {
+                        <li id="transmit" filetypeid="32310362">转受理通知书纸件</li>
+                    }
+                    else if (id == PageId.PageId_1001007004)
+                    {
+                        <li id="transmit" filetypeid="3210304">转发明专利申请初步审查合格通知书</li>
+                    }
+                    else if (id == PageId.PageId_1001007005)
+                    {
+                        <li id="transmit" filetypeid="3210305">转发明专利申请公布通知书</li>
+                    }
+                    else if (id == PageId.PageId_1001007006)
+                    {
+                        <li id="transmit" filetypeid="3210307">转实质审查请求期限届满前通知</li>
+                    }
+                    else if (id == PageId.PageId_1001007007)
+                    {
+                        <li id="transmit" filetypeid="3210306">转实质审查请求期限届满前通知</li>
+                    }
+                    else if (id == PageId.PageId_1001007008)
+                    {
+                        <li id="transmit" filetypeid="3200028">转手续合格通知书</li>
+                    }
+                    else if (id == PageId.PageId_1001007009)
+                    {
+                        <li id="transmit" filetypeid="3210302">转补正通知</li>
+                    }
+                    else if (id == PageId.PageId_1001007010)
+                    {
+                        <li id="transmit" filetypeid="3210401">转第一次审查意见通知书(发明)</li>
+                    }
+                    else if (id == PageId.PageId_1001007030)
+                    {
+                        <li id="transmit" filetypeid="3210402">转第一次审查意见通知书(实用外观)</li>
+                    }
+                    else if (id == PageId.PageId_1001007011)
+                    {
+                        <li id="transmit" filetypeid="3220301">转第N次审查意见通知书</li>
+                    }
+                    else if (id == PageId.PageId_1001007012)
+                    {
+                        <li id="transmit" filetypeid="3200029">转办理手续补正通知书</li>
+                    }
+                    else if (id == PageId.PageId_1001007013)
+                    {
+                        <li id="transmit" filetypeid="3200305">转驳回决定</li>
+                    }
+                    else if (id == PageId.PageId_1001007014)
+                    {
+                        <li id="transmit" filetypeid="3200026">转恢复权利请求审批通知书</li>
+                    }
+                    else if (id == PageId.PageId_1001007015)
+                    {
+                        <li id="transmit" filetypeid="3200032">转办理恢复权利手续补正通知</li>
+                    }
+                    else if (id == PageId.PageId_1001007016)
+                    {
+                        <li id="transmit" filetypeid="3200701">转缴费通知书</li>
+                    }
+                    else if (id == PageId.PageId_1001007017)
+                    {
+                        <li id="transmit" filetypeid="32310008">转专利证书通知</li>
+                    }
+                    else if (id == PageId.PageId_1001007018)
+                    {
+                        <li id="transmit" filetypeid="3200022">转视为撤回通知</li>
+                    }
+                    else if (id == PageId.PageId_1001007019)
+                    {
+                        <li id="transmit" filetypeid="3200601">转视为放弃取得专利权通知书</li>
+                    }
+                    else if (id == PageId.PageId_1001007020)
+                    {
+                        <li id="transmit" filetypeid="3200302">转视为未要求优先权通知</li>
+                    }
+                    else if (id == PageId.PageId_1001007021)
+                    {
+                        <li id="transmit" filetypeid="3200023">转视为未提出通知</li>
+                    }
+                    else if (id == PageId.PageId_1001007022)
+                    {
+                        <li id="transmit" filetypeid="3200602">转授权及缴纳授权费通知</li>
+                    }
+                    else if (id == PageId.PageId_1001007023)
+                    {
+                        <li id="transmit" filetypeid="32310363">转授权通知书纸件</li>
+                    }
+                    else if (id == PageId.PageId_1001007024)
+                    {
+                        <li id="transmit" filetypeid="3200905">转复审请求受理通知书</li>
+                    }
+                    else if (id == PageId.PageId_1001007025)
+                    {
+                        <li id="transmit" filetypeid="3200702">转专利权终止</li>
+                    }
+                    else if (id == PageId.PageId_1001007099)
+                    {
+                        <li id="transmit" filetypeid="32310364">转其他官文</li>
+                    }
+
+                    <li id="transmitTag" >标记已转</li>
+                }
+            </ul>
+        </div>
+    </div>
+
+</div>

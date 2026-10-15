@@ -1,0 +1,1083 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type
+@using Dchien.Legal.Entity.Legal.Case;
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.Court.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<style>
+
+    .label {
+        display: inline;
+        padding:0px;
+        font-size: 75%;
+        font-weight: bold;
+        line-height: 1;
+        color: #ffffff;
+        text-align: center;
+        white-space: nowrap;
+        vertical-align: baseline;
+        border-radius: 0.25em;
+    }
+
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 1px 2px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+        /*.bootstrap-tagsinput span {
+            line-height: 1.4;
+        }*/
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+</style>
+<div class="modal fade" id="caseCourtModal" >
+    <div class="modal-dialog" style="width:700px" >
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                @using (Html.BeginForm("CourtEdit", "Case", FormMethod.Post, new { id = "caseLog", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript:$('#caseCourtModal').modal('hide');">×</button>
+                        <h5 class="modal-title ng-binding">基本信息</h5>
+                    </div>
+                    <div class="modal-body">
+                        @Html.HiddenFor(m => m.Case.Basic.CaseNo)
+                        <div style="@(Model.FirstInstace ? "" : "display:none;")">
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>一审法院：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.HiddenFor(m => m.Case.Basic.FirstIntanceCourt)
+                                   
+                                    @Html.TextBoxFor(m => m.Case.Basic.FirstIntanceCourtName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "一审法院",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+
+                                    <div class="i_common_select" id="div_FirstIntanceCourtList" style="display: none;">
+                                        <div class="i_common_wrap">
+                                            <div class="i_common_list"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>法庭：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.FirstIntanceCourtRoom,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "法庭",
+                                                   style = "height:29px;width:100%",
+                                                   autocomplete = "off"
+                                               })
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>法官：</span>
+                                </label>
+
+                                <div class="col-sm-7">
+                                    <div class="bootstrap-tagsinput">
+                                        @Html.HiddenFor(m => m.Case.Basic.FirstIntanceJudge)
+                                        @if (!string.IsNullOrEmpty(Model.Case.Basic.FirstIntanceJudge) && !string.IsNullOrEmpty(Model.Case.Basic.FirstIntanceJudgeName))
+                                        {
+                                            var firstIntanceJudgeNames = Model.Case.Basic.FirstIntanceJudgeName.Split(',');
+                                            var i = 0;
+                                            foreach (var firstIntanceJudge in Model.Case.Basic.FirstIntanceJudge.Split(','))
+                                            {
+                                                <span class="tag label label-info">
+                                                    <a name="firstCourtOfficer" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                       courtofficerno="@firstIntanceJudge" courtofficername="@firstIntanceJudgeNames[i]" data-toggle="tooltip" data-container="body" onclick="javascript:court.Courts.Court.CourtOfficer.Edit('@firstIntanceJudge');"
+                                                       target="_blank" data-original-title="@firstIntanceJudgeNames[i]">@firstIntanceJudgeNames[i]</a>
+                                                    <span class="courtofficerremove" data-role="remove"></span>
+                                                </span>
+                                                i++;
+                                            }
+                                            @Html.TextBoxFor(m => m.Case.Basic.FirstIntanceJudgeName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "选择法官",
+                                                   style = "height:22px;width:0px",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                        }
+                                        else
+                                        {
+                                            @Html.TextBoxFor(m => m.Case.Basic.FirstIntanceJudgeName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "选择法官",
+                                                   style = "height:22px;width:90%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                        }
+
+ 
+                                        <div style="float:right;background-color:white; important" class="label">
+
+                                            <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                <span class="btn_FirstIntanceJudge_add fa fa-user-plus"></span>
+                                            </a>
+
+                             
+                                        </div>
+                                    </div>
+                                     
+                                    <div class='divfirstCourtJudgeList'></div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span>书记员：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    <div class="bootstrap-tagsinput">
+                                        @Html.HiddenFor(m => m.Case.Basic.FirstIntanceClerk)
+
+                                        @if (!string.IsNullOrEmpty(Model.Case.Basic.FirstIntanceClerk) && !string.IsNullOrEmpty(Model.Case.Basic.FirstIntanceClerkName))
+                                        {
+                                            var firstIntanceClerkNames = Model.Case.Basic.FirstIntanceClerkName.Split(',');
+                                            var i = 0;
+                                            foreach (var firstIntanceClerk in Model.Case.Basic.FirstIntanceClerk.Split(','))
+                                            {
+                                                <span class="tag label label-info">
+                                                    <a name="firstCourtClerk" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                       courtofficerno="@firstIntanceClerk" courtofficername="@firstIntanceClerkNames[i]" data-toggle="tooltip" data-container="body" onclick="javascript:court.Courts.Court.CourtOfficer.Edit('@firstIntanceClerk');"
+                                                       target="_blank" data-original-title="@firstIntanceClerkNames[i]">@firstIntanceClerkNames[i]</a>
+                                                    <span class="courtofficerremove" data-role="remove"></span>
+                                                </span>
+                                                i++;
+                                            }
+
+                                             @Html.TextBoxFor(m => m.Case.Basic.FirstIntanceClerkName,
+                                                new
+                                                {
+                                                    @class = "form-control inline-block ",
+                                                    placeholder = "选择书记员",
+                                                    style = "height:22px;width:0px",
+                                                    @value = "",
+                                                    autocomplete = "off"
+                                                })
+                                        }
+                                        else
+                                        {
+                                            @Html.TextBoxFor(m => m.Case.Basic.FirstIntanceClerkName,
+                                                new
+                                                {
+                                                    @class = "form-control inline-block ",
+                                                    placeholder = "选择书记员",
+                                                    style = "height:22px;width:90%",
+                                                    @value = "",
+                                                    autocomplete = "off"
+                                                })
+                                        }
+
+                                        <div style="float:right;background-color:white; important" class="label">
+                                            <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                <span class="btn_FirstIntanceClerk_add fa fa-user-plus"></span>
+                                            </a>
+                                        </div>
+                                    </div>
+           
+                                    <div class='divfirstCourtClerkList'></div>
+
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span>一审案号：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.FirstIntanceCaseNo,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "一审案号",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>立案日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.FirstIntanceRegisterDate, "{0:yyyy-MM-dd}",
+                                               new
+                                               {
+
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "立案日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})",
+                                                   required = "true"
+
+                                               })
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>开庭日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.FirstIntanceLawfulDay, "{0:yyyy-MM-dd HH:mm:ss}",
+                                               new
+                                               {
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "开庭日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd HH:mm:ss'})",
+                                                   required = "true"
+                                               })
+
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>判决日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.FirstIntanceJudgmentDate, "{0:yyyy-MM-dd}",
+                                               new
+                                               {
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "判决日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})",
+                                                   required = "true"
+                                               })
+
+                                </div>
+                            </div>
+
+                       </div> 
+
+                        <div style="@(Model.SecondInstace ? "" : "display:none;")">
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>二审法院：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.HiddenFor(m => m.Case.Basic.SecondIntanceCourt)
+                                    @Html.TextBoxFor(m => m.Case.Basic.SecondIntanceCourtName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "二审法院",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+
+                                    <div class="i_common_select" id="div_SecondIntanceCourtList" style="display: none;">
+                                        <div class="i_common_wrap">
+                                            <div class="i_common_list"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>法庭：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.SecondIntanceCourtRoom,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "法庭",
+                                                   style = "height:29px;width:100%",
+                                                   autocomplete = "off"
+                                               })
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>法官：</span>
+                                </label>
+
+
+                                <div class="col-sm-7">
+                                    <div class="bootstrap-tagsinput">
+                                        @Html.HiddenFor(m => m.Case.Basic.SecondIntanceJudge)
+
+                                        @if (!string.IsNullOrEmpty(Model.Case.Basic.SecondIntanceJudge) && !string.IsNullOrEmpty(Model.Case.Basic.SecondIntanceJudgeName))
+                                        {
+                                            var secondIntanceJudgeNames = Model.Case.Basic.SecondIntanceJudgeName.Split(',');
+                                            var i = 0;
+                                            foreach (var secondIntanceJudge in Model.Case.Basic.SecondIntanceJudge.Split(','))
+                                            {
+                                                <span class="tag label label-info">
+                                                    <a name="secondCourtOfficer" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                       courtofficerno="@secondIntanceJudge" courtofficername="@secondIntanceJudgeNames[i]" data-toggle="tooltip" data-container="body" onclick="javascript:court.Courts.Court.CourtOfficer.Edit('@secondIntanceJudge');"
+                                                       target="_blank" data-original-title="@secondIntanceJudgeNames[i]">@secondIntanceJudgeNames[i]</a>
+                                                    <span class="courtofficerremove" data-role="remove"></span>
+                                                </span>
+                                                i++;
+                                            }
+
+                                            @Html.TextBoxFor(m => m.Case.Basic.SecondIntanceJudgeName,
+                                                    new
+                                                    {
+                                                        @class = "form-control inline-block ",
+                                                        placeholder = "请选择法官",
+                                                        style = "height:22px;width:0px",
+                                                        @value = "",
+                                                        
+                                                        autocomplete = "off"
+                                                    })
+                                        }
+                                        else
+                                        {
+                                            @Html.TextBoxFor(m => m.Case.Basic.SecondIntanceJudgeName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "请选择法官",
+                                                   style = "height:22px;width:90%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                        }
+
+
+                                        <div style="float:right;background-color:white; important" class="label">
+                                            <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                <span class="btn_SecondIntanceJudge_add fa fa-user-plus"></span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class='divsecondCourtJudgeList'></div>
+            
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>书记员：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    <div class="bootstrap-tagsinput">
+                                        @Html.HiddenFor(m => m.Case.Basic.SecondIntanceClerk)
+
+                                        @if (!string.IsNullOrEmpty(Model.Case.Basic.SecondIntanceClerk) && !string.IsNullOrEmpty(Model.Case.Basic.SecondIntanceClerkName))
+                                        {
+                                            var secondIntanceClerkNames = Model.Case.Basic.SecondIntanceClerkName.Split(',');
+                                            var i = 0;
+                                            foreach (var secondIntanceClerk in Model.Case.Basic.SecondIntanceClerk.Split(','))
+                                            {
+                                                <span class="tag label label-info">
+                                                    <a name="secondCourtClerk" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                       courtofficerno="@secondIntanceClerk" courtofficername="@secondIntanceClerkNames[i]" data-toggle="tooltip" data-container="body" onclick="javascript:court.Courts.Court.CourtOfficer.Edit('@secondIntanceClerk');"
+                                                       target="_blank" data-original-title="@secondIntanceClerkNames[i]">@secondIntanceClerkNames[i]</a>
+                                                    <span class="courtofficerremove" data-role="remove"></span>
+                                                </span>
+                                                i++;
+                                            }
+                                            @Html.TextBoxFor(m => m.Case.Basic.SecondIntanceClerkName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "请选择书记员",
+                                                   style = "height:22px;width:0px",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                        }
+                                        else
+                                        {
+
+                                            @Html.TextBoxFor(m => m.Case.Basic.SecondIntanceClerkName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "请选择书记员",
+                                                   style = "height:22px;width:90%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                        }
+
+
+                                        <div style="float:right;background-color:white; important" class="label">
+                                            <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                <span class="btn_SecondIntanceClerk_add fa fa-user-plus"></span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class='divsecondCourtClerkList'></div>
+ 
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>二审案号：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.SecondIntanceCaseNo,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "二审案号",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>立案日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.SecondIntanceRegisterDate, "{0:yyyy-MM-dd}",
+                                               new
+                                               {
+
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "立案日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})",
+                                                   required = "true"
+
+                                               })
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>开庭日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.SecondIntanceLawfulDay, "{0:yyyy-MM-dd HH:mm:ss}",
+                                               new
+                                               {
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "开庭日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd HH:mm:ss'})",
+                                                   required = "true"
+                                               })
+
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>判决日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.SecondIntanceJudgmentDate, "{0:yyyy-MM-dd}",
+                                               new
+                                               {
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "判决日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})",
+                                                   required = "true"
+                                               })
+
+                                </div>
+                            </div>
+
+                        </div> 
+
+                        <div style="@(Model.ExecutionInstace ? "" : "display:none;")">
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+
+                                    <span>执行法院：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.HiddenFor(m => m.Case.Basic.ExecutionIntanceCourt)
+                                    @Html.TextBoxFor(m => m.Case.Basic.ExecutionIntanceCourtName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "执行法院",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+
+                                    <div class="i_common_select" id="div_ExecutionIntanceCourtList" style="display: none;">
+                                        <div class="i_common_wrap">
+                                            <div class="i_common_list"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+
+                                    <span>法庭：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.ExecutionIntanceCourtRoom,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "法庭",
+                                                   style = "height:29px;width:100%",
+                                                   autocomplete = "off"
+                                               })
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+
+                                    <span>法官：</span>
+                                </label>
+
+
+                                <div class="col-sm-7">
+                                    <div class="bootstrap-tagsinput">
+                                        @Html.HiddenFor(m => m.Case.Basic.ExecutionIntanceJudge)
+
+                                        @if (!string.IsNullOrEmpty(Model.Case.Basic.ExecutionIntanceJudge) && !string.IsNullOrEmpty(Model.Case.Basic.ExecutionIntanceJudgeName))
+                                        {
+                                            var executionIntanceJudgeNames = Model.Case.Basic.ExecutionIntanceJudgeName.Split(',');
+                                            var i = 0;
+                                            foreach (var executionIntanceJudge in Model.Case.Basic.ExecutionIntanceJudge.Split(','))
+                                            {
+                                                <span class="tag label label-info">
+                                                    <a name="executionCourtOfficer" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                       courtofficerno="@executionIntanceJudge" courtofficername="@executionIntanceJudgeNames[i]" data-toggle="tooltip" data-container="body" onclick="javascript:court.Courts.Court.CourtOfficer.Edit('@executionIntanceJudge');"
+                                                       target="_blank" data-original-title="@executionIntanceJudgeNames[i]">@executionIntanceJudgeNames[i]</a>
+                                                    <span class="courtofficerremove" data-role="remove"></span>
+                                                </span>
+                                                i++;
+                                            }
+
+                                            @Html.TextBoxFor(m => m.Case.Basic.ExecutionIntanceJudgeName,
+                                                    new
+                                                    {
+                                                        @class = "form-control inline-block ",
+                                                        placeholder = "请选择法官",
+                                                        style = "height:22px;width:0px",
+                                                        @value = "",
+                                                        
+                                                        autocomplete = "off"
+                                                    })
+                                        }
+                                        else
+                                        {
+                                            @Html.TextBoxFor(m => m.Case.Basic.ExecutionIntanceJudgeName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "请选择法官",
+                                                   style = "height:22px;width:90%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                        }
+
+                                      
+                                        <div style="float:right;background-color:white; important" class="label">
+                                            <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                <span class="btn_ExecutionIntanceJudge_add fa fa-user-plus"></span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class='divexecutionCourtJudgeList'></div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+
+                                    <span>书记员：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    <div class="bootstrap-tagsinput">
+                                        @Html.HiddenFor(m => m.Case.Basic.ExecutionIntanceClerk)
+
+                                        @if (!string.IsNullOrEmpty(Model.Case.Basic.ExecutionIntanceClerk) && !string.IsNullOrEmpty(Model.Case.Basic.ExecutionIntanceClerkName))
+                                        {
+                                            var executionIntanceClerkNames = Model.Case.Basic.ExecutionIntanceClerkName.Split(',');
+                                            var i = 0;
+                                            foreach (var executionIntanceClerk in Model.Case.Basic.ExecutionIntanceClerk.Split(','))
+                                            {
+                                                <span class="tag label label-info">
+                                                    <a name="executionCourtClerk" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                       courtofficerno="@executionIntanceClerk" courtofficername="@executionIntanceClerkNames[i]" data-toggle="tooltip" data-container="body" onclick="javascript:court.Courts.Court.CourtOfficer.Edit('@executionIntanceClerk');"
+                                                       target="_blank" data-original-title="@executionIntanceClerkNames[i]">@executionIntanceClerkNames[i]</a>
+                                                    <span class="courtofficerremove" data-role="remove"></span>
+                                                </span>
+                                                i++;
+                                            }
+                                            @Html.TextBoxFor(m => m.Case.Basic.ExecutionIntanceClerkName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "请选择书记员",
+                                                   style = "height:22px;width:0px",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                        }
+                                        else
+                                        {
+
+                                            @Html.TextBoxFor(m => m.Case.Basic.ExecutionIntanceClerkName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "请选择书记员",
+                                                   style = "height:22px;width:90%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                        }
+
+                                        <div style="float:right;background-color:white; important" class="label">
+                                            <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                <span class="btn_ExecutionIntanceClerk_add fa fa-user-plus"></span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class='divexecutionCourtClerkList'></div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+
+                                    <span>执行案号：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.ExecutionIntanceCaseNo,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "执行案号",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+
+                                    <span>立案日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.ExecutionIntanceRegisterDate, "{0:yyyy-MM-dd}",
+                                               new
+                                               {
+
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "立案日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})",
+                                                   required = "true"
+
+                                               })
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+
+                                    <span>开庭日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.ExecutionIntanceLawfulDay, "{0:yyyy-MM-dd HH:mm:ss}",
+                                               new
+                                               {
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "开庭日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd HH:mm:ss'})",
+                                                   required = "true"
+                                               })
+
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+
+                                    <span>生效日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.ExecutionIntanceJudgmentDate, "{0:yyyy-MM-dd}",
+                                               new
+                                               {
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "生效日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})",
+                                                   required = "true"
+                                               })
+
+                                </div>
+                            </div>
+
+                        </div> 
+
+                        <div style="@(Model.LastInstace ? "" : "display:none;")">
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>再审法院：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.HiddenFor(m => m.Case.Basic.LastIntanceCourt)
+                                    @Html.TextBoxFor(m => m.Case.Basic.LastIntanceCourtName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "再审法院",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+
+                                    <div class="i_common_select" id="div_LastIntanceCourtList" style="display: none;">
+                                        <div class="i_common_wrap">
+                                            <div class="i_common_list"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span>法庭：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.LastIntanceCourtRoom,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "法庭",
+                                                   style = "height:29px;width:100%",
+                                                   autocomplete = "off"
+                                               })
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>法官：</span>
+                                </label>
+
+
+                                <div class="col-sm-7">
+                                    <div class="bootstrap-tagsinput">
+                                        @Html.HiddenFor(m => m.Case.Basic.LastIntanceJudge)
+
+                                        @if (!string.IsNullOrEmpty(Model.Case.Basic.LastIntanceJudge) && !string.IsNullOrEmpty(Model.Case.Basic.LastIntanceJudgeName))
+                                        {
+                                            var lastIntanceJudgeNames = Model.Case.Basic.LastIntanceJudgeName.Split(',');
+                                            var i = 0;
+                                            foreach (var lastIntanceJudge in Model.Case.Basic.LastIntanceJudge.Split(','))
+                                            {
+                                                <span class="tag label label-info">
+                                                    <a name="lastCourtOfficer" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                       courtofficerno="@lastIntanceJudge" courtofficername="@lastIntanceJudgeNames[i]" data-toggle="tooltip" data-container="body" onclick="javascript:court.Courts.Court.CourtOfficer.Edit('@lastIntanceJudge');"
+                                                       target="_blank" data-original-title="@lastIntanceJudgeNames[i]">@lastIntanceJudgeNames[i]</a>
+                                                    <span class="courtofficerremove" data-role="remove"></span>
+                                                </span>
+                                                i++;
+                                            }
+
+                                            @Html.TextBoxFor(m => m.Case.Basic.LastIntanceJudgeName,
+                                                    new
+                                                    {
+                                                        @class = "form-control inline-block ",
+                                                        placeholder = "请选择法官",
+                                                        style = "height:22px;width:0px",
+                                                        @value = "",
+                                                        
+                                                        autocomplete = "off"
+                                                    })
+                                        }
+                                        else
+                                        {
+                                            @Html.TextBoxFor(m => m.Case.Basic.LastIntanceJudgeName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "请选择法官",
+                                                   style = "height:22px;width:90%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                        }
+
+                                      
+                                        <div style="float:right;background-color:white; important" class="label">
+                                            <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                <span class="btn_LastIntanceJudge_add fa fa-user-plus"></span>
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    <div class='divlastCourtJudgeList'></div>
+ 
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>书记员：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    <div class="bootstrap-tagsinput">
+                                        @Html.HiddenFor(m => m.Case.Basic.LastIntanceClerk)
+
+                                        @if (!string.IsNullOrEmpty(Model.Case.Basic.LastIntanceClerk) && !string.IsNullOrEmpty(Model.Case.Basic.LastIntanceClerkName))
+                                        {
+                                            var lastIntanceClerkNames = Model.Case.Basic.LastIntanceClerkName.Split(',');
+                                            var i = 0;
+                                            foreach (var lastIntanceClerk in Model.Case.Basic.LastIntanceClerk.Split(','))
+                                            {
+                                                <span class="tag label label-info">
+                                                    <a name="lastCourtClerk" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                       courtofficerno="@lastIntanceClerk" courtofficername="@lastIntanceClerkNames[i]" data-toggle="tooltip" data-container="body" onclick="javascript:court.Courts.Court.CourtOfficer.Edit('@lastIntanceClerk');"
+                                                       data-original-title="@lastIntanceClerkNames[i]">@lastIntanceClerkNames[i]</a>
+                                                    <span class="courtofficerremove" data-role="remove"></span>
+                                                </span>
+                                                i++;
+                                            }
+                                            @Html.TextBoxFor(m => m.Case.Basic.LastIntanceClerkName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "请选择书记员",
+                                                   style = "height:22px;width:0px",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                        }
+                                        else
+                                        {
+                                            @Html.TextBoxFor(m => m.Case.Basic.LastIntanceClerkName,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "请选择书记员",
+                                                   style = "height:22px;width:90%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                        }
+
+                                        <div style="float:right;background-color:white; important" class="label">
+                                            <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                <span class="btn_LastIntanceClerk_add fa fa-user-plus"></span>
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    <div class='divlastCourtClerkList'></div>
+           
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>再审案号：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.LastIntanceCaseNo,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "再审案号",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off"
+                                               })
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>立案日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.LastIntanceRegisterDate, "{0:yyyy-MM-dd}",
+                                               new
+                                               {
+
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "立案日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})",
+                                                   required = "true"
+
+                                               })
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>开庭日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.LastIntanceLawfulDay, "{0:yyyy-MM-dd HH:mm:ss}",
+                                               new
+                                               {
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "开庭日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd HH:mm:ss'})",
+                                                   required = "true"
+                                               })
+
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    
+                                    <span>判决日期：</span>
+                                </label>
+                                <div class="col-sm-7">
+                                    @Html.TextBoxFor(m => m.Case.Basic.LastIntanceJudgmentDate, "{0:yyyy-MM-dd}",
+                                               new
+                                               {
+                                                   @class = "input_time form-control inline-block ",
+                                                   placeholder = "判决日期",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   
+                                                   autocomplete = "off",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})",
+                                                   required = "true"
+                                               })
+
+                                </div>
+                            </div>
+
+                        </div> 
+
+
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button"  id="btnCourtUpdate"  value="确定" />
+                        <input class="btn btn-default ng-binding" type="button"    onclick="javascript:$('#caseCourtModal').modal('hide');"  value="取消" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+   
+</div>

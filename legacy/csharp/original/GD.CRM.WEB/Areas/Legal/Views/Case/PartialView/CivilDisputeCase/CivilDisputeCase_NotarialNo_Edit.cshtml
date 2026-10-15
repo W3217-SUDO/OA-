@@ -1,0 +1,104 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type
+@using Dchien.Legal.Entity.Legal.Case
+@using Dchien.Legal.Service.Legal.Investigation.Clue
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.Basic.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+</style>
+
+
+<div class="modal fade" id="caseNotarialNoModal" >
+ 
+    <div class="modal-dialog" >
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                @using (Html.BeginForm("Edit", "Case", FormMethod.Post, new { id = "caseLog", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript: $('#caseNotarialNoModal').modal('hide');">×</button>
+                        <h5 class="modal-title ng-binding">公证信息</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                
+                                <span>公证书号：</span>
+                            </label>
+                            <div class="col-sm-8">
+ 
+                                @Html.TextBoxFor(m => m.Case.Basic.NotarialNos,
+                                new
+                                {
+                                    @class = "form-control inline-block ",
+                                    placeholder = "公证书号",
+                                    style = "height:28px;width:70%",
+                                    @value = "",
+                                    cityvalue = "",
+                                    autocomplete = "off",
+                                })
+
+                                <label>
+                                    <span class="text-danger">
+                                        多个请用逗号隔开.
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                
+                                <span>仓库位置：</span>
+                            </label>
+                            <div class="col-sm-8">
+                                @Html.TextBoxFor(m => m.Case.Basic.DepositAddress,
+                                new
+                                {
+                                    @class = "form-control inline-block ",
+                                    placeholder = "仓库位置",
+                                    style = "height:28px;width:70%",
+                                    @value = "",
+                                    cityvalue = "",
+                                    autocomplete = "off",
+                                })
+                                <label>
+                                    <span class="text-danger">
+                                        多个请用逗号隔开.
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button"    onclick="javascript: c.Cases.Case.NotarialNo.CreateUpdate(c.Cases.Case.CreateUpdate_Refersh);" value="确定" />
+                        <input class="btn btn-default ng-binding" type="button"    onclick="javascript: $('#caseNotarialNoModal').modal('hide');"  value="取消" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+   
+</div>

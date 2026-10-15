@@ -1,0 +1,62 @@
+﻿@using Dchien.Legal.Entity.System
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+}
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">审批合同</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @{ actived = action == "PendingList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        
+                            <a href=@Url.Content(string.Format("~/{0}/FCM/ContractAudit/PendingList", PageId.PageId_4001003001)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">待审批合同</div>
+                                <div class="nav-extend">
+                                    <span class="ng-isolate-scope">
+                                        <span class="deadline-leftdays-normal ng-scope ng-binding">5</span>
+                                    </span>
+                                </div>
+                            </a>
+                    </div>
+                </li>
+                @{ actived = action == "RejectedList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        
+                            <a href=@Url.Content(string.Format("~/{0}/FCM/ContractAudit/RejectedList", PageId.PageId_4001003002)) class="ng-scope" style="width:220px">
+
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">已驳回合同</div>
+                            </a>
+                    </div>
+                </li>
+                @{ actived = action == "ApprovedList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                       
+                            <a href=@Url.Content(string.Format("~/{0}/FCM/ContractAudit/ApprovedList", PageId.PageId_4001003003)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">已审批合同</div>
+                            </a>
+                    </div>
+                </li>
+
+            </ul>
+        </div>
+    </div>
+
+</div>

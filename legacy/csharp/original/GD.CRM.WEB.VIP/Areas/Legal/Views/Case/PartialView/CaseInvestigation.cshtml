@@ -1,0 +1,200 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service.Lawsuit.Case
+@using Dchien.Legal.Service.BAS.Type
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseModel
+
+@{
+    object htmlAttribute = null;
+}
+
+@using (Html.BeginForm("CaseInfo", "Case", FormMethod.Post, new { id = "caseForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+{
+    <div class="ng-scope">
+
+        @Html.HiddenFor(m => m.CaseId)
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseId)
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseNo)
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.CompanyId)
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.CauseId)
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.CasePhaseId)
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.CustomerId)
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.CustomerNo)
+        @*@Html.HiddenFor(m => m.Case.CaseBasicInfo.Deadline)*@
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseSubmitter)
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseSubmitDate)
+        @*@Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseOfficer)*@
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.DeadlineLeftDays)
+        @Html.TextBoxFor(m => m.Case.CaseBasicInfo.ReminderDate, "{0:yyyy-MM-dd}", new { @style = "display:none" })
+        @Html.HiddenFor(m => m.Case.CaseInvestigation.CaseInvestigationId)
+      
+
+        <table class="input_table" style="width:100%" id='tabCase'>
+            <colgroup>
+                <col style="width: 8%;" />
+                <col style="width: 16%" />
+                <col style="width: 8%;" />
+                <col style="width: 16%" />
+                <col style="width: 8%;" />
+                <col style="width: 17%" />
+                <col style="width: 8%;" />
+                <col style="width: 19%" />
+            </colgroup>
+            <tr>
+                <th>
+                    <span class="text-danger ng-binding">*</span> @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseNo)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseNo, new { @class = "case-form-control", @placeholder = "自动生成", @readonly = true, @unselectable = "on" })
+                </td>
+
+                <th>
+                    <span class="text-danger ng-binding">*</span> @Html.LabelFor(m => m.Case.CaseInvestigation.CaseProsecutor)
+                    @Html.HiddenFor(m => m.Case.CaseInvestigation.CaseProsecutor)
+                </th>
+                <td>
+
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.CaseProsecutorName, new { @class = "case-form-control", @unselectable = "on" })
+                </td>
+
+                <th>
+                    <span class="text-danger ng-binding">*</span> @Html.LabelFor(m => m.Case.CaseInvestigation.CopyrightType)
+                </th>
+                <td>
+                    @{
+    htmlAttribute = new { maxlength = 60, @class = "case-form-control" };
+                    }
+
+                    @Html.DropDownListFor(m => m.Case.CaseInvestigation.CopyrightTypeId, CaseCopyrightTypeService.Instance.GetCopyrightTypeList(false), htmlAttribute)
+
+                </td>
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.CaseAuthorizationDateFrom)
+
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.CaseAuthorizationDateFrom, "{0:yyyy-MM-dd}", new { @class = "case-form-control input_time ", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:45%" })
+                    -
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.CaseAuthorizationDateEnd, "{0:yyyy-MM-dd}", new { @class = "case-form-control input_time ", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:45%" })
+                </td>
+            </tr>
+            <tr>
+                <th>
+                    <span class="text-danger ng-binding">*</span> @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseOriginPeople)
+                    @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseOriginPeople)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseOriginPeopleName, new { @class = "case-form-control", @unselectable = "on" })
+                </td>
+
+                <th>
+                    <span class="text-danger ng-binding">*</span> @Html.LabelFor(m => m.Case.CaseInvestigation.Investigator)
+                    @Html.HiddenFor(m => m.Case.CaseInvestigation.Investigator)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.InvestigatorName, new { @class = "case-form-control", @unselectable = "on" })
+                </td>
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.InvestigateScope)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.InvestigateScope, new { @class = "case-form-control" })
+                </td>
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.InvestigateDate)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.InvestigateDate, "{0:yyyy-MM-dd}", new { @class = "case-form-control input_time ", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                </td>
+            </tr>
+            <tr>
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.Defendant)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.Defendant, new { @class = "case-form-control" })
+                </td>
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.InfringementAddress)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.InfringementAddress, new { @class = "case-form-control" })
+                </td>
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.SubjectVerificationType)
+
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.SubjectVerificationType, new { @class = "case-form-control" })
+                </td>
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.InfringementWay)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.InfringementWay, new { @class = "case-form-control" })
+
+                </td>
+            </tr>
+            <tr>
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.NotaryOrganization)
+                </th>
+
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.NotaryOrganization, new { @class = "case-form-control" })
+                </td>
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.NotarizationDate)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.NotarizationDate, "{0:yyyy-MM-dd}", new { @class = "case-form-control input_time ", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                </td>
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.NotarialNo)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseInvestigation.NotarialNo, new { @class = "case-form-control " })
+                </td>
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.DepositoryType)
+                </th>
+                <td>
+                    @Html.DropDownListFor(m => m.Case.CaseInvestigation.DepositoryType, DepositoryTypeService.Instance.GetDepositoryTypeList(false), new { @class = "case-form-control" })
+                </td>
+            </tr>
+
+            <tr>
+                <th rowspan="2">
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.Remark)
+                </th>
+                <td colspan='5' rowspan="2">
+                    @Html.TextAreaFor(m => m.Case.CaseInvestigation.Remark, new { maxlength = 1000, rows = 3, style = "width:100%" })
+                </td>
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseBasicInfo.Deadline)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.Deadline, "{0:yyyy-MM-dd}", new { @class = "case-form-control input_time ", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                </td>
+
+            </tr>
+            <tr>
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseOfficerName)
+                    @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseOfficer)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseOfficerName, new { @class = "case-form-control " })
+                </td>
+            </tr>
+        </table>
+
+    </div>
+}

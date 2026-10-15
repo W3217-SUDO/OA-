@@ -1,0 +1,83 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.System.ViewModels.SystemCenter.PaymentType.PaymentTypeModel
+
+<script type="text/javascript"></script>
+
+<div class="modal fade" id="paymentTypeModal">
+  
+        <div class="modal-dialog" >
+            <div class="modal-content" ng-transclude="">
+                <div class="ng-scope">
+                    @using (Html.BeginForm("PaymentType", "SystemCenter", FormMethod.Post, new { id = "PaymentType", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                    {
+                        @Html.HiddenFor(m => m.PaymentType.PaymentTypeId)
+
+                        <div class="modal-header">
+                            <button type="button" class="close" id="btnPaymentTypeClose">×</button>
+                            <h5 class="modal-title ng-binding">付款单位</h5>
+                        </div>
+                        <div class="modal-body">
+                            <div>
+                                @*<div class="form-group">
+                                    <label  class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">类型名称</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.PaymentType.PaymentTypeName, new { @class = "form-control"})
+                                    </div>
+                                </div>*@
+
+                                <div class="form-group">
+                                    <label class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">性质</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.DropDownListFor(m => m.PaymentType.CaseFeeTypeId, Dchien.Legal.Service.PaymentModeService.Instance.GetPaymentModeTypeList(), new { @class = "form-control" })
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="PaymentTypeId_PaymentTypeShortCode" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">收款单位</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.PaymentType.OrganizationName, new { @class = "form-control" })
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="CaseLog_Content" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">开户行</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.PaymentType.AccountBank, new { @class = "form-control" })
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="CaseLog_Content" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">帐号信息</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextAreaFor(m => m.PaymentType.Account, new { @required = "true", maxlength = 1000, rows = 4, style = "width:100%" })
+                                    </div>
+                                </div>
+                            </div>
+ 
+                        </div>
+                        <div class="modal-footer">
+                            <input class="btn btn-primary ng-binding" type="button" id="btnPaymentType" value="确定" />
+                            <input class="btn btn-default ng-binding" type="button" id="btnPaymentTypeCancel" value="取消" />
+                        </div>
+                    }
+                </div>
+            </div>
+        </div><!-- /.modal -->
+    
+</div>
+

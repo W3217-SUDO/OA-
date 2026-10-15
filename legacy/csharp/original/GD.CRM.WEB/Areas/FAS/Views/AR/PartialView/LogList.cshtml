@@ -1,0 +1,36 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.FCM.ViewModels.ContractEvent.ListModel
+
+<script type='text/javascript'>
+    
+    $(function () { $("[data-toggle='tooltip']").tooltip(); });
+
+</script>
+ 
+@if (Model.ContactEvents != null && Model.ContactEvents.Count > 0)
+{
+    var lst = Model.ContactEvents.FindAll(x => x.EventTime.HasValue).OrderBy(x => x.EventTime).GroupBy(x => new DateTime(x.EventTime.Value.Year, x.EventTime.Value.Month, 1))
+        .ToList();
+
+    foreach (var x in lst)
+    {
+         <dl class="product-fun-update-list" style="margin-top: 0px; margin-bottom: 0px;overflow-x:hidden;max-height:max-content ">
+             <dt style="margin-top:3px;margin-bottom: 3px">@x.Key.ToString("yyyy-MM")</dt>
+            <dd>
+                <ul class="month-list">
+                    @foreach (var item in x.ToList<BizContractEvent>())
+                    {
+                        <li class="first border" >
+                            <i class="li-icon"></i>
+                            <span style=' float: left;' class="date">@(item.EventTime.HasValue ? item.EventTime.Value.ToString("yyyy-MM-dd") : "")</span>
+                            <a style='width: 150px; float: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ' title="@item.EventContent" data-toggle="tooltip" onclick="javascript:caseInfo.CaseEvent.Open(@item.EventId);" href="javascript:void(0);">@item.EventContent</a>
+                       
+                         </li>
+                    }
+                </ul>
+            </dd>
+        </dl>
+    }
+} 
+

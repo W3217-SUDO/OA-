@@ -1,0 +1,558 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service.FAM.Invoice
+@using Dchien.Legal.Service.Legal.Case
+@using Dchien.Legal.Service.BAS.Type
+@using Dchien.Legal.Service.FAM.AR.CaseFee
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.Invoice.InvoiceCreateModel
+<script src="@Url.Content("~/Scripts/Common/jquery-citys.js")" type="text/javascript"></script>
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/FAM/Invoice/FAM.Invoice.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/FAM/Invoice/FAM.Invoice.View.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div class="console-container ng-scope">
+            <div class="ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ng-scope">
+                                <div class="console-title console-title-border clearfix">
+                                    <h5 class="pull-left">申请开票</h5>
+                                </div>
+
+                                @Html.HiddenFor(m => m.Invoice.InvoiceBasic.InvoiceId)
+                                @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                                @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerId)
+                                @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerNo)
+                                @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerName)
+                                @Html.HiddenFor(m => m.Invoice.InvoiceBasic.InvoiceApplicationNo)
+                                @Html.HiddenFor(m => m.Invoice.InvoiceBasic.InvoiceApplicationDate)
+
+                                <div class="table-viewer-header clearfix" style="margin-top: 12px">
+                                    <span class="table-viewer-topbar-title">
+                                        申请信息
+                                    </span>
+                                    <div class="pull-right table-viewer-topbar-content"></div>
+
+                                </div>
+                                <div class="info-panel">
+                                    <div class="row" style="margin-top:4px">
+
+                                        <div class="col-sm-2">
+                                            <span class="text-explode">
+
+                                                <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractNo)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                            </span>
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <span class="text-explode">
+
+                                                <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.RefContractNo)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.RefContractNo)
+                                            </span>
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractName)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractName)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Customer.CustomerBasic.CustomerName)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Customer.CustomerBasic.CustomerName)
+                                            </span>
+                                        </div>
+
+                                    </div>
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceApplicant)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceApplicantName)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2">
+                                            <span class="text-explode">
+
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceApplicationNo)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceApplicationNo)
+                                            </span>
+                                        </div>
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceApplicationDate)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayFor(m => m.Invoice.InvoiceBasic.InvoiceApplicationDate)
+                                            </span>
+                                        </div>
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceAmount)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span id="Invoice_InvoiceBasic_InvoiceAmount" style="color:red ">
+                                                @Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceAmount)
+
+                                            </span>
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                                <div class="table-viewer-header clearfix" style="margin-top: 12px">
+                                    <span class="table-viewer-topbar-title">
+                                        发票内容
+                                    </span>
+                                    <div class="pull-right table-viewer-topbar-content"></div>
+
+                                </div>
+                                <div class="info-panel" >
+
+                                    <div class="row" style="margin-top:4px">
+
+                                        <div class="col-sm-3 ">
+                                            <span class="text-explode">
+                                                <span> 发票类别</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @*@Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceTypeName)*@
+                                                @Html.DropDownListFor(m => m.Invoice.InvoiceBasic.InvoiceType, InvoiceTypeService.Instance.GetInvoiceTypeList(false), new { maxlength = 60, @class = "form-control select", @style = "display:inline;border:0px;width:75%" })
+                                            </span>
+                                        </div>
+
+
+                                        <div class="col-sm-3">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Invoice.InvoiceBasic.InvoiceName)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @*@Html.DisplayTextFor(m => m.Invoice.InvoiceBasic.InvoiceName)*@
+                                                @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.InvoiceName, new { @class = "form-control", @style = "display:inline;border:0px;width:75%", @unselectable = "on" })
+                                            </span>
+                                        </div>
+
+                 
+    
+                                        </div>
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-3 ">
+                                            <span class="text-explode">
+                                                <span>纳税人码</span> 
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.CustomerCompanyCode, new { @class = "form-control", @style = "display:inline;border:0px;width:75%", @unselectable = "on" })
+
+                                            </span>
+                                        </div>
+                                        <div class="col-sm-3 ">
+                                            <span class="text-explode">
+                                                <span>银行账号</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.CustomerBankAccount, new { @class = "form-control", @style = "display:inline;border:0px;width:75%", @unselectable = "on" })
+                                            </span>
+                                        </div>
+
+                           
+                                    </div>
+
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-3 ">
+                                            <span class="text-explode">
+                                                <span>公司电话</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.CustomerPhone, new { @class = "form-control", @style = "display:inline;border:0px;width:75%", @unselectable = "on" })
+                                            </span>
+                                        </div>
+
+                 
+                                        <div class="col-sm-3 ">
+                                            <span class="text-explode">
+                                                <span>开户银行</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.CustomerBankName, new { @class = "form-control", @style = "display:inline;border:0px;width:75%", @unselectable = "on" })
+                                            </span>
+                                        </div>
+         
+                                    </div>
+                                    <div class="row" style="margin-top:4px">
+          
+                                        <div class="col-sm-7 ">
+                                            <span class="text-explode">
+                                                <span>开票地址</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.CustomerBusinessAddress, new { @class = "form-control", @style = "display:inline;border:0px;width:75%", @unselectable = "on" })
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-7">
+                                            <span class="text-explode">
+                                                <span>开票备注</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                              
+                                                @Html.TextAreaFor(m => m.Invoice.InvoiceBasic.Remark, new { @class = "form-control", @style = "display:inline;border:0px;width:75%", @unselectable = "on" })
+                                            </span>
+                                        </div>
+               
+                                    </div>
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="simple-form-field ng-scope ng-isolate-scope">
+                                            <div class="form-group simple-form-submit ng-scope" style="margin-bottom:0px">
+                                                <label for="submit5" class="col-sm-12 control-label"><span class="ng-binding"></span></label>
+                                                <div class="col-sm-2">
+                                                    <input class="btn btn-primary ng-binding" type="button" id="btnInvoiceSubmit" value="提交" />
+                                                </div>
+                                            </div>
+
+                                        </div>
+
+
+                                        </div>
+
+                                    </div>
+                        </div>
+                        <div class="table-viewer-header clearfix" style="margin-top: 12px">
+                            <span class="table-viewer-topbar-title">
+                                服务项
+                            </span>
+                            <div class="pull-right table-viewer-topbar-content"></div>
+
+                        </div>
+
+                        <div id="divInvoiceService" class="gridSection" style="padding-top: 0px; ">
+                            <table class="table table-hover table-fixed-header" id='tblInvoiceServiceList' style='width:100%;padding:0px;margin: 0px;border: 0px'>
+                                <colgroup>
+                                    <col style="width: 5%;" />
+                                    <col style="width: 40%;" />
+                                    @*<col style="width: 10%;" />*@
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                </colgroup>
+                                <thead class='header'>
+                                    <tr>
+                                        <th style="text-align: center">序号</th>
+                                        <th style="text-align: center">服务名称</th>
+                                        @*<th style="text-align: center">类型</th>*@
+                                        <th style="text-align: center">数量</th>
+                                        <th style="text-align: center">单价</th>
+                                        <th style="text-align: center">金额</th>
+                                        <th style="text-align: center">税率</th>
+                                        <th style="text-align: center">税额</th>
+                                        <th style="text-align: center">操作</th>
+                                    </tr>
+                                </thead>
+
+                                <tbody>
+                                    @{
+                                        var k = 1;
+                                        var serviceTypes = InvoiceServiceTypeService.Instance.GetAllInvoiceServiceTypes();
+                                    }
+                                    @foreach (var item in Model.Invoice.InvoiceServices)
+                                    {
+                                        <tr>
+                                            <td>
+                                                @(k++)
+                                            </td>
+                                            <td style="text-align: center; padding:0px ">
+                                                <input class="form-control" style="background-color:yellow;border:0px" id="item_ServiceName" type="text" value="@item.ServiceName">
+                                            </td>
+                                            <td style="text-align: center;display:none">
+                                                <select class="form-control" id="item_ServiceTypeId" name="item_ServiceTypeId" unselectable="on">
+                                                    @{
+                                                        foreach (var serviceType in serviceTypes)
+                                                        {
+                                                            <option value="@(serviceType.ServiceTypeId)">@(serviceType.ServiceTypeName) </option>
+                                                        }
+                                                    }
+                                                </select>
+                                            <td style="text-align: center; padding:0px ">
+                                                <input class="form-control" style="background-color:yellow;border:0px" id="item_Quantity" name="item_Quantity"
+                                                       onafterpaste="this.value=this.value.replace(/\D/g,'')"
+                                                       onkeyup="javascript:this.value=this.value.replace(/\D/g,'')"
+                                                       type="text" value="@item.Quantity">
+                                            </td>
+                                            <td style="text-align: center; padding:0px ">
+                                                <input class="form-control" style="background-color:yellow;border:0px" id="item_UnitPrice" name="item_UnitPrice"
+                                                       @*onafterpaste="this.value=this.value.replace(/\D/g,'')"
+                                                                           onkeyup="javascript:this.value=this.value.replace(/\D/g,'')"*@
+                                                       type="text" value="@item.UnitPrice" haschanged='F'>
+                                            </td>
+                                            <td style="text-align: center; padding:0px ">
+                                                <input class="form-control"  style="background-color:yellow;border:0px"id="item_Amount" name="item_Amount"
+                                                       onafterpaste="this.value=this.value.replace(/\D/g,'')"
+                                                       onkeyup="javascript:this.value=this.value.replace(/\D/g,'')"
+                                                       type="text"
+                                                       value="@item.Amount"
+                                                       readonly>
+                                            </td>
+                                            <td style="text-align: center; padding:0px ">
+                                                <input class="form-control" style="background-color:yellow;border:0px" id="item_TaxRate" name="item_TaxRate"
+                                                       onafterpaste="this.value=this.value.replace(/\D/g,'')"
+                                                       onkeyup="javascript:this.value=this.value.replace(/\D/g,'')"
+                                                       type="text" value="@item.TaxRate">
+                                            </td>
+                                            <td style="text-align: center; padding:0px ">
+                                                <input class="form-control" style="background-color:yellow;border:0px" id="item_TaxAmount" name="item_TaxAmount"
+                                                       onafterpaste="this.value=this.value.replace(/\D/g,'')"
+                                                       onkeyup="javascript:this.value=this.value.replace(/\D/g,'')"
+                                                       type="text" value="@item.TaxAmount">
+                                            </td>
+                                            <td>
+                                                <a style="color:green;" href="javascript:void(0);">
+                                                    <span class="btn_serviceItem_add glyphicon glyphicon-plus"></span>
+                                                </a>
+                                                <a style="color:red;" href="javascript:void(0);">
+                                                    <span class="btn_serviceItem_remove glyphicon glyphicon-remove"></span>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                                        }
+
+                                </tbody>
+
+                            </table>
+
+
+
+                            <table class="table table-hover" style='width:100%;padding:0px;margin: 0px;border: 0px'>
+                                <colgroup>
+                                    <col style="width: 5%;" />
+                                    <col style="width: 40%;" />
+                                    @*<col style="width: 10%;" />*@
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                    <col style="width: 8%;" />
+                                </colgroup>
+                                <tbody>
+                                    <tr>
+                                        <td></td>
+                                        <td style="text-align: center"><span>合计:</span></td>
+                                        @*<td style="text-align: center"></td>*@
+
+                                        <td style="text-align: center" colspan="2">
+                                            <span>开票金额：</span>
+                                        </td>
+                                        <td style="text-align: left">
+                                            <span id="spanServiceTotalAmount">0</span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span> </span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span> </span>
+                                        </td>
+                                        <td style="text-align: center">
+                                            <span id="spanServiceTotalAmountDesc" style="color: red"> </span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+
+
+                        <div class="case-section-wrap" style="padding-top: 12px;">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <ul class="nav nav-tabs">
+                                            <li id="liContractObjectList" class='active'><a href="javascript:void(0);" id="btnContractObjectList">合同信息</a></li>
+                                            <li class="pull-right" style="border:none">
+                                                <div style="margin-top:3px">
+                                                    <div style="text-align: inherit;">
+                                                        <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                        <div class="section-content clearfix">
+                                            <div class="product-col ng-scope" style="width: 100%">
+
+                                                <div id="dv_List">
+                                                    <div class="gridSection">
+                                                        <table class='table table-hover' style="margin-bottom:0px;" width="100%">
+                                                            <colgroup>
+                                                                 
+                                                                    <col style="width: 4%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 30%">
+                                                                    <col style="width: 15%">
+                                                                    <col style="width: 15%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 5%">
+                                                                    <col style="width: 17px">
+                                                            </colgroup>
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>序号</th>
+                                                                    <th>案件类型</th>
+                                                                    <th>案件名称</th>
+                                                                    <th>案号</th>
+                                                                    <th>费用类型</th>
+                                                                    <th>费用金额</th>
+                                                                    <th>已到账金额</th>
+                                                                    <th>开票金额</th>
+                                                                    <th>本次开票</th>
+                                                                    <th><input id='item_InvoiceAllApply' name='item_InvoiceAllApply' type='checkbox' />
+                                                                    <th></th>
+                                                                </tr>
+                                                            </thead>
+                                                        </table>
+                                                        <div id='divContextList' style="border-top: 0; overflow-x:hidden; overflow-y: scroll;">
+                                                            <table class='table table-hover' id="tblInvoiceObjectList" width="100%">
+                                                                <colgroup>
+                                                                    <col style="width: 4%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 30%">
+                                                                    <col style="width: 15%">
+                                                                    <col style="width: 15%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 5%">
+                                                                    
+                                                                </colgroup>
+
+                                                                <tbody>
+
+                                                                    @{ var i = 1; }
+
+                                                                    @if (Model.Invoice != null && Model.Invoice.InvoiceObjects != null)
+                                                                    {
+                                                                        var caseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+
+                                                                        foreach (var item in Model.Invoice.InvoiceObjects.OrderBy(x => x.CaseNo))
+                                                                        {
+                                                                            var caseInfo = CaseService.Instance.GetCaseBasic(item.CaseNo);
+                                                                            var caseFee = CaseFeeService.Instance.GetCaseFeeByCaseFeeId(item.CaseFeeId.Value);
+                                                                            <tr>
+                                                                                <td>
+                                                                                    <span>@(i++)</span>
+                                                                                   
+                                                                                </td>
+                                                                                <td style="text-align: center">
+                                                                                    <span>@CaseTypeService.Instance.GetCaseType(caseInfo.Basic.CaseTypeId.Value).CaseTypeName</span>
+                                                                                </td>
+                                                                                <td style="text-align: center">
+                                                                                    <span>@caseInfo.Basic.CaseName</span>
+                                                                                </td>
+                                                                                <td style="text-align: center;">
+                                                                                    @*<span>@caseInfo.Basic.CaseNo</span>*@
+                                                                                    <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                                                       href="javascript:$.case.View('@caseInfo.Basic.CaseNo')">@caseInfo.Basic.CaseNo</a>
+                                                                                </td>
+                                                                 
+                                                                                <td style="text-align: center;">
+                                                                                    <span>@(item.CaseFeeTypeId.HasValue && item.CaseFeeTypeId != -100 ? caseFeeTypes.FirstOrDefault(x => x.FeeTypeId == item.CaseFeeTypeId).FeeTypeName : "")</span>
+                                                                                </td>
+ 
+                                                                                <td style="text-align: center;">
+                                                                                    <span>@(item.CaseFeeAmount.ToString())</span>
+                                                                                </td>
+                                                                                
+                                                                                <td style="text-align: center;">
+
+                                                                                    <span><a href="javascript:void(0);" onclick="javascript: invoice.Invoice.ViewReceviedPayment(@caseFee.CaseFeeId);">@(caseFee.CashedAmount.HasValue ? caseFee.CashedAmount.Value : 0) </a></span>
+
+                                                                                </td>
+                                                                                @*<td style="text-align: center;">
+                                                                                    <span>@(item.CaseFeeCashedAmount.HasValue ? item.CaseFeeCashedAmount.ToString() : "0")</span>
+                                                                                </td>*@
+
+                                                                                <td style="text-align: center;">
+                                                                                    <span>@(item.CaseFeeOpenInvoiceAmount.HasValue ? item.CaseFeeOpenInvoiceAmount.Value : 0)</span>
+                                                                                </td>
+                                                                                <td style="text-align: center; padding:0px">
+                                                                                    <input class='form-control' style="background-color:yellow;border:0px"  id='item_CaseFeeInvoiceAmount' name='item_CaseFeeInvoiceAmount'
+                                                                                           @*onafterpaste="this.value=this.value.replace(/\D/g,'')"
+                                                                                               onkeyup="javascript:this.value=this.value.replace(/\D/g,'')"*@
+                                                                                           casefeeamount=@item.CaseFeeAmount
+                                                                                           CaseFeeOpenInvoiceAmount=@item.CaseFeeOpenInvoiceAmount
+                                                                                           casefeeid=@item.CaseFeeId
+                                                                                           type='text'
+                                                                                           value='@item.CaseFeeInvoiceAmount'>
+                                                                                </td>
+
+                                                                                <td style="text-align: center">
+                                                                                    <input id='item_InvoiceApply' name='item_InvoiceApply' type='checkbox' caseid="@caseInfo.Basic.CaseId" caseno="@caseInfo.Basic.CaseNo">
+                                                                                </td>
+                                                                            </tr>
+                                                                        }
+                                                                    }
+                                                                </tbody>
+
+                                                            </table>
+                                                        </div>
+
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>

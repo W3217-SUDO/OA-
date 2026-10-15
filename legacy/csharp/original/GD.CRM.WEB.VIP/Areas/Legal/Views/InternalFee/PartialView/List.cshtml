@@ -1,0 +1,205 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.InternalFee.InternalListModel
+
+<form id="postForm" action="">
+    <div id="casegridSection" class="gridSection">
+        <div class="context" id='divContextList' style="overflow-y: auto; ">
+            <table class="table table-hover " id="tblCaseFee" style='width: 100%; margin-top: 0px; margin-bottom: 0px;'>
+                <colgroup>
+                    <col style="width: 3%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 30%">
+                </colgroup>
+
+                <thead>
+                    <tr>
+                        <td><input type="checkbox" onclick="javascript: c.Cases.Case.InternalFees.Selected(this);" id="chkInternalFeeAll" name="chkInternalFeeAll"></td>
+                        <th>
+                            收款人
+                        </th>
+                        <th>
+                            提成类型
+                        </th>
+                        <th>
+                            金额
+                        </th>
+                        <th>
+                            已申请付款金额
+                        </th>
+                        <th>
+                            已付款金额
+                        </th>
+                        <th>
+                            提交时间
+                        </th>
+                        <th>
+                            付款时间
+                        </th>
+                        <th>
+                            提交人
+                        </th>
+                        <th>
+                            备注
+                        </th>
+
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    @if (Model.InternalFeeList != null && Model.InternalFeeList.Any())
+                    {
+                        foreach (var item in Model.InternalFeeList)
+                        {
+                            if (item.PaymentDate.Value > new DateTime(2019, 4, 10))
+                            {
+                    <tr class="caseFee">
+                        <td>
+                            <input type="checkbox" id="chkInternalFeeId" name="chkInternalFeeId" value="@item.InternalFeeId">
+                        </td>
+                        <td>
+                            <span>@item.PaymentObjectName</span>
+                        </td>
+                        <td>
+                            <span>@item.FeeTypeName </span>
+                        </td>
+                        <td>
+                            <span> @(item.Amount) </span>
+                        </td>
+                        <td>
+                            <span> @(item.PaidAmount) </span>
+                        </td>
+                        <td>
+                            <span> @(item.ActualPaidAmount) </span>
+                        </td>
+                        <td>
+                            <span>@(item.PaymentDate.HasValue ? item.PaymentDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                        </td>
+                        <td>
+                            <span>@(item.ActualPaidDate.HasValue ? item.ActualPaidDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                        </td>
+                        <td>
+                            <span>@item.RequestUserName</span>
+                        </td>
+
+                        <td>
+                            <span>@item.Remark</span>
+                        </td>
+                    </tr>
+                            }
+                            else
+                            {
+                    <tr class="caseFee">
+                        <td>
+                            <input type="checkbox" id="chkInternalFeeId" name="chkInternalFeeId" value="@item.InternalFeeId">
+                        </td>
+                        <td>
+                            <span>@item.PaymentObjectName</span>
+                        </td>
+                        <td>
+                            <span>@item.FeeTypeName </span>
+                        </td>
+                        <td>
+                            <span> @(item.Amount) </span>
+                        </td>
+                        <td>
+                            <span> @(item.Amount) </span>
+                        </td>
+                        <td>
+                            <span> @(item.Amount) </span>
+                        </td>
+                        <td>
+                            <span>@(item.PaymentDate.HasValue ? item.PaymentDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                        </td>
+                        <td>
+                            <span>@(item.PaymentDate.HasValue ? item.PaymentDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                        </td>
+                        <td>
+                            <span>@item.RequestUserName</span>
+                        </td>
+
+                        <td>
+                            <span>@item.Remark</span>
+                        </td>
+                    </tr>
+                            }
+                        }
+                    }
+
+                </tbody>
+
+                <tfoot class="ng-scope" style="display: none">
+                    <tr>
+                        <td><input type="checkbox" onclick="javascript: c.Cases.Case.InternalFees.Selected(this);" id="chkInternalFeeAll" name="chkInternalFeeAll"></td>
+                        <td colspan="9">
+                            <div class="pull-left">
+
+                                @if (CommonService.Instance.CheckPermission((int)Permission.CreateCaseInternalFee))
+                                {
+                                    <input type="button" onclick="javascript:c.Cases.Case.InternalFees.InternalFee.MultiOpen(new Array($('#Case_Basic_CaseNo').val()));" class="btn btn-default" style="height:32px" value="新增" />
+                                    <input type="button" id="btnInternalFeePayment" class="btn btn-default" style="height:32px" value="申请付款" />
+                                    <input type="button" id="btnInternalFeeDelete" class="btn btn-default" style="height:32px" value="删除" />
+                                }
+                                else if (Model.Case != null &&
+                                (Model.Case.Basic.BusinessOwner == LoginHelper.GetUserName()
+                                || Model.Case.Basic.CaseLawyer.Contains(LoginHelper.GetUserName())
+                                || Model.Case.Basic.CaseAssistant.Contains(LoginHelper.GetUserName())
+                                || Model.Case.Basic.Investigator.Contains(LoginHelper.GetUserName())
+                                ))
+                                {
+                                    <input type="button" onclick="javascript:c.Cases.Case.InternalFees.InternalFee.MultiOpen(new Array($('#Case_Basic_CaseNo').val()));" class="btn btn-default" style="height:32px" value="新增" />
+                                    <input type="button" id="btnInternalFeePayment" class="btn btn-default" style="height:32px" value="申请付款" />
+                                    <input type="button" id="btnInternalFeeEdit" class="btn btn-default" style="height:32px" value="修改" />
+                                }
+
+                            </div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box casefee">
+
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            <div class="simple-grid-none-data-wrap">
+                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                        <div class="text-size-16 tip-text inline-block">
+                            <span class="margin-left ng-binding"></span>没有查询到结算信息。
+
+                            @if (Model.Case != null &&
+                                (Model.Case.Basic.BusinessOwner == LoginHelper.GetUserName()
+                                || Model.Case.Basic.CaseLawyer.Contains(LoginHelper.GetUserName())
+                                || Model.Case.Basic.CaseAssistant.Contains(LoginHelper.GetUserName())
+                                || Model.Case.Basic.Investigator.Contains(LoginHelper.GetUserName())
+
+                              ))
+                            {
+                                <a href="javascript:void(0);" class="ng-binding" id="btnInternalFeeCreate">新增结算费</a>
+                            }
+                            else if (CommonService.Instance.CheckPermission((int)Permission.CreateCaseInternalFee))
+                            {
+                                <a href="javascript:void(0);" class="ng-binding" id="btnInternalFeeCreate">新增结算费</a>
+                            }
+
+                            <span class="ng-binding"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @Html.HiddenFor(m => Model.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => Model.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => Model.PageSize, new { name = "PageSize" })
+</form>

@@ -1,0 +1,445 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.System.ViewModels.User.CreateUpdateModel
+
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/CRM/User/CRM.User.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/CRM/User/CRM.User.Create.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript">
+
+</script>
+<style>
+    input.input_text, textarea, select, input.input_time {
+        border: 1px solid #ccc;
+    }
+
+    /*select {
+        color: rgb(84, 84, 84);
+        background-color: rgb(235, 235, 228);
+    }*/
+
+    input.input_text, textarea, input.input_time {
+        padding: 2px 2px 2px 3px;
+    }
+
+    input.input_text, textarea, input.input_time {
+        background-color: #fff;
+    }
+
+    .case-form-control {
+        /*border-radius: 0px;*/
+        -webkit-transition: none;
+        transition: none;
+        font-size: 12px;
+        width: 100%;
+        height: 24px;
+    }
+
+    .case-section-product .product-container .product-section .section-content .content-table td {
+        padding-left: 1px;
+    }
+
+
+    .input_table th {
+        padding: 2px;
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        padding: 2px;
+        text-align: left;
+    }
+
+    .case-section-wrap {
+        padding: 2px;
+    }
+
+    .case-section-main {
+        margin: 0 3px;
+        padding: 0px;
+        position: relative;
+    }
+</style>
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<div class="viewFramework-product viewFramework-product-col-1" style='background: #eaedf1;'>
+
+    <div class="viewFramework-product-navbar ng-scope">
+        <div class="product-nav-stage ng-scope product-nav-stage-main">
+            <div class="product-nav-scene product-nav-main-scene">
+                <div class="product-nav-title ng-binding">用户信息</div>
+                <div class="ng-isolate-scope"></div>
+                <div class="product-nav-list">
+                    <ul class="top-level">
+                        <li class='active'>
+                            <div class="ng-isolate-scope">
+                                <a href="javascript:void(0);" class="ng-scope">
+                                    <div class="nav-icon"></div>
+                                    <div class="nav-title ng-binding">@(string.IsNullOrEmpty(Request["userId"]) ? "用户新建" : "用户修改")</div>
+                                </a>
+                            </div>
+                        </li>
+                        <li>
+                            <div class="ng-isolate-scope">
+                                <a href=@Url.Content("~/System/User/UserList") class="ng-scope">
+                                    <div class="nav-icon"></div>
+                                    <div class="nav-title ng-binding">用户管理</div>
+                                    <div class="nav-extend">
+                                        <span class="ng-isolate-scope">
+                                            <span class="deadline-leftdays-normal ng-scope ng-binding"></span>
+                                        </span>
+                                    </div>
+                                </a>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body">
+        <div class="ng-scope">
+            <div class="ng-scope">
+                <div class="case-section-main clearfix" style="padding:0px">
+                    <!-- 左侧 -->
+                    <div class="case-section-left" style="padding-right: 0%;">
+                        <div class="case-section-wrap">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <div class="section-content clearfix" style="padding: 0px; padding-left: 10px; padding-right: 10px; ">
+                                            <form id="customerForm">
+                                                <div class="ng-scope">
+                                                    @Html.HiddenFor(m => m.User.UserBasic.UserId)
+                                                    @Html.HiddenFor(m => m.User.UserBasic.UserGuid)
+
+                                                    <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                                                        <span class="table-viewer-topbar-title">
+                                                            基本信息
+                                                        </span>
+                                                        <div class="pull-right table-viewer-topbar-content"></div>
+                                                        <span class="toggle-drop-down-icon ng-isolate-scope">
+                                                            <span class="table-viewer-dropdown icon-up" style="margin-top: 0px"></span>
+                                                        </span>
+                                                    </div>
+                                                    <div class="gridSection" style="padding-top: 4px; ">
+
+                                                        <table id=" tbluser" class="input_table" style="width:100%">
+                                                            <colgroup>
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                            </colgroup>
+                                                            <tbody>
+
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.UserName) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.UserName, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.EmployeeName) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.User.UserBasic.EmployeeName, new { @class = "input_text case-form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.User.UserBasic.Password)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.Password, new { @class = "form-control" })</td>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.ProfessionalTitle) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.ProfessionalTitle, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.DepartmentId) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.DepartmentId, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.ManagerId) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.ManagerId, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.IdentityNo) </th>
+
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.User.UserBasic.IdentityNo, new { @class = "input_text case-form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.User.UserBasic.BirthDate)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.BirthDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                </tr>
+
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.IsActived) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.IsActived, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.Status) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.Status, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.Email) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.User.UserBasic.Email, new { @class = "input_text case-form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.User.UserBasic.MobilePhone)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.MobilePhone, new { @class = "form-control" })</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.EnglishLevel) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.EnglishLevel, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.Education) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.Education, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.SubOfficePhone) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.User.UserBasic.SubOfficePhone, new { @class = "input_text case-form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.User.UserBasic.Native)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.Native, new { @class = "form-control" })</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.OtherLanguage) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.OtherLanguage, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.GraduationDate) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.GraduationDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.SocialSecurity) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.User.UserBasic.SocialSecurity, new { @class = "input_text case-form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.User.UserBasic.University)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.University, new { @class = "form-control" })</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.Address) </th>
+                                                                    <td colspan="3">@Html.TextBoxFor(m => m.User.UserBasic.Address, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.IdentificationAddress) </th>
+                                                                    <td colspan="3">@Html.TextBoxFor(m => m.User.UserBasic.IdentificationAddress, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+
+                                                    <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                                                        <span class="table-viewer-topbar-title">
+                                                           工作信息
+                                                        </span>
+                                                        <div class="pull-right table-viewer-topbar-content"></div>
+                                                        <span class="toggle-drop-down-icon ng-isolate-scope">
+                                                            <span class="table-viewer-dropdown icon-up" style="margin-top: 0px"></span>
+                                                        </span>
+                                                    </div>
+                                                    <div class="gridSection" style="padding-top: 4px; ">
+
+                                                        <table id=" tbluser" class="input_table" style="width:100%">
+                                                            <colgroup>
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                            </colgroup>
+                                                            <tbody>
+ 
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.PatentAgentCertificateNo) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.PatentAgentCertificateNo, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.PatentAgentCertificateDate) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.PatentAgentCertificateDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.PatentAgentLicenceNo) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.User.UserBasic.PatentAgentLicenceNo, new { @class = "input_text case-form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.User.UserBasic.PatentAgentLicenceDate)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.PatentAgentLicenceDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.ProfessionalTitle) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.ProfessionalTitle, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.SocialTitle) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.SocialTitle, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.LawyerLicenceNo) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.User.UserBasic.LawyerLicenceNo, new { @class = "input_text case-form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.User.UserBasic.LawyerLicenceDate)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.LawyerLicenceDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                </tr>
+
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.PoliticsStatus) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.PoliticsStatus, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.DutyDate) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.DutyDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.InternshipDurationFrom) </th>
+                                                                     <td>@Html.TextBoxFor(m => m.User.UserBasic.InternshipDurationFrom, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+                                                                     <th>
+                                                                        @Html.LabelFor(m => m.User.UserBasic.InternshipDurationEnd)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.InternshipDurationEnd, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                </tr>
+
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.PartnerDurationFrom) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.PartnerDurationFrom, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.PartnerDurationEnd) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.PartnerDurationEnd, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.EntryDate) </th>
+                                                  
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.EntryDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.User.UserBasic.ResignationDate)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.ResignationDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.JobTitle) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.JobTitle, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.JobLevel) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.JobLevel, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.AnnualVacationLeft) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.User.UserBasic.AnnualVacationLeft, new { @class = "input_text case-form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                    </th>
+                                                                    <td> </td>
+                                                                </tr>
+                                                                <tr>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.Gender) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.Gender, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.MaritalStatus) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.MaritalStatus, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.Fertility) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.User.UserBasic.Fertility, new { @class = "input_text case-form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.User.UserBasic.Company)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.Company, new { @class = "form-control" })</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.ContractDeadline) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.ContractDeadline, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.JobStatus) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.JobStatus, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.EmailPassword) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.User.UserBasic.EmailPassword, new { @class = "input_text case-form-control" })
+                                                                    </td>
+                                                                    <th>@Html.LabelFor(m => m.User.UserBasic.IM) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.User.UserBasic.IM, new { @class = "input_text case-form-control", @unselectable = "on" })</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="case-section-wrap" style="padding-top: 0;">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <ul class="nav nav-tabs">
+                                            <li id="liUserContactsList" class='active'><a href="javascript:void(0);" id="btnUserContactsList">请假记录</a></li>
+                                            <li id="liUserFileList"><a href="javascript:void(0);" id="btnUserFileList">用户文档</a></li>
+                                            <li class="pull-right" style=" border:none">
+                                                <div style="margin-top:3px">
+                                                    <div style="text-align: inherit;">
+                                                        <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                            <input class="btn btn-primary ng-binding" type="button" id="btnUserCreateUpdate" value="保存" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                        <div class="section-content clearfix">
+                                            <div class="product-col ng-scope" style="width: 100%">
+                                                <div id="dv_List">
+
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="case-section-right" style='width: 10%; '>
+                        <div class="case-section-wrap">
+                            <div id='divInvoiceInfo' class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <div class="section-content clearfix" style='padding:0px'>
+                                            <div class="ng-scope">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div style="display: none;" id="divUserList">
+                        @Html.Partial("~/Areas/IPR/Views/IPRBase/UserList.cshtml")
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

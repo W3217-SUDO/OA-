@@ -1,0 +1,29 @@
+﻿
+@model System.Web.Mvc.HandleErrorInfo
+@{
+    ViewBag.Title = "Error";
+}
+<div class="viewFramework-product " style="background: #F9F9F9; text-align: center; ">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+                        <div class="basicinfo-bd">
+                            <div style="display:block; padding-top:108px;">
+                                <img id="WACErrorImage" alt="We can't find the file" src="@Url.Content("~/Resource/images/error.png")">
+                                <div id="WACErrorHeader" style="font-family: calibri, tahoma, verdana, arial, &quot;sans serif&quot;; font-size: 18pt; color: rgb(68, 68, 68); line-height: 150%;">An error occurred while processing your request.</div>
+                                <div id="WACErrorText1" style="font-family: calibri, tahoma, verdana, arial, &quot;sans serif&quot;; font-size: 10pt; color: rgb(68, 68, 68);"> There was a <b>@Model.Exception.GetType().Name</b> while rendering <b>@Model.ControllerName</b>'s <b>@Model.ActionName</b> action.</p></div>
+                                <div id="WACErrorText2" style="font-family: calibri, tahoma, verdana, arial, &quot;sans serif&quot;; font-size: 10pt; color: rgb(68, 68, 68);">@Model.Exception.Message.</div>
+                                <div id="WACHelpLink" style="font-family: calibri, tahoma, verdana, arial, &quot;sans serif&quot;; font-size: 10pt; padding-top: 1em;">
+                                    <div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>

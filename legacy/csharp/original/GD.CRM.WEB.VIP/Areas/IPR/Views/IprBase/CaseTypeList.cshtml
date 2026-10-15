@@ -1,0 +1,30 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+ @{
+    var caseTypes = CaseTypeService.Instance.GetAllCaseTypes();
+ }
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+
+<div class="i_common_box" style="display: none;" id="divUserList">
+    <div class="i_common_hd">
+        从下列案件类型中选择
+        <input type="hidden" id="hidUserName">
+        <input type="hidden" id="hidSelectedUserControl">
+    </div>
+    <div class="i_common_bd">
+        <ul class="i_common_ul layoutfix">
+            @if (caseTypes != null && caseTypes.Count > 0)
+            {
+                foreach (var caseType in caseTypes)
+                {
+                    <li><a href="javascript:void(0)" name="@caseType.CaseTypeId">@caseType.CaseTypeName</a></li>
+                }
+            }
+        </ul>
+    </div>
+</div>
+
+
+

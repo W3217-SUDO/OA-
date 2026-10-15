@@ -1,0 +1,24 @@
+﻿<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/citys/citys.chose.css")" />
+<script src="@Url.Content("~/Scripts/Common/citys/jquery.citys.chose.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="modal fade" id="cityChosenModal">
+    <div class="modal-dialog" style="width:800px">
+        <div class="modal-content">
+            <div class="ng-scope">
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript: $('#cityChosenModal').modal('hide');">×</button>
+                        <h5 class="modal-title">选择城市</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="city_div">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                            <input class="btn btn-primary ng-binding" type="button"  id="btnCityChosen"  value="确定" />
+                            <input class="btn btn-default ng-binding" type="button" onclick="javascript: $('#cityChosenModal').modal('hide');" value="取消" />
+                    </div>
+            </div>
+        </div>
+    </div>
+</div>
+

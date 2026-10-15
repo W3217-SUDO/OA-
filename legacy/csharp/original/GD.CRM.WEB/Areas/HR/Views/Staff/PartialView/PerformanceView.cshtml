@@ -1,0 +1,160 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.HR.ViewModels.Staff.PerformanceModel
+<style>
+    .input_table th {
+        padding: 2px;
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        padding: 0px;
+        text-align: left;
+    }
+
+    .form-control {
+        border: 0;
+    }
+</style>
+<div class="modal fade" id="performanceModal" >
+        <div class="modal-dialog">
+            <div class="modal-content" style="width:700px">
+                <div class="ng-scope">
+                    @using (Html.BeginForm("Performance", "Performance", FormMethod.Post, new { id = "performanceForm", @class = "form-horizontal" }))
+                    {
+                       <link rel="stylesheet" href="@Url.Content("~/Resource/css/customer.createupdate.console.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+                        @Html.HiddenFor(m => m.Performance.SettingId)
+                        @Html.HiddenFor(m => m.Performance.StaffName)
+
+                        <div class="modal-header">
+                            <button type="button" class="close" id="btnPerformanceClose" onclick="javascript: $('#performanceModal').modal('hide');">×</button>
+                            <h5 class="modal-title ng-binding">提成查看</h5>
+                        </div>
+                        <div class="modal-body" style="padding-top:20px">
+                            <div style="background: #eaedf1;">
+                                <div class="customer-section-main clearfix">
+                                    <div class="customer-section-left" style="padding-right:0px">
+                                        <div class="customer-section-wrap">
+                                            <div class="customer-section-product">
+                                                <div class="product-container">
+                                                    <div class="product-section">
+                        
+                                                        <div class="section-content " >
+                                                            <div class="ng-scope">
+                                                                <div class="gridSection">
+                                                                    <table   class="input_table" width="100%">
+                                                                        <colgroup>
+                                                                            <col style="width: 17%;" />
+                                                                            <col style="width: 33%" />
+                                                                            <col style="width: 17%" />
+                                                                            <col style="width: 33%" />
+                                                                        </colgroup>
+                                                                        <tr>
+                                                                            <th style="text-align:right">开始时间</th>
+                                                                            <td> 
+                                                                                @Html.DisplayFor(m => m.Performance.AnnualFrom)
+                                                                            </td>
+                                                                            <th style="text-align:right">结束时间</th>
+                                                                            <td>
+                                                                                @Html.DisplayFor(m => m.Performance.AnnualEnd)
+                                                                            </td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th style="text-align:right">
+                                                                                开庭比例提成
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.DisplayTextFor(m => m.Performance.KtRate)
+                                                                            </td>
+                                                                            <th style="text-align:right">
+                                                                                开庭固定提成
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.DisplayTextFor(m => m.Performance.KtFixed)
+                                                                            </td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th style="text-align:right">
+                                                                                文书比例提成
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.DisplayTextFor(m => m.Performance.WsRate)
+                                                                            </td>
+                                                                            <th style="text-align:right">
+                                                                                文书固定提成
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.DisplayTextFor(m => m.Performance.WsFixed)
+                                                                            </td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th style="text-align:right">
+                                                                                案源比例提成
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.DisplayTextFor(m => m.Performance.AyRate)
+                                                                            </td>
+                                                                            <th style="text-align:right">
+                                                                                案源固定提成
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.DisplayTextFor(m => m.Performance.AyFixed)
+                                                                            </td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th style="text-align:right">
+                                                                                品管比例提成
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.DisplayTextFor(m => m.Performance.PgRate)
+                                                                             </td>
+                                                                            <th style="text-align:right">
+                                                                                品管固定提成
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.DisplayTextFor(m => m.Performance.PgFixed)
+                                                                            </td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th style="text-align:right">
+                                                                                调查比例提成
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.DisplayTextFor(m => m.Performance.TcRate)
+                                                                            </td>
+                                                                            <th style="text-align:right">
+                                                                                调查固定提成
+                                                                            </th>
+                                                                            <td>
+                                                                                @Html.DisplayTextFor(m => m.Performance.TcFixed)
+                                                                            </td>
+                                                                        </tr>
+                                  
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+
+ 
+                        </div>
+                        <div class="modal-footer">
+                           <input class="btn btn-default ng-binding" type="button" id="btnPerformanceCancel" value="取消" onclick="$('#performanceModal').modal('hide');" />
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+</div>
+
+
+

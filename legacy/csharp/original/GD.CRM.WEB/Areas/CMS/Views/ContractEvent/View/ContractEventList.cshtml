@@ -1,0 +1,48 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.IPR.Case
+@model Dchien.Legal.Web.Areas.CMS.ViewModels.ContractEvent.ContractEventListModel
+
+
+<form id="postForm" action="">
+    <div class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table table-hover' id="tblContractEventList" width="100%">
+                <colgroup>
+                    <col style="width: 5%">
+                    <col style="width: 55%">
+                    <col style="width: 15%">
+                    <col style="width: 15%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th style="text-align: center">
+                            序号
+                        </th>
+                        <th style="text-align: center">
+                            内容
+                        </th>
+                        <th style="text-align: center">
+                            操作人
+                        </th>
+                        <th style="text-align: center">
+                            操作日期
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="display: none">
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</form>
+

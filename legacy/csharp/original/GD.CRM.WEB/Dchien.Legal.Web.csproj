@@ -1,0 +1,1660 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>
+    </ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{D49DB15A-1A50-4D43-A5A7-A16DC43FB721}</ProjectGuid>
+    <ProjectTypeGuids>{E3E379DF-F4C6-4180-9B81-6769533ABE47};{349c5851-65df-11da-9384-00065b846f21};{fae04ec0-301f-11d3-bf4b-00c04f79efbc}</ProjectTypeGuids>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Dchien.Legal.Web</RootNamespace>
+    <AssemblyName>Dchien.Legal.Web</AssemblyName>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <MvcBuildViews>false</MvcBuildViews>
+    <UseIISExpress>false</UseIISExpress>
+    <IISExpressSSLPort />
+    <IISExpressAnonymousAuthentication />
+    <IISExpressWindowsAuthentication />
+    <IISExpressUseClassicPipelineMode />
+    <UseGlobalApplicationHostFile />
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Dchien.Legal.BizModel">
+      <HintPath>bin\Dchien.Legal.BizModel.dll</HintPath>
+    </Reference>
+    <Reference Include="Dchien.Legal.Common">
+      <HintPath>bin\Dchien.Legal.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="Dchien.Legal.Entity">
+      <HintPath>bin\Dchien.Legal.Entity.dll</HintPath>
+    </Reference>
+    <Reference Include="Dchien.Legal.Infrastructure">
+      <HintPath>bin\Dchien.Legal.Infrastructure.dll</HintPath>
+    </Reference>
+    <Reference Include="Dchien.Legal.Service">
+      <HintPath>bin\Dchien.Legal.Service.dll</HintPath>
+    </Reference>
+    <Reference Include="Common.Logging.Log4Net">
+      <HintPath>..\..\libs\Common.Logging.Log4Net.dll</HintPath>
+    </Reference>
+    <Reference Include="Dchien.ServiceStack.Common, Version=2.0.3.2, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\libs\ServiceStack\Dchien.ServiceStack.Common.dll</HintPath>
+    </Reference>
+    <Reference Include="Dchien.ServiceStack.Text, Version=2.0.3.2, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\libs\ServiceStack\Dchien.ServiceStack.Text.dll</HintPath>
+    </Reference>
+    <Reference Include="DotNetOpenAuth.AspNet">
+      <HintPath>..\..\packages\DotNetOpenAuth.AspNet.4.0.3.12153\lib\net40-full\DotNetOpenAuth.AspNet.dll</HintPath>
+    </Reference>
+    <Reference Include="DotNetOpenAuth.Core">
+      <HintPath>..\..\packages\DotNetOpenAuth.Core.4.0.3.12153\lib\net40-full\DotNetOpenAuth.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="DotNetOpenAuth.OAuth">
+      <HintPath>..\..\packages\DotNetOpenAuth.OAuth.Core.4.0.3.12153\lib\net40-full\DotNetOpenAuth.OAuth.dll</HintPath>
+    </Reference>
+    <Reference Include="DotNetOpenAuth.OAuth.Consumer">
+      <HintPath>..\..\packages\DotNetOpenAuth.OAuth.Consumer.4.0.3.12153\lib\net40-full\DotNetOpenAuth.OAuth.Consumer.dll</HintPath>
+    </Reference>
+    <Reference Include="DotNetOpenAuth.OpenId">
+      <HintPath>..\..\packages\DotNetOpenAuth.OpenId.Core.4.0.3.12153\lib\net40-full\DotNetOpenAuth.OpenId.dll</HintPath>
+    </Reference>
+    <Reference Include="DotNetOpenAuth.OpenId.RelyingParty">
+      <HintPath>..\..\packages\DotNetOpenAuth.OpenId.RelyingParty.4.0.3.12153\lib\net40-full\DotNetOpenAuth.OpenId.RelyingParty.dll</HintPath>
+    </Reference>
+    <Reference Include="EntityFramework">
+      <HintPath>..\..\packages\EntityFramework.5.0.0\lib\net40\EntityFramework.dll</HintPath>
+    </Reference>
+    <Reference Include="FluentValidation">
+      <HintPath>..\..\libs\FluentValidation.dll</HintPath>
+    </Reference>
+    <Reference Include="FluentValidation.Mvc">
+      <HintPath>..\..\libs\FluentValidation.Mvc.dll</HintPath>
+    </Reference>
+    <Reference Include="Interop.poserverLib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=1d75ee5788809228, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <EmbedInteropTypes>True</EmbedInteropTypes>
+      <HintPath>C:\Program Files (x86)\Zhuozhengsoft\PageOffice\Interop.poserverLib.dll</HintPath>
+    </Reference>
+    <Reference Include="log4net">
+      <HintPath>..\..\libs\log4net.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="Microsoft.Practices.ObjectBuilder">
+      <HintPath>..\..\libs\Microsoft.Practices.ObjectBuilder.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.VisualBasic" />
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\packages\Newtonsoft.Json.11.0.2\lib\net40\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="PageOffice, Version=4.0.0.1, Culture=neutral, PublicKeyToken=1d75ee5788809228, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>C:\Program Files (x86)\Zhuozhengsoft\PageOffice\PageOffice.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Data.Entity" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Web.DynamicData" />
+    <Reference Include="System.Web.Entity" />
+    <Reference Include="System.Web.ApplicationServices" />
+    <Reference Include="System.ComponentModel.DataAnnotations" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Web.Optimization">
+      <HintPath>..\..\packages\Microsoft.AspNet.Web.Optimization.1.0.0\lib\net40\System.Web.Optimization.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Web" />
+    <Reference Include="System.Web.Abstractions" />
+    <Reference Include="System.Web.Routing" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Configuration" />
+    <Reference Include="System.Web.Services" />
+    <Reference Include="System.EnterpriseServices" />
+    <Reference Include="Microsoft.Web.Infrastructure, Version=1.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <Private>True</Private>
+      <HintPath>..\packages\Microsoft.Web.Infrastructure.1.0.0.0\lib\net40\Microsoft.Web.Infrastructure.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Web.Mvc.FixedDisplayModes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <Private>True</Private>
+      <HintPath>..\packages\Microsoft.AspNet.Mvc.FixedDisplayModes.1.0.0\lib\net40\Microsoft.Web.Mvc.FixedDisplayModes.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Net.Http">
+      <Private>True</Private>
+      <HintPath>..\packages\Microsoft.Net.Http.2.0.30506.0\lib\net40\System.Net.Http.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Net.Http.Formatting, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.AspNet.WebApi.Client.4.0.30506.0\lib\net40\System.Net.Http.Formatting.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Net.Http.WebRequest">
+      <Private>True</Private>
+      <HintPath>..\packages\Microsoft.Net.Http.2.0.30506.0\lib\net40\System.Net.Http.WebRequest.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Web.Helpers, Version=2.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <Private>True</Private>
+      <HintPath>..\packages\Microsoft.AspNet.WebPages.2.0.30506.0\lib\net40\System.Web.Helpers.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Web.Http, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.AspNet.WebApi.Core.4.0.30506.0\lib\net40\System.Web.Http.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Web.Http.WebHost, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <HintPath>..\packages\Microsoft.AspNet.WebApi.WebHost.4.0.30506.0\lib\net40\System.Web.Http.WebHost.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Web.Mvc, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <Private>True</Private>
+      <HintPath>..\packages\Microsoft.AspNet.Mvc.4.0.30506.0\lib\net40\System.Web.Mvc.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Web.Razor, Version=2.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <Private>True</Private>
+      <HintPath>..\packages\Microsoft.AspNet.Razor.2.0.30506.0\lib\net40\System.Web.Razor.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Web.WebPages, Version=2.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <Private>True</Private>
+      <HintPath>..\packages\Microsoft.AspNet.WebPages.2.0.30506.0\lib\net40\System.Web.WebPages.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Web.WebPages.Deployment, Version=2.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <Private>True</Private>
+      <HintPath>..\packages\Microsoft.AspNet.WebPages.2.0.30506.0\lib\net40\System.Web.WebPages.Deployment.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Web.WebPages.Razor, Version=2.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <Private>True</Private>
+      <HintPath>..\packages\Microsoft.AspNet.WebPages.2.0.30506.0\lib\net40\System.Web.WebPages.Razor.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Xml.Linq" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="App_Start\AuthConfig.cs" />
+    <Compile Include="App_Start\BundleConfig.cs" />
+    <Compile Include="App_Start\Filters\CustomerAuthorizeAttribute.cs" />
+    <Compile Include="App_Start\Filters\CustomerHandleErrorAttribute.cs" />
+    <Compile Include="App_Start\Filters\NoAuthorizeAttribute.cs" />
+    <Compile Include="App_Start\Filters\PermissionAttribute.cs" />
+    <Compile Include="App_Start\MyActionFilter.cs" />
+    <Compile Include="Areas\Account\AccountAreaRegistration.cs" />
+    <Compile Include="Areas\Account\Controllers\MessageCenterController.cs" />
+    <Compile Include="Areas\Account\Controllers\UserCenterController.cs" />
+    <Compile Include="Areas\Account\ViewModels\Message\MessageModel.cs" />
+    <Compile Include="Areas\Account\ViewModels\UserCenter\AccountModel.cs" />
+    <Compile Include="Areas\BAS\BASAreaRegistration.cs" />
+    <Compile Include="Areas\BAS\Controllers\CityChosenController.cs" />
+    <Compile Include="Areas\BAS\Controllers\CourtOfficerController.cs" />
+    <Compile Include="Areas\BAS\Controllers\CourtController.cs" />
+    <Compile Include="Areas\BAS\Controllers\CauseController.cs" />
+    <Compile Include="Areas\BAS\ViewModels\CourtOfficer\CourtOfficerModel.cs" />
+    <Compile Include="Areas\CIT\CITAreaRegistration.cs" />
+    <Compile Include="Areas\CIT\Controllers\InvestigationClueAuditController.cs" />
+    <Compile Include="Areas\CIT\Controllers\InvestigationClueProducerController.cs" />
+    <Compile Include="Areas\CIT\Controllers\InvestigationClueIndicteeController.cs" />
+    <Compile Include="Areas\CIT\Controllers\InvestigationClueEvidenceFileController.cs" />
+    <Compile Include="Areas\CIT\Controllers\InvestigationClueEvidenceController.cs" />
+    <Compile Include="Areas\CIT\Controllers\InvestigationClueController.cs" />
+    <Compile Include="Areas\CIT\Controllers\InvestigationClueFileController.cs" />
+    <Compile Include="Areas\CIT\Controllers\InvestigationController.cs" />
+    <Compile Include="Areas\CIT\Controllers\InvestigationFileController.cs" />
+    <Compile Include="Areas\CIT\Controllers\InvestigationTaskController.cs" />
+    <Compile Include="Areas\CIT\ViewModels\InvestigationClue\Evidence\InvestigationClueEvidenceModel.cs" />
+    <Compile Include="Areas\CIT\ViewModels\InvestigationClue\Evidence\InvestigationClueEvidenceListModel.cs" />
+    <Compile Include="Areas\CIT\ViewModels\InvestigationClue\File\FileListModel.cs" />
+    <Compile Include="Areas\CIT\ViewModels\InvestigationClue\Producer\InvestigationProducerModel.cs" />
+    <Compile Include="Areas\CIT\ViewModels\InvestigationClue\Indictee\InvestigationIndicteeModel.cs" />
+    <Compile Include="Areas\CIT\ViewModels\InvestigationClue\InvestigationClueListModel.cs" />
+    <Compile Include="Areas\CIT\ViewModels\InvestigationClue\InvestigationClueModel.cs" />
+    <Compile Include="Areas\CIT\ViewModels\InvestigationTask\InvestigationTaskListModel.cs" />
+    <Compile Include="Areas\CIT\ViewModels\InvestigationTask\InvestigationTaskModel.cs" />
+    <Compile Include="Areas\CIT\ViewModels\Investigation\File\FileListModel.cs" />
+    <Compile Include="Areas\CIT\ViewModels\Investigation\InvestigationListModel.cs" />
+    <Compile Include="Areas\CIT\ViewModels\Investigation\InvestigationModel.cs" />
+    <Compile Include="Areas\Console\Controllers\IndexController.cs" />
+    <Compile Include="Areas\Console\ViewModels\Index\DashboardModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\Customer\CustomerSearchingModel.cs" />
+    <Compile Include="Areas\FAM\Controllers\CaseFeeController.cs" />
+    <Compile Include="Areas\FAM\Controllers\InternalFeeController.cs" />
+    <Compile Include="Areas\FAM\Controllers\BOCPaymentController.cs" />
+    <Compile Include="Areas\FAM\Controllers\ICBCPaymentController.cs" />
+    <Compile Include="Areas\FAM\ViewModels\InternalFee\ListModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\InternalFee\MultiCreateModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\InternalFee\Payment\Audit\AuditModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\InternalFee\Payment\ListModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AP\Payment\Packing\ListModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AP\Payment\Packing\PackingModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AP\Payment\Packing\PrintModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\InternalFee\Payment\Packing\ListModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\InternalFee\Payment\PaymentModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AR\BOC\BOCListModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AR\ICBC\ICBCListModel.cs" />
+    <Compile Include="Areas\HR\ViewModels\Staff\StaffEventModel.cs" />
+    <Compile Include="Areas\HR\ViewModels\Staff\StaffEventListModel.cs" />
+    <Compile Include="Areas\Legal\Controllers\CaseEventController.cs" />
+    <Compile Include="Areas\Legal\Controllers\CaseFeeController.cs" />
+    <Compile Include="Areas\Legal\Controllers\CaseFileCenterController.cs" />
+    <Compile Include="Areas\Legal\Controllers\CaseFileTypeController.cs" />
+    <Compile Include="Areas\Legal\Controllers\CaseFileController.cs" />
+    <Compile Include="Areas\Legal\Controllers\CaseLogController.cs" />
+    <Compile Include="Areas\Legal\Controllers\CaseListController.cs" />
+    <Compile Include="Areas\Legal\Controllers\VipCaseTaskController.cs" />
+    <Compile Include="Areas\Legal\Controllers\InternalFeeController.cs" />
+    <Compile Include="Areas\Legal\Controllers\InvoiceFileController .cs" />
+    <Compile Include="Areas\Legal\Controllers\LitigantController.cs" />
+    <Compile Include="Areas\Legal\Controllers\CaseController.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseEvent\CaseEventListModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseEvent\CaseEventModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseFee\CaseFeeListModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseFee\CaseFeeModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseFee\Invoice\CaseFeeInvoiceModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseFile\CaseFileListModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseFile\CaseFileUploadModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseList\CaseListModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseLog\CaseLogListModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseLog\CaseLogModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\Case\ParticipantEditModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\Case\CaseModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\InternalFee\InteralFeeModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\InternalFee\InternalListModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\LitigantAgent\LitigantAgentModel.cs" />
+    <Compile Include="Areas\RPT\Controllers\ReportController.cs" />
+    <Compile Include="Areas\RPT\RPTAreaRegistration.cs" />
+    <Compile Include="Areas\RPT\ViewModels\Report\CountJPaymentListModel.cs" />
+    <Compile Include="Areas\CRM\Controllers\ContractEventController.cs" />
+    <Compile Include="Areas\CRM\Controllers\CustomerShareController.cs" />
+    <Compile Include="Areas\CRM\Controllers\CustomerAssignmentController.cs" />
+    <Compile Include="Areas\CRM\Controllers\CustomerFileController.cs" />
+    <Compile Include="Areas\CRM\Controllers\CustomerContactsController .cs" />
+    <Compile Include="Areas\CRM\ViewModels\CustomerAssignment\CustomerAssignmentModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\CustomerEvent\CustomerEventListModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\CustomerEvent\CustomerEventModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\CustomerShare\CustomerShareModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\Customer\CustomerFileListModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\Customer\CustomerFileUpload.cs" />
+    <Compile Include="Areas\CRM\ViewModels\Customer\ContactsPhotoModel.cs" />
+    <Compile Include="Areas\FAM\Controllers\JARFileCenterController.cs" />
+    <Compile Include="Areas\FAM\Controllers\InvoiceFileCenterController.cs" />
+    <Compile Include="Areas\FAM\Controllers\JARController.cs" />
+    <Compile Include="Areas\FAM\Controllers\ReceivedPaymentController.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AR\Payment\ListModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AR\Payment\PaymentModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AR\ReceivedPayment\ListModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AR\ReceivedPayment\PaymentModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AR\ReceivedPayment\PaymentObjectListModel.cs" />
+    <Compile Include="Areas\Legal\Controllers\CaseTaskController.cs" />
+    <Compile Include="Areas\Legal\LegalAreaRegistration.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseTask\CaseTaskListModel.cs" />
+    <Compile Include="Areas\Legal\ViewModels\CaseTask\CaseTaskModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemManagement\ConfigSettingModel.cs" />
+    <Compile Include="Areas\TP\Controllers\VipTaskMessageController.cs" />
+    <Compile Include="Areas\TP\Controllers\VipTaskNodeController.cs" />
+    <Compile Include="Areas\TP\Controllers\VipTaskController.cs" />
+    <Compile Include="Areas\TP\Controllers\TaskFileController.cs" />
+    <Compile Include="Areas\TP\Controllers\TaskMessageController.cs" />
+    <Compile Include="Areas\TP\Controllers\TaskController.cs" />
+    <Compile Include="Areas\TP\Controllers\TaskNodeController.cs" />
+    <Compile Include="Areas\TP\TPAreaRegistration.cs" />
+    <Compile Include="Areas\TP\ViewModels\Task\TaskMessageListModel.cs" />
+    <Compile Include="Areas\TP\ViewModels\Task\TaskMessageModel.cs" />
+    <Compile Include="Areas\TP\ViewModels\Task\TaskModel.cs" />
+    <Compile Include="Areas\TP\ViewModels\Task\ListModel.cs" />
+    <Compile Include="Areas\FAM\Controllers\APController.cs" />
+    <Compile Include="Areas\FAM\Controllers\ARController.cs" />
+    <Compile Include="Areas\FAM\Controllers\InvoiceFileController.cs" />
+    <Compile Include="Areas\FAM\Controllers\PaymentPackingController.cs" />
+    <Compile Include="Areas\FAM\Controllers\PaymentAuditController.cs" />
+    <Compile Include="Areas\FAM\Controllers\PaymentController.cs" />
+    <Compile Include="Areas\FAM\Controllers\InvoiceController.cs" />
+    <Compile Include="Areas\FAM\Controllers\InvoiceProcessController.cs" />
+    <Compile Include="Areas\FAM\Controllers\PaymentTypeController.cs" />
+    <Compile Include="Areas\FAM\FAMAreaRegistration.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AP\Payment\Audit\AuditModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AP\Payment\ListModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\InternalFee\Payment\Packing\PackingModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\InternalFee\Payment\Packing\PrintModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AR\ListModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\Invoice\File\ListModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\Invoice\InvoiceModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\Invoice\InvoiceCreateModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\Invoice\ListModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AP\Payment\PaymentModel.cs" />
+    <Compile Include="Areas\FAM\ViewModels\AP\Payment\PaymentType\ListModel.cs" />
+    <Compile Include="Areas\FCM\Controllers\ARController.cs" />
+    <Compile Include="Areas\FCM\Controllers\ContractArchiveController.cs" />
+    <Compile Include="Areas\FCM\Controllers\ContractDraftController.cs" />
+    <Compile Include="Areas\FCM\Controllers\ContractEventController.cs" />
+    <Compile Include="Areas\FCM\Controllers\ContractFileCenterController.cs" />
+    <Compile Include="Areas\FCM\FCMAreaRegistration.cs" />
+    <Compile Include="Areas\FCM\Controllers\ContractAuditController.cs" />
+    <Compile Include="Areas\FCM\Controllers\ContractController.cs" />
+    <Compile Include="Areas\FCM\Controllers\ContractFileController.cs" />
+    <Compile Include="Areas\FCM\ViewModels\AR\ListModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\ContractArchive\ArchiveModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\ContractAudit\AuditModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\ContractAudit\ContractAuditListModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\ContractAudit\ListModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\ContractEvent\ContractEventModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\ContractEvent\ContractEventListModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\ContractFile\ContractFileUpload.cs" />
+    <Compile Include="Areas\FCM\ViewModels\ContractFile\ContractFileListModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\Contract\ContractObjectListModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\Contract\ContractTypeModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\Contract\ContractModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\Contract\DraftModel.cs" />
+    <Compile Include="Areas\FCM\ViewModels\Contract\ListModel.cs" />
+    <Compile Include="Areas\Account\Controllers\CommunicationController.cs" />
+    <Compile Include="Areas\CRM\Controllers\CustomerController.cs" />
+    <Compile Include="Areas\CRM\Controllers\LawFirmController.cs" />
+    <Compile Include="Areas\CRM\CRMAreaRegistration.cs" />
+    <Compile Include="Areas\Account\ViewModels\Communication\CommunicationModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\Customer\ContactsListModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\Customer\ContactsModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\Customer\EditModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\Customer\ListModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\Customer\LicenseModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\LawFirm\ContactsListModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\LawFirm\ContactsModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\LawFirm\EditModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\LawFirm\IndexModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\LawFirm\LicenseModel.cs" />
+    <Compile Include="Areas\CRM\ViewModels\LawFirm\ListModel.cs" />
+    <Compile Include="Areas\Console\ConsoleAreaRegistration.cs" />
+    <Compile Include="Areas\Console\ViewModels\Index\IndexModel.cs" />
+    <Compile Include="Areas\HR\Controllers\RoleController.cs" />
+    <Compile Include="Areas\HR\Controllers\DepartmentController.cs" />
+    <Compile Include="Areas\HR\ViewModels\DepartmentModel.cs" />
+    <Compile Include="Areas\HR\ViewModels\RoleModel.cs" />
+    <Compile Include="Areas\HR\ViewModels\Staff\StaffFileUpload.cs" />
+    <Compile Include="Areas\HR\ViewModels\Staff\StaffFileListModel.cs" />
+    <Compile Include="Areas\HR\ViewModels\Staff\StaffModel.cs" />
+    <Compile Include="Areas\HR\Controllers\StaffController.cs" />
+    <Compile Include="Areas\HR\HRAreaRegistration.cs" />
+    <Compile Include="Areas\HR\ViewModels\Staff\CreateUpdateModel.cs" />
+    <Compile Include="Areas\HR\ViewModels\Staff\OffWorkDayListModel.cs" />
+    <Compile Include="Areas\HR\ViewModels\Staff\OffWorkDayModel.cs" />
+    <Compile Include="Areas\System\Controllers\SystemCenterController.cs" />
+    <Compile Include="Areas\System\Controllers\SystemManagementController.cs" />
+    <Compile Include="Areas\System\SystemAreaRegistration.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemCenter\PaymentTypeModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemCenter\CaseFeeTypeModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemCenter\CaseFileTypeModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemCenter\CasePhaseModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemCenter\CaseTypeModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemCenter\CausesModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemCenter\CompanyModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemCenter\CourtModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemCenter\CustomerTypeModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemCenter\LocalModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemManagement\CacheModel.cs" />
+    <Compile Include="Areas\System\ViewModels\SystemManagement\MenuModel.cs" />
+    <Compile Include="Areas\TP\ViewModels\Task\TaskNodeModel.cs" />
+    <Compile Include="Captcha\Enumerations.cs" />
+    <Compile Include="Captcha\MvcCaptchaConfigSection.cs" />
+    <Compile Include="Captcha\MvcCaptchaController.cs" />
+    <Compile Include="Captcha\MvcCaptchaHelper.cs" />
+    <Compile Include="Captcha\MvcCaptchaImage.cs" />
+    <Compile Include="Captcha\MvcCaptchaImageResult.cs" />
+    <Compile Include="Captcha\MvcCaptchaOptions.cs" />
+    <Compile Include="Captcha\ValidateMvcCaptchaAttribute.cs" />
+    <Compile Include="Controllers\BaseController.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Controllers\CheckUserLogin.cs" />
+    <Compile Include="Controllers\FileUploadController.cs" />
+    <Compile Include="Controllers\HomeController.cs" />
+    <Compile Include="Filters\InitializeSimpleMembershipAttribute.cs" />
+    <Compile Include="Global.asax.cs">
+      <DependentUpon>Global.asax</DependentUpon>
+    </Compile>
+    <Compile Include="Models\AccountModels.cs" />
+    <Compile Include="Models\BaseModel.cs" />
+    <Compile Include="Models\Employee.cs" />
+    <Compile Include="Models\PostResponse.cs" />
+    <Compile Include="Models\UserModel.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="App_Start\FilterConfig.cs" />
+    <Compile Include="App_Start\RouteConfig.cs" />
+    <Compile Include="App_Start\WebApiConfig.cs" />
+    <Content Include="Areas\Account\Views\UserCenter\Setting.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueAudit\List.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueAudit\PartialView\Audit.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueFile\FileList.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueFile\PartialView\FileUpload.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClue\List.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClue\MenuList.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClue\PartialView\ClueList.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClue\PartialView\CreateUpdate.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationFile\FileList.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationFile\PartialView\FileUpload.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationTask\Create.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationTask\InvestigationTask.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationTask\InvestigationTaskList.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationTask\List.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationTask\MenuList.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationTask\PartialView\Edit.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationTask\PartialView\PreView.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationTask\PartialView\TaskList.cshtml" />
+    <Content Include="Areas\CIT\Views\Investigation\Create.cshtml" />
+    <Content Include="Areas\CIT\Views\Investigation\List.cshtml" />
+    <Content Include="Areas\CIT\Views\Investigation\MenuList.cshtml" />
+    <Content Include="Areas\CIT\Views\Investigation\PartialView\Edit.cshtml" />
+    <Content Include="Areas\CIT\Views\Investigation\PartialView\PreView.cshtml" />
+    <Content Include="Areas\CIT\Web.config" />
+    <Content Include="Areas\CIT\_ViewStart.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueEvidence\PartialView\Create.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueEvidence\PartialView\List.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueEvidenceFile\PartialView\List.cshtml" />
+    <Content Include="Areas\BAS\Views\_ViewStart.cshtml" />
+    <Content Include="Areas\BAS\Views\Web.config" />
+    <Content Include="Areas\BAS\Views\CourtOfficer\PartialView\Create.cshtml" />
+    <Content Include="Areas\CIT\Views\Investigation\Assigning.cshtml" />
+    <Content Include="Areas\BAS\Views\CityChosen\PartialView\CityChosen.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClue\PartialView\Clue.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClue\PartialView\ClueCreate.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueIndictee\Create.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueProducer\Create.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClue\PartialView\ClueEdit.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueEvidenceFile\InvestigationClueEvidenceFileIn.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueEvidence\PartialView\MultiCreate.cshtml" />
+    <Content Include="Areas\CIT\Views\InvestigationClueEvidence\InvestigationClueEvidenceAddIn.cshtml" />
+    <None Include="Areas\Console\Controllers\IndexController.cs.bak" />
+    <None Include="Areas\Console\Views\Index\Index.cshtml" />
+    <Content Include="Areas\CRM\Views\Customer\CreateUpdate.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerFile\CustomerFileList.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerFile\CustomerFileUpload.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerFile\View\CustomerFileList.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerContacts\CreateUpdate.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerContacts\ContactsList.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerContacts\ContactsPhoto.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerEvent\CustomerEvent.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerEvent\CustomerEventList.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerEvent\View\CustomerEventList.cshtml" />
+    <Content Include="Areas\CRM\Views\Customer\CustomerList.cshtml" />
+    <Content Include="Areas\CRM\Views\Customer\View.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerContacts\View.cshtml" />
+    <Content Include="Areas\HR\Views\_ViewStart.cshtml" />
+    <Content Include="Areas\HR\Views\Staff\CreateUpdate.cshtml" />
+    <Content Include="Areas\HR\Views\Staff\PartialView\OffWorkDay.cshtml" />
+    <Content Include="Areas\HR\Views\Staff\PartialView\OffWorkDayList.cshtml" />
+    <Content Include="Areas\HR\Views\Staff\PartialView\StaffFileList.cshtml" />
+    <Content Include="Areas\HR\Views\Staff\PartialView\StaffFileUpload.cshtml" />
+    <Content Include="Areas\HR\Views\Web.config" />
+    <Content Include="Areas\HR\Views\Staff\List.cshtml" />
+    <Content Include="Areas\HR\Views\Department\DepartmentList.cshtml" />
+    <Content Include="Areas\HR\Views\Department\Department.cshtml" />
+    <Content Include="Areas\HR\Views\Role\Role.cshtml" />
+    <Content Include="Areas\HR\Views\Role\RoleList.cshtml" />
+    <Content Include="Areas\HR\Views\Role\RolePermissions.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerAssignment\Assigning.cshtml" />
+    <Content Include="Areas\CRM\Views\CustomerShare\Sharing.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractFile\View\ContractFileListOnModal.cshtml" />
+    <None Include="Areas\Console\Views\Index\Index.cshtml.bak" />
+    <Content Include="Areas\Console\Views\Web.config" />
+    <Content Include="Areas\Console\Views\_ViewStart.cshtml" />
+    <Content Include="Areas\Legal\Views\InvoiceFile\InvoiceCustomizedFile.cshtml" />
+    <Content Include="Areas\TP\Views\_ViewStart.cshtml" />
+    <Content Include="Areas\TP\Views\Task\TaskList.cshtml" />
+    <Content Include="Areas\TP\Views\Web.config" />
+    <Content Include="Areas\TP\Views\Task\List.cshtml" />
+    <Content Include="Areas\TP\Views\Task\TaskDetail.cshtml" />
+    <Content Include="Areas\TP\Views\Task\Create.cshtml" />
+    <Content Include="Areas\TP\Views\Task\TaskDetail.ba.cshtml" />
+    <Content Include="Areas\TP\Views\TaskMessage\TaskMessages.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseTask\CaseTask.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseTask\CaseTaskList.cshtml" />
+    <Content Include="Areas\Legal\Views\Shared\_Layout.cshtml" />
+    <Content Include="Areas\Legal\Web.config" />
+    <Content Include="Areas\Legal\_ViewStart.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\Applied.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\Apply.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\Create.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\Edit.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\List.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\PartialView\PaymentObjectAppliedList.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\PartialView\PaymentObjectList.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\PaymentTypeList.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\Push.cshtml" />
+    <Content Include="Areas\FCM\Views\Contract\ContractObjects.cshtml" />
+    <Content Include="Areas\Console\Views\Shared\_Layout.cshtml" />
+    <Content Include="Areas\FAM\Views\Invoice\InvoiceServiceList.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\Audit\List.cshtml" />
+    <Content Include="Areas\FAM\Views\JAR\Payment\Create.cshtml" />
+    <Content Include="Areas\FAM\Views\JAR\Payment\Edit.cshtml" />
+    <Content Include="Areas\FAM\Views\JAR\Payment\List.cshtml" />
+    <Content Include="Areas\FAM\Views\JAR\Payment\PaymentTypeList.cshtml" />
+    <Content Include="Areas\FAM\Views\JAR\Payment\View.cshtml" />
+    <Content Include="Areas\FAM\Views\JAR\MenuList.cshtml" />
+    <Content Include="Areas\RPT\Views\_ViewStart.cshtml" />
+    <Content Include="Areas\RPT\Views\Report\CountJPaymentList.cshtml" />
+    <Content Include="Areas\RPT\Views\Web.config" />
+    <Content Include="Areas\CRM\Views\Customer\CustomerPublicList.cshtml" />
+    <Content Include="Areas\System\Views\SystemManagement\ConfigAppSetting.cshtml" />
+    <Content Include="Areas\System\Views\SystemManagement\ConfigAppSettingList.cshtml" />
+    <Content Include="Areas\HR\Views\Staff\PartialView\StaffEventList.cshtml" />
+    <Content Include="Areas\HR\Views\Staff\PartialView\StaffEvent.cshtml" />
+    <Content Include="Areas\CRM\Views\Customer\Customer.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CreateUpdate.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CaseBasicInfo.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\CivilDispute.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\Litigant.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\Court.cshtml" />
+    <Content Include="Areas\Legal\Views\Litigant\PartialView\LitigantAgent.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\View.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\CaseInfo.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseFile\PartialView\CaseFileList.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseFile\PartialView\CaseFileUpload.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseFee\PartialView\CaseFeeList.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseLog\PartialView\CaseOperatingLogList.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseLog\PartialView\CaseLogList.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseLog\PartialView\CaseLog.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseEvent\PartialView\CaseEvent.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseEvent\PartialView\CaseEventList.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\PartialView\Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\PartialView\LitigantEdit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\PartialView\CourtEdit.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\List.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseFee\PartialView\Create.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseFile\PartialView\FileType.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseFee\PartialView\Edit.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\PaymentPacking\PackingList.cshtml" />
+    <Content Include="Areas\FCM\Views\_ViewStart.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\PartialView\PaymentList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractDraft\Create.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractDraft\ToAudit.cshtml" />
+    <Content Include="Areas\Legal\Views\InternalFee\MultiCreate.cshtml" />
+    <Content Include="Areas\Legal\Views\InternalFee\PartialView\List.cshtml" />
+    <Content Include="Areas\Legal\Views\InternalFee\PartialView\Create.cshtml" />
+    <Content Include="Areas\Legal\Views\InternalFee\PartialView\Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\QuickCreate.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\PartialView\SettlementAmountEdit.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseFee\PartialView\RefundAmount.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\PartialView\RefundObjectList.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ReceivedPayment\RefundApply.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\Payment\PendingList.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\PaymentPacking\PrintOnPackingNo.cshtml" />
+    <Content Include="Areas\Legal\Views\InvoiceFile\CaseFeeList.cshtml" />
+    <Content Include="Areas\Legal\Views\InvoiceFile\CaseFeeInvoiceConfirm.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ICBC\ICBCList.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\ICBC\ICBCImport.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\BOC\BOCImport.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\BOC\BOCList.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\Payment\Cancel.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\Payment\Create.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\Payment\Edit.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\Payment\List.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\Payment\MenuList.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\Payment\PendingList.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\Payment\View.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\PaymentAudit\Audit.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\PaymentAudit\List.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\PaymentPacking\PackingList.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\PaymentPacking\PackingVerify.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\PaymentPacking\PendingList.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\PaymentPacking\Print.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\PaymentPacking\PrintOnPackingNo.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\PaymentObject\List.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseFile\PartialView\MultiCaseFileUpload.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\PartialView\ParticipantEdit.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\InternalFee\MultiCreate.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\Payment\MultiCreate.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseFee\PartialView\MultiCreate.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\Payment\MultiCreate.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\Payment\MultiCreatePaymentList.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\ScheduleList.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\Payment\MultiCreatePaymentList.cshtml" />
+    <Content Include="Areas\TP\Views\Task\TaskCreate.cshtml" />
+    <Content Include="Areas\TP\Views\TaskNode\Create.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\PaymentAudit\MultiAudit.cshtml" />
+    <Content Include="Areas\CRM\Views\Customer\CustomerSearching.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\PartialView\ClueGenerateCase.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\PartialView\CivilDispute.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\PartialView\Litigant.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\PartialView\Court.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\PartialView\ClueToCase.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\CivilDispute\PartialView\ClueToCaseList.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseFile\CaseFileWordEdit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\View.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CivilDispute.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CriminalCase\CriminalCase_View.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CivilDisputeCase\CivilDisputeCase_Create.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\Create.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CriminalCase\CriminalCase_Create.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\ConsultantCase\ConsultantCase_Create.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\Litigant.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CriminalCase\CriminalCase_Litigant.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\Court.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\ArbitrationCase\ArbitrationCase_Court.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\ArbitrationCase\ArbitrationCase_Litigant.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\ArbitrationCase\ArbitrationCase_Create.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CivilDisputeCase\CivilDisputeCase_Court.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CivilDisputeCase\CivilDisputeCase_Litigant.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\AdministrativeCase\AdministrativeCase_Litigant.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\AdministrativeCase\AdministrativeCase_Court.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\AdministrativeCase\AdministrativeCase_Create.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CivilDisputeCase\CivilDisputeCase_View.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\AdministrativeCase\AdministrativeCase_View.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\ArbitrationCase\ArbitrationCase_View.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\ConsultantCase\ConsultantCase_Litigant.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\ConsultantCase\ConsultantCase_View.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\ConsultantCase\ConsultantCase_Basic_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CivilDisputeCase\CivilDisputeCase_Basic_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\ArbitrationCase\ArbitrationCase_Basic_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\AdministrativeCase\AdministrativeCase_Basic_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CriminalCase\CriminalCase_Basic_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CivilDisputeCase\CivilDisputeCase_Litigant_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CriminalCase\CriminalCase_Litigant_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\AdministrativeCase\AdministrativeCase_Litigant_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\ArbitrationCase\ArbitrationCase_Litigant_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CivilDisputeCase\CivilDisputeCase_Court_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\ArbitrationCase\ArbitrationCase_Court_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\AdministrativeCase\AdministrativeCase_Court_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CriminalCase\CriminalCase_PublicSecurityUnit_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CriminalCase\CriminalCase_Court_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CriminalCase\CriminalCase_ProcuratorateUnit_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CriminalCase\CriminalCase_Court.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\PartialView\CriminalCase\SearchCondition.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\PartialView\ConsultantCase\SearchCondition.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\PartialView\CivilDisputeCase\SearchCondition.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\PartialView\AdministrativeCase\SearchCondition.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\PartialView\ArbitrationCase\SearchCondition.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\PartialView\CriminalCase\List.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\PartialView\AdministrativeCase\List.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\PartialView\ArbitrationCase\List.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\PartialView\CivilDisputeCase\List.cshtml" />
+    <Content Include="Areas\Legal\Views\CaseList\PartialView\ConsultantCase\List.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\CaseFeeList.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\CaseFeeList.cshtml" />
+    <Content Include="Areas\FAM\Views\InternalFee\InternalFee\List.cshtml" />
+    <Content Include="Areas\FAM\Views\CaseFee\CaseFeeList.cshtml" />
+    <Content Include="Areas\Legal\Views\VipCaseTask\CaseTask.cshtml" />
+    <Content Include="Areas\Legal\Views\VipCaseTask\CaseTaskList.cshtml" />
+    <Content Include="Areas\TP\Views\VipTask\Create.cshtml" />
+    <Content Include="Areas\TP\Views\VipTask\List.cshtml" />
+    <Content Include="Areas\TP\Views\VipTask\TaskCreate.cshtml" />
+    <Content Include="Areas\TP\Views\VipTask\TaskDetail.ba.cshtml" />
+    <Content Include="Areas\TP\Views\VipTask\TaskDetail.cshtml" />
+    <Content Include="Areas\TP\Views\VipTask\TaskList.cshtml" />
+    <Content Include="Areas\TP\Views\VipTaskMessage\TaskMessages.cshtml" />
+    <Content Include="Areas\TP\Views\VipTaskNode\Create.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\CivilDisputeCase\CivilDisputeCase_CustomerAddIn_Edit.cshtml" />
+    <Content Include="Areas\Legal\Views\Case\PartialView\Merge.cshtml" />
+    <None Include="Common\Config\Log4NET.xml.bak" />
+    <Content Include="NoPermission.html" />
+    <Content Include="404.html" />
+    <Content Include="Common\Config\Log4NET.xml" />
+    <Content Include="Global.asax" />
+    <Content Include="Resource\assets\avatars\avatar.png" />
+    <Content Include="Resource\assets\avatars\avatar1.png" />
+    <Content Include="Resource\assets\avatars\avatar2.png" />
+    <Content Include="Resource\assets\avatars\avatar3.png" />
+    <Content Include="Resource\assets\avatars\avatar4.png" />
+    <Content Include="Resource\assets\avatars\avatar5.png" />
+    <Content Include="Resource\assets\avatars\profile-pic.jpg" />
+    <Content Include="Resource\assets\avatars\user.jpg" />
+    <Content Include="Resource\assets\css\ace-fonts.css" />
+    <Content Include="Resource\assets\css\ace-ie.css" />
+    <Content Include="Resource\assets\css\ace-part2.css" />
+    <Content Include="Resource\assets\css\ace-rtl.css" />
+    <Content Include="Resource\assets\css\ace-skins.css" />
+    <Content Include="Resource\assets\css\ace.css" />
+    <Content Include="Resource\assets\css\ace.onpage-help.css" />
+    <Content Include="Resource\assets\css\bootstrap-datetimepicker.css" />
+    <Content Include="Resource\assets\css\bootstrap-duallistbox.css" />
+    <Content Include="Resource\assets\css\bootstrap-editable.css" />
+    <Content Include="Resource\assets\css\bootstrap-multiselect.css" />
+    <Content Include="Resource\assets\css\bootstrap-timepicker.css" />
+    <Content Include="Resource\assets\css\bootstrap.css" />
+    <Content Include="Resource\assets\css\chosen-sprite%402x.png" />
+    <Content Include="Resource\assets\css\chosen-sprite.png" />
+    <Content Include="Resource\assets\css\chosen.css" />
+    <Content Include="Resource\assets\css\colorbox.css" />
+    <Content Include="Resource\assets\css\colorpicker.css" />
+    <Content Include="Resource\assets\css\datepicker.css" />
+    <Content Include="Resource\assets\css\daterangepicker.css" />
+    <Content Include="Resource\assets\css\dropzone.css" />
+    <Content Include="Resource\assets\css\font-awesome.css" />
+    <Content Include="Resource\assets\css\fullcalendar.css" />
+    <Content Include="Resource\assets\css\fullcalendar.print.css" />
+    <Content Include="Resource\assets\css\images\border.png" />
+    <Content Include="Resource\assets\css\images\border1.png" />
+    <Content Include="Resource\assets\css\images\border2.png" />
+    <Content Include="Resource\assets\css\images\controls.png" />
+    <Content Include="Resource\assets\css\images\ie6\borderBottomCenter.png" />
+    <Content Include="Resource\assets\css\images\ie6\borderBottomLeft.png" />
+    <Content Include="Resource\assets\css\images\ie6\borderBottomRight.png" />
+    <Content Include="Resource\assets\css\images\ie6\borderMiddleLeft.png" />
+    <Content Include="Resource\assets\css\images\ie6\borderMiddleRight.png" />
+    <Content Include="Resource\assets\css\images\ie6\borderTopCenter.png" />
+    <Content Include="Resource\assets\css\images\ie6\borderTopLeft.png" />
+    <Content Include="Resource\assets\css\images\ie6\borderTopRight.png" />
+    <Content Include="Resource\assets\css\images\loading.gif" />
+    <Content Include="Resource\assets\css\images\loading_background.png" />
+    <Content Include="Resource\assets\css\images\meteorshower.jpg" />
+    <Content Include="Resource\assets\css\images\meteorshower2.jpg" />
+    <Content Include="Resource\assets\css\images\overlay.png" />
+    <Content Include="Resource\assets\css\images\pattern.jpg" />
+    <Content Include="Resource\assets\css\images\pattern.png" />
+    <Content Include="Resource\assets\css\images\spritemap%402x.png" />
+    <Content Include="Resource\assets\css\images\spritemap.png" />
+    <Content Include="Resource\assets\css\img\alpha.png" />
+    <Content Include="Resource\assets\css\img\hue.png" />
+    <Content Include="Resource\assets\css\img\saturation.png" />
+    <Content Include="Resource\assets\css\jquery-ui.css" />
+    <Content Include="Resource\assets\css\jquery-ui.custom.css" />
+    <Content Include="Resource\assets\css\jquery.gritter.css" />
+    <Content Include="Resource\assets\css\prettify.css" />
+    <Content Include="Resource\assets\css\select2-spinner.gif" />
+    <Content Include="Resource\assets\css\select2.css" />
+    <Content Include="Resource\assets\css\select2.png" />
+    <Content Include="Resource\assets\css\select2x2.png" />
+    <Content Include="Resource\assets\css\ui.jqgrid.css" />
+    <Content Include="Resource\assets\fonts\fontawesome-webfont.svg" />
+    <Content Include="Resource\assets\fonts\glyphicons-halflings-regular.svg" />
+    <Content Include="Resource\assets\images\back_disabled.png" />
+    <Content Include="Resource\assets\images\back_enabled.png" />
+    <Content Include="Resource\assets\images\back_enabled_hover.png" />
+    <Content Include="Resource\assets\images\email1.png" />
+    <Content Include="Resource\assets\images\email2.png" />
+    <Content Include="Resource\assets\images\email3.png" />
+    <Content Include="Resource\assets\images\email4.png" />
+    <Content Include="Resource\assets\images\forward_disabled.png" />
+    <Content Include="Resource\assets\images\forward_enabled.png" />
+    <Content Include="Resource\assets\images\forward_enabled_hover.png" />
+    <Content Include="Resource\assets\images\gallery\image-1.jpg" />
+    <Content Include="Resource\assets\images\gallery\image-2.jpg" />
+    <Content Include="Resource\assets\images\gallery\image-3.jpg" />
+    <Content Include="Resource\assets\images\gallery\image-4.jpg" />
+    <Content Include="Resource\assets\images\gallery\image-5.jpg" />
+    <Content Include="Resource\assets\images\gallery\image-6.jpg" />
+    <Content Include="Resource\assets\images\gallery\thumb-1.jpg" />
+    <Content Include="Resource\assets\images\gallery\thumb-2.jpg" />
+    <Content Include="Resource\assets\images\gallery\thumb-3.jpg" />
+    <Content Include="Resource\assets\images\gallery\thumb-4.jpg" />
+    <Content Include="Resource\assets\images\gallery\thumb-5.jpg" />
+    <Content Include="Resource\assets\images\gallery\thumb-6.jpg" />
+    <Content Include="Resource\assets\images\sort_asc.png" />
+    <Content Include="Resource\assets\images\sort_asc_disabled.png" />
+    <Content Include="Resource\assets\images\sort_both.png" />
+    <Content Include="Resource\assets\images\sort_desc.png" />
+    <Content Include="Resource\assets\images\sort_desc_disabled.png" />
+    <Content Include="Resource\assets\images\spritemap%402x.png" />
+    <Content Include="Resource\assets\images\spritemap.png" />
+    <Content Include="Resource\assets\img\clear.png" />
+    <Content Include="Resource\assets\img\glyphicons-halflings-white.png" />
+    <Content Include="Resource\assets\img\glyphicons-halflings.png" />
+    <Content Include="Resource\assets\img\loading.gif" />
+    <Content Include="Resource\assets\js\ace-elements.js" />
+    <Content Include="Resource\assets\js\ace-extra.js" />
+    <Content Include="Resource\assets\js\ace.js" />
+    <Content Include="Resource\assets\js\ace\ace.ajax-content.js" />
+    <Content Include="Resource\assets\js\ace\ace.auto-container.js" />
+    <Content Include="Resource\assets\js\ace\ace.auto-padding.js" />
+    <Content Include="Resource\assets\js\ace\ace.js" />
+    <Content Include="Resource\assets\js\ace\ace.onpage-help.js" />
+    <Content Include="Resource\assets\js\ace\ace.searchbox-autocomplete.js" />
+    <Content Include="Resource\assets\js\ace\ace.settings-rtl.js" />
+    <Content Include="Resource\assets\js\ace\ace.settings-skin.js" />
+    <Content Include="Resource\assets\js\ace\ace.settings.js" />
+    <Content Include="Resource\assets\js\ace\ace.sidebar-scroll-1.js" />
+    <Content Include="Resource\assets\js\ace\ace.sidebar-scroll-2.js" />
+    <Content Include="Resource\assets\js\ace\ace.sidebar.js" />
+    <Content Include="Resource\assets\js\ace\ace.submenu-hover.js" />
+    <Content Include="Resource\assets\js\ace\ace.touch-drag.js" />
+    <Content Include="Resource\assets\js\ace\ace.widget-box.js" />
+    <Content Include="Resource\assets\js\ace\ace.widget-on-reload.js" />
+    <Content Include="Resource\assets\js\ace\elements.aside.js" />
+    <Content Include="Resource\assets\js\ace\elements.colorpicker.js" />
+    <Content Include="Resource\assets\js\ace\elements.fileinput.js" />
+    <Content Include="Resource\assets\js\ace\elements.onpage-help.js" />
+    <Content Include="Resource\assets\js\ace\elements.scroller.js" />
+    <Content Include="Resource\assets\js\ace\elements.spinner.js" />
+    <Content Include="Resource\assets\js\ace\elements.treeview.js" />
+    <Content Include="Resource\assets\js\ace\elements.typeahead.js" />
+    <Content Include="Resource\assets\js\ace\elements.wizard.js" />
+    <Content Include="Resource\assets\js\ace\elements.wysiwyg.js" />
+    <Content Include="Resource\assets\js\additional-methods.js" />
+    <Content Include="Resource\assets\js\bootbox.js" />
+    <Content Include="Resource\assets\js\bootstrap-colorpicker.js" />
+    <Content Include="Resource\assets\js\bootstrap-multiselect.js" />
+    <Content Include="Resource\assets\js\bootstrap-tag.js" />
+    <Content Include="Resource\assets\js\bootstrap-wysiwyg.js" />
+    <Content Include="Resource\assets\js\bootstrap.js" />
+    <Content Include="Resource\assets\js\chosen.jquery.js" />
+    <Content Include="Resource\assets\js\date-time\bootstrap-datepicker.js" />
+    <Content Include="Resource\assets\js\date-time\bootstrap-datetimepicker.js" />
+    <Content Include="Resource\assets\js\date-time\bootstrap-timepicker.js" />
+    <Content Include="Resource\assets\js\date-time\daterangepicker.js" />
+    <Content Include="Resource\assets\js\date-time\moment.js" />
+    <Content Include="Resource\assets\js\dropzone.js" />
+    <Content Include="Resource\assets\js\excanvas.js" />
+    <Content Include="Resource\assets\js\flot\jquery.flot.js" />
+    <Content Include="Resource\assets\js\flot\jquery.flot.pie.js" />
+    <Content Include="Resource\assets\js\flot\jquery.flot.resize.js" />
+    <Content Include="Resource\assets\js\fuelux\fuelux.spinner.js" />
+    <Content Include="Resource\assets\js\fuelux\fuelux.tree.js" />
+    <Content Include="Resource\assets\js\fuelux\fuelux.wizard.js" />
+    <Content Include="Resource\assets\js\fullcalendar.js" />
+    <Content Include="Resource\assets\js\html5shiv.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-ar.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-bg.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-bg1251.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-cat.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-cn.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-cs.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-da.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-de.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-dk.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-el.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-en.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-es.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-fa.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-fi.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-fr.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-gl.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-he.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-hr.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-hr1250.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-hu.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-id.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-is.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-it.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-ja.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-kr.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-lt.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-mne.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-nl.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-no.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-pl.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-pt-br.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-pt.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-ro.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-ru.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-sk.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-sr-latin.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-sr.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-sv.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-th.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-tr.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-tw.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-ua.js" />
+    <Content Include="Resource\assets\js\jqGrid\i18n\grid.locale-vi.js" />
+    <Content Include="Resource\assets\js\jqGrid\jquery.jqGrid.src.js" />
+    <Content Include="Resource\assets\js\jquery-ui.custom.js" />
+    <Content Include="Resource\assets\js\jquery-ui.js" />
+    <Content Include="Resource\assets\js\jquery.autosize.js" />
+    <Content Include="Resource\assets\js\jquery.bootstrap-duallistbox.js" />
+    <Content Include="Resource\assets\js\jquery.colorbox.js" />
+    <Content Include="Resource\assets\js\jquery.dataTables.bootstrap.js" />
+    <Content Include="Resource\assets\js\jquery.dataTables.js" />
+    <Content Include="Resource\assets\js\jquery.easypiechart.js" />
+    <Content Include="Resource\assets\js\jquery.gritter.js" />
+    <Content Include="Resource\assets\js\jquery.hotkeys.js" />
+    <Content Include="Resource\assets\js\jquery.inputlimiter.1.3.1.js" />
+    <Content Include="Resource\assets\js\jquery.js" />
+    <Content Include="Resource\assets\js\jquery.knob.js" />
+    <Content Include="Resource\assets\js\jquery.maskedinput.js" />
+    <Content Include="Resource\assets\js\jquery.mobile.custom.js" />
+    <Content Include="Resource\assets\js\jquery.mousewheel.js" />
+    <Content Include="Resource\assets\js\jquery.nestable.js" />
+    <Content Include="Resource\assets\js\jquery.raty.js" />
+    <Content Include="Resource\assets\js\jquery.slimscroll.js" />
+    <Content Include="Resource\assets\js\jquery.sparkline.js" />
+    <Content Include="Resource\assets\js\jquery.ui.touch-punch.js" />
+    <Content Include="Resource\assets\js\jquery.validate.js" />
+    <Content Include="Resource\assets\js\jquery1x.js" />
+    <Content Include="Resource\assets\js\markdown\bootstrap-markdown.js" />
+    <Content Include="Resource\assets\js\markdown\markdown.js" />
+    <Content Include="Resource\assets\js\markdown\to-markdown.js" />
+    <Content Include="Resource\assets\js\prettify.js" />
+    <Content Include="Resource\assets\js\respond.js" />
+    <Content Include="Resource\assets\js\select2.js" />
+    <Content Include="Resource\assets\js\spin.js" />
+    <Content Include="Resource\assets\js\typeahead.jquery.js" />
+    <Content Include="Resource\assets\js\x-editable\ace-editable.js" />
+    <Content Include="Resource\assets\js\x-editable\bootstrap-editable.js" />
+    <Content Include="Resource\css\base.css" />
+    <Content Include="Resource\css\bootstrap-table-fixed-columns.css" />
+    <Content Include="Resource\css\bootstrap-tagsinput.css" />
+    <Content Include="Resource\css\case\default.css" />
+    <Content Include="Resource\css\case\fileinput.css" />
+    <Content Include="Resource\css\case\fileupload.css" />
+    <Content Include="Resource\css\citys\city.css" />
+    <Content Include="Resource\css\citys\citys.chose.css" />
+    <Content Include="Resource\css\fileinput\fileinput-rtl.css" />
+    <Content Include="Resource\css\fileinput\fileinput-rtl.min.css" />
+    <Content Include="Resource\css\fileinput\fileinput.css" />
+    <Content Include="Resource\css\fileinput\fileinput.min.css" />
+    <Content Include="Resource\css\index.css" />
+    <Content Include="Resource\css\normalize.css" />
+    <Content Include="Resource\css\zTree\img\diy\1_close.png" />
+    <Content Include="Resource\css\zTree\img\diy\1_open.png" />
+    <Content Include="Resource\css\zTree\img\diy\2.png" />
+    <Content Include="Resource\css\zTree\img\diy\3.png" />
+    <Content Include="Resource\css\zTree\img\diy\4.png" />
+    <Content Include="Resource\css\zTree\img\diy\5.png" />
+    <Content Include="Resource\css\zTree\img\diy\6.png" />
+    <Content Include="Resource\css\zTree\img\diy\7.png" />
+    <Content Include="Resource\css\zTree\img\diy\8.png" />
+    <Content Include="Resource\css\zTree\img\diy\9.png" />
+    <Content Include="Resource\css\zTree\img\line_conn.gif" />
+    <Content Include="Resource\css\zTree\img\loading.gif" />
+    <Content Include="Resource\css\zTree\img\zTreeStandard.gif" />
+    <Content Include="Resource\css\zTree\img\zTreeStandard.png" />
+    <Content Include="Resource\css\zTree\zTreeStyle.css" />
+    <Content Include="Resource\css\zTree\img\systemIcon.png" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.Clue.Edit.Invoke.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.Clue.Evidence.File.In.Invoke.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.Clue.Producer.CreateUpdate.Invoke.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.Clue.Indictee.CreateUpdate.Invoke.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.Clue.CreateUpdate.Invoke.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.Clue.Invoke.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.Clue.List.Invoke.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.Invoke.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.List.Invoke.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.Task.Invoke.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.Task.List.Invoke.js" />
+    <Content Include="Scripts\CIT\Investigation\CIT.Investigation.ToAudit.js" />
+    <Content Include="Scripts\Common\base.js" />
+    <Content Include="Scripts\Common\bootstrap-table-fixed-columns.js" />
+    <Content Include="Resource\css\fonts\fontawesome-webfont.woff2" />
+    <Content Include="Resource\css\fonts\glyphicons-halflings-regulard41d.eot" />
+    <Content Include="Resource\css\fonts\weathericons-regular-webfont.eot" />
+    <Content Include="Resource\css\fonts\weathericons-regular-webfont.ttf" />
+    <Content Include="Resource\css\fonts\weathericons-regular-webfont.woff" />
+    <Content Include="Resource\css\fonts\weathericons-regular-webfontd41d.eot" />
+    <Content Include="Resource\assets\css\less\ace-features.less" />
+    <Content Include="Resource\assets\css\less\ace-nav.less" />
+    <Content Include="Resource\assets\css\less\ace-responsive.less" />
+    <Content Include="Resource\assets\css\less\ace-rtl.less" />
+    <Content Include="Resource\assets\css\less\ace.less" />
+    <Content Include="Resource\assets\css\less\basic.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\alerts.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\badges.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\bootstrap.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\breadcrumbs.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\button-groups.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\buttons.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\carousel.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\close.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\code.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\component-animations.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\dropdowns.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\forms.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\glyphicons.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\grid.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\input-groups.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\jumbotron.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\labels.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\list-group.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\media.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\alerts.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\background-variant.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\border-radius.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\buttons.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\center-block.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\clearfix.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\forms.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\gradients.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\grid-framework.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\grid.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\hide-text.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\image.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\labels.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\list-group.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\nav-divider.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\nav-vertical-align.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\opacity.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\pagination.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\panels.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\progress-bar.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\reset-filter.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\resize.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\responsive-visibility.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\size.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\tab-focus.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\table-row.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\text-emphasis.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\text-overflow.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\mixins\vendor-prefixes.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\modals.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\navbar.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\navs.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\normalize.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\pager.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\pagination.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\panels.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\popovers.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\print.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\progress-bars.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\responsive-embed.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\responsive-utilities.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\scaffolding.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\tables.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\theme.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\thumbnails.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\tooltip.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\type.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\utilities.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\variables.less" />
+    <Content Include="Resource\assets\css\less\bootstrap\wells.less" />
+    <Content Include="Resource\assets\css\less\breadcrumbs.less" />
+    <Content Include="Resource\assets\css\less\bs3-reset.less" />
+    <Content Include="Resource\assets\css\less\buttons.less" />
+    <Content Include="Resource\assets\css\less\dropdown.less" />
+    <Content Include="Resource\assets\css\less\dropdown\colorpicker.less" />
+    <Content Include="Resource\assets\css\less\dropdown\navbar-dropdown.less" />
+    <Content Include="Resource\assets\css\less\dropdown\navbar-tabbed-dropdown.less" />
+    <Content Include="Resource\assets\css\less\ext\bootstrap-tag.less" />
+    <Content Include="Resource\assets\css\less\fonts.less" />
+    <Content Include="Resource\assets\css\less\footer.less" />
+    <Content Include="Resource\assets\css\less\form.less" />
+    <Content Include="Resource\assets\css\less\form\checkbox.less" />
+    <Content Include="Resource\assets\css\less\form\file.less" />
+    <Content Include="Resource\assets\css\less\gallery.less" />
+    <Content Include="Resource\assets\css\less\general.less" />
+    <Content Include="Resource\assets\css\less\icon-animated.less" />
+    <Content Include="Resource\assets\css\less\infobox.less" />
+    <Content Include="Resource\assets\css\less\items.less" />
+    <Content Include="Resource\assets\css\less\label-badge.less" />
+    <Content Include="Resource\assets\css\less\mixins.less" />
+    <Content Include="Resource\assets\css\less\modal.less" />
+    <Content Include="Resource\assets\css\less\navbar\collapsible.less" />
+    <Content Include="Resource\assets\css\less\navbar\navbar-menu-form.less" />
+    <Content Include="Resource\assets\css\less\navbar\toggle-button.less" />
+    <Content Include="Resource\assets\css\less\navbar\user-buttons-move-down.less" />
+    <Content Include="Resource\assets\css\less\navbar\user-buttons.less" />
+    <Content Include="Resource\assets\css\less\navbar\user-dropdown-position.less" />
+    <Content Include="Resource\assets\css\less\navbar\user-menu.less" />
+    <Content Include="Resource\assets\css\less\onpage-help.less" />
+    <Content Include="Resource\assets\css\less\other.less" />
+    <Content Include="Resource\assets\css\less\page.error.less" />
+    <Content Include="Resource\assets\css\less\page.inbox.less" />
+    <Content Include="Resource\assets\css\less\page.invoice.less" />
+    <Content Include="Resource\assets\css\less\page.login.less" />
+    <Content Include="Resource\assets\css\less\page.pricing.less" />
+    <Content Include="Resource\assets\css\less\page.profile.less" />
+    <Content Include="Resource\assets\css\less\page.timeline.less" />
+    <Content Include="Resource\assets\css\less\print.less" />
+    <Content Include="Resource\assets\css\less\progressbar.less" />
+    <Content Include="Resource\assets\css\less\scroll.less" />
+    <Content Include="Resource\assets\css\less\searchbox.less" />
+    <Content Include="Resource\assets\css\less\sidebar.less" />
+    <Content Include="Resource\assets\css\less\sidebar\active.less" />
+    <Content Include="Resource\assets\css\less\sidebar\compact.less" />
+    <Content Include="Resource\assets\css\less\sidebar\ff_fix.less" />
+    <Content Include="Resource\assets\css\less\sidebar\highlight.less" />
+    <Content Include="Resource\assets\css\less\sidebar\horizontal.less" />
+    <Content Include="Resource\assets\css\less\sidebar\hover.less" />
+    <Content Include="Resource\assets\css\less\sidebar\min.less" />
+    <Content Include="Resource\assets\css\less\sidebar\multiple.less" />
+    <Content Include="Resource\assets\css\less\sidebar\old-toggle-button.less" />
+    <Content Include="Resource\assets\css\less\sidebar\responsive-1.less" />
+    <Content Include="Resource\assets\css\less\sidebar\responsive-2.less" />
+    <Content Include="Resource\assets\css\less\sidebar\responsive-3.less" />
+    <Content Include="Resource\assets\css\less\sidebar\shortcuts-toggle.less" />
+    <Content Include="Resource\assets\css\less\sidebar\sidebar-fixed.less" />
+    <Content Include="Resource\assets\css\less\sidebar\sub-arrow.less" />
+    <Content Include="Resource\assets\css\less\skins\empty.less" />
+    <Content Include="Resource\assets\css\less\skins\no-skin.less" />
+    <Content Include="Resource\assets\css\less\skins\skin-1.less" />
+    <Content Include="Resource\assets\css\less\skins\skin-2.less" />
+    <Content Include="Resource\assets\css\less\skins\skin-3.less" />
+    <Content Include="Resource\assets\css\less\skins\skins.less" />
+    <Content Include="Resource\assets\css\less\tab-accordion.less" />
+    <Content Include="Resource\assets\css\less\tables.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-calendar.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-chosen.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-colorbox.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-dataTables.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-date.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-dropzone.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-duallist-multiselect.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-editable.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-fuelux.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-gritter.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-jqgrid.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-jquery-ui.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-nestable.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-raty.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-select2.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-slider.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-typeahead.less" />
+    <Content Include="Resource\assets\css\less\thirdparty-wysiwyg.less" />
+    <Content Include="Resource\assets\css\less\tooltip-popover.less" />
+    <Content Include="Resource\assets\css\less\utility.less" />
+    <Content Include="Resource\assets\css\less\variables.less" />
+    <Content Include="Resource\assets\css\less\widget.less" />
+    <Content Include="Resource\assets\fonts\fontawesome-webfont.eot" />
+    <Content Include="Resource\assets\fonts\fontawesome-webfont.ttf" />
+    <Content Include="Resource\assets\fonts\fontawesome-webfont.woff" />
+    <Content Include="Resource\assets\fonts\FontAwesome.otf" />
+    <Content Include="Resource\assets\fonts\glyphicons-halflings-regular.eot" />
+    <Content Include="Resource\assets\fonts\glyphicons-halflings-regular.ttf" />
+    <Content Include="Resource\assets\fonts\glyphicons-halflings-regular.woff" />
+    <Content Include="Resource\assets\font\cJZKeOuBrn4kERxqtaUH3T8E0i7KZn-EPnyo3HZu7kw.woff" />
+    <Content Include="Resource\assets\font\DXI1ORHCpsQm3Vp6mXoaTXhCUOGz7vYGh680lGh-uXM.woff" />
+    <Content Include="Resource\assets\font\readme" />
+    <Content Include="Resource\assets\js\ace\readme" />
+    <Content Include="Resource\assets\js\ace\scripts.json" />
+    <None Include="Resource\css\images\banner_sh.png.bak" />
+    <Content Include="Resource\css\fonts\dchien-console-font.eot" />
+    <Content Include="Resource\css\fonts\dchien-console-font.ttf" />
+    <Content Include="Resource\css\fonts\dchien-console-font.woff" />
+    <Content Include="Resource\css\fonts\fontawesome-webfont.eot" />
+    <Content Include="Resource\css\fonts\fontawesome-webfont.svg" />
+    <Content Include="Resource\css\fonts\fontawesome-webfont.ttf" />
+    <Content Include="Resource\css\fonts\fontawesome-webfont.woff" />
+    <Content Include="Resource\css\fonts\FontAwesome.otf" />
+    <Content Include="Resource\css\fonts\glyphicons-halflings-regular.eot" />
+    <Content Include="Resource\css\fonts\glyphicons-halflings-regular.svg" />
+    <Content Include="Resource\css\fonts\glyphicons-halflings-regular.ttf" />
+    <Content Include="Resource\css\fonts\glyphicons-halflings-regular.woff" />
+    <Content Include="Resource\css\fonts\glyphicons-halflings-regular.woff2" />
+    <Content Include="Resource\css\fonts\weathericons-regular-webfont.svg" />
+    <Content Include="Resource\css\home.console.css" />
+    <Content Include="Resource\css\home.login.console.css" />
+    <Content Include="Resource\css\ticketSystem\detail.css" />
+    <Content Include="Resource\css\ticketSystem\common.css" />
+    <Content Include="Resource\css\ticketSystem\tip.css" />
+    <Content Include="Resource\images\avatar.png" />
+    <Content Include="Resource\css\images\Loading-32-32.gif" />
+    <Content Include="Resource\css\images\ui-slider-6-9.png" />
+    <Content Include="Resource\css\index\welcome.css" />
+    <Content Include="Resource\css\images\tps\i4\DQ-168-169.png" />
+    <Content Include="Resource\css\images\tps\i4\DQ-336-338.png" />
+    <Content Include="Resource\css\components.css" />
+    <Content Include="Resource\css\dchien-lego-console-update.css" />
+    <Content Include="Resource\css\font-awesome.css" />
+    <Content Include="Resource\css\images\china.jpg" />
+    <Content Include="Resource\css\images\biz.png" />
+    <Content Include="Resource\css\images\favicon.ico" />
+    <Content Include="Resource\css\images\icon_footer.png" />
+    <Content Include="Resource\css\images\icon_status.png" />
+    <Content Include="Resource\css\images\seperator.png" />
+    <Content Include="Resource\css\account2\login.css" />
+    <Content Include="Resource\css\account2\main.css" />
+    <Content Include="Resource\css\account2\common.css" />
+    <Content Include="Resource\css\images\loading.gif" />
+    <Content Include="Resource\css\account2\miniui.css" />
+    <Content Include="Resource\css\dchien-logo\product.icons1%402x.png" />
+    <Content Include="Resource\css\dchien-logo\product.icons1.png" />
+    <Content Include="Resource\css\angular-growl.min.css" />
+    <Content Include="Resource\css\bootstrap.css" />
+    <Content Include="Resource\css\bsn.console.css" />
+    <Content Include="Resource\css\case.console.css" />
+    <Content Include="Resource\css\console.css" />
+    <Content Include="Resource\css\console.menu.css" />
+    <Content Include="Resource\css\case.search.console.css" />
+    <Content Include="Resource\css\images\loading_50.gif" />
+    <Content Include="Resource\css\images\favicon.png" />
+    <Content Include="Resource\css\images\icon.ico" />
+    <Content Include="Resource\css\images\tps\TB1m_6-6.jpg" />
+    <Content Include="Resource\css\images\tps\TB1_6-6.jpg" />
+    <Content Include="Resource\css\images\banner_sh.png" />
+    <Content Include="Resource\css\input.dynamic.css" />
+    <Content Include="Resource\css\lawfirm.createupdate.console.css" />
+    <Content Include="Resource\css\customer.createupdate.console.css" />
+    <Content Include="Resource\css\images\notice-arrow.png" />
+    <Content Include="Resource\css\images\on-off%402x.png" />
+    <Content Include="Resource\css\images\on-off-loading%402x.gif" />
+    <Content Include="Resource\css\images\on-off-loading.gif" />
+    <Content Include="Resource\css\images\on-off.png" />
+    <Content Include="Resource\css\images\onoff%402x.png" />
+    <Content Include="Resource\css\images\onoff.png" />
+    <Content Include="Resource\css\images\toinstlist.png" />
+    <Content Include="Resource\css\jquery.contextMenu.css" />
+    <Content Include="Resource\css\logging_data.css" />
+    <Content Include="Resource\css\message.css" />
+    <Content Include="Resource\css\case.index.console.css" />
+    <Content Include="Resource\css\customer.console.css" />
+    <Content Include="Resource\css\case.createupdate.console.css" />
+    <Content Include="Resource\css\messageCenter.console.css" />
+    <Content Include="Resource\css\report.css" />
+    <Content Include="Resource\css\user.createupdate.console.css" />
+    <Content Include="Resource\fonts\fontawesome-webfont.svg" />
+    <Content Include="Resource\fonts\glyphicons-halflings-regular.svg" />
+    <Content Include="Resource\images\error.png" />
+    <Content Include="Resource\images\icons\list.png" />
+    <Content Include="Resource\images\loading_50.gif" />
+    <Content Include="Resource\css\images\main_bg.jpg" />
+    <Content Include="Resource\images\welcome.jpg" />
+    <Content Include="Scripts\Common\bootstrap-tagsinput-angular.js" />
+    <Content Include="Scripts\Common\bootstrap-tagsinput.js" />
+    <Content Include="Scripts\Common\bootstrap-tagsinput.bak.js" />
+    <Content Include="Scripts\Common\bootstrap3-typeahead.js" />
+    <Content Include="Scripts\Common\bootstrap3-typeahead.min.js" />
+    <Content Include="Scripts\Common\charts\Chart.js" />
+    <Content Include="Scripts\Common\charts\Chart.min.js" />
+    <Content Include="Resource\css\chosen-sprite%402x.png" />
+    <Content Include="Resource\css\chosen-sprite.png" />
+    <Content Include="Resource\css\chosen.css" />
+    <Content Include="Scripts\Common\chosen.jquery.js" />
+    <Content Include="Scripts\Common\chosen.jquery.min.js" />
+    <Content Include="Resource\css\chosen.min.css" />
+    <Content Include="Scripts\Common\chosen.proto.js" />
+    <Content Include="Scripts\Common\chosen.proto.min.js" />
+    <Content Include="Scripts\Common\citys\jquery.citys.chose.js" />
+    <Content Include="Scripts\Common\citys\jquery.citys.js" />
+    <Content Include="Scripts\Common\citys\jquery.citys.json.js" />
+    <Content Include="Scripts\Common\fileinput\fileinput.js" />
+    <Content Include="Scripts\Common\fileinput\fileinput.min.js" />
+    <Content Include="Scripts\Common\fileinput\fileinput_locale_zh.js" />
+    <Content Include="Scripts\Common\fileinput\locales\zh.js" />
+    <Content Include="Scripts\Common\jquery-3.3.1.js" />
+    <Content Include="Scripts\Common\jquery-3.3.1.min.js" />
+    <Content Include="Scripts\Common\jquery-citys.js" />
+    <Content Include="Scripts\Common\jquery-ui.js" />
+    <Content Include="Scripts\Common\jquery.fixedheadertable.min.js" />
+    <Content Include="Resource\css\jquery.tagsinput.min.css" />
+    <Content Include="Scripts\Common\jquery.slimscroll.min.js" />
+    <Content Include="Scripts\Common\jquery.tagsinput.min.js" />
+    <Content Include="Scripts\Common\typeahead.bundle.js" />
+    <Content Include="Scripts\Common\ztree\jquery.ztree.all.js" />
+    <Content Include="Scripts\Common\ztree\jquery.ztree.all.min.js" />
+    <Content Include="Scripts\Common\ztree\jquery.ztree.core.js" />
+    <Content Include="Scripts\Common\ztree\jquery.ztree.core.min.js" />
+    <Content Include="Scripts\Common\ztree\jquery.ztree.excheck.js" />
+    <Content Include="Scripts\Common\ztree\jquery.ztree.excheck.min.js" />
+    <Content Include="Scripts\Common\ztree\jquery.ztree.exedit.js" />
+    <Content Include="Scripts\Common\ztree\jquery.ztree.exedit.min.js" />
+    <Content Include="Scripts\Common\ztree\jquery.ztree.exhide.js" />
+    <Content Include="Scripts\Common\ztree\jquery.ztree.exhide.min.js" />
+    <Content Include="Scripts\CRM\Customer\CRM.Customer.List.Invoke.js" />
+    <Content Include="Scripts\Dashboard\Console.Dashboard.Index.js" />
+    <Content Include="Scripts\FAM\AP\FAM.AP.Payment.PendingList.Invoke.js" />
+    <Content Include="Scripts\FAM\AR\FAM.BOC.js" />
+    <Content Include="Scripts\FAM\AR\FAM.JAR.js" />
+    <Content Include="Scripts\FAM\AR\FAM.ICBC.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.CaseFee.Invoke.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.InternalFee.js" />
+    <Content Include="Scripts\FAM\InternalFee\Payment\FAM.InternalFee.PaymentPacking.List.Verify.Invoke.js" />
+    <Content Include="Scripts\FAM\InternalFee\Payment\FAM.InternalFee.Payment.Audit.List.Invoke.js" />
+    <Content Include="Scripts\FAM\InternalFee\Payment\FAM.InternalFee.Payment.Object.List.Invoke.js" />
+    <Content Include="Scripts\FAM\InternalFee\Payment\FAM.InternalFee.Payment.List.Invoke.js" />
+    <Content Include="Scripts\FAM\InternalFee\Payment\FAM.InternalFee.Payment.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.Archive.List.Invoke.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.ToAudit.js" />
+    <Content Include="Scripts\IPR\Case\Case.Customer.js" />
+    <Content Include="Scripts\IPR\Case\Case.List.AnnualYearFeeList.Invoke.js" />
+    <Content Include="Scripts\Legal\Case\Case.CaseFee.Invoice.Customized.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.CaseFee.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.File.Upload.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.CaseFee.Invoice.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.Invoke.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.ScheduleList.Invoke.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.List.Invoke.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.Litigant.Invoke.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.Court.Invoke.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.Basic.Invoke.js" />
+    <Content Include="Scripts\Legal\Case\Legal.Case.js" />
+    <Content Include="Scripts\RPT\AR\FAM.JAR.Report.js" />
+    <Content Include="Scripts\System\SystemManagement\ConfigAppSetting.js" />
+    <Content Include="Scripts\TP\Task\Legal.Task.Invoke.js" />
+    <Content Include="Scripts\TP\Task\Legal.Task.js" />
+    <Content Include="Scripts\TP\Task\Legal.Task.List.Invoke.js" />
+    <Content Include="Scripts\TP\Task\Legal.Task.Message.Invoke.js" />
+    <Content Include="Scripts\HR\Department\Department.js" />
+    <Content Include="Scripts\HR\Role\Role.js" />
+    <Content Include="Scripts\HR\Staff\HR.Staff.Create.js" />
+    <Content Include="Scripts\HR\Staff\HR.Staff.js" />
+    <Content Include="Scripts\CRM\Customer\CRM.Customer.Contact.View.js" />
+    <Content Include="Scripts\CRM\Customer\CRM.Customer.View.js" />
+    <Content Include="Scripts\CRM\Customer\CRM.Customer.js" />
+    <Content Include="Scripts\CRM\Customer\CRM.Customer.Create.js" />
+    <Content Include="Scripts\FAM\AP\FAM.AP.Payment.js" />
+    <Content Include="Scripts\FAM\AP\FAM.AP.Payment.AuditList.Invoke.js" />
+    <Content Include="Scripts\FAM\AP\FAM.AP.PaymentPacking.Print.List.Invoke.js" />
+    <Content Include="Scripts\FAM\AP\FAM.AP.PaymentPacking.List.Verify.Invoke.js" />
+    <Content Include="Scripts\FAM\AP\FAM.AP.PaymentPacking.List.Invoke.js" />
+    <Content Include="Scripts\FAM\AP\FAM.AP.Payment.List.Invoke.js" />
+    <Content Include="Scripts\FAM\AR\FAM.AR.js" />
+    <Content Include="Scripts\FAM\AR\FAM.AR.List.Invoke.js" />
+    <Content Include="Scripts\FAM\AR\FAM.AR.Payment.List.Invoke.js" />
+    <Content Include="Scripts\FAM\Invoice\FAM.Invoice.Process.PendingList.Invoke.js" />
+    <Content Include="Scripts\FAM\Invoice\FAM.Invoice.Process.InvoicedList.Invoke.js" />
+    <Content Include="Scripts\FAM\Invoice\FAM.Invoice.View.js" />
+    <Content Include="Scripts\FAM\Invoice\FAM.Invoice.Create.js" />
+    <Content Include="Scripts\FAM\Invoice\FAM.Invoice.List.Invoke.js" />
+    <Content Include="Scripts\FAM\Invoice\FAM.Invoice.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.AR.ItemList.Invoke.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.Archive.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.Draft.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.AR.List.Invoke.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.View.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.Auditor.Audit.Invoke.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.Auditor.Invoke.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.List.Invoke.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.Payment.js" />
+    <Content Include="Scripts\FCM\Contract\FCM.Contract.js" />
+    <Content Include="Scripts\FIO\FIO.Patent.OfficeFile.js" />
+    <Content Include="Scripts\IPR\Case\Case.CaseFee.Inform.js" />
+    <Content Include="Scripts\IPR\Case\Case.CaseFee.Invoice.js" />
+    <Content Include="Scripts\IPR\Case\Case.Create.SearchResultList.js" />
+    <Content Include="Scripts\IPR\Case\Case.List.CaseFeeFileSearch.Invoke.js" />
+    <Content Include="Scripts\IPR\Case\Case.List.CaseFeeSearch.Invoke.js" />
+    <Content Include="Scripts\IPR\Case\Case.List.CaseFileSearch.Invoke.js" />
+    <Content Include="Scripts\IPR\Case\Case.List.CaseSearch.Invoke.js" />
+    <Content Include="Scripts\IPR\Case\Case.List.Search.js" />
+    <Content Include="Scripts\IPR\Case\Case.Rebooting.js" />
+    <Content Include="Scripts\Lawsuit\CaseSearch\Case.Search.js" />
+    <Content Include="Scripts\Lawsuit\Case\Case.Create.CaseInfo.js" />
+    <Content Include="Scripts\Lawsuit\Case\Case.Create.CategoryList.js" />
+    <Content Include="Scripts\Lawsuit\Case\Case.Create.ReminderList.js" />
+    <Content Include="Scripts\Lawsuit\Case\Case.CreateUpdate.js" />
+    <Content Include="Scripts\Common\browser-not-supported-ie8.js" />
+    <Content Include="Scripts\Common\browser-not-supported.js" />
+    <Content Include="Scripts\IPR\Case\Case.CaseFee.Invoice.Customized.js" />
+    <Content Include="Scripts\IPR\Case\Case.CaseFile.CustomImport.js" />
+    <Content Include="Scripts\IPR\Case\Case.CaseFile.PatentOfficeFile.js" />
+    <Content Include="Scripts\IPR\Case\Case.ToWord.js" />
+    <Content Include="Scripts\IPR\Case\Case.SearchCondition.js" />
+    <Content Include="Scripts\IPR\Case\Case.Create.CategoryList.js" />
+    <Content Include="Scripts\IPR\Case\Case.Create.CaseInfo.js" />
+    <Content Include="Scripts\IPR\Case\Case.Create.ReminderList.js" />
+    <Content Include="Scripts\IPR\Case\Case.CreateUpdate.js" />
+    <Content Include="Scripts\IPR\Case\Case.js" />
+    <Content Include="Scripts\Common\bootstrap-contextmenu.js" />
+    <Content Include="Resource\css\bootstrap-treeview.min.css" />
+    <Content Include="Scripts\Common\bootstrap-treeview.js" />
+    <Content Include="Scripts\Common\bootstrap.js" />
+    <Content Include="Scripts\Common\DatePicker4.6\calendar.js" />
+    <Content Include="Scripts\Common\DatePicker4.6\config.js" />
+    <Content Include="Scripts\Common\DatePicker4.6\lang\en.js" />
+    <Content Include="Scripts\Common\DatePicker4.6\lang\zh-cn.js" />
+    <Content Include="Scripts\Common\DatePicker4.6\lang\zh-tw.js" />
+    <Content Include="Scripts\Common\DatePicker4.6\My97DatePicker.htm" />
+    <Content Include="Scripts\Common\DatePicker4.6\skin\datePicker.gif" />
+    <Content Include="Scripts\Common\DatePicker4.6\skin\default\datepicker.css" />
+    <Content Include="Scripts\Common\DatePicker4.6\skin\default\img.gif" />
+    <Content Include="Scripts\Common\DatePicker4.6\skin\WdatePicker.css" />
+    <Content Include="Scripts\Common\DatePicker4.6\skin\whyGreen\bg.jpg" />
+    <Content Include="Scripts\Common\DatePicker4.6\skin\whyGreen\datepicker.css" />
+    <Content Include="Scripts\Common\DatePicker4.6\skin\whyGreen\img.gif" />
+    <Content Include="Scripts\Common\DatePicker4.6\WdatePicker.js" />
+    <Content Include="Scripts\Common\jquery-1.7.1.js" />
+    <Content Include="Scripts\Common\jquery-1.7.1.min.js" />
+    <Content Include="Scripts\Common\jquery.contextMenu.js" />
+    <Content Include="Scripts\Common\jquery.contextmenu.r2.js" />
+    <Content Include="Scripts\Common\jquery.form.js" />
+    <Content Include="Resource\css\account2\fonts\fzzzhongjwgb10.ttf" />
+    <Content Include="Resource\css\account2\fonts\fzzzhongjwgb10.eot" />
+    <Content Include="Scripts\System\SystemCenter\PaymentType.js" />
+    <Content Include="Scripts\System\SystemCenter\Causes.js" />
+    <Content Include="Scripts\System\SystemCenter\Court.js" />
+    <Content Include="律2.png" />
+    <Content Include="Areas\Account\Views\_ViewStart.cshtml" />
+    <Content Include="Areas\Account\Views\MessageCenter\Index.cshtml" />
+    <Content Include="Areas\Account\Views\MessageCenter\List.cshtml" />
+    <Content Include="Areas\Account\Views\MessageCenter\Message.cshtml" />
+    <Content Include="Areas\Account\Views\Shared\_Layout.cshtml" />
+    <Content Include="Areas\Account\Views\UserCenter\Account.cshtml" />
+    <Content Include="Areas\Account\Views\UserCenter\MenuList.cshtml" />
+    <Content Include="Areas\Account\Views\UserCenter\Password.cshtml" />
+    <Content Include="Areas\Account\Views\Web.config" />
+    <Content Include="Areas\CRM\Views\_ViewStart.cshtml" />
+    <Content Include="Areas\Account\Views\Communication\Communication.cshtml" />
+    <Content Include="Areas\Account\Views\Communication\CommunicationLogList.cshtml" />
+    <Content Include="Areas\Account\Views\Communication\Index.cshtml" />
+    <Content Include="Areas\CRM\Views\LawFirm\Contacts.cshtml" />
+    <Content Include="Areas\CRM\Views\LawFirm\ContactsList.cshtml" />
+    <Content Include="Areas\CRM\Views\LawFirm\CreateUpdate.cshtml" />
+    <Content Include="Areas\CRM\Views\LawFirm\Index.cshtml" />
+    <Content Include="Areas\CRM\Views\LawFirm\License.cshtml" />
+    <Content Include="Areas\CRM\Views\LawFirm\List.cshtml" />
+    <Content Include="Areas\CRM\Views\Web.config" />
+    <Content Include="Areas\System\Views\Shared\_Layout.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CaseFeeType.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CaseFeeTypeList.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CaseFileType.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CaseFileTypeCaseFeeTypeList.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CaseFileTypeCaseTypeList.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CaseFileTypeList.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CasePhase.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CasePhaseList.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CaseType.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CaseTypeCasePhaseList.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CaseTypeList.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\Cause.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CauseList.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\Company.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\Court.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\CourtList.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\Index.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\LocalSettings.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\MenuList.cshtml" />
+    <Content Include="Areas\System\Views\SystemManagement\CacheList.cshtml" />
+    <Content Include="Areas\System\Views\SystemManagement\List.cshtml" />
+    <Content Include="Areas\System\Views\SystemManagement\Menu.cshtml" />
+    <Content Include="Areas\System\Views\SystemManagement\MenuList.cshtml" />
+    <Content Include="Areas\System\Views\Web.config" />
+    <Content Include="Areas\System\Views\_ViewStart.cshtml" />
+    <Content Include="Resource\fonts\aliyun-console-font.eot" />
+    <Content Include="Resource\fonts\aliyun-console-font.ttf" />
+    <Content Include="Resource\fonts\aliyun-console-font.woff" />
+    <Content Include="Resource\fonts\fontawesome-webfont.eot" />
+    <Content Include="Resource\fonts\fontawesome-webfont.ttf" />
+    <Content Include="Resource\fonts\fontawesome-webfont.woff" />
+    <Content Include="Resource\fonts\FontAwesome.otf" />
+    <Content Include="Resource\fonts\glyphicons-halflings-regular.eot" />
+    <Content Include="Resource\fonts\glyphicons-halflings-regular.ttf" />
+    <Content Include="Resource\fonts\glyphicons-halflings-regular.woff" />
+    <Content Include="Resource\fonts\glyphicons-halflings-regular.woff2" />
+    <Content Include="Areas\FCM\Views\Contract\ContractList.cshtml" />
+    <Content Include="Areas\FCM\Views\Contract\ContractMenuList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractAudit\ApprovedList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractAudit\AuditMenuList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractAudit\Audit.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractAudit\ContractAuditList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractAudit\PendingList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractAudit\RejectedList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractFile\ContractFileUpload.cshtml" />
+    <Content Include="Areas\FCM\Views\Web.config" />
+    <Content Include="Areas\FCM\Views\ContractEvent\ContractEventList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractFile\ContractFileList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractEvent\ContractEvent.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractDraft\ContractObjectList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractDraft\Draft.cshtml" />
+    <Content Include="Areas\FCM\Views\Contract\DraftList.cshtml" />
+    <Content Include="Areas\FCM\Views\Contract\ContractInfo.cshtml" />
+    <Content Include="Areas\FCM\Views\Contract\ContractObjectList.cshtml" />
+    <Content Include="Areas\FCM\Views\Contract\ContractView.cshtml" />
+    <Content Include="Areas\FAM\Views\_ViewStart.cshtml" />
+    <Content Include="Areas\FAM\Views\Invoice\MenuList.cshtml" />
+    <Content Include="Areas\FAM\Views\Web.config" />
+    <Content Include="Areas\FAM\Views\Invoice\InvoiceCreate.cshtml" />
+    <Content Include="Areas\FAM\Views\Invoice\InvoiceList.cshtml" />
+    <Content Include="Areas\FAM\Views\Invoice\InvoiceView.cshtml" />
+    <Content Include="Areas\FAM\Views\Invoice\InvoiceEdit.cshtml" />
+    <Content Include="Areas\FAM\Views\InvoiceProcess\InvoicedList.cshtml" />
+    <Content Include="Areas\FAM\Views\InvoiceProcess\PendingList.cshtml" />
+    <Content Include="Areas\FAM\Views\Invoice\InvoiceInfo.cshtml" />
+    <Content Include="Areas\FAM\Views\InvoiceProcess\Process.cshtml" />
+    <Content Include="Areas\FAM\Views\Invoice\InvoiceNoChange.cshtml" />
+    <Content Include="Areas\FAM\Views\Invoice\InvoiceCancel.cshtml" />
+    <Content Include="Areas\FAM\Views\Invoice\ApplicationCancel.cshtml" />
+    <Content Include="Areas\FAM\Views\PaymentType\List.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\Payment\Create.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\Payment\List.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\Payment\MenuList.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\Payment\View.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\PaymentAudit\Audit.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\PaymentAudit\List.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\Payment\Cancel.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\PaymentPacking\PendingList.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\PaymentPacking\PrintPatent.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\PaymentPacking\Print.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\PaymentPacking\PackingVerify.cshtml" />
+    <Content Include="Areas\FAM\Views\JAR\List.cshtml" />
+    <Content Include="Areas\FAM\Views\AR\MenuList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractEvent\View\ContractEventList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractFile\View\ContractFileList.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractAudit\View\ContractAuditList.cshtml" />
+    <Content Include="Areas\FCM\Views\AR\List.cshtml" />
+    <Content Include="Areas\FCM\Views\AR\ItemList.cshtml" />
+    <Content Include="Areas\FAM\Views\AP\Payment\Edit.cshtml" />
+    <Content Include="Areas\FAM\Views\InvoiceFile\List.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractArchive\List.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractArchive\Archive.cshtml" />
+    <Content Include="Areas\FCM\Views\ContractArchive\ContractObjectList.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\AppSettings.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\PaymentTypeList.cshtml" />
+    <Content Include="Areas\System\Views\SystemCenter\PaymentType.cshtml" />
+    <Content Include="Resource\jquery-citys.json" />
+    <Content Include="Resource\Dictionary\dictionary.json" />
+    <Content Include="Resource\District\Province.json" />
+    <Content Include="Resource\District\area.json" />
+    <None Include="Scripts\Common\Jquery.js.18" />
+    <Content Include="Scripts\Common\jquery.ipr.fn.extend.js" />
+    <Content Include="Scripts\Common\ubt\bfa.js" />
+    <Content Include="Scripts\Account\Communication\Communication.Create.js" />
+    <Content Include="Scripts\IPR\base.console.js" />
+    <Content Include="Scripts\Common\jquery.messager.js" />
+    <Content Include="Scripts\Common\jquery.ui.position.js" />
+    <None Include="Scripts\Common\jquery.ipr.fn.extend.js.bak" />
+    <Content Include="Scripts\Common\jquery.validate.js" />
+    <Content Include="Scripts\Common\jquery.validate.min.js" />
+    <Content Include="Scripts\Common\jquery.validate.unobtrusive.js" />
+    <Content Include="Scripts\Common\jquery.validate.unobtrusive.min.js" />
+    <Content Include="Scripts\Common\json.js" />
+    <Content Include="Scripts\CRM\Customer\Contacts.js" />
+    <Content Include="Scripts\CRM\Customer\Customer.js" />
+    <Content Include="Scripts\CRM\LawFirm\Contacts.js" />
+    <Content Include="Scripts\CRM\LawFirm\LawFirm.js" />
+    <Content Include="Scripts\Account\Communication\Communication.js" />
+    <Content Include="Scripts\Home\Login.js" />
+    <Content Include="Scripts\System\SystemManagement\Menu.js" />
+    <Content Include="Scripts\System\SystemManagement\Department.js" />
+    <Content Include="Scripts\System\SystemManagement\Cache.js" />
+    <Content Include="Scripts\System\SystemManagement\Role.js" />
+    <Content Include="Scripts\System\SystemCenter\Company.js" />
+    <Content Include="Scripts\System\SystemCenter\CaseFeeType.js" />
+    <Content Include="Scripts\System\SystemCenter\CasePhase.js" />
+    <Content Include="Scripts\System\SystemCenter\CaseFileType.js" />
+    <Content Include="Scripts\System\SystemCenter\CaseType.js" />
+    <Content Include="Scripts\System\SystemCenter\LocalSetting.js" />
+    <Content Include="Scripts\System\SystemCenter\CustomerType.js" />
+    <Content Include="Scripts\Account\MessageCenter\Message.js" />
+    <Content Include="Scripts\Account\UserCenter\Account.js" />
+    <Content Include="icon.ico" />
+    <Content Include="Web.config">
+      <SubType>Designer</SubType>
+    </Content>
+    <Content Include="Web.Debug.config">
+      <DependentUpon>Web.config</DependentUpon>
+    </Content>
+    <Content Include="Web.Release.config">
+      <DependentUpon>Web.config</DependentUpon>
+    </Content>
+    <Content Include="Views\_ViewStart.cshtml" />
+    <Content Include="Views\Web.config" />
+    <Content Include="Views\Shared\_Layout.cshtml" />
+    <Content Include="Views\Shared\Error.cshtml" />
+    <Content Include="Views\Shared\NoPermission.cshtml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="App_Data\" />
+    <Folder Include="Areas\CRM\Views\Shared\" />
+    <Folder Include="Areas\Legal\ViewModels\Litigant\" />
+    <Folder Include="Areas\TP\Views\Shared\" />
+    <Folder Include="Helpers\" />
+    <Folder Include="Resource\css\account2\img\" />
+    <Folder Include="Resource\css\images\weather_cloudy\" />
+    <Folder Include="Resource\css\images\weather_fog\" />
+    <Folder Include="Resource\css\images\weather_neight\" />
+    <Folder Include="Resource\css\images\weather_rain\" />
+    <Folder Include="Resource\css\images\weather_snow\" />
+    <Folder Include="Resource\css\images\weather_sunny\" />
+    <Folder Include="Scripts\Common\fileinput\plugins\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Dchien.Legal.BizModel\Dchien.Legal.BizModel.csproj">
+      <Project>{2ec96484-e4af-4ffd-b57c-866db3f6d051}</Project>
+      <Name>Dchien.Legal.BizModel</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Dchien.Legal.Common\Dchien.Legal.Common.csproj">
+      <Project>{d25e17c8-fea7-408b-83eb-afc315c82b7e}</Project>
+      <Name>Dchien.Legal.Common</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Dchien.Legal.Entity\Dchien.Legal.Entity.csproj">
+      <Project>{2a363c19-23ed-4ab0-b7cd-f81361f36570}</Project>
+      <Name>Dchien.Legal.Entity</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Dchien.Legal.Infrastructure\Dchien.Legal.Infrastructure.csproj">
+      <Project>{58ea154f-1264-4f9e-a0cb-606acb878933}</Project>
+      <Name>Dchien.Legal.Infrastructure</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Dchien.Legal.Service\Dchien.Legal.Service.csproj">
+      <Project>{9ff1962e-54ed-47e8-a4e3-59eeb77796ec}</Project>
+      <Name>Dchien.Legal.Service</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Views\Home\Login.cshtml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Scripts\Common\Jquery.js" />
+    <Content Include="Views\Home\Index.cshtml" />
+  </ItemGroup>
+  <PropertyGroup>
+    <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>
+    <VSToolsPath Condition="'$(VSToolsPath)' == ''">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
+  </PropertyGroup>
+  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
+  <Import Project="$(VSToolsPath)\WebApplications\Microsoft.WebApplication.targets" Condition="'$(VSToolsPath)' != '' And Exists('$(VSToolsPath)\WebApplications\Microsoft.WebApplication.targets')" />
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v10.0\WebApplications\Microsoft.WebApplication.targets" Condition="false" />
+  <Target Name="MvcBuildViews" AfterTargets="AfterBuild" Condition="'$(MvcBuildViews)'=='true'">
+    <AspNetCompiler VirtualPath="temp" PhysicalPath="$(WebProjectOutputDir)" />
+  </Target>
+  <ProjectExtensions>
+    <VisualStudio>
+      <FlavorProperties GUID="{349c5851-65df-11da-9384-00065b846f21}">
+        <WebProjectProperties>
+          <UseIIS>False</UseIIS>
+          <AutoAssignPort>True</AutoAssignPort>
+          <DevelopmentServerPort>58340</DevelopmentServerPort>
+          <DevelopmentServerVPath>/</DevelopmentServerVPath>
+          <IISUrl>http://localhost/Dchien.Legal.Web</IISUrl>
+          <OverrideIISAppRootUrl>True</OverrideIISAppRootUrl>
+          <IISAppRootUrl>http://localhost/Dchien.Legal.Web</IISAppRootUrl>
+          <NTLMAuthentication>False</NTLMAuthentication>
+          <UseCustomServer>False</UseCustomServer>
+          <CustomServerUrl>
+          </CustomServerUrl>
+          <SaveServerSettingsInUserFile>False</SaveServerSettingsInUserFile>
+        </WebProjectProperties>
+      </FlavorProperties>
+    </VisualStudio>
+  </ProjectExtensions>
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target> -->
+</Project>

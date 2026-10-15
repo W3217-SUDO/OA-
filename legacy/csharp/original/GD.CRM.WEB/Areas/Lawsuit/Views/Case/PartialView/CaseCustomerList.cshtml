@@ -1,0 +1,36 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseCustomerListModel
+
+<table class="table table-hover" id="tblCaseCustomer">
+    <thead>
+        <tr>
+            <th>
+                客户编号
+            </th>
+            <th>
+                客户名称
+            </th>
+
+        </tr>
+    </thead>
+    <tbody>
+
+        @if (Model.CaseCustomers != null)
+        {
+            foreach (var item in Model.CaseCustomers)
+            {
+                <tr>
+                    <td>
+                        <a href="javascript:caseInfo.CaseCustomer.ViewCustomer(@item.CustomerId);"><span>@item.CustomerNo</span></a>
+                    </td>
+                    <td>
+                        <a href="@Url.Content("~/IPR/Case/CaseList?customerId=" + item.CustomerId)" target="_blank"><span>@item.CustomerName</span></a>
+                    </td>
+                </tr>
+            }
+        }
+    </tbody>
+
+</table>
+
+

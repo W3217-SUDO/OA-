@@ -1,0 +1,314 @@
+﻿@using Dchien.Legal.Service.CRM.Customer
+@using Dchien.Legal.Service.HR.Staff
+
+@model Dchien.Legal.Web.Areas.RPT.ViewModels.Report.CountRoiListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/index.css")" />
+ 
+<script src="@Url.Content("~/Scripts/Common/charts/Chart.min.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/RPT/ROI/FAM.ROI.Report.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/RPT/ROI/FAM.ROI.Report.Customer.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+@{
+    var customers = CustomerService.Instance.GetCustomersAll();
+    var staffs = StaffService.Instance.GetStaffList();
+}
+
+<style>
+    .chosen-container-single .chosen-single {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+        border-radius: 0px;
+    }
+
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+
+    .chosen-drop, chosen-results, .chosen-results li {
+        overflow: visible !important;
+    }
+
+    .chosen-container-multi .chosen-choices li.search-field input[type=text] {
+        margin: 1px 0;
+        padding: 0;
+        height: 21px;
+        outline: 0;
+        border: 0 !important;
+        background: 0 0 !important;
+        -webkit-box-shadow: none;
+        box-shadow: none;
+        color: #999;
+        font-size: 100%;
+        font-family: sans-serif;
+        line-height: normal;
+        border-radius: 0;
+        width: 25px;
+    }
+</style>
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>资金运营情况统计</h5>
+                            </div>
+                        </div>
+                        <form class="form-inline ng-valid " id="postForm">
+                            <div class="pull-left   col-sm-12" style="margin-top: 1px;margin-bottom:4px">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.TotalCount, new { name = "TotalCount" })
+                                @Html.HiddenFor(m => m.SearchCondition.CustomerNos)
+                                @Html.HiddenFor(m => m.SearchCondition.CourtLawyers)
+
+                                <div style="float: left; padding-top: 1px; "  class="pull-left   col-sm-12">
+                                    <div style="float: left; width: 60px;padding-top: 5px;">
+                                        客户名称：
+                                    </div>
+                                    <div style="padding-left: 1px;" class="pull-left   ">
+                                        <div style="width:662px" class="pull-left   ">
+                                            <select data-placeholder="请选择客户" multiple id="SearchCondition_CustomerName" class="SearchCondition_CustomerName" style="height:22px;width:500px">
+                                                @if (customers != null && customers.Count > 0)
+                                            {
+                                                foreach (var customer in customers)
+                                                {
+                                            <option value="@customer.CustomerBasic.CustomerNo">@customer.CustomerBasic.CustomerName</option>
+                                                }
+                                            }
+                                            </select>
+                                        </div>
+                                    </div>
+                               </div>
+
+                                <div style="float: left; padding-top: 2px; " class="pull-left   col-sm-12">
+                                    <div style="float: left; width: 60px;padding-top: 5px;">
+                                        开庭律师：
+                                    </div>
+                                    <div style="padding-left: 1px;" class="pull-left   ">
+                                        <div style="width:662px" class="pull-left   ">
+                                            <select data-placeholder="请选择" multiple id="SearchCondition_CourtLawyerName" class="SearchCondition_CourtLawyerName" style="height:22px;width:500px">
+                                                @if (staffs != null && staffs.Count > 0)
+                                                {
+                                                    foreach (var staff in staffs)
+                                                    {
+                                                        <option value="@staff.StaffBasic.StaffName">@staff.StaffBasic.StaffChName</option>
+                                                    }
+                                                }
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style="float: left; padding-top: 1px; " class="pull-left   col-sm-12">
+                                        <table class="search_table" style="width: 600px">
+                                            <colgroup>
+                                                <col style="width: 60px;" />
+                                                <col style="width: 190px" />
+                                                <col style="width: 80px;" />
+                                                <col style="width: 160px" />
+                                                <col style="width: 60px;" />
+                                                <col style="width: 160px" />
+                                                <col style="width: 60px;" />
+                                                <col style="width: 160px" />
+                                                <col style="width: 40px;" />
+                                                <col style="width: 30px" />
+                                                <col />
+                                            </colgroup>
+                                            <tr>
+                                                <th>
+                                                    经办律师：
+                                                </th>
+                                                <td>
+                                                    @Html.TextBoxFor(m => m.SearchCondition.CaseLawyer, new { @class = "form-control", @autocomplete = "off", @placeholder = "开庭律师", @style = "width:91.7%" })
+                                                </td>
+             
+                                                <th>
+                                                    律师助理：
+                                                </th>
+                                                <td>
+                                                    @Html.TextBoxFor(m => m.SearchCondition.CaseAssistant, new { @class = "form-control", @autocomplete = "off", @placeholder = "律师助理", @style = "width::91.7%" })
+                                                </td>
+                                                <th>
+                                                    案源时间：
+                                                </th>
+
+                                                <td colspan="3">
+                                                    @Html.TextBoxFor(m => m.SearchCondition.CaseRegisterDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", @autocomplete = "off", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                                    -
+                                                    @Html.TextBoxFor(m => m.SearchCondition.CaseRegisterDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", @autocomplete = "off", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>
+                                                    调查员：
+                                                </th>
+                                                <td>
+                                                    @Html.TextBoxFor(m => m.SearchCondition.InvestigatorName, new { @class = "form-control", @autocomplete = "off", @placeholder = "调查员", @style = "width:91.7%" })
+                                                </td>
+
+                      
+                                                <th>
+                                                    法院名称：
+                                                </th>
+                                                <td>
+                                                    @Html.TextBoxFor(m => m.SearchCondition.CourtName, new { @class = "form-control", @autocomplete = "off", @placeholder = "法院名称", @style = "width::91.7%" })
+                                                </td>
+                                                <th>
+                                                    开庭时间：
+                                                </th>
+                                                <td colspan="3">
+                                                    @Html.TextBoxFor(m => m.SearchCondition.LawfulDayFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", @autocomplete = "off", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                                    -
+                                                    @Html.TextBoxFor(m => m.SearchCondition.LawfulDayTo, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", @autocomplete = "off", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th>
+                                                </th>
+                                                <td>
+                                                    <div class="form-group">
+                                                        <a href="javascript:void(0);" class="btn btn-primary " id="btnSearch">
+                                                            <span>查询</span>
+                                                        </a>
+                                                        @*<a href="javascript:void(0);" class="btn btn-default " id="btnSearchReset">
+                                                            <span>重置</span>
+                                                        </a>*@
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </div>
+
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="col-sm-12">
+
+                        <div class="case-section-wrap" style="padding:2px">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <ul class="nav nav-tabs">
+                                            <li class="active" id="liCaseFileList"><a href="javascript:void(0);" id="btnCaseFileList">按品牌统计</a></li>
+                                            <li class="pull-right" style="border:none">
+                                                <div style="margin-top:3px">
+                                                    <div style="text-align: inherit;">
+                                                        <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                        <div class="section-content clearfix">
+                                            <div class="product-col ng-scope" style="width: 100%">
+                                                <div id="dv_List">
+
+                                                    <div class="ng-scope">
+                                                        <div class="gridSection" id="investigationgridSection">
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>资金回款周期统计
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 天/案</div>
+                                                                            </div>
+                                                                           
+                                                                            <div id="roi1_container" class="panel-body">
+                                                                                <canvas id="roi1" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>资金亏损金额统计
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 元</div>
+                                                                            </div>
+                                                                            <div id="roi2_container" class="panel-body">
+                                                                                <canvas id="roi2" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>资金回报率统计
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 百分比</div>
+                                                                            </div>
+                                                                            <div id="roi4_container"  class="panel-body">
+                                                                                <canvas id="roi4" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>资金亏损率统计
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 百分比</div>
+                                                                            </div>
+                                                                            <div id="roi3_container" class="panel-body">
+                                                                                <canvas id="roi3" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+

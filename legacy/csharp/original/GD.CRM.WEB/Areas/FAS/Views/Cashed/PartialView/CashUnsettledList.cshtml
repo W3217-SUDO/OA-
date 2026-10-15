@@ -1,0 +1,143 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.Cashed.CashUnsettledListModel
+
+@{
+    var display = "display:block";
+
+    if (@Model.CashUnsettledList != null && @Model.CashUnsettledList.Count > 0)
+    {
+        display = "display:none";
+    }
+}
+
+<div id="casegridSection" class="gridSection">
+    <div id='divRightContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+        <table class='table table-hover' id="tblCashUnsettledList" width="100%">
+            <colgroup>
+                <col style="width: 5%">
+                <col style="width: 10%">
+                <col style="width: 10%">
+                <col style="width: 10%">
+                <col style="width: 10%">
+                <col style="width: 10%">
+                <col style="width: 10%">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>选项</th>
+                    <th>合同号</th>
+                    <th>案号</th>
+                    <th>通知日期</th>
+                    <th>费用类型</th>
+                    <th>金额</th>
+                    <th>已到账金额</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.CashUnsettledList != null && Model.CashUnsettledList.Any())
+                {
+                    <tr>
+                        <td>
+                            
+                        </td>
+                        <td>
+                            
+                        </td>
+
+                        <td>
+                            
+                        </td>
+                        <td>
+                            
+                        </td>
+                        <td>
+   
+                        </td>
+                        <td>
+                            <span>@Model.CashUnsettledList.Sum(x => x.Amount.HasValue ? x.Amount.Value : 0)</span>
+                        </td>
+                        <td>
+                            
+                        </td>
+                    </tr>
+                    
+                    foreach (var item in Model.CashUnsettledList)
+                    {
+                        <tr>
+                            <td>
+                                <input type="checkbox" name="chkCaseFeeId" value="@item.CaseFeeId">
+                            </td>
+                            <td>
+                                <span>@item.ContractNo</span>
+                            </td>
+
+                            <td>
+                                <span>@item.CaseNo</span>
+                            </td>
+                            <td>
+                                <span>@(item.InformDate.HasValue ? item.InformDate.Value.ToString("yyyy-MM-dd") : string.Empty) </span>
+                            </td>
+                            <td>
+                                <span style="display:none">@item.CaseFeeTypeId</span>
+                                @{
+                                    var feeTypeName = string.Empty;
+                                    if (item.CaseFeeTypeId == (int) CaseFeeType.FeeType3 && item.IsFirstYear)
+                                    {
+                                        feeTypeName = "首年年费" + "[" + item.AnnualYear + "]";
+                                    }
+                                    else if (item.CaseFeeTypeId == (int) CaseFeeType.FeeType3)
+                                    {
+                                        feeTypeName = item.CaseFeeTypeName + "[" + item.AnnualYear + "]";
+                                    }
+                                    else
+                                    {
+                                        feeTypeName = item.CaseFeeTypeName;
+                                    }
+                                }
+
+                                @feeTypeName
+                            </td>
+                            <td>
+                                <span>@item.Amount</span>
+                            </td>
+                            <td>
+                                <span>@item.CashedAmount</span>
+                            </td>
+                        </tr>
+                    }
+                }
+                
+            </tbody>
+            <tfoot class="ng-scope" style="display:none">
+                <tr>
+                    <td colspan="7">
+                        <div class="pull-left"></div>
+                        <div class="ng-scope">
+                            <div class="pull-right page-box cashUnsettledList">
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+        <div class="simple-grid-none-data-wrap cashUnsettledList" style="@display">
+            <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                    <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                    <div class="text-size-16 tip-text inline-block">
+                        <span class="margin-left ng-binding"></span>没有查询未确认费用信息.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    @Html.HiddenFor(m => m.CashUnsettledSearchCondition.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => m.CashUnsettledSearchCondition.PageSize, new { name = "PageSize" })
+    @Html.HiddenFor(m => m.CashUnsettledSearchCondition.TotalCount, new { name = "TotalCount" })
+
+</div>
+ 
+

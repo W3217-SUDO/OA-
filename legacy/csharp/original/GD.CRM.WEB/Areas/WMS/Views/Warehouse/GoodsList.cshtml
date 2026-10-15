@@ -1,0 +1,432 @@
+﻿@{
+    ViewBag.Title = "货物列表";
+}
+
+@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.WMS.ViewModels.Warehouse.WarehouseListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/zTree/zTreeStyle.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.core.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.excheck.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.exedit.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script src="@Url.Content("~/Scripts/WMS/WareHouse/WMS.WareHouse.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/WMS/WareHouse/WMS.WareHouse.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<style type="text/css">
+    ul.ztree {
+        margin-top: 0px;
+        border-right: 0px solid #e1e6eb;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    /*.ztree * {font-size: 10pt;font-family:"Microsoft Yahei",Verdana,Simsun,"Segoe UI Web Light","Segoe UI Light","Segoe UI Web Regular","Segoe UI","Segoe UI Symbol","Helvetica Neue",Arial}*/
+    .ztree li {
+        line-height: 20px;
+    }
+
+        .ztree li a {
+            width: 200px;
+            height: 20px;
+            padding-top: 0px;
+        }
+
+            .ztree li a:hover {
+                text-decoration: none;
+                background-color: #E7E7E7;
+            }
+
+            .ztree li a span.button.switch {
+                visibility: hidden;
+            }
+
+    .ztree.showIcon li a span.button.switch {
+        visibility: hidden;
+    }
+
+    .ztree li a.curSelectedNode {
+        background-color: #D4D4D4;
+        border: 0;
+        height: 20px;
+    }
+
+    .ztree li span {
+        line-height: 20px;
+    }
+
+        .ztree li span.button {
+            margin-top: 2px;
+        }
+
+            .ztree li span.button.switch {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.add {
+                margin-left: 2px;
+                margin-right: -1px;
+                background-position: -144px 0;
+                vertical-align: top;
+                *vertical-align: middle;
+            }
+
+
+            .ztree li span.button.ico_docu {
+                background-position: -110px -16px;
+            }
+
+            .ztree li span.button.switch.level0 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.switch.level1 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+    /*.ztree li span.button.noline_open {background-position: 0 0;}
+    .ztree li span.button.noline_close {background-position: -18px 0;}
+    .ztree li span.button.noline_open.level0 {background-position: 0 -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}*/
+
+    .node_name {
+        margin-left: 10px;
+    }
+
+    div#rMenu {
+        position: absolute;
+        visibility: hidden;
+        top: 0;
+        background-color: #555;
+        text-align: left;
+        padding: 2px;
+    }
+
+        div#rMenu ul li {
+            margin: 1px 0;
+            padding: 0 5px;
+            cursor: pointer;
+            list-style: none outside none;
+            background-color: #DFDFDF;
+        }
+</style>
+
+
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+
+        <div class="product-nav-stage ng-scope product-nav-stage-main">
+            <div class="product-nav-scene product-nav-main-scene">
+                <div class="product-nav-title ng-binding">仓库库位</div>
+                <div class="ng-isolate-scope"></div>
+                <div class="">
+                    <div><ul id="storageLocationListTree" class="ztree"></ul></div>
+                </div>
+            </div>
+            <div class="product-nav-scene product-nav-sub-scene">
+                <div class="product-nav-title">xxx</div>
+                <div class="product-nav-list">
+                    <ul></ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+   
+    <div class="viewFramework-product-body"  style="overflow-y:hidden">
+        <div class="console-container ng-scope">
+            <div class="row ng-scope">
+                <div class="col-sm-12">
+                    <div class="console-title console-title-border clearfix">
+                        <div class="pull-left">
+                            <h5 class="ng-binding">货物列表</h5>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class=" col-sm-12">
+                    <form class="form-inline ng-valid " id="postForm">
+                        @Html.HiddenFor(m => m.SearchCondition.PageId)
+                        @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                        @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                        @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                        @Html.HiddenFor(m => m.SearchCondition.TotalCount, new { name = "TotalCount" })
+
+                        <table class="search_table" style="width: 600px">
+                            <colgroup>
+                                <col style="width: 60px;" />
+                                <col style="width: 160px" />
+                                <col style="width: 60px;" />
+                                <col style="width: 160px" />
+                                <col style="width: 60px;" />
+                                <col style="width: 220px" />
+
+                                <col>
+                            </colgroup>
+                            <tr>
+                                <th style="text-align: left">
+                                    仓库：
+                                </th>
+                                <td>
+                                    @Html.DropDownListFor(m => m.SearchCondition.WareHouseNo, Dchien.Legal.Service.BAS.Warehouse.WarehouseService.Instance.GetWarehouseList(true), new { maxlength = 60, @class = "form-control select", @style = "width:95.5%" })
+                                </td>
+                                <th style="text-align: left">
+                                    库位：
+                                </th>
+                                <td>
+                                    @Html.TextBoxFor(m => m.SearchCondition.DepositAddress, new { @class = "form-control" })
+                                </td>
+
+
+
+                                <th style="text-align: left">
+                                    权利人：
+                                </th>
+                                <td>
+                                    @Html.TextBoxFor(m => m.SearchCondition.IndicterName, new { @class = "form-control", @style = "width:97.3%" })
+                                </td>
+                            </tr>
+                            <tr>
+                                <th style="text-align: left">
+                                    证物状态：
+                                </th>
+                                <td>
+                                    @Html.DropDownListFor(m => m.SearchCondition.GoodsStatus, Dchien.Legal.Service.BAS.Warehouse.WarehouseGoodsStatusService.Instance.GetWarehouseGoodsStatusList(true), new { maxlength = 60, @class = "form-control select", @style = "width:95.5%" })
+                                </td>
+                                <th style="text-align: left">
+                                    案件编号：
+                                </th>
+                                <td>
+                                    @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control" })
+                                </td>
+                                <th style="text-align: left">
+                                    店铺名称：
+                                </th>
+                                <td>
+                                    @Html.TextBoxFor(m => m.SearchCondition.StoreName, new { @class = "form-control", @style = "width:97.3%" })
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <th style="text-align: left">
+                                    调查员：
+                                </th>
+                                <td>
+                                    @Html.TextBoxFor(m => m.SearchCondition.InvestigatorName, new { @class = "form-control" })
+                                </td>
+
+                                <th style="text-align: left">
+                                    公证书号：
+                                </th>
+                                <td>
+                                    @Html.TextBoxFor(m => m.SearchCondition.NotarialNo, new { @class = "form-control" })
+                                </td>
+                                <th style="text-align: left">
+                                    取证日期：
+                                </th>
+                                <td>
+                                    @Html.TextBoxFor(m => m.SearchCondition.EvidenceDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                    -
+                                    @Html.TextBoxFor(m => m.SearchCondition.EvidenceDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <th style="text-align: left">
+
+                                </th>
+
+
+                                <td style="text-align: left">
+                                    <a href="javascript:void(0);" class="btn btn-primary " id="btnGoodsSearch">
+                                        <span>查询</span>
+                                    </a>
+                                </td>
+                            </tr>
+
+                        </table>
+
+                    </form>
+                </div>
+
+                <div class="col-sm-12">
+                    <div class="gridSection">
+                        <table class="aps-table aps-widget aps-ani-transition ">
+                            <colgroup>
+                                <col style="width: 3%" />
+                                <col style="width: 8%" />
+                                <col style="width: 14%" />
+                                <col style="width: 16%" />
+                                <col style="width: 10%" />
+                                <col style="width: 15%" />
+                                <col style="width: 8%" />
+                                <col style="width: 12%" />
+                                <col style="width: 15%" />
+                                <col style="width: 10%" />
+                                <col style="width: 6%" />
+                                <col style="width:17px">
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th width="10">
+                                        <input type="checkbox" id="chkGoodsAll" name="chkGoodsAll">
+                                    </th>
+                                    <th>
+                                        库位
+                                        <span>
+                                            <span class="aps-state-hidden"></span>
+                                            <span data-field="T.caseNo" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                   style="top:9px">
+                                                </i>
+                                            </span>
+                                        </span>
+                                    </th>
+                                    <th>
+                                        线索编号
+                                    </th>
+                                    <th>
+                                        公证书号
+                                    </th>
+                                    <th>
+                                        案件编号
+                                    </th>
+                                    <th>
+                                        货物出售店铺
+                                    </th>
+                                    <th>
+                                        调查员
+                                    </th>
+                                    <th>
+                                        公证处
+                                    </th>
+                                    <th>
+                                        权利人
+                                    </th>
+                                    <th>
+                                        取证日期
+                                    </th>
+                                    <th>
+                                        证物状态
+                                    </th>
+                                    <th>
+
+                                    </th>
+                                </tr>
+                            </thead>
+
+                        </table>
+
+                        <div id="divWarehouseList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                            <table id="tblGoodsList" class="aps-table aps-widget aps-ani-transition ">
+                                <colgroup>
+                                    <col style="width: 3%" />
+                                    <col style="width: 8%" />
+                                    <col style="width: 14%" />
+                                    <col style="width: 16%" />
+                                    <col style="width: 10%" />
+                                    <col style="width: 15%" />
+                                    <col style="width: 8%" />
+                                    <col style="width: 12%" />
+                                    <col style="width: 15%" />
+                                    <col style="width: 10%" />
+                                    <col style="width: 6%" />
+
+                                </colgroup>
+                                <tbody>
+                                    <tr style="display: none">
+                                        <td style='text-align: center'>
+                                            &nbsp;
+                                        </td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: center'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: center'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: center'></td>
+                                    </tr>
+                                    <tr style="display: none">
+                                        <td style='text-align: center'>
+                                            &nbsp;
+                                        </td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: center'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: center'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: left'></td>
+                                        <td style='text-align: center'></td>
+                                    </tr>
+                                </tbody>
+                                <tfoot class="ng-scope" style="display: none">
+                                    <tr>
+                                        <td width="1">
+                                            <input type="checkbox" id="chkGoodsAll" name="chkGoodsAll">
+                                        </td>
+                                        <td colspan="10">
+                                            <div class="pull-left"></div>
+                                            <div class="ng-scope">
+                                                <div class="pull-right page-box warehousegoods">
+
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left ng-binding">没有查询到符合条件的记录</span>
+                                            <span class="ng-binding">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+
+                      
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <div id="sidebox" class="sidebox active" style="overflow-y:auto;width: 30%; min-width: 700px;display:none">
+        <div class="sidebox-content"></div>
+    </div>
+</div>

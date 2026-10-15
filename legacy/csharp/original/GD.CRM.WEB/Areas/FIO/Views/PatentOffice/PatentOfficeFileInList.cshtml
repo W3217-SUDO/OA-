@@ -1,0 +1,241 @@
+﻿@using Dchien.Legal.Entity.FAM.AR.CaseFee
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.FIO.PatentOffice
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CasePatentOfficeFileListModel
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script type="text/javascript" src="@Url.Content("~/Scripts/FIO/FIO.Patent.OfficeFile.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>专利官文流程处理</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FAM/AR/List")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                @Html.HiddenFor(m => m.SearchCondition.BusinessOwner)
+
+
+                                <table class="search_table" style="width: 100%">
+                                    <colgroup>
+                                        <col style="width: 80px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 180px" />
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+
+                                        <th style="text-align:right">
+                                            案号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @placeholder = "案件编号或申请号" })
+                                        </td>
+
+                                        <th style="text-align:right">
+                                            专利名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseName, new { @class = "form-control", @placeholder = "发明名称" })
+                                        </td>
+
+                                        <th style="text-align:right">
+                                            发文日期：
+                                        </th>
+                                        <td colspan="2">
+                                            @Html.TextBoxFor(m => m.SearchCondition.IssueDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.IssueDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+
+                                        <th>
+                                            处理状态：
+                                        </th>
+                                        <td colspan="2">
+                                            @Html.DropDownListFor(m => m.SearchCondition.BusinessProcessStatus, PatentOfficeFileService.Instance.GetProcessStatusList(), new { @class = "form-control", @style = "width:100%" })
+                                        </td>
+
+                                    </tr>
+                                    <tr>
+                                        <th style="text-align:right">
+                                            发文序列号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.FAWENXLH, new { @class = "form-control", @placeholder = "发文序列号" })
+                                        </td>
+
+                                        <th style="text-align:right">
+                                            客户/申请人：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户/申请人" })
+                                        </td>
+
+                                        <th style="text-align:right">
+                                            入库日期：
+                                        </th>
+                                        <td colspan="2">
+                                            @Html.TextBoxFor(m => m.SearchCondition.InDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.InDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+
+ 
+                                    </tr>
+
+                                    <tr>
+                                        <th style="text-align:right">
+                                            通知书名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.TONGZHISMC, new { @class = "form-control", @placeholder = "通知书名称" })
+                                        </td>
+
+                                        <td colspan="4">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnSearch">
+                                                <span>查询</span>
+                                            </a>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnPacking">
+                                                <span>打包下载</span>
+                                            </a>
+
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnBusinessOnProcess">
+                                                <span>标记已跟进</span>
+                                            </a>
+
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnBusinessProcess">
+                                                <span>标记已处理</span>
+                                            </a>
+
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnBusinessUnProcess">
+                                                <span>标记未处理</span>
+                                            </a>
+
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnPatentOfficeFileListExportToExcel">
+                                                <span>导出</span>
+                                            </a>
+
+                                        </td>
+                                    </tr>
+                                </table>
+                            </form>
+                        </div>
+
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="ng-isolate-scope">
+                            <div class="ng-scope">
+                                <div id="casegridSection" class="gridSection">
+                                    <table id="tblCaseFileList" class="table table-hover" width="100%">
+                                        <colgroup>
+                                            <col style="width: 3%" />
+                                            <col style="width: 5%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 6%" />
+                                            <col style="width: 12%" />
+                                            <col style="width: 12%" />
+                                            <col style="width: 10%" />
+                                            <col style="width: 10%" />
+                                            <col style="width: 5%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 10%" />
+
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>
+                                                    <input type="checkbox" id="chkCaseFileAll" class="ng-pristine ng-valid">
+                                                </th>
+                                                <th style="text-align: center">状态</th>
+                                                <th style="text-align: center">入库时间</th>
+                                                <th style="text-align: center">案号</th>
+                                                <th style="text-align: center">案件类型</th>
+                                                <th style="text-align: center">客户名称</th>
+                                                <th style="text-align: center">申请人</th>
+                                                <th style="text-align: center">申请号</th>
+                                                <th style="text-align: center">专利名称</th>
+                                                <th style="text-align: center">客戶管理人</th>
+                                                <th style="text-align: center">收发文日</th>
+                                                <th style="text-align: center">发文号</th>
+                                                <th style="text-align: center">点击下载</th>
+
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="ng-scope" style="display: none">
+                                            <tr>
+                                                <td colspan="13">
+                                                    <div class="pull-left"></div>
+                                                    <div class="ng-scope">
+                                                        <div class="pull-right page-box caseFileList">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                                <div class="simple-grid-none-data-wrap">
+                                    <div class="simple-grid-none-data text-center  ">
+                                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                            <div class="text-size-16 tip-text inline-block">
+                                                <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                                <span class="">。</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="contextMenu" id="menu" style="display: none;">
+            <ul>
+                <li id="logging">增加日志</li>
+                <li id="download">打包下载</li>
+                <li id="businessprocess">标记已处理</li>
+                <li id="businessunprocess">标记未处理</li>
+            </ul>
+        </div>
+    </div>
+</div>

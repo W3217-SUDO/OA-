@@ -1,0 +1,180 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@model Dchien.Legal.Web.Areas.CMS.ViewModels.AR.ItemListModel
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script src="@Url.Content("~/Scripts/CMS/Contract/CMS.Contract.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/CMS/Contract/CMS.Contract.AR.ItemList.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>应收账款明细</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/CMS/AR/List")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                <div class="simple-form-field">
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span contenteditable="" class="text-danger "></span>
+                                            <span class="">客户名称：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户名称", @style = "" })
+                                        </div>
+                                    </div>
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span contenteditable="" class="text-danger "></span>
+                                            <span class="">案号/申请号：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @placeholder = "案号/申请号", @style = "" })
+                                        </div>
+                                    </div>
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span contenteditable="" class="text-danger "></span>
+                                            <span class="">合同编号：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractNo, new { @class = "form-control", @placeholder = "合同编号", @style = "" })
+                                        </div>
+                                    </div>
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span class="">合同名称：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractName, new { @class = "form-control", @placeholder = "合同名称", @style = "" })
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="simple-form-field  ">
+                                    <div class="form-group  ">
+                                        <label class="  control-label">
+                                            <span class="">
+                                            </span>
+                                        </label>
+                                        <div class="form-control-wrap text-right">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnARItemListSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </div>
+                                        <div class="form-control-wrap text-right">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnARItemListExportToExcel">
+                                                <span>导出Excel</span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection">
+                                <table id="tblContractList" class="table table-hover">
+                                    <colgroup>
+                                        <col style="width: 6%">
+                                        <col style="width: 14%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align: center">合同号</th>
+                                            <th style="text-align: center">合同名称</th>
+                                            <th style="text-align: center">合同总金额</th>
+                                            <th style="text-align: center">已回收金额</th>
+                                            <th style="text-align: center">应收账款</th>
+                                            <th style="text-align: center">案号</th>
+                                            <th style="text-align: center">类型</th>
+                                            <th style="text-align: center">官费</th>
+                                            <th style="text-align: center">代理费</th>
+                                            <th style="text-align: center">佣金</th>
+                                            <th style="text-align: center">已收</th>
+                                            <th style="text-align: center">应收</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style='display:none'>
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="" style="display: none">
+                                        <tr>
+                                            <td colspan="12">
+                                                <div class="pull-left"></div>
+                                                <div class="">
+                                                    <div class="pull-right page-box contractlist">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div style="display: none;" id="divUserList">
+                        @Html.Partial("~/Areas/IPR/Views/IPRBase/UserList.cshtml")
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

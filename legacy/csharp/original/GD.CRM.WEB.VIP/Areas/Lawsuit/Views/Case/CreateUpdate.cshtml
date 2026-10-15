@@ -1,0 +1,53 @@
+﻿@{
+    ViewBag.Title = "new case";
+}
+
+@using Dchien.Legal.Common
+@using Dchien.Legal.Service.Lawsuit.Case
+@using Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case
+
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseModel
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+@*<div class="viewFramework-product">*@
+<div class="viewFramework-product  viewFramework-product-col-1" style='background: #eaedf1;'>
+    <div class="casesearch"></div>
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        @if (Model.CaseSearchTypeId == 1)
+        {
+            var model = new CaseCategoryListModel();
+            ViewBag.BodyClass = "message-center";
+
+            model.CaseCategoryTypeList = CaseCategoryTypeService.Instance.GetCaseCategoryTypes();
+            Html.RenderPartial("PartialView/CaseCategoryList", model);
+        }
+        else if (Model.CaseSearchTypeId == 2)
+        {
+            var model = new CaseReminderListModel();
+            ViewBag.BodyClass = "message-center";
+
+            model.CaseReminderTypeList = CaseReminderTypeService.Instance.GetCaseReminderTypes();
+            Html.RenderPartial("PartialView/CaseReminderList", model);
+        }
+    </div>
+    <!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body" style="overflow-y:auto">
+        @{
+            Html.RenderPartial("CaseInfo", Model);
+        }
+    </div>
+   
+</div>

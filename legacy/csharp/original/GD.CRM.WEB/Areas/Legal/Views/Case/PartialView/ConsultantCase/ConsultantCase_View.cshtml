@@ -1,0 +1,210 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.Legal.Case
+@using Dchien.Legal.Service.HR.Staff
+@using Dchien.Legal.Service.BAS.Court
+@using Dchien.Legal.Web.Areas.Legal.ViewModels.Case
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+
+<div class="case-section-wrap" style="padding:2px">
+    <div class="case-section-product">
+        <!-- product section -->
+        <div class="product-container">
+            <div class="product-section">
+                @using (Html.BeginForm("CaseInfo", "Case", FormMethod.Post, new { id = "caseForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    @Html.HiddenFor(m => m.Case.Basic.CaseId)
+                    @Html.HiddenFor(m => m.Case.Basic.CaseNo)
+                    @Html.HiddenFor(m => m.Case.Basic.CaseTypeId)
+                    @*@Html.HiddenFor(m => m.Case.Basic.CasePhaseId)*@
+                    @Html.HiddenFor(m => m.Case.Basic.CustomerNo)
+                    @Html.HiddenFor(m => m.Case.Basic.ContractNo)
+
+                    @Html.HiddenFor(m => m.Case.Basic.CaseLawyer)
+                    @Html.HiddenFor(m => m.Case.Basic.CaseLawyerName)
+                    @Html.HiddenFor(m => m.Case.Basic.Investigator)
+                    @Html.HiddenFor(m => m.Case.Basic.InvestigatorName)
+                    @Html.HiddenFor(m => m.Case.Basic.CaseAssistant)
+                    @Html.HiddenFor(m => m.Case.Basic.CaseAssistantName)
+                    @Html.HiddenFor(m => m.Case.Basic.BusinessOwner)
+                    @Html.HiddenFor(m => m.Case.Basic.BusinessOwnerName)
+
+
+                    <div class="section-content clearfix" style='padding:0px'>
+                        <div class="ng-scope">
+                            <table class="input_table" id='tabCase' style='width:100%'>
+                                <colgroup>
+                                    <col style="width: 12%;" />
+                                    <col style="width: 10%" />
+                                    <col style="width: 10%;" />
+                                    <col style="width: 18%" />
+                                    <col style="width: 10%;" />
+                                    <col style="width: 12%" />
+                                    <col style="width: 10%;" />
+                                    <col style="width: 42%" />
+                                </colgroup>
+                                <tr>
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.CaseNo)
+                                    </th>
+                                    <td colspan="3">
+                                        @Html.DisplayTextFor(m => m.Case.Basic.CaseNo)
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.ConsultantTypeName)
+                                    </th>
+                                    <td>
+                                        @Html.DisplayTextFor(m => m.Case.Basic.ConsultantTypeName)
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.ConsultantBeginDate)
+                                    </th>
+                                    <td>
+                                        @Html.DisplayFor(m => m.Case.Basic.ConsultantBeginDate) 至 @Html.DisplayFor(m => m.Case.Basic.ConsultantEndDate)
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.CaseName)
+                                    </th>
+                                    <td colspan=3>
+                                        @Html.DisplayTextFor(m => m.Case.Basic.CaseName)
+                                    </td>
+                                    <th>
+                                        案源律师
+                                    </th>
+                                    <td>
+                                        @Html.DisplayTextFor(m => m.Case.Basic.CaseOriginPeopleName)
+                                    </td>
+
+                                    <th>
+                                        
+                                    </th>
+                                    <td>
+                                        
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>
+                                        客户
+                                    </th>
+                                    <td colspan=3>
+                                        <div>
+                                            <span>
+                                                <a name="customer" style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                   data-toggle="tooltip"
+                                                   data-container="body"
+                                                   href="javascript:$.customer.View('@Model.Case.Basic.CustomerNo');"
+                                                   data-original-title="@Model.Case.Basic.CustomerName">@Model.Case.Basic.CustomerName</a>
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.CaseLawyer)
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @if (!string.IsNullOrEmpty(Model.Case.Basic.CaseLawyer))
+                                                {
+                                                    var caseLawyerNames = Model.Case.Basic.CaseLawyerName.Split(',');
+                                                    var i = 0;
+                                                    foreach (var caseLawyer in Model.Case.Basic.CaseLawyer.Split(','))
+                                                    {
+                                                        var staff = StaffService.Instance.GetStaff(caseLawyer);
+
+                                                        <a class="popover-show" style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-container="body"
+                                                           data-toggle="popover_lawyer"
+                                                           title="经办律师"
+                                                           staff_name="@staff.StaffBasic.StaffName"
+                                                           staff_chname="@staff.StaffBasic.StaffChName"
+                                                           staff_mobilephone="@staff.StaffBasic.MobilePhone"
+                                                           staff_email="@staff.StaffBasic.Email"
+                                                           href="javascript:;"
+                                                           target="_blank" data-original-title="@caseLawyerNames[i]">@caseLawyerNames[i]</a>
+                                                        i++;
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    <th>
+
+                                    </th>
+                                    <td>
+
+                                    </td>
+                 
+                                </tr>
+                                <tr>
+                                    <th>
+                                        合同号
+                                    </th>
+                                    <td colspan="3">
+                                        <div>
+                                            <span>
+                                                <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                   href="javascript:contract.Contracts.Contract.View('@Model.Case.Basic.ContractNo');">@Model.Case.Basic.ContractNo</a>
+                                            </span>
+                                        </div>
+                                    </td>
+
+                
+                                    <th>
+                                        律师助理
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @if (!string.IsNullOrEmpty(Model.Case.Basic.CaseAssistant))
+                                                {
+                                                    var caseAssistantNames = Model.Case.Basic.CaseAssistantName.Split(',');
+                                                    var i = 0;
+                                                    foreach (var caseAssistant in Model.Case.Basic.CaseAssistant.Split(','))
+                                                    {
+                                                        var staff = StaffService.Instance.GetStaff(caseAssistant);
+                                                        <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-container="body"
+                                                           data-toggle="popover_assistant"
+                                                           title="律师助理"
+                                                           href="javascript:;"
+                                                           target="_blank"
+                                                           staff_chname="@staff.StaffBasic.StaffChName"
+                                                           staff_name="@staff.StaffBasic.StaffName"
+                                                           staff_mobilephone="@staff.StaffBasic.MobilePhone"
+                                                           staff_email="@staff.StaffBasic.Email"
+                                                           data-original-title="@staff.StaffBasic.StaffChName">@staff.StaffBasic.StaffChName</a>
+
+                                                        i++;
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    <th>
+
+                                    </th>
+                                    <td></td>
+                                </tr>
+
+             
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+

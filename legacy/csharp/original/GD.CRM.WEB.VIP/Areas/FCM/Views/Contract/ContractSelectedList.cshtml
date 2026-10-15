@@ -1,0 +1,198 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type
+@using Dchien.Legal.Entity.Account;
+
+@model Dchien.Legal.Web.Areas.FCM.ViewModels.Contract.ListModel
+ 
+<div class="modal fade" id="contractListModal">
+    <div class="modal-dialog" style="width:940px">
+        <div class="modal-content" ng-transclude="">
+            <div>
+                @using (Html.BeginForm("ContractSelectedList", "Contract", FormMethod.Post, new { id = "contractListForm", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript: $('#contractListModal').modal('hide');">×</button>
+                        <h5 class="modal-title ">合同列表</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group" style="margin-top:0px;margin-bottom:0px">
+                            <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                                    @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                    @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                    @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                    <table class="search_table" style="width: 600px">
+                                        <colgroup>
+                                            <col style="width: 60px;" />
+                                            <col style="width: 200px" />
+                                            <col style="width: 60px" />
+                                            <col style="width: 160px" />
+                                            <col style="width: 60px" />
+                                            <col style="width: 160px" />
+
+                                        </colgroup>
+                                        <tr>
+
+                                            <th>
+                                                合同名称：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.ContractName, new { @class = "form-control", @placeholder = "合同名称", @style = "width:97.2%" })
+                                            </td>
+                                            <th>
+                                                合同编号：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.ContractNo, new { @class = "form-control", @placeholder = "合同编号", @style = "" })
+                                            </td>
+
+                                            <th>
+                                                合同类型：
+                                            </th>
+                                            <td>
+                                                @Html.DropDownListFor(m => m.SearchCondition.ContractType, ContractTypeService.Instance.GetContractTypeList(true), new { maxlength = 60, @class = "form-control select", @style = "width:100%" })
+
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th>
+                                                客户名称：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户名称", @style = "width:97.2%" })
+                                            </td>
+                                            <th>
+                                                案件编号：
+                                            </th>
+                                            <td>
+                                                @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @placeholder = "案号", @style = "" })
+                                            </td>
+                                            <th>
+                                                收费类型：
+                                            </th>
+                                            <td>
+                                                @Html.DropDownListFor(m => m.SearchCondition.ChargingType, ContractTypeService.Instance.GetContractChargingTypeList(true), new { maxlength = 60, @class = "form-control select", @style = "width:100%" })
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            @if (Model.SearchCondition.PageId != Dchien.Legal.Entity.System.PageId.PageId_4001002)
+                                            {
+                                                <th>
+                                                    案源人：
+                                                </th>
+                                                <td>
+                                                    @Html.HiddenFor(m => m.SearchCondition.BusinessOwner, new { @class = "form-control", @style = "" })
+                                                    @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, new { @class = "form-control", @style = "width:97.2%" })
+
+                                                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                                        <div class="i_common_wrap">
+                                                            <div class="i_common_list"></div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            }
+                                            else
+                                            {
+                                                <th>
+                                                    案源人：
+                                                </th>
+                                                <td>
+                                                    @Html.HiddenFor(m => m.SearchCondition.BusinessOwner, new { @class = "form-control", @style = "" })
+                                                    @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, new { @class = "form-control", @disabled = true, @style = "width:97.2%" })
+                                                </td>
+
+                                            }
+
+
+
+
+                                            <td colspan="2">
+                                                <a href="javascript:void(0);" class="btn btn-primary " id="btnContractListSearch">
+                                                    <span>查询</span>
+                                                </a>
+
+                                            </td>
+                                        </tr>
+                                    </table>
+                            </div>
+                            <div class="col-sm-12" style="margin-top:2px;">
+                                <div class="">
+                                    <div class="gridSection" id="contractgridSection">
+                                        <table id="tblContractList" class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                            <colgroup>
+                                                <col style="width: 12%">
+                                                <col style="width: 40%">
+                                                <col style="width: 10%">
+                                                <col style="width: 20%">
+                                                <col style="width: 10%">
+
+                                            </colgroup>
+                                            <thead>
+                                                <tr>
+                                                    <th style="text-align: center">合同号</th>
+                                                    <th style="text-align: center">合同名称</th>
+                                                    <th style="text-align: center">合同状态</th>
+                                                    <th style="text-align: center">客户管理人</th>
+                                                    <th style="text-align: center">签订日期</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr style='display:none'>
+
+                                                    <td style="text-align: center">  &nbsp;</td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+
+                                                </tr>
+
+                                                <tr style='display:none'>
+
+                                                    <td style="text-align: center">  &nbsp;</td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+
+                                                </tr>
+
+                                            </tbody>
+                                            <tfoot class="" style="display: none">
+                                                <tr>
+                                                    <td colspan="5">
+                                                        <div class="pull-left">
+
+                                                        </div>
+                                                        <div class="">
+                                                            <div class="pull-right page-box contractlist">
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                    <div class="simple-grid-none-data-wrap">
+                                        <div class="simple-grid-none-data text-center  ">
+                                            <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                                <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                                <div class="text-size-16 tip-text inline-block">
+                                                    <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                                    <span class="">。</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-default" onclick="javascript: $('#contractListModal').modal('hide');" type="button" value="关闭" />
+                    </div>
+                }
+           </div>
+        </div>
+    </div>
+</div>

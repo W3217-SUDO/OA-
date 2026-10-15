@@ -1,0 +1,58 @@
+﻿@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+
+    var actived = "active";
+
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">到账管理</div>
+        <div class="ng-isolate-scope"></div>
+
+        <div class="product-nav-list">
+            <ul class="top-level">
+                
+                @{ actived = action == "List".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/FAM/Cashed/List") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">到账登记</div>
+                        </a>
+                    </div>
+                </li>
+                
+                @{ actived = action == "Index".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/FAM/Cashed/Index") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">到账分配</div>
+                        </a>
+                    </div>
+                </li>
+                
+
+
+                @{ actived = action == "History".ToLower() ? "class=active" : "";}
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a  href=@Url.Content("~/FAM/Cashed/History") class="ng-scope" >
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">历史到账分配查询</div>
+                        </a>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

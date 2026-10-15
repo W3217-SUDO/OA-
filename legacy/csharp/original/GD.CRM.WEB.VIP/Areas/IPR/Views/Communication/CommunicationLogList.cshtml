@@ -1,0 +1,39 @@
+﻿@using SunHold.Legal.BizModel
+@using SunHold.Legal.Common
+@model SunHold.Legal.Web.Areas.IPR.ViewModels.Communication.CommunicationModel
+
+<form id="postForm" action="">
+    
+    @if (Model.CommunicationLogs != null && Model.CommunicationLogs.Count > 0)
+    {
+        var lst = Model.CommunicationLogs.GroupBy(x => new DateTime(x.CommunicationTime.Value.Year, x.CommunicationTime.Value.Month, 1))
+            .ToList();
+
+        foreach (var x in lst)
+        {
+            <dl class="product-fun-update-list" style="margin-top: 0px; margin-bottom: 0px;">
+
+                <dt> @x.Key.ToString("yyyy-MM")</dt>
+                <dd>
+                    <ul class="month-list">
+                        @foreach (var item in x.ToList<SunHold.Legal.BizModel.IPR.Communication.BizCommunication>())
+                        {
+                            <li class="first border">
+                                <i class="li-icon"></i>
+                                <span class="date">@(item.CommunicationTime.HasValue ? item.CommunicationTime.Value.ToString("yyyy-MM-dd") : "")</span>
+                                <a target="_blank" href="javascript:void(0);">@item.Content</a>
+                            </li>
+                        }
+
+                    </ul>
+                </dd>
+            </dl>
+        }
+    }
+    else
+    {
+        <span>无历史记录</span>
+    }
+
+</form>
+

@@ -1,0 +1,133 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.FAM.AR.CaseFee
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.CMS.ViewModels.GL.ARCaseFeeListModel
+
+<form id="postForm" action="">
+    <div id="casefeegridSection" class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table' id="tblARCaseFeeList" width="100%">
+                <colgroup>
+                    <col style="width: 3%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>案号</th>
+                        <th>费用类型</th>
+                        <th>提交人</th>
+                        <th>应收金额</th>
+                        <th>已开金额</th>
+                        <th>高开金额</th>
+                        <th>到账金额</th>
+                        <th>到账日期</th>
+                        <th>开票/交费时间</th>
+                        <th>票据编号</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.CaseFeeList != null)
+                    {
+                        var i = 1;
+                        foreach (var item in Model.CaseFeeList)
+                        {
+                            <tr>
+
+                                <td>
+                                    <span class="caseFeeId" style="display:none">@item.CaseFeeId</span>
+                                    <span>@i</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@item.CaseNo</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@item.CaseFeeTypeName</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@item.RequestUserName</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@item.Amount</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@item.InvoicedAmount</span>
+                                </td>
+                                
+                                <td style="text-align: center">
+                                    @{
+                                        if (item.InvoicedAmount > item.Amount)
+                                        {
+                                            <span style='color: red'>@( item.InvoicedAmount - item.Amount)</span>
+                                        }
+                                        else
+                                        {
+                                             <span>0</span>
+                                        }
+                                    }
+                                 </td>
+
+                                <td style="text-align: center">
+                                    <span>@item.CashedAmount</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@(item.CashedDate.HasValue ? item.CashedDate.Value.ToString("yyyy-MM-dd") : string.Empty)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span>@(item.Invoice != null && item.Invoice.InvoiceDate.HasValue ? item.Invoice.InvoiceDate.Value.ToString("yyyy-MM-dd") : string.Empty)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    @{
+                                        if (item.PaymentMode == (int) CaseFeePaymentMode.ByCustomer)
+                                        {
+                                            <span>"客户自缴"</span>
+                                        }
+                                        else if (item.Invoice != null)
+                                        {
+                                            <a style='color: #039' href="javascript:void(0);" onclick=" javascript:gl.AR.Invoice.Open('@item.CaseFeeGuid'); "><span>@item.Invoice.InvoiceNo </span></a>
+
+                                        }
+                                    }
+                                        </td>
+
+                             </tr>
+
+                            i++;
+                        }
+                    }
+                </tbody>
+                <tfoot class="ng-scope" style="display:none">
+                    <tr>
+                        <td colspan="11">
+                            <div class="pull-left"></div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box arcasefeelist">
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    
+    @Html.HiddenFor(m => m.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => m.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => m.PageSize, new { name = "PageSize" })
+
+</form>
+

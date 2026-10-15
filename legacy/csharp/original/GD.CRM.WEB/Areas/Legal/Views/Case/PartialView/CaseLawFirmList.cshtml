@@ -1,0 +1,44 @@
+﻿@using SunHold.Legal.Common
+@model SunHold.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseLawFirmListModel
+
+<form id="postForm" action="">
+    <div class="caseLawFirm"></div>
+    <table class="table table-hover" id="tblCaseLawFirm">
+        <thead>
+            <tr>
+                <th>
+                    律所编号
+                </th>
+                <th>
+                    律所名称
+                </th>
+                <th>
+                    操作
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+
+            @if (Model.CaseLawFirms != null)
+            {
+                foreach (var item in Model.CaseLawFirms)
+                {
+                    <tr>
+                        <td>
+                            <span>@item.LawFirmNo</span>
+                        </td>
+                        <td>
+                            <span>@item.LawFirmName</span>
+                        </td>
+
+                        <td>
+                            <span>删除</span>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+
+    </table>
+</form>
+

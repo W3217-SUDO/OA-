@@ -1,0 +1,120 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.IPR.Case
+
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.AR.CaseFeeModel
+
+<div class="modal fade" id="createModal">
+    <div class="modal-dialog" style="width:1200px">
+        <div class="modal-content">
+            @using (Html.BeginForm("Edit", "ARCaseFee", FormMethod.Post, new { id = "create", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+            {
+                <div class="modal-header">
+                    <button type="button" class="close" id="btnCaseFeeCreateClose">×</button>
+                    <h5 class="modal-title ng-binding">修改费用</h5>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <div class="col-sm-12">
+                            <div class="gridSection">
+                                    <table class='table table-hover' id="tblContractObjectList" width="100%">
+                                        <colgroup>
+                                            <col style="width: 12%">
+                                            <col style="width: 10%">
+                                            <col style="width: 14%">
+                                            <col style="width: 8%">
+                                            <col style="width: 14%">
+                                            <col style="width: 8%">
+                                            <col style="width: 6%">
+                                            <col style="width: 14%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 15%">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>合同</th>
+                                                <th>申请日</th>
+                                                <th>官费类型</th>
+                                                <th>官费金额</th>
+                                                <th>年度</th>
+                                                <th>首年</th>
+                                                <th>客户自缴</th>
+                                                <th>代理费类型</th>
+                                                <th>代理费</th>
+                                                <th>其他费用</th>
+                                                <th>说明</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @if (Model.ContractObject != null)
+                                            {
+                                                var caseInfo = CaseService.Instance.GetCaseBasic(Model.ContractObject.CaseId.Value);
+
+                                                var contractObjectList = new List<SelectListItem>();
+                                                contractObjectList.Add(new SelectListItem { Value = Model.ContractObject.ContractId.ToString(), Text = Model.ContractObject.ContractNo });
+
+                                                <tr>
+                                                    <td>
+                                                        <span>@Html.DropDownListFor(m => m.ContractObject.ContractId, contractObjectList, new { @id = "item_ContractId", @class = "form-control", @unselectable = "on",@disabled= "disabled" })</span>
+                                                    </td>
+
+                                                    <td style="text-align: center;">
+                                                        <span>@Html.TextBoxFor(m => caseInfo.CaseBasicInfo.CaseRequestDate, "{0:yyyy-MM-dd}", new { @id = "item_CaseRequestDate", @class = "form-control",
+                                                             @disabled = "disabled", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</span>
+
+                                                    </td>
+                                                    <td style="text-align: center;">
+                                                        <span>@Html.DropDownListFor(m => m.ContractObject.CaseOfficeFeeTypeId, CaseTypeService.Instance.GetCaseOfficeFeeTypeList(caseInfo.CaseBasicInfo.CaseTypeId),
+                                                             new { @id = "item_CaseOfficeFeeTypeId", @CaseOfficeFeeId=Model.ContractObject.CaseOfficeFeeId, @annualyear = Model.ContractObject.AnnualYear, @class = "form-control", @unselectable = "on" })</span>
+                                                    </td>
+
+                                                    <td style="text-align: center">
+                                                        <span>@Html.TextBoxFor(m => m.ContractObject.CaseOfficeFeeAmount, new { @id = "item_CaseOfficeFeeAmount", @class = "form-control", @unselectable = "on", @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')", @onafterpaste = "this.value=this.value.replace(/\\D/g,'')" })</span>
+                                                    </td>
+
+                                                    <td style="text-align: center">
+                                                        <span>@Html.DropDownListFor(m => m.ContractObject.AnnualYear, new List<SelectListItem>(), new { @id = "item_CaseFeeAnnualYear", @class = "form-control", @unselectable = "on" })</span>
+                                                    </td>
+
+                                                    <td style="text-align: center">
+                                                        <span>@Html.CheckBoxFor(m => m.ContractObject.IsFirstYear, new { @id = "item_IsFirstYear", @style = "height:20px;width:20px " })</span>
+                                                    </td>
+
+                                                    <td style="text-align: center">
+                                                        <span>@Html.CheckBoxFor(m => m.ContractObject.PaymentByCustomer, new { @id = "item_PaymentByCustomer", @style = "height:20px;width:20px " })</span>
+                                                    </td>
+                                                    <td style="text-align: center;">
+                                                        <span>@Html.DropDownListFor(m => m.ContractObject.CaseNonOfficeFeeTypeId,
+                                                             CaseTypeService.Instance.GetCaseNonOfficeFeeTypeList(caseInfo.CaseBasicInfo.CaseTypeId),
+                                                             new { @id = "item_CaseNonOfficeFeeTypeId", @CaseNonOfficeFeeId = Model.ContractObject.CaseNonOfficeFeeId, @class = "form-control", @unselectable = "on" })</span>
+                                                    </td>
+                                                    <td>
+                                                        <span>@Html.TextBoxFor(m => m.ContractObject.CaseNonOfficeFeeAmount, new { @id = "item_CaseNonOfficeFeeAmount", @class = "form-control", @unselectable = "on",@onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')", @onafterpaste = "this.value=this.value.replace(/\\D/g,'')" })</span>
+                                                    </td>
+                                                    <td>
+                                                        <span>@Html.TextBoxFor(m => m.ContractObject.CaseCommissionFeeAmount, new { @id = "item_CaseCommissionFeeAmount", @CaseCommissionFeeId = Model.ContractObject.CaseCommissionFeeId, @class = "form-control", @unselectable = "on" , @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')", @onafterpaste = "this.value=this.value.replace(/\\D/g,'')" })</span>
+                                                    </td>
+                                                    <td>
+                                                        <span>@Html.TextBoxFor(m => m.ContractObject.Remark, new { @id = "item_Remark", @class = "form-control", @unselectable = "on" })</span>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                            </div>
+                        </div>
+                    </div>
+                 </div>
+                <div class="modal-footer">
+                    <input class="btn btn-primary ng-binding" type="button" id="btnCaseFeeCreateUpdate" value="保存" />
+                    <input class="btn btn-default ng-binding" type="button" id="btnCaseFeeCreateCancel" value="取消" />
+                </div>
+            }
+        </div>
+    </div>
+</div>
+

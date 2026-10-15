@@ -1,0 +1,236 @@
+﻿@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.RebootingCaseModle
+    <script type="text/javascript" src="@Url.Content("~/Scripts/IPR/Case/Case.Rebooting.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></></script>
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/components.css")" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+ 
+    <link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+    <link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+    <link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+    <div class="viewFramework-product ">
+        <div class="viewFramework-product-body">
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>案件重提</h5>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-12">
+
+                        <div class="ng-scope">
+
+                            <div style="margin-top:24px" class="ng-isolate-scope">
+                                <div class="ng-isolate-scope">
+                                    <div style="margin: 16px 0" class="console-step row">
+                                        <div class="step col-md-4 step-first step-active">
+                                            <span class="ng-binding">1.输入需要重新提交的案号</span>
+                                        </div>
+                                        <div class="step col-md-4 step-todo">
+                                            <span class="ng-binding">2.确认案件信息</span>
+                                        </div>
+                                        <div class="step col-md-4 step-end">
+                                            <span class="ng-binding">3.生成新案件</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div ng-repeat="stepView in steps" class="ng-scope">
+                                    <div class="ng-scope">
+                                        <div class="ng-scope">
+                                            <style type="text/css" class="ng-scope">
+                                                .tableWrapper .table {
+                                                    margin-bottom: 0px;
+                                                }
+                                                .table-hover tbody tr.trWarapper:hover td {
+                                                    background-color: #FCF8E2;
+                                                }
+                                            </style>
+                                            <div class="ng-scope">
+
+                                                <div class="alert alert-info clearfix" style="padding: 8px 12px 0px;line-height: 18px;margin-bottom: 6px;border-radius: 0px">
+                                                    <div class="pull-left">
+                                                        <span>温馨提示</span> ：
+                                                    </div>
+                                                    <div class="pull-left">
+                                                        <p>1. <span>对于未产生费用的案件发生小的变动,请直接在原案件中修改。</span> </p>
+                                                        <p>2. <span>案件重新提交后,产生新的案号为原案号+版本号(A,B,C)。</span></p>
+                                                        <p>3. <span>案件重新提交后,原案件所有信息复制到新案件中,同时对应的合同中不再显示原案件费用信息,但会显示新生成案件费用信息。</span></p>
+
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="console-box-border" id="divCaseRebootingStep1" >
+                                    <div class="col-padding row-padding margin-bottom-2 usage-record-width">
+                                        <div class="ng-isolate-scope">
+                                            <form novalidate="" class="form-horizontal   ng-scope ng-pristine ng-valid" role="form" name="usageRecordForm">
+                                                <div class="form-group ">
+                                                    <label class="col-sm-3 control-label" for="">
+                                                        <span>原案号</span>：
+                                                    </label>
+                                                    <div class="col-sm-2">
+                                                        <input autocomplete="off" class="form-control" id="CaseNo"   type="text" value="">
+                                                        <span class="help-block" id="help-info-step1"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group ">
+                                                    <label class="col-sm-3 control-label" for=""></label>
+                                                    <div class="col-sm-8">
+                                                        <div>
+                                                            <a class="btn btn-default" id="btnCaseRebootingStep1">
+                                                                <span>下一步</span>
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="console-box-border" id="divCaseRebootingStep2" style="display:none">
+                                    <div class="col-padding row-padding margin-bottom-2 usage-record-width">
+                                        <div class="ng-isolate-scope">
+                                            <form novalidate="" class="form-horizontal   ng-scope ng-pristine ng-valid" role="form" name="usageRecordForm">
+                                                <div class="form-group ">
+                                                    <label class="col-sm-3 control-label" for="">
+                                                        <span>原案号</span>：
+                                                    </label>
+                                                    <div class="col-sm-2">
+                                                        @Html.TextBoxFor(m => m.OriginalCase.CaseBasicInfo.CaseNo, new { @class = "form-control", @autocomplete = "off" })
+                                                        <span class="help-block" id="help-info-step1"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group ">
+                                                    <label class="col-sm-3 control-label" for="">
+                                                        <span>申请人</span>：
+                                                    </label>
+                                                    <div class="col-sm-2">
+                                                        @Html.TextBoxFor(m => m.OriginalCase.CaseBasicInfo.ApplicantName, new { @readonly = true, @class = "form-control", @autocomplete = "off" })
+                                                        <span class="help-block" id="help-info-step1"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group ">
+                                                    <label class="col-sm-3 control-label" for="">
+                                                        <span>申请号</span>：
+                                                    </label>
+                                                    <div class="col-sm-2">
+                                                        @Html.TextBoxFor(m => m.OriginalCase.CaseBasicInfo.CaseRequestNo, new { @readonly = true, @class = "form-control", @autocomplete = "off" })
+                                                        <span class="help-block" id="help-info-step1"></span>
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group ">
+                                                    <label class="col-sm-3 control-label" for="">
+                                                        <span>申请日</span>：
+                                                    </label>
+                                                    <div class="col-sm-2">
+                                                        @Html.TextBoxFor(m => m.OriginalCase.CaseBasicInfo.CaseRequestDate, new { @readonly = true, @class = "form-control", @autocomplete = "off" })
+                                                        <span class="help-block" id="help-info-step1"></span>
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group ">
+                                                    <label class="col-sm-3 control-label" for="">
+                                                        <span>案件名称</span>：
+                                                    </label>
+                                                    <div class="col-sm-2">
+                                                        @Html.TextBoxFor(m => m.OriginalCase.CaseBasicInfo.CaseName, new { @readonly = true, @class = "form-control", @autocomplete = "off" })
+                                                        <span class="help-block" id="help-info-step1"></span>
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group ">
+                                                    <label class="col-sm-3 control-label" for="">
+                                                        <span>案源人</span>：
+                                                    </label>
+                                                    <div class="col-sm-2">
+                                                        @Html.TextBoxFor(m => m.OriginalCase.CaseBasicInfo.CaseOriginPeopleName, new { @readonly = true, @class = "form-control", @autocomplete = "off" })
+                                                        <span class="help-block" id="help-info-step1"></span>
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group ">
+                                                    <label class="col-sm-3 control-label" for="">
+                                                        <span>新案号</span>：
+                                                    </label>
+                                                    <div class="col-sm-2">
+                                                        @Html.TextBoxFor(m => m.TargetCase.CaseBasicInfo.CaseNo, new {@readonly=true, @class = "form-control", @autocomplete = "off" })
+                                                        <span class="help-block" id="help-info-step1"></span>
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group ">
+                                                    <label class="col-sm-3 control-label" for=""></label>
+                                                    <div class="col-sm-8">
+                                                        <div>
+                                                            <a class="btn btn-default" id="btnCaseRebootingStep2">
+                                                                <span>下一步</span>
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="console-box-border" id="divCaseRebootingStep3" style="display:none">
+                                    <div class="case-notice-margin">
+                                        <div class="console-global-notice">
+                                            <div class="console-global-notice-list">
+                                                <div class="alert alert-success console-global-notice-item">
+                                                    <div class="clearfix console-global-notice-item-inner">
+                                                        <div class="console-global-notice-content ng-binding">
+                                                            新案件生成成功.
+                                                        </div>
+
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-padding row-padding margin-bottom-2 usage-record-width">
+                                        <div class="ng-isolate-scope">
+                                            <form novalidate="" class="form-horizontal   ng-scope ng-pristine ng-valid" role="form" name="usageRecordForm">
+                                                <div class="form-group ">
+
+                                                    <label class="col-sm-3 control-label" for="">
+                                                        <span>新案号</span>：
+                                                    </label>
+                                                    <div class="col-sm-2">
+                                                        <span class="help-block" id="help-info-step3"></span>
+                                                        <input autocomplete="off" class="form-control" id="TargetCase_CaseNo" type="text" value="">
+                                                        @Html.HiddenFor(m => m.TargetCase.CaseBasicInfo.CaseId)
+                                                    </div>
+                                                </div>
+                                                <div class="form-group ">
+                                                    <label class="col-sm-3 control-label" for=""></label>
+                                                    <div class="col-sm-8">
+                                                        <div>
+                                                            <a class="btn btn-default" id="btnCaseView">
+                                                                <span>查看</span>
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                      
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>

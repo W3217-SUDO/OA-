@@ -1,0 +1,263 @@
+﻿@using Dchien.Legal.Entity.FAM.Invoice
+
+@model Dchien.Legal.Web.Areas.FCM.ViewModels.Contract.ContractObjectListModel
+
+<script type="text/javascript">
+    $(function () {
+        $("[data-toggle='tooltip']").tooltip();
+    });
+</script>
+
+<form id="postForm" action="">
+    <div class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <div id="divContractObjectList"></div>
+  
+                <table class='table table-hover' id="tblReceivedObjectList" width="100%">
+                    <colgroup>
+                        <col style="width: 4%">
+                        <col style="width: 10%">
+                        <col style="width: 10%">
+                        <col style="width: 10%">
+                        <col style="width: 10%">
+                        <col style="width: 10%">
+                        <col style="width: 10%">
+                        <col style="width: 10%">
+                        <col style="width: 10%">
+                        <col style="width: 10%">
+
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <td colspan="10" style="text-align: left; font-weight: bold; font-size: 10pt; ">回款记录</td>
+                        </tr>
+                        <tr>
+                            <th>序号</th>
+                            <th>回款单号</th>
+                            <th>回款日期</th>
+                            <th>银行单据号</th>
+                            <th>回款金额</th>
+                            <th>官费</th>
+                            <th>代理费</th>
+                            <th>其他费用费</th>
+                            <th>回款方式</th>
+                            <th>回款分配人</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        @if (Model.ReceivedObjects != null && Model.ReceivedObjects != null)
+                        {
+                            foreach (var item in Model.ReceivedObjects)
+                            {
+                                <tr>
+                                    <td>
+                                        <span>@(Model.ReceivedObjects.IndexOf(item) + 1)</span>
+                                    </td>
+                                    <td style="text-align: center">
+                                        <span>@item.PaymentBasic.SequenceNo</span>
+                                    </td>
+                                    <td style="text-align: center">
+                                        <span>@(item.PaymentBasic.CashedDate.HasValue ? item.PaymentBasic.CashedDate.Value.ToString("yyyy-MM-dd") : string.Empty)</span>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <span>@item.PaymentBasic.InvoiceNo</span>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <span>@item.PaymentBasic.CashedAmount</span>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <span>@item.PaymentBasic.CaseOfficeFeeAppliedAmount</span>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <span>@item.PaymentBasic.CaseNonOfficeFeeAppliedAmount</span>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <span>@item.PaymentBasic.CaseCommissionFeeAppliedAmount</span>
+                                    </td>
+                                    <td style="text-align: center">
+                                        <span>@item.PaymentBasic.PaymentModeName</span>
+                                    </td>
+                                    <td style="text-align: center">
+                                        <span>@item.PaymentBasic.AppliedOperatorName</span>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+
+                </table>
+         
+            
+            <table class='table table-hover' id="tblInvoicedObjectList" width="100%">
+                <colgroup>
+                    <col style="width: 4%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+
+                </colgroup>
+                <thead>
+                    <tr>
+                        <td colspan="10" style="text-align: left; font-weight: bold; font-size: 10pt; ">开票记录</td>
+                    </tr>
+                    <tr>
+                        <th>序号</th>
+                        <th>请票单号</th>
+                        <th>发票号码</th>
+                        <th>开票日期</th>
+                        <th>开票金额</th>
+                        <th>官费</th>
+                        <th>代理费</th>
+                        <th>其他费用费</th>
+                        <th>状态</th>
+                        <th>备注</th>
+                    </tr>
+                </thead>
+                <tbody>
+
+                    @if (Model.InvoicedObjects != null && Model.InvoicedObjects != null)
+                    {
+                        foreach (var item in Model.InvoicedObjects)
+                        {
+                            var line = "";
+
+                            if (item.InvoiceBasic.InvoiceStatus == InvoiceStatus.InvoiceCanceled 
+                                || item.InvoiceBasic.InvoiceStatus == InvoiceStatus.ApplicaionCanceled)
+                            {
+                                line = "style=text-decoration:line-through;";
+                            }
+                            <tr>
+                                <td>
+                                    <span>@(Model.InvoicedObjects.IndexOf(item) + 1)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span @line>@item.InvoiceBasic.InvoiceApplicationNo</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span @line>@(item.InvoiceBasic.InvoiceNo)</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span @line>@(item.InvoiceBasic.InvoiceDate.HasValue ? item.InvoiceBasic.InvoiceDate.Value.ToString("yyyy-MM-dd") : string.Empty)</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span @line>@item.InvoiceBasic.InvoiceAmount</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span @line>@item.InvoiceBasic.CaseOfficeFeeAmount</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span @line>@item.InvoiceBasic.CaseNonOfficeFeeAmount</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span @line>@item.InvoiceBasic.CaseCommissionFeeAmount</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span @line>@item.InvoiceBasic.InvoiceStatusName</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span @line>@item.InvoiceBasic.Remark</span>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+
+            </table>
+            
+            <table class='table table-hover' id="tblPaidObjectList" width="100%">
+                <colgroup>
+                    <col style="width: 4%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                    <col style="width: 10%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <td colspan="10" style="text-align: left; font-weight: bold; font-size: 10pt; ">付款记录</td>
+                    </tr>
+                    <tr>
+                        <th>序号</th>
+                        <th>申请单号</th>
+                        <th>申请人</th>
+                        <th>待付金额</th>
+                        <th>付款日期</th>
+                        <th>付款单据</th>
+                        <th>付款金额</th>
+                        <th>付款类型</th>
+                        <th>官费</th>
+                        <th>其他费用费</th>
+                    </tr>
+                </thead>
+                <tbody>
+
+                    @if (Model.PaidObjects != null && Model.PaidObjects != null)
+                    {
+                        foreach (var item in Model.PaidObjects)
+                        {
+                            var line = "";
+
+                            if (item.PaymentBasic.PaymentStatus == Dchien.Legal.Entity.FAM.AP.Payment.PaymentStatus.ApplicaionCanceled)
+                            {
+                                line = "style=text-decoration:line-through;";
+                            }
+                            <tr>
+                                <td>
+                                    <span >@(Model.PaidObjects.IndexOf(item) + 1)</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span @line>@item.PaymentBasic.ApplicationNo</span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span @line>@(item.PaymentBasic.ApplicantName)</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span @line>
+                                        @(item.PaymentBasic.PaymentStatus == Dchien.Legal.Entity.FAM.AP.Payment.PaymentStatus.Packing
+                          || item.PaymentBasic.PaymentStatus == Dchien.Legal.Entity.FAM.AP.Payment.PaymentStatus.Paid ? 0 : item.PaymentBasic.PaidAmount)
+                                </span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span @line>@(item.PaymentBasic.PaymentDate.HasValue ? item.PaymentBasic.PaymentDate.Value.ToString("yyyy-MM-dd") : string.Empty)</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span @line>@item.PaymentBasic.PackageNo</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span @line>
+                                        @(item.PaymentBasic.PaymentStatus == Dchien.Legal.Entity.FAM.AP.Payment.PaymentStatus.Packing
+                          || item.PaymentBasic.PaymentStatus == Dchien.Legal.Entity.FAM.AP.Payment.PaymentStatus.Paid ? item.PaymentBasic.PaidAmount : 0)
+                                    </span>
+                            </td>
+                                <td style="text-align: center;">
+                                    <span @line>@item.PaymentType.PaymentTypeName</span>
+                                </td>
+                                <td style="text-align: center;">
+                                    <span @line>@(item.PaymentType.CaseFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeTypeId.Office ? item.PaymentBasic.PaidAmount : 0) </span>
+                                </td>
+                                <td style="text-align: center">
+                                    <span @line>@(item.PaymentType.CaseFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeTypeId.Commission ? item.PaymentBasic.PaidAmount : 0)</span>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+
+            </table>
+        </div>
+    </div>
+
+</form>
+

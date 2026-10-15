@@ -1,0 +1,63 @@
+﻿
+@{
+    ViewBag.Title = "Word";
+    Layout = null;
+}
+@*<script src="@Url.Content("~/Scripts/Common/jquery-3.3.1.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/bootstrap.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/jquery.contextmenu.r2.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/chosen.jquery.min.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>*@
+@*<script type="text/javascript" src="/Dchien.Legal.Admin/pageoffice.js"></script>*@
+
+<script type="text/javascript">
+    //var AP_ROOT = '@Url.Content("~/")';
+    function Save() {
+        debugger
+        alter("....");
+        pageofficectrl.WebSave();
+        //document.getElementById("pageOfficectrl").WebSave();
+    }
+    function SaveAndSeal() {
+        debugger
+        alter("....");
+        @*document.getElementById("PageOfficeCtrl1").WebSave();
+        $.ajax({
+            url: "@System.Configuration.ConfigurationManager.AppSettings["onlineurl"]/100110110/Legal/CaseFile/CaseFileWordToSeal", // 替换为你的API端点
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ caseFileId:  @ViewBag.FileId  }),
+            processData: false, 
+            dataType: 'json', 
+            success: function(response) {
+                alert("提交用印成功.");
+                //POBrowser.closeWindow();
+                //window.close();
+            },
+            error: function(xhr, status, error) {
+                console.error('Error:', error);
+                alert(error);
+            }
+        });*@
+    }
+    function showRevision() {
+        //document.getElementById("PageOfficeCtrl1").ShowRevisions = true;
+    }
+    function hideRevision() {
+        //document.getElementById("PageOfficeCtrl1").ShowRevisions = false;
+    }
+</script>
+
+@*<script type="text/javascript" src="@Url.Content("~/pageoffice/js/jquery.min.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script src="@Url.Content("~/Scripts/Common/jquery.ipr.fn.extend.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>*@
+
+@*<script src="@Url.Content("~/Scripts/Common/jquery.js")" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/jquery.ipr.fn.extend.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>*@
+
+
+@*<script type="text/javascript" src="../pageoffice/js/jquery.min.js"></script>
+    <script type="text/javascript" src="../pageoffice/js/pageoffice.js" id="po_js_main"></script>*@
+<div style="width:900px; height:600px;">
+    @Html.Raw(ViewBag.EditorHtml)
+ </div>
+
+

@@ -1,0 +1,266 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service;
+@using Dchien.Legal.Service.BAS.Type
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/zTree/zTreeStyle.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.core.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.excheck.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.exedit.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/pageoffice/js/pageoffice.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" id="po_js_main"></script>
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/webuploader/webuploader.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<style type="text/css">
+
+    .webuploader-pick {
+    position: relative;
+    display: inline-block;
+    cursor: pointer;
+    background: #f7f7f7;
+    padding: 10px 15px;
+    color: #333;
+    text-align: center;
+    border-radius: 3px;
+    overflow: hidden;
+}
+    .webuploader-pick-hover {
+	background: #8b9aa3;
+}
+
+  .filePicker div:nth-child(2){width:100%!important;height:100%!important;}  
+  
+ 
+ 
+        ul.ztree {
+            margin-top: 0px;
+            border-right: 1px solid #e1e6eb;
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+
+        .ztree li {
+            line-height: 20px;
+        }
+
+            .ztree li a {
+                width: 200px;
+                height: 20px;
+                padding-top: 0px;
+            }
+
+                .ztree li a:hover {
+                    text-decoration: none;
+                    background-color: #E7E7E7;
+                }
+
+                .ztree li a span.button.switch {
+                    visibility: hidden;
+                }
+
+        .ztree.showIcon li a span.button.switch {
+            visibility: hidden;
+        }
+
+        .ztree li a.curSelectedNode {
+            background-color: #D4D4D4;
+            border: 0;
+            height: 20px;
+        }
+
+        .ztree li span {
+            line-height: 20px;
+        }
+
+            .ztree li span.button {
+                margin-top: 2px;
+            }
+
+                .ztree li span.button.switch {
+                    width: 15px;
+                    height: 10px;
+                    margin-bottom: 2px;
+                }
+
+                .ztree li span.button.add {
+                    margin-left: 2px;
+                    margin-right: -1px;
+                    background-position: -144px 0;
+                    vertical-align: top;
+                    *vertical-align: middle;
+                }
+
+
+                /*.ztree li span.button {background-image:url("./left_menuForOutLook.png"); *background-image:url("./left_menuForOutLook.gif")}*/
+
+                .ztree li span.button.ico_docu {
+                    background-position: -110px -16px;
+                }
+
+                .ztree li span.button.switch.level0 {
+                    width: 15px;
+                    height: 10px;
+                    margin-bottom: 2px;
+                }
+
+                .ztree li span.button.switch.level1 {
+                    width: 15px;
+                    height: 10px;
+                    margin-bottom: 2px;
+                }
+        /*.ztree li span.button.noline_open {background-position: 0 0;}
+    .ztree li span.button.noline_close {background-position: -18px 0;}
+    .ztree li span.button.noline_open.level0 {background-position: 0 -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}*/
+
+        .node_name {
+            margin-left: 10px;
+        }
+
+        div#rMenu {
+            position: absolute;
+            visibility: hidden;
+            top: 0;
+            background-color: #555;
+            text-align: left;
+            padding: 2px;
+        }
+
+            div#rMenu ul li {
+                margin: 1px 0;
+                padding: 0 5px;
+                cursor: pointer;
+                list-style: none outside none;
+                background-color: #DFDFDF;
+            }
+</style>
+
+<script type="text/javascript" src="@Url.Content("~/Resource/webuploader/webuploader.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" ></script>
+
+<SCRIPT type="text/javascript">
+
+    var setting = {
+        view: {
+            showLine: false,
+            addHoverDom: false,
+            removeHoverDom: false,
+            selectedMulti: false
+        },
+        edit: {
+            enable: false,
+            editNameSelectAll: false,
+            showRemoveBtn: false,
+            showRenameBtn: false,
+            showUploadBtn: false
+        },
+        data: {
+            simpleData: {
+                enable: true
+            }
+        },
+        callback: {
+            onClick: c.Cases.Case.CaseFiles.CaseFileType.Tree.zTreeOnClick,
+            beforeDrag: c.Cases.Case.CaseFiles.CaseFileType.Tree.beforeDrag,
+            beforeEditName: c.Cases.Case.CaseFiles.CaseFileType.Tree.beforeEditName,
+            beforeRemove: c.Cases.Case.CaseFiles.CaseFileType.Tree.beforeRemove,
+            beforeRename: c.Cases.Case.CaseFiles.CaseFileType.Tree.beforeRename,
+            onRemove: c.Cases.Case.CaseFiles.CaseFileType.Tree.onRemove,
+            onRename: c.Cases.Case.CaseFiles.CaseFileType.Tree.onRename
+        }
+    };
+    var log, className = "dark";
+    var newCount = 1;
+
+</SCRIPT>
+
+
+@using (Html.BeginForm("CaseFileUploading", "CaseFile", FormMethod.Post, new { id = "uploadingForm", enctype = "multipart/form-data" }))
+{
+    <div  class="case-section-main" style="padding:0px">
+        <div class="case-section-left" style="padding-right: 80%;">
+            <div><ul id="caseFileTree" class="ztree"></ul><input id="currentCaseFileTypeId" type="hidden" value=""></div>
+        </div>
+        <div class="case-section-right" style="width: 80%; ">
+            <div  id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; padding-left:8px">
+                <table class='table table-hover' id="tblCaseFile" width="100%">
+                    <colgroup>
+                        <col style="width: 3%">
+                        <col style="width: 3%">
+                        <col style="width: 5%">
+                        <col style="width: 40%">
+                        <col style="width: 10%">
+                        <col style="width: 9%">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <td><input type="checkbox" onclick="javascript: c.Cases.Case.CaseFiles.Selected(this);" id="chkFileAll" name="chkFileAll"></td>
+
+                            <th style="text-align: center">
+                                序号
+                            </th>
+                            <th style="text-align: center">
+                                上传人
+                            </th>
+
+                            <th style="text-align: left">
+                                文件名称
+                            </th>
+                            <th style="text-align: center">
+                                文档日期
+                            </th>
+                            <th style="text-align: center">
+                                操作
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="display: none">
+                            <td style="padding:0px">
+                                &nbsp;
+                            </td>
+                            <td style="text-align: center;"></td>
+                            <td style="text-align: center"></td>
+                            <td ondblclick="c.Cases.Case.CaseFiles.CaseFile.onEditName(this);" style="text-align: left;padding:0px"></td>
+                            <td style="text-align: center"></td>
+                            <td style="text-align: left"></td>
+
+                        </tr>
+                    </tbody>
+                    <tfoot class="ng-scope" style="display:none;position:relative;z-index: 99;">
+                        <tr>
+                            <td><input type="checkbox" onclick="javascript: c.Cases.Case.CaseFiles.Selected(this);" id="chkFileAll" name="chkFileAll"></td>
+
+                            <td colspan="5">
+                                <div class="pull-left" style="position:absolute;z-index: 1000;">
+         
+                                </div>
+                                <div class="ng-scope">
+                                    <div class="pull-right page-box casefile">
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <div class="simple-grid-none-data-wrap">
+                    <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                            <div class="text-size-16 tip-text inline-block">
+                                <span class="margin-left ng-binding"></span>没有查询到文档.
+                                <div  id="btnCaseFileUpload_none_data" class="filePicker btn btn-default" style="padding-top:1.5px;padding-bottom:1.5px; height:32px;">上传文件</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <input data-val="true" data-val-number="The field TotalCount must be a number." id="TotalCount" name="TotalCount" type="hidden" value="1">
+        <input data-val="true" data-val-number="The field PageNo must be a number." id="PageNo" name="PageNo" type="hidden" value="1">
+        <input data-val="true" data-val-number="The field PageSize must be a number." id="PageSize" name="PageSize" type="hidden" value="10">
+    </div>
+ 
+}
+ 
+
+

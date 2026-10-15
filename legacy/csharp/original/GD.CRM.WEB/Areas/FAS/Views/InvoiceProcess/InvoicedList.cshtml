@@ -1,0 +1,169 @@
+﻿@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AR.Invoice.InvoicedListModel
+
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<script src="@Url.Content("~/Scripts/FAM/AR/Invoice/FAM.AR.Invoice.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("InvoicedMenuList");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>已开票</h5>
+                            </div>
+
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12">
+
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FAM/Invoice/PendingList")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                <div class="simple-form-field">
+                                 
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span contenteditable="" class="text-danger "></span>
+                                            <span class="">客户名称：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户名称", @style = "" })
+                                        </div>
+                                    </div>
+
+
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span class="">开票日期：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </div>
+
+                                        <label class="control-label">
+                                            <span class="">-</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </div>
+
+                                    </div>
+    
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span class="">申请人：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceApplicant, new { @class = "form-control", @placeholder = "申请人", @style = "" })
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div class="simple-form-field  ">
+                                    <div class="form-group  ">
+                                        <label class="  control-label">
+                                            <span class="">
+                                            </span>
+                                        </label>
+                                        <div class="form-control-wrap text-right">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnInvInvoicedSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection">
+                                <table id="tblInvoiceList" class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align: center">客户名称</th>
+                                            <th style="text-align: center">开票金额</th>
+                                            <th style="text-align: center">纳税人识别码</th>
+                                            <th style="text-align: center">客户电话</th>
+                                            <th style="text-align: center">开户银行</th>
+                                            <th style="text-align: center">开户账号</th>
+                                            <th style="text-align: center">开票日期</th>
+                                            <th style="text-align: center">开票申请人</th>
+                                            <th style="text-align: center">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="" style="display: none">
+                                        <tr>
+                                            <td colspan="9">
+                                                <div class="pull-left"></div>
+                                                <div class="">
+                                                    <div class="pull-right page-box invoiceList">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                    <div class='divcaseconditioncasephases'></div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+</div>
+

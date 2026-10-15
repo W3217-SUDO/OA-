@@ -1,0 +1,231 @@
+﻿@using Dchien.Legal.Entity.FAM.AR.CaseFee
+@using Dchien.Legal.Entity.Legal.Case
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseFee.CaseFeeListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.CaseFee.Invoice.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                 <h5>票据上传</h5>
+                            </div>
+                        </div>
+                 
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px" />
+                                        <col style= "width: 160px" />
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            案件编号：
+                                        </th>
+                                        <td colspan="5">
+                                            @Html.TextAreaFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @style = "width:100%" })
+                                        </td>
+                                    </tr>
+
+                                    <tr>
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @style = "" })
+                                        </td>
+                                        <th>
+                                            合同编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractNo, new { @class = "form-control", @style = "" })
+                                        </td>
+                                        <th>
+                                           费用大类：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.TypeId, CommonService.Instance.GetCaseFeeTypeIdList(true), new { @class = "form-control", @style = "width:100%" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            案件类型：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseTypeName, new { @class = "form-control", @placeholder = "案件类型" })
+                                            @Html.HiddenFor(m => m.SearchCondition.CaseTypeId)
+                                        </td>
+                                        <th>
+                                            案件阶段：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CasePhaseName, new { @class = "form-control", @placeholder = "案件阶段" })
+                                            @Html.HiddenFor(m => m.SearchCondition.CasePhaseId)
+                                        </td>
+                                        <th>
+                                            费用类型：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseFeeTypeName, new { @class = "form-control", @placeholder = "费用类型", @style = "width:100%" })
+                                            @Html.HiddenFor(m => m.SearchCondition.CaseFeeTypeId)
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th style="text-align:right">
+                                            票据状态：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.InvoiceFileStatus, CommonService.Instance.GetInvoiceFileStatusList(true), new { @class = "form-control", @style = "width:96%" })
+                                        </td>
+
+                                        <th>
+                                            公证书号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.NotarialNo, new { @class = "form-control", @style = "" })
+                                        </td>
+
+                                        <th>
+                                            打包号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.PackageNo, new { @class = "form-control", @style = "width:100%" })
+                                        </td>
+      
+                                    </tr>
+
+                                    <tr>
+                                        <th style="text-align:right">
+                                           
+                                        </th>
+  
+
+                                        <td colspan="2">
+               
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnSearch">
+                                                <span>查询</span>
+                                            </a>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnCaseFeeInvoiceConfirm">
+                                                <span>批量上传</span>
+                                            </a>
+                                            <a href="javascript:void(0);" class="btn btn-default " id="btnSearchClear">
+                                                <span>清空</span>
+                                            </a>
+                                        </td>
+                                    </tr>
+
+                                </table>
+
+                                <div class='divcaseconditioncasetypes'></div>
+                                <div class='divcaseconditioncasephases'></div>
+                                <div class='divcaseconditioncasefeetypes'></div>
+
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection">
+                                <table id="tblCaseFeeList" class="table table-hover" style="width:100%">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 9%">
+                                        <col style="width: 9%">
+                                        <col style="width: 9%">
+                                        <col style="width: 9%">
+                                        <col style="width: 9%">
+                                        <col style="width: 9%">
+                                        <col style="width: 9%">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th width="10">
+                                                <input type="checkbox" id="chkCaseFeeAll" class="ng-pristine ng-valid">
+                                            </th>
+                                            <th>案号</th>
+                                            <th>案件名称</th>
+                                            <th>客户</th>
+                                            <th>费用类型</th>
+                                            <th>金额</th>
+                                            <th>申请人</th>
+                                            <th>通知日期</th>
+                                            <th>已收</th>
+                                            <th>已付</th>
+                                            <th>已开票</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="" style="display: none">
+                                        <tr>
+                                            <td colspan="11">
+                                                <div class="pull-left"></div>
+                                                <div class="">
+                                                    <div class="pull-right page-box caseFeeList">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

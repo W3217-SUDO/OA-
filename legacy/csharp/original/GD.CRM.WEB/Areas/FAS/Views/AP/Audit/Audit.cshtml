@@ -1,0 +1,43 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AP.Audit.AuditModel
+
+<div class="modal fade" id="caseFeeApplicationAuditModal">
+
+    <div class="modal-dialog">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                @using (Html.BeginForm("CaseFeeApplicationAudit", "AP", FormMethod.Post, new { id = "auditId", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    @Html.HiddenFor(m => m.Audit.AuditId)
+                    @Html.HiddenFor(m => m.Audit.ApplicationId)
+
+                    <div class="modal-header">
+                        <button type="button" class="close" id="btnCaseFeeApplicationAuditClose">×</button>
+                        <h5 class="modal-title ng-binding">应付款预付申请审批</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="text-danger ng-binding">*</span>
+                                    <span class="ng-binding">审批意见</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    @Html.TextAreaFor(m => m.Audit.AuditContent, new { @required = "true", maxlength = 1000, rows = 4, style = "width:120%" })
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button" id="btnCaseFeeApplicationAuditApproved" value="同意" />
+                        <input class="btn btn-primary ng-binding" type="button" id="btnCaseFeeApplicationAuditRejected" value="拒绝" />
+                        <input class="btn btn-default ng-binding" type="button" id="btnCaseFeeApplicationAuditCancel" value="取消" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+</div>
