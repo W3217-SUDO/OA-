@@ -680,6 +680,16 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 if (clueRequestId === counselDetailClueRequestRef.current) context.setCounselDocumentsLoading(false);
             });
             setCounselDetailFinanceLoading(true);
+            // 费用列表是案件详情的首屏核心内容，先启动并在其完成时立即回填；
+            // 历史、任务、日志等附加面板不得阻塞费用表刷新。
+            const relationPromise = api.get(`/cases/${row.id}/relations`, { params: { clue_page: 1, clue_page_size: 10 } });
+            void relationPromise.then((response) => {
+                if (clueRequestId !== counselDetailClueRequestRef.current) return;
+                setCounselDetailFinance(response.data?.fees || []);
+                setCounselDetailFinanceLoading(false);
+            }).catch(() => {
+                if (clueRequestId === counselDetailClueRequestRef.current) setCounselDetailFinanceLoading(false);
+            });
             const [historyRes, taskRes, customerTaskRes, logRes, capabilityRes, relationRes] = await Promise.allSettled([
                 api.get(`/records/${row.id}/history`),
                 api.get(`/cases/${row.id}/tasks`, {
@@ -690,7 +700,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 }),
                 api.get(`/cases/${row.id}/logs`),
                 api.get(`/cases/${row.id}/action-capabilities`),
-                api.get(`/cases/${row.id}/relations`, { params: { clue_page: 1, clue_page_size: 10 } }),
+                relationPromise,
             ]);
             if (clueRequestId !== counselDetailClueRequestRef.current) return;
             setCounselDetailHistory(historyRes.status === "fulfilled" ? historyRes.value.data.items || [] : []);
