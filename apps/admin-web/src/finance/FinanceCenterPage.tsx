@@ -3598,8 +3598,16 @@ export default function FinanceCenterPage({
                     ? financePersonDisplayName(fee.data.handler, fee.data.handler_display_name)
                     : financePersonDisplayName(fee.owner, fee.owner_display_name),
           base_amount:
-            detail.base_amount ?? fee.data?.commission_base ?? fee.data?.amount,
-          base_commission: detail.base_commission ?? fee.data?.base_commission,
+            detail.base_amount ??
+            detail.commission_base ??
+            fee.data?.base_amount ??
+            fee.data?.commission_base ??
+            fee.data?.amount,
+          base_commission:
+            detail.reference_commission ??
+            detail.base_commission ??
+            fee.data?.reference_commission ??
+            fee.data?.base_commission,
           actual_commission:
             detail.actual_commission ??
             fee.data?.actual_commission ??

@@ -2342,6 +2342,21 @@ async def _internal_fee_rows(
         BusinessRecord.data["fee_type"].as_string() == "内部费用",
         BusinessRecord.status != "已删除", *fee_conditions,
     ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    imported_source_data: dict[int, dict] = {}
+    imported_source_ids = {
+        int((item.data or {}).get("internal_fee_record_id"))
+        for item in fees
+        if (item.data or {}).get("legacy_kind") == "internal_payment_line"
+        and str((item.data or {}).get("internal_fee_record_id") or "").isdigit()
+    }
+    if imported_source_ids:
+        imported_source_data = {
+            source.id: source.data or {}
+            for source in (await db.scalars(select(BusinessRecord).where(
+                BusinessRecord.id.in_(imported_source_ids),
+                BusinessRecord.module == "finance",
+            ))).all()
+        }
     if ids is not None:
         def application_key(item):
             data = item.data or {}
@@ -2410,6 +2425,13 @@ async def _internal_fee_rows(
             lifecycle_statuses.get(item.id),
         )
         row_data = row["data"]
+        if data.get("legacy_kind") == "internal_payment_line":
+            source_data = imported_source_data.get(int(data.get("internal_fee_record_id") or 0), {})
+            source_legacy = source_data.get("legacy_record") if isinstance(source_data.get("legacy_record"), dict) else {}
+            if row_data.get("base_amount") is None and source_legacy.get("BaseAmount") is not None:
+                row_data["base_amount"] = source_legacy["BaseAmount"]
+            if row_data.get("reference_commission") is None and source_legacy.get("PerformanceAmount") is not None:
+                row_data["reference_commission"] = source_legacy["PerformanceAmount"]
         if scope == "applications":
             if str(row_data.get("applicant") or "").strip() not in personal_names:
                 continue
