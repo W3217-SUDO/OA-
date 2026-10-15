@@ -2638,11 +2638,6 @@ async def _general_settlement_rows(
 
     visible_case_ids = set(cases_by_id)
     visible_case_nos = set(cases_by_no)
-    fee_records = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "finance",
-        *(await _record_scope_conditions(identity, db)),
-    ).order_by(BusinessRecord.id.asc()))).all())
-    fees_by_id = {item.id: item for item in fee_records}
     # 历史分配有时只保留费用编号，allocation 根节点没有案件编号。仅从
     # 本次到账明确引用的费用记录补齐案件索引，不按客户、合同或金额猜测。
     referenced_fee_ids = {
@@ -2651,7 +2646,16 @@ async def _general_settlement_rows(
         for value in [allocation, *(allocation.get("settlement_items") or [])]
         if isinstance(value, dict) and allocation_fee_id(value) is not None
     }
-    referenced_fees = [fees_by_id[fee_id] for fee_id in referenced_fee_ids if fee_id in fees_by_id]
+    from app.core.query_batches import _scalars_in_batches
+    scope_conditions = await _record_scope_conditions(identity, db)
+    referenced_fees = await _scalars_in_batches(
+        db,
+        referenced_fee_ids,
+        lambda batch: select(BusinessRecord).where(
+            BusinessRecord.module == "finance", BusinessRecord.id.in_(batch),
+            *scope_conditions,
+        ),
+    ) if referenced_fee_ids else []
     fee_case_ids = {
         _receivable_relation_id(fee.data or {}, "case_id", "case_record_id")
         for fee in referenced_fees if _receivable_relation_id(fee.data or {}, "case_id", "case_record_id")
@@ -2670,6 +2674,18 @@ async def _general_settlement_rows(
         cases_by_no.update({item.serial_no: item for item in fee_linked_cases})
         visible_case_ids.update(item.id for item in fee_linked_cases)
         visible_case_nos.update(item.serial_no for item in fee_linked_cases)
+
+    fee_conditions = [BusinessRecord.module == "finance", *scope_conditions]
+    fee_links = [BusinessRecord.id.in_(referenced_fee_ids)] if referenced_fee_ids else []
+    if visible_case_ids:
+        fee_links.append(BusinessRecord.data["case_id"].as_integer().in_(visible_case_ids))
+    if visible_case_nos:
+        fee_links.append(BusinessRecord.data["case_no"].as_string().in_(visible_case_nos))
+    fee_records = list((await db.scalars(select(BusinessRecord).where(
+        *fee_conditions, or_(*fee_links) if fee_links else False,
+    ).order_by(BusinessRecord.id.asc()))).all()) if fee_links else []
+    fees_by_id = {item.id: item for item in [*referenced_fees, *fee_records]}
+    fee_records = list(fees_by_id.values())
 
     def case_for_fee(fee: BusinessRecord | None, fallback: BusinessRecord | None = None) -> BusinessRecord | None:
         if not fee:
