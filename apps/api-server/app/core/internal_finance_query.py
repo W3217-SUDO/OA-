@@ -222,6 +222,9 @@ async def internal_application_queue(identity: dict, db: AsyncSession, scope: st
     if scope == "refused":
         conditions.append(BusinessRecord.status.in_(rejected))
     else:
+        # 归档页只处理仍处于当前请款生命周期的主单。历史已审批/已作废主单
+        # 由旧财务查询保留在审计数据中，不应在每次刷新时重新扫描。
+        conditions.append(BusinessRecord.status.in_(("待审批", "待归档")))
         # The legacy archive predicate is a multi-table correlated query.  On
         # a modern installation there are no legacy finance rows at all, so
         # running it on every refresh needlessly holds the shared-query lock
