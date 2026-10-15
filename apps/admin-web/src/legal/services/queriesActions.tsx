@@ -262,17 +262,21 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                 : initialView === "case-archive-refused"
                     ? "refused"
                     : undefined;
-            const caseRes = isCaseDetailView && detailRouteId > 0
-                ? await api.get(`/records/${detailRouteId}`)
-                : await api.get("/records", {
-                    params: { module: "case", page_size: 100, archive_view: archiveView },
-                });
-            const initialCaseItems = isCaseDetailView && detailRouteId > 0
-                ? [caseRes.data as CaseRow]
-                : caseRes.data.items as CaseRow[];
+            const detailTarget = consumeCaseDetailTarget();
+            const shouldLoadInitialRecord = Boolean(detailTarget || (isCaseDetailView && detailRouteId > 0));
+            let initialCaseItems: CaseRow[] = [];
+            if (shouldLoadInitialRecord) {
+                const caseRes = isCaseDetailView && detailRouteId > 0
+                    ? await api.get(`/records/${detailRouteId}`)
+                    : await api.get("/records", {
+                        params: { module: "case", page_size: 100, archive_view: archiveView },
+                    });
+                initialCaseItems = isCaseDetailView && detailRouteId > 0
+                    ? [caseRes.data as CaseRow]
+                    : caseRes.data.items as CaseRow[];
+            }
             setCases(initialCaseItems);
             void loadCaseCapabilities(initialCaseItems);
-            const detailTarget = consumeCaseDetailTarget();
             if (detailTarget && !isCreateView) {
                 let linkedCase = initialCaseItems.find((row) => (detailTarget.id && row.id === detailTarget.id) ||
                     (detailTarget.serial_no && row.serial_no === detailTarget.serial_no));
