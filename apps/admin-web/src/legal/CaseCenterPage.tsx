@@ -4005,15 +4005,6 @@ export default function CaseCenterPage({
                 void loadCounselDetailCluesPage(viewingCounselCase, 1, counselDetailCluePageSize, counselDetailClueKeyword)
                   .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索加载失败"));
               }
-              if (key === "logs" && viewingCounselCase) {
-                void Promise.allSettled([
-                  api.get(`/records/${viewingCounselCase.id}/history`),
-                  api.get(`/cases/${viewingCounselCase.id}/logs`),
-                ]).then(([history, logs]) => {
-                  if (history.status === "fulfilled") setCounselDetailHistory(history.value.data.items || []);
-                  if (logs.status === "fulfilled") setCounselLogs(logs.value.data.items || []);
-                });
-              }
             }}
             items={[
               ...(legacyLsHistoryCaseIds[viewingCounselCase.id] ? [{ key: "legacy-ls-history", label: "历史诉讼", children: <LegacyLsHistoryPanel initialCaseId={legacyLsHistoryCaseIds[viewingCounselCase.id]} currentCaseRecordId={viewingCounselCase.id} /> }] : []),
