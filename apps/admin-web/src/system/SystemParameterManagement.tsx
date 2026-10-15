@@ -29,7 +29,7 @@ import {
   formatTime,
   caseFileTypeParentOptions,
   isCaseFileTypeParentValid,
-  feeTypeCatalogRows,
+  feeTypeLegacyRows,
   feeTypeDisplayCode,
   feeTypeGroupOptions,
   feeTypeRootName,
@@ -107,7 +107,7 @@ export function SystemParameterManagement({
         : String(row.extra.parent_code || "").includes(secondaryKeyword)),
   );
   const parameterDataSource = category === "fee_type"
-    ? feeTypeCatalogRows(parameters).filter((row) => row.name.includes(keyword.trim()))
+    ? feeTypeLegacyRows(parameters).filter((row) => row.name.includes(keyword.trim()))
     : visibleParameters;
 
   const auditColumns = [

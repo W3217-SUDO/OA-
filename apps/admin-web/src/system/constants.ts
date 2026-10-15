@@ -202,6 +202,23 @@ export function feeTypeCatalogRows(rows: ParameterRow[]): ParameterRow[] {
     .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
 }
 
+/**
+ * The legacy SystemCenter list is backed by BAS_Case_FeeType rows.  Keep this
+ * maintenance view separate from the normalized catalog used by selectors so
+ * imported legacy placeholders (including negative IDs) remain visible while
+ * roots and newly-added catalog-only nodes do not inflate the old list count.
+ */
+export function feeTypeLegacyRows(rows: ParameterRow[]): ParameterRow[] {
+  return rows
+    .filter(
+      (row) =>
+        row.category === "fee_type" &&
+        row.extra.legacy_id !== undefined &&
+        row.extra.legacy_id !== null,
+    )
+    .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+}
+
 export function feeTypeGroupOptions(rows: ParameterRow[]): { value: string; label: string }[] {
   return rows.filter((row) => !row.extra.parent_code && row.is_active && !row.extra.alias_of)
     .map((row) => ({ value: row.code, label: row.name }));
