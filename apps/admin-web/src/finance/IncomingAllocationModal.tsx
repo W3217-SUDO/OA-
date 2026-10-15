@@ -1,4 +1,4 @@
-import { Alert,Button,Checkbox,Descriptions,Input,InputNumber,Modal,Select } from "antd";
+import { Alert,Button,Checkbox,Descriptions,Input,InputNumber,Select } from "antd";
 import { LEGACY_THIRD_PARTY_FEE_SUBTYPES } from "../caseRelationConsumption.mjs";
 import Table from "../components/ResizableTable";
 import { money } from "./constants";
@@ -30,7 +30,6 @@ export interface IncomingAllocationModalProps {
 }
 
 export function IncomingAllocationModal({
-  open,
   allocateTarget,
   allocationValidationError,
   allocationKeyword,
@@ -134,17 +133,11 @@ export function IncomingAllocationModal({
   ];
 
   return (
-    <Modal
-      width="calc(100vw - 48px)"
-      style={{ top: 24 }}
-      rootClassName="finance-allocation-modal"
-      open={open}
-      title={`分配回款：${allocateTarget?.receipt_no || ""}`}
-      okText="确认分配"
-      cancelText="取消"
-      onOk={onOk}
-      onCancel={onCancel}
-    >
+    <section className="finance-original-panel finance-incoming-allocation-page">
+      <div className="finance-incoming-allocation-titlebar">
+        <h2>分配回款：{allocateTarget?.receipt_no || ""}</h2>
+        <Button onClick={onCancel}>返回待分配回款</Button>
+      </div>
       {allocationValidationError && (
         <Alert
           type="error"
@@ -252,7 +245,11 @@ export function IncomingAllocationModal({
           />
         </div>
       </section>
-    </Modal>
+      <div className="finance-incoming-allocation-actions">
+        <Button onClick={onCancel}>取消</Button>
+        <Button type="primary" onClick={onOk} loading={allocationLoading}>确认分配</Button>
+      </div>
+    </section>
   );
 }
 

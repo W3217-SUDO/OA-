@@ -47,28 +47,30 @@
   background: #fff;
 }
 
-.finance-allocation-modal .ant-modal-content {
-  padding: 14px 16px;
-  border-radius: 2px;
-}
-.finance-allocation-modal .ant-modal-body {
-  max-height: calc(100vh - 150px);
+.finance-incoming-allocation-page {
+  min-height: calc(100vh - 116px);
   overflow: auto;
 }
-/* The application shell keeps a 280px navigation rail on desktop.  Keep
-   allocation work inside the content viewport so the rail and global search
-   remain usable while the modal is open. */
-.finance-allocation-modal .ant-modal-wrap,
-.finance-allocation-modal .ant-modal-mask {
-  left: 280px;
-  width: calc(100% - 280px);
+.finance-incoming-allocation-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #d9dfe5;
+  background: #fff;
 }
-@media (max-width: 991px) {
-  .finance-allocation-modal .ant-modal-wrap,
-  .finance-allocation-modal .ant-modal-mask {
-    left: 0;
-    width: 100%;
-  }
+.finance-incoming-allocation-titlebar h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.finance-incoming-allocation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 12px 16px;
 }
 .finance-allocation-section {
   margin-bottom: 12px;
@@ -156,6 +158,28 @@
 @media (max-width: 1100px) {
   .finance-allocation-filters {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .finance-incoming-allocation-titlebar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .finance-incoming-allocation-titlebar .ant-btn {
+    align-self: flex-start;
+    min-height: 44px;
+  }
+  .finance-allocation-filters {
+    grid-template-columns: 1fr;
+  }
+  .finance-allocation-filters label {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+  .finance-allocation-filters .ant-btn {
+    min-height: 44px;
+  }
+  .finance-incoming-allocation-actions .ant-btn {
+    min-height: 44px;
   }
 }
 
