@@ -13,15 +13,27 @@ function find(root, predicate) {
 function compile(expression) {
   return ts.transpileModule(`const result = ${expression};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText + '\nreturn result;';
 }
+function loadFinanceModule(name) {
+  const source = fs.readFileSync(new URL(`../src/finance/${name}.ts`, import.meta.url), 'utf8');
+  const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+  const exports = {};
+  new Function('exports', output)(exports);
+  return exports;
+}
+const { requireWritableSettlements } = loadFinanceModule('settlementIdentity');
+const { financeErrorMessageText } = loadFinanceModule('financeErrors');
+const writable = find(page, node => ts.isVariableDeclaration(node) && node.name.getText(page) === 'writableSettlementSelection');
 const select = find(page, node => ts.isVariableDeclaration(node) && node.name.getText(page) === 'selectedSettlementCases');
 const open = find(page, node => ts.isVariableDeclaration(node) && node.name.getText(page) === 'openSelectedSettlementBatch');
 const openWorkspace = find(workspace, node => ts.isVariableDeclaration(node) && node.name.getText(workspace) === 'openSettlementBatch');
 const selectedCaseCount = find(page, node => ts.isPropertyAssignment(node) && node.name.getText(page) === 'selectedCaseCount');
 const title = find(view, node => ts.isJsxAttribute(node) && node.name.getText(view) === 'title' && node.initializer?.getText(view).includes('将修改已选费用关联的'));
-assert.ok(select && open && openWorkspace && selectedCaseCount && title, 'test targets must be actual page and workspace functions and rendered title');
+assert.ok(writable && select && open && openWorkspace && selectedCaseCount && title, 'test targets must be actual page and workspace functions and rendered title');
 function setup(rows = [], cases = [], invoice = false) {
   const warnings = [], calls = [];
-  const selectedSettlementCases = new Function('selectedSettlementRows', 'cases', 'isInvoiceUnissuedRoute', 'message', compile(select.initializer.getText(page)))(rows, cases, invoice, { warning: text => warnings.push(text) });
+  const message = { warning: text => warnings.push(text) };
+  const writableSettlementSelection = new Function('requireWritableSettlements', 'financeErrorMessageText', 'message', compile(writable.initializer.getText(page)))(requireWritableSettlements, financeErrorMessageText, message);
+  const selectedSettlementCases = new Function('selectedSettlementRows', 'cases', 'isInvoiceUnissuedRoute', 'message', 'writableSettlementSelection', compile(select.initializer.getText(page)))(rows, cases, invoice, message, writableSettlementSelection);
   const openWorkspaceBatch = new Function('settlementBatchForm', 'setSettlementBatchOpen', compile(openWorkspace.initializer.getText(workspace)))({ resetFields: () => calls.push('reset') }, state => calls.push(['open', state]));
   const openSettlementBatch = new Function('selectedSettlementCases', 'openSettlementBatch', compile(open.initializer.getText(page)))(selectedSettlementCases, openWorkspaceBatch);
   const countForModal = new Function('selectedSettlementCases', compile(selectedCaseCount.initializer.getText(page)));
@@ -57,4 +69,11 @@ test('invoice-specific click validation remains intact', () => {
   state.render();
   state.openSettlementBatch();
   assert.deepEqual(state.warnings, ['请选择案件.']);
+});
+
+test('historical selected fees retain the real readonly guard and never open a write dialog', () => {
+  const state = setup([{ id: 'legacy-normal:41', source: 'legacy', read_only: true, data: { case_id: 1 } }], [{ id: 1 }]);
+  state.openSettlementBatch();
+  assert.deepEqual(state.warnings, ['历史结算记录只读，不能办理审批、支付、回退、重提或删除']);
+  assert.deepEqual(state.calls, []);
 });
