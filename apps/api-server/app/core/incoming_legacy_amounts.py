@@ -87,7 +87,7 @@ def source_allocation_relation(line, head):
         source_text(line.source_payload, "_source_database").is_not_distinct_from(database))
 
 
-def legacy_assigned_amounts():
+def legacy_assigned_amounts(*, header_ids=None):
     head = aliased(LegacyFinanceRecord)
     fee = aliased(LegacyFinanceRecord)
     line = aliased(LegacyFinanceAllocation)
@@ -117,6 +117,8 @@ def legacy_assigned_amounts():
         relation.is_(True), source_text(line.source_payload, "IsActived"),
         source_text(line.source_payload, "_source_database")).filter(
             line.id.is_not(None), line.is_active.is_(True)), literal([], type_=JSON)).label("baseline_allocations")
+    if header_ids is not None:
+        statement = statement.where(head.id.in_(header_ids))
     return statement.add_columns(*columns, baseline,
         cast(func.nullif(source_text(head.source_payload, "AppliedAmount"), ""), Numeric(20, 2)).label("baseline_applied_amount"),
     ).where(head.source_table == "FAM_AR_Payment").group_by(

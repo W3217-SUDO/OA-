@@ -9,7 +9,7 @@ from sqlalchemy.orm import aliased, with_expression
 from app.database import get_db
 from app.models import BusinessRecord, IncomingPayment, LegacyFinanceRecord
 from app.security import current_identity
-from app.core.incoming_legacy_amounts import ASSIGNED_FIELDS, LEGACY_ASSIGNED_AMOUNTS
+from app.core.incoming_legacy_amounts import ASSIGNED_FIELDS, LEGACY_ASSIGNED_AMOUNTS, legacy_assigned_amounts
 
 
 FinanceScope = Literal["firm", "platform", "unclassified"]
@@ -58,8 +58,8 @@ INCOMING_CENTER = func.coalesce(IncomingPayment.finance_scope, case(
 ))
 
 
-def incoming_source_statement(*, include_amounts=True):
-    statement = select(IncomingPayment).outerjoin(LEGACY_INCOMING_SOURCE, and_(
+def _incoming_source_relation():
+    return and_(
         IncomingPayment.source_kind == "hz_crm_20260930",
         or_(
             and_(IncomingPayment.legacy_finance_record_id.is_not(None),
@@ -68,19 +68,37 @@ def incoming_source_statement(*, include_amounts=True):
                  LEGACY_INCOMING_SOURCE.c.record_id.is_(None),
                  IncomingPayment.receipt_no == literal("HZ-RCPT-") + LEGACY_INCOMING_SOURCE.c.payment_id),
         ),
-    )).options(
+    )
+
+
+def incoming_settlement_candidates(identity, *, receipt_ids=None):
+    # 先保留原来源唯一性判定，再筛候选；不能先筛状态而把重复旧头变成唯一。
+    statement = select(
+        IncomingPayment.id.label("receipt_id"), LEGACY_INCOMING_SOURCE.c.source_header_id,
+    ).join(LEGACY_INCOMING_SOURCE, _incoming_source_relation()).where(
+        LEGACY_INCOMING_SOURCE.c.settlement_status == "5", *incoming_center_conditions(identity),
+    )
+    if receipt_ids is not None:
+        statement = statement.where(IncomingPayment.id.in_(receipt_ids))
+    return statement.cte("settlement_incoming_candidates").prefix_with("MATERIALIZED", dialect="postgresql")
+
+
+def incoming_source_statement(*, include_amounts=True, legacy_header_ids=None):
+    statement = select(IncomingPayment).outerjoin(LEGACY_INCOMING_SOURCE, _incoming_source_relation()).options(
         with_expression(IncomingPayment.resolved_finance_scope, INCOMING_CENTER),
         with_expression(IncomingPayment.legacy_payment_method, LEGACY_INCOMING_SOURCE.c.payment_method),
         with_expression(IncomingPayment.legacy_settlement_status, LEGACY_INCOMING_SOURCE.c.settlement_status),
     )
     if not include_amounts:
         return statement
-    return statement.outerjoin(LEGACY_ASSIGNED_AMOUNTS,
-        LEGACY_ASSIGNED_AMOUNTS.c.header_id == LEGACY_INCOMING_SOURCE.c.source_header_id).options(
-        *(with_expression(getattr(IncomingPayment, "legacy_" + field), LEGACY_ASSIGNED_AMOUNTS.c[field])
+    amounts = (LEGACY_ASSIGNED_AMOUNTS if legacy_header_ids is None else
+               legacy_assigned_amounts(header_ids=legacy_header_ids))
+    return statement.outerjoin(amounts,
+        amounts.c.header_id == LEGACY_INCOMING_SOURCE.c.source_header_id).options(
+        *(with_expression(getattr(IncomingPayment, "legacy_" + field), amounts.c[field])
           for field in ASSIGNED_FIELDS),
-        with_expression(IncomingPayment.legacy_baseline_allocations, LEGACY_ASSIGNED_AMOUNTS.c.baseline_allocations),
-        with_expression(IncomingPayment.legacy_baseline_applied_amount, LEGACY_ASSIGNED_AMOUNTS.c.baseline_applied_amount),
+        with_expression(IncomingPayment.legacy_baseline_allocations, amounts.c.baseline_allocations),
+        with_expression(IncomingPayment.legacy_baseline_applied_amount, amounts.c.baseline_applied_amount),
     )
 
 

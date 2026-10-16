@@ -2634,14 +2634,20 @@ async def _general_settlement_rows(
     from app.core.system import (
         _allowed_field_keys,
     )
-    from app.core.finance_centers import incoming_center_conditions, LEGACY_INCOMING_SOURCE
-    payment_query = incoming_source_statement().where(*incoming_center_conditions(identity))
+    from app.core.finance_centers import incoming_center_conditions, incoming_settlement_candidates, LEGACY_INCOMING_SOURCE
+    candidates = incoming_settlement_candidates(identity, receipt_ids=receipt_ids) if not receipt_detail else None
+    payment_query = incoming_source_statement(
+        legacy_header_ids=select(candidates.c.source_header_id) if candidates is not None else None,
+    ).where(*incoming_center_conditions(identity))
     if not receipt_detail:
         # 旧回款只按原待提交状态进入既有申请，已审及已付原状态不得重建成待结算。
+        eligible_receipt_ids = select(IncomingPayment.id).where(
+            IncomingPayment.source_kind != "hz_crm_20260930",
+        ).union_all(select(candidates.c.receipt_id))
         payment_query = payment_query.where(or_(
             IncomingPayment.source_kind != "hz_crm_20260930",
             LEGACY_INCOMING_SOURCE.c.settlement_status == "5",
-        ))
+        )).where(IncomingPayment.id.in_(eligible_receipt_ids))
     if receipt_ids is not None:
         payment_query = payment_query.where(IncomingPayment.id.in_(receipt_ids))
     payments = list((await db.scalars(payment_query.order_by(
