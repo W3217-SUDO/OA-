@@ -21,10 +21,11 @@ RECORD_CENTER_VALUES = {
 }
 
 # 旧导入未保存源库命名空间；新导入必须按真实头外键读取，不能跨库按裸主键拼接。
+_LEGACY_PAYMENT_ID = LegacyFinanceRecord.source_payload["PaymentId"].as_string()
 _LEGACY_UNQUALIFIED_SOURCE = select(
     cast(literal(None), Integer).label("record_id"),
     func.max(LegacyFinanceRecord.id).label("source_header_id"),
-    LegacyFinanceRecord.source_payload["PaymentId"].as_string().label("payment_id"),
+    _LEGACY_PAYMENT_ID.label("payment_id"),
     func.max(cast(LegacyFinanceRecord.source_payload["GroupId"].as_string(), String)).label("group_id"),
     func.max(LegacyFinanceRecord.source_payload["PaymentModeName"].as_string()).label("payment_method"),
     func.max(cast(LegacyFinanceRecord.source_payload["SettlementStatus"].as_string(), String)).label("settlement_status"),
@@ -33,7 +34,7 @@ _LEGACY_UNQUALIFIED_SOURCE = select(
     LegacyFinanceRecord.is_active.is_(True),
     LegacyFinanceRecord.source_payload["_source_database"].as_string().is_(None),
     ~LegacyFinanceRecord.legacy_id.contains(":"),
-).group_by(LegacyFinanceRecord.source_payload["PaymentId"].as_string()).having(
+).group_by(_LEGACY_PAYMENT_ID).having(
     func.count() == 1,
 )
 _LEGACY_LINKED_SOURCE = select(

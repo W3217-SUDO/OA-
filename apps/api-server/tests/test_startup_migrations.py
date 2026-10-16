@@ -5,16 +5,21 @@ import multiprocessing
 import tempfile
 import unittest
 from pathlib import Path
+from datetime import date
 from unittest.mock import patch
 
-from sqlalchemy import text
+from sqlalchemy import Column, MetaData, Table, inspect, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import settings
 from app.core.lifecycle import _backfill_clue_generated_case_register_dates, _upgrade_schema
 from app.core.startup_data import initialize_startup_data
-from app.core.startup_migrations import DASHBOARD_FINANCE_REVISION, migrate_startup_schema
-from app.models import BusinessRecord
+from app.core.startup_migrations import (
+    DASHBOARD_FINANCE_REVISION, DASHBOARD_REVISION, NOTIFICATION_DELIVERY_REVISION,
+    RECORD_READ_MODEL_REVISION, SCHEMA_BOOTSTRAP_REVISION, migrate_startup_schema,
+)
+from app.models import BusinessRecord, IncomingPayment
+from app.database import Base
 from scripts.seed_demo_data import seed_demo_data
 
 
@@ -40,7 +45,99 @@ def _schema_worker(database_url: str, fail_after_upgrade: bool, result_queue) ->
         result_queue.put(f"{type(exc).__name__}: {exc}")
 
 
-class StartupMigrationTests(unittest.IsolatedAsyncioTestCase):
+class IncomingFinanceMigrationAssertions:
+    async def _prepare_old_incoming_schema(self):
+        from app.core.dashboard_finance_read_model_migration import upgrade_dashboard_finance_read_model
+        from app.core.dashboard_revision_migration import upgrade_dashboard_revision
+        from app.core.record_read_model_migration import upgrade_record_read_model
+
+        added = {"finance_scope", "legacy_finance_record_id", "payment_method", "local_allocation_summary"}
+        self.old_incoming = Table("incoming_payments", MetaData(), *(
+            Column(column.name, column.type, primary_key=column.primary_key, nullable=column.nullable,
+                   default=column.default, server_default=column.server_default)
+            for column in IncomingPayment.__table__.columns if column.name not in added
+        ))
+        def prepare(connection):
+            Base.metadata.create_all(connection, tables=[table for table in Base.metadata.sorted_tables if table.name != "incoming_payments"])
+            self.old_incoming.create(connection)
+            upgrade_record_read_model(connection)
+            upgrade_dashboard_finance_read_model(connection)
+            upgrade_dashboard_revision(connection)
+            connection.execute(text("CREATE TABLE schema_migrations (key VARCHAR(128) PRIMARY KEY)"))
+            connection.execute(text("INSERT INTO schema_migrations (key) VALUES (:key)"), [
+                {"key": key} for key in (SCHEMA_BOOTSTRAP_REVISION, NOTIFICATION_DELIVERY_REVISION,
+                                        RECORD_READ_MODEL_REVISION, DASHBOARD_FINANCE_REVISION, DASHBOARD_REVISION)
+            ])
+            connection.execute(self.old_incoming.insert().values(id=1, receipt_no="EXISTING-INCOMING-MIGRATION",
+                received_date=date(2026, 10, 16), amount=321.25, allocated_amount=12.5, status="历史原状态",
+                source_kind="hz_crm_20260930", payer_name="独立迁移验证", operator="admin", remark="旧值不改",
+                allocations=[{"amount": 12.5, "source_object": {"SeqId": 9, "ArchiveAmountSettlementStatus": 30}, "note": "原分配保留"}]))
+            return tuple(connection.execute(self.old_incoming.select()).one())
+        async with self.engine.begin() as connection:
+            self.old_snapshot = await connection.run_sync(prepare)
+
+    async def test_incoming_finance_revision_upgrades_bootstrapped_old_table_without_backfills(self):
+        from app.core.incoming_finance_schema_migration import MIGRATION_REVISION
+
+        await self._prepare_old_incoming_schema()
+        def no_bootstrap(_connection):
+            raise AssertionError("已登记 bootstrap 不得重跑")
+        await migrate_startup_schema(self.engine, no_bootstrap)
+        with patch("app.core.startup_migrations.upgrade_incoming_finance_schema", side_effect=AssertionError("版本不得重跑")):
+            await migrate_startup_schema(self.engine, no_bootstrap)
+        async with self.engine.connect() as connection:
+            def verify(sync):
+                columns = {item["name"]: item for item in inspect(sync).get_columns("incoming_payments")}
+                for name in ("finance_scope", "legacy_finance_record_id", "local_allocation_summary"):
+                    self.assertTrue(columns[name]["nullable"])
+                self.assertFalse(columns["payment_method"]["nullable"])
+                self.assertEqual(columns["payment_method"]["type"].length, 100)
+                self.assertIsNotNone(columns["payment_method"]["default"])
+                indexes = {item["name"]: item["column_names"] for item in inspect(sync).get_indexes("incoming_payments")}
+                for name in ("finance_scope", "legacy_finance_record_id"):
+                    self.assertEqual(indexes["ix_incoming_payments_" + name], [name])
+                references = [item for item in inspect(sync).get_foreign_keys("incoming_payments")
+                              if item["constrained_columns"] == ["legacy_finance_record_id"]]
+                self.assertEqual(len(references), 1)
+                self.assertEqual(references[0]["referred_table"], "legacy_finance_records")
+                self.assertEqual(references[0]["referred_columns"], ["id"])
+                if sync.dialect.name == "sqlite":
+                    rules = list(sync.execute(text("PRAGMA foreign_key_list(incoming_payments)")).mappings())
+                    self.assertEqual([rule["on_delete"] for rule in rules if rule["from"] == "legacy_finance_record_id"], ["RESTRICT"])
+                else:
+                    self.assertEqual(references[0]["options"]["ondelete"], "RESTRICT")
+                self.assertEqual(tuple(sync.execute(self.old_incoming.select()).one()), self.old_snapshot)
+                self.assertEqual(tuple(sync.execute(text("SELECT finance_scope, legacy_finance_record_id, payment_method, local_allocation_summary FROM incoming_payments")).one()), (None, None, "", None))
+                self.assertEqual(sync.scalar(text("SELECT count(*) FROM schema_migrations WHERE key=:key"), {"key": MIGRATION_REVISION}), 1)
+                self.assertEqual(sync.scalar(text("SELECT count(*) FROM schema_migrations")), 6)
+                sync.execute(self.old_incoming.insert().values(id=2, receipt_no="EXISTING-WRITER-COMPATIBILITY",
+                    received_date=date(2026, 10, 16), amount=1, allocated_amount=0, status="待认领",
+                    payer_name="独立旧写入", operator="admin"))
+                self.assertEqual(sync.scalar(text("SELECT payment_method FROM incoming_payments WHERE id=2")), "")
+            await connection.run_sync(verify)
+
+    async def test_incoming_finance_revision_failure_rolls_back_and_retries(self):
+        from app.core.incoming_finance_schema_migration import MIGRATION_REVISION, upgrade_incoming_finance_schema
+
+        await self._prepare_old_incoming_schema()
+        def fail_after_ddl(connection):
+            upgrade_incoming_finance_schema(connection)
+            raise RuntimeError("模拟回款结构迁移中断")
+        def no_bootstrap(_connection):
+            raise AssertionError("已登记 bootstrap 不得重跑")
+        with patch("app.core.startup_migrations.upgrade_incoming_finance_schema", fail_after_ddl):
+            with self.assertRaisesRegex(RuntimeError, "模拟回款结构迁移中断"):
+                await migrate_startup_schema(self.engine, no_bootstrap)
+        async with self.engine.connect() as connection:
+            columns = await connection.run_sync(lambda sync: {item["name"] for item in inspect(sync).get_columns("incoming_payments")})
+            self.assertNotIn("finance_scope", columns)
+            self.assertNotIn("payment_method", columns)
+            self.assertEqual((await connection.execute(text("SELECT count(*) FROM schema_migrations WHERE key=:key"), {"key": MIGRATION_REVISION})).scalar_one(), 0)
+            self.assertEqual(tuple((await connection.execute(self.old_incoming.select())).one()), self.old_snapshot)
+        await migrate_startup_schema(self.engine, no_bootstrap)
+
+
+class StartupMigrationTests(IncomingFinanceMigrationAssertions, unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.directory = tempfile.TemporaryDirectory(prefix="oa-test-enterprise-reliability-")
         self.database_url = f"sqlite+aiosqlite:///{Path(self.directory.name) / 'startup.db'}"

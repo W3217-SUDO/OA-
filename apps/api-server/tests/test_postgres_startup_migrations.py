@@ -21,6 +21,7 @@ from app.core.startup_migrations import (
 from app.database import Base
 from app.legacy_schema import create_full_legacy_schema
 from app.models import BusinessRecord, WorkflowEvent
+from tests.test_startup_migrations import IncomingFinanceMigrationAssertions
 
 
 POSTGRES_URL = os.environ.get("OA_TEST_POSTGRES_URL")
@@ -51,7 +52,7 @@ def _postgres_worker(database_url: str, schema: str, fail: bool, result_queue) -
 
 
 @unittest.skipUnless(POSTGRES_URL, "需要显式设置 OA_TEST_POSTGRES_URL")
-class PostgreSQLStartupMigrationTests(unittest.IsolatedAsyncioTestCase):
+class PostgreSQLStartupMigrationTests(IncomingFinanceMigrationAssertions, unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.schema = f"oa_test_enterprise_reliability_{uuid4().hex[:12]}"
         self.admin_engine = create_async_engine(POSTGRES_URL)
