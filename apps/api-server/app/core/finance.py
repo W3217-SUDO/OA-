@@ -26,6 +26,7 @@ from app.core.fee_type_metadata import FEE_GROUP_BASES, fee_type_group, is_platf
 from app.core.finance_centers import (
     LEGACY_INCOMING_SOURCE, settlement_center_conditions, incoming_source_statement, payment_center,
 )
+from sqlalchemy import String, cast
 
 
 def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord, users_by_username: dict[str, User] | None = None) -> dict:
@@ -2807,7 +2808,7 @@ async def _general_settlement_rows(
         BusinessRecord.module == "finance_settlement",
         # 使用 JSON 文本比较兼容历史数据中 receipt_id 以数字或字符串保存的情况，
         # 避免数据库对非数字 JSON 值强制转换时报错；后续 Python 逻辑仍按整数主键关联。
-        BusinessRecord.data["receipt_id"].as_string().in_({str(payment_id) for payment_id in payment_ids})
+        cast(BusinessRecord.data["receipt_id"].as_string(), String).in_({str(payment_id) for payment_id in payment_ids})
         if payment_ids else False,
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
     inactive_statuses = {"已拒绝", "已驳回", "已退回", "已撤回", "已作废"}
