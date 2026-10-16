@@ -30,6 +30,8 @@
 - 修改提交：`74ad0143c902f7aff86af3485e30656c22b39c92`，说明为“fix(finance): bound pending settlement legacy amount query”。
 - 发布提交：`efaa8f7378230fad165e5c2cc248bdf5d7931187`，生产运行包 `1.1.446`；生产 `current` 已指向该包。
 - 本问题未创建业务测试数据，未写入或修改生产数据。
-- 定向验证待执行：后端回归覆盖待结算读取及中心边界、Python 编译、前端生产构建、`git diff --check`、生产同参数接口和页面验收。
-- 当前状态：修复代码已在生产包中，用户业务验收仍待本轮实证；不能仅凭 `/health` 或历史提交标记为完成。
+- 定向验证：后端 Python 编译通过；带 `finance_scope=firm` 的真实 ASGI 待结算请求返回 200，响应包含 `items`、`total`、`totals`、分页字段；前端类型检查通过，财务定向回归 63 项通过，生产构建通过，`git diff --check` 通过。
+- 完整门禁：推送 hook 的 source 范围检查通过；hook 报告完整后端隔离回归 266 项仍待隔离环境补证，不能把它写成全量通过。
+- 生产复核：运行包 `1.1.446`、源码提交 `efaa8f7378230fad165e5c2cc248bdf5d7931187`，`sunhold-oa-api.service` 和 `sunhold-oa-web.service` active，`/health` 返回 200；无认证直接请求目标接口返回 401，路由和认证层可达。浏览器现有标签已失效停在登录页，真实账号页面验收待登录后补证。
+- 当前状态：性能修复已部署并完成接口层复核；页面业务验收仍待真实登录，不能仅凭 `/health` 或历史提交标记为完全验收。
 
