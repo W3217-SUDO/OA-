@@ -5,7 +5,7 @@ from typing import Annotated
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, Depends, File, FinanceTransaction, Form, HTTPException,
     IncomingPayment, Query, ReceivablePlan, Response, UploadFile, User, WorkflowEvent,
-    current_identity, date, datetime, func, get_db, or_, select, settings, status,
+    date, datetime, func, get_db, or_, select, settings, status,
 )
 from app.core.incoming_allocation_records import AllocationCancelInput
 from app.models_shared import (
@@ -15,8 +15,38 @@ from app.models_shared import (
 )
 from fastapi import APIRouter
 from app.core.incoming_settlement import (_active_settlements_by_receipt, _revert_incoming_allocation)
+from app.core.finance_centers import (
+    finance_center_identity as current_identity, incoming_center_conditions,
+    require_incoming_center, require_record_center, record_center_conditions,
+    unclassified_incoming_count, incoming_source_statement, refresh_incoming_payment,
+    refresh_incoming_payments,
+)
+from app.security import current_identity as contract_identity
 
 router = APIRouter()
+
+
+@router.get(f"{settings.api_prefix}/contracts/{{contract_id}}/incoming-payments")
+async def list_contract_incoming_payments(
+    contract_id: int, identity: dict = Depends(contract_identity), db: AsyncSession = Depends(get_db),
+):
+    from app.core.finance import _incoming_payment_dict, _visible_incoming_payment_statement
+    from app.core.incoming_contracts import contract_incoming_condition
+    from app.core.permissions import _ensure_record_module
+    from app.core.formatters import _user_display_map
+    from app.core.system import _allowed_field_keys
+
+    contract = await _ensure_record_module(contract_id, "contract", identity, db)
+    statement = (await _visible_incoming_payment_statement(identity, db)).where(
+        contract_incoming_condition(contract, db),
+    )
+    payments = list((await db.scalars(statement.order_by(
+        IncomingPayment.received_date.desc(), IncomingPayment.id.desc(),
+    ))).all())
+    users = await _user_display_map({name for payment in payments for name in (payment.claimant, payment.operator)}, db)
+    show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
+    return {"items": [_incoming_payment_dict(payment, show_amount=show_amount, users_by_username=users)
+                      for payment in payments], "total": len(payments)}
 
 
 def _record_relation_id(data: dict, *keys: str) -> int:
@@ -91,13 +121,15 @@ async def list_incoming_payments(
         payload.update(incoming_customer_fields(item, customers_by_title, users_by_username))
         rows.append(payload)
     result["items"] = rows
+    result["finance_scope"] = identity.get("_finance_scope")
+    result["unclassified_total"] = await unclassified_incoming_count(identity, db)
     return result
 
 
 @router.get(f"{settings.api_prefix}/finance/customer-options")
 async def list_finance_customer_options(
     keyword: str = Query("", max_length=255),
-    identity: dict = Depends(current_identity),
+    identity: dict = Depends(contract_identity),
     db: AsyncSession = Depends(get_db),
 ):
     """Search active system customers for receipt registration, never litigants."""
@@ -158,6 +190,10 @@ async def create_incoming_payment(body: IncomingPaymentInput, identity: dict = D
             contract_no = contract.serial_no
         customer = customer or case_record.customer
     item = IncomingPayment(source_kind="manual", receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}", received_date=body.received_date, amount=_round_fee_amount(body.amount), payer_name=body.payer_name.strip(), bank_reference=bank_reference or None, status="待认领", contract_record_id=contract.id if contract else None, contract_no=contract.serial_no if contract else "", case_no=case_no, bank_source=body.bank_source.strip(), operator=identity["username"], remark=body.remark)
+    item.finance_scope = identity["_finance_scope"]
+    item.payment_method = body.payment_method.strip()
+    if contract:
+        await require_record_center(contract, identity, db)
     db.add(item); await db.flush()
     if body.claim:
         if not customer: raise HTTPException(status_code=422, detail="自动认领需要填写客户名称")
@@ -166,7 +202,7 @@ async def create_incoming_payment(body: IncomingPaymentInput, identity: dict = D
         item.claimed_customer = claimed.title; item.claimant = identity["username"]; item.status = "待分配"
         item.remark = "；".join(part for part in [item.remark, "回款登记时自动认领"] if part)
         db.add(WorkflowEvent(record_id=claimed.id, action="认领银行到账", from_status=claimed.status, to_status=claimed.status, operator=identity["username"], comment=f"{item.receipt_no}｜{item.payer_name}｜{item.amount:.2f} 元。回款登记时自动认领"))
-    await db.commit(); await db.refresh(item); return _incoming_payment_dict(item)
+    await db.commit(); await refresh_incoming_payment(item, db); return _incoming_payment_dict(item)
 
 
 @router.post(f"{settings.api_prefix}/finance/incoming-payments/import")
@@ -181,9 +217,9 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
         raise HTTPException(422, "请选择工行、中信、中行或招商回款入口上传")
     permission = await _permission_payload_for_identity(identity, db)
     menus = set(permission.get("menu_keys", []))
-    if identity.get("role") not in {"admin", "manager"} and not (bank_source and (
-        f"finance-receipts-{bank_source}" in menus or f"platform-finance-overview-{bank_source}" in menus
-    )):
+    bank_menu = (f"platform-finance-overview-{bank_source}" if identity["_finance_scope"] == "platform"
+                 else f"finance-receipts-{bank_source}")
+    if identity.get("role") not in {"admin", "manager"} and not (bank_source and bank_menu in menus):
         raise HTTPException(status_code=403, detail="当前账号没有该银行回款上传权限")
     preview = False
     recognized = False
@@ -192,7 +228,7 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
             if len(confirmed_rows) > 2 * 1024 * 1024:
                 raise ValueError('确认内容过大，请重新识别')
             statement_rows = json.loads(confirmed_rows)
-            if not isinstance(statement_rows, list) or len(statement_rows) > 1000 or not verify_preview(confirmation_token, statement_rows, identity['username'], bank_source):
+            if not isinstance(statement_rows, list) or len(statement_rows) > 1000 or not verify_preview(confirmation_token, statement_rows, identity['username'], f"{bank_source}:{identity['_finance_scope']}"):
                 raise ValueError('识别结果已过期或被更改，请重新上传识别')
             recognized = True
         else:
@@ -250,6 +286,7 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
                 raise ValueError("到账金额必须大于 0")
             item_values = dict(
                 source_kind="bank_import",
+                finance_scope=identity["_finance_scope"],
                 receipt_no=import_identity or f"HK{datetime.now():%Y%m%d%H%M%S%f}{row_no}",
                 received_date=received_date,
                 amount=amount,
@@ -273,7 +310,7 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
             errors.append({"sheet": sheet_name, "row": row_no, "error": str(exc) or "字段格式错误"})
     if preview:
         return {'requires_confirmation': True, 'items': preview_items, 'rows': statement_rows,
-            'confirmation_token': sign_preview(statement_rows, identity['username'], bank_source),
+            'confirmation_token': sign_preview(statement_rows, identity['username'], f"{bank_source}:{identity['_finance_scope']}"),
             'created': 0, 'valid_count': created, 'errors': errors, 'skipped': skipped}
     if created:
         await db.commit()
@@ -321,7 +358,8 @@ async def get_incoming_payment(payment_id: int, identity: dict = Depends(current
     from app.core.system import (
         _allowed_field_keys,
     )
-    item = await db.get(IncomingPayment, payment_id)
+    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if identity.get("role") not in {"admin", "auditor"}:
         visible_customer_titles = set((await db.scalars(select(BusinessRecord.title).where(BusinessRecord.module == "customer", *(await _record_scope_conditions(identity, db))))).all())
@@ -362,7 +400,8 @@ async def view_assigned_incoming_payment(payment_id: int, identity: dict = Depen
     from app.core.system import (
         _allowed_field_keys,
     )
-    item = await db.get(IncomingPayment, payment_id)
+    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if identity.get("role") not in {"admin", "auditor"}:
         visible_customer_titles = set((await db.scalars(select(BusinessRecord.title).where(BusinessRecord.module == "customer", *(await _record_scope_conditions(identity, db))))).all())
@@ -393,14 +432,15 @@ async def claim_incoming_payment(payment_id: int, body: IncomingPaymentClaimInpu
     from app.core.system import (
         _allowed_field_keys,
     )
-    item = await db.get(IncomingPayment, payment_id)
+    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.status not in {"待认领", "待分配"} or item.allocated_amount > 0: raise HTTPException(status_code=409, detail="已发生分配的到账不能重新认领")
     customer = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "customer", BusinessRecord.title == body.customer.strip(), *(await _record_scope_conditions(identity, db))))
     if not customer: raise HTTPException(status_code=404, detail="客户不存在或无权认领")
     item.claimed_customer = customer.title; item.claimant = identity["username"]; item.status = "待分配"; item.remark = "；".join(part for part in [item.remark, body.comment] if part)
     db.add(WorkflowEvent(record_id=customer.id, action="认领银行到账", from_status=customer.status, to_status=customer.status, operator=identity["username"], comment=f"{item.receipt_no}｜{item.payer_name}｜{item.amount:.2f} 元。{body.comment}"))
-    await db.commit(); await db.refresh(item); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
+    await db.commit(); await refresh_incoming_payment(item, db); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
 
 
 @router.get(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}/allocation-candidates")
@@ -419,7 +459,8 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
     from app.core.permissions import (
         _record_scope_conditions,
     )
-    item = await db.get(IncomingPayment, payment_id)
+    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    require_incoming_center(item, identity)
     if not item:
         raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.status not in {"待分配", "部分分配"} or not item.claimed_customer:
@@ -441,12 +482,16 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
     contracts = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "contract",
         or_(*customer_links),
+        *record_center_conditions(identity),
         *(await _record_scope_conditions(identity, db)),
     ))).all())
     contracts_by_id = {contract.id: contract for contract in contracts}
     contract_ids = set(contracts_by_id)
     plans = list((await db.scalars(select(ReceivablePlan).where(
         ReceivablePlan.contract_record_id.in_(contract_ids),
+        ReceivablePlan.contract_record_id.in_(select(BusinessRecord.id).where(
+            *record_center_conditions(identity, allow_shared_contract=False),
+        )),
     ).order_by(ReceivablePlan.due_date.asc(), ReceivablePlan.id.asc()))).all()) if contract_ids else []
     plans = [plan for plan in plans if _round_fee_amount(plan.amount - plan.received_amount) > 0]
 
@@ -515,6 +560,7 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
     fees = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance",
         or_(*customer_links),
+        *record_center_conditions(identity),
         *(await _record_scope_conditions(identity, db)),
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
     for fee_record in fees:
@@ -523,7 +569,7 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
             continue
         if is_non_allocatable_third_party_fee(fee_data, label=_case_fee_display_type(fee_record)):
             continue
-        if case_fees_only and fee_data.get("expense_scope") not in {"律所", "平台"}:
+        if case_fees_only and fee_data.get("expense_scope") not in {"律所", "平台"} and fee_data.get("legacy_kind") != "ar_case_fee":
             continue
         fee_contract_id = int(fee_data.get("contract_id") or fee_data.get("contract_record_id") or 0)
         fee_contract_no = str(fee_data.get("contract_no") or "").strip()
@@ -586,9 +632,16 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
                 "received_amount": received_amount,
                 "remaining_amount": remaining,
             })
+    unknown_identity = {**identity, "_finance_scope": "unclassified"}
+    unclassified_fee_total = await db.scalar(select(func.count(BusinessRecord.id)).where(
+        BusinessRecord.module == "finance", or_(*customer_links),
+        *(await _record_scope_conditions(identity, db)),
+        *record_center_conditions(unknown_identity),
+    ))
     return {
         "items": rows,
         "total": len(rows),
+        "unclassified_fee_total": int(unclassified_fee_total),
         "customer": item.claimed_customer,
         "remaining_amount": _round_fee_amount(item.amount - item.allocated_amount),
     }
@@ -614,7 +667,8 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
     from app.core.system import (
         _allowed_field_keys,
     )
-    item = await db.get(IncomingPayment, payment_id)
+    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.status not in {"待分配", "部分分配"} or not item.claimed_customer: raise HTTPException(status_code=409, detail="到账认领到客户后才能分配")
     claimed_customer_record = await db.scalar(select(BusinessRecord).where(
@@ -634,11 +688,25 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
     ordinary_entries = [entry for entry in body.allocations if not entry.is_refund]
     if refund_entries:
         from app.core.finance_batch_parity import allocate_court_refund
+        for entry in body.allocations:
+            if entry.fee_record_id:
+                selected_fee = await _ensure_record_module(entry.fee_record_id, "finance", identity, db)
+                await require_record_center(selected_fee, identity, db)
+            if entry.receivable_plan_id:
+                selected_plan = await db.get(ReceivablePlan, entry.receivable_plan_id)
+                if selected_plan:
+                    selected_contract = await _ensure_record_module(selected_plan.contract_record_id, "contract", identity, db)
+                    await require_record_center(selected_contract, identity, db, allow_shared_contract=bool(entry.fee_record_id))
+            for settlement in entry.settlement_items:
+                if settlement.fee_record_id:
+                    selected_fee = await _ensure_record_module(settlement.fee_record_id, "finance", identity, db)
+                    await require_record_center(selected_fee, identity, db)
         refund_body = body.model_copy(update={"allocations": refund_entries})
         await allocate_court_refund(item, refund_body, claimed_customer_record, identity, db)
         if not ordinary_entries:
-            return await _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
-        await db.refresh(item)
+            await refresh_incoming_payment(item, db)
+            return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
+        await refresh_incoming_payment(item, db)
         body = body.model_copy(update={"allocations": ordinary_entries})
     prepared: list[tuple[IncomingPaymentAllocationItem, ReceivablePlan, BusinessRecord, BusinessRecord | None, BusinessRecord | None, list[dict]]] = []
     plan_totals: dict[int, float] = {}
@@ -650,12 +718,15 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
                 raise HTTPException(status_code=422, detail="结算费用明细金额之和必须等于本次分配金额")
         plan = await db.get(ReceivablePlan, entry.receivable_plan_id) if entry.receivable_plan_id else None
         fee_record = await _ensure_record_module(entry.fee_record_id, "finance", identity, db) if entry.fee_record_id else None
+        if fee_record:
+            await require_record_center(fee_record, identity, db)
         if plan and is_non_allocatable_third_party_fee(label=plan.phase):
             raise HTTPException(status_code=422, detail="公告费、公证服务费、担保费、鉴定费、检索费不能分配回款")
         if fee_record and is_non_allocatable_third_party_fee(fee_record.data or {}, label=_case_fee_display_type(fee_record)):
             raise HTTPException(status_code=422, detail="公告费、公证服务费、担保费、鉴定费、检索费不能分配回款")
         if body.case_fees_only:
-            if not fee_record or (fee_record.data or {}).get("expense_scope") not in {"律所", "平台"}:
+            if not fee_record or ((fee_record.data or {}).get("expense_scope") not in {"律所", "平台"}
+                                  and (fee_record.data or {}).get("legacy_kind") != "ar_case_fee"):
                 raise HTTPException(422, "只能分配案件中的律所或平台费用")
             fd = fee_record.data or {}
             linked = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case",
@@ -669,6 +740,7 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
             raise HTTPException(status_code=422, detail="分配项目必须关联应收计划或案件费用")
         if plan:
             contract = await _ensure_record_module(plan.contract_record_id, "contract", identity, db)
+            await require_record_center(contract, identity, db, allow_shared_contract=fee_record is not None)
             phase = plan.phase
             remaining_plan = _round_fee_amount(plan.amount - plan.received_amount)
             plan_totals[plan.id] = _round_fee_amount(plan_totals.get(plan.id, 0) + entry.amount)
@@ -703,6 +775,7 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
                         ))
             if not contract or contract.module != "contract":
                 raise HTTPException(status_code=409, detail=f"费用 {fee_record.serial_no} 未关联有效合同")
+            await require_record_center(contract, identity, db)
             phase = str(fee_data.get("fee_type") or fee_record.title or "案件费用")
             fee_total = _round_fee_amount(float(fee_data.get("amount") or 0))
             fee_received = _round_fee_amount(float(fee_data.get("received_amount") or fee_data.get("cashed_amount") or 0))
@@ -763,6 +836,8 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
                     raise HTTPException(status_code=409, detail=f"费用 {settlement_fee.serial_no} 不属于案件 {case_record.serial_no}")
             if settlement_fee and is_non_allocatable_third_party_fee(settlement_fee.data or {}, label=_case_fee_display_type(settlement_fee)):
                 raise HTTPException(status_code=422, detail="公告费、公证服务费、担保费、鉴定费、检索费不能分配回款")
+            if settlement_fee:
+                await require_record_center(settlement_fee, identity, db)
             fee_type = _case_fee_display_type(settlement_fee) if settlement_fee else settlement.fee_type
             settlement_case = case_record
             if settlement_fee:
@@ -804,14 +879,17 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
         db.add(tx); await db.flush(); row = {"receivable_plan_id": plan.id, "fee_record_id": fee_record.id if fee_record else None, "contract_id": contract.id, "contract_no": contract.serial_no, "phase": plan.phase, "case_id": case_record.id if case_record else None, "case_no": case_record.serial_no if case_record else "", "amount": amount, "payment_method": entry.payment_method.strip(), "settlement_items": canonical_settlement_items, "transaction_id": tx.id, "allocated_by": identity["username"], "allocated_at": datetime.now().isoformat(timespec="seconds")}; allocation_rows.append(row)
         db.add(WorkflowEvent(record_id=contract.id, action="分配银行回款", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"{item.receipt_no}｜{plan.phase}｜{amount:.2f} 元。{body.comment}"))
     item.allocated_amount = _round_fee_amount(item.allocated_amount + total); item.allocations = allocation_rows; item.status = "已分配" if item.allocated_amount + 0.001 >= item.amount else "部分分配"
-    await db.commit(); await db.refresh(item); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
+    from app.core.incoming_local_amounts import stamp_hz_allocation_summary
+    await stamp_hz_allocation_summary(item, db)
+    await db.commit(); await refresh_incoming_payment(item, db); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
 
 
 @router.delete(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_incoming_payment(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="仅管理者、财务端或财务审核端可删除银行到账")
-    item = await db.get(IncomingPayment, payment_id)
+    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.status not in {"待认领", "待分配"} or item.allocated_amount > 0 or item.allocations:
         raise HTTPException(status_code=409, detail="已到账、已领取、已分配、已开票、已结算或已归档的数据不能删除；如需调整请走财务审核流程")
@@ -835,7 +913,8 @@ async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateIn
         _allowed_field_keys,
     )
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以编辑银行到账")
-    item = await db.scalar(select(IncomingPayment).where(IncomingPayment.id == payment_id).with_for_update())
+    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id).with_for_update(of=IncomingPayment))
+    require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if identity.get("role") != "admin" and item.operator != identity["username"] and item.claimant != identity["username"]:
         visible_customer = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "customer", BusinessRecord.title == item.claimed_customer, *(await _record_scope_conditions(identity, db))))
@@ -871,12 +950,15 @@ async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateIn
                 raise HTTPException(status_code=422, detail="关联案件的合同不存在")
             contract_no = contract.serial_no
         customer = customer or case_record.customer
+    if contract:
+        await require_record_center(contract, identity, db)
     item.received_date = body.received_date; item.amount = _round_fee_amount(body.amount); item.payer_name = body.payer_name.strip(); item.bank_reference = bank_reference or None; item.contract_record_id = contract.id if contract else None; item.contract_no = contract.serial_no if contract else ""; item.case_no = case_no; item.bank_source = body.bank_source.strip(); item.remark = body.remark
+    item.payment_method = body.payment_method.strip()
     if not allocated:
         item.claimed_customer = customer
         item.claimant = (item.claimant or identity["username"]) if customer else ""
     item.status = ("已分配" if allocated >= item.amount else "部分分配") if allocated else ("待分配" if item.claimed_customer else "待认领")
-    await db.commit(); await db.refresh(item); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
+    await db.commit(); await refresh_incoming_payment(item, db); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
 
 
 @router.get(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}/refund-candidates")
@@ -887,12 +969,13 @@ async def incoming_payment_refund_candidates(payment_id: int, identity: dict = D
     from app.core.permissions import (
         _record_scope_conditions,
     )
-    item = await db.get(IncomingPayment, payment_id)
+    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.allocations or item.allocated_amount > 0: raise HTTPException(status_code=409, detail="已发生分配的到账不能领取退费")
     if "法院" not in item.payer_name: raise HTTPException(status_code=422, detail="只有法院退款到账可以匹配官方费用")
     remaining = _round_fee_amount(item.amount - item.allocated_amount)
-    fees = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", *(await _record_scope_conditions(identity, db))))).all()
+    fees = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", *record_center_conditions(identity), *(await _record_scope_conditions(identity, db))))).all()
     candidates = []
     for fee in fees:
         data = fee.data or {}
@@ -916,7 +999,8 @@ async def refund_claim_incoming_payment(payment_id: int, body: IncomingPaymentRe
     from app.core.system import (
         _allowed_field_keys,
     )
-    item = await db.get(IncomingPayment, payment_id)
+    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.status not in {"待认领", "待分配"} or item.allocated_amount > 0: raise HTTPException(status_code=409, detail="已发生分配的到账不能重新认领")
     if "法院" not in item.payer_name: raise HTTPException(status_code=422, detail="只有法院退款到账可以领取退费")
@@ -925,12 +1009,13 @@ async def refund_claim_incoming_payment(payment_id: int, body: IncomingPaymentRe
     fee_record = None
     if body.fee_record_id:
         fee_record = await _ensure_record_module(body.fee_record_id, "finance", identity, db)
+        await require_record_center(fee_record, identity, db)
         if str((fee_record.data or {}).get("fee_type") or "") != "官方费用": raise HTTPException(status_code=422, detail="匹配的退费记录不是官方费用")
     item.claimed_customer = customer.title; item.claimant = identity["username"]; item.status = "待分配"; item.remark = "；".join(part for part in [item.remark, body.comment] if part)
     db.add(WorkflowEvent(record_id=customer.id, action="认领退费到账", from_status=customer.status, to_status=customer.status, operator=identity["username"], comment=f"{item.receipt_no}｜{item.payer_name}｜{item.amount:.2f} 元。{body.comment}"))
     if fee_record:
         db.add(WorkflowEvent(record_id=fee_record.id, action="匹配退费到账", from_status=fee_record.status, to_status=fee_record.status, operator=identity["username"], comment=f"{item.receipt_no} 匹配 {fee_record.serial_no}"))
-    await db.commit(); await db.refresh(item); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
+    await db.commit(); await refresh_incoming_payment(item, db); return _incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db))
 
 
 @router.post(f"{settings.api_prefix}/finance/incoming-payments/revoke-allocations")
@@ -943,7 +1028,7 @@ async def revoke_incoming_payment_allocations(body: IncomingPaymentRevokeInput, 
     )
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以批量撤销分配")
     payment_ids = list(dict.fromkeys(body.payment_ids))
-    items = list((await db.scalars(select(IncomingPayment).where(IncomingPayment.id.in_(payment_ids)))).all())
+    items = list((await db.scalars(incoming_source_statement().where(IncomingPayment.id.in_(payment_ids), *incoming_center_conditions(identity)))).all())
     if len(items) != len(payment_ids): raise HTTPException(status_code=404, detail="部分银行到账记录不存在")
     active_settlements = await _active_settlements_by_receipt(db, set(payment_ids))
     if active_settlements:
@@ -960,10 +1045,11 @@ async def revoke_incoming_payment_allocations(body: IncomingPaymentRevokeInput, 
                 db.add(WorkflowEvent(record_id=contract.id, action="撤销银行回款分配", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=f"{item.receipt_no}｜{plan.phase if plan else ''}｜{amount:.2f} 元。{body.comment}"))
             await _revert_incoming_allocation(allocation, db, payment_id=item.id)
         item.allocations = []; item.allocated_amount = 0; item.status = "待分配"
+        from app.core.incoming_local_amounts import stamp_hz_allocation_summary
+        await stamp_hz_allocation_summary(item, db)
         revoked += 1
     await db.commit()
-    for item in items:
-        await db.refresh(item)
+    items = await refresh_incoming_payments(items, db)
     return {"revoked": revoked, "items": [_incoming_payment_dict(item, show_amount="finance.amount" in await _allowed_field_keys(identity, db)) for item in items]}
 
 

@@ -3,6 +3,9 @@ import { message } from "antd";
 import type { AxiosResponse } from "axios";
 import dayjs from "dayjs";
 import { api } from "../../api";
+import { financeCenterApi } from "./financeCenterApi";
+import type { FinanceScope, SettlementRow } from "../types";
+import { settlementSourceCounts } from "../settlementIdentity";
 import { rememberCaseDetailTarget } from "../../caseDetailNavigation";
 import { rememberContractDetailTarget } from "../../contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "../../customerDetailNavigation";
@@ -119,6 +122,7 @@ async function loadPaymentApprovalApplications() {
 }
 /** finance queries operations; dependencies are read when each operation runs. */
 export interface FinanceQueriesDependencies {
+    readonly financeScope: FinanceScope;
     readonly isInternalQueueRoute: boolean;
     readonly loadInternalQueue: (query: Record<string, unknown>, page?: number, pageSize?: number) => Promise<any>;
     readonly onNavigate: ((route: string) => void) | undefined;
@@ -492,7 +496,7 @@ export interface FinanceQueriesDependencies {
         page: number;
         pageSize: number;
     }>>;
-    readonly setGeneralSettlementRows: React.Dispatch<React.SetStateAction<Fee[]>>;
+    readonly setGeneralSettlementRows: React.Dispatch<React.SetStateAction<SettlementRow[]>>;
     readonly setGeneralSettlementMeta: React.Dispatch<React.SetStateAction<{
         total: number;
         page: number;
@@ -541,6 +545,7 @@ export interface FinanceQueriesDependencies {
     readonly cellValue: (row: any, header: string) => any;
 }
 export function createFinanceQueriesActions(context: FinanceQueriesDependencies) {
+    const api = financeCenterApi(context.financeScope);
     const openCaseDetail = async (caseNo: unknown) => {
         const { onNavigate } = context;
         const serialNo = String(caseNo || "").trim();
@@ -943,6 +948,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             if (isGeneralSettlementRoute && generalSettlementRes) {
                 setGeneralSettlementRows(generalSettlementRes.data.items || []);
                 setGeneralSettlementMeta({
+                    ...settlementSourceCounts(generalSettlementRes.data),
                     total: generalSettlementRes.data.total || 0,
                     page: generalSettlementRes.data.page || 1,
                     pageSize: generalSettlementRes.data.page_size || 10,
@@ -952,6 +958,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             if (isArchiveSettlementActiveRoute && archiveSettlementRes) {
                 setArchiveSettlementRows(archiveSettlementRes.data.items || []);
                 setArchiveSettlementMeta({
+                    ...settlementSourceCounts(archiveSettlementRes.data),
                     total: archiveSettlementRes.data.total || 0,
                     page: archiveSettlementRes.data.page || 1,
                     pageSize: archiveSettlementRes.data.page_size || 10,
@@ -1013,13 +1020,17 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
             setLegacyFinanceLoading(false);
         }
     };
-    const openLegacyFinanceDetail = async (recordId: number) => {
+    const openLegacyFinanceDetail = async (recordId: number, source?: Pick<LegacyFinanceRecord, "amount_basis" | "source_label" | "has_local_allocation_activity">) => {
         const { setLegacyFinanceDetailLoading, setLegacyFinanceDetail } = context;
         setLegacyFinanceDetailLoading(true);
         setLegacyFinanceDetail(null);
         try {
-            const { data } = await api.get(`/finance/legacy-history/${recordId}`);
-            setLegacyFinanceDetail(data);
+            const [{ data }, summary] = await Promise.all([
+                api.get(`/finance/legacy-history/${recordId}`),
+                api.get<LegacyFinanceSummary>("/finance/legacy-history/summary"),
+            ]);
+            context.setLegacyFinanceSummary(summary.data);
+            setLegacyFinanceDetail(source ? { ...data, ...source } : data);
         }
         catch (error: any) {
             message.error(error?.response?.data?.detail || "导入来源明细加载失败");

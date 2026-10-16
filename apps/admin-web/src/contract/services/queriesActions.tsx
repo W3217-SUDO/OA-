@@ -169,7 +169,7 @@ export function createContractQueriesActions(context: ContractQueriesDependencie
                 api.get(`/records/${contract.id}/history`),
                 api.get(`/contracts/${contract.id}/objects`),
                 api.get(`/contracts/${contract.id}/object-cases`),
-                api.get("/finance/incoming-payments"),
+                api.get(`/contracts/${contract.id}/incoming-payments`),
                 // Invoice records are keyed by contract_record_id/contract_no rather
                 // than the generic record serial/title search fields.  Query the
                 // finance invoice projection so issued applications reappear in the
@@ -210,6 +210,9 @@ export function createContractQueriesActions(context: ContractQueriesDependencie
                 setDetailReceipts(receiptResult.status === "fulfilled"
                     ? sortContractRecordRows(filterContractIncomingPayments(receiptResult.value.data.items || [], contract) as any[])
                     : []);
+                if (receiptResult.status === "rejected") {
+                    message.error(extractContractErrorMessage(receiptResult.reason, "合同关联回款加载失败"));
+                }
                 setDetailInvoices(invoiceResult.status === "fulfilled"
                     ? sortContractRecordRows(filterContractLinkedRows(invoiceResult.value.data.items || [], contract))
                     : []);

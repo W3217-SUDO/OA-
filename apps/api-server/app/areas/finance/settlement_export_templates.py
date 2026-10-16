@@ -47,7 +47,7 @@ def render_general_settlement_export(kind, records, export_date):
                     if not group:
                         continue
                     values = [data.get("received_date"), label, amount_sum(group, "current_amount"), data.get("receipt_amount"),
-                        data.get("bank_source"), data.get("payer_name"), detail.get("court_case_no"), detail.get("case_no"),
+                        data.get("payment_method"), data.get("payer_name"), detail.get("court_case_no"), detail.get("case_no"),
                         detail.get("source_person"), detail.get("hearing_lawyer"), detail.get("assistant"), detail.get("file_no"),
                         detail.get("archive_no"), amount_sum(case_details, "archive_fee"), detail.get("customer"), detail.get("invoice_dates"),
                         detail.get("invoice_titles"), detail.get("invoice_numbers"), detail.get("invoice_amount"), detail.get("invoice_extra_amount"), ""]
@@ -81,4 +81,6 @@ def render_general_settlement_export(kind, records, export_date):
                 workbook.row(index, case_values(detail), 5)
                 index += 1
     names = {"receipt": "到账清单", "case": "案件清单", "settlement": "结算清单"}
+    from app.areas.finance.imported_settlement_exports import append_settlement_provenance
+    append_settlement_provenance(workbook, records)
     return workbook.content(), f"{names[kind]}-{export_date}.xls", workbook.template.name

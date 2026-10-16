@@ -46,6 +46,7 @@ function loadFinanceModule(name, dependencies = {}, globals = {}) {
       if (["../financialValueDisplay", "../../financialValueDisplay"].includes(specifier)) {
         return loadFinanceModule(new URL(`${specifier}.ts`, sourceUrl).href);
       }
+      if (specifier === "./settlementIdentity") return loadFinanceModule("settlementIdentity.ts");
       return require(specifier);
     },
     ...globals,
@@ -64,6 +65,55 @@ function button(element, text) {
   assert.ok(found, `missing button ${text}`);
   return found;
 }
+
+test("finance source labels distinguish historical snapshots local activity and unknown allocation", () => {
+  const Tag = () => null;
+  const { createConfiguredColumns } = loadFinanceModule("columns/configuredColumns.tsx", {
+    antd: { ...ui, Tag }, "../moneyColumns": { moneyColumnStyle: () => ({}) },
+  });
+  for (const source of ["generalSettlements", "archiveSettlements", "incoming"]) {
+    const columns = createConfiguredColumns({
+      activeRouteConfig: { source, headers: ["操作", "回款日期"] },
+      initialView: "finance-receipts-manage", cellValue: () => "2026-10-16",
+    });
+    const render = row => nodes(columns[1].render(null, row)).filter(node => node.type === Tag).map(node => node.props.children);
+    if (source === "incoming") {
+      assert.deepEqual(render({ allocation_status_label: "现行分配待核", has_local_allocation_activity: false }), ["现行分配待核"]);
+      assert.deepEqual(render({ has_local_allocation_activity: true }), ["已发生本地分配操作"]);
+    } else {
+      const row = { amount_basis: "legacy_snapshot", source_label: "原始历史结算快照（只读，不代表现行分配）", has_local_allocation_activity: true };
+      assert.deepEqual(render(row), ["原始快照", "已发生本地分配操作"]);
+      const snapshot = nodes(columns[1].render(null, row)).find(node => node.type === Tag);
+      assert.equal(snapshot.props.title, row.source_label);
+      assert.equal(snapshot.props.style.whiteSpace, "normal");
+    }
+    assert.deepEqual(render({}), []);
+  }
+  const Descriptions = () => null;
+  Descriptions.Item = () => null;
+  const { LegacyFinanceDetailDrawer } = loadFinanceModule("LegacyHistoryPanel.tsx", {
+    antd: { Drawer: () => null, Descriptions, Tabs: () => null, Tag, Alert: () => null },
+    "./constants": loadFinanceModule("constants.ts"),
+  });
+  const view = LegacyFinanceDetailDrawer({
+    detail: { id: 41, record_kind: "ar_payment", amount_basis: "legacy_snapshot", source_label: "只读，不代表现行分配", has_local_allocation_activity: true },
+    amountVisible: true, detailLoading: false, onCloseDetail: () => {},
+  });
+  assert.ok(nodes(view).some(node => node.type === Tag && node.props.children === "原始快照"));
+  assert.ok(nodes(view).some(node => node.props.children === "已发生本地分配操作"));
+});
+
+test("incoming classified totals show unknown sources without replacing real zero", () => {
+  const { IncomingTotalsBody } = loadFinanceModule("IncomingTotalsBody.tsx");
+  const body = IncomingTotalsBody({
+    headers: ["已分官费", "已分代理费", "已分其他费", "回款金额", "操作"],
+    totals: { 已分官费: 0, 已分代理费: 25.5, 已分其他费: null, 回款金额: null },
+  });
+  const cells = nodes(body).filter(node => node.type === "td");
+  assert.deepEqual(cells.slice(1).map(node => node.props.children), ["0.00", "25.50", "未知", null, "合计"]);
+  const missing = IncomingTotalsBody({ headers: ["已分官费", "已分代理费", "已分其他费"], totals: {} });
+  assert.deepEqual(nodes(missing).filter(node => node.type === "td").slice(1).map(node => node.props.children), ["未知", "未知", "未知"]);
+});
 
 test("original query values keep zero bounds and reject malformed date or text values", () => {
   const { dateQueryRange, amountQueryRange, queryArray, queryTextValue } = loadFinanceModule("originalQuery.ts");
@@ -397,6 +447,150 @@ test("internal case columns and review payees consume exact server names, includ
     ] } }], result: (value) => { result = value; },
   });
   assert.equal(result.map((row) => row.payee).join(","), "子项甲,子项乙,历史员工");
+});
+
+test("main receipt cells read top-level allocations and real payment method without changing settlement cells", () => {
+  const source = fs.readFileSync(new URL("FinanceCenterPage.tsx", sourceRoot), "utf8");
+  const tree = ts.createSourceFile("FinanceCenterPage.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const headers = ["已分官费", "已分代理费", "已分其他费用", "回款方式"];
+  const expressions = new Map();
+  let cellExpression;
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(tree) === "cellValue") cellExpression = node.initializer.getText(tree);
+    if (ts.isVariableDeclaration(node) && node.name.getText(tree) === "values" && ts.isObjectLiteralExpression(node.initializer)) {
+      for (const property of node.initializer.properties) {
+        if (ts.isPropertyAssignment(property) && headers.includes(property.name.getText(tree))) expressions.set(property.name.getText(tree), property.initializer.getText(tree));
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  assert.equal(expressions.size, headers.length);
+  assert.ok(cellExpression);
+  const code = ts.transpileModule(`const rawCellValue = (row, header) => { const data = row.data || {}; return ({${headers.map(header => `${JSON.stringify(header)}: ${expressions.get(header)}`).join(",")}})[header]; }; result(${cellExpression});`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const constants = loadFinanceModule("constants.ts");
+  for (const center of ["firm", "platform"]) {
+    const route = { source: "incoming" };
+    let cell;
+    vm.runInNewContext(code, {
+      activeRouteConfig: route, initialView: "finance-receipts-manage",
+      displayFinancialValue: loadFinanceModule("../financialValueDisplay.ts").displayFinancialValue,
+      money: constants.money, isArchiveSettlementActiveRoute: false, isInternalDetailRoute: false,
+      isInvoiceMineRoute: false, isInvoicePendingRoute: false, isInvoiceCompanyRoute: false,
+      isInvoiceUnissuedRoute: false, isFeeQueryRoute: false, isGeneralSettlementRoute: false,
+      result: value => { cell = value; },
+    });
+    const row = { finance_scope: center, assigned_official_fee: 0, assigned_agency_fee: 25.5, assigned_other_fee: null,
+      payment_method: "实际回款方式", bank_source: "实际到账银行", data: { assigned_official_fee: 99, assigned_agency_fee: 99, assigned_other_fee: 99, payment_method: "结算回款方式" } };
+    assert.equal(cell(row, headers[0]), constants.money(0));
+    assert.equal(cell(row, headers[1]), constants.money(25.5));
+    assert.equal(cell(row, headers[2]), "—");
+    assert.equal(cell(row, headers[3]), "实际回款方式");
+    assert.equal(cell({ bank_source: "实际到账银行", data: row.data }, headers[0]), "—");
+    assert.equal(cell({ bank_source: "实际到账银行", data: row.data }, headers[3]), "—");
+    route.source = "generalSettlements";
+    assert.equal(cell(row, headers[0]), constants.money(99));
+    assert.equal(cell(row, headers[3]), "结算回款方式");
+  }
+});
+
+test("historical settlement actions open real legacy heads and never expose modern writes", async () => {
+  const source = fs.readFileSync(new URL("FinanceCenterPage.tsx", sourceRoot), "utf8");
+  const tree = ts.createSourceFile("FinanceCenterPage.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const names = ["openHistoricalSettlement", "historicalSettlementOperation", "generalSettlementOperation", "archiveSettlementPendingOperation"];
+  const expressions = new Map();
+  const visit = node => {
+    if (ts.isVariableDeclaration(node) && names.includes(node.name.getText(tree))) expressions.set(node.name.getText(tree), node.initializer.getText(tree));
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  assert.equal(expressions.size, names.length);
+  const reads = [], exports = [], errors = [];
+  let actions;
+  const code = ts.transpileModule(`${names.map(name => `const ${name} = ${expressions.get(name)};`).join("\n")} result({generalSettlementOperation,archiveSettlementPendingOperation});`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS },
+  }).outputText;
+  vm.runInNewContext(code, {
+    require, exports: {}, Button, Space: ui.Space, DownloadOutlined: () => null, isHistoricalSettlement: loadFinanceModule("settlementIdentity.ts").isHistoricalSettlement,
+    openLegacyFinanceDetail: async id => { reads.push(id); },
+    exportGeneralSettlement: async (kind, ids) => { exports.push({ kind, ids }); },
+    exportPendingArchiveSettlements: async ids => { exports.push({ kind: "archive", ids }); },
+    message: { error: value => errors.push(value) }, result: value => { actions = value; },
+  });
+  for (const [name, id] of [["generalSettlementOperation", "legacy-normal:41"], ["archiveSettlementPendingOperation", "legacy-archive:71"]]) {
+    const row = { id, source: "legacy", read_only: true, legacy_record_id: 41, source_status: "30", data: {} };
+    const view = actions[name](null, row);
+    const buttons = nodes(view).filter(node => node.type === Button);
+    assert.deepEqual(buttons.map(node => node.props.children || node.props["aria-label"]), ["历史只读", "导出"]);
+    await buttons[0].props.onClick();
+    await buttons[1].props.onClick();
+    assert.equal(reads.at(-1), 41);
+    assert.equal(exports.at(-1).ids[0], id);
+  }
+  assert.deepEqual(errors, []);
+  actions.generalSettlementOperation(null, { id: "legacy-normal:999", source: "legacy", read_only: true, data: {} }).props.children[0].props.onClick();
+  assert.equal(reads.length, 2);
+  assert.match(errors[0], /缺少有效的来源头记录/);
+});
+
+test("settlement tables disable historical selection and keep query export reachable", () => {
+  const noView = () => null;
+  const { FinanceOriginalRoutesView } = loadFinanceModule("FinanceOriginalRoutesView.tsx", {
+    "./constants": loadFinanceModule("constants.ts"), "./financeErrors": {},
+    "./IncomingTotalsBody": { IncomingTotalsBody: noView }, "./FinanceOriginalQueryView": { FinanceOriginalQueryView: noView },
+    "./GeneralSettlementExpandedRow": { GeneralSettlementExpandedRow: noView }, "./FinanceOriginalTotals": {},
+    "./FinanceFeeQueryActions": { FinanceFeeQueryActions: noView }, "./RefundCaseFeeActions": {},
+  });
+  const historical = { id: "legacy-normal:41", source: "legacy", read_only: true, data: {} };
+  const modern = { id: 8, data: {} };
+  let selected;
+  for (const archive of [false, true]) {
+    const view = FinanceOriginalRoutesView({
+      initialView: archive ? "finance-archive-fee-paid" : "finance-settlement-paid",
+      activeRouteConfig: { source: archive ? "archiveSettlements" : "generalSettlements", selectable: true, headers: [] },
+      configuredRows: [modern, historical], originalColumns: [], originalHeaders: [], originalQueryView: {},
+      isGeneralSettlementRoute: !archive, isGeneralSettlementPaidRoute: !archive,
+      isArchiveSettlementActiveRoute: archive, isArchiveSettlementPaidRoute: archive,
+      generalSettlementMeta: { total: 2, page: 1, pageSize: 15, totals: {} },
+      archiveSettlementMeta: { total: 2, page: 1, pageSize: 15, totals: {} },
+      generalSettlementDetails: [], selectedOriginalRows: [], setSelectedOriginalRows: keys => { selected = keys; },
+    });
+    const table = nodes(view).find(node => node.type === Table);
+    assert.equal(table.props.rowSelection.getCheckboxProps(historical).disabled, true);
+    assert.equal(table.props.rowSelection.getCheckboxProps(modern).disabled, false);
+    table.props.rowSelection.onChange([8, historical.id]);
+    assert.deepEqual(Array.from(selected), [8]);
+    if (archive) assert.ok(nodes(view).some(node => node.type === Button && node.props.children === "导出查询结果"));
+  }
+});
+
+test("legacy detail drawer is reusable from status pages and preserves unknown and zero amounts", () => {
+  const Drawer = () => null;
+  const Descriptions = () => null;
+  Descriptions.Item = () => null;
+  const Tabs = () => null;
+  const { LegacyFinanceDetailDrawer } = loadFinanceModule("LegacyHistoryPanel.tsx", {
+    antd: { Drawer, Descriptions, Tabs, Tag: () => null, Alert: () => null },
+    "./constants": loadFinanceModule("constants.ts"),
+  });
+  let closed = false;
+  const view = LegacyFinanceDetailDrawer({
+    detail: { id: 41, source_table: "FAM_AR_Payment", legacy_id: "source-head-41", record_kind: "ar_payment", legacy_statuses: { SettlementStatus: "30" }, allocations: [], primary_amount: null },
+    detailLoading: false, amountVisible: true, onCloseDetail: () => { closed = true; },
+  });
+  assert.equal(view.type, Drawer);
+  assert.equal(view.props.open, true);
+  view.props.onClose();
+  assert.equal(closed, true);
+  const tabs = nodes(view).find(node => node.type === Tabs);
+  const allocations = tabs.props.items.find(item => item.key === "allocations").children;
+  const amount = allocations.props.columns.find(column => column.dataIndex === "amount");
+  assert.equal(amount.render(null), "—");
+  assert.equal(amount.render(0), loadFinanceModule("constants.ts").money(0));
+  const statuses = tabs.props.items.find(item => item.key === "legacy-fields").children;
+  assert.ok(nodes(statuses).some(node => node.props.children === "30"));
 });
 
 test("settlement parent layout uses its full column budget for five states only", () => {

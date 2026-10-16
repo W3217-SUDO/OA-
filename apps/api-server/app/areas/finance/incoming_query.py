@@ -11,6 +11,8 @@ from app.core.contracts import _contract_person_values
 from app.core.finance import _incoming_payment_legacy_summary, _round_fee_amount
 from app.core.formatters import _person_reference_display
 from app.models import BusinessRecord, IncomingPayment
+from app.core.finance_centers import INCOMING_CENTER, LEGACY_INCOMING_SOURCE
+from app.core.incoming_legacy_amounts import ASSIGNED_FIELDS, LEGACY_ASSIGNED_AMOUNTS
 
 
 BANK_VIEWS = {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb")}
@@ -169,11 +171,16 @@ def incoming_totals(items, show_amount: bool) -> dict:
             **_incoming_payment_legacy_summary(item),
         }
         for header, field in TOTAL_FIELDS.items():
-            number = float(amounts[field] or 0) * 100
+            if amounts[field] is None:
+                cents[header] = None
+                continue
+            if cents[header] is None:
+                continue
+            number = float(amounts[field]) * 100
             whole = math.floor(number)
             # JavaScript Math.round 的半分向正无穷取整，不使用 Python 银行家舍入。
             cents[header] += whole + (number - whole >= 0.5)
-    return {header: amount / 100 for header, amount in cents.items()}
+    return {header: amount / 100 if amount is not None else None for header, amount in cents.items()}
 
 
 async def read_incoming_query(statement, keyword: str, view: str, filters: dict,
@@ -188,6 +195,15 @@ async def read_incoming_query(statement, keyword: str, view: str, filters: dict,
         IncomingPayment.contract_record_id, IncomingPayment.case_no,
         IncomingPayment.claimant, IncomingPayment.operator,
         IncomingPayment.created_at, IncomingPayment.updated_at,
+        IncomingPayment.finance_scope,
+        IncomingPayment.payment_method,
+        IncomingPayment.local_allocation_summary,
+        INCOMING_CENTER.label("resolved_finance_scope"),
+        LEGACY_INCOMING_SOURCE.c.payment_method.label("legacy_payment_method"),
+        LEGACY_INCOMING_SOURCE.c.settlement_status.label("legacy_settlement_status"),
+        *(LEGACY_ASSIGNED_AMOUNTS.c[field].label("legacy_" + field) for field in ASSIGNED_FIELDS),
+        LEGACY_ASSIGNED_AMOUNTS.c.baseline_allocations.label("legacy_baseline_allocations"),
+        LEGACY_ASSIGNED_AMOUNTS.c.baseline_applied_amount.label("legacy_baseline_applied_amount"),
     ).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc())
     items = list((await db.execute(projection)).all())
     if keyword:

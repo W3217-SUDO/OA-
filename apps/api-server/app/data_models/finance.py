@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, query_expression
 from app.database import Base
 
 
@@ -100,6 +100,18 @@ class IncomingPayment(Base):
     __tablename__ = "incoming_payments"
 
     source_kind: Mapped[str] = mapped_column(String(24), default="unknown")
+    finance_scope: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    legacy_finance_record_id: Mapped[int | None] = mapped_column(ForeignKey("legacy_finance_records.id", ondelete="RESTRICT"), nullable=True, index=True)
+    payment_method: Mapped[str] = mapped_column(String(100), default="")
+    local_allocation_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    resolved_finance_scope: Mapped[str | None] = query_expression()
+    legacy_payment_method: Mapped[str | None] = query_expression()
+    legacy_settlement_status: Mapped[str | None] = query_expression()
+    legacy_assigned_official_fee: Mapped[float | None] = query_expression()
+    legacy_assigned_agency_fee: Mapped[float | None] = query_expression()
+    legacy_assigned_other_fee: Mapped[float | None] = query_expression()
+    legacy_baseline_allocations: Mapped[list | None] = query_expression()
+    legacy_baseline_applied_amount: Mapped[float | None] = query_expression()
 
     id: Mapped[int] = mapped_column(primary_key=True)
     receipt_no: Mapped[str] = mapped_column(String(64), unique=True, index=True)

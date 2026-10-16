@@ -13,6 +13,7 @@ from app.models import BusinessRecord
 
 
 FINANCE_JSON_QUERIES = {
+    "/contracts/{contract_id}/incoming-payments": "list_contract_incoming_payments",
     "/finance/jar-fees": "list_jar_fees",
     "/finance/jar-fees/{jar_fee_id}": "get_jar_fee",
     "/finance/jar-fees/{jar_fee_id}/files": "list_jar_fee_files",
@@ -135,6 +136,8 @@ def _wrap_query(endpoint, path):
         from app.core.query_cache import cached_query
 
         parameters = {key: value for key, value in arguments.items() if key not in {"db", "identity"}}
+        if "_finance_scope" in arguments["identity"]:
+            parameters["finance_scope"] = arguments["identity"]["_finance_scope"]
         return await cached_query(
             arguments["db"], arguments["identity"], f"finance.{endpoint.__name__}",
             parameters, lambda: endpoint(**arguments),

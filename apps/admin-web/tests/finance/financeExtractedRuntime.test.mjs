@@ -160,11 +160,118 @@ function loadModule(name, dependencies, globals = {}) {
   const module = { exports: {} };
   vm.runInNewContext(output, {
     module, exports: module.exports,
-    require: (specifier) => specifier in dependencies ? dependencies[specifier] : require(specifier),
+    require: (specifier) => {
+      if (specifier in dependencies) return dependencies[specifier];
+      if (specifier === "./financeCenterApi") return loadModule("services/financeCenterApi.ts", dependencies);
+      if (specifier === "../financialValueDisplay") return loadModule("../financialValueDisplay.ts", dependencies);
+      if (specifier === "../settlementIdentity") return loadModule("settlementIdentity.ts", dependencies);
+      return require(specifier);
+    },
     AbortController, Blob, ...globals,
   }, { filename: name });
   return module.exports;
 }
+
+test("legacy history list summary and detail carry the explicit center without rewriting source statuses", async () => {
+  const requests = [];
+  const response = { data: { source_status: "30", status_code: "30", status_label: "原状态", amount: 0, read_only: true } };
+  const { financeCenterApi } = loadModule("services/financeCenterApi.ts", {
+    "../../api": { api: { get: async (path, config) => { requests.push({ path, config }); return response; } } },
+  });
+  for (const financeScope of ["firm", "platform", "unclassified"]) {
+    const api = financeCenterApi(financeScope);
+    for (const path of ["/finance/legacy-history", "/finance/legacy-history/summary", "/finance/legacy-history/17"]) {
+      const config = { params: { page: 2, page_size: 15 }, signal: new AbortController().signal };
+      assert.equal(await api.get(path, config), response);
+      assert.equal(requests.at(-1).config.params.finance_scope, financeScope);
+      assert.equal(requests.at(-1).config.params.page, 2);
+      assert.equal(requests.at(-1).config.params.page_size, 15);
+      assert.equal(requests.at(-1).config.signal, config.signal);
+      assert.equal(Object.hasOwn(config.params, "finance_scope"), false);
+      assert.equal(response.data.source_status, "30");
+      assert.equal(response.data.status_code, "30");
+      assert.equal(response.data.amount, 0);
+      assert.equal(response.data.read_only, true);
+    }
+    const config = { params: { module: "contract" } };
+    await api.get("/records", config);
+    assert.equal(requests.at(-1).config, config);
+  }
+});
+
+test("historical settlement identities cannot enter any modern settlement write action", async () => {
+  const identity = loadModule("settlementIdentity.ts", {});
+  const historical = { id: "legacy-normal:41", source: "legacy", read_only: true, legacy_record_id: 41 };
+  assert.equal(identity.isHistoricalSettlement(historical), true);
+  assert.throws(() => identity.requireWritableSettlements([historical]), /历史结算记录只读/);
+  assert.throws(() => identity.requireWritableSettlements([{ id: "legacy-archive:71" }]), /历史结算记录只读/);
+  identity.requireWritableSettlements([{ id: 8 }, { id: "archive:8:2" }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(identity.settlementExportIds([8, "legacy-normal:41", "legacy-archive:71"], "application_ids"))), {
+    application_ids: "8", projection_ids: "legacy-normal:41,legacy-archive:71",
+  });
+  let writes = 0;
+  let gates = 0;
+  const { createFinanceSettlementsActions } = loadModule("services/settlementsActions.tsx", {
+    antd: { message: {}, Modal: {} }, "../constants": {}, "../financeErrors": {},
+    "../../api": { api: { post: async () => { writes += 1; } } },
+  });
+  const gate = { tryEnter: () => { gates += 1; return true; } };
+  const actions = createFinanceSettlementsActions({
+    financeScope: "firm", financeActionGates: { generalSettlement: gate, archiveSettlement: gate },
+    generalSettlementReviewTargets: [historical], generalSettlementPaymentTargets: [historical],
+    generalSettlementReapplyTargets: [historical], generalSettlementApplyTargets: [historical.id],
+    archiveSettlementReviewTargets: [{ id: "legacy-archive:71" }],
+    archiveSettlementRollbackTargets: [{ id: "legacy-archive:71" }],
+    archiveSettlementReapplyTargets: [{ id: "legacy-archive:71" }],
+  });
+  for (const name of ["submitGeneralSettlementReview", "submitGeneralSettlementPayment", "submitGeneralSettlementReapply", "submitGeneralSettlementApply", "submitArchiveSettlementReview", "submitArchiveSettlementRollback", "submitArchiveSettlementReapply"]) {
+    await assert.rejects(actions[name](), /历史结算记录只读/);
+  }
+  assert.equal(writes, 0);
+  assert.equal(gates, 0);
+});
+
+test("settlement source warnings only expose positive server counts without filling missing values", () => {
+  const { settlementSourceCounts, settlementSourceMessage } = loadModule("settlementIdentity.ts", {});
+  assert.equal(settlementSourceMessage(settlementSourceCounts({})), "");
+  assert.equal(settlementSourceMessage(settlementSourceCounts({ unknown_phase_total: 0, unknown_eligibility_total: 0, unknown_date_total: 0 })), "");
+  const raw = { unknown_phase_total: 2, unknown_eligibility_total: 3, unknown_date_total: 1, amount: null, source_status: "30" };
+  const counts = settlementSourceCounts(raw);
+  assert.equal(settlementSourceMessage(counts), "案件阶段待核 2 条；结算条件待核 3 条；原日期待核 1 条");
+  assert.equal(raw.amount, null);
+  assert.equal(raw.source_status, "30");
+  assert.equal(settlementSourceCounts({}).unknown_phase_total, undefined);
+});
+
+test("settlement exports preserve historical projection IDs and allow filtered query exports", async () => {
+  const requests = [];
+  const { createFinanceSettlementsActions } = loadModule("services/settlementsActions.tsx", {
+    antd: { message: { success: () => {}, info: () => {} }, Modal: {} }, "../constants": {}, "../financeErrors": {},
+    "../../api": { api: { get: async (path, options) => { requests.push({ path, options }); return { data: new Blob(["sheet"]) }; } } },
+  }, { document: { createElement: () => ({ click() {} }) }, URL: { createObjectURL: () => "blob:CODEX", revokeObjectURL() {} } });
+  const context = {
+    financeScope: "platform", selectedOriginalRows: [8], isGeneralSettlementPendingRoute: false,
+    isArchiveSettlementPaidRoute: true, setGeneralSettlementBusy() {}, setArchiveSettlementBusy() {},
+    financeActionGates: { archiveSettlement: { tryEnter: () => true, leave() {} } },
+    originalQuery: { customer: "CODEX-历史查询" },
+    generalSettlementParams: query => ({ customer: query.customer, status: "待付款" }),
+    archiveSettlementParams: query => ({ customer: query.customer, page: 1, page_size: 20 }),
+  };
+  const actions = createFinanceSettlementsActions(context);
+  await actions.exportGeneralSettlement("settlement", [8, "legacy-normal:41"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).options.params)), {
+    kind: "settlement", application_ids: "8", projection_ids: "legacy-normal:41", finance_scope: "platform",
+  });
+  await actions.exportGeneralSettlement("case");
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).options.params)), {
+    customer: "CODEX-历史查询", status: "待付款", kind: "case", finance_scope: "platform",
+  });
+  await actions.exportPendingArchiveSettlements(["legacy-archive:71"]);
+  assert.equal(requests.at(-1).path, "/finance/archive-settlements/paid/export");
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).options.params)), { projection_ids: "legacy-archive:71", finance_scope: "platform" });
+  await actions.exportPendingArchiveSettlements([]);
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).options.params)), { customer: "CODEX-历史查询", page: 1, page_size: 20, finance_scope: "platform" });
+});
 
 test("settlement downloads decode JSON Blob details without changing the selected receipt contract", async () => {
   const errors = loadModule("financeErrors.ts", {});
@@ -184,19 +291,19 @@ test("settlement downloads decode JSON Blob details without changing the selecte
     "../financeErrors": errors,
     "../constants": {},
   }, { document, URL: { createObjectURL: () => "blob:CODEX-row4", revokeObjectURL: () => {} } });
-  const context = { selectedOriginalRows: [], isGeneralSettlementPendingRoute: true, setGeneralSettlementBusy: (value) => busy.push(value) };
+  const context = { financeScope: "platform", selectedOriginalRows: [], isGeneralSettlementPendingRoute: true, setGeneralSettlementBusy: (value) => busy.push(value) };
   const actions = createFinanceSettlementsActions(context);
   for (const kind of ["case", "settlement"]) {
     await actions.exportGeneralSettlement(kind, [17]);
     assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1))), {
-      path: "/finance/general-settlements/export", options: { params: { kind, ids: "17" }, responseType: "blob" },
+      path: "/finance/general-settlements/export", options: { params: { kind, ids: "17", finance_scope: "platform" }, responseType: "blob" },
     });
   }
   assert.match(downloads[0], /^案件清单-.*\.xls$/);
   assert.match(downloads[1], /^结算清单-.*\.xls$/);
   context.isGeneralSettlementPendingRoute = false;
   await actions.exportGeneralSettlement("case", [71]);
-  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).options.params)), { kind: "case", application_ids: "71" });
+  assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).options.params)), { kind: "case", application_ids: "71", finance_scope: "platform" });
   for (const [status, detail] of [[403, "无权导出"], [409, "部分回款已申请结算、尚未分配或无权导出"], [422, "请选择需要导出的回款."]]) {
     failure = { response: { status, data: new Blob([JSON.stringify({ detail })], { type: "application/json" }) } };
     await actions.exportGeneralSettlement("case", [17]);
@@ -329,13 +436,14 @@ test("incoming detail discards a route's late response and shows a current reque
     antd: { Form: { useForm: () => [{}] }, message: { error: (value) => errors.push(value) } },
     "../../incomingPaymentDetailNavigation": { resolveIncomingPaymentDetailTarget: (route) => Number(route.slice(-1)) || null },
     "../financeErrors": { financeErrorDetail: (error) => error.message },
-    "../services/accountingActions": { loadIncomingPaymentDetail: (id, signal) => new Promise((resolve, reject) => pending.push({ id, signal, resolve, reject })) },
+    "../services/accountingActions": { loadIncomingPaymentDetail: (id, financeScope, signal) => new Promise((resolve, reject) => pending.push({ id, financeScope, signal, resolve, reject })) },
   });
   let current;
-  const Probe = ({ route }) => { current = useFinanceIncomingState(route); return React.createElement("probe"); };
+  const Probe = ({ route }) => { current = useFinanceIncomingState(route, "firm"); return React.createElement("probe"); };
   let tree;
   await act(async () => { tree = create(React.createElement(Probe, { route: "detail-1" })); });
   assert.equal(pending[0].id, 1);
+  assert.equal(pending[0].financeScope, "firm");
   assert.equal(current.incomingDetailLoading, true);
   await act(async () => tree.update(React.createElement(Probe, { route: "detail-2" })));
   assert.equal(pending[0].signal.aborted, true);
@@ -431,7 +539,7 @@ test("finance domain services keep request paths, parameters, and rejected reque
   });
   assert.equal(requests[1].value.signal, signal);
   assert.equal(await refunds.loadRefundApplicantProfile(signal), "申请人甲");
-  await accounting.loadIncomingPaymentDetail(9, signal);
+  await accounting.loadIncomingPaymentDetail(9, "firm", signal);
   await payments.loadPaymentPackageCandidates({ id: 4 }, signal);
   await refunds.loadRefundBatchPaymentTypes(signal);
   assert.equal((await refunds.loadRefundBatchFeeSubTypes("官方费用", signal)).length, 1);
@@ -440,7 +548,7 @@ test("finance domain services keep request paths, parameters, and rejected reque
   await accounting.rollbackFinanceTransactionRequest(13);
   await invoices.withdrawInvoiceApplication(14);
   await payments.deletePaymentPackageRequest(15);
-  await settlements.markSettlementCommissionPaid([16, 17]);
+  await settlements.markSettlementCommissionPaid([16, 17], "firm");
   assert.deepEqual(requests.map(({ method, path }) => [method, path]), [
     ["get", "/records/5"], ["get", "/finance/invoice-context"], ["get", "/auth/me"],
     ["get", "/finance/incoming-payments/9"], ["get", "/finance/payment-packages/candidates"],
@@ -450,6 +558,7 @@ test("finance domain services keep request paths, parameters, and rejected reque
     ["delete", "/finance/payment-packages/15"], ["post", "/finance/settlements/mark-commission-paid"],
   ]);
   assert.deepEqual(JSON.parse(JSON.stringify(requests[8].value)), { approved: false, comment: "资料不完整，退回修改" });
+  assert.equal(requests[3].value.params.finance_scope, "firm");
   assert.deepEqual(JSON.parse(JSON.stringify(requests[12].value)), { fee_ids: [16, 17] });
   rejectNext = true;
   await assert.rejects(payments.deletePaymentPackageRequest(18), /service unavailable/);

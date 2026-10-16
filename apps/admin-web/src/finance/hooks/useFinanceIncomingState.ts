@@ -4,10 +4,10 @@ import { resolveIncomingPaymentDetailTarget } from "../../incomingPaymentDetailN
 import { financeErrorDetail } from "../financeErrors";
 import type { IncomingClaimFormValues, IncomingPaymentFormValues } from "../formTypes";
 import { loadIncomingPaymentDetail } from "../services/accountingActions";
-import type { IncomingPayment } from "../types";
+import type { FinanceScope, IncomingPayment } from "../types";
 
 /** 回款登记、认领和详情的局部状态。 */
-export function useFinanceIncomingState(initialView: string) {
+export function useFinanceIncomingState(initialView: string, financeScope: FinanceScope) {
   const [incomingOpen, setIncomingOpen] = useState(false);
   const [editingIncoming, setEditingIncoming] = useState<IncomingPayment | null>(null);
   const [claimTarget, setClaimTarget] = useState<IncomingPayment | null>(null);
@@ -29,14 +29,14 @@ export function useFinanceIncomingState(initialView: string) {
     setIncomingDetailLoading(Boolean(paymentId));
     if (!paymentId) return;
     const controller = new AbortController();
-    void loadIncomingPaymentDetail(paymentId, controller.signal)
+    void loadIncomingPaymentDetail(paymentId, financeScope, controller.signal)
       .then((payment) => { if (!controller.signal.aborted) setIncomingDetailTarget(payment); })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) setIncomingDetailError(financeErrorDetail(error) || "回款详情加载失败");
       })
       .finally(() => { if (!controller.signal.aborted) setIncomingDetailLoading(false); });
     return () => controller.abort();
-  }, [initialView, incomingDetailAttempt]);
+  }, [initialView, financeScope, incomingDetailAttempt]);
 
   return {
     incomingOpen, setIncomingOpen, editingIncoming, setEditingIncoming,

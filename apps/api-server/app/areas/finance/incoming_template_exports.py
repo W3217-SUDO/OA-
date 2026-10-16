@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models import BusinessRecord, IncomingPayment, User
-from app.security import current_identity
+from app.core.finance_centers import finance_center_identity as current_identity
 
 router = APIRouter()
 

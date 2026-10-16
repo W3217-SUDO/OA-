@@ -52,10 +52,18 @@ export type FinanceUnissuedPageMeta = FinanceAmountPageMeta & {
   totalCashedAmount: number;
   totalPaidAmount: number;
 };
-export type FinanceSettlementPageMeta = FinancePageMeta & { totals: Record<string, number> };
+export type SettlementSourceCounts = {
+  unknown_phase_total?: number;
+  unknown_eligibility_total?: number;
+  unknown_date_total?: number;
+};
+export type FinanceSettlementPageMeta = FinancePageMeta & SettlementSourceCounts & { totals: Record<string, number> };
 export type FinanceFeeQueryMeta = FinancePageMeta & { totals: Record<string, number | null> };
 
 export type LegacyFinanceRecord = {
+  amount_basis?: "legacy_snapshot";
+  source_label?: string;
+  has_local_allocation_activity?: boolean;
   id: number;
   source_table: string;
   legacy_id: string;
@@ -204,7 +212,11 @@ export type Reconciliation = {
   remark: string;
 };
 
+export type FinanceScope = "firm" | "platform" | "unclassified";
+
 export type IncomingPayment = {
+  allocation_status_label?: string;
+  has_local_allocation_activity?: boolean;
   id: number;
   registered_contract_no?: string;
   source_kind?: "manual" | "bank_import" | "system" | "unknown" | "hz_crm_20260930";
@@ -278,11 +290,27 @@ export type AllocationCandidate = {
   remaining_amount: number;
 };
 
-export type ArchiveSettlementTarget = { id: number | string };
+export type HistoricalSettlementIdentity = {
+  amount_basis?: "legacy_snapshot";
+  source_label?: string;
+  has_local_allocation_activity?: boolean;
+  source?: "modern" | "legacy";
+  historical?: boolean;
+  read_only?: boolean;
+  projection_id?: string;
+  legacy_record_id?: number;
+  legacy_allocation_id?: number | null;
+  source_status?: string | null;
+  provenance?: Record<string, unknown>;
+};
 
-export type ArchiveSettlementRow = Omit<Fee, "id"> & { id: string };
+export type SettlementRow = Omit<Fee, "id"> & HistoricalSettlementIdentity & { id: number | string };
 
-export type OriginalFinanceRow = {
+export type ArchiveSettlementTarget = HistoricalSettlementIdentity & { id: number | string };
+
+export type ArchiveSettlementRow = Omit<SettlementRow, "id"> & { id: string };
+
+export type OriginalFinanceRow = HistoricalSettlementIdentity & {
   id: number | string;
   module?: string;
   serial_no?: string;
@@ -306,6 +334,10 @@ export type OriginalFinanceRow = {
   bank_reference?: string;
   allocated_amount?: number | null;
   remaining_amount?: number | null;
+  assigned_official_fee?: IncomingPayment["assigned_official_fee"];
+  assigned_agency_fee?: IncomingPayment["assigned_agency_fee"];
+  assigned_other_fee?: IncomingPayment["assigned_other_fee"];
+  payment_method?: IncomingPayment["payment_method"];
   contract_no?: string;
   remark?: string;
 };

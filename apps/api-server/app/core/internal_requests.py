@@ -255,6 +255,12 @@ async def pending_case_fee_settlements(identity: dict, db: AsyncSession) -> list
     source_ids.update(legacy_source_ids)
     if not source_ids:
         return []
+    from app.core.finance_centers import record_center_conditions
+    source_ids = set((await db.scalars(select(BusinessRecord.id).where(
+        BusinessRecord.id.in_(source_ids), *scope, *record_center_conditions(identity),
+    ))).all())
+    if not source_ids:
+        return []
     rows = await _invoice_case_fee_rows(identity, db, scope="company", ids=source_ids)
     rows = [row for row in rows if
             (row.get("data") or {}).get("base_fee_type") == "代理费"

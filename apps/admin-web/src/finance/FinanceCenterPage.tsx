@@ -1,5 +1,6 @@
 import { FeeTypePicker, matchesFeeTypeSelection, type FeeTypeCatalog } from "./FeeTypePicker";
 import { displayFinancialValue } from "../financialValueDisplay";
+import { isHistoricalSettlement, requireWritableSettlements, settlementSourceMessage } from "./settlementIdentity";
 import { receiptBankCode, matchesReceiptBank } from "./bankReceiptScope";
 import {
 ArrowUpOutlined,
@@ -143,6 +144,9 @@ ArchiveSettlementTarget,
 ArchiveSettlementRow,
 Fee,
 FinanceFlow,
+FinanceScope,
+FinanceSettlementPageMeta,
+SettlementRow,
 FinancePersonOption,
 FinanceSummary,
 IncomingPayment,
@@ -154,17 +158,28 @@ Reconciliation,
 Transaction
 } from "./types";
 
-export default function FinanceCenterPage({
-  initialView,
-  platformMode = false,
-  dashboardQueue = "",
-  onNavigate,
-}: {
+type FinanceCenterPageProps = {
   initialView: string;
   platformMode?: boolean;
   dashboardQueue?: string;
   onNavigate?: (route: string) => void;
-}) {
+};
+
+export default function FinanceCenterPage(props: FinanceCenterPageProps) {
+  return <FinanceCenterContent key={props.platformMode ? "platform" : "firm"} {...props} />;
+}
+
+function FinanceCenterContent({
+  initialView,
+  platformMode = false,
+  dashboardQueue = "",
+  onNavigate,
+}: FinanceCenterPageProps) {
+  const financeScope = platformMode ? "platform" : "firm";
+  const [unclassifiedView, setUnclassifiedView] = useState<string | null>(null);
+  const unclassifiedIncoming = unclassifiedView === initialView;
+  const incomingScope: FinanceScope = unclassifiedIncoming ? "unclassified" : financeScope;
+  useEffect(() => { setUnclassifiedView(null); }, [initialView]);
   const { sessionUser, financeActionGates, refundRequestGuard, invoiceDetailRequestGuard, refundDetailRequestGuard, contractPaymentSourceSearch, contractPaymentSource } = useFinanceRuntimeContext(initialView);
 
   const first = initialView.startsWith("finance-audit")
@@ -211,6 +226,7 @@ export default function FinanceCenterPage({
   const [cases, setCases] = useState<Fee[]>([]);
   const financeFeeRefreshGuard = useMemo(() => createLatestRequestGuard(), []);
   const { openCaseDetail, openContractDetail, openCustomerDetail, loadInternalDetails, loadFinanceProjectionPage, load, loadForTab, loadLegacyFinanceHistory, openLegacyFinanceDetail, exportInternalDetails, exportConfiguredRows } = createFinanceQueriesActions({
+    get financeScope() { return incomingScope; },
     get onNavigate() { return onNavigate; },
     get internalDetailMeta() { return internalDetailMeta; },
     get internalDetailParams() { return internalDetailParams; },
@@ -331,8 +347,8 @@ export default function FinanceCenterPage({
   const [incoming, setIncoming] = useState<IncomingPayment[]>([]);
   const [selectedIncomingRows, setSelectedIncomingRows] = useState<number[]>([]);
   const [pendingSettlements, setPendingSettlements] = useState<Fee[]>([]);
-  const [generalSettlementRows, setGeneralSettlementRows] = useState<Fee[]>([]);
-  const [generalSettlementMeta, setGeneralSettlementMeta] = useState({
+  const [generalSettlementRows, setGeneralSettlementRows] = useState<SettlementRow[]>([]);
+  const [generalSettlementMeta, setGeneralSettlementMeta] = useState<FinanceSettlementPageMeta>({
     total: 0,
     page: 1,
     pageSize: 10,
@@ -357,7 +373,7 @@ export default function FinanceCenterPage({
     closeGeneralSettlementPayment, closeGeneralSettlementReapply,
   } = useGeneralSettlementActionState();
   const [archiveSettlementRows, setArchiveSettlementRows] = useState<ArchiveSettlementRow[]>([]);
-  const [archiveSettlementMeta, setArchiveSettlementMeta] = useState({
+  const [archiveSettlementMeta, setArchiveSettlementMeta] = useState<FinanceSettlementPageMeta>({
     total: 0,
     page: 1,
     pageSize: 10,
@@ -564,7 +580,7 @@ export default function FinanceCenterPage({
   const [selectedOriginalRows, setSelectedOriginalRows] = useState<
     (string | number)[]
   >([]);
-  const { meta: incomingMeta, loading: incomingLoading, load: loadIncomingPayments } = useIncomingPaymentQuery(initialView, setIncoming, setSelectedOriginalRows);
+  const { meta: incomingMeta, loading: incomingLoading, load: loadIncomingPayments } = useIncomingPaymentQuery(initialView, setIncoming, setSelectedOriginalRows, incomingScope);
   const isInternalQueueRoute = isInternalFinanceQuery(initialView);
   const { rows: internalQueueRows, meta: internalQueueMeta, loading: internalQueueLoading, error: internalQueueError, load: loadInternalQueue } = useInternalFinanceQuery(initialView, setSelectedOriginalRows);
   const [paymentPrintPreview, setPaymentPrintPreview] =
@@ -823,7 +839,7 @@ export default function FinanceCenterPage({
     incomingAllocationTarget, setIncomingAllocationTarget, incomingDetailTarget, setIncomingDetailTarget,
     incomingDetailLoading, incomingDetailError, retryIncomingDetail,
     incomingForm, claimForm,
-  } = useFinanceIncomingState(initialView);
+  } = useFinanceIncomingState(initialView, incomingScope);
   const {
     allocateTarget, setAllocateTarget,
     allocationCandidates, setAllocationCandidates, filteredAllocationCandidates,
@@ -961,6 +977,7 @@ export default function FinanceCenterPage({
     };
   };
   const { loadGeneralSettlements, loadArchiveSettlements, submitGeneralSettlementReview, submitGeneralSettlementPayment, submitGeneralSettlementReapply, exportGeneralSettlement, exportPendingArchiveSettlements, submitArchiveSettlementReview, submitArchiveSettlementRollback, submitArchiveSettlementReapply, submitGeneralSettlementApply, openSettlementContext, submitSettlementLog, submitSettlementTask, generateSettlementDocument, submitSettlementBatch } = createFinanceSettlementsActions({
+    get financeScope() { return financeScope; },
     get generalSettlementMeta() { return generalSettlementMeta; },
     get isGeneralSettlementPendingRoute() { return isGeneralSettlementPendingRoute; },
     get generalSettlementParams() { return generalSettlementParams; },
@@ -1317,8 +1334,9 @@ export default function FinanceCenterPage({
     setPaymentPackageMeta({ total: 0, page: 1, pageSize: 15 });
     setGeneralSettlementDetails([]);
     if (initialView !== "finance-legacy-history" && !/^finance-incoming-payment-\d+$/.test(initialView)) void loadForTab(initialTab, defaults);
-  }, [initialView, contractPaymentSourceSearch]);
+  }, [initialView, contractPaymentSourceSearch, incomingScope]);
   const { createIncoming, claimIncoming, openIncomingAllocation, allocateIncoming, deleteIncoming, createTransaction, createReconciliation, confirmReconciliation } = createFinanceAccountingActions({
+    get financeScope() { return incomingScope; },
     get incomingForm() { return incomingForm; },
     get setIncomingOpen() { return setIncomingOpen; },
     get load() { return load; },
@@ -1348,6 +1366,7 @@ export default function FinanceCenterPage({
     get setReconcileOpen() { return setReconcileOpen; },
   });
   const { importBankStatement, searchClaimCustomers, submitFlow } = createFinanceWorkflowActions({
+    get financeScope() { return financeScope; },
     get bankSource() { return initialView.split("-").at(-1) || ""; },
     get load() { return load; },
     get bankUploadRef() { return bankUploadRef; },
@@ -1520,7 +1539,7 @@ export default function FinanceCenterPage({
     row.data?.writeoff_status !== "已核销" && Number(row.data?.paid_amount || 0) === 0 &&
     (canManage || row.owner === currentUser.username || (isContractPayment(row) && row.data?.applicant === currentUser.username));
   const originalIncomingOperation = (_: unknown, r: IncomingPayment) => (
-    <Space size={0}>
+    unclassifiedIncoming ? <Button type="link" onClick={() => setIncomingDetailTarget(r)}>查看</Button> : <Space size={0}>
       {initialView === "finance-receipts-manage" ? (
         canManage && ["manual", "hz_crm_20260930"].includes(r.source_kind || "") && r.amount !== null &&
         <Button type="link" onClick={() => setEditingIncoming(r)}>编辑</Button>
@@ -2138,7 +2157,35 @@ export default function FinanceCenterPage({
       )}
     </Space>
   );
+  const writableSettlementSelection = (targets: ArchiveSettlementTarget[]) => {
+    try {
+      requireWritableSettlements(targets);
+      return true;
+    } catch (error: unknown) {
+      message.warning(financeErrorMessageText(error));
+      return false;
+    }
+  };
+  const openHistoricalSettlement = (row: SettlementRow) => {
+    const recordId = row.legacy_record_id;
+    if (typeof recordId !== "number" || !Number.isSafeInteger(recordId) || recordId <= 0) {
+      message.error("历史结算缺少有效的来源头记录，无法查看");
+      return;
+    }
+    void openLegacyFinanceDetail(recordId, {
+      amount_basis: row.amount_basis,
+      source_label: row.source_label,
+      has_local_allocation_activity: row.has_local_allocation_activity,
+    });
+  };
+  const historicalSettlementOperation = (row: SettlementRow, archive = false) => (
+    <Space orientation="vertical" size={0} className="finance-settlement-row-actions">
+      <Button type="link" style={{ width: 64, minHeight: 44 }} title={`原状态：${row.source_status ?? "未提供"}`} onClick={() => openHistoricalSettlement(row)}>历史只读</Button>
+      <Button type="link" style={{ width: 44, minHeight: 44 }} icon={<DownloadOutlined />} aria-label="导出" title="导出历史结算" onClick={() => void (archive ? exportPendingArchiveSettlements([row.id]) : exportGeneralSettlement("settlement", [row.id]))} />
+    </Space>
+  );
   const openGeneralSettlementReview = (targets: Fee[], approved: boolean) => {
+    if (!writableSettlementSelection(targets)) return;
     if (!targets.length) {
       Modal.info({
         title: "提示",
@@ -2156,6 +2203,7 @@ export default function FinanceCenterPage({
     targets: Fee[],
     action: "paid" | "rollback",
   ) => {
+    if (!writableSettlementSelection(targets)) return;
     if (!targets.length) {
       Modal.info({
         title: "提示",
@@ -2170,6 +2218,7 @@ export default function FinanceCenterPage({
   };
 
   const openGeneralSettlementReapply = (targets: Fee[]) => {
+    if (!writableSettlementSelection(targets)) return;
     if (!targets.length) {
       Modal.info({
         title: "提示",
@@ -2182,7 +2231,10 @@ export default function FinanceCenterPage({
     setGeneralSettlementReapplyTargets(targets);
   };
 
-  const generalSettlementOperation = (_: unknown, row: Fee) => (
+  const generalSettlementOperation = (_: unknown, sourceRow: SettlementRow) => {
+    if (isHistoricalSettlement(sourceRow)) return historicalSettlementOperation(sourceRow);
+    const row = sourceRow as Fee;
+    return (
     <Space size={0} className="finance-settlement-row-actions">
       <Button
         type="link"
@@ -2259,7 +2311,8 @@ export default function FinanceCenterPage({
       )}
     </Space>
   );
-  const archiveSettlementPendingOperation = (_: unknown, row: ArchiveSettlementRow) => (
+  };
+  const archiveSettlementPendingOperation = (_: unknown, row: ArchiveSettlementRow) => isHistoricalSettlement(row) ? historicalSettlementOperation(row, true) : (
     <Space size={0} className="finance-settlement-row-actions">
       {isArchiveSettlementPaidRoute || isArchiveSettlementRejectedRoute ? (
         <Button
@@ -3194,16 +3247,16 @@ export default function FinanceCenterPage({
       导入状态: data.import_status || row.status,
       已分金额: row.allocated_amount ?? data.allocated_amount,
       未分金额: row.remaining_amount ?? data.remaining_amount,
-      已分官费: data.assigned_official_fee,
-      已分代理费: data.assigned_agency_fee,
-      已分其他费用: data.assigned_other_fee,
+      已分官费: activeRouteConfig?.source === "incoming" ? row.assigned_official_fee : data.assigned_official_fee,
+      已分代理费: activeRouteConfig?.source === "incoming" ? row.assigned_agency_fee : data.assigned_agency_fee,
+      已分其他费用: activeRouteConfig?.source === "incoming" ? row.assigned_other_fee : data.assigned_other_fee,
       代理费结算金额: data.agency_settlement_amount,
       扣归档费: data.archive_fee,
       归档费金额: data.archive_fee_amount,
       结算时间: data.settlement_paid_at,
       支付时间: data.settlement_paid_at,
       实际结算金额: data.actual_settlement_amount,
-      回款方式: data.payment_method,
+      回款方式: activeRouteConfig?.source === "incoming" ? row.payment_method : data.payment_method,
       合同号: row.contract_no || data.contract_no,
       合同编号: row.contract_no || data.contract_no,
       发票编号: data.invoice_no,
@@ -3456,7 +3509,7 @@ export default function FinanceCenterPage({
     };
     if (statusByRoute[initialView])
       rows = rows.filter((row) =>
-        statusByRoute[initialView].includes(row.status || ""),
+        (isGeneralSettlementRoute && isHistoricalSettlement(row)) || statusByRoute[initialView].includes(row.status || ""),
       );
     if (isFeeQueryRoute || isGeneralSettlementRoute || isInternalDetailRoute || isInvoiceMineRoute || isInvoicePendingRoute || isInvoiceCompanyRoute || isInvoiceUnissuedRoute)
       return rows;
@@ -3945,6 +3998,7 @@ export default function FinanceCenterPage({
   };
 
   const openArchiveSettlementReview = (targets: ArchiveSettlementTarget[], approved: boolean) => {
+    if (!writableSettlementSelection(targets)) return;
     if (!targets.length) {
       Modal.info({
         title: "提示",
@@ -3959,6 +4013,7 @@ export default function FinanceCenterPage({
   };
 
   const openArchiveSettlementRollback = (targets: ArchiveSettlementTarget[]) => {
+    if (!writableSettlementSelection(targets)) return;
     if (!targets.length) {
       Modal.info({
         title: "提示",
@@ -3972,6 +4027,7 @@ export default function FinanceCenterPage({
   };
 
   const openArchiveSettlementReapply = (targets: ArchiveSettlementTarget[]) => {
+    if (!writableSettlementSelection(targets)) return;
     if (!targets.length) {
       Modal.info({
         title: "提示",
@@ -3986,6 +4042,7 @@ export default function FinanceCenterPage({
 
   const applyGeneralSettlementRows = (ids?: (string | number)[]) => {
     const selectedIds = ids ?? selectedOriginalRows;
+    if (!writableSettlementSelection(selectedIds.map(id => ({ id })))) return;
     if (!selectedIds.length) {
       Modal.info({
         title: "提示",
@@ -4002,6 +4059,7 @@ export default function FinanceCenterPage({
     selectedOriginalRows.includes(row.id),
   );
   const selectedSettlementCases = (notify = true) => {
+    if (!writableSettlementSelection(selectedSettlementRows)) return [];
     if (!selectedSettlementRows.length) {
       if (notify) message.warning(isInvoiceUnissuedRoute ? "请选择案件." : "请先选择案件费用");
       return [];
@@ -4032,6 +4090,7 @@ export default function FinanceCenterPage({
   };
 
   const runSettlementMoreAction = (key: string) => {
+    if (!writableSettlementSelection(selectedOriginalRows.map(id => ({ id })))) return;
     if (key === "mark-paid") {
       if (!selectedOriginalRows.length) {
         message.warning("请选择需要标记的案件费用");
@@ -4045,7 +4104,7 @@ export default function FinanceCenterPage({
         onOk: async () => {
           setSettlementActionLoading(true);
           try {
-            await markSettlementCommissionPaid(selectedOriginalRows.map(Number));
+            await markSettlementCommissionPaid(selectedOriginalRows.map(Number), financeScope);
             message.success("提成发放标识已更新");
             setSelectedOriginalRows([]);
             await load();
@@ -4693,7 +4752,7 @@ export default function FinanceCenterPage({
         <Descriptions.Item label="回款单位">{incomingDetailTarget.payer_name || "—"}</Descriptions.Item>
         <Descriptions.Item label="到账日期">{displayFinancialValue(incomingDetailTarget.received_date || "—")}</Descriptions.Item>
         <Descriptions.Item label="银行单号">{incomingDetailTarget.bank_reference || "—"}</Descriptions.Item>
-        <Descriptions.Item label="回款方式">{incomingDetailTarget.payment_method || incomingDetailTarget.bank_source || "—"}</Descriptions.Item>
+        <Descriptions.Item label="回款方式">{displayFinancialValue(incomingDetailTarget.payment_method) || "—"}</Descriptions.Item>
         <Descriptions.Item label="合同号">{incomingDetailTarget.contract_no || "—"}</Descriptions.Item>
         <Descriptions.Item label="客户名称">{incomingDetailTarget.customer_name || incomingDetailTarget.claimed_customer || "—"}</Descriptions.Item>
         <Descriptions.Item label="到账金额">{incomingDetailTarget.amount == null ? "无权限" : money(incomingDetailTarget.amount)}</Descriptions.Item>
@@ -4736,10 +4795,10 @@ export default function FinanceCenterPage({
     </section>
   ) : null;
 
-  if (editingIncoming) return <ReceiptCreatePage payment={editingIncoming}
+  if (editingIncoming) return <ReceiptCreatePage payment={editingIncoming} financeScope={financeScope}
     onCancel={() => setEditingIncoming(null)}
     onSaved={() => { setEditingIncoming(null); void load(); }} />;
-  if (initialView === "finance-receipts-new") return <ReceiptCreatePage />;
+  if (initialView === "finance-receipts-new") return <ReceiptCreatePage financeScope={financeScope} />;
 
   if (initialView === "finance-jar") {
     return <JarFeeManager onNavigate={onNavigate} />;
@@ -4946,10 +5005,27 @@ export default function FinanceCenterPage({
     onOpen: () => setInvoiceOpen(true),
   } satisfies FinanceInvoicesViewProps;
 
+  const settlementSourceWarning = isGeneralSettlementRoute
+    ? settlementSourceMessage(generalSettlementMeta)
+    : isArchiveSettlementActiveRoute ? settlementSourceMessage(archiveSettlementMeta) : "";
   const originalQueryView = {
     initialView, originalKind, title: displayedOriginalTitle,
-    sourceNotice: contractPaymentSourceNotice, fields: originalFields,
-    routeConfig: activeRouteConfig, contractPaymentSource, bankUploadRef,
+    sourceNotice: <>{contractPaymentSourceNotice}{settlementSourceWarning && <Alert type="warning" showIcon message={settlementSourceWarning} />}{["finance-receipts-manage", "finance-receipts-query"].includes(initialView) && role === "admin" && (
+      <Alert type="info" showIcon style={{ flexWrap: "wrap", gap: 8 }} message={`待确认归属回款：${incomingMeta.unclassifiedTotal} 笔${unclassifiedIncoming ? "（只读）" : ""}`}
+        action={<Button onClick={() => {
+          setIncomingDetailTarget(null);
+          setIncomingAllocationTarget(null);
+          setEditingIncoming(null);
+          setClaimTarget(null);
+          setAllocateTarget(null);
+          setSelectedOriginalRows([]);
+          setSelectedIncomingRows([]);
+          setOriginalQuery({});
+          setOriginalQueryDraft({});
+          setUnclassifiedView(unclassifiedIncoming ? null : initialView);
+        }}>{unclassifiedIncoming ? "返回当前中心" : "查看待确认"}</Button>} />
+    )}</>, fields: originalFields,
+    routeConfig: unclassifiedIncoming && activeRouteConfig ? { ...activeRouteConfig, upload: false } : activeRouteConfig, contractPaymentSource, bankUploadRef,
     onImportBankStatement: importBankStatement, onSubmit: submitConfiguredQuery,
     onClear: clearConfiguredQuery, onRefresh: load, originalQuery,
     paymentPackageMeta, onLoadPaymentPackages: loadPaymentPackages,
@@ -5296,6 +5372,7 @@ export default function FinanceCenterPage({
   } satisfies RefundBatchStatusModalProps;
 
   const viewProps = {
+    financeScope: incomingScope,
     originalRoutesView,
     standardTabsView,
     settlementBatchModal,

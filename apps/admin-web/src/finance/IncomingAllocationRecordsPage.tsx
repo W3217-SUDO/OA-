@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Descriptions, Input, InputNumber, message, Select, Space } from "antd";
 import Table from "../components/ResizableTable";
-import { api } from "../api";
+import { financeCenterApi } from "./services/financeCenterApi";
+import type { FinanceScope } from "./types";
 import { money } from "./constants";
 import { displayFinancialValue } from "../financialValueDisplay";
 import { CopyValue } from "./CopyValue";
@@ -9,9 +10,11 @@ import { CopyValue } from "./CopyValue";
 type Allocation = { index: number; case_no: string; contract_no: string; case_title: string; case_type: string; court_keywords: string; fee_type: string; case_stage: string; plaintiff: string; defendant: string; fee_amount: number | null; fee_received: number | null; fee_remaining: number | null; amount: number; allocated_at: string };
 type Result = { payment: { receipt_no: string; payer_name: string; received_date: string; amount: number; allocated_amount: number; remaining_amount: number; bank_reference: string; claimed_customer: string; claimant_display_name: string; contract_no: string; payment_method: string; remark: string }; items: Allocation[]; revision: string; can_cancel: boolean };
 
-export function IncomingAllocationRecordsPage({ paymentId, onClose, onChange, onCase, onContract }: {
+export function IncomingAllocationRecordsPage({ paymentId, financeScope, onClose, onChange, onCase, onContract }: {
+  financeScope: FinanceScope;
   paymentId: number; onClose: () => void; onChange: () => Promise<unknown>; onCase: (value: string) => unknown; onContract: (value: string) => unknown;
 }) {
+  const api = financeCenterApi(financeScope);
   const [result, setResult] = useState<Result>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -27,7 +30,7 @@ export function IncomingAllocationRecordsPage({ paymentId, onClose, onChange, on
     setBusy(true);
     api.get<Result>(`/finance/incoming-payments/${paymentId}/allocation-records`).then(({ data }) => { if (active) setResult(data); }).catch((err) => { if (active) setError(err.response?.data?.detail || "分配记录加载失败"); }).finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [paymentId]);
+  }, [paymentId, financeScope]);
   const cancel = async () => {
     if (!result || !selected.length || busy) return;
     setBusy(true); setError("");
@@ -51,7 +54,7 @@ export function IncomingAllocationRecordsPage({ paymentId, onClose, onChange, on
       { key: "allocated", label: "已分配", children: payment ? money(payment.allocated_amount) : "—" },
       { key: "remaining", label: "未分配", children: payment ? money(payment.remaining_amount) : "—" },
       { key: "customer", label: "客户名称", children: payment?.claimed_customer },
-      { key: "method", label: "回款方式", children: payment?.payment_method },
+      { key: "method", label: "回款方式", children: displayFinancialValue(payment?.payment_method) || "—" },
       { key: "claimant", label: "领取人", children: payment?.claimant_display_name },
       { key: "contract", label: "合同号", children: <CopyValue value={payment?.contract_no} /> },
       { key: "remark", label: "备注", children: <CopyValue value={payment?.remark} />, span: 2 },
@@ -75,6 +78,6 @@ export function IncomingAllocationRecordsPage({ paymentId, onClose, onChange, on
       { title: "待收", dataIndex: "fee_remaining", align: "right", render: value => value == null ? "—" : money(value) },
       { title: "分配金额", dataIndex: "amount", align: "right", render: money }, { title: "分配时间", dataIndex: "allocated_at", width: 180, render: (value: string) => displayFinancialValue(value) },
     ]} />
-    <Button danger disabled={!result?.can_cancel || !selected.length} loading={busy} onClick={() => void cancel()}>取消分配（{selected.length}）</Button>
+    {financeScope !== "unclassified" && <Button danger disabled={!result?.can_cancel || !selected.length} loading={busy} onClick={() => void cancel()}>取消分配（{selected.length}）</Button>}
   </Card>;
 }

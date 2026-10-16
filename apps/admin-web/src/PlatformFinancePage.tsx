@@ -21,6 +21,8 @@ import type { TableColumnsType } from "antd";
 import { DownloadOutlined, EyeOutlined, ReloadOutlined, SearchOutlined, UndoOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "./api";
+import { financeCenterApi } from "./finance/services/financeCenterApi";
+import type { FinanceScope } from "./finance/types";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
@@ -511,11 +513,13 @@ function makeBankReference() {
   return `${dayjs().format("YYMMDD")}-${suffix}`;
 }
 
-export function ReceiptCreatePage({ payment, onSaved, onCancel }: {
+export function ReceiptCreatePage({ payment, financeScope, onSaved, onCancel }: {
   payment?: import("./finance/types").IncomingPayment;
+  financeScope: Exclude<FinanceScope, "unclassified">;
   onSaved?: () => void;
   onCancel?: () => void;
-} = {}) {
+}) {
+  const api = financeCenterApi(financeScope);
   const [form] = Form.useForm<ReceiptCreateValues>();
   const selectedCustomer = Form.useWatch("customer", form);
   const [receiptNo, setReceiptNo] = useState(makeReceiptNo);
@@ -530,7 +534,7 @@ export function ReceiptCreatePage({ payment, onSaved, onCancel }: {
     form.setFieldsValue({
       payerName: payment.payer_name, customer: payment.claimed_customer || undefined,
       receivedDate: dayjs(payment.received_date), amount: payment.amount ?? undefined,
-      method: /(?:^|；)回款方式：([^；]*)/.exec(payment.remark || "")?.[1] || payment.payment_method || undefined, bankReference: payment.bank_reference,
+      method: payment.payment_method || undefined, bankReference: payment.bank_reference,
       bankSource: payment.bank_source || undefined,
       contractNo: payment.registered_contract_no || undefined,
       remark: (payment.remark || "").split("；").filter((part) => !/^(客户|回款方式)：/.test(part)).join("；"),
@@ -562,12 +566,12 @@ export function ReceiptCreatePage({ payment, onSaved, onCancel }: {
     try {
       const extra = [
         values.customer && `客户：${values.customer}`,
-        values.method && `回款方式：${values.method}`,
         values.remark,
       ].filter(Boolean);
       const payload = {
         received_date: formatRequiredDate(values.receivedDate, "回款时间"),
         amount: values.amount,
+        payment_method: values.method,
         payer_name: values.payerName,
         bank_source: values.bankSource?.trim() || "",
         bank_reference: values.bankReference?.trim() || "",
@@ -744,7 +748,7 @@ export default function PlatformFinancePage({
     setLoading(true);
     try {
       if (config.kind === "receipt") {
-        const { data } = await api.get("/finance/incoming-payments");
+        const { data } = await financeCenterApi("platform").get("/finance/incoming-payments");
         setSourceRows(data.items || []);
       } else {
         const module = config.kind === "invoice" ? "invoice" : "finance";
@@ -775,7 +779,7 @@ export default function PlatformFinancePage({
     config.kind,
   );
 
-  if (config.kind === "receipt-create") return <ReceiptCreatePage />;
+  if (config.kind === "receipt-create") return <ReceiptCreatePage financeScope="platform" />;
 
   const money = (value: unknown) => {
     if (typeof value === "string" && displayFinancialValue(value) !== value) return "—";
@@ -858,7 +862,10 @@ export default function PlatformFinancePage({
         银行单据号: data.bank_reference || item.bank_reference || "—",
         已分金额: money(item.allocated_amount),
         未分金额: money(item.remaining_amount),
-        回款方式: data.payment_method || "银行转账",
+        已分官费: money(item.assigned_official_fee),
+        已分代理费: money(item.assigned_agency_fee),
+        已分其他费用: money(item.assigned_other_fee),
+        回款方式: (config.kind === "receipt" ? item.payment_method : data.payment_method) || "—",
         备注: item.remark || item.description || "—",
         请款单号: item.serial_no || "—",
         请票单号: item.serial_no || "—",

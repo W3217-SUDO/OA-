@@ -2,7 +2,7 @@
 
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, Depends, HTTPException, IncomingPayment, Query, Response,
-    WorkflowEvent, current_identity, date, datetime, delete, get_db, quote, select, settings, status,
+    WorkflowEvent, date, datetime, delete, get_db, quote, select, settings, status,
     xml_escape,
 )
 from app.models_shared import (
@@ -10,9 +10,18 @@ from app.models_shared import (
     ArchiveSettlementRollbackInput, FinanceSettlementApplyInput, FinanceSettlementPaymentInput,
     FinanceSettlementReapplyInput, FinanceSettlementReviewInput,
 )
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from app.core.incoming_settlement import (_active_settlements_by_receipt, _settlement_financial_snapshot)
 from app.core.incoming_allocation_projection import normalize_settlement_allocation_times
+from app.core.finance_centers import (
+    finance_center_identity as current_identity, settlement_center_conditions,
+    require_incoming_center, incoming_source_statement,
+    legacy_incoming_status_counts,
+)
+from app.core.imported_settlement_projection import read_imported_settlement_page
+from app.areas.finance.imported_settlement_exports import (
+    append_imported_export_rows, enrich_general_export_rows, query_export_rows,
+)
 
 router = APIRouter()
 
@@ -39,9 +48,12 @@ async def list_general_settlement_candidates(
         customer_manager=customer_manager, source_person=source_person,
     )
     amount_keys = ["receipt_amount", "allocated_amount", "remaining_amount", "assigned_official_fee", "assigned_agency_fee", "assigned_other_fee", "agency_settlement_amount", "archive_fee", "actual_settlement_amount"]
-    totals = {key: _round_fee_amount(sum(float((row.get("data") or {}).get(key) or 0) for row in rows)) for key in amount_keys}
+    totals = {key: (None if any((row.get("data") or {}).get(key) is None for row in rows) else
+                   _round_fee_amount(sum(float(row["data"][key]) for row in rows))) for key in amount_keys}
     start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": len(rows), "totals": totals, "page": page, "page_size": page_size}
+    source_statuses = await legacy_incoming_status_counts(identity, db)
+    return {"items": rows[start:start + page_size], "total": len(rows), "totals": totals, "page": page, "page_size": page_size,
+            **source_statuses}
 
 
 @router.post(f"{settings.api_prefix}/finance/general-settlements/apply", status_code=status.HTTP_201_CREATED)
@@ -50,11 +62,13 @@ async def apply_general_settlements(body: FinanceSettlementApplyInput, identity:
         _general_settlement_rows,
     )
     receipt_ids = list(dict.fromkeys(body.receipt_ids))
-    locked_receipts = list((await db.scalars(select(IncomingPayment).where(
+    locked_receipts = list((await db.scalars(incoming_source_statement().where(
         IncomingPayment.id.in_(receipt_ids),
-    ).with_for_update())).all())
+    ).with_for_update(of=IncomingPayment))).all())
     if len(locked_receipts) != len(receipt_ids):
         raise HTTPException(status_code=404, detail="部分回款不存在")
+    for receipt in locked_receipts:
+        require_incoming_center(receipt, identity)
     active_settlements = await _active_settlements_by_receipt(db, set(receipt_ids))
     if active_settlements:
         blocked = [active_settlements[receipt_id].serial_no for receipt_id in receipt_ids if receipt_id in active_settlements]
@@ -99,7 +113,7 @@ async def list_pending_archive_settlements(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import (
-        _pending_archive_settlement_rows, _round_fee_amount,
+        _pending_archive_settlement_rows,
     )
     for start_date, end_date, label in (
         (received_from, received_to, "回款"),
@@ -114,30 +128,30 @@ async def list_pending_archive_settlements(
         settled_from=settled_from, settled_to=settled_to, case_no=case_no,
         customer=customer, reviewer=reviewer,
     )
-    totals = {
-        "receipt_amount": _round_fee_amount(sum(float((row.get("data") or {}).get("receipt_amount") or 0) for row in rows)),
-        "archive_fee_amount": _round_fee_amount(sum(float((row.get("data") or {}).get("archive_fee_amount") or 0) for row in rows)),
-    }
-    start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": len(rows), "totals": totals, "page": page, "page_size": page_size}
+    return await read_imported_settlement_page(rows, identity, db, mode="pending", filters=locals(), page=page, page_size=page_size)
 
 
 @router.get(f"{settings.api_prefix}/finance/archive-settlements/export")
 async def export_pending_archive_settlements(
     ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    projection_ids: str = "", request: Request = None,
 ):
     from app.core.finance import (
         _pending_archive_settlement_rows,
     )
     selected_ids = {item.strip() for item in ids.split(",") if item.strip()}
-    if not selected_ids:
-        raise HTTPException(status_code=422, detail="请选择需要导出的归档费.")
-    rows = await _pending_archive_settlement_rows(identity, db, selected_ids=selected_ids)
-    if len(rows) != len(selected_ids):
-        raise HTTPException(status_code=409, detail="部分归档费不存在、已进入下一环节或无权导出")
-    from app.areas.finance.excel_templates import render_rows
+    if not selected_ids and not projection_ids.strip():
+        rows = await query_export_rows(list_pending_archive_settlements, request, identity, db)
+    else:
+        rows = await _pending_archive_settlement_rows(identity, db, selected_ids=selected_ids)
+        if len(rows) != len(selected_ids):
+            raise HTTPException(status_code=409, detail="部分归档费不存在、已进入下一环节或无权导出")
+        rows = await append_imported_export_rows(rows, projection_ids, identity, db, mode="pending")
+    if not rows:
+        raise HTTPException(422, "没有可导出的归档费记录")
+    from app.areas.finance.imported_settlement_exports import render_archive_settlement_export
     from app.areas.finance.export_projection import archive_export_values
-    workbook = render_rows("F37", await archive_export_values(rows, identity, db))
+    workbook = render_archive_settlement_export("F37", await archive_export_values(rows, identity, db), rows)
     filename = f"待归档-{date.today()}.xls"
     return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=archive-settlement.xls; filename*=UTF-8''{quote(filename)}"})
 
@@ -154,7 +168,7 @@ async def list_archive_settlement_payments(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import (
-        _pending_archive_settlement_rows, _round_fee_amount,
+        _pending_archive_settlement_rows,
     )
     for start_date, end_date, label in (
         (received_from, received_to, "回款"),
@@ -171,12 +185,7 @@ async def list_archive_settlement_payments(
         customer=customer, reviewer=reviewer, archive_from=archive_from,
         archive_to=archive_to, require_archived=True,
     )
-    totals = {
-        "receipt_amount": _round_fee_amount(sum(float((row.get("data") or {}).get("receipt_amount") or 0) for row in rows)),
-        "archive_fee_amount": _round_fee_amount(sum(float((row.get("data") or {}).get("archive_fee_amount") or 0) for row in rows)),
-    }
-    start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": len(rows), "totals": totals, "page": page, "page_size": page_size}
+    return await read_imported_settlement_page(rows, identity, db, mode="payment", filters=locals(), page=page, page_size=page_size)
 
 
 @router.post(f"{settings.api_prefix}/finance/archive-settlements/payment/review")
@@ -208,6 +217,7 @@ async def review_archive_settlement_payments(
         BusinessRecord.module == "finance_archive_settlement",
         BusinessRecord.status == "已回滚",
         *_settlement_application_scope(identity),
+        *settlement_center_conditions(identity),
     ))).all())
     reusable_by_source = {str((item.data or {}).get("source_row_id") or ""): item for item in reusable}
     created: list[BusinessRecord] = []
@@ -270,19 +280,24 @@ async def review_archive_settlement_payments(
 @router.get(f"{settings.api_prefix}/finance/archive-settlements/payment/export")
 async def export_archive_settlement_payments(
     ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    projection_ids: str = "", request: Request = None,
 ):
     from app.core.finance import (
         _pending_archive_settlement_rows,
     )
     selected_ids = {item.strip() for item in ids.split(",") if item.strip()}
-    if not selected_ids:
-        raise HTTPException(status_code=422, detail="请选择需要导出的归档费.")
-    rows = await _pending_archive_settlement_rows(identity, db, require_archived=True, selected_ids=selected_ids)
-    if len(rows) != len(selected_ids):
-        raise HTTPException(status_code=409, detail="部分归档费不存在、已处理或无权导出")
-    from app.areas.finance.excel_templates import render_rows
+    if not selected_ids and not projection_ids.strip():
+        rows = await query_export_rows(list_archive_settlement_payments, request, identity, db)
+    else:
+        rows = await _pending_archive_settlement_rows(identity, db, require_archived=True, selected_ids=selected_ids)
+        if len(rows) != len(selected_ids):
+            raise HTTPException(status_code=409, detail="部分归档费不存在、已处理或无权导出")
+        rows = await append_imported_export_rows(rows, projection_ids, identity, db, mode="payment")
+    if not rows:
+        raise HTTPException(422, "没有可导出的归档费记录")
+    from app.areas.finance.imported_settlement_exports import render_archive_settlement_export
     from app.areas.finance.export_projection import archive_export_values
-    workbook = render_rows("F39", await archive_export_values(rows, identity, db))
+    workbook = render_archive_settlement_export("F39", await archive_export_values(rows, identity, db), rows)
     filename = f"待支付归档费-{date.today()}.xls"
     return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=archive-settlement.xls; filename*=UTF-8''{quote(filename)}"})
 
@@ -300,7 +315,7 @@ async def list_paid_archive_settlements(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import (
-        _archive_settlement_decision_rows, _round_fee_amount,
+        _archive_settlement_decision_rows,
     )
     for start_date, end_date, label in (
         (received_from, received_to, "回款"), (settled_from, settled_to, "结算支付"),
@@ -316,12 +331,7 @@ async def list_paid_archive_settlements(
         customer=customer, reviewer=reviewer, archive_from=archive_from,
         archive_to=archive_to, payment_from=payment_from, payment_to=payment_to,
     )
-    totals = {
-        "receipt_amount": _round_fee_amount(sum(float((row.get("data") or {}).get("receipt_amount") or 0) for row in rows)),
-        "archive_fee_amount": _round_fee_amount(sum(float((row.get("data") or {}).get("archive_fee_amount") or 0) for row in rows)),
-    }
-    start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": len(rows), "totals": totals, "page": page, "page_size": page_size}
+    return await read_imported_settlement_page(rows, identity, db, mode="paid", filters=locals(), page=page, page_size=page_size)
 
 
 @router.post(f"{settings.api_prefix}/finance/archive-settlements/paid/rollback")
@@ -344,6 +354,7 @@ async def rollback_paid_archive_settlements(
         BusinessRecord.module == "finance_archive_settlement",
         BusinessRecord.status == "已支付",
         *_settlement_application_scope(identity),
+        *settlement_center_conditions(identity),
     ))).all())
     if len(records) != len(record_ids):
         raise HTTPException(status_code=409, detail="部分归档费不存在、不是已支付状态或无权回滚")
@@ -368,6 +379,7 @@ async def rollback_paid_archive_settlements(
 @router.get(f"{settings.api_prefix}/finance/archive-settlements/paid/export")
 async def export_paid_archive_settlements(
     ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    projection_ids: str = "", request: Request = None,
 ):
     from app.core.finance import (
         _archive_settlement_decision_rows,
@@ -376,14 +388,18 @@ async def export_paid_archive_settlements(
         selected_ids = {int(item.strip()) for item in ids.split(",") if item.strip()}
     except ValueError:
         raise HTTPException(status_code=422, detail="归档费记录编号无效")
-    if not selected_ids:
-        raise HTTPException(status_code=422, detail="请选择需要导出的归档费.")
-    rows = await _archive_settlement_decision_rows(identity, db, statuses={"已支付"}, selected_ids=selected_ids)
-    if len(rows) != len(selected_ids):
-        raise HTTPException(status_code=409, detail="部分归档费不存在、已回滚或无权导出")
-    from app.areas.finance.excel_templates import render_rows
+    if not selected_ids and not projection_ids.strip():
+        rows = await query_export_rows(list_paid_archive_settlements, request, identity, db)
+    else:
+        rows = await _archive_settlement_decision_rows(identity, db, statuses={"已支付"}, selected_ids=selected_ids)
+        if len(rows) != len(selected_ids):
+            raise HTTPException(status_code=409, detail="部分归档费不存在、已回滚或无权导出")
+        rows = await append_imported_export_rows(rows, projection_ids, identity, db, mode="paid")
+    if not rows:
+        raise HTTPException(422, "没有可导出的归档费记录")
+    from app.areas.finance.imported_settlement_exports import render_archive_settlement_export
     from app.areas.finance.export_projection import archive_export_values
-    workbook = render_rows("F35", await archive_export_values(rows, identity, db))
+    workbook = render_archive_settlement_export("F35", await archive_export_values(rows, identity, db), rows)
     filename = f"已支付归档费-{date.today()}.xls"
     return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=archive-settlement.xls; filename*=UTF-8''{quote(filename)}"})
 
@@ -400,7 +416,7 @@ async def list_rejected_archive_settlements(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import (
-        _archive_settlement_decision_rows, _round_fee_amount,
+        _archive_settlement_decision_rows,
     )
     for start_date, end_date, label in (
         (received_from, received_to, "回款"),
@@ -417,12 +433,7 @@ async def list_rejected_archive_settlements(
         case_no=case_no, customer=customer, reviewer=reviewer,
         reviewed_from=reviewed_from, reviewed_to=reviewed_to,
     )
-    totals = {
-        "receipt_amount": _round_fee_amount(sum(float((row.get("data") or {}).get("receipt_amount") or 0) for row in rows)),
-        "archive_fee_amount": _round_fee_amount(sum(float((row.get("data") or {}).get("archive_fee_amount") or 0) for row in rows)),
-    }
-    start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": len(rows), "totals": totals, "page": page, "page_size": page_size}
+    return await read_imported_settlement_page(rows, identity, db, mode="rejected", filters=locals(), page=page, page_size=page_size)
 
 
 @router.post(f"{settings.api_prefix}/finance/archive-settlements/rejected/rollback")
@@ -488,6 +499,7 @@ async def reapply_rejected_archive_settlements(
 @router.get(f"{settings.api_prefix}/finance/archive-settlements/rejected/export")
 async def export_rejected_archive_settlements(
     ids: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    projection_ids: str = "", request: Request = None,
 ):
     from app.core.finance import (
         _archive_settlement_decision_rows,
@@ -496,11 +508,15 @@ async def export_rejected_archive_settlements(
         selected_ids = {int(item.strip()) for item in ids.split(",") if item.strip()}
     except ValueError:
         raise HTTPException(status_code=422, detail="归档费记录编号无效")
-    if not selected_ids:
-        raise HTTPException(status_code=422, detail="请选择案件.")
-    rows = await _archive_settlement_decision_rows(identity, db, statuses={"已拒绝"}, selected_ids=selected_ids)
-    if len(rows) != len(selected_ids):
-        raise HTTPException(status_code=409, detail="部分归档费不存在、已重新申请或无权导出")
+    if not selected_ids and not projection_ids.strip():
+        rows = await query_export_rows(list_rejected_archive_settlements, request, identity, db)
+    else:
+        rows = await _archive_settlement_decision_rows(identity, db, statuses={"已拒绝"}, selected_ids=selected_ids)
+        if len(rows) != len(selected_ids):
+            raise HTTPException(status_code=409, detail="部分归档费不存在、已重新申请或无权导出")
+        rows = await append_imported_export_rows(rows, projection_ids, identity, db, mode="rejected")
+    if not rows:
+        raise HTTPException(422, "没有可导出的归档费记录")
     headers = ["案号", "客户", "案件阶段", "律师助理", "开庭律师", "客户管理人", "费用类型", "回款方式", "回款时间", "回款金额", "归档费金额", "结算时间", "支付状态"]
     numeric = {9, 10}
     values = [[
@@ -515,7 +531,8 @@ async def export_rejected_archive_settlements(
         return f'<Cell><Data ss:Type="{"Number" if number else "String"}">{xml_escape(value_text)}</Data></Cell>'
     sheet_rows = ["<Row>" + "".join(cell(value) for value in headers) + "</Row>"]
     sheet_rows.extend("<Row>" + "".join(cell(value, number=index in numeric and value is not None) for index, value in enumerate(row)) + "</Row>" for row in values)
-    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="已拒绝"><Table>' + "".join(sheet_rows) + "</Table></Worksheet></Workbook>"
+    from app.areas.finance.imported_settlement_exports import settlement_provenance_xml
+    workbook = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="已拒绝"><Table>' + "".join(sheet_rows) + "</Table></Worksheet>" + settlement_provenance_xml(rows) + "</Workbook>"
     filename = f"已拒绝归档费-{date.today()}.xls"
     disposition = f"attachment; filename=archive-settlement-rejected.xls; filename*=UTF-8''{quote(filename)}"
     return Response(content=workbook.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
@@ -534,9 +551,6 @@ async def list_general_settlement_applications(
     page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=200),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
-    from app.core.finance import (
-        _round_fee_amount,
-    )
     from app.core.permissions import (
         _record_dicts_for_identity, _settlement_application_scope,
     )
@@ -556,6 +570,7 @@ async def list_general_settlement_applications(
         BusinessRecord.module == "finance_settlement",
         BusinessRecord.status.in_(application_statuses),
         *_settlement_application_scope(identity),
+        *settlement_center_conditions(identity),
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
 
     def contains(value: object, needle: str) -> bool:
@@ -620,10 +635,8 @@ async def list_general_settlement_applications(
             item["data"] = normalize_settlement_allocation_times(
                 item["data"], payment.allocations or [], receipt_no=payment.receipt_no,
             )
-    amount_keys = ["receipt_amount", "allocated_amount", "remaining_amount", "assigned_official_fee", "assigned_agency_fee", "assigned_other_fee", "agency_settlement_amount", "archive_fee", "actual_settlement_amount"]
-    totals = {key: _round_fee_amount(sum(float((item.get("data") or {}).get(key) or 0) for item in items)) for key in amount_keys}
-    start = (page - 1) * page_size
-    return {"items": items[start:start + page_size], "total": len(items), "totals": totals, "page": page, "page_size": page_size}
+    return await read_imported_settlement_page(items, identity, db, mode="normal", statuses=application_statuses,
+                                               filters=locals(), page=page, page_size=page_size)
 
 
 @router.post(f"{settings.api_prefix}/finance/general-settlements/applications/reapply")
@@ -642,6 +655,7 @@ async def reapply_general_settlement_applications(body: FinanceSettlementReapply
         BusinessRecord.id.in_(application_ids),
         BusinessRecord.module == "finance_settlement",
         *_settlement_application_scope(identity),
+        *settlement_center_conditions(identity),
     ))).all())
     if len(records) != len(application_ids):
         raise HTTPException(status_code=404, detail="部分结算申请不存在或无权访问")
@@ -714,6 +728,7 @@ async def review_general_settlement_applications(body: FinanceSettlementReviewIn
         BusinessRecord.id.in_(application_ids),
         BusinessRecord.module == "finance_settlement",
         *_settlement_application_scope(identity),
+        *settlement_center_conditions(identity),
     ))).all())
     if len(records) != len(application_ids):
         raise HTTPException(status_code=404, detail="部分结算申请不存在或无权访问")
@@ -778,6 +793,7 @@ async def pay_or_rollback_general_settlement_applications(body: FinanceSettlemen
         BusinessRecord.id.in_(application_ids),
         BusinessRecord.module == "finance_settlement",
         *_settlement_application_scope(identity),
+        *settlement_center_conditions(identity),
     ))).all())
     if len(records) != len(application_ids):
         raise HTTPException(status_code=404, detail="部分结算申请不存在或无权访问")
@@ -795,6 +811,7 @@ async def pay_or_rollback_general_settlement_applications(body: FinanceSettlemen
             BusinessRecord.module == "finance_archive_settlement",
             BusinessRecord.status.in_({"已支付", "已拒绝"}),
             *_settlement_application_scope(identity),
+            *settlement_center_conditions(identity),
         ))).all())
         blocked_application_ids = {
             int((decision.data or {}).get("source_application_id") or 0)
@@ -863,6 +880,7 @@ async def export_general_settlements(
     payer: str = "", payment_method: str = "", case_customer: str = "", hearing_lawyer: str = "",
     assistant: str = "", customer_manager: str = "", source_person: str = "",
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    projection_ids: str = "", request: Request = None,
 ):
     from app.core.finance import _general_settlement_rows
     from app.areas.finance.settlement_export_templates import render_general_settlement_export
@@ -872,7 +890,9 @@ async def export_general_settlements(
     from app.core.system import (
         _export_ids,
     )
-    if application_ids.strip():
+    if not application_ids.strip() and not ids.strip() and not projection_ids.strip() and request is not None and request.query_params.get("status"):
+        rows = await query_export_rows(list_general_settlement_applications, request, identity, db)
+    elif application_ids.strip():
         selected_application_ids = set(_export_ids(application_ids))
         if not selected_application_ids:
             raise HTTPException(status_code=422, detail="请选择需要导出的结算申请.")
@@ -880,6 +900,7 @@ async def export_general_settlements(
             BusinessRecord.id.in_(selected_application_ids),
             BusinessRecord.module == "finance_settlement",
             *_settlement_application_scope(identity),
+            *settlement_center_conditions(identity),
         ))).all())
         if len(records) != len(selected_application_ids):
             raise HTTPException(status_code=409, detail="部分结算申请不存在或无权导出")
@@ -889,6 +910,8 @@ async def export_general_settlements(
             "customer": record.customer,
             "data": record.data or {},
         } for record in records]
+    elif projection_ids.strip() and not ids.strip():
+        rows = []
     else:
         selected_ids = set(_export_ids(ids)) if ids.strip() else None
         if selected_ids is not None and not selected_ids:
@@ -901,10 +924,10 @@ async def export_general_settlements(
             hearing_lawyer=hearing_lawyer, assistant=assistant, customer_manager=customer_manager, source_person=source_person)
         if selected_ids is not None and len({int(row["id"]) for row in rows}) != len(selected_ids):
             raise HTTPException(status_code=409, detail="部分回款已申请结算、尚未分配或无权导出")
+    rows = await append_imported_export_rows(rows, projection_ids, identity, db, mode="normal")
     if not rows:
         raise HTTPException(status_code=422, detail="没有可导出的待结算记录")
-    from app.areas.finance.export_projection import enrich_settlement_exports
-    rows = await enrich_settlement_exports(rows, identity, db, include_invoice_fields=kind == "receipt")
+    rows = await enrich_general_export_rows(rows, identity, db, kind)
     workbook, filename, _sheet_name = render_general_settlement_export(kind, rows, date.today())
     disposition = f"attachment; filename=settlement-export.xls; filename*=UTF-8''{quote(filename)}"
     return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})
@@ -917,6 +940,11 @@ async def delete_general_settlement_application(application_id: int, identity: d
     item = await db.get(BusinessRecord, application_id)
     if not item or item.module != "finance_settlement":
         raise HTTPException(status_code=404, detail="结算申请不存在")
+    scoped = await db.scalar(select(BusinessRecord.id).where(
+        BusinessRecord.id == item.id, *settlement_center_conditions(identity),
+    ))
+    if scoped is None:
+        raise HTTPException(409, "结算申请不属于当前财务中心或历史归属尚未确认")
     archive_decisions = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance_archive_settlement",
     ))).all()

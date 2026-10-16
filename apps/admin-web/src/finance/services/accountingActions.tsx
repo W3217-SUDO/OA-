@@ -1,13 +1,15 @@
 import { message } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import { api } from "../../api";
+import { financeCenterApi } from "./financeCenterApi";
+import type { FinanceScope } from "../types";
 import { formatRequiredDate } from "../../formSafety";
 import { money } from "../constants";
 import type { IncomingPaymentFormValues, IncomingClaimFormValues, TransactionFormValues, ReconciliationFormValues } from "../formTypes";
 import type { AllocationCandidate, Fee, IncomingPayment, Reconciliation, Transaction } from "../types";
 
-export async function loadIncomingPaymentDetail(paymentId: number, signal?: AbortSignal): Promise<IncomingPayment> {
-    const { data } = await api.get<IncomingPayment>(`/finance/incoming-payments/${paymentId}`, { signal });
+export async function loadIncomingPaymentDetail(paymentId: number, financeScope: FinanceScope, signal?: AbortSignal): Promise<IncomingPayment> {
+    const { data } = await financeCenterApi(financeScope).get<IncomingPayment>(`/finance/incoming-payments/${paymentId}`, { signal });
     return data;
 }
 
@@ -16,6 +18,7 @@ export async function rollbackFinanceTransactionRequest(transactionId: number): 
 }
 /** finance accounting operations; dependencies are read when each operation runs. */
 export interface FinanceAccountingDependencies {
+    readonly financeScope: FinanceScope;
     readonly incomingForm: FormInstance<IncomingPaymentFormValues>;
     readonly setIncomingOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly load: () => Promise<void>;
@@ -45,6 +48,7 @@ export interface FinanceAccountingDependencies {
     readonly setReconcileOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 export function createFinanceAccountingActions(context: FinanceAccountingDependencies) {
+    const api = financeCenterApi(context.financeScope);
     const createIncoming = async () => {
         const { incomingForm, setIncomingOpen, load } = context;
         const v = await incomingForm.validateFields();

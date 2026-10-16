@@ -354,6 +354,7 @@ async def create_ipr_case_fee_payment_application(case_id: int, fee_id: int, bod
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees/{{fee_id}}/arrival", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_fee_arrival(case_id: int, fee_id: int, body: IprCaseFeeArrivalInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance_centers import require_source_center
     from app.core.finance import (
         _ipr_case_fee, _ipr_case_fee_row, _round_fee_amount,
     )
@@ -370,6 +371,7 @@ async def create_ipr_case_fee_arrival(case_id: int, fee_id: int, body: IprCaseFe
     amount = _round_fee_amount(body.amount)
     item = IncomingPayment(
         source_kind="system",
+        finance_scope=await require_source_center(fee, db),
         receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}",
         received_date=body.received_date, amount=amount,
         payer_name=body.payer_name.strip(), bank_reference=body.bank_reference.strip(),

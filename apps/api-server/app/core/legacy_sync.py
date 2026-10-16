@@ -231,6 +231,7 @@ def _legacy_finance_record_dict(
     show_amount: bool,
     include_payload: bool = False,
 ) -> dict:
+    source = item.source_payload or {}
     payload = {
         "id": item.id,
         "source_table": item.source_table,
@@ -238,6 +239,9 @@ def _legacy_finance_record_dict(
         "record_kind": item.record_kind,
         "status_code": item.status_code,
         "status_label": item.status_label,
+        "source_status": {key: source[key] for key in ("PaymentStatus", "SettlementStatus") if key in source},
+        "provenance": {"source_database": source.get("_source_database"), "source_table": item.source_table,
+                       "legacy_id": item.legacy_id},
         "is_active": item.is_active,
         "currency": item.currency,
         "legacy_contract_no": item.legacy_contract_no,

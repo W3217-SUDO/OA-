@@ -1,6 +1,8 @@
 import { message, Modal, Alert } from "antd";
 import Table from "../../components/ResizableTable";
 import { api } from "../../api";
+import { financeCenterApi } from "./financeCenterApi";
+import type { FinanceScope } from "../types";
 import type { Fee, FinanceFlow } from "../types";
 
 export type FinanceLinkedRecord = Fee & { module: string; owner_display_name?: string };
@@ -18,6 +20,7 @@ export async function reviewFinanceFlowRequest(kind: "invoices" | "refunds", row
 }
 /** finance workflow operations; dependencies are read when each operation runs. */
 export interface FinanceWorkflowDependencies {
+    readonly financeScope: FinanceScope;
     readonly bankSource: string;
     readonly load: () => Promise<void>;
     readonly bankUploadRef: React.RefObject<HTMLInputElement | null>;
@@ -34,6 +37,7 @@ export interface FinanceWorkflowDependencies {
     } | null>;
 }
 export function createFinanceWorkflowActions(context: FinanceWorkflowDependencies) {
+    const api = financeCenterApi(context.financeScope);
     const importBankStatement = async (file?: File) => {
         const { load, bankUploadRef } = context;
         if (!file)

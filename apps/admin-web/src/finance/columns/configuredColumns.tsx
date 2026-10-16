@@ -1,7 +1,7 @@
 import type { OriginalRouteConfig } from "../types";
 import { moneyColumnStyle } from "../moneyColumns";
-import { Button, message } from "antd";
-import type { Fee, IncomingPayment } from "../types";
+import { Button, Tag, message } from "antd";
+import type { Fee, IncomingPayment, SettlementRow } from "../types";
 
 const feeQueryColumnWidths: Record<string, number> = {
     案号: 140,
@@ -44,7 +44,7 @@ export function createConfiguredColumns(context: {
     readonly invoiceCompanyOperation: (_: unknown, row: Fee) => React.JSX.Element;
     readonly originalInvoiceOperation: (_: unknown, row: Fee) => React.JSX.Element;
     readonly originalIncomingOperation: (_: unknown, r: IncomingPayment) => React.JSX.Element;
-    readonly generalSettlementOperation: (_: unknown, row: Fee) => React.JSX.Element;
+    readonly generalSettlementOperation: (_: unknown, row: SettlementRow) => React.JSX.Element;
     readonly archiveSettlementPendingOperation: (_: unknown, row: any) => React.JSX.Element;
     readonly paymentPackageOperation: (_: unknown, row: Fee) => React.JSX.Element;
     readonly isRefundCaseFeeRoute: boolean;
@@ -181,6 +181,31 @@ export function createConfiguredColumns(context: {
                 return <span className="finance-receipt-cell" title={text}>
                     {header === "客户管理人" ? text.split(/[、,，;；]/)[0] : render(value, row)}
                 </span>;
+            },
+        };
+    }).map((column) => {
+        const source = context.activeRouteConfig.source;
+        if (!["incoming", "generalSettlements", "archiveSettlements"].includes(source)) return column;
+        const header = context.activeRouteConfig.headers[Number(column.key.split("-").pop())];
+        if (header !== context.activeRouteConfig.headers.find(value => value && value !== "操作")) return column;
+        const render = column.render;
+        return {
+            ...column,
+            render: (value: unknown, row: any) => {
+                if (!(source !== "incoming" && row.amount_basis === "legacy_snapshot") &&
+                    !(source === "incoming" && row.allocation_status_label) && row.has_local_allocation_activity !== true) return render(value, row);
+                return <>
+                {render(value, row)}
+                {source !== "incoming" && row.amount_basis === "legacy_snapshot" && <div>
+                    <Tag title={row.source_label} style={{ margin: 0, whiteSpace: "normal", maxWidth: "100%", overflowWrap: "anywhere" }}>原始快照</Tag>
+                </div>}
+                {source === "incoming" && row.allocation_status_label && <div>
+                    <Tag color="warning" style={{ margin: 0, whiteSpace: "normal", maxWidth: "100%", overflowWrap: "anywhere" }}>{row.allocation_status_label}</Tag>
+                </div>}
+                {row.has_local_allocation_activity === true && <div>
+                    <Tag style={{ margin: 0, whiteSpace: "normal", maxWidth: "100%", overflowWrap: "anywhere" }}>已发生本地分配操作</Tag>
+                </div>}
+                </>;
             },
         };
     });

@@ -5,11 +5,11 @@
 压缩 XML 采用 DataTable.WriteXml 结构，行节点可以是 ``Row``，也可以是
 表名节点，字段名保持旧表原列名。
 
-脚本只写 ``LegacyFinanceRecord``、``LegacyFinanceAllocation``、
-``LegacyFinanceFile`` 和 ``LegacyFinanceAudit``。历史行不会创建或更新
-活动 ``BusinessRecord``。默认执行 dry-run；只有显式传入 ``--apply`` 才会
-在一个事务中批量 upsert。任何清单、校验、映射或数据库错误都会回滚并返回
-非零退出码，不会静默跳过坏行。
+原始归档写入 ``LegacyFinanceRecord``、``LegacyFinanceAllocation``、
+``LegacyFinanceFile`` 和 ``LegacyFinanceAudit``，不更新活动费用。
+完整回款模式另在同事务晋升 IncomingPayment，必须提供同源
+``BAS_Case_FeeType`` 原始字典。默认 dry-run；仅 ``--apply`` 提交。
+任何清单、校验、映射或数据库错误都会回滚并返回非零退出码。
 
 示例：
 
@@ -55,9 +55,11 @@ from app.models import (
 BATCH_SIZE = 1000
 TRUE_VALUES = {"T", "Y", "1", "TRUE", "YES"}
 FALSE_VALUES = {"F", "N", "0", "FALSE", "NO"}
+OPTIONAL_TABLES = {"BAS_Case_FeeType"}
 
 # 清单只允许这些已审计的表。未知表直接报错，避免导入后用户误以为它已被保留。
 SUPPORTED_TABLES = {
+    "BAS_Case_FeeType",
     "FAM_AP_Payment",
     "FAM_AP_Payment_Audit",
     "FAM_AP_Payment_Object",
@@ -77,6 +79,7 @@ SUPPORTED_TABLES = {
 }
 
 HEADER_TABLES = {
+    "BAS_Case_FeeType": ("case_fee_type", "FeeTypeId", None, None),
     "FAM_AP_Payment": ("ap_payment", "PaymentId", "PaidAmount", "PaymentStatus"),
     "FAM_AR_Payment": ("ar_payment", "PaymentId", "CashedAmount", "PaymentStatus"),
     "FAM_Invoice": ("invoice", "InvoiceId", "InvoiceAmount", "InvoiceStatus"),
@@ -217,7 +220,7 @@ def _load_schema_primary_keys(schema_path: Path) -> dict[str, tuple[str, ...]]:
                 walk(child)
 
     walk(document)
-    missing = sorted(table for table in SUPPORTED_TABLES if table not in result)
+    missing = sorted(table for table in SUPPORTED_TABLES - OPTIONAL_TABLES if table not in result)
     if missing:
         raise RuntimeError(f"旧表 schema manifest 缺少主键定义: {', '.join(missing)}")
     return result
@@ -324,7 +327,7 @@ def load_bundle(bundle_dir: Path, primary_keys: dict[str, tuple[str, ...]]) -> d
         rows_by_table[table] = rows
         table_report[table] = {"file": filename, "expected_rows": item["rows"], "rows": len(rows), "sha256": actual_hash}
 
-    missing_tables = sorted(SUPPORTED_TABLES - seen_tables)
+    missing_tables = sorted(SUPPORTED_TABLES - OPTIONAL_TABLES - seen_tables)
     if missing_tables:
         raise ValueError(f"manifest 缺少已审计旧表，禁止不完整导入: {', '.join(missing_tables)}")
     return {"source_database": source_database, "rows": rows_by_table, "tables": table_report}
@@ -716,7 +719,9 @@ def _report_counts(records: list[dict[str, Any]], allocations: list[dict[str, An
     }
 
 
-async def run(bundle_dir: Path, *, apply: bool, report_path: Path | None = None, schema_manifest: Path | None = None) -> dict[str, Any]:
+async def run(bundle_dir: Path, *, apply: bool, report_path: Path | None = None,
+              schema_manifest: Path | None = None, promote_hz_incoming: bool = False,
+              ledger_only: bool = False, adopt_legacy_baseline: bool = False) -> dict[str, Any]:
     schema_path = schema_manifest or Path(__file__).resolve().parents[1] / "app" / "legacy_schema_manifest.json"
     primary_keys = _load_schema_primary_keys(schema_path)
     bundle = load_bundle(bundle_dir, primary_keys)
@@ -724,6 +729,23 @@ async def run(bundle_dir: Path, *, apply: bool, report_path: Path | None = None,
     allocations = _build_allocations(bundle, primary_keys)
     files = _build_files(bundle, primary_keys)
     audits = _build_audits(bundle, primary_keys)
+    has_receipts = any(row["source_table"] == "FAM_AR_Payment" for row in records)
+    if promote_hz_incoming and ledger_only:
+        raise ValueError("--promote-hz-incoming 与 --ledger-only 不能同时使用")
+    if adopt_legacy_baseline and not promote_hz_incoming:
+        raise ValueError("--adopt-legacy-baseline 仅能与 --promote-hz-incoming 一起使用")
+    if has_receipts and not (promote_hz_incoming or ledger_only):
+        raise ValueError("包含旧回款：必须显式选择 --promote-hz-incoming 完整业务导入，"
+                         "或 --ledger-only 仅归档（不会更新业务回款）")
+    if promote_hz_incoming and not has_receipts:
+        raise ValueError("完整回款导入要求输入包含 FAM_AR_Payment")
+    if promote_hz_incoming and not bundle["rows"].get("BAS_Case_FeeType"):
+        raise ValueError("完整回款导入必须同时提供同源 BAS_Case_FeeType 原始分类字典")
+    if promote_hz_incoming:
+        fee_type_ids = {clean(row.get("FeeTypeId")) for row in bundle["rows"]["BAS_Case_FeeType"]}
+        if any(clean(row.get("CaseFeeTypeId")) not in fee_type_ids
+               for row in bundle["rows"].get("FAM_AR_CaseFee", [])):
+            raise ValueError("本次费用存在缺失的原分类字典关联，禁止使用先前归档字典补齐本次快照")
 
     references = _collect_references(records, allocations)
     report: dict[str, Any] = {
@@ -733,6 +755,9 @@ async def run(bundle_dir: Path, *, apply: bool, report_path: Path | None = None,
         "source_counts": _report_counts(records, allocations, files, audits),
         "target": {"created_or_updated": {"records": 0, "allocations": 0, "files": 0, "audits": 0}},
         "mapping_reference_count": len(references),
+        "business_incoming_updated": False,
+        "incoming_mode": "promote-hz-incoming" if promote_hz_incoming else "ledger-only",
+        "notice": "原始归档与业务回款同事务校验" if promote_hz_incoming else "仅导入原始归档，不更新业务回款",
     }
     header_keys = {(row["source_table"], row["legacy_id"]) for row in records}
     report["orphan_counts"] = {
@@ -744,8 +769,16 @@ async def run(bundle_dir: Path, *, apply: bool, report_path: Path | None = None,
         try:
             mapping = await _load_business_mapping(db, references)
             _attach_mappings(records, allocations, mapping)
+            from app.core.imported_incoming_payments import (
+                preserve_incoming_promotion_markers, promote_imported_incoming_payments,
+                reconcile_unnamespaced_incoming,
+            )
+            await preserve_incoming_promotion_markers(db, records)
+            if promote_hz_incoming:
+                await reconcile_unnamespaced_incoming(db, records, allocations,
+                                                     adopt_legacy_baseline=adopt_legacy_baseline)
 
-            if apply:
+            if apply or promote_hz_incoming:
                 await _upsert(db, LegacyFinanceRecord, [_strip_internal(row) for row in records], ["source_table", "legacy_id"])
                 header_ids = await _fetch_record_ids(db, records)
                 for item in allocations:
@@ -765,7 +798,16 @@ async def run(bundle_dir: Path, *, apply: bool, report_path: Path | None = None,
                 await _upsert(db, LegacyFinanceAllocation, [_strip_internal(row) for row in allocations], ["source_table", "legacy_key"])
                 await _upsert_files(db, files)
                 await _upsert(db, LegacyFinanceAudit, [_strip_internal(row) for row in audits], ["source_table", "legacy_id"])
-                await db.commit()
+                if promote_hz_incoming:
+                    report["incoming_promotion"] = await promote_imported_incoming_payments(
+                        db, source_database=bundle["source_database"], write=apply,
+                    )
+                if apply:
+                    await db.commit()
+                    report["business_incoming_updated"] = promote_hz_incoming
+                else:
+                    await db.rollback()
+                    report["notice"] = "完整事务预检已回滚，未提交原始归档或业务回款"
                 report["target"]["created_or_updated"] = {
                     "records": len(records),
                     "allocations": len(allocations),
@@ -790,12 +832,20 @@ async def run(bundle_dir: Path, *, apply: bool, report_path: Path | None = None,
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="导入旧 FAM 财务账本到只读历史投影")
+    parser = argparse.ArgumentParser(description="旧 FAM 原始归档；可显式开启HZ回款完整同事务晋升")
     parser.add_argument("bundle", type=Path, help="包含 manifest.json 与 XML.gz 的 bundle 目录")
     parser.add_argument("--apply", action="store_true", help="显式开启事务写入；缺省为 dry-run")
-    parser.add_argument("--dry-run", action="store_true", help="只解析、校验并检查映射")
+    parser.add_argument("--dry-run", action="store_true", help="预检不提交；完整晋升模式暂存校验后回滚")
     parser.add_argument("--report", type=Path, help="将 JSON 报告写入此路径")
     parser.add_argument("--schema-manifest", type=Path, help="旧表 schema manifest，缺省使用 app/legacy_schema_manifest.json")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--promote-hz-incoming", action="store_true",
+                      help="HZ完整入口：须含同源BAS_Case_FeeType字典，原始归档、回款及分配同事务；不加 --apply 时预检后回滚")
+    mode.add_argument("--ledger-only", action="store_true",
+                      help="显式仅归档，不创建或更新业务回款；包含旧回款时必须二选一")
+    parser.add_argument("--adopt-legacy-baseline", action="store_true",
+                        help="用与旧归档完全一致的原始快照建立旧来源基线；可接管未分配回款。"
+                             "源已更新时须先用旧快照接管，再运行新bundle；缺证或现行值冲突整批失败")
     return parser.parse_args()
 
 
@@ -804,7 +854,10 @@ def main() -> None:
     if args.apply and args.dry_run:
         raise SystemExit("--apply 与 --dry-run 不能同时使用")
     try:
-        report = asyncio.run(run(args.bundle, apply=args.apply, report_path=args.report, schema_manifest=args.schema_manifest))
+        report = asyncio.run(run(args.bundle, apply=args.apply, report_path=args.report,
+                                 schema_manifest=args.schema_manifest,
+                                 promote_hz_incoming=args.promote_hz_incoming, ledger_only=args.ledger_only,
+                                 adopt_legacy_baseline=args.adopt_legacy_baseline))
     except Exception as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         raise SystemExit(1) from exc

@@ -4,6 +4,7 @@ from app.core.dependencies import AsyncSession, BusinessRecord, Depends, HTTPExc
 from app.models_shared import FinancePaymentPackageCreateInput, FinancePaymentPackagePreviewInput, FinancePaymentPackageUpdateInput, FinancePaymentPackageWriteoffInput, FinanceSettlementMarkInput
 from app.core.constants import PAYMENT_METHOD_OPTIONS
 from app.core.finance_person_projection import apply_finance_person_displays
+from app.core.finance_centers import finance_center_identity, require_record_center
 
 router = APIRouter()
 
@@ -14,7 +15,7 @@ async def list_pending_finance_settlements(
     case_no: str = "", customer: str = "", case_stages: str = "",
     court_case_no: str = "", certificate_no: str = "", hearing_lawyer: str = "",
     assistant: str = "", investigator: str = "", source_person: str = "",
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.internal_requests import pending_case_fee_settlements
     from app.core.internal_finance_query import filter_internal_rows, internal_page
@@ -29,7 +30,7 @@ async def list_pending_finance_settlements(
     return internal_page(rows, page, page_size, amount_visible=amount_visible)
 
 @router.post(f"{settings.api_prefix}/finance/settlements/mark-commission-paid")
-async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkInput, identity: dict = Depends(finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.legacy_case_fee_settlement import legacy_case_fee_settlement_sources
     from app.core.permissions import (
         _record_scope_conditions,
@@ -44,6 +45,8 @@ async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkIn
     ).with_for_update())).all()
     if len(fees) != len(fee_ids):
         raise HTTPException(status_code=404, detail="部分案件费用不存在或无权访问")
+    for fee in fees:
+        await require_record_center(fee, identity, db)
     invalid = [item.serial_no for item in fees if
                (item.data or {}).get("fee_type") != "代理费"
                or (item.data or {}).get("refund_fee")

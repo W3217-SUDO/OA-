@@ -1,17 +1,20 @@
 import { message, Modal } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import dayjs from "dayjs";
-import { api } from "../../api";
+import { financeCenterApi } from "./financeCenterApi";
+import type { FinanceScope, SettlementRow } from "../types";
+import { requireWritableSettlements, settlementExportIds, settlementSourceCounts } from "../settlementIdentity";
 import type { FinanceActionGate } from "../../financeActionGate.mjs";
 import { normalizeSettlementContextRows, settlementContextPageSize, settlementContextTasksRequest } from "../constants";
 import { financeDownloadErrorDetail, financeErrorMessageText } from "../financeErrors";
 import type { ArchiveSettlementRow, ArchiveSettlementTarget, Fee, SettlementContext, SettlementContextRow, SettlementTaskForm } from "../types";
 
-export async function markSettlementCommissionPaid(feeIds: number[]): Promise<void> {
-    await api.post("/finance/settlements/mark-commission-paid", { fee_ids: feeIds });
+export async function markSettlementCommissionPaid(feeIds: number[], financeScope: FinanceScope): Promise<void> {
+    await financeCenterApi(financeScope).post("/finance/settlements/mark-commission-paid", { fee_ids: feeIds });
 }
 /** finance settlements operations; dependencies are read when each operation runs. */
 export interface FinanceSettlementsDependencies {
+    readonly financeScope: FinanceScope;
     readonly generalSettlementMeta: {
         total: number;
         page: number;
@@ -66,7 +69,7 @@ export interface FinanceSettlementsDependencies {
         paid_to?: undefined;
         status?: undefined;
     };
-    readonly setGeneralSettlementRows: React.Dispatch<React.SetStateAction<Fee[]>>;
+    readonly setGeneralSettlementRows: React.Dispatch<React.SetStateAction<SettlementRow[]>>;
     readonly setGeneralSettlementMeta: React.Dispatch<React.SetStateAction<{
         total: number;
         page: number;
@@ -194,6 +197,7 @@ export interface FinanceSettlementsDependencies {
     readonly load: () => Promise<void>;
 }
 export function createFinanceSettlementsActions(context: FinanceSettlementsDependencies) {
+    const api = financeCenterApi(context.financeScope);
     const loadGeneralSettlements = async (query: Record<string, any>, page = 1, pageSize = context.generalSettlementMeta.pageSize) => {
         const { isGeneralSettlementPendingRoute, generalSettlementParams, setGeneralSettlementRows, setGeneralSettlementMeta } = context;
         const response = await api.get(isGeneralSettlementPendingRoute
@@ -203,6 +207,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         });
         setGeneralSettlementRows(response.data.items || []);
         setGeneralSettlementMeta({
+            ...settlementSourceCounts(response.data),
             total: response.data.total || 0,
             page: response.data.page || page,
             pageSize: response.data.page_size || pageSize,
@@ -222,6 +227,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         });
         setArchiveSettlementRows(response.data.items || []);
         setArchiveSettlementMeta({
+            ...settlementSourceCounts(response.data),
             total: response.data.total || 0,
             page: response.data.page || page,
             pageSize: response.data.page_size || pageSize,
@@ -232,6 +238,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         const { generalSettlementReviewTargets, financeActionGates, setGeneralSettlementBusy, generalSettlementReviewApproved, generalSettlementReviewComment, setGeneralSettlementReviewTargets, setGeneralSettlementReviewComment, setSelectedOriginalRows, setGeneralSettlementDetails, originalQuery, generalSettlementMeta } = context;
         if (!generalSettlementReviewTargets.length)
             return;
+        requireWritableSettlements(generalSettlementReviewTargets);
         if (!financeActionGates.generalSettlement.tryEnter()) {
             message.info("操作正在提交，请勿重复点击");
             return;
@@ -265,6 +272,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         const { generalSettlementPaymentTargets, generalSettlementPaymentAction, generalSettlementPaymentComment, financeActionGates, setGeneralSettlementBusy, setGeneralSettlementPaymentTargets, setGeneralSettlementPaymentComment, setSelectedOriginalRows, setGeneralSettlementDetails, originalQuery, generalSettlementMeta } = context;
         if (!generalSettlementPaymentTargets.length)
             return;
+        requireWritableSettlements(generalSettlementPaymentTargets);
         if (generalSettlementPaymentAction === "rollback" &&
             !generalSettlementPaymentComment.trim()) {
             message.warning("请输入回退备注。");
@@ -303,6 +311,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         const { generalSettlementReapplyTargets, generalSettlementReapplyComment, financeActionGates, setGeneralSettlementBusy, setGeneralSettlementReapplyTargets, setGeneralSettlementReapplyComment, setSelectedOriginalRows, setGeneralSettlementDetails, originalQuery, generalSettlementMeta } = context;
         if (!generalSettlementReapplyTargets.length)
             return;
+        requireWritableSettlements(generalSettlementReapplyTargets);
         if (!generalSettlementReapplyComment.trim()) {
             message.warning("请输入备注.");
             return;
@@ -337,14 +346,6 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         const { selectedOriginalRows, isGeneralSettlementPendingRoute, setGeneralSettlementBusy } = context;
         const selectedOnly = ids !== undefined;
         const selectedIds = ids ?? selectedOriginalRows;
-        if (!isGeneralSettlementPendingRoute && !selectedOnly) {
-            Modal.info({
-                title: "提示",
-                content: "请选择需要导出的结算申请.",
-                okText: "确定",
-            });
-            return;
-        }
         if (selectedOnly && !selectedIds.length) {
             Modal.info({
                 title: "提示",
@@ -357,9 +358,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         try {
             const response = await api.get("/finance/general-settlements/export", {
                 params: selectedOnly
-                    ? isGeneralSettlementPendingRoute
-                        ? { kind, ids: selectedIds.join(",") }
-                        : { kind, application_ids: selectedIds.join(",") }
+                    ? { kind, ...settlementExportIds(selectedIds, isGeneralSettlementPendingRoute ? "ids" : "application_ids") }
                     : { ...context.generalSettlementParams(context.originalQuery), kind },
                 responseType: "blob",
             });
@@ -383,9 +382,10 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
             setGeneralSettlementBusy(false);
         }
     };
-    const exportPendingArchiveSettlements = async () => {
+    const exportPendingArchiveSettlements = async (ids?: (string | number)[]) => {
         const { selectedOriginalRows, isArchiveSettlementRejectedRoute, financeActionGates, setArchiveSettlementBusy, isArchiveSettlementPaidRoute, isArchiveSettlementPaymentRoute } = context;
-        if (!selectedOriginalRows.length) {
+        const selectedIds = ids ?? selectedOriginalRows;
+        if (ids === undefined && !selectedIds.length) {
             Modal.info({
                 title: "提示",
                 content: isArchiveSettlementRejectedRoute
@@ -408,7 +408,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
                     : isArchiveSettlementPaymentRoute
                         ? "/finance/archive-settlements/payment/export"
                         : "/finance/archive-settlements/export", {
-                params: { ids: selectedOriginalRows.join(",") },
+                params: selectedIds.length ? settlementExportIds(selectedIds, "ids") : context.archiveSettlementParams(context.originalQuery),
                 responseType: "blob",
             });
             const url = URL.createObjectURL(response.data);
@@ -437,6 +437,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         const { archiveSettlementReviewTargets, archiveSettlementReviewApproved, archiveSettlementReviewComment, financeActionGates, setArchiveSettlementBusy, setArchiveSettlementReviewTargets, setArchiveSettlementReviewComment, setSelectedOriginalRows, originalQuery, archiveSettlementMeta } = context;
         if (!archiveSettlementReviewTargets.length)
             return;
+        requireWritableSettlements(archiveSettlementReviewTargets);
         if (!archiveSettlementReviewApproved && !archiveSettlementReviewComment.trim()) {
             message.warning("请输入备注.");
             return;
@@ -475,6 +476,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         const { archiveSettlementRollbackTargets, archiveSettlementRollbackComment, isArchiveSettlementRejectedRoute, financeActionGates, setArchiveSettlementBusy, setArchiveSettlementRollbackTargets, setArchiveSettlementRollbackComment, setSelectedOriginalRows, originalQuery, archiveSettlementMeta } = context;
         if (!archiveSettlementRollbackTargets.length)
             return;
+        requireWritableSettlements(archiveSettlementRollbackTargets);
         if (!archiveSettlementRollbackComment.trim()) {
             message.warning(isArchiveSettlementRejectedRoute ? "请输入审核备注." : "请输入备注.");
             return;
@@ -511,6 +513,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         const { archiveSettlementReapplyTargets, financeActionGates, setArchiveSettlementBusy, archiveSettlementReapplyComment, setArchiveSettlementReapplyTargets, setArchiveSettlementReapplyComment, setSelectedOriginalRows, originalQuery, archiveSettlementMeta } = context;
         if (!archiveSettlementReapplyTargets.length)
             return;
+        requireWritableSettlements(archiveSettlementReapplyTargets);
         if (!financeActionGates.archiveSettlement.tryEnter()) {
             message.info("操作正在提交，请勿重复点击");
             return;
@@ -539,6 +542,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         const { generalSettlementApplyTargets, setGeneralSettlementBusy, generalSettlementApplyComment, setGeneralSettlementApplyTargets, setGeneralSettlementApplyComment, setSelectedOriginalRows, setGeneralSettlementDetails, originalQuery, generalSettlementMeta } = context;
         if (!generalSettlementApplyTargets.length)
             return;
+        requireWritableSettlements(generalSettlementApplyTargets.map(id => ({ id })));
         setGeneralSettlementBusy(true);
         try {
             const response = await api.post("/finance/general-settlements/apply", {

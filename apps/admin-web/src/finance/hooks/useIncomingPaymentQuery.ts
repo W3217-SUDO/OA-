@@ -1,26 +1,35 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { message } from "antd";
-import { api } from "../../api";
+import { financeCenterApi } from "../services/financeCenterApi";
 import { incomingPaymentQueryParams } from "../services/incomingQuery";
-import type { IncomingPayment } from "../types";
+import type { FinanceScope, IncomingPayment } from "../types";
 
 export type IncomingPaymentPage = {
   items: IncomingPayment[]; total: number; page: number; page_size: number;
   summary: Record<string, number | null>; totals: Record<string, number | null>;
+  unclassified_total: number;
 };
 
 export function useIncomingPaymentQuery(
   view: string, setRows: Dispatch<SetStateAction<IncomingPayment[]>>,
   setSelectedRows: Dispatch<SetStateAction<(string | number)[]>>,
+  financeScope: FinanceScope,
 ) {
-  const [meta, setMeta] = useState({ total: 0, page: 1, pageSize: 20, totals: {} as Record<string, number | null> });
+  const [meta, setMeta] = useState({ total: 0, page: 1, pageSize: 20, totals: {} as Record<string, number | null>, unclassifiedTotal: 0 });
   const [loading, setLoading] = useState(false);
   const current = useRef({ page: 1, pageSize: 20 });
   const sequence = useRef(0);
   const pending = useRef<AbortController | null>(null);
-  useEffect(() => () => { sequence.current += 1; pending.current?.abort(); }, [view]);
+  useEffect(() => {
+    current.current = { page: 1, pageSize: current.current.pageSize };
+    setRows([]);
+    setSelectedRows([]);
+    setMeta(previous => ({ ...previous, total: 0, page: 1, totals: {} }));
+    return () => { sequence.current += 1; pending.current?.abort(); };
+  }, [view, financeScope, setRows, setSelectedRows]);
 
   const load = useCallback(async (query: Record<string, unknown>, page = current.current.page, pageSize = current.current.pageSize) => {
+    const api = financeCenterApi(financeScope);
     const request = ++sequence.current;
     pending.current?.abort();
     const controller = new AbortController();
@@ -43,7 +52,7 @@ export function useIncomingPaymentQuery(
       const { data } = response;
       current.current = { page: data.page, pageSize: data.page_size };
       setRows(data.items);
-      setMeta({ total: data.total, page: data.page, pageSize: data.page_size, totals: data.totals });
+      setMeta({ total: data.total, page: data.page, pageSize: data.page_size, totals: data.totals, unclassifiedTotal: data.unclassified_total });
       return response;
     } catch (error) {
       if (controller.signal.aborted || request !== sequence.current) return null;
@@ -51,6 +60,6 @@ export function useIncomingPaymentQuery(
     } finally {
       if (request === sequence.current) setLoading(false);
     }
-  }, [view, setRows, setSelectedRows]);
+  }, [view, financeScope, setRows, setSelectedRows]);
   return { meta, loading, load };
 }

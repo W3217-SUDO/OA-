@@ -15,6 +15,9 @@ from app.models_shared import (
     FinanceFeeBatchReviewInput, FinanceFeeInput, FinanceFeeUpdateInput, FinancePaymentCancelInput, ReceivableInput, ReceivePaymentInput, RefundBatchStatusInput, RefundCaseFeeBatchCreateInput,
 )
 from fastapi import APIRouter
+from app.core.finance_centers import (
+    legacy_center_conditions, optional_finance_center_identity, validate_legacy_receipt_allocations,
+)
 
 router = APIRouter()
 from app.core.incoming_settlement import (
@@ -932,7 +935,7 @@ async def list_legacy_finance_history(
     ),
     status_code: str = "", audit_status_code: str = "", keyword: str = "", include_inactive: bool = False,
     page: int = Query(1, ge=1), page_size: int = Query(30, ge=1, le=200),
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     """Read-only source-of-truth ledger imported from legacy FAM tables."""
     from app.core.legacy_sync import (
@@ -942,6 +945,7 @@ async def list_legacy_finance_history(
         _allowed_field_keys,
     )
     conditions = await _legacy_finance_scope_conditions(identity, db)
+    conditions.extend(legacy_center_conditions(identity))
     audit_table_exists = await _legacy_finance_audit_table_exists(db)
     if record_kind:
         conditions.append(LegacyFinanceRecord.record_kind == record_kind)
@@ -1008,7 +1012,7 @@ async def list_legacy_finance_history(
 
 
 @router.get(f"{settings.api_prefix}/finance/legacy-history/summary")
-async def legacy_finance_history_summary(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def legacy_finance_history_summary(identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.legacy_sync import (
         _legacy_finance_audit_table_exists, _legacy_finance_scope_conditions,
     )
@@ -1016,6 +1020,7 @@ async def legacy_finance_history_summary(identity: dict = Depends(current_identi
         _allowed_field_keys,
     )
     conditions = await _legacy_finance_scope_conditions(identity, db)
+    conditions.extend(legacy_center_conditions(identity))
     audit_table_exists = await _legacy_finance_audit_table_exists(db)
     summary_rows = (await db.execute(
         select(
@@ -1054,6 +1059,7 @@ async def legacy_finance_history_summary(identity: dict = Depends(current_identi
             LegacyFinanceAudit.audit_status_code,
         )
     )).all() if audit_table_exists else []
+    include_orphans = identity.get("role") in {"admin", "auditor"} and identity.get("_finance_scope") in {None, "unclassified"}
     orphan_allocation_rows = (await db.execute(
         select(
             LegacyFinanceAllocation.allocation_kind,
@@ -1066,7 +1072,7 @@ async def legacy_finance_history_summary(identity: dict = Depends(current_identi
             LegacyFinanceAllocation.is_refund,
             LegacyFinanceAllocation.orphan_reason,
         )
-    )).all() if identity.get("role") in {"admin", "auditor"} else []
+    )).all() if include_orphans else []
     orphan_file_rows = (await db.execute(
         select(
             LegacyFinanceFile.orphan_reason,
@@ -1076,10 +1082,14 @@ async def legacy_finance_history_summary(identity: dict = Depends(current_identi
                 LegacyFinanceFile.orphan_reason != "").group_by(
             LegacyFinanceFile.orphan_reason,
         )
-    )).all() if identity.get("role") in {"admin", "auditor"} else []
-    unverified_file_count = await db.scalar(select(func.count()).select_from(LegacyFinanceFile).where(
+    )).all() if include_orphans else []
+    unverified_files = select(func.count()).select_from(LegacyFinanceFile).where(
         LegacyFinanceFile.is_active.is_(True), LegacyFinanceFile.physical_file_verified.is_(False),
-    )) if identity.get("role") in {"admin", "auditor"} else 0
+    )
+    if identity.get("_finance_scope"):
+        selected_headers = select(LegacyFinanceRecord.id).where(*conditions)
+        unverified_files = unverified_files.where(LegacyFinanceFile.legacy_finance_record_id.in_(selected_headers))
+    unverified_file_count = await db.scalar(unverified_files) if identity.get("role") in {"admin", "auditor"} else 0
     orphan_audit_rows = (await db.execute(
         select(
             LegacyFinanceAudit.audit_kind,
@@ -1091,7 +1101,7 @@ async def legacy_finance_history_summary(identity: dict = Depends(current_identi
             LegacyFinanceAudit.audit_status_code,
             LegacyFinanceAudit.orphan_reason,
         )
-    )).all() if audit_table_exists and identity.get("role") in {"admin", "auditor"} else []
+    )).all() if audit_table_exists and include_orphans else []
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     return {
         "records": [
@@ -1156,7 +1166,7 @@ async def legacy_finance_history_summary(identity: dict = Depends(current_identi
 
 @router.get(f"{settings.api_prefix}/finance/legacy-history/{{record_id}}")
 async def get_legacy_finance_history_record(
-    record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    record_id: int, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.formatters import (
         _person_reference_display, _user_display_map,
@@ -1168,12 +1178,14 @@ async def get_legacy_finance_history_record(
         _allowed_field_keys,
     )
     conditions = await _legacy_finance_scope_conditions(identity, db)
+    conditions.extend(legacy_center_conditions(identity))
     item = await db.scalar(select(LegacyFinanceRecord).where(LegacyFinanceRecord.id == record_id, *conditions))
     if not item:
         raise HTTPException(status_code=404, detail="历史财务记录不存在或无权查看")
     allocations = list((await db.scalars(select(LegacyFinanceAllocation).where(
         LegacyFinanceAllocation.legacy_finance_record_id == item.id
     ).order_by(LegacyFinanceAllocation.id))).all())
+    validate_legacy_receipt_allocations(item, allocations)
     files = list((await db.scalars(select(LegacyFinanceFile).where(
         LegacyFinanceFile.legacy_finance_record_id == item.id
     ).order_by(LegacyFinanceFile.id))).all())
@@ -1192,6 +1204,12 @@ async def get_legacy_finance_history_record(
             "id": row.id, "source_table": row.source_table, "legacy_key": row.legacy_key,
             "allocation_kind": row.allocation_kind, "legacy_case_id": row.legacy_case_id,
             "legacy_case_no": row.legacy_case_no, "legacy_case_fee_id": row.legacy_case_fee_id,
+            "source_status": {key: row.source_payload[key] for key in ("ArchiveAmountSettlementStatus",)
+                              if key in (row.source_payload or {})},
+            "provenance": {"source_database": (row.source_payload or {}).get("_source_database"),
+                           "source_table": row.source_table, "legacy_key": row.legacy_key,
+                           "parent_source_table": row.parent_source_table, "parent_legacy_id": row.parent_legacy_id,
+                           "legacy_finance_record_id": row.legacy_finance_record_id},
             "amount": round(float(row.amount or 0), 2) if show_amount else None,
             "prepaid_amount": round(float(row.prepaid_amount or 0), 2) if show_amount else None,
             "settlement_amount": round(float(row.settlement_amount or 0), 2) if show_amount else None,

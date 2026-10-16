@@ -26,13 +26,30 @@ USERNAME = os.getenv("SMOKE_USERNAME", "admin")
 PASSWORD = os.getenv("SMOKE_PASSWORD", "")
 TOKEN = ""
 PASSED: list[str] = []
+# 本脚本的回款及结算夹具均属律所，不代表生产接口具有默认主体。
+SMOKE_FINANCE_SCOPE = "firm"
 # System-issued test accounts now always receive a one-time password.  Keep
 # later role/scope smoke scenarios focused on their own rule by completing
 # that mandatory first-login step once and reusing the changed credential.
 SMOKE_CHANGED_PASSWORDS: dict[str, tuple[str, str]] = {}
 
 
+def finance_fixture_path(path: str) -> str:
+    parts = urllib.parse.urlsplit(path)
+    roots = ("/finance/incoming-payments", "/finance/general-settlements",
+             "/finance/archive-settlements", "/finance/settlements")
+    request_path = parts.path.removeprefix("/api/v1")
+    if not any(request_path == root or request_path.startswith(root + "/") for root in roots):
+        return path
+    query = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+    if any(key == "finance_scope" for key, _ in query):
+        return path
+    query.append(("finance_scope", SMOKE_FINANCE_SCOPE))
+    return urllib.parse.urlunsplit(parts._replace(query=urllib.parse.urlencode(query)))
+
+
 def call(method: str, path: str, body=None, *, expected=(200,), raw=False, headers=None):
+    path = finance_fixture_path(path)
     url = path if path.startswith("http") else f"{API}{path}"
     request_headers = dict(headers or {})
     if TOKEN:
@@ -121,6 +138,7 @@ def login(username: str, password: str, *, expected=(200,), complete_forced_chan
 
 
 def multipart_upload(path: str, fields: dict[str, object], filename: str, content: bytes, *, expected=(201,)):
+    path = finance_fixture_path(path)
     boundary = f"----SunholdSmoke{uuid.uuid4().hex}"
     chunks: list[bytes] = []
     for key, value in fields.items():
@@ -1365,7 +1383,7 @@ def main():
         assert self_approval_submitted["status"] == "审批中"
         assert call("POST", f"/contracts/{self_approval_contract['id']}/approve", {"approved": True, "comment": "本人按流程审批"})["status"] == "已通过"
         TOKEN = contract_admin_token
-        contract = create_record("contract", "草稿", "冒烟合同", {"amount": 1000, "external_contract_no": f"EXT-{suffix}"})
+        contract = create_record("contract", "草稿", "冒烟合同", {"amount": 1000, "external_contract_no": f"EXT-{suffix}", "contract_body": "律所"})
         call("PATCH", f"/records/{contract['id']}", {"status": "已通过", "title": "绕过合同审批"}, expected=(409,))
         call("POST", f"/records/{contract['id']}/transition", {"to_status": "审批中", "comment": "绕过合同专用审批"}, expected=(409,))
         call("DELETE", f"/records/{contract['id']}", expected=(409,))
@@ -2630,7 +2648,7 @@ def main():
 
         receipt_plan = call("POST", "/receivables", {"contract_record_id": contract["id"], "phase": "银行回款分配验收", "due_date": str(date.today() + timedelta(days=15)), "amount": 500, "payer": "冒烟测试客户"}, expected=(201,))
         receivables.append(receipt_plan["id"])
-        incoming = call("POST", "/finance/incoming-payments", {"received_date": str(date.today()), "amount": 500, "payer_name": "冒烟付款单位", "bank_reference": serial("BANK-REF"), "remark": "银行到账认领分配验收"}, expected=(201,))
+        incoming = call("POST", "/finance/incoming-payments", {"received_date": str(date.today()), "amount": 500, "payer_name": "冒烟付款单位", "bank_reference": serial("BANK-REF"), "payment_method": "申浩工行", "remark": "银行到账认领分配验收"}, expected=(201,))
         incoming_payments.append(incoming["id"])
         assert incoming["status"] == "待认领" and incoming["remaining_amount"] == 500
         TOKEN = login(member_name, "SmokePass2026!")["access_token"]
@@ -2747,7 +2765,7 @@ def main():
         assert archive_pending_row["data"]["fee_type"] == "律师代理费" and archive_pending_row["data"]["receipt_amount"] == 200 and archive_pending_row["data"]["archive_fee_amount"] == 16
         assert archive_pending["totals"]["receipt_amount"] == 200 and archive_pending["totals"]["archive_fee_amount"] == 16
         call("GET", "/finance/archive-settlements/pending?received_from=2026-12-31&received_to=2026-01-01", expected=(422,))
-        call("GET", "/finance/archive-settlements/export", expected=(422,))
+        call("GET", "/finance/archive-settlements/export", raw=True)
         status_code, payload, content_type = call("GET", f"/finance/archive-settlements/export?ids={urllib.parse.quote(str(archive_pending_row['id']))}", raw=True)
         assert status_code == 200 and "application/vnd.ms-excel" in content_type and payload.startswith(b"<?xml")
         archive_case_payload = {
@@ -2783,7 +2801,7 @@ def main():
         assert archive_payment_row["data"]["archive_reviewer"] == USERNAME and archive_payment_row["data"]["archive_submitter"] == USERNAME
         assert archive_payment["totals"]["receipt_amount"] == 200 and archive_payment["totals"]["archive_fee_amount"] == 16
         call("GET", "/finance/archive-settlements/payment?archive_from=2026-12-31&archive_to=2026-01-01", expected=(422,))
-        call("GET", "/finance/archive-settlements/payment/export", expected=(422,))
+        call("GET", "/finance/archive-settlements/payment/export", raw=True)
         status_code, payload, content_type = call("GET", f"/finance/archive-settlements/payment/export?ids={urllib.parse.quote(str(archive_payment_row['id']))}", raw=True)
         assert status_code == 200 and "application/vnd.ms-excel" in content_type and payload.startswith(b"<?xml")
         call("POST", "/finance/archive-settlements/payment/review", {"settlement_ids": [], "approved": True}, expected=(422,))
@@ -2808,7 +2826,7 @@ def main():
         assert archive_paid_row["data"]["archive_no"] == archive_case_payload["archive_no"]
         assert archive_paid["totals"]["receipt_amount"] == 200 and archive_paid["totals"]["archive_fee_amount"] == 16
         call("GET", "/finance/archive-settlements/paid?payment_from=2026-12-31&payment_to=2026-01-01", expected=(422,))
-        call("GET", "/finance/archive-settlements/paid/export", expected=(422,))
+        call("GET", "/finance/archive-settlements/paid/export", raw=True)
         status_code, payload, content_type = call("GET", f"/finance/archive-settlements/paid/export?ids={archive_payment_decision_id}", raw=True)
         assert status_code == 200 and "application/vnd.ms-excel" in content_type and payload.startswith(b"<?xml")
         call("POST", "/finance/archive-settlements/paid/rollback", {"record_ids": [], "comment": "回滚"}, expected=(422,))
@@ -2844,7 +2862,7 @@ def main():
         assert archive_rejected_row["data"]["archive_payment_comment"] == "归档费拒绝支付验收"
         assert archive_rejected["totals"]["receipt_amount"] == 200 and archive_rejected["totals"]["archive_fee_amount"] == 16
         call("GET", "/finance/archive-settlements/rejected?reviewed_from=2026-12-31&reviewed_to=2026-01-01", expected=(422,))
-        call("GET", "/finance/archive-settlements/rejected/export", expected=(422,))
+        call("GET", "/finance/archive-settlements/rejected/export", raw=True)
         call("GET", "/finance/archive-settlements/rejected/export?ids=invalid", expected=(422,))
         status_code, payload, content_type = call("GET", f"/finance/archive-settlements/rejected/export?ids={archive_payment_decision_id}", raw=True)
         assert status_code == 200 and "application/vnd.ms-excel" in content_type and payload.startswith(b"<?xml")

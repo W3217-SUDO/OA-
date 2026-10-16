@@ -420,6 +420,7 @@ class FinanceWriteoffInput(BaseModel):
 
 
 class IncomingPaymentInput(BaseModel):
+    payment_method: str = Field(default="", max_length=100)
     received_date: date
     amount: float = Field(gt=0)
     payer_name: str = Field(min_length=2, max_length=255)
@@ -462,6 +463,7 @@ class IncomingPaymentAllocateInput(BaseModel):
 
 
 class IncomingPaymentUpdateInput(BaseModel):
+    payment_method: str = Field(default="", max_length=100)
     received_date: date
     amount: float = Field(gt=0)
     payer_name: str = Field(min_length=2, max_length=255)

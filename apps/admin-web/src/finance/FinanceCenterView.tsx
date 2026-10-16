@@ -1,5 +1,6 @@
 import { Button } from "antd";
 import { IncomingAllocationRecordsPage } from "./IncomingAllocationRecordsPage";
+import { LegacyFinanceDetailDrawer } from "./LegacyHistoryPanel";
 import { InvoiceApplicationPage } from "./InvoiceApplicationPage";
 import { PaymentApplicationPage } from "./PaymentApplicationPage";
 import { FeeReviewDrawer } from "./FeeReviewDrawer";
@@ -23,9 +24,10 @@ import { IncomingRegistrationModal, IncomingClaimModal, type IncomingRegistratio
 import { FeeDetailModal, FeeEditorModal, type FeeDetailModalProps, type FeeEditorModalProps } from "./FinanceFeeModals";
 import { RefundDetailModal, RefundBatchStatusModal, type RefundDetailModalProps, type RefundBatchStatusModalProps } from "./FinanceRefundDetailModals";
 import { RefundCaseFeeModals, type RefundCaseFeeModalsProps } from "./RefundCaseFeeActions";
-import type { Fee, FinanceFlow, IncomingPayment } from "./types";
+import type { Fee, FinanceFlow, FinanceScope, IncomingPayment } from "./types";
 
 export interface FinanceCenterViewProps {
+  financeScope: FinanceScope;
   originalRoutesView: FinanceOriginalRoutesViewProps;
   standardTabsView: FinanceStandardTabsViewProps;
   settlementBatchModal: SettlementBatchModalProps;
@@ -209,7 +211,7 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
     return <PaymentApplicationPage key={paymentPackageWriteoffTarget.id} record={paymentPackageWriteoffTarget} onClose={() => setPaymentPackageWriteoffTarget(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
   }
   if (incomingAllocationTarget) {
-    return <IncomingAllocationRecordsPage key={incomingAllocationTarget.id} paymentId={incomingAllocationTarget.id} onClose={() => setIncomingAllocationTarget(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
+    return <IncomingAllocationRecordsPage key={`${props.financeScope}-${incomingAllocationTarget.id}`} financeScope={props.financeScope} paymentId={incomingAllocationTarget.id} onClose={() => setIncomingAllocationTarget(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
   }
   if (incomingAllocationModal.open) {
     return <IncomingAllocationModal {...incomingAllocationModal} />;
@@ -234,6 +236,15 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
         ) : (
           <FinanceStandardTabsView {...standardTabsView} />
         ))}
+      {originalMode && <LegacyFinanceDetailDrawer
+        detail={standardTabsView.legacyFinanceDetail}
+        detailLoading={standardTabsView.legacyFinanceDetailLoading}
+        amountVisible={standardTabsView.legacyFinanceSummary.amount_visible}
+        onCloseDetail={() => {
+          standardTabsView.setLegacyFinanceDetail(null);
+          standardTabsView.setLegacyFinanceDetailLoading(false);
+        }}
+      />}
       <FeeReviewDrawer
         open={Boolean(feeReviewTargets.length)}
         initialView={initialView}

@@ -131,6 +131,8 @@ async def allocate_court_refund(payment, body, customer, identity, db):
     payment.allocations = allocations
     payment.allocated_amount = _round_fee_amount(payment.allocated_amount + sum(totals.values()))
     payment.status = '已分配' if payment.allocated_amount + .001 >= payment.amount else '部分分配'
+    from app.core.incoming_local_amounts import stamp_hz_allocation_summary
+    await stamp_hz_allocation_summary(payment, db)
     await db.commit()
     await db.refresh(payment)
     return _incoming_payment_dict(payment, show_amount='finance.amount' in await _allowed_field_keys(identity, db))

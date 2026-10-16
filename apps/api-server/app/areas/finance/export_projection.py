@@ -199,6 +199,8 @@ async def archive_export_values(rows, identity, db):
         for application in applications for index, detail in enumerate((application.data or {}).get("allocation_details") or [], 1)}
     fee_ids = set()
     for row in rows:
+        if row.get("read_only"):
+            continue
         data = row["data"]
         detail = source_details.get(str(data.get("source_row_id") or row["id"]))
         if not detail or not detail.get("fee_id"):
@@ -209,6 +211,12 @@ async def archive_export_values(rows, identity, db):
     values = []
     for index, row in enumerate(rows, 1):
         data = row["data"]
+        if row.get("read_only"):
+            values.append([index, data.get("case_no"), row.get("customer"), data.get("case_stage"),
+                data.get("assistant"), data.get("hearing_lawyer"), data.get("customer_manager"), data.get("fee_type"),
+                data.get("payment_method"), data.get("payer_name"), data.get("receipt_amount"), data.get("received_date"),
+                data.get("archive_fee_amount"), data.get("settlement_paid_at"), row.get("status"), data.get("archive_no")])
+            continue
         fee = fees.get(data["fee_id"])
         if not fee:
             raise HTTPException(409, "归档费关联费用不存在或无权导出")
@@ -231,7 +239,10 @@ async def enrich_settlement_exports(rows, identity, db, *, include_invoice_field
     from app.core.permissions import _record_scope_conditions
     from app.core.system import _allowed_field_keys
 
-    details = [detail for row in rows for detail in row["data"].get("allocation_details") or []]
+    modern_rows = [row for row in rows if not row.get("read_only")]
+    if not modern_rows:
+        return rows
+    details = [detail for row in modern_rows for detail in row["data"].get("allocation_details") or []]
     by_id, by_number = await linked_cases([{"data": detail} for detail in details], identity, db)
     lawyer_references = {case.id: _contract_person_values(
         (case.data or {}).get("hearing_lawyer_username") or (case.data or {}).get("hearing_lawyer")
@@ -265,9 +276,11 @@ async def enrich_settlement_exports(rows, identity, db, *, include_invoice_field
                 invoices_by_case_id.setdefault(int(case_id), {})[invoice.id] = invoice
             for case_no in set([invoice_data.get("case_no")] + list(invoice_data.get("case_nos") or [])) - {None, ""}:
                 invoices_by_case_no.setdefault(str(case_no), {})[invoice.id] = invoice
-    payments = {payment.id: payment for payment in (await db.scalars(await _visible_incoming_payment_statement(identity, db))).all()}
+    receipt_ids = {int(row["data"]["receipt_id"]) for row in modern_rows if row["data"].get("receipt_id")}
+    payment_statement = await _visible_incoming_payment_statement(identity, db)
+    payments = {payment.id: payment for payment in (await db.scalars(payment_statement.where(IncomingPayment.id.in_(receipt_ids)))).all()}
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
-    for row in rows:
+    for row in modern_rows:
         receipt_id = row["data"].get("receipt_id")
         if not receipt_id:
             raise HTTPException(409, "结算申请缺少原回款关系，不能把申请编号作为回款编号导出")
@@ -277,7 +290,7 @@ async def enrich_settlement_exports(rows, identity, db, *, include_invoice_field
         row["data"] = normalize_settlement_allocation_times(
             row["data"], payment.allocations or [], receipt_no=payment.receipt_no,
         )
-        row["data"]["bank_source"] = _incoming_payment_legacy_summary(payment)["payment_method"]
+        row["data"]["payment_method"] = _incoming_payment_legacy_summary(payment)["payment_method"]
         row["data"]["amount_visible"] = show_amount
         for detail in row["data"].get("allocation_details") or []:
             case = by_id.get(int(detail.get("case_id") or 0)) or by_number.get(str(detail.get("case_no") or ""))

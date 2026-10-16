@@ -1,6 +1,7 @@
 import { Alert, AutoComplete, DatePicker, Form, Input, InputNumber, Modal, Select } from "antd";
 import type { FormInstance } from "antd";
 import { money } from "./constants";
+import { displayFinancialValue } from "../financialValueDisplay";
 import type { IncomingClaimFormValues, IncomingPaymentFormValues } from "./formTypes";
 import type { Fee, IncomingPayment } from "./types";
 
@@ -155,7 +156,7 @@ export function IncomingClaimModal({
             <Input value={claimTarget?.amount == null ? "无权限" : money(claimTarget.amount)} readOnly />
           </Form.Item>
           <Form.Item label="回款方式">
-            <Input value={claimTarget?.bank_source || "—"} readOnly />
+            <Input value={displayFinancialValue(claimTarget?.payment_method) || "—"} readOnly />
           </Form.Item>
           <Form.Item label="银行单号">
             <Input value={claimTarget?.bank_reference || ""} readOnly />

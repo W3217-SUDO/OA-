@@ -23,6 +23,7 @@ from app.core.fee_cash_query import (
 from app.core.fee_refund_query import fee_refund_progress, legacy_refund_progress, read_fee_refunds
 from app.core.finance_read_scope import unambiguous_fee_case_nos
 from app.core.fee_type_metadata import FEE_GROUP_BASES, fee_type_group, is_platform_agency_fee
+from app.core.finance_centers import settlement_center_conditions, incoming_source_statement, payment_center
 
 
 def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord, users_by_username: dict[str, User] | None = None) -> dict:
@@ -92,15 +93,13 @@ def _incoming_payment_legacy_summary(item: IncomingPayment) -> dict:
     official_amount = 0.0
     agency_amount = 0.0
     other_amount = 0.0
-    payment_methods: list[str] = []
     contract_nos: list[str] = []
     for allocation in item.allocations or []:
-        payment_method = str(allocation.get("payment_method") or "").strip()
         contract_no = str(allocation.get("contract_no") or "").strip()
-        if payment_method and payment_method not in payment_methods:
-            payment_methods.append(payment_method)
         if contract_no and contract_no not in contract_nos:
             contract_nos.append(contract_no)
+        if item.source_kind == "hz_crm_20260930":
+            continue
         settlement_items = allocation.get("settlement_items")
         amount_rows = settlement_items if isinstance(settlement_items, list) and settlement_items else [allocation]
         for row in amount_rows:
@@ -115,20 +114,39 @@ def _incoming_payment_legacy_summary(item: IncomingPayment) -> dict:
             else:
                 other_amount += amount
     manual_method = next((part.removeprefix("回款方式：") for part in (item.remark or "").split("；") if part.startswith("回款方式：")), "") if item.source_kind == "manual" else ""
-    return {
-        "contract_no": item.contract_no or "、".join(contract_nos),
-        "customer_name": item.claimed_customer,
-        "payment_method": manual_method or "、".join(payment_methods) or item.bank_source,
+    assigned = {
         "assigned_official_fee": _round_fee_amount(official_amount),
         "assigned_agency_fee": _round_fee_amount(agency_amount),
         "assigned_other_fee": _round_fee_amount(other_amount),
     }
+    zero_identity_unverified = False
+    if item.source_kind == "hz_crm_20260930":
+        from app.core.incoming_local_amounts import current_hz_summary, proven_current_zero, verified_legacy_baseline
+
+        current = current_hz_summary(item)
+        baseline_verified = verified_legacy_baseline(item) if current is None else False
+        assigned = current if current is not None else {
+            field: (float(value) if value is not None and baseline_verified else None)
+            for field in assigned for value in [getattr(item, "legacy_" + field)]}
+        if proven_current_zero(item):
+            zero_identity_unverified = bool(item.allocations) and any(value is None for value in assigned.values())
+            assigned = dict.fromkeys(assigned, 0.0)
+    return {
+        "contract_no": item.contract_no or "、".join(contract_nos),
+        "customer_name": item.claimed_customer,
+        "payment_method": item.payment_method or item.legacy_payment_method or manual_method,
+        "has_local_allocation_activity": item.local_allocation_summary is not None,
+        "allocation_status_label": ("金额已证零，费用身份待核" if zero_identity_unverified else
+                                    "现行分配待核" if any(value is None for value in assigned.values()) else ""),
+        **assigned,
+    }
 
 
-async def _visible_incoming_payment_statement(identity: dict, db: AsyncSession):
+async def _visible_incoming_payment_statement(identity: dict, db: AsyncSession, *, include_amounts=True):
     from app.core.permissions import _record_scope_conditions
 
-    statement = select(IncomingPayment)
+    from app.core.finance_centers import incoming_center_conditions
+    statement = incoming_source_statement(include_amounts=include_amounts).where(*incoming_center_conditions(identity))
     if identity.get("role") in {"admin", "auditor"}:
         return statement
     visible_customer_titles = select(BusinessRecord.title).where(
@@ -155,9 +173,13 @@ def _incoming_payment_dict(item: IncomingPayment, *, show_amount: bool = True, u
         ))
     users = users_by_username or {}
     legacy_summary = _incoming_payment_legacy_summary(item)
+    legacy_summary["finance_scope"] = payment_center(item)
+    legacy_summary["source_settlement_status"] = item.legacy_settlement_status
     if not show_amount:
         for key in ("assigned_official_fee", "assigned_agency_fee", "assigned_other_fee"):
             legacy_summary[key] = None
+        if legacy_summary["allocation_status_label"] == "金额已证零，费用身份待核":
+            legacy_summary["allocation_status_label"] = "费用身份待核"
     return {"registered_contract_no": item.contract_no, "source_kind": item.source_kind, "id": item.id, "receipt_no": item.receipt_no, "received_date": item.received_date, "amount": amount if show_amount else None, "payer_name": item.payer_name, "bank_reference": item.bank_reference, "status": item.status, "claimed_customer": item.claimed_customer, "contract_record_id": item.contract_record_id, "contract_no": item.contract_no, "case_no": item.case_no, "bank_source": item.bank_source, "claimant": item.claimant, "claimant_display_name": _person_reference_display(item.claimant, users)[0], "allocated_amount": allocated if show_amount else None, "remaining_amount": max(amount - allocated, 0) if show_amount else None, "allocations": item.allocations or [], "operator": item.operator, "operator_display_name": _person_reference_display(item.operator, users)[0], "remark": item.remark, "created_at": item.created_at, "updated_at": item.updated_at, **legacy_summary}
 
 
@@ -2612,7 +2634,14 @@ async def _general_settlement_rows(
     from app.core.system import (
         _allowed_field_keys,
     )
-    payment_query = select(IncomingPayment)
+    from app.core.finance_centers import incoming_center_conditions, LEGACY_INCOMING_SOURCE
+    payment_query = incoming_source_statement().where(*incoming_center_conditions(identity))
+    if not receipt_detail:
+        # 旧回款只按原待提交状态进入既有申请，已审及已付原状态不得重建成待结算。
+        payment_query = payment_query.where(or_(
+            IncomingPayment.source_kind != "hz_crm_20260930",
+            LEGACY_INCOMING_SOURCE.c.settlement_status == "5",
+        ))
     if receipt_ids is not None:
         payment_query = payment_query.where(IncomingPayment.id.in_(receipt_ids))
     payments = list((await db.scalars(payment_query.order_by(
@@ -2887,7 +2916,7 @@ async def _general_settlement_rows(
             for name in resolve_manager(item.data or {}, item.customer).split("、") if name
         )) or resolve_manager({}, str(row_customer or ""))
         row_source = "、".join(dict.fromkeys(str(data.get("source_person") or data.get("case_source") or "") for data in case_data_rows if data.get("source_person") or data.get("case_source")))
-        row_method = "、".join(dict.fromkeys(str(item.get("payment_method") or "") for item in payment_allocations if item.get("payment_method")))
+        row_method = _incoming_payment_legacy_summary(payment)["payment_method"]
         if not contains(row_customer, customer) or not contains(row_case_nos, case_no):
             continue
         if received_from and payment.received_date < received_from:
@@ -2904,6 +2933,11 @@ async def _general_settlement_rows(
         official = _round_fee_total(item["current_amount"] for item in details if item["kind"] == "official")
         agency = _round_fee_total(item["current_amount"] for item in details if item["kind"] == "agency")
         other = _round_fee_total(item["current_amount"] for item in details if item["kind"] == "other")
+        if payment.source_kind == "hz_crm_20260930":
+            classified = _incoming_payment_legacy_summary(payment)
+            official = classified["assigned_official_fee"]
+            agency = classified["assigned_agency_fee"]
+            other = classified["assigned_other_fee"]
         agency_settlement = _round_fee_total(item["settlement_amount"] for item in details if item["kind"] == "agency")
         archive_fee = _round_fee_total(item["archive_fee"] for item in details)
         actual = _round_fee_total([
@@ -2919,6 +2953,8 @@ async def _general_settlement_rows(
             "owner": payment.claimant or payment.operator,
             "data": {
                 "receipt_id": payment.id,
+                "finance_scope": payment_center(payment),
+                "source_settlement_status": payment.legacy_settlement_status,
                 "receipt_no": payment.receipt_no,
                 "customer_manager": row_manager,
                 "payer_name": payment.payer_name,
@@ -2979,6 +3015,7 @@ async def _pending_archive_settlement_rows(
         BusinessRecord.module == "finance_settlement",
         BusinessRecord.status == "已付款",
         *_settlement_application_scope(identity),
+        *settlement_center_conditions(identity),
     ).order_by(BusinessRecord.id.asc()))).all())
     details = [
         detail
@@ -3007,6 +3044,7 @@ async def _pending_archive_settlement_rows(
         BusinessRecord.module == "finance_archive_settlement",
         BusinessRecord.status.in_({"已支付", "已拒绝"}),
         *_settlement_application_scope(identity),
+        *settlement_center_conditions(identity),
     ))).all()) if require_archived else []
     decided_source_ids = {str((item.data or {}).get("source_row_id") or "") for item in decisions}
     can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
@@ -3083,6 +3121,7 @@ async def _pending_archive_settlement_rows(
                 "data": {
                     "application_id": record.id,
                     "receipt_id": data.get("receipt_id"),
+                    "finance_scope": data.get("finance_scope"),
                     "case_id": linked_case.id,
                     "case_no": linked_case.serial_no,
                     "case_type": row_case_type,
@@ -3136,6 +3175,7 @@ async def _archive_settlement_decision_rows(
         BusinessRecord.module == "finance_archive_settlement",
         BusinessRecord.status.in_(statuses),
         *_settlement_application_scope(identity),
+        *settlement_center_conditions(identity),
     ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
     can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
 
@@ -3210,6 +3250,7 @@ async def _rejected_archive_settlement_records(
         BusinessRecord.module == "finance_archive_settlement",
         BusinessRecord.status == "已拒绝",
         *_settlement_application_scope(identity),
+        *settlement_center_conditions(identity),
     ))).all())
     if len(records) != len(unique_ids):
         raise HTTPException(status_code=409, detail="部分归档费不存在、不是已拒绝状态或无权处理")

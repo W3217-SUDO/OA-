@@ -1,4 +1,6 @@
 import {IncomingTotalsBody} from "./IncomingTotalsBody";
+import { isHistoricalSettlement } from "./settlementIdentity";
+import type { SettlementRow } from "./types";
 
 import {financeErrorDetail} from "./financeErrors";
 
@@ -97,7 +99,7 @@ export interface FinanceOriginalRoutesViewProps {
   exportInvoiceList: (selectedOnly: boolean) => Promise<void>;
   exportFeeQuery: (selectedOnly: boolean) => Promise<void>;
   exportGeneralSettlement: (kind: "settlement" | "receipt" | "case", ids?: (string | number)[]) => Promise<void>;
-  exportPendingArchiveSettlements: () => Promise<void>;
+  exportPendingArchiveSettlements: (ids?: (string | number)[]) => Promise<void>;
   runSettlementMoreAction: (key: string) => void;
   openBatchFeeReview: () => void;
   openCaseTaskCreate: (detail: { case_no?: unknown; customer?: unknown; data?: Record<string, unknown> }) => void;
@@ -300,7 +302,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                         showExpandColumn: false,
                         expandedRowKeys: configuredRows.map((row) => row.id),
                         expandedRowRender: (row: OriginalFinanceRow) => <GeneralSettlementExpandedRow
-                          row={row as Fee}
+                          row={row as SettlementRow}
                           isPaymentRoute={isGeneralSettlementPaymentRoute}
                           isPaidRoute={isGeneralSettlementPaidRoute}
                           isRejectedRoute={isGeneralSettlementRejectedRoute}
@@ -403,7 +405,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                                   return (
                                     <td key={`${header}-${index}`}>
                                       {totalKey && !hidePaymentTotal && !hideRejectedTotal
-                                        ? Number(generalSettlementMeta.totals[totalKey] || 0).toFixed(2)
+                                        ? generalSettlementMeta.totals[totalKey] == null ? "—" : Number(generalSettlementMeta.totals[totalKey]).toFixed(2)
                                         : null}
                                     </td>
                                   );
@@ -424,9 +426,9 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                                   {originalHeaders.map((header, index) => (
                                     <td key={`${header}-${index}`}>
                                       {header === "回款金额"
-                                        ? Number(archiveSettlementMeta.totals.receipt_amount || 0).toFixed(2)
+                                        ? archiveSettlementMeta.totals.receipt_amount == null ? "—" : Number(archiveSettlementMeta.totals.receipt_amount).toFixed(2)
                                         : header === "归档费金额"
-                                          ? Number(archiveSettlementMeta.totals.archive_fee_amount || 0).toFixed(2)
+                                          ? archiveSettlementMeta.totals.archive_fee_amount == null ? "—" : Number(archiveSettlementMeta.totals.archive_fee_amount).toFixed(2)
                                           : null}
                                     </td>
                                   ))}
@@ -685,7 +687,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                         selectedRowKeys: selectedOriginalRows,
                         onChange: (keys) =>
                           setSelectedOriginalRows(
-                            keys as (string | number)[],
+                            keys.filter(key => !(isGeneralSettlementRoute || isArchiveSettlementActiveRoute) || !configuredRows.some(row => row.id === key && isHistoricalSettlement(row))) as (string | number)[],
                           ),
                         getTitleCheckboxProps: () =>
                           initialView === "finance-payment-waiting"
@@ -693,6 +695,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                             : {},
                         getCheckboxProps: (row) => ({
                           disabled:
+                            ((isGeneralSettlementRoute || isArchiveSettlementActiveRoute) && isHistoricalSettlement(row)) ||
                             Boolean(isInternalQueueRoute && row.data?.read_only) ||
                             (initialView === "finance-internal-refund-audit" && row.status !== "待审批"),
                         }),
@@ -1125,7 +1128,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
             {isArchiveSettlementActiveRoute && archiveSettlementMeta.total > 0 && (
               <div className="finance-archive-settlement-footer">
                 <Space size={7}>
-                  {isArchiveSettlementPaymentRoute && (
+                  {isArchiveSettlementPaymentRoute && configuredRows.some(row => !isHistoricalSettlement(row)) && (
                     <>
                       <Button
                         loading={archiveSettlementBusy}
@@ -1155,7 +1158,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                       </Button>
                     </>
                   )}
-                  {isArchiveSettlementPaidRoute && (
+                  {isArchiveSettlementPaidRoute && configuredRows.some(row => !isHistoricalSettlement(row)) && (
                     <Button
                       loading={archiveSettlementBusy}
                       onClick={() =>
@@ -1169,7 +1172,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                       回滚归档费结算
                     </Button>
                   )}
-                  {isArchiveSettlementRejectedRoute && (
+                  {isArchiveSettlementRejectedRoute && configuredRows.some(row => !isHistoricalSettlement(row)) && (
                     <Button
                       loading={archiveSettlementBusy}
                       onClick={() =>
@@ -1189,13 +1192,14 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                   >
                     导出选中
                   </Button>
+                  <Button loading={archiveSettlementBusy} onClick={() => void exportPendingArchiveSettlements([])}>导出查询结果</Button>
                 </Space>
               </div>
             )}
             {isGeneralSettlementRoute && generalSettlementMeta.total > 0 && (
               <div className="finance-settlement-footer">
                 <Space size={7}>
-                  {!isGeneralSettlementPaidRoute && (
+                  {!isGeneralSettlementPaidRoute && settlementRouteRows.some(row => !isHistoricalSettlement(row)) && (
                     <Button
                       loading={generalSettlementBusy}
                       onClick={() =>
@@ -1231,7 +1235,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                           : "申请结算"}
                     </Button>
                   )}
-                  {isGeneralSettlementAuditRoute && (
+                  {isGeneralSettlementAuditRoute && settlementRouteRows.some(row => !isHistoricalSettlement(row)) && (
                     <Button
                       loading={generalSettlementBusy}
                       onClick={() =>

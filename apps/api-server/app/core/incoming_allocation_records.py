@@ -22,10 +22,13 @@ def allocation_revision(rows):
 async def authorized_payment(payment_id, identity, db, *, lock=False):
     from app.core.permissions import _record_scope_conditions
     from app.core.system import _allowed_field_keys
-    stmt = select(IncomingPayment).where(IncomingPayment.id == payment_id)
-    payment = await db.scalar(stmt.with_for_update() if lock else stmt)
+    from app.core.finance_centers import incoming_source_statement
+    stmt = incoming_source_statement().where(IncomingPayment.id == payment_id)
+    payment = await db.scalar(stmt.with_for_update(of=IncomingPayment) if lock else stmt)
     if payment is None:
         raise HTTPException(404, '银行到账记录不存在')
+    from app.core.finance_centers import require_incoming_center
+    require_incoming_center(payment, identity)
     if identity.get('role') != 'admin' and identity['username'] not in {payment.operator, payment.claimant}:
         customer = await db.scalar(select(BusinessRecord.id).where(
             BusinessRecord.module == 'customer', BusinessRecord.title == payment.claimed_customer,
@@ -114,5 +117,7 @@ async def cancel_allocation_records(payment_id, body, identity, db):
     payment.allocations = remaining
     payment.allocated_amount = _round_fee_amount(sum(float(row['amount']) for row in remaining))
     payment.status = '已分配' if payment.allocated_amount + 0.001 >= payment.amount else '部分分配' if remaining else '待分配'
+    from app.core.incoming_local_amounts import stamp_hz_allocation_summary
+    await stamp_hz_allocation_summary(payment, db)
     await db.commit()
     return await allocation_records(payment_id, identity, db)

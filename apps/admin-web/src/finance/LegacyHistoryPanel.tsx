@@ -335,6 +335,15 @@ export function LegacyHistoryPanel({
         }}
         scroll={{ x: 1550 }}
       />
+      <LegacyFinanceDetailDrawer detail={detail} detailLoading={detailLoading} onCloseDetail={onCloseDetail} amountVisible={amountVisible} />
+    </>
+  );
+}
+
+export function LegacyFinanceDetailDrawer({ detail, detailLoading, onCloseDetail, amountVisible }: Pick<LegacyHistoryPanelProps, "detail" | "detailLoading" | "onCloseDetail"> & { amountVisible?: boolean }) {
+  const formatAmount = (value: number | null | undefined) =>
+    amountVisible ? value == null ? "—" : money(value) : "无权限";
+  return (
       <Drawer
         open={detailLoading || Boolean(detail)}
         title="导入来源记录明细"
@@ -357,7 +366,7 @@ export function LegacyHistoryPanel({
               }
               showIcon
               title={mappingLabel(detail.mapping_status)}
-              description="此记录来自旧 FAM 数据迁移，仅用于审计追溯，不参与实时财务汇总或业务操作。"
+              description="保留旧系统金额、状态和来源关系，仅供只读核对，不办理审批、支付或回退。"
             />
             <Descriptions
               column={2}
@@ -389,6 +398,12 @@ export function LegacyHistoryPanel({
               <Descriptions.Item label="来源表">
                 {detail.source_table || "—"}
               </Descriptions.Item>
+              {detail.amount_basis === "legacy_snapshot" && <Descriptions.Item label="金额来源" span={2}>
+                <Tag title={detail.source_label}>原始快照</Tag>
+              </Descriptions.Item>}
+              {detail.has_local_allocation_activity === true && <Descriptions.Item label="本地分配" span={2}>
+                已发生本地分配操作
+              </Descriptions.Item>}
               <Descriptions.Item label="关联状态">
                 {mappingLabel(detail.mapping_status)}
               </Descriptions.Item>
@@ -580,7 +595,6 @@ export function LegacyHistoryPanel({
           </>
         ) : null}
       </Drawer>
-    </>
   );
 }
 

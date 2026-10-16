@@ -141,8 +141,10 @@ async def confirm_finance_fee_inform_arrival(
     if _round_fee_amount(float(source_data.get("received_amount") or source_data.get("cashed_amount") or 0)) > 0:
         raise HTTPException(status_code=409, detail="来源费用已登记到账，不能重复确认")
     previous = notice.status
+    from app.core.finance_centers import require_source_center
     receipt = IncomingPayment(
         source_kind="system",
+        finance_scope=await require_source_center(source_fee, db),
         receipt_no=f"FNIHK{datetime.now():%Y%m%d%H%M%S%f}", received_date=body.received_date,
         amount=received, payer_name=source_fee.customer or "费用通知到账", bank_reference=f"fee-source:{source_fee.id}",
         status="已分配", claimed_customer=source_fee.customer,

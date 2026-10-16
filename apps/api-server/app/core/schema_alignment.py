@@ -175,6 +175,16 @@ def align_integration_legacy_schema(connection: Connection) -> None:
         if column not in notification_columns: connection.execute(text(f"ALTER TABLE notifications ADD COLUMN {column} {definition}"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_notifications_sender ON notifications (sender)"))
     incoming_columns = {item["name"] for item in inspect(connection).get_columns("incoming_payments")}
+    if "local_allocation_summary" not in incoming_columns:
+        connection.execute(text("ALTER TABLE incoming_payments ADD COLUMN local_allocation_summary JSON"))
+    if "finance_scope" not in incoming_columns:
+        connection.execute(text("ALTER TABLE incoming_payments ADD COLUMN finance_scope VARCHAR(16)"))
+    if "legacy_finance_record_id" not in incoming_columns:
+        connection.execute(text("ALTER TABLE incoming_payments ADD COLUMN legacy_finance_record_id INTEGER REFERENCES legacy_finance_records(id) ON DELETE RESTRICT"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_incoming_payments_legacy_finance_record_id ON incoming_payments (legacy_finance_record_id)"))
+    if "payment_method" not in incoming_columns:
+        connection.execute(text("ALTER TABLE incoming_payments ADD COLUMN payment_method VARCHAR(100) NOT NULL DEFAULT ''"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_incoming_payments_finance_scope ON incoming_payments (finance_scope)"))
     if "source_kind" not in incoming_columns:
         connection.execute(text("ALTER TABLE incoming_payments ADD COLUMN source_kind VARCHAR(24) NOT NULL DEFAULT 'unknown'"))
         from app.core.incoming_payment_sources import backfill_incoming_sources
