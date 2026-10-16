@@ -61,10 +61,10 @@ async def _source_query(identity, db, mode, statuses, filters):
     # 以全部历史明细为 FROM 起点，容易在大库上形成全表 JSON 关联。
     line_from = select(line.id).select_from(receipts).join(
         head, and_(head.id == receipts.c.source_header_id,
-                   head.source_table == "FAM_AR_Payment", head.is_active.is_(True))).join(
+                   head.source_table == "FAM_AR_Payment")).join(
         line, and_(line.legacy_finance_record_id == head.id,
                    line.source_table == "FAM_AR_Payment_Object", line.is_active.is_(True))).outerjoin(
-        original_fee, and_(original_fee.source_table == "FAM_AR_CaseFee", original_fee.is_active.is_(True),
+        original_fee, and_(original_fee.source_table == "FAM_AR_CaseFee",
             original_fee.legacy_id == fee_id,
             _text(original_fee.source_payload, "CaseFeeId") == line.legacy_case_fee_id,
             _text(original_fee.source_payload, "_source_database").is_not_distinct_from(_text(source, "_source_database")))).outerjoin(
@@ -254,6 +254,8 @@ async def read_imported_settlement_page(modern_rows, identity, db, *, mode, stat
         # 总额和当前页重复执行同一 CTE。一次读取基础行后按同一条件顺序计算，
         # 保留原有未知计数、金额汇总和分页口径。
         raw_rows = [dict(value) for value in (await db.execute(query)).mappings()]
+        # SQL 投影的原始行先按旧接口的稳定键排序，再做未知状态过滤和分页，保证 page>1 与旧系统一致。
+        raw_rows.sort(key=lambda row: (str(row.get("received_date") or ""), str(row.get("projection_key") or "")), reverse=True)
         date_fields = []
         for prefix, field in (("received", "received_date"), ("applied", "applied_at"),
                               ("reviewed", "reviewed_at"), ("paid", "paid_at"),
