@@ -16,7 +16,10 @@ from sqlalchemy.pool import StaticPool
 from app.core.finance import _general_settlement_rows, _invoice_list_rows
 from app.areas.finance.settlements import router
 from app.database import Base, get_db
-from app.models import BusinessRecord, IncomingPayment, User
+from app.models import (
+    BusinessRecord, IncomingPayment, LegacyFinanceAllocation,
+    LegacyFinanceRecord, SystemParameter, User,
+)
 from app.security import current_identity
 
 
@@ -45,7 +48,11 @@ class SelectedQueryAssertions:
         async with self.engine.begin() as connection:
             await connection.run_sync(lambda sync_connection: Base.metadata.create_all(
                 sync_connection,
-                tables=[BusinessRecord.__table__, IncomingPayment.__table__, User.__table__],
+                tables=[
+                    BusinessRecord.__table__, IncomingPayment.__table__, User.__table__,
+                    LegacyFinanceRecord.__table__, LegacyFinanceAllocation.__table__,
+                    SystemParameter.__table__,
+                ],
             ))
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
 
@@ -63,6 +70,7 @@ class SelectedQueryAssertions:
             "username": username,
             "role": "admin",
             "_actual_role_ids": ["admin"],
+            "_finance_scope": "firm",
             "_conflict_review_permission": (username, True),
             "_invoice_permissions": {
                 "username": username,
@@ -118,6 +126,7 @@ class SelectedQueryAssertions:
             payments = [
                 IncomingPayment(
                     receipt_no=f"ENTERPRISE-SELECTED-RECEIPT-{index:03d}",
+                    finance_scope="firm",
                     received_date=date(2026, 9, 1), amount=1,
                     payer_name="无关付款人", operator="selected-query-admin",
                 )
@@ -126,6 +135,7 @@ class SelectedQueryAssertions:
             payments.extend([
                 IncomingPayment(
                     receipt_no=f"ENTERPRISE-SELECTED-RECEIPT-VALID-{index}",
+                    finance_scope="firm",
                     received_date=date(2026, 9, 2 + index), amount=10 + index,
                     allocated_amount=10 + index, payer_name="相关付款人",
                     claimed_customer="客户甲", operator="selected-query-admin",
@@ -185,6 +195,7 @@ class SQLiteSelectedQueryTest(SelectedQueryAssertions, unittest.IsolatedAsyncioT
             db.add(fee)
             await db.flush()
             payment = IncomingPayment(receipt_no="CODEX-ROW4-MIXED-RECEIPT",
+                                      finance_scope="firm",
                                       received_date=date(2026, 10, 12), amount=25, allocated_amount=25,
                                       payer_name="CODEX-ROW4-PAYER", claimed_customer=case.customer,
                                       operator="selected-query-admin", allocations=[{
@@ -215,7 +226,10 @@ class SQLiteSelectedQueryTest(SelectedQueryAssertions, unittest.IsolatedAsyncioT
         application.include_router(router)
         application.dependency_overrides[get_db] = database
         application.dependency_overrides[current_identity] = self.identity
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url="http://row4.test") as client:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=application), base_url="http://row4.test",
+            params={"finance_scope": "firm"},
+        ) as client:
             for voucher_extra in (None, 99):
                 if voucher_extra is not None:
                     async with self.sessions() as db:
@@ -273,6 +287,7 @@ class SQLiteSelectedQueryTest(SelectedQueryAssertions, unittest.IsolatedAsyncioT
             await db.flush()
             payment = IncomingPayment(
                 receipt_no="CODEX-ROW4-RECEIPT", received_date=date(2026, 10, 12),
+                finance_scope="firm",
                 amount=25, allocated_amount=25, payer_name="CODEX-ROW4-PAYER",
                 claimed_customer=case.customer, operator="selected-query-admin",
                 allocations=[{"case_id": case.id, "case_no": case.serial_no, "amount": 25,
@@ -291,7 +306,10 @@ class SQLiteSelectedQueryTest(SelectedQueryAssertions, unittest.IsolatedAsyncioT
         application.include_router(router)
         application.dependency_overrides[get_db] = database
         application.dependency_overrides[current_identity] = self.identity
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url="http://row4.test") as client:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=application), base_url="http://row4.test",
+            params={"finance_scope": "firm"},
+        ) as client:
             for kind, name in (("case", "案件明细清单"), ("settlement", "结算列表")):
                 with self.subTest(kind=kind):
                     response = await client.get("/api/v1/finance/general-settlements/export", params={"kind": kind, "ids": payment_id})
