@@ -10,7 +10,8 @@ from sqlalchemy.orm import aliased
 from app.core.finance_centers import LEGACY_INCOMING_SOURCE
 from app.models import BusinessRecord, IncomingPayment, LegacyFinanceAllocation, LegacyFinanceRecord
 from app.core.incoming_legacy_amounts import (
-    LEGACY_ASSIGNED_AMOUNTS, attach_source_fee_type, source_allocation_relation, source_fee_kind,
+    attach_source_fee_type, legacy_assigned_amounts,
+    source_allocation_relation, source_fee_kind,
 )
 
 
@@ -41,6 +42,11 @@ async def _source_query(identity, db, mode, statuses, filters):
         LEGACY_INCOMING_SOURCE.c.source_header_id,
         func.nullif(cast(IncomingPayment.local_allocation_summary, String), "null").is_not(None).label(
             "has_local_allocation_activity")).subquery("visible_legacy_receipts")
+    # 普通历史结算金额只会被当前可见回款头使用。将旧金额聚合限制到该集合，
+    # 保留原有明细、基线和金额完整性计算，避免每次刷新扫描全部旧回款头。
+    visible_legacy_amounts = legacy_assigned_amounts(header_ids=select(
+        receipts.c.source_header_id,
+    ).where(receipts.c.source_header_id.is_not(None)).distinct())
     head = LegacyFinanceRecord
     line = LegacyFinanceAllocation
     original_fee = aliased(LegacyFinanceRecord)
@@ -51,9 +57,15 @@ async def _source_query(identity, db, mode, statuses, filters):
     fee_id = case((_text(source, "_source_database").is_not(None),
                    _text(source, "_source_database") + literal(":") + line.legacy_case_fee_id),
                   else_=line.legacy_case_fee_id)
-    line_from = select(line.id).join(head, head.id == line.legacy_finance_record_id).join(
-        receipts, receipts.c.source_header_id == head.id).outerjoin(
-        original_fee, and_(original_fee.source_table == "FAM_AR_CaseFee", original_fee.legacy_id == fee_id,
+    # 从可见回款头集合起步，先缩小历史来源范围，再联接明细和案件；旧写法
+    # 以全部历史明细为 FROM 起点，容易在大库上形成全表 JSON 关联。
+    line_from = select(line.id).select_from(receipts).join(
+        head, and_(head.id == receipts.c.source_header_id,
+                   head.source_table == "FAM_AR_Payment", head.is_active.is_(True))).join(
+        line, and_(line.legacy_finance_record_id == head.id,
+                   line.source_table == "FAM_AR_Payment_Object", line.is_active.is_(True))).outerjoin(
+        original_fee, and_(original_fee.source_table == "FAM_AR_CaseFee", original_fee.is_active.is_(True),
+            original_fee.legacy_id == fee_id,
             _text(original_fee.source_payload, "CaseFeeId") == line.legacy_case_fee_id,
             _text(original_fee.source_payload, "_source_database").is_not_distinct_from(_text(source, "_source_database")))).outerjoin(
         linked_case, and_(linked_case.id == line.case_record_id, linked_case.module == "case"))
@@ -111,7 +123,7 @@ async def _source_query(identity, db, mode, statuses, filters):
             ("agency_settlement_amount", "CaseNonOfficeFeeSettlementAmount"), ("archive_fee", "CaseFeeArchiveAmount"),
             ("actual_settlement_amount", "CaseFeeSettlementAmount"),
         )})
-        common.update({key: LEGACY_ASSIGNED_AMOUNTS.c[key] for key in (
+        common.update({key: visible_legacy_amounts.c[key] for key in (
             "assigned_official_fee", "assigned_agency_fee", "assigned_other_fee")})
         balance = _money(source, "CashedAmount") - _money(source, "AppliedAmount")
         common["remaining_amount"] = case((balance.is_(None), None), (balance > 0, balance), else_=0)
@@ -123,7 +135,7 @@ async def _source_query(identity, db, mode, statuses, filters):
             "line_id": literal(None), "source_object": literal(None)})
         query = select(*(value.label(key) for key, value in common.items())).select_from(head).join(
             receipts, receipts.c.source_header_id == head.id).outerjoin(sums, sums.c.header_id == head.id).outerjoin(
-                LEGACY_ASSIGNED_AMOUNTS, LEGACY_ASSIGNED_AMOUNTS.c.header_id == head.id).where(
+            visible_legacy_amounts, visible_legacy_amounts.c.header_id == head.id).where(
                 ~modern, _text(source, "SettlementStatus").in_([key for key, value in NORMAL_STATES.items() if value in statuses]))
         query = query.outerjoin(linked_customer, and_(linked_customer.id == head.customer_record_id, linked_customer.module == "customer"))
     else:
@@ -210,9 +222,110 @@ def _row(value, show_amount, archive):
 
 async def read_imported_settlement_page(modern_rows, identity, db, *, mode, statuses=(), filters=None, page=1, page_size=10, projection_ids=None):
     from app.core.system import _allowed_field_keys
+    filters = filters or {}
 
-    query, details = await _source_query(identity, db, mode, statuses, filters or {})
-    base = query.subquery("filtered_legacy_settlements")
+    # 没有可见历史回款头时，后续历史明细、案件关联和状态汇总都不可能产生行。
+    # 先做一次轻量存在性查询，避免空结果请求仍构造整套历史投影关联 SQL。
+    if not modern_rows and projection_ids is None:
+        from app.core.finance import _visible_incoming_payment_statement
+        from app.core.finance_centers import LEGACY_INCOMING_SOURCE
+
+        visible = await _visible_incoming_payment_statement(identity, db, include_amounts=False)
+        visible_headers = visible.with_only_columns(
+            LEGACY_INCOMING_SOURCE.c.source_header_id,
+        ).where(LEGACY_INCOMING_SOURCE.c.source_header_id.is_not(None)).limit(1).subquery("visible_settlement_headers")
+        if await db.scalar(select(func.count()).select_from(visible_headers)) == 0:
+            amount_keys = NORMAL_AMOUNTS if mode == "normal" else ARCHIVE_AMOUNTS
+            return {
+                "items": [],
+                "total": 0,
+                "totals": {key: 0 if "finance.amount" in await _allowed_field_keys(identity, db) else None for key in amount_keys},
+                "unknown_amount_counts": {key: 0 for key in amount_keys},
+                "unknown_phase_total": 0,
+                "unknown_eligibility_total": 0,
+                "unknown_date_total": 0,
+                "page": page,
+                "page_size": page_size,
+            }
+
+    query, details = await _source_query(identity, db, mode, statuses, filters)
+    if mode in {"pending", "payment", "paid", "rejected"}:
+        # 归档投影的基础关联非常重，原实现会为未知状态、未知阶段、未知日期、
+        # 总额和当前页重复执行同一 CTE。一次读取基础行后按同一条件顺序计算，
+        # 保留原有未知计数、金额汇总和分页口径。
+        raw_rows = [dict(value) for value in (await db.execute(query)).mappings()]
+        date_fields = []
+        for prefix, field in (("received", "received_date"), ("applied", "applied_at"),
+                              ("reviewed", "reviewed_at"), ("paid", "paid_at"),
+                              ("settled", "settlement_paid_at"), ("submitted", "applied_at"),
+                              ("payment", "paid_at"), ("archive", "archive_date")):
+            if any(isinstance(filters.get(prefix + suffix), date) for suffix in ("_from", "_to")):
+                date_fields.append(field)
+        for row in raw_rows:
+            row["date_unknown"] = bool(date_fields) and any(
+                row.get(field) is None or str(row.get(field) or "") == "" for field in date_fields
+            )
+        if projection_ids is not None:
+            selected_ids = set(projection_ids)
+            raw_rows = [row for row in raw_rows if row.get("projection_key") in selected_ids]
+        unknown_eligibility_total = sum(
+            1 for row in raw_rows
+            if row.get("source_status") is None or row.get("archive_fee_amount") is None
+        )
+        eligible_rows = [
+            row for row in raw_rows
+            if row.get("source_status") is not None and row.get("archive_fee_amount") is not None
+            and float(row.get("archive_fee_amount") or 0) > 0
+        ]
+        unknown_phase_total = sum(1 for row in eligible_rows if row.get("phase") is None) if mode in {"pending", "payment"} else 0
+        phase_rows = (
+            [row for row in eligible_rows if row.get("phase") is not None]
+            if mode in {"pending", "payment"} else eligible_rows
+        )
+        unknown_date_total = sum(1 for row in phase_rows if row.get("date_unknown"))
+        legacy_rows = [row for row in phase_rows if not row.get("date_unknown")]
+        show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
+        amount_keys = ARCHIVE_AMOUNTS
+        totals = {}
+        unknown = {}
+        for key in amount_keys:
+            values = [row.get(key) for row in legacy_rows]
+            unknown[key] = sum(value is None for value in values)
+            totals[key] = None if not show_amount and legacy_rows else (
+                None if any(value is None for value in values) else round(sum(float(value or 0) for value in values), 2)
+            )
+        start = (page - 1) * page_size
+        selected = legacy_rows if projection_ids is not None else legacy_rows[start:start + page_size]
+        legacy_result = [_row(row, show_amount, True) for row in selected]
+        if projection_ids is not None and {row["id"] for row in legacy_result} != set(projection_ids):
+            raise HTTPException(409, "部分历史结算不存在、状态已变化、已由现代记录承接或无权导出")
+        rows = modern_rows + legacy_result
+        rows.sort(key=lambda row: (str((row.get("data") or {}).get("received_date") or ""), str(row["id"])), reverse=True)
+        for key in amount_keys:
+            modern_values = [(item.get("data") or {}).get(key) for item in modern_rows]
+            if any(value is None for value in modern_values):
+                totals[key] = None
+                unknown[key] += sum(value is None for value in modern_values)
+            elif totals[key] is not None:
+                totals[key] = round(float(totals[key] or 0) + sum(float(value or 0) for value in modern_values), 2)
+        return {
+            "items": rows if projection_ids is not None or not modern_rows else rows[start:start + page_size],
+            "total": len(modern_rows) + len(legacy_rows),
+            "totals": totals,
+            "unknown_amount_counts": unknown,
+            "unknown_phase_total": unknown_phase_total,
+            "unknown_eligibility_total": unknown_eligibility_total,
+            "unknown_date_total": unknown_date_total,
+            "page": page,
+            "page_size": page_size,
+        }
+    if db.get_bind().dialect.name == "postgresql":
+        # 同一历史投影会被未知计数、总计和当前页查询重复引用；在 PostgreSQL
+        # 上物化一次，避免每条统计语句重新展开相同的多表关联。SQLite 保持
+        # 原 subquery 语法，确保现有测试数据库兼容。
+        base = query.cte("filtered_legacy_settlements").prefix_with("MATERIALIZED")
+    else:
+        base = query.subquery("filtered_legacy_settlements")
     unknown_phase_total = 0
     unknown_eligibility_total = 0
     if mode != "normal":

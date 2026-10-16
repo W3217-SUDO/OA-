@@ -752,7 +752,7 @@ export default function PlatformFinancePage({
         setSourceRows(data.items || []);
       } else {
         const module = config.kind === "invoice" ? "invoice" : "finance";
-        const { data } = await api.get("/records", { params: { module, page_size: 100 } });
+        const { data } = await api.get("/records", { params: { module, finance_scope: "platform", page: 1, page_size: 100 } });
         setSourceRows(data.items || []);
       }
     } catch (error: any) {

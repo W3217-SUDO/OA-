@@ -106,6 +106,7 @@ async def list_incoming_payments(
         result = await read_incoming_query(
             statement, keyword, view, filter_values, page, page_size,
             can_view_amount, users_by_username, db,
+            use_statement_rows=db.get_bind().dialect.name == "postgresql",
         )
         items = result["items"]
         customers_by_title = result.pop("customers")

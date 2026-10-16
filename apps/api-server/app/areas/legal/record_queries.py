@@ -22,6 +22,7 @@ async def list_records(
     signed_at_start: str = "", signed_at_end: str = "",
     investigation_view: str = Query("", pattern="^(|published|assigned|unassigned)$"),
     archive_view: str = Query("", pattern="^(|pending|refused)$"),
+    finance_scope: str = Query("", pattern="^(|firm|platform)$"),
     pending_approver_only: bool = False,
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
@@ -65,6 +66,14 @@ async def list_records(
             from app.core.internal_requests import external_finance_condition
 
             conditions.append(external_finance_condition())
+    if module in {"finance", "invoice"} and finance_scope:
+        if finance_scope == "platform":
+            conditions.append(or_(
+                BusinessRecord.data["finance_scope"].as_string() == "platform",
+                BusinessRecord.data["expense_scope"].as_string() == "平台",
+                BusinessRecord.data["accounting_center"].as_string() == "平台财务中心",
+                BusinessRecord.data["contract_body"].as_string() == "平台",
+            ))
     relation_customer = None
     if module == "contract" and customer_id:
         relation_customer = await _customer_or_404(customer_id, identity, db)

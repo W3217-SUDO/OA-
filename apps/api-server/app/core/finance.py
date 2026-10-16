@@ -23,7 +23,9 @@ from app.core.fee_cash_query import (
 from app.core.fee_refund_query import fee_refund_progress, legacy_refund_progress, read_fee_refunds
 from app.core.finance_read_scope import unambiguous_fee_case_nos
 from app.core.fee_type_metadata import FEE_GROUP_BASES, fee_type_group, is_platform_agency_fee
-from app.core.finance_centers import settlement_center_conditions, incoming_source_statement, payment_center
+from app.core.finance_centers import (
+    LEGACY_INCOMING_SOURCE, settlement_center_conditions, incoming_source_statement, payment_center,
+)
 
 
 def _receivable_dict(plan: ReceivablePlan, contract: BusinessRecord, users_by_username: dict[str, User] | None = None) -> dict:
@@ -146,17 +148,35 @@ async def _visible_incoming_payment_statement(identity: dict, db: AsyncSession, 
     from app.core.permissions import _record_scope_conditions
 
     from app.core.finance_centers import incoming_center_conditions
-    statement = incoming_source_statement(include_amounts=include_amounts).where(*incoming_center_conditions(identity))
-    if identity.get("role") in {"admin", "auditor"}:
-        return statement
-    visible_customer_titles = select(BusinessRecord.title).where(
-        BusinessRecord.module == "customer", *(await _record_scope_conditions(identity, db)),
-    )
-    return statement.where(or_(
-        IncomingPayment.operator == identity["username"],
-        IncomingPayment.claimant == identity["username"],
-        IncomingPayment.claimed_customer.in_(visible_customer_titles),
-    ))
+    conditions = list(incoming_center_conditions(identity))
+    if identity.get("role") not in {"admin", "auditor"}:
+        visible_customer_titles = select(BusinessRecord.title).where(
+            BusinessRecord.module == "customer", *(await _record_scope_conditions(identity, db)),
+        )
+        conditions.append(or_(
+            IncomingPayment.operator == identity["username"],
+            IncomingPayment.claimant == identity["username"],
+            IncomingPayment.claimed_customer.in_(visible_customer_titles),
+        ))
+    # 旧系统分配金额的聚合包含大量 JSON 和案件费用关联。先用不带旧金额的可见
+    # 回款集合取得所有旧表头 ID，再把这些 ID 限制传入聚合子查询；不能限制到当前页，
+    # 否则列表的全局汇总会与旧系统不一致。
+    if include_amounts and db.get_bind().dialect.name == "postgresql":
+        base = incoming_source_statement(include_amounts=False).where(*conditions)
+        header_ids = base.with_only_columns(
+            LEGACY_INCOMING_SOURCE.c.source_header_id,
+        ).where(
+            IncomingPayment.source_kind == "hz_crm_20260930",
+            LEGACY_INCOMING_SOURCE.c.source_header_id.is_not(None),
+        ).distinct()
+        statement = incoming_source_statement(legacy_header_ids=header_ids).where(*conditions)
+    elif include_amounts:
+        # SQLite 测试路径保留原始聚合连接；回款查询投影会直接读取该连接上的
+        # legacy_* 列，不能把金额子查询改成笛卡尔积。
+        statement = incoming_source_statement(include_amounts=True).where(*conditions)
+    else:
+        statement = incoming_source_statement(include_amounts=False).where(*conditions)
+    return statement
 
 
 def _incoming_payment_dict(item: IncomingPayment, *, show_amount: bool = True, users_by_username: dict[str, User] | None = None) -> dict:
@@ -1285,6 +1305,20 @@ async def _invoice_list_rows(
         *(await _record_scope_conditions(identity, db))]
     if ids is not None:
         record_conditions.append(BusinessRecord.id.in_(ids))
+    # 将旧列表中可由数据库直接判断的字段下推，复杂的申请人显示名、日期
+    # 解析和板块权限仍保留原有 Python 过滤，确保返回口径不变。
+    if customer.strip():
+        record_conditions.append(BusinessRecord.customer.ilike(f"%{customer.strip()}%"))
+    if application_no.strip():
+        record_conditions.append(BusinessRecord.serial_no.ilike(f"%{application_no.strip()}%"))
+    if invoice_status:
+        record_conditions.append(BusinessRecord.status == invoice_status)
+    if invoice_title.strip():
+        record_conditions.append(BusinessRecord.data["invoice_title"].as_string().ilike(f"%{invoice_title.strip()}%"))
+    if invoice_no.strip():
+        record_conditions.append(BusinessRecord.data["invoice_no"].as_string().ilike(f"%{invoice_no.strip()}%"))
+    if case_no.strip():
+        record_conditions.append(BusinessRecord.data["case_no"].as_string().ilike(f"%{case_no.strip()}%"))
     records = list((await db.scalars(select(BusinessRecord).where(
         *record_conditions,
     ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
@@ -1294,6 +1328,8 @@ async def _invoice_list_rows(
         username: (display_name or username)
         for username, display_name in (await db.execute(select(User.username, User.display_name))).all()
     }
+    from app.core.invoice_permissions import invoice_permissions, invoice_finance_scope
+    invoice_capabilities = await invoice_permissions(identity, db)
 
     def contains(value: object, needle: str) -> bool:
         return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
@@ -1305,8 +1341,7 @@ async def _invoice_list_rows(
         applicant = user_display_names.get(applicant_account, applicant_account)
         if scope == "mine" and not ({applicant_account, applicant} & personal_names):
             continue
-        from app.core.invoice_permissions import invoice_finance_scope, invoice_permissions
-        capabilities = (await invoice_permissions(identity, db))[invoice_finance_scope(item)]
+        capabilities = invoice_capabilities[invoice_finance_scope(item)]
         if scope == "pending":
             if item.status not in {"待审批", "待开票"}:
                 continue
@@ -2367,6 +2402,13 @@ async def _internal_fee_rows(
         ])
     if ids is not None and scope != "applications":
         fee_conditions.append(BusinessRecord.id.in_(ids))
+    # 费用自身的客户和收款对象可安全下推；案件编号可能只存在关联案件，
+    # 案件人员、已付款日期
+    # 和生命周期状态仍由原有批量关联逻辑计算，避免改变派生字段口径。
+    if customer.strip():
+        fee_conditions.append(BusinessRecord.customer.ilike(f"%{customer.strip()}%"))
+    if payee.strip():
+        fee_conditions.append(BusinessRecord.data["payee"].as_string().ilike(f"%{payee.strip()}%"))
     fees = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance",
         BusinessRecord.data["fee_type"].as_string() == "内部费用",
@@ -2650,6 +2692,14 @@ async def _general_settlement_rows(
         )).where(IncomingPayment.id.in_(eligible_receipt_ids))
     if receipt_ids is not None:
         payment_query = payment_query.where(IncomingPayment.id.in_(receipt_ids))
+    # 这些字段直接属于回款主表，先由数据库完成等价筛选；案件费用关联和
+    # 管理人等派生字段仍由下方原有逻辑判断，避免改变旧系统口径。
+    if payer.strip():
+        payment_query = payment_query.where(IncomingPayment.payer_name.ilike(f"%{payer.strip()}%"))
+    if received_from:
+        payment_query = payment_query.where(IncomingPayment.received_date >= received_from)
+    if received_to:
+        payment_query = payment_query.where(IncomingPayment.received_date <= received_to)
     payments = list((await db.scalars(payment_query.order_by(
         IncomingPayment.received_date.asc(), IncomingPayment.id.asc(),
     ))).all())
@@ -2749,8 +2799,16 @@ async def _general_settlement_rows(
         key = str(fee_case_id or fee_case_no)
         fees_by_case.setdefault(key, []).append(fee)
 
+    # 结算记录只会通过 receipt_id 影响当前候选回款。旧系统按回款主键关联
+    # FAM_AR_Payment_Object；这里先限定当前回款集合，避免每次列表查询扫描整张
+    # finance_settlement 表，同时保留后续状态和退回备注的原有计算逻辑。
+    payment_ids = {payment.id for payment in payments}
     settlement_records = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "finance_settlement"
+        BusinessRecord.module == "finance_settlement",
+        # 使用 JSON 文本比较兼容历史数据中 receipt_id 以数字或字符串保存的情况，
+        # 避免数据库对非数字 JSON 值强制转换时报错；后续 Python 逻辑仍按整数主键关联。
+        BusinessRecord.data["receipt_id"].as_string().in_({str(payment_id) for payment_id in payment_ids})
+        if payment_ids else False,
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()))).all())
     inactive_statuses = {"已拒绝", "已驳回", "已退回", "已撤回", "已作废"}
     active_receipt_ids = {

@@ -185,16 +185,16 @@ def incoming_totals(items, show_amount: bool) -> dict:
 
 async def read_incoming_query(statement, keyword: str, view: str, filters: dict,
                               page: int | None, page_size: int | None,
-                              show_amount: bool, users: dict, db) -> dict:
-    projection = statement.with_only_columns(
+                              show_amount: bool, users: dict, db,
+                              use_statement_rows: bool = False) -> dict:
+    # 汇总阶段只读取筛选、统计和排序需要的字段。完整分配明细、备注及人员字段
+    # 只在最终返回的当前页再次读取，保持结果一致并避免大批量 JSON 在内存中复制。
+    summary_projection = statement.with_only_columns(
         IncomingPayment.id, IncomingPayment.received_date, IncomingPayment.receipt_no,
         IncomingPayment.amount, IncomingPayment.allocated_amount, IncomingPayment.status,
         IncomingPayment.payer_name, IncomingPayment.bank_reference, IncomingPayment.claimed_customer,
         IncomingPayment.contract_no, IncomingPayment.allocations, IncomingPayment.source_kind,
         IncomingPayment.remark, IncomingPayment.bank_source,
-        IncomingPayment.contract_record_id, IncomingPayment.case_no,
-        IncomingPayment.claimant, IncomingPayment.operator,
-        IncomingPayment.created_at, IncomingPayment.updated_at,
         IncomingPayment.finance_scope,
         IncomingPayment.payment_method,
         IncomingPayment.local_allocation_summary,
@@ -205,7 +205,16 @@ async def read_incoming_query(statement, keyword: str, view: str, filters: dict,
         LEGACY_ASSIGNED_AMOUNTS.c.baseline_allocations.label("legacy_baseline_allocations"),
         LEGACY_ASSIGNED_AMOUNTS.c.baseline_applied_amount.label("legacy_baseline_applied_amount"),
     ).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc())
-    items = list((await db.execute(projection)).all())
+    if use_statement_rows:
+        # PostgreSQL 路径的 statement 已把旧金额聚合限制到可见回款头；直接读取
+        # ORM 行可保留 with_expression 注入的 legacy_* 字段，避免再次拼接全量聚合。
+        items = list((await db.scalars(statement.order_by(
+            IncomingPayment.received_date.desc(), IncomingPayment.id.desc(),
+        ))).all())
+        items_are_entities = True
+    else:
+        items = list((await db.execute(summary_projection)).all())
+        items_are_entities = False
     if keyword:
         key = keyword.casefold()
         items = [item for item in items if key in f"{item.receipt_no} {item.payer_name} {item.bank_reference} {item.claimed_customer}".casefold()]
@@ -228,7 +237,18 @@ async def read_incoming_query(statement, keyword: str, view: str, filters: dict,
         page_size = page_size if page_size is not None else 20
         items = items[(page - 1) * page_size:page * page_size]
         result.update(page=page, page_size=page_size)
-    # 明细与汇总来自同一次回款读取，避免分页后再次读取导致并发更新口径不一致。
+    # 汇总和明细仍在同一个请求内读取；只补齐最终需要返回的记录，避免分页查询
+    # 为每一条历史回款加载完整 allocations、备注和人员字段。
+    detail_ids = [item.id for item in items]
+    if detail_ids and not items_are_entities:
+        detail_statement = statement.where(IncomingPayment.id.in_(detail_ids)).order_by(
+            IncomingPayment.received_date.desc(), IncomingPayment.id.desc(),
+        )
+        details = list((await db.scalars(detail_statement)).all())
+        details_by_id = {item.id: item for item in details}
+        items = [details_by_id[item.id] for item in items if item.id in details_by_id]
+    elif not items_are_entities:
+        items = []
     result["items"] = items
     result["customers"] = await incoming_customers(items, db)
     return result

@@ -34,6 +34,7 @@ _STARTUP_LOCK_ID = int.from_bytes(
     signed=True,
 )
 SCHEMA_BOOTSTRAP_REVISION = "startup_schema_bootstrap_v1"
+LEGACY_SETTLEMENT_INDEX_REVISION = "legacy_settlement_query_indexes_v1"
 NOTIFICATION_DELIVERY_REVISION = "notification_delivery_outbox_v1"
 RECORD_READ_MODEL_REVISION = "business_record_read_model_v1"
 
@@ -52,6 +53,32 @@ def _apply_schema_bootstrap(connection: Connection, upgrade_schema: Callable[[Co
 def _apply_notification_delivery(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     """已完成历史结构升级的数据库也独立补齐通知队列表。"""
     upgrade_notification_delivery_schema(connection)
+
+
+def _apply_legacy_settlement_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    """为历史结算投影补齐固定父子联接索引。"""
+    if connection.dialect.name != "postgresql":
+        return
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_legacy_finance_allocations_parent_source_active "
+        "ON legacy_finance_allocations (legacy_finance_record_id, source_table, is_active)"
+    ))
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_legacy_finance_records_source_active_id "
+        "ON legacy_finance_records (source_table, is_active, id)"
+    ))
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_legacy_finance_records_payment_status_json "
+        "ON legacy_finance_records (source_table, ((source_payload->>'SettlementStatus')))"
+    ))
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_legacy_finance_allocations_archive_status_json "
+        "ON legacy_finance_allocations (source_table, ((source_payload->>'ArchiveAmountSettlementStatus')), is_active)"
+    ))
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_legacy_finance_allocations_active_json "
+        "ON legacy_finance_allocations (source_table, ((source_payload->>'IsActived')), is_active)"
+    ))
 
 
 def _apply_record_read_model(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
@@ -78,6 +105,7 @@ def _run_versioned_schema_migrations(
     connection.execute(text("CREATE TABLE IF NOT EXISTS schema_migrations (key VARCHAR(128) PRIMARY KEY)"))
     revisions = (
         (SCHEMA_BOOTSTRAP_REVISION, _apply_schema_bootstrap),
+        (LEGACY_SETTLEMENT_INDEX_REVISION, _apply_legacy_settlement_indexes),
         (INCOMING_FINANCE_REVISION, _apply_incoming_finance),
         (NOTIFICATION_DELIVERY_REVISION, _apply_notification_delivery),
         (RECORD_READ_MODEL_REVISION, _apply_record_read_model),

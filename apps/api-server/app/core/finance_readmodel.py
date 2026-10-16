@@ -90,7 +90,9 @@ async def read_finance_summary(identity: dict, db: AsyncSession) -> dict:
     transaction_amounts = dict((await db.execute(
         transactions.group_by(FinanceTransaction.transaction_type)
     )).all())
-    incoming = await _visible_incoming_payment_statement(identity, db)
+    # 概览只统计回款状态，不读取旧系统分配金额和 baseline JSON；避免为四个
+    # 状态计数触发全量旧财务聚合，金额明细仍由回款列表按需读取。
+    incoming = await _visible_incoming_payment_statement(identity, db, include_amounts=False)
     incoming_counts = dict((await db.execute(
         incoming.with_only_columns(IncomingPayment.status, func.count(),
                                    maintain_column_froms=True)

@@ -30,12 +30,24 @@ async def list_workflow_payments(stage: str, identity: dict = Depends(current_id
     if stage != 'waiting':
         packages = {}
         ungrouped = []
+        package_ids = {
+            int((row.data or {}).get('payment_package_id'))
+            for row in rows
+            if str((row.data or {}).get('payment_package_id') or '').isdigit()
+        }
+        package_rows = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.id.in_(package_ids),
+            *(await _record_scope_conditions(identity, db)),
+        ))).all()) if package_ids else []
+        package_by_id = {package.id: package for package in package_rows}
         for row in rows:
             package_id = (row.data or {}).get('payment_package_id')
             if not package_id:
                 ungrouped.append(row)
                 continue
-            package = await _ensure_record_visible(int(package_id), identity, db)
+            package = package_by_id.get(int(package_id))
+            if not package:
+                raise HTTPException(404, '记录不存在或无权访问')
             if package.module == 'finance_package' and (package.data or {}).get('fee_type') == '普通付款包':
                 packages[package.id] = package
         rows = [*packages.values(), *ungrouped]

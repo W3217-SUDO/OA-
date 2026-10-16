@@ -697,8 +697,8 @@ async def query_finance_fees(
         raise HTTPException(status_code=422, detail="退费最小金额不能大于最大金额")
     if paid_from and paid_to and paid_from > paid_to:
         raise HTTPException(status_code=422, detail="付款开始日期不能晚于结束日期")
-    rows = await _fee_query_rows(
-        identity, db, scope=scope, unpaid_official=unpaid_official, external_only=external_only,
+    query_kwargs = dict(
+        scope=scope, unpaid_official=unpaid_official, external_only=external_only,
         case_no=case_no, court_case_no=court_case_no,
         notary_no=notary_no, refund_amount_from=refund_amount_from,
         refund_amount_to=refund_amount_to, customer=customer,
@@ -706,15 +706,23 @@ async def query_finance_fees(
         paid_from=paid_from, paid_to=paid_to, hearing_lawyer=hearing_lawyer,
         assistant=assistant, case_stages=case_stages, fee_types=fee_types,
     )
+    # 先用轻量投影完成派生状态筛选和汇总，再只对当前页 ID 回读完整行。
+    # 付款、开票、到账和退费条件仍由原有批量聚合逻辑计算，保证结果口径不变。
+    summary_rows = await _fee_query_rows(identity, db, **query_kwargs, summary_only=True)
     amount_visible = "finance.amount" in await _allowed_field_keys(identity, db)
     totals = {
-        key: round(sum(float((row.get("data") or {}).get(key) or 0) for row in rows), 2) if amount_visible else None
+        key: round(sum(float((row.get("data") or {}).get(key) or 0) for row in summary_rows), 2) if amount_visible else None
         for key in ("amount", "refund_requested_amount", "refunded_amount", "cashed_amount", "paid_amount")
     }
     start = (page - 1) * page_size
+    page_summary = summary_rows[start:start + page_size]
+    page_ids = {int(row["id"]) for row in page_summary if row.get("id") is not None}
+    page_rows = await _fee_query_rows(identity, db, **query_kwargs, ids=page_ids, summary_only=False) if page_ids else []
+    page_by_id = {int(row["id"]): row for row in page_rows}
+    rows = [page_by_id[int(row["id"])] for row in page_summary if int(row["id"]) in page_by_id]
     from app.core.dashboard_scope import dashboard_fee_cases
-    related = await dashboard_fee_cases(rows[start:start + page_size], identity, db) if dashboard_queue else {}
-    return {**related, "items": rows[start:start + page_size], "total": len(rows), "totals": totals, "page": page, "page_size": page_size}
+    related = await dashboard_fee_cases(rows, identity, db) if dashboard_queue else {}
+    return {**related, "items": rows, "total": len(summary_rows), "totals": totals, "page": page, "page_size": page_size}
 
 
 @router.get(f"{settings.api_prefix}/finance/fees/query/export")
