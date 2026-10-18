@@ -42,13 +42,14 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const canUseCases = status?.commands.some((item) => item.id === "cases");
-  const activeCaseProject = workspace.currentWorkspace?.kind === "case"
-    ? workspace.workspaceProjects.find((item) => item.kind === "case" && Number(item.case_id) === Number(workspace.currentWorkspace?.case_id))
+  const activeCaseId = workspace.currentWorkspace?.kind === "case" ? Number(workspace.currentWorkspace.case_id) : null;
+  const activeCaseProject = activeCaseId
+    ? workspace.workspaceProjects.find((item) => item.kind === "case" && Number(item.case_id) === activeCaseId)
     : undefined;
   const showCaseAgent = canUseCases || workspace.currentWorkspace?.kind === "case";
   const openCaseAgent = () => {
-    if (activeCaseProject?.case_id && activeCaseProject.serial_no) {
-      onNavigate(`case-detail-${activeCaseProject.case_id}-${encodeURIComponent(activeCaseProject.serial_no)}-agent`);
+    if (activeCaseId && activeCaseProject?.serial_no) {
+      onNavigate(`case-detail-${activeCaseId}-${encodeURIComponent(activeCaseProject.serial_no)}-agent`);
       return;
     }
     onNavigate("case-agent-center");
@@ -99,14 +100,14 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
         <Button icon={<AppstoreAddOutlined />} disabled={busy} onClick={() => void openSkills()}>技能包</Button>
         <Segmented aria-label="切换工作视图" value={view} options={[{ value: "workspace", label: "工作台" }, { value: "chat", label: "对话" }]} onChange={(value) => setView(value as "workspace" | "chat")} />
         <Tooltip title={status?.ready ? `当前模型：${status.model}` : "模型服务未就绪"}><span className={`workspace-service ${status?.ready ? "ready" : ""}`}><i />{status?.ready ? "已连接" : loading ? "连接中" : "未就绪"}</span></Tooltip>
-        {showCaseAgent && <><Tooltip title="打开案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={openCaseAgent}>案件智能体</Button></Tooltip>{activeCaseProject?.case_id && <Button size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体文件夹" onClick={() => setCaseAgentFolderOpen(true)}>案件智能体文件夹</Button>}</>}
+        {showCaseAgent && <><Tooltip title="打开案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={openCaseAgent}>案件智能体</Button></Tooltip>{activeCaseId && <Button size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体文件夹" onClick={() => setCaseAgentFolderOpen(true)}>案件智能体文件夹</Button>}</>}
         <ConfirmationHistory onReopen={reopen} busy={navigationBusy || !!workspace.dismissalId} />
         <Tooltip title="刷新工作台与会话"><Button type="text" icon={<ReloadOutlined />} aria-label="刷新工作台与会话" disabled={navigationBusy || !!workspace.runningIds.length} onClick={() => { setRefreshToken((value) => value + 1); void workspace.load(); }} /></Tooltip>
       </Space>
     </header>
     {workspace.loadError && <Alert type="error" showIcon title={workspace.loadError} />}
     {!loading && !workspace.loadError && !status?.ready && <Alert type="warning" showIcon title="模型服务未就绪，请检查系统模型配置" />}
-    {caseAgentFolderOpen && activeCaseProject?.case_id && <CaseAgentFileFolderModal open caseId={activeCaseProject.case_id} serialNo={activeCaseProject.serial_no} onClose={() => setCaseAgentFolderOpen(false)} />}
+    {caseAgentFolderOpen && activeCaseId && <CaseAgentFileFolderModal open caseId={activeCaseId} serialNo={activeCaseProject?.serial_no} onClose={() => setCaseAgentFolderOpen(false)} />}
     <div className="personal-agent-layout" data-view={view}>
       <WorkPanel status={status} skills={skills} busy={busy} refreshToken={refreshToken} decisionResult={workspace.decisionResult} onNavigate={onNavigate} onPrepare={prepare} onSkill={(skill) => { workspace.setSkillId(skill.id); if (skill.quick_prompts?.[0]) workspace.setInput(skill.quick_prompts[0]); showAssistant(); }} onUpload={() => { showAssistant(); fileRef.current?.click(); }} onSkills={() => void openSkills()} onDraft={draft} />
       <main className="personal-agent-chat">
