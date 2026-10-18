@@ -25,4 +25,7 @@
 - 后端定向回归：`agent_skill_registry_contract_test.py` 与 `case_agent_mvp_contract_test.py`，30 项通过。
 - 前端单元测试：`npm test`，223 项通过；生产构建 `npm run build` 通过，Node 22。
 - CodeGraph：本机未安装，`codegraph status` 返回 command not found；按规则使用源码调用链补充分析。
-- 浏览器验收、Git 提交、部署和线上检查：待实施。
+- Git 提交：`c52e635c5e5cc9cfec1e19ce838a117c9feadf9e`，已推送 GitHub `dev`；推送前源码门禁通过，完整隔离回归由门禁标记为待补证。
+- 生产预检：SSH `oa-production` 可达，`sunhold-oa-api`/`sunhold-oa-web` active，`/health` 返回 `{"status":"ok"}`，当前运行 `/opt/sunhold-oa/runtime/enterprise/packages/1.1.459`。
+- 发布阻塞：生产分配器拒绝领取新版本，原因是生产队列存在先前未完成的历史候选，最早阻塞版本为 `1.1.429`；本次未修改生产队列、锁或 current，也未绕过其他所有者。
+- 浏览器验收和生产部署：未完成，待生产队列由其所有者正常收口后重新按权威分配器排队。
