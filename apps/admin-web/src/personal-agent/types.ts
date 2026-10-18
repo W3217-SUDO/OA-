@@ -38,7 +38,26 @@ export type ConfirmationRecord = {
 };
 export type ConfirmationHistoryPage = { items: ConfirmationRecord[]; total: number; page: number; page_size: number };
 export type ConfirmationDetail = { item: ConfirmationRecord; action: PendingAction | null; conversation_id: string | null; conversation_title: string | null; can_decide: boolean; request_preview: AgentActionPreview | null };
-export type WorkspaceState = { conversation_id?: string | null; conversation_title?: string; messages: WorkspaceMessage[]; pending_actions: PendingAction[]; dismissed_action_ids: string[]; structured_results?: unknown[]; workspace?: ConversationWorkspace };
+export type CompressionMetadata = {
+  memory_category?: string;
+  source_type?: string;
+  source_label?: string;
+  updated_at?: string;
+  compressed_at?: string;
+  covered_message_start?: number;
+  covered_message_end?: number;
+  covered_messages?: number;
+  covered_message_range?: string;
+  covered_message_count?: number;
+  message_range?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  token_count?: number;
+  summary_token_count?: number;
+  token_budget?: number;
+  [key: string]: unknown;
+};
+export type WorkspaceState = { conversation_id?: string | null; conversation_title?: string; messages: WorkspaceMessage[]; pending_actions: PendingAction[]; dismissed_action_ids: string[]; structured_results?: unknown[]; memory_summary?: string; memory_summary_updated_at?: string; memory_summary_metadata?: CompressionMetadata; workspace?: ConversationWorkspace };
 export type WorkspaceConversation = { id: string; title: string; message_count: number; updated_at: string; workspace?: ConversationWorkspace };
 export type WorkspaceProject = { kind: "personal" | "case"; case_id?: number; serial_no?: string; title: string; available: boolean; unavailable_reason?: string };
 export type ConversationSnapshot = { items: WorkspaceConversation[]; active_id: string | null; state: WorkspaceState; workspace?: ConversationWorkspace; workspaces?: WorkspaceProject[]; active_unavailable_reason?: string };

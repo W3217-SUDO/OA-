@@ -16,6 +16,7 @@ from typing import Any, TypedDict
 from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
+from app.config import settings
 
 
 _MEMORY_FILE = "memories.json"
@@ -39,6 +40,7 @@ class MemoryState(TypedDict, total=False):
     candidate: str | None
     category: str | None
     allowed_case_ids: list[int] | None
+    summary_metadata: dict[str, Any]
 
 
 def _now() -> str:
@@ -133,6 +135,41 @@ def _normalise_content(value: str) -> str:
     return " ".join(value.lower().split()).strip(" ，。；;,.、")
 
 
+def estimate_tokens(value: Any) -> int:
+    """Estimate model tokens without requiring a provider-specific tokenizer.
+
+    Chinese characters are counted individually; Latin words and runs of
+    punctuation are counted in four-character chunks. This deliberately
+    overestimates short text so compression happens before the provider limit.
+    """
+    text = str(value or "")
+    if not text:
+        return 0
+    cjk = len(re.findall(r"[\u3400-\u9fff]", text))
+    remainder = re.sub(r"[\u3400-\u9fff]", "", text)
+    latin_runs = re.findall(r"[A-Za-z0-9_]+|[^A-Za-z0-9_\s]+", remainder)
+    latin_tokens = sum(max(1, (len(run) + 3) // 4) for run in latin_runs)
+    whitespace = len(re.findall(r"\s+", remainder))
+    return cjk + latin_tokens + whitespace
+
+
+def _message_tokens(messages: list[dict[str, Any]]) -> int:
+    return sum(estimate_tokens(item.get("role", "")) + estimate_tokens(item.get("content", "")) for item in messages)
+
+
+def _fit_tokens(text: str, limit: int) -> str:
+    if estimate_tokens(text) <= limit:
+        return text
+    low, high = 0, len(text)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if estimate_tokens(text[-middle:]) <= limit:
+            low = middle
+        else:
+            high = middle - 1
+    return text[-low:] if low else ""
+
+
 def _conflict_subject(value: str) -> str | None:
     """Return a stable subject for common fact/preference replacements."""
     text = _normalise_content(value)
@@ -145,19 +182,66 @@ def _conflict_subject(value: str) -> str | None:
 
 def _compact_node(state: MemoryState) -> dict[str, Any]:
     messages = [item for item in state.get("messages", []) if isinstance(item, dict)]
-    keep = 12
-    older = messages[:-keep] if len(messages) > keep else []
+    source_tokens = _message_tokens(messages) + estimate_tokens(state.get("summary", ""))
+    budget = int(settings.personal_agent_context_token_budget)
+    target = min(int(settings.personal_agent_context_summary_target_tokens), max(500, budget // 2))
+    existing_metadata = state.get("summary_metadata") if isinstance(state.get("summary_metadata"), dict) else {}
+    if source_tokens <= budget:
+        return {"summary": state.get("summary", ""), "summary_metadata": existing_metadata, "compressed": False,
+                "context_token_count": source_tokens}
+
+    # Retain the newest messages that fit the target context. The full list is
+    # persisted by the conversation store; only the model context is reduced.
+    kept: list[dict[str, Any]] = []
+    kept_tokens = 0
+    for item in reversed(messages):
+        item_tokens = estimate_tokens(item.get("role", "")) + estimate_tokens(item.get("content", ""))
+        if kept and kept_tokens + item_tokens > target:
+            break
+        kept.insert(0, item)
+        kept_tokens += item_tokens
+    keep_start = len(messages) - len(kept)
+    older = messages[:keep_start]
     if not older:
-        return {"summary": state.get("summary", "")}
+        return {"summary": state.get("summary", ""), "summary_metadata": existing_metadata, "compressed": False,
+                "context_token_count": source_tokens}
     lines = []
-    for item in older[-40:]:
+    for item in older:
         role = "用户" if item.get("role") == "user" else "助手"
         content = " ".join(str(item.get("content") or "").split())
         if content:
             lines.append(f"{role}：{content[:280]}")
     previous = str(state.get("summary") or "").strip()
-    summary = "\n".join(([previous] if previous else []) + lines)[-8_000:]
-    return {"summary": summary}
+    summary = "\n".join(([previous] if previous else []) + lines)
+    summary_tokens = estimate_tokens(summary)
+    # Keep the persisted summary bounded by the same target budget while
+    # retaining the newest compressed lines.
+    while summary_tokens > target and lines:
+        lines.pop(0)
+        summary = "\n".join(([previous] if previous else []) + lines)
+        summary_tokens = estimate_tokens(summary)
+    if summary_tokens > target:
+        summary = _fit_tokens(summary, target)
+        summary_tokens = estimate_tokens(summary)
+    covered_end = keep_start - 1
+    previous_start = existing_metadata.get("covered_message_start")
+    covered_start = previous_start if isinstance(previous_start, int) else 0
+    compression_count = int(existing_metadata.get("compression_count") or 0) + 1
+    metadata = {
+        "memory_category": "temporary_state", "source_type": "conversation_compression",
+        "source_label": "会话自动压缩", "task_scope": "global", "permission_scope": "current_user",
+        "confidence": 1.0, "compressed_at": _now(),
+        "covered_message_start": covered_start, "covered_message_end": covered_end,
+        "covered_message_count": max(0, covered_end - covered_start + 1),
+        "covered_message_range": f"{covered_start}-{covered_end}",
+        "source_token_count": source_tokens, "summary_token_count": summary_tokens,
+        "context_token_count": summary_tokens + kept_tokens, "token_budget": budget,
+        "token_estimator": "heuristic-v1",
+        "kept_message_count": len(kept), "trigger_reason": "token_budget_exceeded",
+        "compression_count": compression_count, "updated_at": _now(),
+    }
+    return {"summary": summary, "summary_metadata": metadata, "compressed": True,
+            "context_token_count": source_tokens}
 
 
 def _extract_node(state: MemoryState) -> dict[str, Any]:
@@ -285,19 +369,26 @@ def _save_candidate(directory: Path, owner_user_id: int, conversation_id: str | 
 
 def run_memory_pipeline(directory: Path, owner_user_id: int, conversation_id: str | None, case_id: int | None,
                         messages: list[dict[str, Any]], user_text: str, summary: str = "",
-                        allowed_case_ids: list[int] | None = None) -> dict[str, Any]:
+                        allowed_case_ids: list[int] | None = None,
+                        summary_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     expire_memories(directory, owner_user_id)
     result = _MEMORY_GRAPH.invoke({"directory": str(directory), "owner_user_id": owner_user_id,
                                    "conversation_id": conversation_id, "case_id": case_id,
                                    "allowed_case_ids": ([case_id] if allowed_case_ids is None and case_id else (allowed_case_ids or [])),
-                                   "messages": messages, "user_text": user_text, "summary": summary})
+                                   "messages": messages, "user_text": user_text, "summary": summary,
+                                   "summary_metadata": summary_metadata or {}})
     item = _save_candidate(directory, owner_user_id, conversation_id, case_id, result.get("candidate"), result.get("category"))
     if result.get("recalled"):
         _audit(directory, owner_user_id, "recalled", detail={"memory_ids": [item.get("id") for item in result["recalled"] if item.get("id")]}, conversation_id=conversation_id, case_id=case_id)
-    summary_metadata = {"memory_category": "temporary_state", "source_type": "conversation_compression",
-                       "source_label": "会话自动压缩", "task_scope": _task_scope(conversation_id, case_id, "temporary_state"),
-                       "permission_scope": "case" if case_id else "current_user", "confidence": 1.0,
-                       "updated_at": _now()}
+    summary_metadata = result.get("summary_metadata") if isinstance(result.get("summary_metadata"), dict) else {}
+    if result.get("compressed"):
+        summary_metadata = {**summary_metadata, "task_scope": _task_scope(conversation_id, case_id, "temporary_state"),
+                            "permission_scope": "case" if case_id else "current_user"}
+    else:
+        summary_metadata = {"memory_category": "temporary_state", "source_type": "conversation_compression",
+                           "source_label": "会话自动压缩", "task_scope": _task_scope(conversation_id, case_id, "temporary_state"),
+                           "permission_scope": "case" if case_id else "current_user", "confidence": 1.0,
+                           "updated_at": _now(), **summary_metadata}
     return {"summary": result.get("summary", ""), "summary_metadata": summary_metadata,
             "recalled": result.get("recalled", []), "created": item}
 

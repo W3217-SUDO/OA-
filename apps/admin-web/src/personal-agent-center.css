@@ -186,3 +186,6 @@
   .workspace-pending-row { flex-wrap: wrap; gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { .personal-agent-composer { transition: none; } }
+
+.workspace-compression-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 12px 32px; padding: 8px 12px; border: 1px solid #cfe5d9; border-radius: 6px; background: #f1faf5; color: #5f7168; font-size: 12px; line-height: 1.5; }
+.workspace-compression-notice-title { color: #087a56; font-weight: 600; }

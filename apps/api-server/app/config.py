@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     langgraph_model: str = ""
     langgraph_max_concurrency: int = 4
     agent_runtime_backend: str = "langgraph"
+    # 个人智能体按估算上下文 token 数触发压缩，而不是按消息条数猜测。
+    personal_agent_context_token_budget: int = Field(default=12000, ge=1000, le=128000)
+    personal_agent_context_summary_target_tokens: int = Field(default=6000, ge=500, le=64000)
     deepseek_harness_base_url: str = "http://127.0.0.1:3081"
     deepseek_harness_provider: str = "sunhold-oa"
     deepseek_harness_agent_preset: str = "standard"

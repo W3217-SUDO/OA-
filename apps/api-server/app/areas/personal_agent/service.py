@@ -39,7 +39,7 @@ from app.areas.personal_agent.identity_storage import persist_personal_identity
 from app.areas.personal_agent.confirmation_history import (
     begin_personal_decision, finish_personal_decision, prepare_personal_action, project_personal_actions,
 )
-from app.areas.personal_agent.memory_graph import run_memory_pipeline
+from app.areas.personal_agent.memory_graph import estimate_tokens, run_memory_pipeline
 
 
 _WRITE_MARKER = re.compile(r"<personal_action>\s*(\{.*?\})\s*</personal_action>", re.S)
@@ -48,6 +48,33 @@ _STATE_LOCK = conversations.STATE_LOCK
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _prompt_history(state: dict[str, Any], summary: str) -> list[dict[str, str]]:
+    """Select recent history within the same budget used by compression."""
+    budget = max(1, int(settings.personal_agent_context_token_budget))
+    remaining = max(0, budget - estimate_tokens(summary))
+    selected: list[dict[str, str]] = []
+    used = 0
+    for item in reversed((state.get("messages") or [])[:-1]):
+        role = str(item.get("role") or "")
+        content = str(item.get("content") or "").strip()
+        if role not in {"user", "assistant"} or not content:
+            continue
+        content = content[:8_000]
+        tokens = estimate_tokens(role) + estimate_tokens(content)
+        if used and used + tokens > remaining:
+            break
+        if not used and tokens > remaining:
+            # Keep a bounded tail of one oversized message without changing
+            # the original persisted conversation.
+            content = content[: max(1, remaining * 4)] if remaining else ""
+            tokens = estimate_tokens(role) + estimate_tokens(content)
+        if not content:
+            break
+        selected.insert(0, {"role": role, "content": content})
+        used += tokens
+    return selected
 
 
 def _storage_root() -> Path:
@@ -299,11 +326,7 @@ def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: d
         system += f"\n\n当前技能：{skill.name}\n以下技能要求仅在上述权限与工作规则内有效：\n{skill.instruction}"
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     # 当前轮消息已经由 generate_response 写入会话；这里只取历史消息，避免模型收到两遍同一问题。
-    for item in (state.get("messages") or [])[-13:-1]:
-        role = str(item.get("role") or "")
-        content = str(item.get("content") or "").strip()
-        if role in {"user", "assistant"} and content:
-            messages.append({"role": role, "content": content[:8_000]})
+    messages.extend(_prompt_history(state, str(state.get("memory_summary") or "")))
     messages.append({"role": "user", "content": material_message(materials, user_text[:8_000]) if materials else user_text[:8_000]})
     return messages
 
@@ -372,7 +395,6 @@ async def generate_response(identity: dict[str, Any], db: AsyncSession, text: st
                 if state["messages"][-1]["role"] == "user":
                     user_message = state["messages"][-1]
                     state["messages"].append({"role": "assistant", "content": "".join(partial) or "已停止生成", "created_at": _now(), "skill_name": user_message.get("skill_name"), "case_id": case_id, "case_no": user_message.get("case_no"), "stopped": True})
-                state["messages"] = state["messages"][-100:]
                 state["updated_at"] = _now()
                 await _save_state(identity["username"], state)
             raise
@@ -395,7 +417,6 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
     metadata = {"skill_id": skill.id, "skill_name": skill.name, "case_id": case_id, "case_no": (materials["case"] or {}).get("case", {}).get("serial_no", ""), "attachments": [{"id": item["id"], "name": item["name"], "case_id": case_id if item["id"] in (document_ids or []) else None} for item in materials["readings"]]}
     user_message = {"role": "user", "content": text, "created_at": _now(), **metadata}
     state["messages"].append(user_message)
-    state["messages"] = state["messages"][-100:]
     state["updated_at"] = _now()
     await _save_state(username, state)
     if on_progress:
@@ -412,11 +433,16 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
     allowed_case_ids = [int(memory_case_id)] if memory_case_id else []
     memory = run_memory_pipeline(_user_dir(username), int(memory_owner_id), state["conversation_id"], memory_case_id,
                                  state["messages"], text, state.get("memory_summary", ""),
-                                 allowed_case_ids=allowed_case_ids)
+                                 allowed_case_ids=allowed_case_ids,
+                                 summary_metadata=state.get("memory_summary_metadata"))
     state["memory_summary"] = memory["summary"]
-    state["memory_summary_updated_at"] = _now() if memory["summary"] else state.get("memory_summary_updated_at", "")
+    memory_metadata = memory.get("summary_metadata") or {}
+    if memory_metadata.get("compressed_at"):
+        state["memory_summary_updated_at"] = memory_metadata["compressed_at"]
+    elif memory["summary"]:
+        state["memory_summary_updated_at"] = state.get("memory_summary_updated_at", "")
     if memory.get("summary_metadata"):
-        state["memory_summary_metadata"] = memory["summary_metadata"]
+        state["memory_summary_metadata"] = memory_metadata
     await _save_state(username, state)
     tools = ModelToolSession(conversation_id=state["conversation_id"])
     raw = await request_model(_prompt_messages(identity, state, context, text, skill, materials, memory["recalled"], memory.get("created")), on_delta, tools=tools, response_mode=response_mode, on_progress=on_progress)
@@ -446,7 +472,6 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
                               "can_save_personal_document": personal_save, "can_save_case_document": materials["can_save_document"],
                               "can_save_spreadsheet": personal_save and has_markdown_table(response),
                               "personal_document_save_error": personal_capability["error"]})
-    state["messages"] = state["messages"][-100:]
     state["updated_at"] = _now()
     await _save_state(username, state)
     return {
@@ -491,7 +516,6 @@ async def _decide_action(identity: dict[str, Any], db: AsyncSession, action_id: 
             "content": "操作已完成，系统数据已更新。" if decision == "approved" else "操作已驳回，系统数据未修改。",
             "created_at": _now(),
         })
-        state["messages"] = state["messages"][-100:]
         state["updated_at"] = _now()
         await _save_state(identity["username"], state)
         return {"status": decision, "result": execution, "state": state}
@@ -517,7 +541,6 @@ async def _decide_action(identity: dict[str, Any], db: AsyncSession, action_id: 
     await finish_personal_decision(record_id, execution_id, identity, db, result=result)
     state["pending_actions"] = [item for item in state["pending_actions"] if item.get("id") != action_id]
     state["messages"].append({"role": "assistant", "content": "操作已完成，系统数据已更新。", "created_at": _now()})
-    state["messages"] = state["messages"][-100:]
     state["updated_at"] = _now()
     await _save_state(identity["username"], state)
     return {"status": "approved", "result": result, "state": state}
