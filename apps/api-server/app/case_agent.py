@@ -517,16 +517,18 @@ class CaseAgentRuntime:
             raise RuntimeError("model_request_failed") from exc
 
     @staticmethod
-    def thread_id(case_id: int, operator: str) -> str:
+    def thread_id(case_id: int, operator: str, agent_id: int | None = None, conversation_id: int | None = None) -> str:
         normalized_operator = str(operator or "").strip().casefold()
         if not normalized_operator:
             raise ValueError("operator_required")
         operator_key = hashlib.sha256(normalized_operator.encode("utf-8")).hexdigest()[:24]
+        if agent_id and conversation_id:
+            return f"case:{case_id}:agent:{agent_id}:conversation:{conversation_id}:user:{operator_key}"
         return f"case:{case_id}:user:{operator_key}"
 
     @classmethod
-    def config(cls, case_id: int, operator: str) -> dict[str, Any]:
-        return {"configurable": {"thread_id": cls.thread_id(case_id, operator)}}
+    def config(cls, case_id: int, operator: str, agent_id: int | None = None, conversation_id: int | None = None) -> dict[str, Any]:
+        return {"configurable": {"thread_id": cls.thread_id(case_id, operator, agent_id, conversation_id)}}
 
     @staticmethod
     def legacy_config(case_id: int) -> dict[str, Any]:
@@ -547,13 +549,17 @@ class CaseAgentRuntime:
                 selected.append(item)
         return selected
 
-    async def _ensure_private_state(self, case_id: int, operator: str) -> dict[str, Any]:
-        private_config = self.config(case_id, operator)
+    async def _ensure_private_state(self, case_id: int, operator: str, agent_id: int | None = None, conversation_id: int | None = None) -> dict[str, Any]:
+        private_config = self.config(case_id, operator, agent_id, conversation_id)
         private_snapshot = await self.graph.aget_state(private_config)
         private_state = private_snapshot.values or {}
         if private_state.get("legacy_migrated") or private_state.get("messages") or private_state.get("pending_actions"):
             return private_state
 
+        # 带有明确智能体和会话标识的线程必须保持独立，不能把旧线程内容复制到每个新会话。
+        # 未带标识的旧接口仍保留原有迁移行为。
+        if agent_id or conversation_id:
+            return private_state
         legacy_snapshot = await self.graph.aget_state(self.legacy_config(case_id))
         legacy_state = legacy_snapshot.values or {}
         messages = self._legacy_messages_for_operator(list(legacy_state.get("messages") or []), operator)
@@ -598,6 +604,8 @@ class CaseAgentRuntime:
         *,
         case_id: int,
         operator: str,
+        agent_id: int | None = None,
+        conversation_id: int | None = None,
         message: str,
         case_snapshot: dict[str, Any],
         proposed_action: dict[str, Any] | None = None,
@@ -606,7 +614,7 @@ class CaseAgentRuntime:
     ) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
-        await self._ensure_private_state(case_id, operator)
+        await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
         skill, clean_message = parse_skill_message(message)
         if skill_override is not None:
             skill = skill_override
@@ -643,9 +651,9 @@ class CaseAgentRuntime:
                     "request_images": list(images or []),
                     "skill_override": skill_override_payload,
                 },
-                self.config(case_id, operator),
+                self.config(case_id, operator, agent_id, conversation_id),
             )
-        return self._public_state(case_id, operator, result)
+        return self._public_state(case_id, operator, result, agent_id, conversation_id)
 
     async def invoke_stream(self, **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
@@ -677,11 +685,11 @@ class CaseAgentRuntime:
                 task.cancel()
             await asyncio.gather(task, return_exceptions=True)
 
-    async def get_state(self, case_id: int, operator: str) -> dict[str, Any]:
+    async def get_state(self, case_id: int, operator: str, agent_id: int | None = None, conversation_id: int | None = None) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
-        state = await self._ensure_private_state(case_id, operator)
-        return self._public_state(case_id, operator, state)
+        state = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
+        return self._public_state(case_id, operator, state, agent_id, conversation_id)
 
     async def decide_action(
         self,
@@ -690,12 +698,14 @@ class CaseAgentRuntime:
         action_id: str,
         decision: str,
         operator: str,
+        agent_id: int | None = None,
+        conversation_id: int | None = None,
         comment: str = "",
         execution_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
-        values = await self._ensure_private_state(case_id, operator)
+        values = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
         actions = [dict(item) for item in values.get("pending_actions") or []]
         action = next((item for item in actions if item.get("id") == action_id), None)
         if not action:
@@ -711,7 +721,7 @@ class CaseAgentRuntime:
         })
         response = "待审批操作已批准并写入系统。" if decision == "approved" else "待审批操作已驳回，系统数据未修改。"
         await self.graph.aupdate_state(
-            self.config(case_id, operator),
+            self.config(case_id, operator, agent_id, conversation_id),
             {
                 "pending_actions": actions,
                 "messages": [{"role": "assistant", "content": response, "created_at": _now()}],
@@ -721,12 +731,16 @@ class CaseAgentRuntime:
             },
             as_node="case_assistant",
         )
-        return await self.get_state(case_id, operator)
+        return await self.get_state(case_id, operator, agent_id, conversation_id)
 
     @classmethod
-    def _public_state(cls, case_id: int, operator: str, state: dict[str, Any]) -> dict[str, Any]:
+    def _public_state(cls, case_id: int, operator: str, state: dict[str, Any], agent_id: int | None = None, conversation_id: int | None = None) -> dict[str, Any]:
         return {
+            # thread_id 保持旧接口契约；真实隔离线程通过 conversation_thread_id 返回。
             "thread_id": cls.thread_id(case_id, operator),
+            "conversation_thread_id": cls.thread_id(case_id, operator, agent_id, conversation_id),
+            "agent_id": agent_id,
+            "conversation_id": conversation_id,
             "thread_namespace": "sunhold.case-agent.private.v1",
             "shared_space_id": f"case:{case_id}",
             "messages": state.get("messages") or [],

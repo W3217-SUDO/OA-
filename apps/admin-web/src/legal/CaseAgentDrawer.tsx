@@ -21,6 +21,8 @@ import type {
 CaseAgentAction,
 CaseAgentAttachment,
 CaseAgentDocument,
+CaseAgentConversation,
+CaseAgentSummary,
 CaseAgentState,
 CaseAgentStatus,
 CaseDetailCapabilities,
@@ -39,6 +41,14 @@ interface CaseAgentDrawerProps {
   agentSkillId: string;
   setAgentSkillId: (id: string) => void;
   loadCaseAgent: (row: CaseRow, resetMaterials?: boolean) => Promise<unknown>;
+  agentCatalog: CaseAgentSummary[];
+  agentConversations: CaseAgentConversation[];
+  agentId: number | null;
+  conversationId: number | null;
+  switchCaseAgent: (id: number) => void;
+  switchCaseConversation: (id: number) => void;
+  createCaseAgent: (name: string) => Promise<unknown>;
+  createCaseConversation: (title: string) => Promise<unknown>;
   agentState: CaseAgentState | null;
   agentDecisionLoading: string;
   decideCaseAgentAction: (action: CaseAgentAction, decision: "approved" | "rejected") => Promise<unknown>;
@@ -79,6 +89,14 @@ export const CaseAgentDrawer = ({
   agentSkillId,
   setAgentSkillId,
   loadCaseAgent,
+  agentCatalog,
+  agentConversations,
+  agentId,
+  conversationId,
+  switchCaseAgent,
+  switchCaseConversation,
+  createCaseAgent,
+  createCaseConversation,
   agentState,
   agentDecisionLoading,
   decideCaseAgentAction,
@@ -135,6 +153,12 @@ export const CaseAgentDrawer = ({
             <Tag>{agentStatus?.model || (agentLoading ? "正在读取配置" : "模型未配置")}</Tag>
             <Tag color={agentStatus?.checkpoint_backend === "postgresql" ? "blue" : "default"}>案件独立记忆</Tag>
             {agentStatus?.write_requires_approval && <Tag color="gold">人工审批</Tag>}
+          </Space>
+          <Space wrap size={6} style={{ marginTop: 8, width: "100%" }}>
+            <Select aria-label="案件智能体" style={{ minWidth: 180, flex: 1 }} value={agentId || undefined} options={agentCatalog.map((item) => ({ value: item.id, label: item.name }))} onChange={switchCaseAgent} placeholder="选择案件智能体" />
+            <Button size="small" onClick={() => { const value = window.prompt("新案件智能体名称", "案件智能体"); if (value?.trim()) void createCaseAgent(value.trim()); }}>新建智能体</Button>
+            <Select aria-label="案件会话" style={{ minWidth: 180, flex: 1 }} value={conversationId || undefined} options={agentConversations.map((item) => ({ value: item.id, label: item.title }))} onChange={switchCaseConversation} placeholder="选择会话" />
+            <Button size="small" onClick={() => { const value = window.prompt("新会话名称", "新会话"); if (value?.trim()) void createCaseConversation(value.trim()); }}>新建会话</Button>
           </Space>
           <Button type="text" size="small" icon={<ReloadOutlined />} loading={agentLoading} title="刷新智能体状态" onClick={() => agentCase && void loadCaseAgent(agentCase)} />
         </div>

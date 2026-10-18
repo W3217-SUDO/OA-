@@ -7,6 +7,8 @@ from app.api_schemas.agents import (
     UserAgentSkillInput as UserAgentSkillInput,
     UserAgentSkillUpdate as UserAgentSkillUpdate,
     CaseAgentDecisionInput as CaseAgentDecisionInput,
+    CaseAgentCreateInput as CaseAgentCreateInput,
+    CaseAgentConversationCreateInput as CaseAgentConversationCreateInput,
     AgentDocumentInput as AgentDocumentInput,
     AgentDocumentUpdate as AgentDocumentUpdate,
     AgentDocumentConfirmInput as AgentDocumentConfirmInput,

@@ -147,6 +147,8 @@ export type CaseAgentAction = {
 
 export type CaseAgentState = {
   thread_id: string;
+  agent_id?: number;
+  conversation_id?: number;
   messages: CaseAgentMessage[];
   pending_actions: CaseAgentAction[];
   structured_results?: unknown[];
@@ -164,7 +166,13 @@ export type CaseAgentStatus = {
   write_requires_approval: boolean;
   skills?: AgentSkill[];
   error?: string | null;
+  agent_id?: number;
+  agent_name?: string;
+  conversation_id?: number;
+  conversation_title?: string;
 };
+export type CaseAgentSummary = { id: number; name: string; description?: string; status: string; is_default?: boolean };
+export type CaseAgentConversation = { id: number; title: string; status: string; updated_at?: string };
 
 export type CasePhaseOption = { id: number; code: string; name: string; canonical_name: string; case_type?: string; parent_code?: string; sort_order?: number };
 

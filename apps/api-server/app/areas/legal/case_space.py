@@ -34,12 +34,93 @@ from app.core.dependencies import (
     timezone,
 )
 from app.models_shared import (
+    CaseAgentConversationCreateInput,
+    CaseAgentCreateInput,
     CaseAgentDecisionInput,
     CaseAgentMessageInput,
 )
 from fastapi import APIRouter
+from uuid import uuid4
 
 router = APIRouter()
+
+
+async def _case_agent_selection(case_id: int, agent_id: int | None, conversation_id: int | None, identity: dict, db: AsyncSession) -> tuple[BusinessRecord, BusinessRecord]:
+    """读取案件空间下的智能体和会话；首次打开时建立明确的默认两层记录。"""
+    from app.core.permissions import _ensure_record_module
+    case = await _ensure_record_module(case_id, "case", identity, db)
+    agents = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case_agent",
+        BusinessRecord.data["case_id"].as_integer() == case_id,
+        BusinessRecord.status != "已删除",
+    ).order_by(BusinessRecord.created_at, BusinessRecord.id))).all())
+    if not agents:
+        agent = BusinessRecord(module="case_agent", serial_no=f"CA-{case_id}-{uuid4().hex[:12].upper()}", title="案件智能体", customer=case.customer, status="启用", owner=identity["username"], department=case.department, description="案件空间默认智能体", data={"case_id": case_id, "case_no": case.serial_no, "is_default": True})
+        db.add(agent)
+        await db.flush()
+        agents = [agent]
+    agent = next((item for item in agents if item.id == agent_id), None) if agent_id else agents[0]
+    if agent is None:
+        raise HTTPException(status_code=404, detail="案件智能体不存在或不属于当前案件空间")
+    conversations = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case_agent_conversation",
+        BusinessRecord.data["case_agent_id"].as_integer() == agent.id,
+        BusinessRecord.status != "已删除",
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id))).all())
+    if not conversations:
+        conversation = BusinessRecord(module="case_agent_conversation", serial_no=f"CAC-{agent.id}-{uuid4().hex[:12].upper()}", title="新会话", customer=case.customer, status="启用", owner=identity["username"], department=case.department, description="案件智能体默认会话", data={"case_id": case_id, "case_agent_id": agent.id, "is_default": True})
+        db.add(conversation)
+        await db.flush()
+        conversations = [conversation]
+    conversation = next((item for item in conversations if item.id == conversation_id), None) if conversation_id else conversations[0]
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="案件会话不存在或不属于当前案件智能体")
+    await db.commit()
+    return agent, conversation
+
+
+def _runtime_selection(agent: BusinessRecord, conversation: BusinessRecord) -> tuple[int | None, int | None]:
+    """默认会话沿用旧案件线程，新增会话使用独立线程。"""
+    if (agent.data or {}).get("is_default") and (conversation.data or {}).get("is_default"):
+        return None, None
+    return agent.id, conversation.id
+
+
+@router.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/agents")
+async def list_case_agents(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    await _case_agent_selection(case_id, None, None, identity, db)
+    rows = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case_agent", BusinessRecord.data["case_id"].as_integer() == case_id, BusinessRecord.status != "已删除",
+    ).order_by(BusinessRecord.created_at, BusinessRecord.id))).all())
+    return {"case_id": case_id, "agents": [{"id": row.id, "name": row.title, "description": row.description, "status": row.status, "is_default": bool((row.data or {}).get("is_default"))} for row in rows]}
+
+
+@router.post(f"{settings.api_prefix}/case-spaces/{{case_id}}/agents")
+async def create_case_agent(case_id: int, body: CaseAgentCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _ensure_record_module
+    case = await _ensure_record_module(case_id, "case", identity, db)
+    agent = BusinessRecord(module="case_agent", serial_no=f"CA-{case_id}-{uuid4().hex[:12].upper()}", title=body.name.strip(), customer=case.customer, status="启用", owner=identity["username"], department=case.department, description=body.description.strip(), data={"case_id": case_id, "case_no": case.serial_no, "is_default": False})
+    db.add(agent)
+    await db.commit()
+    await db.refresh(agent)
+    return {"id": agent.id, "name": agent.title, "description": agent.description, "status": agent.status, "is_default": False}
+
+
+@router.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/agents/{{agent_id}}/conversations")
+async def list_case_agent_conversations(case_id: int, agent_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    agent, _ = await _case_agent_selection(case_id, agent_id, None, identity, db)
+    rows = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case_agent_conversation", BusinessRecord.data["case_agent_id"].as_integer() == agent.id, BusinessRecord.status != "已删除").order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id))).all())
+    return {"case_id": case_id, "agent_id": agent.id, "conversations": [{"id": row.id, "title": row.title, "status": row.status, "updated_at": row.updated_at} for row in rows]}
+
+
+@router.post(f"{settings.api_prefix}/case-spaces/{{case_id}}/agents/{{agent_id}}/conversations")
+async def create_case_agent_conversation(case_id: int, agent_id: int, body: CaseAgentConversationCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    agent, _ = await _case_agent_selection(case_id, agent_id, None, identity, db)
+    conversation = BusinessRecord(module="case_agent_conversation", serial_no=f"CAC-{agent.id}-{uuid4().hex[:12].upper()}", title=body.title.strip(), customer=agent.customer, status="启用", owner=identity["username"], department=agent.department, description="案件智能体会话", data={"case_id": case_id, "case_agent_id": agent.id, "is_default": False})
+    db.add(conversation)
+    await db.commit()
+    await db.refresh(conversation)
+    return {"id": conversation.id, "title": conversation.title, "status": conversation.status, "updated_at": conversation.updated_at}
 
 @router.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/context")
 async def get_case_space_context(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
@@ -323,31 +404,32 @@ async def get_case_workflow_guide(case_id: int, identity: dict = Depends(current
 
 
 @router.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/status")
-async def case_agent_status(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.permissions import (
-        _agent_skill_catalog_for_identity, _ensure_record_module,
-    )
-    await _ensure_record_module(case_id, "case", identity, db)
+async def case_agent_status(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db), agent_id: int | None = None, conversation_id: int | None = None):
+    from app.core.permissions import _agent_skill_catalog_for_identity
+    agent, conversation = await _case_agent_selection(case_id, agent_id, conversation_id, identity, db)
     runtime_status = case_agent_runtime.status()
     return {
         "case_id": case_id,
+        "agent_id": agent.id,
+        "agent_name": agent.title,
+        "conversation_id": conversation.id,
+        "conversation_title": conversation.title,
         "shared_space_id": f"case:{case_id}",
         "thread_id": case_agent_runtime.thread_id(case_id, identity["username"]),
+        "conversation_thread_id": case_agent_runtime.thread_id(case_id, identity["username"], agent.id, conversation.id),
         **runtime_status,
         "skills": await _agent_skill_catalog_for_identity(identity, db),
     }
 
 
 @router.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/state")
-async def case_agent_state(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.permissions import (
-        _ensure_record_module,
-    )
-    await _ensure_record_module(case_id, "case", identity, db)
+async def case_agent_state(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db), agent_id: int | None = None, conversation_id: int | None = None):
+    agent, conversation = await _case_agent_selection(case_id, agent_id, conversation_id, identity, db)
+    runtime_agent_id, runtime_conversation_id = _runtime_selection(agent, conversation)
     if not case_agent_runtime.status()["ready"]:
         raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
     try:
-        state = await case_agent_runtime.get_state(case_id, identity["username"])
+        state = await case_agent_runtime.get_state(case_id, identity["username"], runtime_agent_id, runtime_conversation_id)
         import hashlib
         actions = state.get("pending_actions") or []
         audit_serials = {
@@ -377,6 +459,8 @@ async def send_case_agent_message(
     from app.core.permissions import (
         _agent_skill_for_identity,
     )
+    agent, conversation = await _case_agent_selection(case_id, body.agent_id, body.conversation_id, identity, db)
+    runtime_agent_id, runtime_conversation_id = _runtime_selection(agent, conversation)
     context = await get_case_space_context(case_id, identity, db)
     if not case_agent_runtime.status()["ready"]:
         raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
@@ -475,6 +559,8 @@ async def send_case_agent_message(
     invoke_arguments = {
         "case_id": case_id,
         "operator": identity["username"],
+        "agent_id": runtime_agent_id,
+        "conversation_id": runtime_conversation_id,
         "message": body.message,
         "case_snapshot": context,
         "proposed_action": proposed_action,
@@ -521,8 +607,10 @@ async def decide_case_agent_action(
     case_customer = case_record.customer
     case_number = case_record.serial_no
     case_department = case_record.department
+    agent, conversation = await _case_agent_selection(case_id, body.agent_id, body.conversation_id, identity, db)
+    runtime_agent_id, runtime_conversation_id = _runtime_selection(agent, conversation)
     try:
-        state = await case_agent_runtime.get_state(case_id, identity["username"])
+        state = await case_agent_runtime.get_state(case_id, identity["username"], runtime_agent_id, runtime_conversation_id)
         action = next((item for item in state.get("pending_actions") or [] if item.get("id") == action_id), None)
         if not action:
             raise KeyError(action_id)
@@ -549,6 +637,7 @@ async def decide_case_agent_action(
                 case_id=case_id, action_id=action_id, decision=body.decision,
                 operator=identity["username"], comment=body.comment,
                 execution_result=execution,
+                agent_id=runtime_agent_id, conversation_id=runtime_conversation_id,
             )
         context = await get_case_space_context(case_id, identity, db)
         capabilities = context.get("capabilities") or {}
@@ -668,6 +757,8 @@ async def decide_case_agent_action(
             operator=identity["username"],
             comment=body.comment,
             execution_result=execution_result,
+            agent_id=runtime_agent_id,
+            conversation_id=runtime_conversation_id,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="待审批操作不存在") from exc

@@ -4,7 +4,7 @@ import { api } from "../../api";
 import { AgentOperationPreview, agentOperationError } from "../../AgentOperationPreview";
 import { confirmCaseAgentDocument } from "./agentDocumentConfirmation";
 import { AGENT_DOCUMENT_LIMIT, aiWordDocumentName, isAiWordGenerationRequest, isExistingAnswerWordConversionRequest, isUsableAiDocumentContent } from "../constants";
-import type { CaseAgentAction, CaseAgentAttachment, CaseAgentDocument, CaseAgentState, CaseAgentStatus, CaseRow } from "../types";
+import type { CaseAgentAction, CaseAgentAttachment, CaseAgentConversation, CaseAgentDocument, CaseAgentState, CaseAgentStatus, CaseAgentSummary, CaseRow } from "../types";
 /** legal assistant operations; dependencies are read when each operation runs. */
 export interface CaseAssistantDependencies {
     readonly setAgentLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -14,6 +14,12 @@ export interface CaseAssistantDependencies {
     readonly setAgentDocumentsLoading: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setAgentDocumentIds: React.Dispatch<React.SetStateAction<number[]>>;
     readonly setAgentSkillId: React.Dispatch<React.SetStateAction<string>>;
+    readonly setAgentCatalog: React.Dispatch<React.SetStateAction<CaseAgentSummary[]>>;
+    readonly setAgentConversations: React.Dispatch<React.SetStateAction<CaseAgentConversation[]>>;
+    readonly setAgentId: React.Dispatch<React.SetStateAction<number | null>>;
+    readonly setConversationId: React.Dispatch<React.SetStateAction<number | null>>;
+    readonly agentId: number | null;
+    readonly conversationId: number | null;
     readonly agentCase: CaseRow | null;
     readonly agentInput: string;
     readonly agentSkillId: string;
@@ -37,8 +43,8 @@ export interface CaseAssistantDependencies {
     readonly setAgentDecisionLoading: React.Dispatch<React.SetStateAction<string>>;
 }
 export function createCaseAssistantActions(context: CaseAssistantDependencies) {
-    const loadCaseAgent = async (row: CaseRow, resetMaterials = false) => {
-        const { setAgentLoading, setAgentStatus, setAgentState, setAgentDocuments, setAgentDocumentIds, setAgentSkillId, activeAgentLoadRequestRef, activeAgentDocumentsRequestRef, setAgentDocumentsLoading } = context;
+    const loadCaseAgent = async (row: CaseRow, resetMaterials = false, requestedAgentId?: number, requestedConversationId?: number) => {
+        const { setAgentLoading, setAgentStatus, setAgentState, setAgentDocuments, setAgentDocumentIds, setAgentSkillId, setAgentCatalog, setAgentConversations, setAgentId, setConversationId, activeAgentLoadRequestRef, activeAgentDocumentsRequestRef, setAgentDocumentsLoading } = context;
         activeAgentLoadRequestRef.current?.abort();
         const controller = new AbortController();
         activeAgentLoadRequestRef.current = controller;
@@ -50,12 +56,22 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
         }
         setAgentLoading(true);
         try {
+            const { data: agentData } = await api.get<{ agents: CaseAgentSummary[] }>(`/case-spaces/${row.id}/agents`, { signal: controller.signal });
+            setAgentCatalog(agentData.agents || []);
+            const selectedAgentId = requestedAgentId || agentData.agents?.[0]?.id;
+            if (!selectedAgentId) throw new Error("案件智能体不存在");
+            setAgentId(Number(selectedAgentId));
+            const { data: conversationData } = await api.get<{ conversations: CaseAgentConversation[] }>(`/case-spaces/${row.id}/agents/${selectedAgentId}/conversations`, { signal: controller.signal });
+            setAgentConversations(conversationData.conversations || []);
+            const selectedConversationId = requestedConversationId || conversationData.conversations?.[0]?.id;
+            if (!selectedConversationId) throw new Error("案件会话不存在");
+            setConversationId(Number(selectedConversationId));
             const [statusResult, stateResult] = await Promise.allSettled([
-                api.get<CaseAgentStatus>(`/case-spaces/${row.id}/agent/status`, { signal: controller.signal }).then(({ data }) => {
+                api.get<CaseAgentStatus>(`/case-spaces/${row.id}/agent/status`, { params: { agent_id: selectedAgentId, conversation_id: selectedConversationId }, signal: controller.signal }).then(({ data }) => {
                     if (!controller.signal.aborted) setAgentStatus(data);
                     return data;
                 }),
-                api.get<CaseAgentState>(`/case-spaces/${row.id}/agent/state`, { signal: controller.signal }).then(({ data }) => {
+                api.get<CaseAgentState>(`/case-spaces/${row.id}/agent/state`, { params: { agent_id: selectedAgentId, conversation_id: selectedConversationId }, signal: controller.signal }).then(({ data }) => {
                     if (!controller.signal.aborted) setAgentState(data);
                     return data;
                 }),
@@ -106,7 +122,7 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
         }
     };
     const sendCaseAgentMessage = async (preset?: string) => {
-        const { agentCase, agentInput, agentSkillId, agentScreenshots, agentState, setAgentSkillId, agentSending, activeCaseAgentRequestRef, agentDocumentIds, agentDocuments, setAgentState, setAgentInput, setAgentScreenshots, setAgentDocumentIds, setAgentMaterialPickerOpen, setAgentSending, stateWithAgentScreenshotPreviews, refreshCounselDetailAttachments, selectCounselDocCategory } = context;
+        const { agentCase, agentInput, agentSkillId, agentScreenshots, agentState, setAgentSkillId, agentSending, activeCaseAgentRequestRef, agentDocumentIds, agentDocuments, setAgentState, setAgentInput, setAgentScreenshots, setAgentDocumentIds, setAgentMaterialPickerOpen, setAgentSending, stateWithAgentScreenshotPreviews, refreshCounselDetailAttachments, selectCounselDocCategory, agentId, conversationId } = context;
         if (!agentCase)
             return;
         const content = String(preset ?? agentInput).trim() || (agentSkillId === "screenshot-evidence" && agentScreenshots.length ? "请分析上传的截图证据" : "");
@@ -153,6 +169,8 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
                     attachment_ids: outgoingScreenshots.map((item) => item.id),
                     document_ids: outgoingDocumentIds,
                     stream: true,
+                    agent_id: agentId,
+                    conversation_id: conversationId,
                 }),
             });
             if (!response.ok || !response.body) {
@@ -245,7 +263,7 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
         }
     };
     const decideCaseAgentAction = async (action: CaseAgentAction, decision: "approved" | "rejected") => {
-        const { agentCase, agentDecisionLoading, setAgentDecisionLoading, setAgentState } = context;
+        const { agentCase, agentDecisionLoading, setAgentDecisionLoading, setAgentState, agentId, conversationId } = context;
         if (!agentCase || agentDecisionLoading)
             return;
         setAgentDecisionLoading(action.id);
@@ -253,6 +271,8 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/actions/${action.id}/decision`, {
                 decision,
                 comment: decision === "approved" ? "在案件智能体面板批准" : "在案件智能体面板驳回",
+                agent_id: agentId,
+                conversation_id: conversationId,
             }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
             setAgentState(data);
             message.success(decision === "approved" ? "已记录批准决定" : "已记录驳回决定");

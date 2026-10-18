@@ -6,7 +6,7 @@ import { api } from "../../api";
 import type { CaseAgentDrawer } from "../CaseAgentDrawer";
 import { AGENT_DOCUMENT_LIMIT } from "../constants";
 import { createCaseAssistantActions } from "../services/assistantActions";
-import type { CaseAgentAttachment, CaseAgentDocument, CaseAgentState, CaseAgentStatus, CaseRow } from "../types";
+import type { CaseAgentAttachment, CaseAgentConversation, CaseAgentDocument, CaseAgentState, CaseAgentStatus, CaseAgentSummary, CaseRow } from "../types";
 import { useCaseAgentDrawer } from "./useCaseAgentDrawer";
 
 type DrawerProps = Omit<ComponentProps<typeof CaseAgentDrawer>, "counselDetailCapabilities">;
@@ -25,6 +25,10 @@ export function useCaseAgentWorkspace({
   const [agentCase, setAgentCase] = useState<CaseRow | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentStatus, setAgentStatus] = useState<CaseAgentStatus | null>(null);
+  const [agentCatalog, setAgentCatalog] = useState<CaseAgentSummary[]>([]);
+  const [agentConversations, setAgentConversations] = useState<CaseAgentConversation[]>([]);
+  const [agentId, setAgentId] = useState<number | null>(null);
+  const [conversationId, setConversationId] = useState<number | null>(null);
   const [agentState, setAgentState] = useState<CaseAgentState | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentSending, setAgentSending] = useState(false);
@@ -113,6 +117,12 @@ export function useCaseAgentWorkspace({
     get setAgentDocumentsLoading() { return setAgentDocumentsLoading; },
     get setAgentDocumentIds() { return setAgentDocumentIds; },
     get setAgentSkillId() { return setAgentSkillId; },
+    get setAgentCatalog() { return setAgentCatalog; },
+    get setAgentConversations() { return setAgentConversations; },
+    get setAgentId() { return setAgentId; },
+    get setConversationId() { return setConversationId; },
+    get agentId() { return agentId; },
+    get conversationId() { return conversationId; },
     get agentCase() { return agentCase; },
     get agentInput() { return agentInput; },
     get agentSkillId() { return agentSkillId; },
@@ -147,7 +157,30 @@ export function useCaseAgentWorkspace({
     setAgentDocumentIds([]);
     setAgentMaterialPickerOpen(false);
     setAgentHistoryExpanded(false);
-    void loadCaseAgent(row, true);
+    void loadCaseAgent(row, true).then(() => undefined);
+  };
+  const switchCaseAgent = (nextAgentId: number) => {
+    if (!agentCase) return;
+    setAgentId(nextAgentId);
+    setConversationId(null);
+    void loadCaseAgent(agentCase, false, nextAgentId);
+  };
+  const switchCaseConversation = (nextConversationId: number) => {
+    if (!agentCase || !agentId) return;
+    setConversationId(nextConversationId);
+    void loadCaseAgent(agentCase, false, agentId, nextConversationId);
+  };
+  const createCaseAgent = async (name: string) => {
+    if (!agentCase) return;
+    const { data } = await api.post(`/case-spaces/${agentCase.id}/agents`, { name });
+    setAgentCatalog((items) => [...items, data]);
+    switchCaseAgent(Number(data.id));
+  };
+  const createCaseConversation = async (title: string) => {
+    if (!agentCase || !agentId) return;
+    const { data } = await api.post(`/case-spaces/${agentCase.id}/agents/${agentId}/conversations`, { title });
+    setAgentConversations((items) => [data, ...items]);
+    switchCaseConversation(Number(data.id));
   };
   const closeCaseAgent = () => {
     activeAgentLoadRequestRef.current?.abort();
@@ -200,6 +233,7 @@ export function useCaseAgentWorkspace({
   const drawerProps: DrawerProps = {
     agentOpen, closeCaseAgent, agentCase, agentDrawerWidth, startAgentDrawerResize,
     agentStatus, agentLoading, agentSending, agentSkillId, setAgentSkillId,
+    agentCatalog, agentConversations, agentId, conversationId, switchCaseAgent, switchCaseConversation, createCaseAgent, createCaseConversation,
     loadCaseAgent, agentState, agentDecisionLoading, decideCaseAgentAction,
     restoreCaseAgentAction, agentHistoryExpanded, setAgentHistoryExpanded,
     sendCaseAgentMessage, agentMaterialPickerOpen, setAgentMaterialPickerOpen, toggleAgentMaterialPicker,

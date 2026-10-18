@@ -22,6 +22,17 @@ class CaseAgentMessageInput(BaseModel):
     attachment_ids: list[int] = Field(default_factory=list, max_length=4)
     document_ids: list[int] | None = Field(default=None, max_length=12)
     stream: bool = False
+    agent_id: int | None = Field(default=None, gt=0)
+    conversation_id: int | None = Field(default=None, gt=0)
+
+
+class CaseAgentCreateInput(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=500)
+
+
+class CaseAgentConversationCreateInput(BaseModel):
+    title: str = Field(default="新会话", min_length=1, max_length=120)
 
 
 class UserAgentSkillInput(BaseModel):
@@ -45,6 +56,8 @@ class UserAgentSkillUpdate(BaseModel):
 class CaseAgentDecisionInput(BaseModel):
     decision: str = Field(pattern="^(approved|rejected)$")
     comment: str = Field(default="", max_length=1000)
+    agent_id: int | None = Field(default=None, gt=0)
+    conversation_id: int | None = Field(default=None, gt=0)
 
 
 class AgentDocumentInput(BaseModel):
