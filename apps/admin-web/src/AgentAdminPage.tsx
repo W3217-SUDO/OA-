@@ -71,6 +71,25 @@ const libraryColumns = (onView: (item: UserLibrary) => void) => [
   { title: "操作", width: 110, render: (_: unknown, item: UserLibrary) => <Button type="link" onClick={() => onView(item)}>查看详情</Button> },
 ];
 
+const globalSkillColumns = (onDelete: (skill: WorkspaceSkill) => void, canManage: boolean) => [
+  { title: "名称", dataIndex: "name", width: 180 },
+  { title: "分类", dataIndex: "category", width: 100 },
+  { title: "说明", dataIndex: "description" },
+  { title: "来源", dataIndex: "source", width: 260, ellipsis: true },
+  {
+    title: "状态",
+    width: 100,
+    render: (_: unknown, skill: WorkspaceSkill) => <Tag color={skill.available ? "success" : "default"}>{skill.available ? "启用" : "停用"}</Tag>,
+  },
+  {
+    title: "操作",
+    width: 90,
+    render: (_: unknown, skill: WorkspaceSkill) => canManage
+      ? <Button danger type="link" onClick={() => onDelete(skill)}>删除</Button>
+      : <Button type="link" disabled>只读</Button>,
+  },
+];
+
 // 管理员查看智能体运行状态、系统技能目录和各账号保存的个人技能。
 export default function AgentAdminPage() {
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -118,6 +137,10 @@ export default function AgentAdminPage() {
     try { await api.delete(`/agent-admin/skills/users/${encodeURIComponent(skillOwner.username)}/${encodeURIComponent(skill.id)}`); message.success("个人技能已删除"); await openUserSkills(skillOwner); await load(); }
     catch (failure) { message.error(errorText(failure, "个人技能删除失败")); throw failure; }
   } });
+  const deleteGlobalSkill = (skill: WorkspaceSkill) => Modal.confirm({ title: `删除全局技能“${skill.name}”？`, content: "删除后所有账号都无法再选用该技能，已有对话记录保留。", okText: "确认删除", cancelText: "取消", okButtonProps: { danger: true }, onOk: async () => {
+    try { await api.delete(`/agent/global-skills/${encodeURIComponent(skill.id)}`); message.success("全局技能已删除"); await refreshGlobals(); }
+    catch (failure) { message.error(errorText(failure, "全局技能删除失败")); throw failure; }
+  } });
   return (
     <div className="agent-scope-admin" data-testid="agent-admin-page">
       <Tabs activeKey={tab} onChange={key => { if (!capabilityBusy) setTab(key); }} items={[{ key: "capabilities", label: "专家、技能、连接器", disabled: capabilityBusy }, { key: "global", label: "全局技能", disabled: capabilityBusy }, { key: "overview", label: "运行状态与个人库", disabled: capabilityBusy }]} />
@@ -163,6 +186,18 @@ export default function AgentAdminPage() {
           dataSource={overview?.system_skills || []}
           pagination={false}
           scroll={{ x: 900 }}
+        />
+      </Card>
+      <Card title="全局技能（可管理）" extra={canManage ? <Button type="link" onClick={() => setSkillsOpen(true)}>安装全局技能</Button> : <span>只读</span>}>
+        <Table
+          rowKey="id"
+          size="small"
+          loading={loading}
+          columns={globalSkillColumns(deleteGlobalSkill, canManage)}
+          dataSource={globalSkills}
+          pagination={false}
+          scroll={{ x: 900 }}
+          locale={{ emptyText: "尚未安装全局技能" }}
         />
       </Card>
       <Card title="技能管理入口" className="agent-skill-management-entry">
