@@ -10,6 +10,7 @@ import { MemoryControlPanel } from "./MemoryControlPanel";
 import { ActionConfirmation } from "./ActionConfirmation";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { PersonalAiSpace } from "./PersonalAiSpace";
+import { CaseAgentFileFolderModal } from "./CaseAgentFileFolderModal";
 import { agentOperationMessage, userFacingAgentText } from "../AgentOperationPreview";
 import { errorText, workspaceDocumentSaveTarget, type ConfirmationDetail, type PendingAction } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
@@ -68,6 +69,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const [historyAction, setHistoryAction] = useState<{ conversationId: string; actionId: string } | null>(null);
   const [dismissalError, setDismissalError] = useState("");
   const [personalSpaceOpen, setPersonalSpaceOpen] = useState(false);
+  const [caseAgentFolderOpen, setCaseAgentFolderOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const hasMessages = state.messages.length > 0;
   const lastMessage = state.messages[state.messages.length - 1];
@@ -168,7 +170,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             {name && state.conversation_title && <small>{state.conversation_title}</small>}
           </span> : conversationTitle}
         </span>
-        {desktopWorkspace && currentCaseProject && onOpenCaseAgent && <Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={() => onOpenCaseAgent(currentCaseProject.case_id!, currentCaseProject.serial_no!)}>案件智能体</Button></Tooltip>}
+        {desktopWorkspace && currentCaseProject && <><Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={() => onOpenCaseAgent?.(currentCaseProject.case_id!, currentCaseProject.serial_no!)}>案件智能体</Button></Tooltip><Button size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体文件夹" onClick={() => setCaseAgentFolderOpen(true)}>案件智能体文件夹</Button></>}
         {!desktopWorkspace && <div className="assistant-bar-actions">
           <Tooltip title="个人 AI 空间"><Button className="personal-ai-space-trigger" type="text" icon={<FolderOpenOutlined />} aria-label="个人 AI 空间" onClick={() => setPersonalSpaceOpen(true)}><span className="personal-ai-space-label">个人 AI 空间</span></Button></Tooltip>
           <ConfirmationHistory onReopen={reopen} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} />
@@ -368,6 +370,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         onReturnWorkbench={onReturnOverview}
       />}
       {desktopWorkspace ? <div className="assistant-workspace-main">{content}</div> : content}
+      {caseAgentFolderOpen && currentCaseProject?.case_id && <CaseAgentFileFolderModal open caseId={currentCaseProject.case_id} serialNo={currentCaseProject.serial_no} onClose={() => setCaseAgentFolderOpen(false)} />}
       {memoryOpen && <MemoryControlPanel open onClose={() => setMemoryOpen(false)} />}
     </section>
   );
