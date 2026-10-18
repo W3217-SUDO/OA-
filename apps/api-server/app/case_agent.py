@@ -691,6 +691,26 @@ class CaseAgentRuntime:
         state = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
         return self._public_state(case_id, operator, state, agent_id, conversation_id)
 
+    async def ensure_context(
+        self,
+        case_id: int,
+        operator: str,
+        case_snapshot: dict[str, Any],
+        agent_id: int | None = None,
+        conversation_id: int | None = None,
+    ) -> None:
+        """在当前用户的案件会话线程中预置最新授权案件底座。"""
+        if self.graph is None:
+            raise RuntimeError(self.error or "LangGraph case agent is not ready")
+        state = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
+        if state.get("case_snapshot") == case_snapshot:
+            return
+        await self.graph.aupdate_state(
+            self.config(case_id, operator, agent_id, conversation_id),
+            {"case_snapshot": case_snapshot, "updated_at": _now()},
+            as_node="case_assistant",
+        )
+
     async def decide_action(
         self,
         *,

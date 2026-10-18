@@ -429,6 +429,10 @@ async def case_agent_state(case_id: int, identity: dict = Depends(current_identi
     if not case_agent_runtime.status()["ready"]:
         raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
     try:
+        context = await get_case_space_context(case_id, identity, db)
+        await case_agent_runtime.ensure_context(
+            case_id, identity["username"], context, runtime_agent_id, runtime_conversation_id,
+        )
         state = await case_agent_runtime.get_state(case_id, identity["username"], runtime_agent_id, runtime_conversation_id)
         import hashlib
         actions = state.get("pending_actions") or []
@@ -462,6 +466,7 @@ async def send_case_agent_message(
     agent, conversation = await _case_agent_selection(case_id, body.agent_id, body.conversation_id, identity, db)
     runtime_agent_id, runtime_conversation_id = _runtime_selection(agent, conversation)
     context = await get_case_space_context(case_id, identity, db)
+    allowed_document_ids = {int(item.get("id") or 0) for item in context.get("documents", []) if int(item.get("id") or 0) > 0}
     if not case_agent_runtime.status()["ready"]:
         raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
     proposed_action = body.proposed_action.model_dump() if body.proposed_action else None
@@ -472,8 +477,8 @@ async def send_case_agent_message(
     attachment_ids = list(dict.fromkeys(body.attachment_ids))
     if attachment_ids:
         attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all())
-        if len(attachments) != len(attachment_ids) or any(item.record_id != case_id for item in attachments):
-            raise HTTPException(status_code=404, detail="截图附件不存在或不属于当前案件")
+        if len(attachments) != len(attachment_ids) or any(item.id not in allowed_document_ids for item in attachments):
+            raise HTTPException(status_code=404, detail="截图附件不存在或不在当前账号可见的案件空间内")
         by_id = {item.id: item for item in attachments}
         total_size = 0
         mime_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
@@ -496,8 +501,8 @@ async def send_case_agent_message(
                 "mime_type": mime_type,
                 "data_url": f"data:{mime_type};base64,{base64.b64encode(content).decode('ascii')}",
             })
-    allowed_document_ids = [int(item.get("id") or 0) for item in context.get("documents", []) if int(item.get("id") or 0) > 0]
-    document_ids = allowed_document_ids if body.document_ids is None else list(dict.fromkeys(body.document_ids))
+    allowed_document_id_list = sorted(allowed_document_ids)
+    document_ids = allowed_document_id_list if body.document_ids is None else list(dict.fromkeys(body.document_ids))
     if any(item not in allowed_document_ids for item in document_ids):
         raise HTTPException(status_code=404, detail="所选材料不存在或不在当前账号可见的案件空间内")
     document_readings: list[dict[str, object]] = []
@@ -624,7 +629,8 @@ async def decide_case_agent_action(
                 raise HTTPException(status_code=422, detail="待确认工具请求缺少有效编号")
             if action.get("requested_by") != identity["username"]:
                 raise HTTPException(status_code=403, detail="只能确认本人发起的工具请求")
-            _require_case_agent_action_access("mcp.call", {"can_use_mcp_tools": True})
+            context = await get_case_space_context(case_id, identity, db)
+            _require_case_agent_action_access("mcp.call", context.get("capabilities") or {})
             # 原业务路由自行提交，不能进入旧动作共用事务的执行器。
             execution = await decide_tool_request(
                 request_id, body.decision, identity, db,

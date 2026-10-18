@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from app.config import settings
 from app.core.constants import RECORD_MODULE_MENU_ROOTS
 from app.models import BusinessRecord
+from app.data_models.documents import FileAttachment
 
 
 _SENSITIVE_KEY = re.compile(
@@ -83,3 +84,58 @@ async def require_business_record_target(spec, params: dict, db) -> None:
     for module in modules:
         if not isinstance(module, str) or module not in RECORD_MODULE_MENU_ROOTS or module.startswith("agent"):
             raise HTTPException(403, "智能体不得通过通用记录访问内部状态或未知业务模块")
+
+
+def _case_ids(value: object) -> set[int]:
+    result: set[int] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if str(key).casefold() in {"case_id", "case_record_id", "caseid"}:
+                try:
+                    number = int(item)
+                except (TypeError, ValueError):
+                    number = 0
+                if number > 0:
+                    result.add(number)
+            result.update(_case_ids(item))
+    elif isinstance(value, list):
+        for item in value:
+            result.update(_case_ids(item))
+    return result
+
+
+async def require_case_scoped_target(spec, params: dict, case_id: int, db) -> None:
+    """限制案件智能体工具只能触达当前案件，拒绝无法证明归属的目标。"""
+    if type(case_id) is not int or case_id <= 0:
+        raise HTTPException(403, "案件智能体缺少有效的当前案件范围")
+    explicit_ids = _case_ids(params)
+    if explicit_ids and explicit_ids != {case_id}:
+        raise HTTPException(403, "案件智能体不能访问其他案件")
+    relative = spec.path.removeprefix(settings.api_prefix)
+    if "{case_id}" in spec.path or "{case_record_id}" in spec.path:
+        path_case_id = (params.get("path") or {}).get("case_id") or (params.get("path") or {}).get("case_record_id")
+        if int(path_case_id or 0) != case_id:
+            raise HTTPException(403, "案件智能体目标案件与当前案件不一致")
+        return
+    record_id = (params.get("path") or {}).get("record_id")
+    if record_id is not None:
+        try:
+            record = await db.get(BusinessRecord, int(record_id))
+        except (TypeError, ValueError):
+            record = None
+        linked_ids = _case_ids(record.data or {}) if record is not None else set()
+        if record is None or record.module not in RECORD_MODULE_MENU_ROOTS or not (
+            (record.module == "case" and record.id == case_id) or linked_ids == {case_id}
+        ):
+            raise HTTPException(403, "案件智能体记录目标不属于当前案件")
+        return
+    if relative.startswith("/attachments/"):
+        attachment_id = (params.get("path") or {}).get("attachment_id")
+        try:
+            attachment = await db.get(FileAttachment, int(attachment_id))
+        except (TypeError, ValueError):
+            attachment = None
+        if attachment is None or attachment.record_id != case_id:
+            raise HTTPException(403, "案件智能体附件目标不属于当前案件")
+        return
+    raise HTTPException(403, "案件智能体工具必须明确当前案件范围")
