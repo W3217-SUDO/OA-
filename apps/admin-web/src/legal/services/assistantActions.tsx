@@ -231,7 +231,7 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
                             ...current,
                             messages: [
                                 ...current.messages.filter((item) => !String(item.id || "").startsWith("stream-")),
-                                { id: `document-${Date.now()}`, role: "assistant", content: `Word 文档已保存到 AI 空间：${name}` },
+                                { id: `document-${Date.now()}`, role: "assistant", content: `Word 文档已保存到案件智能体文件夹：${name}` },
                             ],
                         } : current);
                         if (context.viewingCounselCase?.id === agentCase.id) {

@@ -1632,7 +1632,10 @@ export default function App() {
     ) : route === "agent-center" ? (
       <AgentAdminPage />
     ) : route === "case-agent-center" ? (
-      <CaseAgentCenterPage onOpenPersonalAgent={openPersonalAgent} />
+      <CaseAgentCenterPage
+        onOpenPersonalAgent={openPersonalAgent}
+        onOpenCaseAgentFolder={(caseId, serialNo) => navigate(`case-detail-${caseId}-${encodeURIComponent(serialNo)}-ai-space`)}
+      />
     ) : route === FEEDBACK_ROUTE ? (
       <FeedbackPage onNavigate={navigate} />
     ) : route.startsWith("seal-") ? (

@@ -11,13 +11,13 @@ export function confirmCaseAgentDocument({ caseId, serialNo, name, content, onSa
 }) {
   const path = `/cases/${caseId}/ai-space/files`;
   Modal.confirm({
-    title: "保存 AI 空间 Word 文档",
+    title: "保存案件智能体文件夹 Word 文档",
     width: 760,
     okText: "确认保存",
     cancelText: "暂不保存",
     content: <div style={{ maxHeight: "60dvh", overflowY: "auto" }}><AgentOperationPreview action={{
-      id: `document-${caseId}`, type: "case.document.create", summary: `保存 ${name} 到 AI空间`,
-      preview: { operation_name: "保存 AI 空间 Word 文档", target: serialNo, method: "POST", path, params: { body: { name, content } } },
+      id: `document-${caseId}`, type: "case.document.create", summary: `保存 ${name} 到案件智能体文件夹`,
+      preview: { operation_name: "保存案件智能体文件夹 Word 文档", target: serialNo, method: "POST", path, params: { body: { name, content } } },
     }} /></div>,
     onOk: async () => {
       try {
@@ -26,7 +26,7 @@ export function confirmCaseAgentDocument({ caseId, serialNo, name, content, onSa
         message.error(agentOperationError(error, "文档保存失败"));
         throw error;
       }
-      message.success(`Word 文档已保存到 AI 空间：${name}`);
+      message.success(`Word 文档已保存到案件智能体文件夹：${name}`);
       try {
         await onSaved();
       } catch (error: unknown) {

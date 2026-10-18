@@ -274,7 +274,10 @@ export default function CaseCenterPage({
   const stageStatistics = useStageStatistics(initialView.endsWith("-stage"));
   const isCaseDetailView = initialView.startsWith("case-detail-");
   const opensAgentFromRoute = isCaseDetailView && initialView.endsWith("-agent");
-  const detailRouteView = opensAgentFromRoute ? initialView.slice(0, -"-agent".length) : initialView;
+  const opensAiSpaceFromRoute = isCaseDetailView && initialView.endsWith("-ai-space");
+  const detailRouteView = opensAgentFromRoute
+    ? initialView.slice(0, -"-agent".length)
+    : opensAiSpaceFromRoute ? initialView.slice(0, -"-ai-space".length) : initialView;
   const detailRouteMatch = detailRouteView.match(/^case-detail-(\d+)-(.+)$/);
   const detailRouteId = Number(detailRouteMatch?.[1] || 0);
   const createRouteType = initialView.endsWith("criminal") ? "刑事案件"
@@ -1842,7 +1845,7 @@ export default function CaseCenterPage({
       setCounselUploadCategory("AI空间");
       setSelectedCounselAttachmentKeys([]);
       if (viewingCounselCase) {
-        void refreshCounselDetailAttachments(viewingCounselCase.id).catch(() => message.error("AI 空间材料刷新失败"));
+        void refreshCounselDetailAttachments(viewingCounselCase.id).catch(() => message.error("案件智能体文件夹材料刷新失败"));
       }
       return;
     }
@@ -1865,12 +1868,21 @@ export default function CaseCenterPage({
     selectCounselDocCategory,
   });
   const routeAgentOpenedRef = useRef(false);
-  useEffect(() => { routeAgentOpenedRef.current = false; }, [initialView]);
+  const routeAiSpaceOpenedRef = useRef(false);
+  useEffect(() => {
+    routeAgentOpenedRef.current = false;
+    routeAiSpaceOpenedRef.current = false;
+  }, [initialView]);
   useEffect(() => {
     if (!opensAgentFromRoute || routeAgentOpenedRef.current || !viewingCounselCase) return;
     routeAgentOpenedRef.current = true;
     openCaseAgent(viewingCounselCase);
   }, [opensAgentFromRoute, viewingCounselCase?.id]);
+  useEffect(() => {
+    if (!opensAiSpaceFromRoute || routeAiSpaceOpenedRef.current || !viewingCounselCase) return;
+    routeAiSpaceOpenedRef.current = true;
+    selectCounselDocCategory("AI空间");
+  }, [opensAiSpaceFromRoute, viewingCounselCase?.id]);
 
   const toggleCounselDocGroup = (category: string) => {
     setExpandedCounselDocGroups((current) => ({ ...current, [category]: !(current[category] ?? category.startsWith("legacy-case-folder:")) }));
@@ -2678,7 +2690,7 @@ export default function CaseCenterPage({
     ...customCaseDocumentFolders.filter(name=>!AGENT_CASE_DOCUMENT_FOLDERS.includes(name)&&!hasCaseFileTypeOption(name,counselCaseFileTypeOptions)).map(name=>({value:name,label:name})),
     {value:"普通附件",label:"普通附件"},
   ];
-  const activeCounselUploadCategoryOptions=activeCounselDocCategory==="AI空间"?[{value:"AI空间",label:"AI空间（草稿）"}]:counselUploadCategoryOptions;
+  const activeCounselUploadCategoryOptions=activeCounselDocCategory==="AI空间"?[{value:"AI空间",label:"案件智能体文件夹（草稿）"}]:counselUploadCategoryOptions;
   const caseDocumentTreeGroup=counselDocumentFolderTree.find(option=>option.value==="案件文档全部");
   const visibleFormalCaseDocumentFolders=Array.from(new Set([
     ...AGENT_CASE_DOCUMENT_FOLDERS,
@@ -2688,11 +2700,11 @@ export default function CaseCenterPage({
   const counselMoveCategoryOptions = getCaseDocumentMoveCategoryOptions(customCaseDocumentFolders);
   const hasLegacyDocumentTree=counselDocumentFolderTree.some(option=>Boolean(option.legacy_folder_id));
   const counselDocTree:CaseDocumentTreeItem[]=hasLegacyDocumentTree ? [
-    {label:"AI空间",category:"AI空间",type:"folder"},
+    {label:"案件智能体文件夹",category:"AI空间",type:"folder"},
     {label:"全部案件文档",category:"全部案件文档",type:"overview"},
     ...flattenLegacyCaseFolders(counselDocumentFolderTree,expandedCounselDocGroups),
   ] : [
-    {label:"AI空间",category:"AI空间",type:"folder"},
+    {label:"案件智能体文件夹",category:"AI空间",type:"folder"},
     {label:"全部案件文档",category:"全部案件文档",type:"overview"},
     {label:"客户文档",category:"客户文档",type:"folder"},
     {label:"合同文档",category:"合同文档",type:"folder"},
@@ -4228,7 +4240,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal width={820} open={Boolean(aiDraftEditor)} title={aiDraftEditor?.mode==="create"?"新建 AI 空间 Word 文档":"编辑 AI 空间 Word 文档"} okText="保存 Word 文档" cancelText="取消" onOk={saveAiDraft} onCancel={()=>{setAiDraftEditor(null);aiDraftForm.resetFields();}}>
-        <Alert style={{marginBottom:12}} type="info" showIcon title="AI空间是案件草稿箱" description="AI生成文件默认保存在这里；只有点击“转入正式系统”后，文件才进入正式案件文档目录。"/>
+        <Alert style={{marginBottom:12}} type="info" showIcon title="案件智能体文件夹是案件草稿箱" description="案件智能体生成文件默认保存在这里；只有点击“转入正式系统”后，文件才进入正式案件文档目录。"/>
         <Form form={aiDraftForm} layout="vertical">
           <Form.Item label="Word 文件名" name="name" rules={[{required:true,message:"请输入文件名"},{pattern:/\.(docx|md|txt)$/i,message:"新建 Word 文档请使用 .docx 格式"}]}><Input maxLength={255} disabled={aiDraftEditor?.mode==="edit"}/></Form.Item>
           <Form.Item label="文档正文" name="content"><Input.TextArea autoSize={{minRows:16,maxRows:28}} placeholder="在这里编辑 Word 文档正文；保存后可查看、下载或转入正式系统"/></Form.Item>

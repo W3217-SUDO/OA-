@@ -35,7 +35,10 @@ const PHASE_SHORT_NAMES: Record<string, string> = {
   enforcement: "执行",
   archive: "归档",
 };
-export default function AgentCenterPage({ onOpenPersonalAgent }: { onOpenPersonalAgent: () => void }) {
+export default function AgentCenterPage({ onOpenPersonalAgent, onOpenCaseAgentFolder }: {
+  onOpenPersonalAgent: () => void;
+  onOpenCaseAgentFolder?: (caseId: number, serialNo: string) => void;
+}) {
   const [cases, setCases] = useState<CaseOption[]>([]);
   const [selected, setSelected] = useState<CaseOption | null>(null);
   const [keyword, setKeyword] = useState("");
@@ -350,6 +353,13 @@ export default function AgentCenterPage({ onOpenPersonalAgent }: { onOpenPersona
       <div><h2>案件智能体中心</h2><span>案件业务空间</span></div>
       <Space wrap>
         <Button size="small" onClick={onOpenPersonalAgent}>个人智能体</Button>
+        <Button size="small" icon={<FolderOpenOutlined />} onClick={() => {
+          if (!selected) {
+            message.warning("请先选择案件");
+            return;
+          }
+          onOpenCaseAgentFolder?.(selected.id, selected.serial_no);
+        }}>案件智能体文件夹</Button>
         <Button icon={<AppstoreAddOutlined />} onClick={() => void openSkillManager()}>技能包</Button>
         <Tag>客户</Tag><Tag>合同</Tag><Tag>案件</Tag><Tag>线索</Tag><Tag>调查</Tag><Tag>财务</Tag>
       </Space>
