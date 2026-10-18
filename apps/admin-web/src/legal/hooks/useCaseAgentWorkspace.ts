@@ -25,7 +25,7 @@ export function useCaseAgentWorkspace({
   const [agentCase, setAgentCase] = useState<CaseRow | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentStatus, setAgentStatus] = useState<CaseAgentStatus | null>(null);
-  const [agentCatalog, setAgentCatalog] = useState<CaseAgentSummary[]>([]);
+  const [, setAgentCatalog] = useState<CaseAgentSummary[]>([]);
   const [agentConversations, setAgentConversations] = useState<CaseAgentConversation[]>([]);
   const [agentId, setAgentId] = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -159,22 +159,10 @@ export function useCaseAgentWorkspace({
     setAgentHistoryExpanded(false);
     void loadCaseAgent(row, true).then(() => undefined);
   };
-  const switchCaseAgent = (nextAgentId: number) => {
-    if (!agentCase) return;
-    setAgentId(nextAgentId);
-    setConversationId(null);
-    void loadCaseAgent(agentCase, false, nextAgentId);
-  };
   const switchCaseConversation = (nextConversationId: number) => {
     if (!agentCase || !agentId) return;
     setConversationId(nextConversationId);
     void loadCaseAgent(agentCase, false, agentId, nextConversationId);
-  };
-  const createCaseAgent = async (name: string) => {
-    if (!agentCase) return;
-    const { data } = await api.post(`/case-spaces/${agentCase.id}/agents`, { name });
-    setAgentCatalog((items) => [...items, data]);
-    switchCaseAgent(Number(data.id));
   };
   const createCaseConversation = async (title: string) => {
     if (!agentCase || !agentId) return;
@@ -188,6 +176,10 @@ export function useCaseAgentWorkspace({
     setAgentLoading(false);
     setAgentDocumentsLoading(false);
     setAgentOpen(false);
+  };
+  const openAgentFolder = () => {
+    closeCaseAgent();
+    selectCounselDocCategory("AI空间");
   };
   const toggleAgentMaterialPicker = () => {
     if (!agentMaterialPickerOpen && agentCase) void loadCaseAgentDocuments(agentCase);
@@ -233,7 +225,7 @@ export function useCaseAgentWorkspace({
   const drawerProps: DrawerProps = {
     agentOpen, closeCaseAgent, agentCase, agentDrawerWidth, startAgentDrawerResize,
     agentStatus, agentLoading, agentSending, agentSkillId, setAgentSkillId,
-    agentCatalog, agentConversations, agentId, conversationId, switchCaseAgent, switchCaseConversation, createCaseAgent, createCaseConversation,
+    openAgentFolder, agentConversations, conversationId, switchCaseConversation, createCaseConversation,
     loadCaseAgent, agentState, agentDecisionLoading, decideCaseAgentAction,
     restoreCaseAgentAction, agentHistoryExpanded, setAgentHistoryExpanded,
     sendCaseAgentMessage, agentMaterialPickerOpen, setAgentMaterialPickerOpen, toggleAgentMaterialPicker,

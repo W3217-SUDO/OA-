@@ -22,7 +22,6 @@ CaseAgentAction,
 CaseAgentAttachment,
 CaseAgentDocument,
 CaseAgentConversation,
-CaseAgentSummary,
 CaseAgentState,
 CaseAgentStatus,
 CaseDetailCapabilities,
@@ -41,13 +40,10 @@ interface CaseAgentDrawerProps {
   agentSkillId: string;
   setAgentSkillId: (id: string) => void;
   loadCaseAgent: (row: CaseRow, resetMaterials?: boolean) => Promise<unknown>;
-  agentCatalog: CaseAgentSummary[];
+  openAgentFolder: () => void;
   agentConversations: CaseAgentConversation[];
-  agentId: number | null;
   conversationId: number | null;
-  switchCaseAgent: (id: number) => void;
   switchCaseConversation: (id: number) => void;
-  createCaseAgent: (name: string) => Promise<unknown>;
   createCaseConversation: (title: string) => Promise<unknown>;
   agentState: CaseAgentState | null;
   agentDecisionLoading: string;
@@ -89,13 +85,10 @@ export const CaseAgentDrawer = ({
   agentSkillId,
   setAgentSkillId,
   loadCaseAgent,
-  agentCatalog,
+  openAgentFolder,
   agentConversations,
-  agentId,
   conversationId,
-  switchCaseAgent,
   switchCaseConversation,
-  createCaseAgent,
   createCaseConversation,
   agentState,
   agentDecisionLoading,
@@ -155,8 +148,7 @@ export const CaseAgentDrawer = ({
             {agentStatus?.write_requires_approval && <Tag color="gold">人工审批</Tag>}
           </Space>
           <Space className="case-agent-selector-row" wrap size={6} style={{ marginTop: 8, width: "100%" }}>
-            <Select aria-label="案件智能体" style={{ minWidth: 180, flex: 1 }} value={agentId || undefined} options={agentCatalog.map((item) => ({ value: item.id, label: item.name }))} onChange={switchCaseAgent} placeholder="选择案件智能体" />
-            <Button size="small" onClick={() => { const value = window.prompt("新案件智能体名称", "案件智能体"); if (value?.trim()) void createCaseAgent(value.trim()); }}>新建智能体</Button>
+            <Button size="small" icon={<FolderOpenOutlined />} onClick={openAgentFolder}>案件智能体文件夹</Button>
             <Select aria-label="案件会话" style={{ minWidth: 180, flex: 1 }} value={conversationId || undefined} options={agentConversations.map((item) => ({ value: item.id, label: item.title }))} onChange={switchCaseConversation} placeholder="选择会话" />
             <Button size="small" onClick={() => { const value = window.prompt("新会话名称", "新会话"); if (value?.trim()) void createCaseConversation(value.trim()); }}>新建会话</Button>
           </Space>
