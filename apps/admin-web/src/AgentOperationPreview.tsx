@@ -45,6 +45,16 @@ const ACTION_FIELD_NAMES: Record<string, string> = {
 const PARAMETER_GROUP_NAMES: Record<string, string> = {
   path: "相关信息", query: "相关信息", body: "确认信息", files: "附件信息",
 };
+const USER_FACING_FIELD_NAMES: Record<string, string> = {
+  case_id: "案件",
+  hearing_lawyer: "开庭律师",
+  hearing_lawyers: "开庭律师",
+  handling_lawyer: "经办律师",
+  handling_lawyers: "经办律师",
+  customer_manager: "客户负责人",
+  assistant: "助理",
+  comment: "备注",
+};
 // 这些字段只用于前后端校验，不属于用户需要确认的业务信息。
 const HIDDEN_PARAMETER_FIELDS = new Set([
   "conversation_id", "message_index", "expected_content_sha256", "request_id",
@@ -57,6 +67,12 @@ const valueText = (value: unknown): string => {
 };
 const parameterLabel = (field: string) => ACTION_FIELD_NAMES[field] || "字段信息";
 const visibleParameterEntries = (values: Record<string, unknown>) => Object.entries(values).filter(([field]) => !HIDDEN_PARAMETER_FIELDS.has(field));
+
+/** 将模型遗留的技术字段转换为用户可读的中文，避免在聊天和确认标题中暴露接口字段。 */
+export const userFacingAgentText = (value: string): string => Object.entries(USER_FACING_FIELD_NAMES).reduce(
+  (text, [field, label]) => text.replace(new RegExp(`\\b${field}\\b`, "g"), label),
+  value,
+).replace(/path\s*参数/g, "相关信息").replace(/body\s*参数/g, "确认信息").replace(/query\s*参数/g, "相关信息").replace(/files\s*参数/g, "附件信息");
 
 export const agentOperationName = (action: AgentApprovalAction) => action.preview?.operation_name || ACTION_TYPE_NAMES[action.type] || action.summary;
 
@@ -95,13 +111,13 @@ export function AgentOperationPreview({ action, target }: { action: AgentApprova
   return <div className="agent-action-approval" data-testid="agent-action-approval">
     <div className="agent-action-summary" style={{ overflowWrap: "anywhere" }}>
       <Tag color="processing" style={{ whiteSpace: "normal", maxWidth: "100%" }}>{agentOperationName(action)}</Tag>
-      <strong>{action.summary}</strong>
-      {(preview?.target || target) && <small>目标：{preview?.target || target}</small>}
+      <strong>{userFacingAgentText(action.summary)}</strong>
+      {(preview?.target || target) && <small>目标：{userFacingAgentText(String(preview?.target || target))}</small>}
     </div>
     <div className="agent-action-warning">确认后才会执行写入，仍须通过当前账号原有权限、数据范围与业务审批校验。聊天回复不作为确认。</div>
     {!hasAgentOperationPreview(action) && <Alert type="error" showIcon title="操作参数未读取，不能确认执行" />}
     {preview?.original_values && <Descriptions size="small" bordered column={1} styles={{ content: { overflowWrap: "anywhere", whiteSpace: "pre-wrap" } }}>
-      <Descriptions.Item label="当前信息">{preview.original_values}</Descriptions.Item>
+      <Descriptions.Item label="当前信息">{userFacingAgentText(preview.original_values)}</Descriptions.Item>
     </Descriptions>}
     {preview?.params && Object.entries(preview.params).map(([group, value]) => {
       const objectValue = value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;

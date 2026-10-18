@@ -10,7 +10,7 @@ import { MemoryControlPanel } from "./MemoryControlPanel";
 import { ActionConfirmation } from "./ActionConfirmation";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { PersonalAiSpace } from "./PersonalAiSpace";
-import { agentOperationMessage } from "../AgentOperationPreview";
+import { agentOperationMessage, userFacingAgentText } from "../AgentOperationPreview";
 import { errorText, workspaceDocumentSaveTarget, type ConfirmationDetail, type PendingAction } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 import "./assistant-panel.css";
@@ -24,11 +24,12 @@ const LONG_MESSAGE_LENGTH = 120;
 
 // 从提醒里发出的问题带有完整明细，较长时先折叠，需要时再展开。
 function MessageText({ content }: { content: string }) {
+  const displayContent = userFacingAgentText(content);
   const [expanded, setExpanded] = useState(false);
-  if (content.length <= LONG_MESSAGE_LENGTH) return <>{content}</>;
+  if (displayContent.length <= LONG_MESSAGE_LENGTH) return <>{displayContent}</>;
   return (
     <>
-      {expanded ? content : `${content.slice(0, LONG_MESSAGE_LENGTH)}...`}
+      {expanded ? displayContent : `${displayContent.slice(0, LONG_MESSAGE_LENGTH)}...`}
       <button type="button" className="assistant-expand" onClick={() => setExpanded((value) => !value)}>
         {expanded ? "收起" : "展开全文"}
       </button>
@@ -241,7 +242,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                   </div>}
                   <div className={`assistant-bubble${item.failed ? " is-failed" : ""}${thinking ? " is-thinking" : ""}`}>
                     {item.content
-                      ? (item.role === "user" ? <MessageText content={item.content} /> : item.content)
+                      ? <MessageText content={item.content} />
                       : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><span>{progressText}</span></span> : "")}
                     {item.stopped && <span className="assistant-stopped">{item.content ? "已停止，已保留生成内容" : "已停止"}</span>}
                     {item.role === "assistant" && item.personal_document_save_error && !item.failed && !(sending && index === state.messages.length - 1) && <Alert type="warning" showIcon title="个人文档暂不可保存" description={item.personal_document_save_error} />}
