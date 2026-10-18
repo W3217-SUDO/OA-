@@ -189,3 +189,8 @@
 
 .workspace-compression-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 12px 32px; padding: 8px 12px; border: 1px solid #cfe5d9; border-radius: 6px; background: #f1faf5; color: #5f7168; font-size: 12px; line-height: 1.5; }
 .workspace-compression-notice-title { color: #087a56; font-weight: 600; }
+
+.case-agent-folder-summary {
+  margin-bottom: 12px;
+  color: #475467;
+}

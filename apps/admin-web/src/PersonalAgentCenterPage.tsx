@@ -12,6 +12,7 @@ import { WorkPanel } from "./personal-agent/WorkPanel";
 import { ConversationMessage } from "./personal-agent/ConversationMessage";
 import { ConversationManager } from "./personal-agent/ConversationManager";
 import { PersonalAiSpace } from "./personal-agent/PersonalAiSpace";
+import { CaseAgentFileFolderModal } from "./personal-agent/CaseAgentFileFolderModal";
 import { MemoryControlPanel } from "./personal-agent/MemoryControlPanel";
 import { MobileComposerOptions } from "./personal-agent/MobileComposerOptions";
 import { ActionConfirmation } from "./personal-agent/ActionConfirmation";
@@ -29,6 +30,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
   const [refreshToken, setRefreshToken] = useState(0);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [personalSpaceOpen, setPersonalSpaceOpen] = useState(false);
+  const [caseAgentFolderOpen, setCaseAgentFolderOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<"case" | "materials" | null>(null);
   const [follow, setFollow] = useState(true);
@@ -97,13 +99,14 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
         <Button icon={<AppstoreAddOutlined />} disabled={busy} onClick={() => void openSkills()}>技能包</Button>
         <Segmented aria-label="切换工作视图" value={view} options={[{ value: "workspace", label: "工作台" }, { value: "chat", label: "对话" }]} onChange={(value) => setView(value as "workspace" | "chat")} />
         <Tooltip title={status?.ready ? `当前模型：${status.model}` : "模型服务未就绪"}><span className={`workspace-service ${status?.ready ? "ready" : ""}`}><i />{status?.ready ? "已连接" : loading ? "连接中" : "未就绪"}</span></Tooltip>
-        {showCaseAgent && <Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={openCaseAgent}>案件智能体</Button></Tooltip>}
+        {showCaseAgent && <><Tooltip title="打开案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={openCaseAgent}>案件智能体</Button></Tooltip>{activeCaseProject?.case_id && <Button size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体文件夹" onClick={() => setCaseAgentFolderOpen(true)}>案件智能体文件夹</Button>}</>}
         <ConfirmationHistory onReopen={reopen} busy={navigationBusy || !!workspace.dismissalId} />
         <Tooltip title="刷新工作台与会话"><Button type="text" icon={<ReloadOutlined />} aria-label="刷新工作台与会话" disabled={navigationBusy || !!workspace.runningIds.length} onClick={() => { setRefreshToken((value) => value + 1); void workspace.load(); }} /></Tooltip>
       </Space>
     </header>
     {workspace.loadError && <Alert type="error" showIcon title={workspace.loadError} />}
     {!loading && !workspace.loadError && !status?.ready && <Alert type="warning" showIcon title="模型服务未就绪，请检查系统模型配置" />}
+    {caseAgentFolderOpen && activeCaseProject?.case_id && <CaseAgentFileFolderModal open caseId={activeCaseProject.case_id} serialNo={activeCaseProject.serial_no} onClose={() => setCaseAgentFolderOpen(false)} />}
     <div className="personal-agent-layout" data-view={view}>
       <WorkPanel status={status} skills={skills} busy={busy} refreshToken={refreshToken} decisionResult={workspace.decisionResult} onNavigate={onNavigate} onPrepare={prepare} onSkill={(skill) => { workspace.setSkillId(skill.id); if (skill.quick_prompts?.[0]) workspace.setInput(skill.quick_prompts[0]); showAssistant(); }} onUpload={() => { showAssistant(); fileRef.current?.click(); }} onSkills={() => void openSkills()} onDraft={draft} />
       <main className="personal-agent-chat">
