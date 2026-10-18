@@ -273,9 +273,12 @@ export default function CaseCenterPage({
   const isCreateView = initialView === "case-new" || initialView.startsWith("case-new-");
   const stageStatistics = useStageStatistics(initialView.endsWith("-stage"));
   const isCaseDetailView = initialView.startsWith("case-detail-");
-  const opensAgentFromRoute = isCaseDetailView && initialView.endsWith("-agent");
+  const opensTrialPrepAgentFromRoute = isCaseDetailView && initialView.endsWith("-agent-trial-prep");
+  const opensAgentFromRoute = isCaseDetailView && (initialView.endsWith("-agent") || opensTrialPrepAgentFromRoute);
   const opensAiSpaceFromRoute = isCaseDetailView && initialView.endsWith("-ai-space");
-  const detailRouteView = opensAgentFromRoute
+  const detailRouteView = opensTrialPrepAgentFromRoute
+    ? initialView.slice(0, -"-agent-trial-prep".length)
+    : opensAgentFromRoute
     ? initialView.slice(0, -"-agent".length)
     : opensAiSpaceFromRoute ? initialView.slice(0, -"-ai-space".length) : initialView;
   const detailRouteMatch = detailRouteView.match(/^case-detail-(\d+)-(.+)$/);
@@ -1876,8 +1879,8 @@ export default function CaseCenterPage({
   useEffect(() => {
     if (!opensAgentFromRoute || routeAgentOpenedRef.current || !viewingCounselCase) return;
     routeAgentOpenedRef.current = true;
-    openCaseAgent(viewingCounselCase);
-  }, [opensAgentFromRoute, viewingCounselCase?.id]);
+    openCaseAgent(viewingCounselCase, opensTrialPrepAgentFromRoute ? "civil-trial-prep-v3" : undefined);
+  }, [opensAgentFromRoute, opensTrialPrepAgentFromRoute, viewingCounselCase?.id]);
   useEffect(() => {
     if (!opensAiSpaceFromRoute || routeAiSpaceOpenedRef.current || !viewingCounselCase) return;
     routeAiSpaceOpenedRef.current = true;
