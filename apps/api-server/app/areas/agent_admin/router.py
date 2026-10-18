@@ -29,8 +29,17 @@ async def agent_admin_overview(identity: dict = Depends(current_identity), db: A
         SystemConfig.group == USER_SKILL_CONFIG_GROUP,
         SystemConfig.key.startswith(USER_SKILL_CONFIG_PREFIX, autoescape=True),
     ).order_by(SystemConfig.updated_at.desc()))).all()
-    usernames = [str((item.value or {}).get("owner_username") or "") for item in libraries]
-    display_names = dict((await db.execute(select(User.username, User.display_name).where(User.username.in_(usernames)))).all())
+    # 返回全部有效账号，管理员才能确认哪些账号尚未创建个人技能库；技能记录仍只从归属校验通过的配置中读取。
+    users = (await db.execute(
+        select(User.username, User.display_name)
+        .where(User.is_active.is_(True))
+        .order_by(User.username.asc())
+    )).all()
+    library_by_username: dict[str, list] = {}
+    for item in libraries:
+        owner_key = str((item.value or {}).get("owner_username") or "").strip().casefold()
+        if owner_key and owner_key not in library_by_username:
+            library_by_username[owner_key] = (item.value or {}).get("skills") or []
     runtime = case_agent_runtime.status()
     runtime.pop("skills", None)
     return {
@@ -39,12 +48,13 @@ async def agent_admin_overview(identity: dict = Depends(current_identity), db: A
         "user_libraries": [
             {
                 "username": username,
-                "display_name": display_names.get(username, ""),
+                "display_name": display_name or username,
                 "skills": [
                     {"id": skill.get("id"), "name": skill.get("name"), "category": skill.get("category"), "enabled": bool(skill.get("enabled", True))}
-                    for skill in (item.value or {}).get("skills") or [] if isinstance(skill, dict)
+                    for skill in library_by_username.get(username.casefold(), [])
+                    if isinstance(skill, dict)
                 ],
             }
-            for username, item in zip(usernames, libraries)
+            for username, display_name in users
         ],
     }

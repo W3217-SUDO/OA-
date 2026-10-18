@@ -165,7 +165,14 @@ export default function AgentAdminPage() {
           scroll={{ x: 900 }}
         />
       </Card>
-      <Card title="个人技能库（按账号）">
+      <Card title="技能管理入口" className="agent-skill-management-entry">
+        <Space wrap>
+          <Button type="primary" onClick={() => setTab("global")}>管理全局技能</Button>
+          {canManage && <Button onClick={() => setSkillsOpen(true)}>安装全局技能</Button>}
+          <span>可按账号查看个人技能，并对全局技能执行安装、启用、停用和卸载。</span>
+        </Space>
+      </Card>
+      <Card title="个人技能库（按账号）" extra={<span>共 {overview?.user_libraries.length || 0} 个有效账号</span>}>
         <Table
           rowKey="username"
           size="small"
