@@ -42,7 +42,10 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const canUseCases = status?.commands.some((item) => item.id === "cases");
-  const activeCaseId = workspace.currentWorkspace?.kind === "case" ? Number(workspace.currentWorkspace.case_id) : null;
+  const messageCaseId = state.messages.find((item) => item.case_id)?.case_id;
+  const activeCaseId = workspace.currentWorkspace?.kind === "case"
+    ? Number(workspace.currentWorkspace.case_id)
+    : messageCaseId ? Number(messageCaseId) : null;
   const activeCaseProject = activeCaseId
     ? workspace.workspaceProjects.find((item) => item.kind === "case" && Number(item.case_id) === activeCaseId)
     : undefined;
