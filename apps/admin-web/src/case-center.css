@@ -163,6 +163,49 @@
 .case-doc-folder-open .case-doc-icon{color:#e2aa20}
 .case-doc-ai-space{font-weight:600;color:#087f5b;background:#f0faf6}.case-doc-ai-space .case-doc-icon{color:#08a56d}
 .case-doc-folder>span:last-child,.case-doc-child>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 案件智能体抽屉的工作台视觉层次。 */
+.case-agent-drawer .ant-drawer-header{padding:16px 20px;background:linear-gradient(135deg,#f5fbf8 0%,#fff 72%);border-bottom:1px solid #d9ebe3}
+.case-agent-drawer .ant-drawer-title{color:#17352d;font-size:15px}
+.case-agent-drawer .ant-drawer-title .anticon{margin-right:8px;color:#00a870}
+.case-agent-drawer .ant-drawer-body{background:#f6f8fa}
+.case-agent-status{position:relative;display:block;padding:14px 18px 12px;background:#fff;border-bottom:1px solid #e4e9ed}
+.case-agent-status-badges{display:flex;min-height:24px;align-items:center;padding-right:28px}
+.case-agent-status-badges .ant-tag{border:0;border-radius:999px;padding:2px 9px;font-size:11px;line-height:18px}
+.case-agent-selector-row{display:flex!important;align-items:center}
+.case-agent-selector-row .ant-select{min-width:0!important;flex:1 1 150px!important}
+.case-agent-selector-row .ant-btn{height:32px;border-radius:8px;border-color:#d8e4df;color:#176b50;background:#fff}
+.case-agent-selector-row .ant-btn:hover{border-color:#00a870;color:#00875a}
+.case-agent-refresh{position:absolute;top:14px;right:14px;width:30px;height:30px;color:#5f6d67}
+.case-agent-refresh:hover{color:#00a870;background:#edf8f3}
+.case-agent-skill-select{grid-template-columns:auto minmax(150px,210px) minmax(0,1fr);padding:11px 18px;background:#fbfdfc;border-bottom:1px solid #e4e9ed}
+.case-agent-skill-select>span{color:#315248;font-size:12px}
+.case-agent-skill-select .ant-select-selector{border-radius:8px!important;border-color:#d8e4df!important}
+.case-agent-skill-select>small{color:#71817b}
+.case-agent-messages{padding:22px 20px 18px;background:radial-gradient(circle at 50% 0%,#fff 0%,#f6f8fa 58%);scrollbar-width:thin}
+.case-agent-empty{min-height:300px;gap:10px;color:#708079}
+.case-agent-empty-icon{display:grid;width:58px;height:58px;place-items:center;border:1px solid #bce6d4;border-radius:18px;background:#ecfaf3;box-shadow:0 8px 20px rgba(0,132,91,.1)}
+.case-agent-empty-icon .anticon{font-size:28px;color:#00a870}
+.case-agent-empty strong{color:#1f3c32;font-size:17px;font-weight:650}
+.case-agent-empty span{max-width:270px;color:#7b8b85;font-size:12px;line-height:1.7}
+.case-agent-message{margin-bottom:18px}
+.case-agent-bubble{padding:11px 13px;border:1px solid #e0e8e4;border-radius:4px 14px 14px 14px;box-shadow:0 3px 12px rgba(29,55,45,.04);line-height:1.72}
+.case-agent-message-user .case-agent-bubble{border-color:#b9e7d2;border-radius:14px 4px 14px 14px;background:#eaf8f1;box-shadow:none}
+.case-agent-suggestions{gap:8px;padding:0 20px 14px}
+.case-agent-suggestions .ant-btn{height:30px;border-radius:999px;border-color:#cfe4da;color:#197052;background:#fff}
+.case-agent-composer{gap:9px;padding:12px 18px 16px;border-top:1px solid #dfe8e3;background:#fff;box-shadow:0 -5px 18px rgba(25,55,43,.05)}
+.case-agent-composer textarea{padding:10px 12px;border-radius:10px;border-color:#d4e4dc;background:#fbfdfc;line-height:1.55}
+.case-agent-composer textarea:focus{border-color:#00a870;box-shadow:0 0 0 2px rgba(0,168,112,.1)}
+.case-agent-composer>.ant-btn{border-radius:10px}
+.case-agent-composer>.ant-btn-primary{background:#00a870;box-shadow:0 5px 12px rgba(0,168,112,.22)}
+@media(max-width:700px){
+  .case-agent-drawer .ant-drawer-header{padding:13px 16px}
+  .case-agent-status{padding:12px 14px 10px}
+  .case-agent-skill-select{grid-template-columns:auto minmax(125px,1fr);padding:10px 14px}
+  .case-agent-skill-select>small{grid-column:1/-1;padding-top:2px}
+  .case-agent-messages{padding:18px 14px 14px}
+  .case-agent-composer{padding:10px 12px 13px}
+}
 .case-doc-tree-row{display:flex;align-items:center;min-width:0;height:22px}.case-doc-tree-row>.case-doc-folder,.case-doc-tree-row>.case-doc-child{flex:1 1 auto;min-width:0}.case-doc-tree-action.ant-btn{flex:0 0 20px;width:20px;min-width:20px;height:20px;padding:0;font-size:13px}.case-doc-tree-add.ant-btn{color:#52a83b}.case-doc-tree-add.ant-btn:hover{color:#3d8c29;background:#edf8e9}
 
 @media(max-width:1280px){

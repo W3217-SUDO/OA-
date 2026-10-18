@@ -148,19 +148,19 @@ export const CaseAgentDrawer = ({
       <div className="case-agent-resize-handle" role="separator" aria-label="拖动调整智能体宽度" onPointerDown={startAgentDrawerResize} />
       <div className="case-agent-panel" data-testid="case-agent-panel">
         <div className="case-agent-status">
-          <Space size={[6, 6]} wrap>
+          <Space className="case-agent-status-badges" size={[6, 6]} wrap>
             <Tag color={agentStatus?.ready ? "success" : "warning"}>{agentStatus?.ready ? "服务正常" : agentLoading && !agentStatus ? "正在检查服务" : "服务未就绪"}</Tag>
             <Tag>{agentStatus?.model || (agentLoading ? "正在读取配置" : "模型未配置")}</Tag>
             <Tag color={agentStatus?.checkpoint_backend === "postgresql" ? "blue" : "default"}>案件独立记忆</Tag>
             {agentStatus?.write_requires_approval && <Tag color="gold">人工审批</Tag>}
           </Space>
-          <Space wrap size={6} style={{ marginTop: 8, width: "100%" }}>
+          <Space className="case-agent-selector-row" wrap size={6} style={{ marginTop: 8, width: "100%" }}>
             <Select aria-label="案件智能体" style={{ minWidth: 180, flex: 1 }} value={agentId || undefined} options={agentCatalog.map((item) => ({ value: item.id, label: item.name }))} onChange={switchCaseAgent} placeholder="选择案件智能体" />
             <Button size="small" onClick={() => { const value = window.prompt("新案件智能体名称", "案件智能体"); if (value?.trim()) void createCaseAgent(value.trim()); }}>新建智能体</Button>
             <Select aria-label="案件会话" style={{ minWidth: 180, flex: 1 }} value={conversationId || undefined} options={agentConversations.map((item) => ({ value: item.id, label: item.title }))} onChange={switchCaseConversation} placeholder="选择会话" />
             <Button size="small" onClick={() => { const value = window.prompt("新会话名称", "新会话"); if (value?.trim()) void createCaseConversation(value.trim()); }}>新建会话</Button>
           </Space>
-          <Button type="text" size="small" icon={<ReloadOutlined />} loading={agentLoading} title="刷新智能体状态" onClick={() => agentCase && void loadCaseAgent(agentCase)} />
+          <Button className="case-agent-refresh" type="text" size="small" icon={<ReloadOutlined />} loading={agentLoading} title="刷新智能体状态" onClick={() => agentCase && void loadCaseAgent(agentCase)} />
         </div>
         <div className="case-agent-skill-select">
           <span>办公技能</span>
@@ -196,7 +196,7 @@ export const CaseAgentDrawer = ({
         </Modal>
         <div className="case-agent-messages" aria-live="polite">
           {!agentLoading && !agentState?.messages?.length && <div className="case-agent-empty">
-            <RobotOutlined />
+            <div className="case-agent-empty-icon"><RobotOutlined /></div>
             <strong>可以开始分析这个案件</strong>
             <span>智能体仅使用你有权查看的案件空间数据。</span>
           </div>}
