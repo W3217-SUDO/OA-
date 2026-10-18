@@ -19,14 +19,15 @@ from app.agent_mcp.config import trusted_origins
 from app.agent_mcp.router import router
 from app.agent_mcp.safety import safe_result
 from app.agent_mcp.service import call_tool, search_tools
+from app.agent_mcp.model_context import discovered_tools_view
 from app.config import settings
 from app.core.lifecycle import lifespan
 
 
 SEARCH_SCHEMA = {
     "type": "object", "properties": {
-        "query": {"type": "string", "minLength": 1},
-        "limit": {"type": "integer", "minimum": 1, "maximum": 12, "default": 8},
+        "query": {"type": "string", "minLength": 1, "description": "业务目标及同义词，例如财务回款附件上传，或上传/附件/文件/导入"},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 12, "default": 8, "description": "上传或导入涉及多个业务对象时建议使用 12"},
     }, "required": ["query"], "additionalProperties": False,
 }
 
@@ -37,7 +38,7 @@ async def _list_tools(_, params):
     catalog = get_catalog(get_auth_context().application)
     tools = [types.Tool.model_validate(spec.to_mcp()) for spec in catalog.tools]
     tools.insert(0, types.Tool(
-        name="oa_search_tools", title="发现 OA 业务操作", description="按业务目标搜索全部已挂载的 OA 工具与真实参数模式。",
+        name="oa_search_tools", title="发现 OA 业务操作", description="按业务目标搜索全部已挂载的 OA 工具；结果按 domain 业务域分组，并返回真实参数模式、必填参数和 files 参数说明。",
         input_schema=SEARCH_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=True, open_world_hint=False),
     ))
     return types.ListToolsResult(tools=tools)
@@ -49,7 +50,7 @@ async def _call_tool(_, params):
         if params.name == "oa_search_tools":
             if set(arguments) - {"query", "limit"}:
                 raise HTTPException(422, "工具发现不接受未知参数")
-            result = {"tools": search_tools(arguments.get("query"), arguments.get("limit", 8))}
+            result = discovered_tools_view(search_tools(arguments.get("query"), arguments.get("limit", 8)))
         else:
             result = await call_tool(params.name, arguments)
         content = [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, allow_nan=False))]

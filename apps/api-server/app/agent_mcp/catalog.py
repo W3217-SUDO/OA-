@@ -316,6 +316,70 @@ def _response_types(route: APIRoute, method: str, operation: dict) -> tuple[tupl
     return tuple(sorted(media_types)), binary
 
 
+_SEARCH_ALIAS_GROUPS = (
+    ("upload", ("上传", "upload", "附件", "attachment", "文件", "file")),
+    ("attachment", ("附件", "attachment", "上传", "upload", "文件", "file")),
+    ("file", ("文件", "file", "附件", "attachment", "上传", "upload")),
+    ("import", ("导入", "import", "批量", "batch", "上传", "upload")),
+    ("document", ("文档", "document", "文件", "file", "附件", "attachment")),
+    ("material", ("材料", "material", "文件", "file", "附件", "attachment")),
+)
+
+# 用户表达与实际路由动作的同义词。搜索只调整排序，不隐藏其他相关工具。
+_ACTION_INTENTS = {
+    "查询": ("list", "get", "search", "query", "查看", "查询", "搜索"),
+    "搜索": ("list", "get", "search", "query", "查看", "查询", "搜索"),
+    "查看": ("list", "get", "search", "query", "查看", "查询", "搜索"),
+    "list": ("list", "get", "search", "query"),
+    "get": ("list", "get", "search", "query"),
+    "search": ("list", "get", "search", "query"),
+    "query": ("list", "get", "search", "query"),
+    "创建": ("create", "add", "新建", "新增", "创建"),
+    "新建": ("create", "add", "新建", "新增", "创建"),
+    "新增": ("create", "add", "新建", "新增", "创建"),
+    "create": ("create", "add"),
+    "add": ("create", "add"),
+    "修改": ("update", "edit", "patch", "修改", "更新"),
+    "更新": ("update", "edit", "patch", "修改", "更新"),
+    "edit": ("update", "edit", "patch"),
+    "update": ("update", "edit", "patch"),
+    "删除": ("delete", "remove", "删除", "移除"),
+    "移除": ("delete", "remove", "删除", "移除"),
+    "delete": ("delete", "remove"),
+    "remove": ("delete", "remove"),
+    "审批": ("approve", "review", "审批", "审核"),
+    "审核": ("approve", "review", "审批", "审核"),
+    "approve": ("approve", "review"),
+    "review": ("approve", "review"),
+    "下载": ("download", "下载"),
+    "download": ("download",),
+    "导出": ("export", "导出"),
+    "export": ("export",),
+    "打印": ("print", "打印"),
+    "print": ("print",),
+    "分配": ("assign", "分配"),
+    "assign": ("assign",),
+    "提交": ("submit", "提交"),
+    "submit": ("submit",),
+    "归档": ("archive", "归档"),
+    "archive": ("archive",),
+    "发送": ("send", "发送"),
+    "send": ("send",),
+    "关联": ("link", "关联"),
+    "link": ("link",),
+}
+
+
+def _tool_search_aliases(tool: ToolDefinition) -> tuple[str, ...]:
+    """返回搜索专用同义词，不改变原接口名称、标题或参数模式。"""
+    source = f"{tool.domain} {tool._route.name} {tool.path}".lower()
+    aliases = {tool.domain.lower()}
+    for marker, words in _SEARCH_ALIAS_GROUPS:
+        if marker in source:
+            aliases.update(words)
+    return tuple(sorted(aliases))
+
+
 class ToolCatalog:
     def __init__(self, app: FastAPI):
         routes = [route for route in app.routes if isinstance(route, APIRoute)]
@@ -392,21 +456,70 @@ class ToolCatalog:
             raise HTTPException(422, detail="请输入业务目标或接口关键词")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
             raise HTTPException(422, detail="目录检索数量必须为 1 至 50")
-        terms = re.findall(r"[a-z0-9_/-]+|[\u4e00-\u9fff]", query.lower())
+        normalized_query = query.lower().strip()
+        # 保留中文完整短词，同时保留单字拆分以兼容复合业务词。
+        full_terms = re.findall(r"[\u4e00-\u9fff]{2,}|[a-z0-9_/-]+", normalized_query)
+        terms = re.findall(r"[a-z0-9_/-]+|[\u4e00-\u9fff]", normalized_query)
+        terms.extend(full_terms)
         # 中文相邻双字词补充原字符评分，避免“任务”只因“务”字命中财务工具。
         phrases = tuple(dict.fromkeys(
             text[index:index + 2]
             for text in re.findall(r"[\u4e00-\u9fff]{2,}", query.lower())
             for index in range(len(text) - 1)
         ))
+        # 上传能力在各业务下有不同名称。将用户常用中文、英文说法统一映射，
+        # 但仍保留原始业务词的权重，避免把所有文件查询都排到同一组。
+        synonyms = {
+            "上传": ("上传", "upload", "附件", "attachment", "文件", "file"),
+            "upload": ("上传", "upload", "附件", "attachment", "文件", "file"),
+            "附件": ("附件", "attachment", "attachments", "上传", "upload"),
+            "attachment": ("附件", "attachment", "attachments", "上传", "upload"),
+            "文件": ("文件", "file", "files", "附件", "attachment", "文书"),
+            "file": ("文件", "file", "files", "附件", "attachment"),
+            "导入": ("导入", "import", "批量", "batch", "上传", "upload"),
+            "import": ("导入", "import", "批量", "batch", "上传", "upload"),
+            "批量导入": ("批量导入", "导入", "import", "batch"),
+            "文档": ("文档", "document", "文件", "file", "附件", "attachment"),
+            "document": ("文档", "document", "文件", "file", "附件", "attachment"),
+        }
+        expanded_terms = tuple(dict.fromkeys(
+            expanded
+            for term in terms
+            for expanded in synonyms.get(term, (term,)) + _ACTION_INTENTS.get(term, (term,))
+        ))
+        action_markers = tuple(dict.fromkeys(
+            marker
+            for term in terms
+            for marker in _ACTION_INTENTS.get(term, ())
+        ))
+        upload_intent = any(marker in normalized_query for marker in ("上传", "upload"))
+        import_intent = any(marker in normalized_query for marker in ("导入", "import"))
+        file_intent = any(marker in normalized_query for marker in ("附件", "文件", "file", "attachment", "文档", "document"))
         scored = []
         for tool in self.tools:
             text = tool.description.lower()
             subject = " ".join((tool.domain, tool._route.name, tool.path)).lower()
-            phrase_subject = f"{subject} {tool.title.lower()}"
-            score = sum(4 if term in subject else 1 if term in text else 0 for term in terms)
-            score += sum(4 if phrase in phrase_subject else 1 if phrase in text else 0 for phrase in phrases)
-            if query.lower() in text:
+            aliases = " ".join(_tool_search_aliases(tool))
+            phrase_subject = f"{subject} {tool.title.lower()} {aliases}"
+            score = sum(4 if term in subject else 2 if term in aliases else 1 if term in text else 0 for term in expanded_terms)
+            score += sum(10 if phrase in phrase_subject else 2 if phrase in text else 0 for phrase in phrases)
+            if action_markers:
+                action_text = f"{subject} {tool.title.lower()} {text}"
+                action_hits = sum(1 for marker in action_markers if marker in action_text)
+                if action_hits:
+                    score += 18 + min(action_hits, 3) * 3
+                # 查询/查看优先只读工具，但不隐藏写操作候选；其他动作同样保留相关工具。
+                if any(term in normalized_query for term in ("查询", "搜索", "查看", "list", "get", "search", "query")):
+                    score += 5 if not tool.is_write else 1
+            if upload_intent:
+                score += 12 if "upload" in subject else 3 if "attachment" in subject or "file" in subject else -5
+            if import_intent:
+                score += 12 if "import" in subject else 3 if "upload" in subject or "batch" in subject else -5
+            if file_intent:
+                # 文件类短词也必须命中通用上传接口；下载、查看、删除等同类接口仍保留，
+                # 但上传/导入动作优先展示，避免把“没有上传接口”误判为目录缺失。
+                score += 30 if "upload" in subject else 24 if "import" in subject else 8 if "attachment" in subject or "file" in subject else 0
+            if normalized_query in text or normalized_query in aliases:
                 score += 8
             if score:
                 scored.append((score, tool.name, tool))

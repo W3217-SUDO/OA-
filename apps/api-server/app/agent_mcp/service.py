@@ -28,10 +28,55 @@ _UNSET = object()
 STATUS_NAMES = {"待确认": "pending", "执行中": "executing", "已执行": "succeeded", "执行失败": "failed", "已拒绝": "rejected"}
 
 
+def _parameter_groups(spec) -> dict[str, list[dict]]:
+    """把完整 inputSchema 转成模型可快速阅读的分组参数清单。"""
+    def schema_type(value: dict) -> str:
+        if value.get("type"):
+            return str(value["type"])
+        if value.get("format"):
+            return str(value["format"])
+        branches = value.get("anyOf") or value.get("oneOf")
+        if isinstance(branches, list):
+            types = [schema_type(item) for item in branches if isinstance(item, dict) and item.get("type") != "null"]
+            if types:
+                return " or ".join(dict.fromkeys(types))
+        if value.get("$ref"):
+            return "object"
+        return "object"
+
+    properties = spec.input_schema.get("properties", {})
+    groups = {}
+    for group in ("path", "query", "body", "files"):
+        schema = properties.get(group)
+        if not isinstance(schema, dict) or schema.get("type") == "null":
+            continue
+        fields = schema.get("properties", {})
+        if not isinstance(fields, dict):
+            fields = {}
+        required = set(schema.get("required", []))
+        groups[group] = [
+            {
+                "name": name,
+                "required": name in required,
+                "type": schema_type(value) if isinstance(value, dict) else "object",
+                "description": value.get("description", "") if isinstance(value, dict) else "",
+                **({"enum": value["enum"]} if isinstance(value, dict) and "enum" in value else {}),
+            }
+            for name, value in fields.items()
+        ]
+    return groups
+
+
 def public_tool(spec) -> dict:
+    parameter_groups = _parameter_groups(spec)
     return {
         **spec.to_mcp(), "method": spec.method, "path": spec.path, "is_write": spec.is_write,
         "request_media_type": spec.request_media_type, "domain": spec.domain,
+        "parameter_groups": parameter_groups,
+        "required_parameters": {
+            group: [field["name"] for field in fields if field["required"]]
+            for group, fields in parameter_groups.items()
+        },
     }
 
 

@@ -135,9 +135,18 @@ def discovered_tools_view(tools: list[dict]) -> dict:
         visible.append(tool)
     if tools and not visible:
         raise RuntimeError("工具参数定义过长，请使用原业务页面，不会截断参数定义后调用")
+    groups: dict[str, list[dict]] = {}
+    for tool in visible:
+        domain = str(tool.get("domain") or "系统")
+        groups.setdefault(domain, []).append(tool)
     return {
-        "tools": visible, "omitted_tools": len(tools) - len(visible),
-        "notice": "仅这些工具的参数定义完整可用；未展示候选请缩小搜索词后重新发现。",
+        "tools": visible,
+        "groups": [
+            {"domain": domain, "tool_count": len(items), "tool_names": [item["name"] for item in items]}
+            for domain, items in sorted(groups.items())
+        ],
+        "omitted_tools": len(tools) - len(visible),
+        "notice": "工具按业务分组展示；每个工具均包含完整 inputSchema、参数分组和必填参数。未展示候选请缩小搜索词后重新发现。",
     }
 
 

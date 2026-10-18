@@ -1,8 +1,9 @@
 """前端专用的工具目录、人工决定和受保护结果下载入口。"""
 
+from datetime import date
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import Response
 
@@ -10,6 +11,7 @@ from app.agent_mcp.artifacts import read_resource
 from app.agent_mcp.auth import get_auth_context
 from app.agent_mcp.catalog import get_catalog
 from app.agent_mcp.service import decide_tool_request, get_tool_request, list_tool_requests, public_tool
+from app.areas.system.attachments import upload_attachment
 from app.config import settings
 from app.database import get_db
 from app.security import current_identity
@@ -24,11 +26,49 @@ class ToolDecisionInput(BaseModel):
     comment: str = Field(default="", max_length=1000)
 
 
+@router.post("/upload", status_code=201)
+async def upload_agent_attachment(
+    file: UploadFile = File(...), record_id: int | None = Form(None),
+    finance_transaction_id: int | None = Form(None), source_case_id: int | None = Form(None),
+    customer_guid: str | None = Form(None), is_license: bool | None = Form(None),
+    document_date: date | None = Form(None), category: str = Form("个人智能体材料"),
+    remark: str = Form(""), identity=Depends(current_identity), db=Depends(get_db),
+):
+    """接收真实 multipart 文件并复用原附件存储，返回可供 MCP files 分组引用的 ID。"""
+    # 该路由仅接受 UploadFile；不能把本地路径、URL 或文件内容字符串当作附件。
+    if any(value is not None for value in (
+        record_id, finance_transaction_id, source_case_id, customer_guid, is_license, document_date,
+    )):
+        raise HTTPException(status_code=422, detail="MCP 直接上传仅用于准备未关联附件；业务关联必须在 oa_call_tool 人工确认后完成")
+    attachment = await upload_attachment(
+        file=file, record_id=record_id, finance_transaction_id=finance_transaction_id,
+        source_case_id=source_case_id, customer_guid=customer_guid, is_license=is_license,
+        document_date=document_date, category=category, remark=remark,
+        identity=identity, db=db,
+    )
+    return {
+        "attachment_id": attachment["id"],
+        "attachment": attachment,
+        "next_mcp_files_argument": {"files": {"file": attachment["id"]}},
+    }
+
+
 @router.get("/catalog")
 async def tool_catalog(_=Depends(current_identity)):
     catalog = get_catalog(get_auth_context().application)
-    return {"tools": [public_tool(spec) for spec in catalog.tools], "inventory": catalog.inventory(),
-            "mcp_endpoint": settings.api_prefix + "/mcp"}
+    tools = [public_tool(spec) for spec in catalog.tools]
+    grouped: dict[str, list[str]] = {}
+    for tool in tools:
+        grouped.setdefault(tool["domain"], []).append(tool["name"])
+    return {
+        "tools": tools,
+        "groups": [
+            {"domain": domain, "tool_count": len(names), "tool_names": names}
+            for domain, names in sorted(grouped.items())
+        ],
+        "inventory": catalog.inventory(),
+        "mcp_endpoint": settings.api_prefix + "/mcp",
+    }
 
 
 @router.get("/requests")

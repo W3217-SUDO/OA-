@@ -26,12 +26,12 @@ MODEL_TOOLS = [
         "type": "function",
         "function": {
             "name": "oa_search_tools",
-            "description": "搜索 OA 当前已注册的真实业务接口，返回匹配工具的完整参数 schema。调用前必须先搜索，不要猜名称或字段。",
+            "description": "按业务分组搜索 OA 当前已注册的真实业务接口，返回每个候选的完整 inputSchema、path/query/body/files 参数和必填项。上传类请求必须同时用上传、附件、文件、导入及 upload、attachment、file、import 同义词搜索；调用前必须先搜索，不要猜名称或字段。需要上传本地文件时，先通过已认证的 multipart /api/v1/agent-tools/upload 获取 attachment_id，再把该 ID 按候选工具的 files 参数传给 oa_call_tool；不能把路径、URL 或文件内容字符串直接放进业务工具参数。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "minLength": 1, "description": "用户要办理的具体业务，例如案件新增律师费用"},
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 12, "default": 8},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 12, "default": 8, "description": "候选数量；上传或导入涉及多个业务对象时建议使用 12"},
                 },
                 "required": ["query"],
                 "additionalProperties": False,
@@ -42,7 +42,7 @@ MODEL_TOOLS = [
         "type": "function",
         "function": {
             "name": "oa_call_tool",
-            "description": "调用本轮搜索发现的 OA 工具。arguments 严格对应其 inputSchema；查询立即执行，写操作仅生成待人工确认请求。此工具不能批准写入。",
+            "description": "调用本轮搜索发现的 OA 工具。调用前必须按 path、query、body、files 分组读取并说明参数，标注必填项、已提供项和缺失项；缺失必填项先向用户询问，禁止直接调用后再用 422 让用户补填。arguments 严格对应其 inputSchema；查询立即执行，写操作仅生成待人工确认请求。此工具不能批准写入。",
             "parameters": {
                 "type": "object",
                 "properties": {

@@ -90,8 +90,8 @@ export function usePersonalWorkspace() {
     try {
       for (const file of files) {
         const form = new FormData(); form.append("file", file); form.append("category", "个人智能体材料");
-        const { data } = await api.post<{ id: number; original_name: string }>("/attachments", form);
-        setMaterials((current) => [...current, { id: data.id, name: data.original_name }]);
+        const { data } = await api.post<{ attachment_id: number; attachment: { original_name: string } }>("/agent-tools/upload", form);
+        setMaterials((current) => [...current, { id: data.attachment_id, name: data.attachment.original_name }]);
       }
     } catch (error) { message.error(errorText(error, "文件上传失败")); }
     finally { uploadLock.current = false; setUploading(false); }
