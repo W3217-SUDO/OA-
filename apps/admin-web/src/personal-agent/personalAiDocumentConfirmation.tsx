@@ -1,4 +1,4 @@
-import { Alert, message, Modal } from "antd";
+import { Alert, Input, message, Modal } from "antd";
 import { api } from "../api";
 import { AgentOperationPreview } from "../AgentOperationPreview";
 import { errorText } from "./types";
@@ -14,27 +14,56 @@ export async function confirmPersonalAiDocument({ conversationId, messageIndex, 
 }): Promise<void> {
   const { data: space } = await api.get<PersonalAiSpaceInfo>("/personal-agent/ai-space");
   if (!space.configured) throw new Error("个人 AI 空间 OSS 尚未配置，不能保存文件");
-  const body: PersonalAiDocumentRequest = { conversation_id: conversationId, message_index: messageIndex, name, expected_content_sha256: await personalAiMessageSha256(content), ...(format === "xlsx" ? { format } : {}) };
+  const expectedContentSha256 = await personalAiMessageSha256(content);
   const path = "/personal-agent/ai-space/files";
   return new Promise((resolve) => {
     let submitted = false;
     let saving = false;
+    let documentName = name;
     const fileLabel = format === "xlsx" ? "Excel 表格" : "Word 文档";
-    const preview = (error?: string) => <div className="personal-ai-document-preview">
+    const buildRequest = (): PersonalAiDocumentRequest => ({
+      conversation_id: conversationId,
+      message_index: messageIndex,
+      name: documentName.trim(),
+      expected_content_sha256: expectedContentSha256,
+      ...(format === "xlsx" ? { format } : {}),
+    });
+    const validateDocumentName = (): string | null => {
+      const normalizedName = documentName.trim();
+      if (!normalizedName) return "请输入文件名";
+      if (normalizedName.length > 255) return "文件名不能超过 255 个字符";
+      if (/[\\/]/.test(normalizedName)) return "文件名不能包含路径分隔符";
+      const extension = format === "xlsx" ? /\.xlsx$/i : /\.docx$/i;
+      if (!extension.test(normalizedName)) return `文件名必须使用 .${format === "xlsx" ? "xlsx" : "docx"} 格式`;
+      return null;
+    };
+    const preview = (error?: string) => {
+      const body = buildRequest();
+      return <div className="personal-ai-document-preview">
       {error && <Alert type="error" showIcon title="文档保存未完成" description={error} />}
+      <Alert type="info" showIcon message="保存前可以修改文件名" description="文件名只影响新建文件，不会改变原始会话内容。" />
+      <label htmlFor="personal-ai-document-name">文件名</label>
+      <Input id="personal-ai-document-name" defaultValue={documentName} maxLength={255} onChange={(event) => { documentName = event.target.value; }} />
       <AgentOperationPreview action={{ id: `personal-document-${format}-${conversationId}-${messageIndex}`, type: "personal.document.create", summary: `保存 ${name} 到${space.owner_name}的个人 AI 空间`, preview: { operation_name: `保存个人 AI 空间${fileLabel}`, target: space.owner_name, method: "POST", path, params: { body } } }} />
       <pre>{content}</pre>
-    </div>;
+      </div>;
+    };
     const modal = Modal.confirm({
       title: `保存个人 AI 空间${fileLabel}`, width: 760, className: "personal-ai-document-confirmation",
       okText: "确认保存", cancelText: "暂不保存", content: preview(),
       onCancel: () => { if (!saving) resolve(); },
       onOk: async () => {
         if (submitted) throw new Error("已提交保存请求，请在个人 AI 空间核对结果，禁止重复提交");
+        const nameError = validateDocumentName();
+        if (nameError) {
+          modal.update({ content: preview(nameError) });
+          throw new Error(nameError);
+        }
         submitted = true;
         saving = true;
         modal.update({ cancelButtonProps: { disabled: true }, closable: false, keyboard: false, maskClosable: false });
         try {
+          const body = buildRequest();
           const { data: file } = await api.post<PersonalAiFile>("/personal-agent/ai-space/files", body, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
           if (file.status !== "available") throw new Error(file.error || `文件保存状态：${file.status}，请在个人 AI 空间核对`);
           if (file.owner_user_id !== space.owner_user_id || file.conversation_id !== conversationId) throw new Error("保存返回的归属或来源会话不匹配，请在个人 AI 空间核对，禁止重复提交");
