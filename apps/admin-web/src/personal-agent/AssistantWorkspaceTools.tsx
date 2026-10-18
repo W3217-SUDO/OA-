@@ -110,9 +110,10 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
       {[
         ...workspace.materials.map((item) => ({ ...item, source: "upload" as const })),
         ...workspace.caseMaterials.map((item) => ({ ...item, source: "case" as const })),
-      ].map((item) => <span key={`${item.source}-${item.id}`} className="assistant-context-item">
+      ].map((item) => <span key={`${item.source}-${item.id}`} className={`assistant-context-item${item.status === "failed" ? " is-failed" : ""}`}>
         <FileOutlined />
         <button type="button" className="assistant-context-name" title={item.name} onClick={() => setPreviewMaterial(item)}>{item.name}</button>
+        {item.source === "upload" && <span className="assistant-context-status" title={item.error || undefined}>{item.status === "failed" ? "读取失败" : item.status === "readable" ? "可读取" : "已缓存"}</span>}
         <Tooltip title={`移除${item.name}`}><Button type="text" htmlType="button" size="small" icon={<CloseOutlined />} disabled={busy} aria-label={`移除${item.name}`} onClick={() => {
           if (item.source === "upload") workspace.setMaterials(workspace.materials.filter((value) => value.id !== item.id));
           else {

@@ -90,8 +90,25 @@ export function usePersonalWorkspace() {
     try {
       for (const file of files) {
         const form = new FormData(); form.append("file", file); form.append("category", "个人智能体材料");
-        const { data } = await api.post<{ attachment_id: number; attachment: { original_name: string } }>("/agent-tools/upload", form);
-        setMaterials((current) => [...current, { id: data.attachment_id, name: data.attachment.original_name }]);
+        try {
+          const { data } = await api.post<{
+            attachment_id: number;
+            attachment: { original_name: string };
+            cache_status?: "cached" | "failed";
+            reading_status?: "readable" | "failed" | "pending";
+            reading_error?: string | null;
+            reading?: { status?: "parsed" | "visual" | "failed" | "unavailable"; detail?: string; cache_status?: string };
+          }>("/agent-tools/upload", form);
+          const readingStatus = data.reading_status || data.reading?.status;
+          const readingError = data.reading_error || data.reading?.detail || undefined;
+          const status = readingStatus === "readable" || readingStatus === "parsed" || readingStatus === "visual" ? "readable" : readingStatus === "failed" || readingStatus === "unavailable" || data.cache_status === "failed" ? "failed" : "cached";
+          const material: Material = { id: data.attachment_id, name: data.attachment.original_name, status, error: readingError };
+          setMaterials((current) => [...current, material]);
+          if (status === "failed") message.error(`${material.name}：${material.error || "文件已缓存，但正文无法读取"}`);
+          else if (status === "cached") message.info(`${material.name}：已缓存，发送问题时读取正文`);
+        } catch (error) {
+          message.error(`${file.name}：${errorText(error, "文件上传失败")}`);
+        }
       }
     } catch (error) { message.error(errorText(error, "文件上传失败")); }
     finally { uploadLock.current = false; setUploading(false); }
@@ -149,6 +166,11 @@ export function usePersonalWorkspace() {
     const { skillId, responseMode, materials, caseMaterials, selectedCase } = targetDraft;
     const content = (override ?? targetDraft.input).trim();
     if (!content || runtime.stopping(targetId) || sendStarts.current.has(targetKey) || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
+    const unreadableMaterials = materials.filter((item) => item.status === "failed");
+    if (unreadableMaterials.length) {
+      message.error(`请先移除无法读取的材料：${unreadableMaterials.map((item) => item.name).join("、")}`);
+      return;
+    }
     const skill = skills.find((item) => item.id === skillId && item.available);
     if (!skill) { message.error("所选技能已停用或不存在，请重新选择"); return; }
     // 只锁住启动阶段；模型生成期间允许其他对话独立发送。

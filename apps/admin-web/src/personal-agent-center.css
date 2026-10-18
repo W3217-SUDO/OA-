@@ -68,7 +68,11 @@
 .personal-message.user .workspace-message-surface { background: #eaf4ef; border-color: #cfe3d9; color: #294c40; padding: 10px 14px; }
 .workspace-user-content { white-space: pre-wrap; }
 .workspace-message-files { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; }
-.workspace-message-files > button { display: flex; align-items: center; gap: 5px; font-size: 12px; border: 1px solid #dfe6eb; padding: 5px 8px; border-radius: 4px; color: #5e778b; max-width: 100%; overflow-wrap: anywhere; background: #f8fafc; cursor: pointer; text-align: left; }
+.workspace-message-files > .workspace-message-file { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; border: 1px solid #dfe6eb; padding: 5px 8px; border-radius: 4px; color: #5e778b; max-width: 100%; overflow-wrap: anywhere; background: #f8fafc; }
+.workspace-message-files > .workspace-message-file > button { display: inline-flex; align-items: center; gap: 5px; border: 0; padding: 0; color: inherit; max-width: 100%; overflow-wrap: anywhere; background: transparent; cursor: pointer; text-align: left; }
+.workspace-message-files > .workspace-message-file > small { color: #1677ff; white-space: nowrap; }
+.workspace-message-files > .workspace-message-file.is-failed { border-color: #ffccc7; background: #fff2f0; }
+.workspace-message-files > .workspace-message-file.is-failed > small { color: #cf1322; }
 .workspace-thinking { color: #788790; font-size: 13px; }
 .workspace-message-actions { display: flex; align-items: center; margin-top: 6px; gap: 4px; }
 .workspace-message-actions .ant-btn { color: #738592; font-size: 12px; }

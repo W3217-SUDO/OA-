@@ -35,7 +35,10 @@ export function ConversationMessage({ item, generating, readingMaterials, progre
           {assistant ? item.content ? <AgentMessageContent content={item.content} /> : <span className="workspace-thinking" role="status">{generating ? progress || (readingMaterials ? "正在读取材料并处理问题…" : "正在处理…") : "未收到回答"}</span> : <div className="workspace-user-content">{item.content}</div>}
         </div>
         {!!item.attachments?.length && <div className="workspace-message-files">
-          {item.attachments.map((file) => <button key={file.id} onClick={() => onPreview(file)}><PaperClipOutlined />{file.name}</button>)}
+          {item.attachments.map((file) => <span key={file.id} className={file.status === "failed" ? "workspace-message-file is-failed" : "workspace-message-file"}>
+            <button onClick={() => onPreview(file)}><PaperClipOutlined />{file.name}</button>
+            {file.status && <small title={file.error || undefined}>{file.status === "failed" ? "读取失败" : file.status === "readable" ? "可读取" : "已缓存"}</small>}
+          </span>)}
         </div>}
         {assistant && !!item.content && !item.failed && !generating && <div className="workspace-message-actions">
           <Tooltip title="复制回答"><Button type="text" size="small" icon={<CopyOutlined />} aria-label="复制回答" onClick={() => onCopy(item.content)} /></Tooltip>

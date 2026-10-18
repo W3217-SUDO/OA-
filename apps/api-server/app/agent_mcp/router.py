@@ -1,5 +1,6 @@
 """前端专用的工具目录、人工决定和受保护结果下载入口。"""
 
+import asyncio
 from datetime import date
 from urllib.parse import quote
 
@@ -8,10 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import Response
 
 from app.agent_mcp.artifacts import read_resource
+from app.agent_attachment_reader import read_attachment
 from app.agent_mcp.auth import get_auth_context
 from app.agent_mcp.catalog import get_catalog
 from app.agent_mcp.service import decide_tool_request, get_tool_request, list_tool_requests, public_tool
 from app.areas.system.attachments import upload_attachment
+from app.core.storage import _attachment_storage_path
+from app.data_models.documents import FileAttachment
 from app.config import settings
 from app.database import get_db
 from app.security import current_identity
@@ -46,9 +50,31 @@ async def upload_agent_attachment(
         document_date=document_date, category=category, remark=remark,
         identity=identity, db=db,
     )
+    reading: dict[str, object]
+    item = await db.get(FileAttachment, int(attachment["id"]))
+    path = _attachment_storage_path(item) if item else None
+    if item is None or path is None:
+        reading = {"status": "unavailable", "cache_hit": False, "cache_status": "disabled", "detail": "附件已保存，但当前存储位置不可读取"}
+    else:
+        try:
+            result = await asyncio.to_thread(
+                read_attachment, path, item.original_name,
+                cache_scope=identity["username"], attachment_id=item.id,
+            )
+            reading = {
+                "status": result.status, "cache_hit": result.cache_hit,
+                "cache_status": result.cache_status, "page_count": result.page_count,
+                "content_chars": len(result.text), "image_count": len(result.images),
+                "content_sha256": result.content_sha256, "content_size": result.content_size,
+            }
+            if result.status not in {"parsed", "visual"} or not (result.text or result.images):
+                reading["detail"] = "附件已保存，但无法读取正文或页面图像"
+        except Exception:
+            reading = {"status": "failed", "cache_hit": False, "cache_status": "failed", "detail": f"附件已保存，但解析失败：{item.original_name}，请检查文件是否完整或加密"}
     return {
         "attachment_id": attachment["id"],
         "attachment": attachment,
+        "reading": reading,
         "next_mcp_files_argument": {"files": {"file": attachment["id"]}},
     }
 

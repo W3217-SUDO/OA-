@@ -10,6 +10,22 @@
   min-width: 0;
 }
 
+.assistant-context-item.is-failed {
+  border-color: #ffccc7;
+  background: #fff2f0;
+}
+
+.assistant-context-status {
+  flex: none;
+  color: #1677ff;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.assistant-context-item.is-failed .assistant-context-status {
+  color: #cf1322;
+}
+
 @media (max-width: 991px) {
   .assistant-composer > .assistant-context-tools {
     display: contents;

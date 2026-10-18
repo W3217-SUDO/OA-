@@ -31,8 +31,8 @@ def _read_spreadsheet(path: Path) -> AttachmentReading:
     return AttachmentReading(status="parsed", text=text, page_count=0)
 
 
-async def _read_file(item: FileAttachment) -> AttachmentReading:
-    reader = _read_spreadsheet if Path(item.original_name).suffix.lower() == ".xlsx" else lambda path: read_attachment(path, item.original_name)
+async def _read_file(item: FileAttachment, identity: dict) -> AttachmentReading:
+    parser = _read_spreadsheet if Path(item.original_name).suffix.lower() == ".xlsx" else None
     signed_url = oss_attachment_signed_url(item)
     if signed_url:
         # 只读取经过授权、由系统签名的 OSS 对象，不接受用户提供的远程地址。
@@ -48,13 +48,19 @@ async def _read_file(item: FileAttachment) -> AttachmentReading:
                             if size > MAX_FILE_BYTES:
                                 raise HTTPException(status_code=413, detail=f"材料超过20MB：{item.original_name}")
                             handle.write(chunk)
-            return await asyncio.to_thread(reader, path)
+            return await asyncio.to_thread(
+                read_attachment, path, item.original_name,
+                cache_scope=identity["username"], attachment_id=item.id, parser=parser,
+            )
     path = _attachment_storage_path(item)
     if not path:
         raise HTTPException(status_code=404, detail=f"材料文件不存在：{item.original_name}")
     if path.stat().st_size > MAX_FILE_BYTES:
         raise HTTPException(status_code=413, detail=f"材料超过20MB：{item.original_name}")
-    return await asyncio.to_thread(reader, path)
+    return await asyncio.to_thread(
+        read_attachment, path, item.original_name,
+        cache_scope=identity["username"], attachment_id=item.id, parser=parser,
+    )
 
 
 async def prepare_materials(identity: dict, db: AsyncSession, attachment_ids: list[int], case_id: int | None, document_ids: list[int]) -> dict[str, Any]:
@@ -91,7 +97,7 @@ async def prepare_materials(identity: dict, db: AsyncSession, attachment_ids: li
         if not item:
             raise HTTPException(status_code=404, detail="材料已被删除，请重新选择")
         try:
-            reading = await _read_file(item)
+            reading = await _read_file(item, identity)
         except HTTPException:
             raise
         except Exception as exc:
@@ -103,7 +109,13 @@ async def prepare_materials(identity: dict, db: AsyncSession, attachment_ids: li
         image_size += sum(len(image["data_url"]) for image in reading.images)
         if text_size > 80_000 or len(images) + len(reading.images) > 12 or image_size > 16 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="材料内容过多，请减少文件数量后分批提问")
-        readings.append({"id": item.id, "name": item.original_name, "status": reading.status, "page_count": reading.page_count, "content": reading.text, "reading_limit": "PDF最多读取40页正文及4页扫描图；单份正文最多36000字符，不能据此声称全文已审阅" if item.original_name.lower().endswith(".pdf") else "仅使用实际解析内容，截取范围见正文标注"})
+        readings.append({
+            "id": item.id, "name": item.original_name, "status": reading.status,
+            "page_count": reading.page_count, "content": reading.text,
+            "cache_hit": reading.cache_hit, "cache_status": reading.cache_status,
+            "content_sha256": reading.content_sha256, "content_size": reading.content_size,
+            "reading_limit": "PDF最多读取40页正文及4页扫描图；单份正文最多36000字符，不能据此声称全文已审阅" if item.original_name.lower().endswith(".pdf") else "仅使用实际解析内容，截取范围见正文标注",
+        })
         images.extend({**image, "name": item.original_name} for image in reading.images)
     return {"case": selected_case, "readings": readings, "images": images, "can_save_document": can_save_document}
 
