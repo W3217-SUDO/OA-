@@ -18,6 +18,7 @@ type Props = {
   onOpenSchedule: () => void;
   onOpenCase: (caseNo: string) => void;
   onOpenCustomer: (customer: string) => void;
+  onOpenHearingAgent: (caseNo: string) => void;
   onAsk: (prompt: string) => void;
 };
 
@@ -29,7 +30,7 @@ function dayHint(date: string) {
 }
 
 // 开庭排期按日期排成日程表：左侧是日期，右侧是当天的每一场开庭。
-export default function DashboardHearingSchedule({ hearings, loading, status, canOpenSchedule, canOpenCase, canOpenCustomer, onOpenSchedule, onOpenCase, onOpenCustomer, onAsk }: Props) {
+export default function DashboardHearingSchedule({ hearings, loading, status, canOpenSchedule, canOpenCase, canOpenCustomer, onOpenSchedule, onOpenCase, onOpenCustomer, onOpenHearingAgent, onAsk }: Props) {
   const days = useMemo(() => {
     const byDate = new Map<string, Hearing[]>();
     hearings.forEach((item) => byDate.set(item.date, [...(byDate.get(item.date) || []), item]));
@@ -80,7 +81,7 @@ export default function DashboardHearingSchedule({ hearings, loading, status, ca
                       </span>
                     </div>
                   </div>
-                  <button type="button" className="wb-ask" onClick={() => onAsk(hearingPrompt(item))}>
+                  <button type="button" className="wb-ask" onClick={() => canOpenCase ? onOpenHearingAgent(item.case_no) : onAsk(hearingPrompt(item))}>
                     <AgentAvatar size={15} />交给智能体
                   </button>
                 </li>

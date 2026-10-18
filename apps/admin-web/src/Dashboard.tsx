@@ -100,6 +100,27 @@ export default function Dashboard({
       if (!controller.signal.aborted) message.error(error?.response?.data?.detail || (module === "case" ? "关联案件加载失败" : "关联客户加载失败"));
     }
   }, []);
+  const openHearingAgent = useCallback(async (caseNo: string) => {
+    if (!canOpenCase) return;
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
+    try {
+      const record = await resolveDetailRelation("case", { serial_no: caseNo }, controller.signal);
+      if (controller.signal.aborted) return;
+      if (!record) {
+        message.warning("未找到关联案件或当前账号无权查看");
+        return;
+      }
+      const route = `case-detail-${record.id}-${encodeURIComponent(record.serial_no)}-agent-trial-prep`;
+      const current = navigation.current;
+      if (!isWorkspaceRouteGranted(route, current.grantedMenuKeys, current.permissionAdministrator)) return;
+      rememberCaseDetailTarget({ id: record.id, serial_no: record.serial_no });
+      current.onNavigate(route);
+    } catch (error: any) {
+      if (!controller.signal.aborted) message.error(error?.response?.data?.detail || "案件智能体加载失败");
+    }
+  }, [canOpenCase]);
   const openRejection = (item: DashboardRejection) => {
     // 被拒绝的任务在“我发起的任务”里按已拒绝标签页展示。
     if (item.route === "task-my-created") sessionStorage.setItem("sunhold:dashboard-task-tab", "rejected");
@@ -164,6 +185,7 @@ export default function Dashboard({
       onOpenSchedule={() => onNavigate("case-mine-schedule")}
       onOpenCase={(caseNo) => void openDashboardDetail("case", caseNo)}
       onOpenCustomer={(customer) => void openDashboardDetail("customer", customer)}
+      onOpenHearingAgent={(caseNo) => void openHearingAgent(caseNo)}
       onAsk={askAgent}
     />
   );

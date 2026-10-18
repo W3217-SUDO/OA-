@@ -43,7 +43,7 @@ export interface CaseAssistantDependencies {
     readonly setAgentDecisionLoading: React.Dispatch<React.SetStateAction<string>>;
 }
 export function createCaseAssistantActions(context: CaseAssistantDependencies) {
-    const loadCaseAgent = async (row: CaseRow, resetMaterials = false, requestedAgentId?: number, requestedConversationId?: number) => {
+    const loadCaseAgent = async (row: CaseRow, resetMaterials = false, requestedAgentId?: number, requestedConversationId?: number, preferredSkillId?: string) => {
         const { setAgentLoading, setAgentStatus, setAgentState, setAgentDocuments, setAgentDocumentIds, setAgentSkillId, setAgentCatalog, setAgentConversations, setAgentId, setConversationId, activeAgentLoadRequestRef, activeAgentDocumentsRequestRef, setAgentDocumentsLoading } = context;
         activeAgentLoadRequestRef.current?.abort();
         const controller = new AbortController();
@@ -80,9 +80,11 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             if (statusResult.status === "rejected") setAgentStatus(null);
             if (stateResult.status === "rejected") setAgentState(null);
             if (statusResult.status === "fulfilled" && stateResult.status === "fulfilled") {
+                const requestedSkill = preferredSkillId ? String(preferredSkillId) : "";
+                const requestedAvailable = requestedSkill && (statusResult.value?.skills || []).some((item: AgentSkill) => item.id === requestedSkill && item.available);
                 const activeSkill = String(stateResult.value?.active_skill || DEFAULT_AGENT_SKILL);
                 const activeAvailable = (statusResult.value?.skills || []).some((item: AgentSkill) => item.id === activeSkill && item.available);
-                setAgentSkillId(activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
+                setAgentSkillId(requestedAvailable ? requestedSkill : activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
             }
             const failure = stateResult.status === "rejected" ? stateResult.reason : statusResult.status === "rejected" ? statusResult.reason : null;
             if (failure) message.error(failure?.response?.data?.detail || "案件智能体加载失败");

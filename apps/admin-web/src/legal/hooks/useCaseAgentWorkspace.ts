@@ -145,10 +145,11 @@ export function useCaseAgentWorkspace({
     get agentDecisionLoading() { return agentDecisionLoading; },
     get setAgentDecisionLoading() { return setAgentDecisionLoading; },
   });
-  const openCaseAgent = (row: CaseRow) => {
+  const openCaseAgent = (row: CaseRow, preferredSkillId?: string) => {
     clearAgentScreenshotPreviews();
     setAgentCase(row);
     setAgentOpen(true);
+    setAgentSkillId(preferredSkillId || DEFAULT_AGENT_SKILL);
     setAgentStatus(null);
     setAgentState(null);
     setAgentInput("");
@@ -157,7 +158,7 @@ export function useCaseAgentWorkspace({
     setAgentDocumentIds([]);
     setAgentMaterialPickerOpen(false);
     setAgentHistoryExpanded(false);
-    void loadCaseAgent(row, true).then(() => undefined);
+    void loadCaseAgent(row, true, undefined, undefined, preferredSkillId).then(() => undefined);
   };
   const switchCaseConversation = (nextConversationId: number) => {
     if (!agentCase || !agentId) return;
