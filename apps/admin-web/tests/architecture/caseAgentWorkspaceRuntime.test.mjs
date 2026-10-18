@@ -515,7 +515,7 @@ test("real approval preview loads the shared table and preserves original values
   assert.equal(before("原律师", { before_read: true }).props.children, "原律师");
   assert.equal(before("原律师", { before_read: false }).props.children, "未读取");
   assert.equal(before(undefined, { before_read: true }).props.children, "未读取");
-  assert.equal(before(null, { before_read: true }).props.children, "空值 (null)");
+  assert.equal(before(null, { before_read: true }).props.children, "空值");
   assert.equal(after("新律师").props.children, "新律师");
   assert.equal(after("").props.children, "空字符串");
   const created = AgentOperationPreview({ action: { ...action, preview: { ...action.preview, create: { title: "新建任务" } } } });

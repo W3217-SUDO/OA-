@@ -41,6 +41,9 @@ const ACTION_FIELD_NAMES: Record<string, string> = {
   archive_no: "档案号", paper_archive_location: "纸质档案位置", client_position: "客户诉讼地位",
   owner: "负责人", deadline: "截止日期", reminder_date: "提醒日期", priority: "优先级", content: "正文",
   name: "文件名", handling_lawyers: "经办律师", handling_lawyer_usernames: "经办律师账号",
+  case_id: "案件", id: "案件", hearing_lawyer: "开庭律师", hearing_lawyers: "开庭律师",
+  handling_lawyer: "经办律师", customer_manager: "客户负责人", assistant: "助理", comment: "备注",
+  module: "业务类型", serial_no: "案号", record_id: "业务记录", target_id: "目标记录",
 };
 const PARAMETER_GROUP_NAMES: Record<string, string> = {
   path: "相关信息", query: "相关信息", body: "确认信息", files: "附件信息",
@@ -61,7 +64,7 @@ const HIDDEN_PARAMETER_FIELDS = new Set([
 ]);
 const valueText = (value: unknown): string => {
   if (value === undefined) return "未读取";
-  if (value === null) return "空值 (null)";
+  if (value === null) return "空值";
   if (value === "") return "空字符串";
   return typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
 };
@@ -74,7 +77,7 @@ export const userFacingAgentText = (value: string): string => Object.entries(USE
   value,
 ).replace(/path\s*参数/g, "相关信息").replace(/body\s*参数/g, "确认信息").replace(/query\s*参数/g, "相关信息").replace(/files\s*参数/g, "附件信息");
 
-export const agentOperationName = (action: AgentApprovalAction) => action.preview?.operation_name || ACTION_TYPE_NAMES[action.type] || action.summary;
+export const agentOperationName = (action: AgentApprovalAction) => userFacingAgentText(action.preview?.operation_name || ACTION_TYPE_NAMES[action.type] || action.summary);
 
 export const agentOperationMessage = (value: unknown): string => {
   if (typeof value === "string") return value;
@@ -116,7 +119,7 @@ export function AgentOperationPreview({ action, target }: { action: AgentApprova
     </div>
     <div className="agent-action-warning">确认后才会执行写入，仍须通过当前账号原有权限、数据范围与业务审批校验。聊天回复不作为确认。</div>
     {!hasAgentOperationPreview(action) && <Alert type="error" showIcon title="操作参数未读取，不能确认执行" />}
-    {preview?.original_values && <Descriptions size="small" bordered column={1} styles={{ content: { overflowWrap: "anywhere", whiteSpace: "pre-wrap" } }}>
+    {preview?.original_values && !/^\s*[\[{]/.test(preview.original_values) && <Descriptions size="small" bordered column={1} styles={{ content: { overflowWrap: "anywhere", whiteSpace: "pre-wrap" } }}>
       <Descriptions.Item label="当前信息">{userFacingAgentText(preview.original_values)}</Descriptions.Item>
     </Descriptions>}
     {preview?.params && Object.entries(preview.params).map(([group, value]) => {
