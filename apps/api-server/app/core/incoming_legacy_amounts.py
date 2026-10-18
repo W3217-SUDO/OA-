@@ -94,7 +94,18 @@ def legacy_assigned_amounts(*, header_ids=None):
     database = source_text(head.source_payload, "_source_database")
     fee_id = case((database.is_not(None), database + literal(":") + line.legacy_case_fee_id),
                   else_=line.legacy_case_fee_id)
-    statement = select(head.id.label("header_id")).select_from(head).outerjoin(line, and_(
+    statement = select(
+        head.id.label("header_id"),
+        line.id.label("line_id"),
+        line.is_active.label("line_active"),
+        line.legacy_case_fee_id.label("legacy_case_fee_id"),
+        source_text(line.source_payload, "SeqId").label("seq_id"),
+        source_text(line.source_payload, "CashedAmount").label("cashed_amount"),
+        source_text(line.source_payload, "PaymentId").label("payment_id"),
+        source_text(line.source_payload, "IsActived").label("line_actived"),
+        source_text(line.source_payload, "_source_database").label("line_database"),
+        source_text(head.source_payload, "AppliedAmount").label("applied_amount"),
+    ).select_from(head).outerjoin(line, and_(
         line.legacy_finance_record_id == head.id, line.source_table == "FAM_AR_Payment_Object",
     )).outerjoin(fee, and_(fee.source_table == "FAM_AR_CaseFee", fee.legacy_id == fee_id,
         source_text(fee.source_payload, "CaseFeeId") == line.legacy_case_fee_id,
@@ -102,28 +113,39 @@ def legacy_assigned_amounts(*, header_ids=None):
     statement, type_id, _ = attach_source_fee_type(statement, fee, head)
     relation = source_allocation_relation(line, head)
     kind = case((relation, source_fee_kind(type_id, line, fee)))
-    amount = cast(func.nullif(source_text(line.source_payload, "CashedAmount"), ""), Numeric(20, 2))
-    columns = []
-    for label, field in zip(("official", "agency", "other"), ASSIGNED_FIELDS):
-        value = case((kind == label, amount), (kind.is_not(None), 0))
-        complete = case(
-            (and_(func.count(line.id) == 0,
-                  cast(func.nullif(source_text(head.source_payload, "AppliedAmount"), ""), Numeric(20, 2)) == 0), 0),
-            (func.count(line.id) == func.count(value), func.sum(value)),
-        )
-        columns.append(complete.label(field))
-    baseline = func.coalesce(_AllocationBaseline(source_text(line.source_payload, "SeqId"), line.legacy_case_fee_id,
-        source_text(line.source_payload, "CashedAmount"), source_text(line.source_payload, "PaymentId"),
-        relation.is_(True), source_text(line.source_payload, "IsActived"),
-        source_text(line.source_payload, "_source_database")).filter(
-            line.id.is_not(None), line.is_active.is_(True)), literal([], type_=JSON)).label("baseline_allocations")
+    # 每行明细的费用类别证据只投影一次。原写法把同一套字典匹配与类型判断
+    # 内联进三个金额列及计数表达式，同一 SQL 中重复数十次。
+    statement = statement.add_columns(kind.label("kind"), relation.label("relation")).where(
+        head.source_table == "FAM_AR_Payment",
+    )
     if header_ids is not None:
         statement = statement.where(head.id.in_(header_ids))
-    return statement.add_columns(*columns, baseline,
-        cast(func.nullif(source_text(head.source_payload, "AppliedAmount"), ""), Numeric(20, 2)).label("baseline_applied_amount"),
-    ).where(head.source_table == "FAM_AR_Payment").group_by(
-        head.id, source_text(head.source_payload, "AppliedAmount"),
-    ).subquery("legacy_assigned_amounts")
+    evidence = statement.subquery("legacy_line_evidence")
+    amount = cast(func.nullif(evidence.c.cashed_amount, ""), Numeric(20, 2))
+    columns = []
+    for label, field in zip(("official", "agency", "other"), ASSIGNED_FIELDS):
+        value = case((evidence.c.kind == label, amount), (evidence.c.kind.is_not(None), 0))
+        complete = case(
+            (and_(func.count(evidence.c.line_id) == 0,
+                  cast(func.nullif(evidence.c.applied_amount, ""), Numeric(20, 2)) == 0), 0),
+            (func.count(evidence.c.line_id) == func.count(value), func.sum(value)),
+        )
+        columns.append(complete.label(field))
+    baseline = func.coalesce(_AllocationBaseline(evidence.c.seq_id, evidence.c.legacy_case_fee_id,
+        evidence.c.cashed_amount, evidence.c.payment_id,
+        evidence.c.relation.is_(True), evidence.c.line_actived,
+        evidence.c.line_database).filter(
+            evidence.c.line_id.is_not(None), evidence.c.line_active.is_(True)), literal([], type_=JSON)).label("baseline_allocations")
+    # 聚合结果按 header 唯一。被外层逐行联接时，内联子查询会被当作相关子查询
+    # 反复求值；物化成 CTE 后只计算一次，外层直接按 header_id 联接。
+    return select(
+        evidence.c.header_id,
+        *columns,
+        baseline,
+        cast(func.nullif(evidence.c.applied_amount, ""), Numeric(20, 2)).label("baseline_applied_amount"),
+    ).group_by(
+        evidence.c.header_id, evidence.c.applied_amount,
+    ).cte("legacy_assigned_amounts").prefix_with("MATERIALIZED", dialect="postgresql")
 
 
 LEGACY_ASSIGNED_AMOUNTS = legacy_assigned_amounts()

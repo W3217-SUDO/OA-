@@ -38,15 +38,37 @@ async def _source_query(identity, db, mode, statuses, filters):
     from app.core.finance import _visible_incoming_payment_statement
 
     visible = await _visible_incoming_payment_statement(identity, db, include_amounts=False)
-    receipts = visible.with_only_columns(IncomingPayment.id.label("receipt_id"), IncomingPayment.receipt_no,
+    receipt_columns = (
+        IncomingPayment.id.label("receipt_id"), IncomingPayment.receipt_no,
         LEGACY_INCOMING_SOURCE.c.source_header_id,
         func.nullif(cast(IncomingPayment.local_allocation_summary, String), "null").is_not(None).label(
-            "has_local_allocation_activity")).subquery("visible_legacy_receipts")
+            "has_local_allocation_activity"),
+    )
+    # 可见回款集合内部包含旧回款头的 UNION 聚合。它被明细、关系汇总、金额聚合和
+    # 主查询多处引用；每次引用都重新展开会让同一份结果重复计算数遍。
+    # PostgreSQL 上物化一次，SQLite 保持原 subquery 语义。
+    if db.get_bind().dialect.name == "postgresql":
+        receipts = visible.with_only_columns(*receipt_columns).cte(
+            "visible_legacy_receipts").prefix_with("MATERIALIZED")
+    else:
+        receipts = visible.with_only_columns(*receipt_columns).subquery("visible_legacy_receipts")
     # 普通历史结算金额只会被当前可见回款头使用。将旧金额聚合限制到该集合，
     # 保留原有明细、基线和金额完整性计算，避免每次刷新扫描全部旧回款头。
-    visible_legacy_amounts = legacy_assigned_amounts(header_ids=select(
-        receipts.c.source_header_id,
-    ).where(receipts.c.source_header_id.is_not(None)).distinct())
+    # 普通模式还要叠加结算状态条件：状态只由回款头自身的 SettlementStatus 决定，
+    # 提前限定能让聚合从小到大做；否则先对全部可见回款头算聚合，外层再筛掉绝大多数。
+    amount_header_ids = select(receipts.c.source_header_id).where(receipts.c.source_header_id.is_not(None))
+    if mode == "normal":
+        normal_status_codes = [key for key, value in NORMAL_STATES.items() if value in statuses]
+        if not normal_status_codes:
+            normal_status_codes = ["\x00"]
+        amount_header_ids = select(receipts.c.source_header_id).join(
+            LegacyFinanceRecord, LegacyFinanceRecord.id == receipts.c.source_header_id,
+        ).where(
+            receipts.c.source_header_id.is_not(None),
+            LegacyFinanceRecord.source_table == "FAM_AR_Payment",
+            _text(LegacyFinanceRecord.source_payload, "SettlementStatus").in_(normal_status_codes),
+        )
+    visible_legacy_amounts = legacy_assigned_amounts(header_ids=amount_header_ids.distinct())
     head = LegacyFinanceRecord
     line = LegacyFinanceAllocation
     original_fee = aliased(LegacyFinanceRecord)
