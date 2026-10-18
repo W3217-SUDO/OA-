@@ -43,15 +43,20 @@ const ACTION_FIELD_NAMES: Record<string, string> = {
   name: "文件名", handling_lawyers: "经办律师", handling_lawyer_usernames: "经办律师账号",
 };
 const PARAMETER_GROUP_NAMES: Record<string, string> = {
-  path: "路径参数", query: "查询参数", body: "请求正文", files: "附件参数",
+  path: "相关信息", query: "相关信息", body: "确认信息", files: "附件信息",
 };
+// 这些字段只用于前后端校验，不属于用户需要确认的业务信息。
+const HIDDEN_PARAMETER_FIELDS = new Set([
+  "conversation_id", "message_index", "expected_content_sha256", "request_id",
+]);
 const valueText = (value: unknown): string => {
   if (value === undefined) return "未读取";
   if (value === null) return "空值 (null)";
   if (value === "") return "空字符串";
   return typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
 };
-const parameterLabel = (field: string) => ACTION_FIELD_NAMES[field] ? `${ACTION_FIELD_NAMES[field]} (${field})` : field;
+const parameterLabel = (field: string) => ACTION_FIELD_NAMES[field] || "字段信息";
+const visibleParameterEntries = (values: Record<string, unknown>) => Object.entries(values).filter(([field]) => !HIDDEN_PARAMETER_FIELDS.has(field));
 
 export const agentOperationName = (action: AgentApprovalAction) => action.preview?.operation_name || ACTION_TYPE_NAMES[action.type] || action.summary;
 
@@ -79,7 +84,7 @@ export const hasAgentOperationPreview = (action: AgentApprovalAction) => action.
 );
 
 const ParameterValues = ({ values }: { values: Record<string, unknown> }) => <div className="agent-action-create">
-  {Object.entries(values).map(([field, value]) => <div key={field}>
+  {visibleParameterEntries(values).map(([field, value]) => <div key={field}>
     <strong style={{ overflowWrap: "anywhere" }}>{parameterLabel(field)}</strong>
     <span>{valueText(value)}</span>
   </div>)}
@@ -87,7 +92,6 @@ const ParameterValues = ({ values }: { values: Record<string, unknown> }) => <di
 
 export function AgentOperationPreview({ action, target }: { action: AgentApprovalAction; target?: string }) {
   const preview = action.preview;
-  const requestId = action.payload?.request_id;
   return <div className="agent-action-approval" data-testid="agent-action-approval">
     <div className="agent-action-summary" style={{ overflowWrap: "anywhere" }}>
       <Tag color="processing" style={{ whiteSpace: "normal", maxWidth: "100%" }}>{agentOperationName(action)}</Tag>
@@ -96,18 +100,20 @@ export function AgentOperationPreview({ action, target }: { action: AgentApprova
     </div>
     <div className="agent-action-warning">确认后才会执行写入，仍须通过当前账号原有权限、数据范围与业务审批校验。聊天回复不作为确认。</div>
     {!hasAgentOperationPreview(action) && <Alert type="error" showIcon title="操作参数未读取，不能确认执行" />}
-    {preview?.method && preview.path && <Descriptions size="small" bordered column={1} styles={{ content: { overflowWrap: "anywhere", whiteSpace: "pre-wrap" } }}>
-      {requestId !== undefined && <Descriptions.Item label="请求 ID">{valueText(requestId)}</Descriptions.Item>}
-      <Descriptions.Item label="接口">{preview.method} {preview.path}</Descriptions.Item>
-      {preview.original_values && <Descriptions.Item label="原值读取">{preview.original_values}</Descriptions.Item>}
+    {preview?.original_values && <Descriptions size="small" bordered column={1} styles={{ content: { overflowWrap: "anywhere", whiteSpace: "pre-wrap" } }}>
+      <Descriptions.Item label="当前信息">{preview.original_values}</Descriptions.Item>
     </Descriptions>}
-    {preview?.params && Object.entries(preview.params).map(([group, value]) => <section key={group}>
-      <strong>{PARAMETER_GROUP_NAMES[group] || group}</strong>
-      {value !== null && typeof value === "object" && !Array.isArray(value)
-        ? Object.keys(value).length ? <ParameterValues values={value as Record<string, unknown>} /> : <div>{valueText(value)}</div>
-        : <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valueText(value)}</div>}
-    </section>)}
-    {preview?.create && <section><strong>提交参数</strong><ParameterValues values={preview.create} /></section>}
+    {preview?.params && Object.entries(preview.params).map(([group, value]) => {
+      const objectValue = value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+      if (objectValue && !visibleParameterEntries(objectValue).length) return null;
+      return <section key={group}>
+        <strong>{PARAMETER_GROUP_NAMES[group] || "确认信息"}</strong>
+        {objectValue
+          ? <ParameterValues values={objectValue} />
+          : <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valueText(value)}</div>}
+      </section>;
+    })}
+    {preview?.create && <section><strong>确认信息</strong><ParameterValues values={preview.create} /></section>}
     {!preview?.create && !!preview?.changes?.length && <Table
       size="small" bordered pagination={false} rowKey="field" dataSource={preview.changes}
       scroll={{ x: 480 }}
@@ -118,7 +124,7 @@ export function AgentOperationPreview({ action, target }: { action: AgentApprova
       ]}
     />}
     {!preview?.params && !preview?.create && !preview?.changes?.length && action.payload && <section>
-      <strong>提交参数</strong><ParameterValues values={action.payload} />
+      <strong>确认信息</strong><ParameterValues values={action.payload} />
     </section>}
   </div>;
 }

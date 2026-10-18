@@ -509,7 +509,7 @@ test("real approval preview loads the shared table and preserves original values
   assert.equal(table.props.pagination, false);
   assert.equal(table.props.scroll.x, 480);
   assert.equal(table.props.dataSource, action.preview.changes);
-  assert.equal(table.props.columns[0].render("handling_lawyers"), "经办律师 (handling_lawyers)");
+  assert.equal(table.props.columns[0].render("handling_lawyers"), "经办律师");
   const before = table.props.columns[1].render;
   const after = table.props.columns[2].render;
   assert.equal(before("原律师", { before_read: true }).props.children, "原律师");
