@@ -42,7 +42,7 @@ export default function PersonalAgentCenterPage({ onNavigate }: { onNavigate: (r
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const canUseCases = status?.commands.some((item) => item.id === "cases");
-  const messageCaseId = state.messages.find((item) => item.case_id)?.case_id;
+  const messageCaseId = state.messages.find((item) => item.case_id)?.case_id || state.messages.map((item) => String(item.content || "")).join("\n").match(/案件ID[：:]\s*(\d+)/)?.[1];
   const workspaceProjects = Array.isArray(workspace.workspaceProjects) ? workspace.workspaceProjects : [];
   const listedCaseProject = workspaceProjects.find((item) => item.kind === "case" && item.available);
   const activeCaseId = workspace.currentWorkspace?.kind === "case"
