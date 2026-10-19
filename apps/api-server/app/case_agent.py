@@ -3,18 +3,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import operator
 import re
-from contextlib import AbstractAsyncContextManager
 from contextvars import ContextVar
 from datetime import UTC, datetime
-from typing import Annotated, Any, AsyncIterator, Callable, TypedDict
+from typing import Any, AsyncIterator, Callable, TypedDict
 from uuid import uuid4
 
-import httpx
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from langgraph.graph import END, START, StateGraph
+from .harness_agent.case_state import CaseStateStore
+from .harness_agent.runtime import readiness
 
 from .agent_skills import SKILLS_BY_ID, AgentSkill, split_skill_message
 from .system_agent_skills import runtime_system_skill
@@ -67,9 +63,11 @@ DOCUMENT_READING_RULES = (
 
 _MODEL_CHUNK_CALLBACK: ContextVar[Callable[[str], None] | None] = ContextVar("model_chunk_callback", default=None)
 
+_CASE_SELECTION: ContextVar[dict[str, Any] | None] = ContextVar("oa_case_selection", default=None)
+
 
 class CaseAgentState(TypedDict, total=False):
-    messages: Annotated[list[dict[str, Any]], operator.add]
+    messages: list[dict[str, Any]]
     case_snapshot: dict[str, Any]
     pending_actions: list[dict[str, Any]]
     last_response: str
@@ -210,37 +208,6 @@ def _action_is_authorized(proposed_action: dict[str, Any], snapshot: dict[str, A
     return bool(capability and capabilities.get(capability))
 
 
-def _case_assistant_node(state: CaseAgentState) -> dict[str, Any]:
-    messages = state.get("messages") or []
-    latest = messages[-1] if messages else {}
-    snapshot = state.get("case_snapshot") or {}
-    pending_actions = list(state.get("pending_actions") or [])
-    proposed_action = latest.get("proposed_action") or None
-    if proposed_action and _action_is_authorized(proposed_action, snapshot):
-        action = _pending_action(proposed_action, latest, snapshot)
-        pending_actions.append(action)
-        response = f"已生成待审批操作：{action['summary']}。审批前不会写入业务数据。"
-    elif proposed_action:
-        response = "当前账号原有业务权限不允许执行该操作，智能体不会生成审批或修改数据。"
-    else:
-        response = _case_summary(snapshot)
-    return {
-        "messages": [{"role": "assistant", "content": response, "created_at": _now()}],
-        "pending_actions": pending_actions,
-        "last_response": response,
-        "last_operator": latest.get("operator", ""),
-        "updated_at": _now(),
-    }
-
-
-def build_case_agent_graph(checkpointer: Any, assistant_node: Any = _case_assistant_node):
-    builder = StateGraph(CaseAgentState)
-    builder.add_node("case_assistant", assistant_node)
-    builder.add_edge(START, "case_assistant")
-    builder.add_edge("case_assistant", END)
-    return builder.compile(checkpointer=checkpointer, name="sunhold-case-agent")
-
-
 def _checkpoint_url(database_url: str, explicit_url: str) -> str:
     value = (explicit_url or database_url).strip()
     if value.startswith("postgresql+asyncpg://"):
@@ -312,7 +279,7 @@ def build_case_model_messages(
             ),
         }
     ]
-    recent_messages = messages[-10:]
+    recent_messages = messages
     for index, message in enumerate(recent_messages):
         role = str(message.get("role") or "").strip()
         content = str(message.get("content") or "").strip()
@@ -350,53 +317,44 @@ class CaseAgentRuntime:
         self.model_provider = model_provider.strip()
         self.model = model.strip()
         self.max_concurrency = max(1, min(max_concurrency, 32))
-        self.graph: Any | None = None
+        self.store: CaseStateStore | None = None
         self.backend = "disabled"
         self.error = ""
-        self._checkpoint_context: AbstractAsyncContextManager[Any] | None = None
         self._semaphore = asyncio.Semaphore(self.max_concurrency)
-        self._model_stream_supported: bool | None = None
 
     async def start(self) -> None:
-        if not self.enabled or self.graph is not None:
+        if not self.enabled or self.store is not None:
             return
+        store = CaseStateStore(_checkpoint_url(self.database_url, self.checkpoint_url))
         try:
-            url = _checkpoint_url(self.database_url, self.checkpoint_url)
-            if url.startswith(("postgresql://", "postgres://")):
-                self._checkpoint_context = AsyncPostgresSaver.from_conn_string(url)
-                checkpointer = await self._checkpoint_context.__aenter__()
-                await checkpointer.setup()
-                self.backend = "postgresql"
-            else:
-                checkpointer = InMemorySaver()
-                self.backend = "memory"
-            self.graph = build_case_agent_graph(checkpointer, self._case_assistant_node)
+            await store.start()
+            self.store = store
+            self.backend = store.backend
             self.error = ""
-        except Exception as exc:
-            self.error = "checkpoint_initialization_failed"
+        except Exception:
+            self.error = "case_state_initialization_failed"
             self.backend = "unavailable"
-            if self._checkpoint_context:
-                await self._checkpoint_context.__aexit__(type(exc), exc, exc.__traceback__)
-                self._checkpoint_context = None
 
     async def stop(self) -> None:
-        self.graph = None
-        if self._checkpoint_context:
-            await self._checkpoint_context.__aexit__(None, None, None)
-            self._checkpoint_context = None
+        if self.store:
+            await self.store.close()
+        self.store = None
 
     def status(self) -> dict[str, Any]:
+        native = readiness()
         return {
             "enabled": self.enabled,
-            "ready": self.graph is not None,
-            "agent_runtime_backend": "langgraph",
+            "ready": self.store is not None and native["ready"],
+            "agent_runtime_backend": "deepseek-harness",
+            "harness_ready": native["ready"],
+            "harness_version": native["version"],
             "checkpoint_backend": self.backend,
             "model_provider": self.model_provider,
             "model": self.model,
             "model_configured": bool(self.api_base_url and self.api_key and self.model),
             "max_concurrency": self.max_concurrency,
             "write_requires_approval": True,
-            "error": self.error,
+            "error": self.error or native["error"],
         }
 
     async def _case_assistant_node(self, state: CaseAgentState) -> dict[str, Any]:
@@ -438,10 +396,14 @@ class CaseAgentRuntime:
                 from .agent_mcp.model_tools import TOOL_RESULT_SINK
 
                 token = TOOL_RESULT_SINK.set(structured_results)
+                selection = _CASE_SELECTION.get()
+                selection_token = _CASE_SELECTION.set({**selection, "actions": pending_actions}) if selection else None
                 try:
                     model_result = await self._request_model(snapshot, messages, selected_skill, request_images)
                 finally:
                     TOOL_RESULT_SINK.reset(token)
+                    if selection_token is not None:
+                        _CASE_SELECTION.reset(selection_token)
                 if isinstance(model_result, tuple):
                     response, model_action = model_result
                 else:
@@ -474,56 +436,10 @@ class CaseAgentRuntime:
         skill: AgentSkill | None = None,
         request_images: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any] | list[dict[str, Any]] | None]:
-        from .agent_mcp.model_tools import MAX_TOOL_ROUNDS, MODEL_TOOLS, ModelToolSession, request_completion
-        from .agent_mcp.model_rounds import request_final_answer
+        from .harness_agent.case_execution import request_case_model
 
-        prompt_messages = build_case_model_messages(snapshot, messages, skill, request_images)
-        tools = ModelToolSession(case_id=int(snapshot["case"]["id"]))
-        try:
-            async with httpx.AsyncClient(timeout=90, trust_env=False) as client:
-                chunk_callback = _MODEL_CHUNK_CALLBACK.get()
-
-                async def on_delta(content: str) -> None:
-                    if chunk_callback:
-                        chunk_callback(content)
-
-                def on_stream_support(supported: bool) -> None:
-                    self._model_stream_supported = supported
-
-                for round_index in range(MAX_TOOL_ROUNDS):
-                    result = await request_completion(
-                        client, f"{self.api_base_url}/chat/completions",
-                        {"Authorization": f"Bearer {self.api_key}"},
-                        {"model": self.model, "messages": prompt_messages, "temperature": 0.2, "tools": MODEL_TOOLS},
-                        stream=bool(chunk_callback) and self._model_stream_supported is not False,
-                        on_delta=on_delta if chunk_callback else None,
-                        on_stream_support=on_stream_support,
-                    )
-                    calls = result.get("tool_calls") or []
-                    if calls:
-                        prompt_messages.append({**result, "role": "assistant"})
-                        prompt_messages.extend(await tools.execute_calls(calls))
-                        if tools.remaining_calls == 0:
-                            break
-                        continue
-                    content = str(result.get("content") or "").strip()
-                    if not content:
-                        raise RuntimeError("model_empty_response")
-                    response, legacy_action = _extract_proposed_action(content)
-                    return response, tools.pending_actions or legacy_action
-                result = await request_final_answer(
-                    client, f"{self.api_base_url}/chat/completions",
-                    {"Authorization": f"Bearer {self.api_key}"},
-                    {"model": self.model, "messages": prompt_messages, "temperature": 0.2, "tools": MODEL_TOOLS},
-                    tools=tools, entry="case_agent", tool_rounds=round_index + 1,
-                    stream=bool(chunk_callback) and self._model_stream_supported is not False,
-                    on_delta=on_delta if chunk_callback else None,
-                    on_stream_support=on_stream_support,
-                )
-                response, legacy_action = _extract_proposed_action(str(result["content"]).strip())
-                return response, tools.pending_actions or legacy_action
-        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
-            raise RuntimeError("model_request_failed") from exc
+        return await request_case_model(snapshot, messages, skill, request_images,
+                                        selection=_CASE_SELECTION.get(), callback=_MODEL_CHUNK_CALLBACK.get())
 
     @staticmethod
     def thread_id(case_id: int, operator: str, agent_id: int | None = None, conversation_id: int | None = None) -> str:
@@ -560,8 +476,7 @@ class CaseAgentRuntime:
 
     async def _ensure_private_state(self, case_id: int, operator: str, agent_id: int | None = None, conversation_id: int | None = None) -> dict[str, Any]:
         private_config = self.config(case_id, operator, agent_id, conversation_id)
-        private_snapshot = await self.graph.aget_state(private_config)
-        private_state = private_snapshot.values or {}
+        private_state = await self.store.read(private_config["configurable"]["thread_id"])
         if private_state.get("legacy_migrated") or private_state.get("messages") or private_state.get("pending_actions"):
             return private_state
 
@@ -569,8 +484,7 @@ class CaseAgentRuntime:
         # 未带标识的旧接口仍保留原有迁移行为。
         if agent_id or conversation_id:
             return private_state
-        legacy_snapshot = await self.graph.aget_state(self.legacy_config(case_id))
-        legacy_state = legacy_snapshot.values or {}
+        legacy_state = await self.store.read(self.legacy_config(case_id)["configurable"]["thread_id"])
         messages = self._legacy_messages_for_operator(list(legacy_state.get("messages") or []), operator)
         normalized_operator = str(operator or "").strip().casefold()
         actions = [
@@ -583,9 +497,7 @@ class CaseAgentRuntime:
             "",
         )
         last_user = next((item for item in reversed(messages) if item.get("role") == "user"), {})
-        await self.graph.aupdate_state(
-            private_config,
-            {
+        private_state = {
                 "messages": messages,
                 "pending_actions": actions,
                 "last_response": last_response,
@@ -593,20 +505,22 @@ class CaseAgentRuntime:
                 "updated_at": str(legacy_state.get("updated_at") or ""),
                 "active_skill": str(last_user.get("skill_id") or ""),
                 "legacy_migrated": True,
-            },
-            as_node="case_assistant",
-        )
-        migrated_snapshot = await self.graph.aget_state(private_config)
-        return migrated_snapshot.values or {}
+            }
+        await self.store.write(private_config["configurable"]["thread_id"], private_state)
+        return private_state
 
     async def invoke(
         self, **kwargs: Any,
     ) -> dict[str, Any]:
-        # Bound queueing, checkpoint access and model generation together.
+        selection = {"operator": kwargs["operator"], "case_id": kwargs["case_id"],
+                     "conversation": self.thread_id(kwargs["case_id"], kwargs["operator"], kwargs.get("agent_id"), kwargs.get("conversation_id"))}
+        token = _CASE_SELECTION.set(selection)
         try:
             return await asyncio.wait_for(self._invoke_impl(**kwargs), timeout=180)
         except asyncio.TimeoutError as exc:
             raise RuntimeError("model_request_timeout") from exc
+        finally:
+            _CASE_SELECTION.reset(token)
 
     async def _invoke_impl(
         self,
@@ -621,8 +535,8 @@ class CaseAgentRuntime:
         images: list[dict[str, Any]] | None = None,
         skill_override: AgentSkill | None = None,
     ) -> dict[str, Any]:
-        if self.graph is None:
-            raise RuntimeError(self.error or "LangGraph case agent is not ready")
+        if self.store is None:
+            raise RuntimeError(self.error or "DPH case agent state is not ready")
         marker_id, clean_message = split_skill_message(message)
         skill = None
         if marker_id in SKILLS_BY_ID:
@@ -635,7 +549,6 @@ class CaseAgentRuntime:
             skill = skill_override
             if skill.id in SKILLS_BY_ID:
                 skill = await runtime_system_skill(skill.id)
-        await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
         user_message = {
             "id": uuid4().hex,
             "role": "user",
@@ -661,16 +574,15 @@ class CaseAgentRuntime:
                 "instruction": skill_override.instruction,
                 "quick_prompts": list(skill_override.quick_prompts),
             }
-        async with self._semaphore:
-            result = await self.graph.ainvoke(
-                {
-                    "messages": [user_message],
-                    "case_snapshot": case_snapshot,
-                    "request_images": list(images or []),
-                    "skill_override": skill_override_payload,
-                },
-                self.config(case_id, operator, agent_id, conversation_id),
-            )
+        thread = self.thread_id(case_id, operator, agent_id, conversation_id)
+        async with self._semaphore, self.store.operation(thread):
+            state = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
+            state.update(case_snapshot=case_snapshot, request_images=list(images or []), skill_override=skill_override_payload)
+            state["messages"] = [*state.get("messages", []), user_message]
+            await self.store.write(thread, state)
+            response = await self._case_assistant_node(state)
+            result = {**state, **response, "messages": [*state["messages"], *response.get("messages", [])]}
+            await self.store.write(thread, result)
         return self._public_state(case_id, operator, result, agent_id, conversation_id)
 
     async def invoke_stream(self, **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
@@ -704,10 +616,11 @@ class CaseAgentRuntime:
             await asyncio.gather(task, return_exceptions=True)
 
     async def get_state(self, case_id: int, operator: str, agent_id: int | None = None, conversation_id: int | None = None) -> dict[str, Any]:
-        if self.graph is None:
-            raise RuntimeError(self.error or "LangGraph case agent is not ready")
-        state = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
-        return self._public_state(case_id, operator, state, agent_id, conversation_id)
+        if self.store is None:
+            raise RuntimeError(self.error or "DPH case agent state is not ready")
+        async with self.store.operation(self.thread_id(case_id, operator, agent_id, conversation_id)):
+            state = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
+            return self._public_state(case_id, operator, state, agent_id, conversation_id)
 
     async def ensure_context(
         self,
@@ -718,16 +631,14 @@ class CaseAgentRuntime:
         conversation_id: int | None = None,
     ) -> None:
         """在当前用户的案件会话线程中预置最新授权案件底座。"""
-        if self.graph is None:
-            raise RuntimeError(self.error or "LangGraph case agent is not ready")
-        state = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
-        if state.get("case_snapshot") == case_snapshot:
-            return
-        await self.graph.aupdate_state(
-            self.config(case_id, operator, agent_id, conversation_id),
-            {"case_snapshot": case_snapshot, "updated_at": _now()},
-            as_node="case_assistant",
-        )
+        if self.store is None:
+            raise RuntimeError(self.error or "DPH case agent state is not ready")
+        thread = self.thread_id(case_id, operator, agent_id, conversation_id)
+        async with self.store.operation(thread):
+            state = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
+            if state.get("case_snapshot") != case_snapshot:
+                state.update(case_snapshot=case_snapshot, updated_at=_now())
+                await self.store.write(thread, state)
 
     async def decide_action(
         self,
@@ -741,35 +652,30 @@ class CaseAgentRuntime:
         comment: str = "",
         execution_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        if self.graph is None:
-            raise RuntimeError(self.error or "LangGraph case agent is not ready")
-        values = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
-        actions = [dict(item) for item in values.get("pending_actions") or []]
-        action = next((item for item in actions if item.get("id") == action_id), None)
-        if not action:
-            raise KeyError(action_id)
-        if action.get("status") != "pending":
-            raise ValueError("action_already_decided")
-        action.update({
-            "status": decision,
-            "decided_by": operator,
-            "decided_at": _now(),
-            "decision_comment": comment,
-            "execution_result": execution_result,
-        })
-        response = "待审批操作已批准并写入系统。" if decision == "approved" else "待审批操作已驳回，系统数据未修改。"
-        await self.graph.aupdate_state(
-            self.config(case_id, operator, agent_id, conversation_id),
-            {
-                "pending_actions": actions,
-                "messages": [{"role": "assistant", "content": response, "created_at": _now()}],
-                "last_response": response,
-                "last_operator": operator,
-                "updated_at": _now(),
-            },
-            as_node="case_assistant",
-        )
-        return await self.get_state(case_id, operator, agent_id, conversation_id)
+        if self.store is None:
+            raise RuntimeError(self.error or "DPH case agent state is not ready")
+        thread = self.thread_id(case_id, operator, agent_id, conversation_id)
+        async with self.store.operation(thread):
+            values = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
+            actions = [dict(item) for item in values.get("pending_actions") or []]
+            action = next((item for item in actions if item.get("id") == action_id), None)
+            if not action:
+                raise KeyError(action_id)
+            if action.get("status") != "pending":
+                raise ValueError("action_already_decided")
+            action.update({
+                "status": decision,
+                "decided_by": operator,
+                "decided_at": _now(),
+                "decision_comment": comment,
+                "execution_result": execution_result,
+            })
+            response = "待审批操作已批准并写入系统。" if decision == "approved" else "待审批操作已驳回，系统数据未修改。"
+            values.update(pending_actions=actions,
+                          messages=[*values.get("messages", []), {"role": "assistant", "content": response, "created_at": _now()}],
+                          last_response=response, last_operator=operator, updated_at=_now())
+            await self.store.write(thread, values)
+            return self._public_state(case_id, operator, values, agent_id, conversation_id)
 
     @classmethod
     def _public_state(cls, case_id: int, operator: str, state: dict[str, Any], agent_id: int | None = None, conversation_id: int | None = None) -> dict[str, Any]:

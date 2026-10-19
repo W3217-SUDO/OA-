@@ -19,7 +19,6 @@ from .model_context import bounded_model_payload, discovered_tools_view, model_r
 from .model_errors import model_error, unsupported_stream
 
 
-MAX_TOOL_ROUNDS = 8
 MAX_TOOL_CALLS = 24
 TOOL_RESULT_SINK: ContextVar[list[dict[str, Any]] | None] = ContextVar("oa_model_tool_results", default=None)
 MODEL_TOOLS = [

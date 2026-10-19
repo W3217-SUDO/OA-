@@ -15,7 +15,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from starlette.requests import Request
 
-from app.deepseek_harness import DeepSeekHarnessCaseAgentRuntime, create_case_agent_runtime
+from app.case_agent import CaseAgentRuntime
+from app.deepseek_harness import create_case_agent_runtime
 from app.harness_agent.bridge import _Server
 from app.harness_agent.lease import session_lease
 from app.harness_agent.runtime import _content, _environment, readiness, run, workspace_paths
@@ -78,10 +79,12 @@ class DeepSeekHarnessRuntimeTest(unittest.IsolatedAsyncioTestCase):
     def test_factory_selects_native_runtime(self):
         runtime = create_case_agent_runtime(runtime_backend="deepseek-harness", enabled=False,
                                              database_url="sqlite+aiosqlite:///:memory:")
-        self.assertIsInstance(runtime, DeepSeekHarnessCaseAgentRuntime)
+        self.assertIsInstance(runtime, CaseAgentRuntime)
         self.assertEqual(runtime.status()["agent_runtime_backend"], "deepseek-harness")
         with self.assertRaises(ValueError):
             create_case_agent_runtime(runtime_backend="unknown", enabled=False, database_url="")
+        with self.assertRaises(ValueError):
+            create_case_agent_runtime(runtime_backend="langgraph", enabled=False, database_url="")
 
     def test_latest_sdk_and_runtime_match(self):
         self.assertEqual(readiness(), {"ready": True, "error": "", "version": "0.2.1rc2"})
@@ -94,8 +97,8 @@ class DeepSeekHarnessRuntimeTest(unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual(values[0][1], values[1][1])
             self.assertEqual(values[2][1], values[3][1])
             self.assertNotEqual(values[2][2], values[3][2])
-            self.assertNotEqual(DeepSeekHarnessCaseAgentRuntime.thread_id(1, "one", 1, 2),
-                                DeepSeekHarnessCaseAgentRuntime.thread_id(1, "one", 1, 3))
+            self.assertNotEqual(CaseAgentRuntime.thread_id(1, "one", 1, 2),
+                                CaseAgentRuntime.thread_id(1, "one", 1, 3))
 
     def test_lease_released_on_exception(self):
         with tempfile.TemporaryDirectory() as temporary:

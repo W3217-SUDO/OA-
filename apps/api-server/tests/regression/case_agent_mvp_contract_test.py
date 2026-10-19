@@ -136,19 +136,17 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
     async def test_legacy_shared_thread_is_partitioned_by_message_owner(self):
         snapshot = {"case": {"id": 18, "serial_no": "SHMS-LEGACY-018"}, "capabilities": {"can_edit_basic": True}}
         for operator, message in (("lawyer", "legacy lawyer note"), ("assistant", "legacy assistant note")):
-            await self.runtime.graph.ainvoke(
-                {
-                    "messages": [{
+            thread = self.runtime.legacy_config(18)["configurable"]["thread_id"]
+            state = await self.runtime.store.read(thread)
+            state["messages"] = [*state.get("messages", []), {
                         "id": operator,
                         "role": "user",
                         "content": message,
                         "operator": operator,
                         "created_at": "2026-08-11T00:00:00+00:00",
-                    }],
-                    "case_snapshot": snapshot,
-                },
-                self.runtime.legacy_config(18),
-            )
+                    }, {"role": "assistant", "content": "历史案件回复"}]
+            state["case_snapshot"] = snapshot
+            await self.runtime.store.write(thread, state)
 
         lawyer_state = await self.runtime.get_state(18, "lawyer")
         assistant_state = await self.runtime.get_state(18, "assistant")
@@ -177,83 +175,24 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(skill, "没有显式选择时不得注入通用办公指令")
         self.assertEqual(images, [])
 
-    async def test_streaming_http_400_falls_back_to_non_stream_and_emits_content(self):
-        class FakeResponse:
-            def __init__(self, status_code, payload=None):
-                self.status_code = status_code
-                self.is_error = status_code >= 400
-                self._payload = payload or {}
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *_args):
-                return None
-
-            async def aiter_lines(self):
-                if False:
-                    yield ""
-
-            async def aread(self):
-                return b""
-
-            def json(self):
-                return self._payload
-
-        class FakeClient:
-            post_payloads = []
-            stream_payloads = []
-
-            def __init__(self, *_args, **_kwargs):
-                pass
-
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *_args):
-                return None
-
-            def stream(self, *_args, **kwargs):
-                self.stream_payloads.append(kwargs["json"])
-                return FakeResponse(400, {"error": {"message": "stream is not supported"}})
-
-            async def post(self, *_args, **kwargs):
-                self.post_payloads.append(kwargs["json"])
-                return FakeResponse(200, {"choices": [{"message": {"content": "民事起诉状完整正文"}}]})
-
+    async def test_case_model_execution_delegates_only_to_native_runtime(self):
         self.runtime.api_base_url = "https://model.example/v1"
         self.runtime.api_key = "test-only"
         self.runtime.model = "gpt-test"
-        chunks = []
-        token = _MODEL_CHUNK_CALLBACK.set(chunks.append)
+        callback = _MODEL_CHUNK_CALLBACK.set(lambda _: None)
         try:
-            with patch("app.case_agent.httpx.AsyncClient", FakeClient):
-                content, action = await self.runtime._request_model(
-                    {"case": {"id": 9}},
-                    [{"role": "user", "content": "帮我生成一个起诉状模板"}],
-                )
-                first_chunks = "".join(chunks)
-                chunks.clear()
-                second_content, second_action = await self.runtime._request_model(
-                    {"case": {"id": 9}},
-                    [{"role": "user", "content": "帮我再生成一个起诉状模板"}],
-                )
+            with patch("app.harness_agent.case_execution.request_case_model", AsyncMock(return_value=("原生案件回复", None))) as native:
+                result = await self.runtime.invoke(case_id=9, operator="lawyer", agent_id=5, conversation_id=6,
+                                                   message="读取案件", case_snapshot={"case": {"id": 9}})
         finally:
-            _MODEL_CHUNK_CALLBACK.reset(token)
-
-        self.assertEqual(content, "民事起诉状完整正文")
-        self.assertIsNone(action)
-        self.assertEqual(first_chunks, content)
-        self.assertEqual(second_content, content)
-        self.assertIsNone(second_action)
-        self.assertEqual("".join(chunks), second_content)
-        self.assertEqual(len(FakeClient.stream_payloads), 1)
-        self.assertEqual(len(FakeClient.post_payloads), 2)
-        self.assertFalse(FakeClient.post_payloads[0]["stream"])
-        self.assertFalse(FakeClient.post_payloads[1]["stream"])
-        self.assertEqual(FakeClient.stream_payloads[0]["tools"], MODEL_TOOLS)
-        self.assertEqual(FakeClient.post_payloads[1]["tools"], MODEL_TOOLS)
-        self.assertIs(self.runtime._model_stream_supported, False)
+            _MODEL_CHUNK_CALLBACK.reset(callback)
+        self.assertEqual(result["last_response"], "原生案件回复")
+        self.assertEqual(native.await_count, 1)
+        selection = native.await_args.kwargs["selection"]
+        self.assertEqual(selection["operator"], "lawyer")
+        self.assertEqual(selection["case_id"], 9)
+        self.assertEqual(selection["conversation"], self.runtime.thread_id(9, "lawyer", 5, 6))
+        self.assertIsNotNone(native.await_args.kwargs["callback"])
 
     async def test_stream_protocol_rejection_retries_once_with_unchanged_tools(self):
         payload = {"model": "gpt-test", "messages": [{"role": "user", "content": "query"}], "tools": MODEL_TOOLS}

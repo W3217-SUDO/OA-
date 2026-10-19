@@ -15,7 +15,7 @@ from app.database import get_db
 from app.security import current_identity
 from app.skill_catalog import CatalogSource
 from app.areas.personal_agent.service import build_context, decide_action, generate_response, manage_conversations, personal_identity, personal_state, stop_response, _user_dir
-from app.areas.personal_agent.memory_graph import delete_memory, list_memories, list_memory_audit, update_settings
+from app.areas.personal_agent.memory_store import delete_memory, list_memories, list_memory_audit, update_settings
 from app.areas.personal_agent import conversations
 from app.areas.personal_agent.workspace import workspace_commands
 from app.areas.personal_agent.response_runtime import ResponseMode, supports_response_modes
@@ -165,13 +165,13 @@ async def personal_agent_status(identity: dict = Depends(current_identity), db: 
     from app.areas.personal_agent.ai_space_service import personal_save_capability
     file_capability = await personal_save_capability(safe_identity, db)
     from app.harness_agent.runtime import readiness
-    native = readiness() if settings.agent_runtime_backend == "deepseek-harness" else None
+    native = readiness()
     return {
         "ready": bool(settings.langgraph_enabled and settings.langgraph_api_base_url and settings.langgraph_api_key and settings.langgraph_model
-                      and (native is None or native["ready"])),
+                      and native["ready"]),
         "agent_runtime_backend": settings.agent_runtime_backend,
-        "harness_version": native["version"] if native else "",
-        "runtime_error": native["error"] if native else "",
+        "harness_version": native["version"],
+        "runtime_error": native["error"],
         "model": settings.langgraph_model,
         "model_provider": settings.langgraph_model_provider,
         "runtime": "personal-agent",

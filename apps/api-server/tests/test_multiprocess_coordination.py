@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 
-from app.areas.personal_agent import conversations, memory_graph
+from app.areas.personal_agent import conversations, memory_store
 from app.core import process_coordination
 
 
@@ -212,19 +212,19 @@ class MemoryLockTest(IsolatedAsyncioTestCase):
     async def test_nested_memory_functions_do_not_deadlock(self):
         with TemporaryDirectory(prefix="oa-test-mp-memory-") as temporary:
             directory = Path(temporary)
-            result = memory_graph.run_memory_pipeline(
+            result = memory_store.prepare_memory_context(
                 directory, 7, None, None, [{"role": "user", "content": "请记住我偏好使用简体中文回复"}],
                 "请记住我偏好使用简体中文回复",
             )
             self.assertIn("summary", result)
-            listed = memory_graph.list_memories(directory, 7)
+            listed = memory_store.list_memories(directory, 7)
             self.assertIsInstance(listed["items"], list)
-            self.assertEqual(memory_graph._LOCK_DEPTH, {}, "退出后不残留嵌套计数")
+            self.assertEqual(memory_store._LOCK_DEPTH, {}, "退出后不残留嵌套计数")
 
     async def test_memory_lock_does_not_create_user_directory(self):
         with TemporaryDirectory(prefix="oa-test-mp-memory-dir-") as temporary:
             directory = Path(temporary) / "never-created"
-            memory_graph.list_memories(directory, 7)
+            memory_store.list_memories(directory, 7)
             self.assertFalse(directory.exists(), "只读查询不应创建用户目录")
 
 

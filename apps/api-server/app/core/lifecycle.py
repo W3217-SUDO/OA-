@@ -235,7 +235,7 @@ async def lifespan(_: FastAPI):
         except (AttributeError, OSError):
             logger.warning("Unable to return released startup heap pages to the operating system")
     from app.core.process_coordination import run_background_leader, session_advisory_lock
-    # 多个工作进程同时启动时串行初始化 LangGraph 检查点表，避免并发建表失败
+    # 多个工作进程串行初始化 OA 历史状态存储，避免并发初始化失败
     # 使个别进程的案件智能体处于不可用状态。
     async with session_advisory_lock(engine, "case-agent-runtime-start"):
         await case_agent_runtime.start()

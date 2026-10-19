@@ -251,7 +251,7 @@ class SystemSkillLifecycleTest(unittest.IsolatedAsyncioTestCase):
                 patch.object(service, "build_context", AsyncMock(return_value={})), \
                 patch.object(service, "project_workspace_context", AsyncMock(return_value={})), \
                 patch.object(service, "_save_state", AsyncMock()), \
-                patch.object(service, "run_memory_pipeline", return_value={"summary": "", "recalled": []}), \
+                patch.object(service, "prepare_memory_context", return_value={"summary": "", "recalled": []}), \
                 patch("app.areas.personal_agent.ai_space_service.personal_save_capability", AsyncMock(return_value={"can_save": False, "error": "隔离环境"})), \
                 patch.object(service, "request_model", AsyncMock(return_value="真实隔离模型返回")) as model:
             async with self.sessions() as db:

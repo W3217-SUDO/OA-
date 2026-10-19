@@ -165,7 +165,7 @@ export const CaseAgentDrawer = ({
           />
           <small>{(agentStatus?.skills || []).find((item) => item.id === agentSkillId)?.description || "选择本轮对话使用的办公技能"}</small>
         </div>
-        {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 LangGraph 服务配置后重试。" />}
+        {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 DPH 运行环境后重试。" />}
         {agentState?.pending_actions?.length ? <section className="case-agent-actions">
           <div className="case-agent-section-title">待审批操作</div>
           <Alert type="info" showIcon title="写入须人工确认后执行，原业务权限与审批规则不变。" />

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -76,10 +77,8 @@ class Settings(BaseSettings):
     langgraph_model_provider: str = ""
     langgraph_model: str = ""
     langgraph_max_concurrency: int = 4
-    agent_runtime_backend: str = "langgraph"
+    agent_runtime_backend: Literal["deepseek-harness"] = "deepseek-harness"
     # 个人智能体按估算上下文 token 数触发压缩，而不是按消息条数猜测。
-    personal_agent_context_token_budget: int = Field(default=12000, ge=1000, le=128000)
-    personal_agent_context_summary_target_tokens: int = Field(default=6000, ge=500, le=64000)
     deepseek_harness_root: str = ""
     deepseek_harness_cache_root: str = ""
     # 个人智能体的身份文件和会话记录放在上传目录之外，不能被公开附件路由直接访问。

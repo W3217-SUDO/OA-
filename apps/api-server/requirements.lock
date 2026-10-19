@@ -691,7 +691,6 @@ httpx==0.28.1 \
     # via
     #   -r apps/api-server/requirements.txt
     #   langchain-core
-    #   langgraph-sdk
 httpx2==2.13.1 \
     --hash=sha256:6dff50fabc270ee5fd25d845d0b078ed20564579744d6d962850975996d2f9a4 \
     --hash=sha256:e48744a19e3af5ee48313d0ce5fe941d5422fae5705ea922a4aabf94d7800dfa
@@ -733,40 +732,19 @@ kombu==5.5.4 \
 langchain-core==1.6.6 \
     --hash=sha256:67616d984c085009be2c381c2efd330d32429a58aebab295b4f51b6573964511 \
     --hash=sha256:d9a71e312ab7443701238750e04a57aefc037c4f1ec82837c8a1609d9a14a9b1
-    # via
-    #   langgraph
-    #   langgraph-checkpoint
-    #   langgraph-prebuilt
-    #   langgraph-sdk
+    # via langgraph-checkpoint
 langchain-protocol==0.0.19 \
     --hash=sha256:4cdf879a492a35980fd859ae792d3c65458ccaae504e183c9a10d7eac1f0720f \
     --hash=sha256:79d90a1425122ac87e8052e2ec054fbd09c3edbf341bdfb6397112a495c7bf8c
-    # via
-    #   langchain-core
-    #   langgraph-sdk
-langgraph==1.2.10 \
-    --hash=sha256:05a183a746ed570a06c7c1b879920163509a75df9e44e92dd2238218d677fd37 \
-    --hash=sha256:52c48bd42fa31a1de0e1c0f0ebfe342e11ca2957b8b3563f83dbd60d8e30f921
-    # via -r apps/api-server/requirements.txt
+    # via langchain-core
 langgraph-checkpoint==4.2.0 \
     --hash=sha256:0547fd228935a0b758865de3a3d6d7a2537c308895d0f9ab092ce9151b5da942 \
     --hash=sha256:51a593b6bee684b0818e5d6e58e28ab340c6db7794575056ce7bd1b746a84ed7
-    # via
-    #   langgraph
-    #   langgraph-checkpoint-postgres
-    #   langgraph-prebuilt
+    # via langgraph-checkpoint-postgres
 langgraph-checkpoint-postgres==3.1.2 \
     --hash=sha256:1cd404803ff895a2b79f3ac04ce92b775e6b999715f8333fce674c6d927bba95 \
     --hash=sha256:6a7e38ef16985b54e356cba7bdaf447943aae33d5aaf290026c593bb6b4a6264
     # via -r apps/api-server/requirements.txt
-langgraph-prebuilt==1.1.0 \
-    --hash=sha256:3c579cf6eed2d17f9c157c2d0fcaddcd8688524e7022d3b22b37a3bf4589d528 \
-    --hash=sha256:51e311747d755b751d5c6b39b0c1446124d3a7643d2515017e6714b323508fc9
-    # via langgraph
-langgraph-sdk==0.4.5 \
-    --hash=sha256:d49a98a2ee8e0c494b101a7caf8061c8b4b94d3ee5ada0ea2dbe50903a5487b1 \
-    --hash=sha256:e03ef033a20d21288af496e9b6c08ae3afcc1b58dc5abcd37575bfd1a93045de
-    # via langgraph
 langsmith==0.14.2 \
     --hash=sha256:2df33ebe2ff20461b1f818895b8f15cbfd6e5b95be9d9e754ab3045cc6fe6f53 \
     --hash=sha256:9e3dda3df013514b919acf3b147fcecc1758b8ef04a764b6cb61052991617ee2
@@ -1045,7 +1023,6 @@ orjson==3.12.0 \
     --hash=sha256:fb2539159dfe8d371914f354360fa50e4a577cc89222a3828b9650a5e5040252
     # via
     #   langgraph-checkpoint-postgres
-    #   langgraph-sdk
     #   langsmith
 ormsgpack==1.12.2 \
     --hash=sha256:0b39e629fd2e1c5b2f46f99778450b59454d1f901bc507963168985e79f09c5d \
@@ -1322,9 +1299,9 @@ pydantic==2.13.5 \
     --hash=sha256:346a034f080da3755d8e9cb5e00e8b07de1d39e4f6e2c87d8ab7cafa0b269a73 \
     --hash=sha256:51a9c5f7b2f8e636f04c6cada605d9b6a3bf1348fdf945a3d8869b19bba0ee08
     # via
+    #   deepseek-harness-sdk
     #   fastapi
     #   langchain-core
-    #   langgraph
     #   langsmith
     #   mcp
     #   mcp-types
@@ -2227,7 +2204,6 @@ websockets==16.1.1 \
     --hash=sha256:fd46fff7eb62c24804d234f0051c7a8ea81285ad63e0337d3dcf33ca82aee58a
     # via
     #   -r apps/api-server/requirements.txt
-    #   langgraph-sdk
     #   langsmith
     #   uvicorn
 xlrd==2.0.2 \
@@ -2453,9 +2429,7 @@ xxhash==4.0.1 \
     --hash=sha256:fc737c05ca2d48e5dcdbbb249314df3fc6c2a0be6da8b0aa28e13d72afaad7cd \
     --hash=sha256:ff48915bf1871a1f19f74c11834c6329443d306cedc0c05fe7fe617810422a80 \
     --hash=sha256:ffa44b4c7c5d0ffa31356b4428659516c0e47647825c74079a296b3857b6d99d
-    # via
-    #   langgraph
-    #   langsmith
+    # via langsmith
 zstandard==0.25.0 \
     --hash=sha256:011d388c76b11a0c165374ce660ce2c8efa8e5d87f34996aa80f9c0816698b64 \
     --hash=sha256:01582723b3ccd6939ab7b3a78622c573799d5d8737b534b86d0e06ac18dbde4a \

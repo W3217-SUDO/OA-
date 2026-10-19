@@ -592,7 +592,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len([call for call in self.sdk_calls if call['method'] == 'tools/call']), 1)
             self.assertNotIn(self.secret, json.dumps(outcome, ensure_ascii=False))
             followup = {**conversation, 'messages': [*conversation['messages'], {'role': 'user', 'content': '解释刚才的结果'}]}
-            self.assertIn('CODEX远程真实协议返回', json.dumps(_prompt_history(followup, ''), ensure_ascii=False))
+            self.assertIn('CODEX远程真实协议返回', json.dumps(_prompt_history(followup), ensure_ascii=False))
             self.assertNotIn('系统数据已更新', conversation['messages'][-1]['content'])
             self.assertEqual((await project_personal_actions(conversation, identity, db))['pending_actions'], [])
             archived = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == 'personal_agent_action'))).one()
