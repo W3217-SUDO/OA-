@@ -1,6 +1,6 @@
 """identity 领域请求数据契约。"""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SystemUserInput(BaseModel):
@@ -38,7 +38,10 @@ class SystemUserUpdate(BaseModel):
 
 
 class UserPermissionOverrideUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     menu_keys: list[str] | None = None
+    action_keys: list[str] | None = None
     field_keys: list[str] | None = None
     data_scope: str | None = None
     clear: bool = False

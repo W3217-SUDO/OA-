@@ -424,7 +424,7 @@ def _user_permission_overrides(user: User) -> dict:
     overrides = (user.profile or {}).get("permission_overrides")
     if not isinstance(overrides, dict):
         return {}
-    return {key: overrides[key] for key in ("menu_keys", "field_keys", "data_scope") if key in overrides and overrides[key] not in (None, "")}
+    return {key: overrides[key] for key in ("menu_keys", "field_keys", "data_scope", "action_keys") if key in overrides and overrides[key] not in (None, "")}
 
 
 def _configured_user_job_role_name(user: User) -> str:
@@ -522,6 +522,7 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
     from app.core.contracts import (
         _is_contract_approver,
     )
+    from app.agent_permissions import AGENT_GLOBAL_MANAGE_ACTION, personal_action_keys
     role_ids = _system_user_role_ids(user)
     permission = await _permission_payload_for_roles(role_ids, db)
     explicit_role_name = _configured_user_job_role_name(user)
@@ -532,6 +533,7 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
         else:
             permission = _apply_job_role_policy(permission, job_role)
     overrides = _user_permission_overrides(user)
+    user_actions = [] if "admin" in role_ids else personal_action_keys(overrides)
     if explicit_role_name and "admin" not in role_ids and overrides.get("menu_keys") is None:
         explicit_system_menus = await _explicit_system_role_menu_keys(role_ids, db)
         permission["menu_keys"] = _expand_menu_permission_keys([*permission["menu_keys"], *explicit_system_menus])
@@ -553,6 +555,8 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
         **permission,
         "menu_keys": _expand_menu_permission_keys(menu_keys),
         "action_keys": list(dict.fromkeys(permission.get("action_keys", []))),
+        "user_action_keys": user_actions,
+        "can_manage_agent_settings": "admin" in role_ids or AGENT_GLOBAL_MANAGE_ACTION in user_actions,
         "can_approve_contract": can_approve_contract,
     }
 

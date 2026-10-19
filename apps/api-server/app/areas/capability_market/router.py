@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.global_agent_skills import can_manage_global, require_global_admin
+from app.global_agent_skills import can_manage_global
+from app.agent_permissions import require_agent_settings_management
 from app.security import current_identity
 from .catalog import catalog, definition, entry, install, installed_records, public_entry, summary
 from .connector_routes import router as connector_router
@@ -63,7 +64,7 @@ async def capability_avatar(item_id: str, _=Depends(current_identity)):
 @router.post("/items/{item_id}/install")
 async def install_capability(item_id: str, body: InstallInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if body.scope == "global":
-        require_global_admin(identity)
+        require_agent_settings_management(identity)
     item = entry(item_id)
     if item["sha256"] != body.sha256:
         raise HTTPException(409, "能力包已变化，请重新查看详情再安装")

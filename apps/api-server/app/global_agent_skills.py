@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.models import SystemConfig
+from app.agent_permissions import can_manage_agent_settings, require_agent_settings_management
 from app.user_agent_skills import CUSTOM_SKILL_LIMIT, normalize_custom_skill
 
 GLOBAL_SKILL_CONFIG_KEY = "agent_global_skills_v1"
@@ -18,11 +19,7 @@ def require_global_admin(identity):
 
 
 def can_manage_global(identity):
-    try:
-        require_global_admin(identity)
-        return True
-    except HTTPException:
-        return False
+    return can_manage_agent_settings(identity)
 
 
 async def global_skill_store(db, *, lock=False):
@@ -42,7 +39,7 @@ async def global_skill_store(db, *, lock=False):
 
 
 async def save_global_skills(item, records, identity, db):
-    require_global_admin(identity)
+    require_agent_settings_management(identity)
     from app.core.system import _system_audit
     value = {"schema_version": 1, "scope": "global", "skills": records}
     try:
@@ -63,7 +60,7 @@ async def save_global_skills(item, records, identity, db):
 
 
 async def add_global_skill(payload, identity, db, *, source="user-custom", digest=None):
-    require_global_admin(identity)
+    require_agent_settings_management(identity)
     record = normalize_custom_skill(payload, skill_id="global-" + uuid4().hex, source=source)
     if digest:
         record["sha256"] = digest

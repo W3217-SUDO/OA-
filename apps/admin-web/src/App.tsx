@@ -862,6 +862,7 @@ type SessionUser = {
   actual_role_ids?: string[];
   menu_keys?: string[];
   action_keys?: string[];
+  can_manage_agent_settings?: boolean;
   data_scope?: string;
   must_change_password?: boolean;
 };
@@ -1278,9 +1279,9 @@ export default function App() {
   const grantedMenuKeys = useMemo(() => new Set(
     !permissionsReady ? ["dashboard"] : permissionAdministrator
       ? flattenMenu(effectiveMenuItems).map((item) => item.key)
-      // 智能体设置仍是管理员管理页，个人智能体只使用工作台与独立对话入口。
-      : ["user-center", ...(sessionUser?.menu_keys || [])].filter((key) => key !== "agent-center"),
-  ), [permissionsReady, permissionAdministrator, effectiveMenuItems, sessionUser?.menu_keys]);
+      // 菜单授权只控制入口，全所智能体管理还必须具备独立个人动作授权。
+      : ["user-center", ...(sessionUser?.menu_keys || [])].filter((key) => key !== "agent-center" || sessionUser?.can_manage_agent_settings === true),
+  ), [permissionsReady, permissionAdministrator, effectiveMenuItems, sessionUser?.menu_keys, sessionUser?.can_manage_agent_settings]);
   const active = permissionsReady
     ? resolveGrantedMenuRoute(requestedRoute, effectiveMenuItems, grantedMenuKeys, permissionAdministrator)
     : requestedRoute;
@@ -1422,6 +1423,7 @@ export default function App() {
           actual_role: data.actual_role || data.role,
           actual_role_ids: data.actual_role_ids || data.role_ids,
           menu_keys: data.menu_keys,
+          can_manage_agent_settings: data.can_manage_agent_settings === true,
           data_scope: data.data_scope,
           must_change_password: data.must_change_password,
         };
@@ -1630,7 +1632,7 @@ export default function App() {
         onFocusHandled={() => setAssistantFocusRequested(false)}
       />
     ) : route === "agent-center" ? (
-      <AgentAdminPage />
+      <AgentAdminPage isSystemAdmin={permissionAdministrator} />
     ) : route === "case-agent-center" ? (
       <CaseAgentCenterPage
         onOpenPersonalAgent={openPersonalAgent}

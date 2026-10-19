@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_skills import public_skill_catalog
 from app.config import settings
 from app.core.constants import case_agent_runtime
-from app.core.permissions import _require_admin
+from app.agent_permissions import is_actual_system_admin, require_agent_settings_management
 from app.database import get_db
 from app.models import SystemConfig, User
 from app.security import current_identity
@@ -24,7 +24,19 @@ router.include_router(capability_router)
 @router.get(f"{settings.api_prefix}/agent-admin/overview")
 async def agent_admin_overview(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """智能体运行状态、系统技能目录，以及每个账号保存的个人技能。"""
-    _require_admin(identity)
+    require_agent_settings_management(identity)
+    runtime = case_agent_runtime.status()
+    runtime.pop("skills", None)
+    overview = {
+        "runtime": runtime,
+        "system_skills": public_skill_catalog(),
+        "can_manage_global": True,
+        "can_view_user_libraries": is_actual_system_admin(identity),
+        "user_libraries": [],
+    }
+    # 委派管理不读取或返回其他员工账号及其个人技能库。
+    if not overview["can_view_user_libraries"]:
+        return overview
     libraries = (await db.scalars(select(SystemConfig).where(
         SystemConfig.group == USER_SKILL_CONFIG_GROUP,
         SystemConfig.key.startswith(USER_SKILL_CONFIG_PREFIX, autoescape=True),
@@ -40,11 +52,8 @@ async def agent_admin_overview(identity: dict = Depends(current_identity), db: A
         owner_key = str((item.value or {}).get("owner_username") or "").strip().casefold()
         if owner_key and owner_key not in library_by_username:
             library_by_username[owner_key] = (item.value or {}).get("skills") or []
-    runtime = case_agent_runtime.status()
-    runtime.pop("skills", None)
     return {
-        "runtime": runtime,
-        "system_skills": public_skill_catalog(),
+        **overview,
         "user_libraries": [
             {
                 "username": username,

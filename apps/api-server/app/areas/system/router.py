@@ -360,50 +360,16 @@ async def get_system_user_permissions(user_id: int, identity: dict = Depends(cur
 @router.patch(f"{settings.api_prefix}/system/users/{{user_id}}/permissions")
 async def update_system_user_permissions(user_id: int, body: UserPermissionOverrideUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_actual_system_admin, _system_user_role_ids, _user_permission_overrides, _user_permission_payload,
+        _require_actual_system_admin, _user_permission_overrides, _user_permission_payload,
     )
-    from app.core.system import (
-        _system_audit,
-    )
+    from app.core.user_permission_overrides import update_user_permission_overrides
+
     _require_actual_system_admin(identity)
-    if body.clear_menu_keys and (body.clear or body.menu_keys is not None):
-        raise HTTPException(status_code=422, detail="恢复岗位菜单授权不能同时清除全部授权或设置用户菜单")
-    user = await db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
-    if "admin" in _system_user_role_ids(user):
-        raise HTTPException(status_code=422, detail="系统管理员保持完整权限，不能设置用户级权限覆盖")
-    profile = dict(user.profile or {})
-    if body.clear:
-        profile.pop("permission_overrides", None)
-    else:
-        overrides: dict[str, object] = dict(_user_permission_overrides(user))
-        if body.clear_menu_keys:
-            overrides.pop("menu_keys", None)
-        if body.menu_keys is not None:
-            menu_keys = list(dict.fromkeys(body.menu_keys))
-            legacy_keys = set((await db.scalars(select(SystemMenu.key).where(~SystemMenu.key.in_(SYSTEM_MENU_ROUTE_KEYS)))).all())
-            all_menu_keys = set(MENU_KEYS) | legacy_keys
-            invalid = sorted(set(menu_keys) - all_menu_keys)
-            if invalid:
-                raise HTTPException(status_code=422, detail=f"无效菜单权限：{', '.join(invalid)}")
-            if "user-center" not in menu_keys:
-                raise HTTPException(status_code=422, detail="用户中心为基础权限，不能移除")
-            overrides["menu_keys"] = menu_keys
-        if body.field_keys is not None:
-            field_keys = list(dict.fromkeys(body.field_keys))
-            invalid_fields = sorted(set(field_keys) - set(FIELD_KEYS))
-            if invalid_fields:
-                raise HTTPException(status_code=422, detail=f"无效字段权限：{', '.join(invalid_fields)}")
-            overrides["field_keys"] = field_keys
-        if body.data_scope is not None:
-            data_scope = body.data_scope.strip()
-            if data_scope not in ROLE_DATA_SCOPES:
-                raise HTTPException(status_code=422, detail="数据范围无效")
-            overrides["data_scope"] = data_scope
-        profile["permission_overrides"] = overrides
-    user.profile = profile
-    await _system_audit(db, identity, "更新用户权限覆盖", f"用户:{user.username}", {"user_id": user.id, "overrides": _user_permission_overrides(user)})
+    user = await update_user_permission_overrides(
+        user_id, body, db,
+        actor=identity["username"],
+        authorization_source=f"API PATCH {settings.api_prefix}/system/users/{user_id}/permissions",
+    )
     await db.commit(); await db.refresh(user)
     return {"user_id": user.id, "username": user.username, "overrides": _user_permission_overrides(user), "effective": await _user_permission_payload(user, db)}
 
@@ -829,9 +795,10 @@ async def list_system_configs(keyword: str = "", page: int | None = Query(None, 
     items = (await db.scalars(select(SystemConfig).order_by(SystemConfig.id))).all()
     from app.areas.capability_market.connector_store import CONNECTOR_CONFIG_PREFIX
     items = [item for item in items if not item.key.startswith(CONNECTOR_CONFIG_PREFIX)]
-    from app.global_agent_skills import GLOBAL_SKILL_CONFIG_KEY, can_manage_global
+    from app.global_agent_skills import GLOBAL_SKILL_CONFIG_KEY
+    from app.agent_permissions import is_actual_system_admin
     from app.user_agent_skills import USER_SKILL_CONFIG_PREFIX
-    if not can_manage_global(identity):
+    if not is_actual_system_admin(identity):
         # Menu capability does not grant access to private skill-library JSON.
         items = [item for item in items if item.key != GLOBAL_SKILL_CONFIG_KEY and not item.key.startswith(USER_SKILL_CONFIG_PREFIX)]
     result = [{"key": item.key, "label": item.label, "group": item.group, "value": item.value or {}, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at, **(auto_review_status(item.value) if item.key == CONFIG_KEY else {})} for item in items]

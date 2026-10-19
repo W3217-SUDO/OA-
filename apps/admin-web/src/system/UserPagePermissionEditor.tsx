@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Modal, Popconfirm, Space, Spin, Tag, Tree, message } from "antd";
+import { Alert, Button, Checkbox, Modal, Popconfirm, Space, Spin, Tag, Tree, message } from "antd";
 import { api } from "../api";
 import { normalizeWorkspaceRoute, notifyPermissionsUpdated } from "../workspacePermissions";
 import { buildMenuTreeData } from "./SystemMenuManagement";
@@ -15,11 +15,12 @@ type UserPagePermissions = {
   user_id: number;
   username: string;
   overrides: Record<string, unknown>;
-  effective: { menu_keys: string[] };
+  effective: { menu_keys: string[]; user_action_keys: string[] };
 };
 
 type PagePermissionNode = ReturnType<typeof buildMenuTreeData>[number];
 const BASE_MENU_KEYS = ["dashboard", "user-center"];
+const AGENT_GLOBAL_MANAGE_ACTION = "agent.settings.global.manage";
 
 function menuTreeKeys(nodes: PagePermissionNode[]): string[] {
   return nodes.flatMap((node) => [String(node.key), ...menuTreeKeys(node.children || [])]);
@@ -79,7 +80,7 @@ function halfSelectedMenuKeys(nodes: PagePermissionNode[], selected: ReadonlySet
 }
 
 function validatePermissionResponse(data: UserPagePermissions, userId: number) {
-  if (data.user_id !== userId || !Array.isArray(data.effective?.menu_keys) || !data.overrides) {
+  if (data.user_id !== userId || !Array.isArray(data.effective?.menu_keys) || !Array.isArray(data.effective?.user_action_keys) || !data.overrides) {
     throw new Error("用户页面权限返回不完整，请重新加载");
   }
 }
@@ -94,6 +95,7 @@ export function UserPagePermissionEditor({
   const [snapshot, setSnapshot] = useState<UserPagePermissions | null>(null);
   const [menuRows, setMenuRows] = useState<MenuRow[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [agentGlobalManagement, setAgentGlobalManagement] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -110,6 +112,7 @@ export function UserPagePermissionEditor({
     requestController.current?.abort();
     setSnapshot(null);
     setSelectedKeys([]);
+    setAgentGlobalManagement(false);
     setMenuRows([]);
     setError("");
     setSaving(false);
@@ -146,6 +149,7 @@ export function UserPagePermissionEditor({
         validatePermissionResponse(permissionResponse.data, resolvedUserId);
         if (!Array.isArray(menuResponse.data.items)) throw new Error("页面目录返回不完整，请重新加载");
         setSnapshot(permissionResponse.data);
+        setAgentGlobalManagement(permissionResponse.data.effective.user_action_keys.includes(AGENT_GLOBAL_MANAGE_ACTION));
         setMenuRows(menuResponse.data.items);
         const nextMenuTree = buildMenuTreeData(menuResponse.data.items.filter((item) => item.is_active));
         setSelectedKeys(effectiveSelectedPageKeys(permissionResponse.data.effective.menu_keys, nextMenuTree));
@@ -169,10 +173,14 @@ export function UserPagePermissionEditor({
     setSaving(true);
     setError("");
     try {
-      // 只提交页面覆盖；字段权限和数据范围由接口保留，恢复继承也只清除页面覆盖。
+      // 菜单保存只在明确切换复选框时提交动作授权，恢复菜单继承不改变动作授权。
+      const actionChanged = agentGlobalManagement !== snapshot.effective.user_action_keys.includes(AGENT_GLOBAL_MANAGE_ACTION);
       const payload = inherit
         ? { clear_menu_keys: true }
-        : { menu_keys: selectedPagePermissionKeys(selectedKeys, menuTree) };
+        : {
+          menu_keys: selectedPagePermissionKeys(selectedKeys, menuTree),
+          ...(actionChanged ? { action_keys: agentGlobalManagement ? [AGENT_GLOBAL_MANAGE_ACTION] : [] } : {}),
+        };
       const { data } = await api.patch<UserPagePermissions>(
         `/system/users/${snapshot.user_id}/permissions`,
         payload,
@@ -181,6 +189,7 @@ export function UserPagePermissionEditor({
       if (controller.signal.aborted) return;
       validatePermissionResponse(data, snapshot.user_id);
       setSnapshot(data);
+      setAgentGlobalManagement(data.effective.user_action_keys.includes(AGENT_GLOBAL_MANAGE_ACTION));
       setSelectedKeys(effectiveSelectedPageKeys(data.effective.menu_keys, menuTree));
       notifyPermissionsUpdated();
       message.success(inherit ? "已恢复岗位/角色页面授权" : "用户页面授权已保存");
@@ -235,6 +244,11 @@ export function UserPagePermissionEditor({
               <span>登录账号：{snapshot.username}</span>
               <Tag>{independentlyConfigured ? "用户独立页面授权" : "继承岗位/角色页面授权"}</Tag>
             </Space>
+            <div style={{ marginBottom: 12 }}>
+              <Checkbox checked={agentGlobalManagement} disabled={saving} onChange={event => setAgentGlobalManagement(event.target.checked)}>
+                管理全所智能体技能和连接器
+              </Checkbox>
+            </div>
             <div style={{ maxHeight: "55vh", overflow: "auto" }}>
               <Tree
                 checkable

@@ -264,6 +264,7 @@ async def current_identity(request: Request, token: str = Depends(oauth2_scheme)
         "must_change_password": user.must_change_password,
         "menu_keys": permission.get("menu_keys") or [],
         "action_keys": effective_action_keys,
+        "_user_action_keys": permission["user_action_keys"],
         "data_scope": permission.get("data_scope"),
         "_actual_role": role_ids[0],
         "_actual_role_ids": role_ids,

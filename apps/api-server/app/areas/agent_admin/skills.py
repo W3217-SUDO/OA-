@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.api_schemas.agents import UserAgentSkillInput, UserAgentSkillUpdate
+from app.agent_permissions import require_agent_settings_management
 from app.areas.personal_agent.router import GitHubSkillInstallInput, GitHubSkillPreviewInput
 from app.config import settings
 from app.database import get_db
@@ -43,7 +44,7 @@ async def list_global_skills(identity: dict = Depends(current_identity), db: Asy
 
 @router.post(settings.api_prefix + "/agent/global-skills")
 async def create_global_skill(body: GlobalSkillInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    require_global_admin(identity)
+    require_agent_settings_management(identity)
     try:
         record = await add_global_skill(body.model_dump(), identity, db)
     except ValueError as exc:
@@ -53,7 +54,7 @@ async def create_global_skill(body: GlobalSkillInput, identity: dict = Depends(c
 
 @router.post(settings.api_prefix + "/agent/global-skills/upload")
 async def upload_global_skill(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    require_global_admin(identity)
+    require_agent_settings_management(identity)
     content = await file.read(CUSTOM_SKILL_FILE_LIMIT + 1)
     try:
         parsed = parse_uploaded_skill(file.filename or "", content)
@@ -65,14 +66,14 @@ async def upload_global_skill(file: UploadFile = File(...), identity: dict = Dep
 
 @router.post(settings.api_prefix + "/agent/global-skills/github/preview")
 async def preview_global_github(body: GitHubSkillPreviewInput, identity: dict = Depends(current_identity)):
-    require_global_admin(identity)
+    require_agent_settings_management(identity)
     from app.github_agent_skills import preview_github_skill
     return await preview_github_skill(body.url)
 
 
 @router.post(settings.api_prefix + "/agent/global-skills/github/install")
 async def install_global_github(body: GitHubSkillInstallInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    require_global_admin(identity)
+    require_agent_settings_management(identity)
     from app.github_agent_skills import preview_github_skill
     preview = await preview_github_skill(body.url)
     if preview["sha256"] != body.sha256:
@@ -84,7 +85,7 @@ async def install_global_github(body: GitHubSkillInstallInput, identity: dict = 
 
 @router.patch(settings.api_prefix + "/agent/global-skills/{skill_id}")
 async def update_global_skill(skill_id: str, body: GlobalSkillUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    require_global_admin(identity)
+    require_agent_settings_management(identity)
     item, records = await global_skill_store(db, lock=True)
     index = next((index for index, record in enumerate(records) if record["id"] == skill_id), -1)
     if index < 0:
@@ -101,7 +102,7 @@ async def update_global_skill(skill_id: str, body: GlobalSkillUpdate, identity: 
 
 @router.delete(settings.api_prefix + "/agent/global-skills/{skill_id}")
 async def delete_global_skill(skill_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    require_global_admin(identity)
+    require_agent_settings_management(identity)
     item, records = await global_skill_store(db, lock=True)
     retained = [record for record in records if record["id"] != skill_id]
     if len(retained) == len(records):

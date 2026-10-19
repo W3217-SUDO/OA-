@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
-from app.global_agent_skills import require_global_admin
+from app.agent_permissions import require_agent_settings_management
 from app.models import SystemConfig
 from .connector_format import configuration_links, path_value, public_configuration, reference_links, secret_paths, set_path, validate_configuration
 
@@ -23,7 +23,7 @@ CONNECTOR_CONFIG_PREFIX = 'agent_connector_'
 
 def owner_for(scope, identity):
     if scope == 'global':
-        require_global_admin(identity)
+        require_agent_settings_management(identity)
         return 'global'
     return identity['username']
 
