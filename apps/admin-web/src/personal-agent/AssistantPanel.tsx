@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
-import { Alert, Button, Input, List, Tag, Tooltip } from "antd";
+import { Alert, Button, Input, List, Tag, Tooltip, message } from "antd";
 import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileExcelOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import AgentAvatar from "./AgentAvatar";
@@ -12,7 +12,7 @@ import { ConfirmationHistory } from "./ConfirmationHistory";
 import { PersonalAiSpace } from "./PersonalAiSpace";
 import { CaseAgentFileFolderModal } from "./CaseAgentFileFolderModal";
 import { agentOperationMessage, userFacingAgentText } from "../AgentOperationPreview";
-import { errorText, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction } from "./types";
+import { errorText, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 import "./assistant-panel.css";
 
@@ -71,9 +71,11 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const [personalSpaceOpen, setPersonalSpaceOpen] = useState(false);
   const [caseAgentFolderOpen, setCaseAgentFolderOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
-  const hasMessages = state.messages.length > 0;
+  const [caseSession, setCaseSession] = useState<{ item: CaseAgentConversationSummary; state: WorkspaceState; loading: boolean; sending: boolean } | null>(null);
   const lastMessage = state.messages[state.messages.length - 1];
-  const sendBlocked = loading || !!loadError || !status?.ready || workspace.conversationBusy || workspace.uploading || !!workspace.decisionId || stopping || composing;
+  const displayedState = caseSession?.state || state;
+  const hasDisplayedMessages = displayedState.messages.length > 0;
+  const sendBlocked = caseSession ? caseSession.loading || caseSession.sending || composing : loading || !!loadError || !status?.ready || workspace.conversationBusy || workspace.uploading || !!workspace.decisionId || stopping || composing;
   const progressText = (workspace.progress || "正在思考").replace(/[.\u2026]+$/, "");
   const followBottom = useCallback(() => {
     const element = threadRef.current;
@@ -89,15 +91,15 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     setActiveAction(null);
     setDecisionError("");
     setDismissalError("");
-  }, [state.conversation_id]);
+  }, [displayedState.conversation_id]);
   useEffect(() => {
-    if (historyAction && state.conversation_id !== historyAction.conversationId) setHistoryAction(null);
-  }, [state.conversation_id]);
+    if (historyAction && displayedState.conversation_id !== historyAction.conversationId) setHistoryAction(null);
+  }, [displayedState.conversation_id]);
   useEffect(() => {
     if (!stickToBottom.current) return;
     const element = threadRef.current;
     if (element) element.scrollTop = element.scrollHeight;
-  }, [state.conversation_id, state.messages.length, lastMessage?.content.length]);
+  }, [displayedState.conversation_id, displayedState.messages.length, lastMessage?.content.length]);
   useEffect(() => {
     const element = threadRef.current;
     if (!element) return;
@@ -108,23 +110,76 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [state.conversation_id, hasMessages]);
+  }, [displayedState.conversation_id, hasDisplayedMessages]);
   useEffect(() => {
     if (!focusRequested) return;
     inputRef.current?.focus({ preventScroll: true });
     onFocusHandled();
   }, [focusRequested, onFocusHandled]);
 
+  const openCaseConversation = async (item: CaseAgentConversationSummary) => {
+    setCaseSession({ item, loading: true, sending: false, state: { conversation_id: String(item.id), conversation_title: item.title, messages: [], pending_actions: [], dismissed_action_ids: [], workspace: { kind: "case", case_id: item.case_id } } });
+    try {
+      const response = await fetch(`/api/v1/case-spaces/${item.case_id}/agent/state?agent_id=${encodeURIComponent(item.agent_id)}&conversation_id=${encodeURIComponent(item.id)}`, { headers: { Authorization: `Bearer ${localStorage.getItem("access_token") || ""}` } });
+      if (!response.ok) throw new Error((await response.text()) || "案件会话读取失败");
+      const data = await response.json() as { messages?: Array<{ id?: string; role: "user" | "assistant"; content: string; created_at?: string }> };
+      const messages: WorkspaceMessage[] = (data.messages || []).map((entry) => ({ ...entry, case_id: item.case_id, case_no: item.case_serial_no, can_save_case_document: entry.role === "assistant" }));
+      setCaseSession((current) => current?.item.id === item.id ? { ...current, loading: false, state: { ...current.state, messages } } : current);
+      setInput("");
+    } catch (error) {
+      setCaseSession(null);
+      message.error(errorText(error, "案件会话读取失败"));
+    }
+  };
+
+  const sendCaseMessage = async (content: string) => {
+    if (!caseSession || caseSession.loading || caseSession.sending) return;
+    const { item } = caseSession;
+    const userMessage: WorkspaceMessage = { role: "user", content, case_id: item.case_id, case_no: item.case_serial_no };
+    setInput("");
+    setCaseSession((current) => current ? { ...current, sending: true, state: { ...current.state, messages: [...current.state.messages, userMessage, { role: "assistant", content: "", case_id: item.case_id, case_no: item.case_serial_no }] } } : current);
+    try {
+      const response = await fetch(`/api/v1/case-spaces/${item.case_id}/agent/messages`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("access_token") || ""}` }, body: JSON.stringify({ message: content, skill_id: "general-office", attachment_ids: [], document_ids: [], stream: true, agent_id: item.agent_id, conversation_id: item.id }) });
+      if (!response.ok || !response.body) throw new Error((await response.text()) || "案件智能体响应失败");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let assistantContent = "";
+      const apply = (event: any) => {
+        if (event.type === "delta") assistantContent += String(event.content || "");
+        if (event.type === "state" && event.state) {
+          const messages: WorkspaceMessage[] = (event.state.messages || []).map((entry: any) => ({ ...entry, case_id: item.case_id, case_no: item.case_serial_no, can_save_case_document: entry.role === "assistant" }));
+          setCaseSession((current) => current ? { ...current, state: { ...current.state, messages, pending_actions: [] } } : current);
+          return;
+        }
+        setCaseSession((current) => current ? { ...current, state: { ...current.state, messages: current.state.messages.map((entry, index, all) => index === all.length - 1 && entry.role === "assistant" ? { ...entry, content: assistantContent } : entry) } } : current);
+      };
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) if (line.trim()) apply(JSON.parse(line));
+        if (done) break;
+      }
+    } catch (error) {
+      message.error(errorText(error, "案件智能体响应失败"));
+    } finally {
+      setCaseSession((current) => current ? { ...current, sending: false } : current);
+    }
+  };
+
   const submit = (text?: string) => {
     const content = (text ?? input).trim();
     if (!content || sendBlocked) return;
     // 草稿的清空和失败恢复交给工作区，避免拒绝发送或停止失败时丢失输入。
     followBottom();
-    void send(text === undefined ? undefined : content);
+    if (caseSession) void sendCaseMessage(content);
+    else void send(text === undefined ? undefined : content);
   };
 
   const runningIds = workspace.runningIds;
-  const conversationTitle = state.conversation_title || name || "沪知助手";
+  const conversationTitle = displayedState.conversation_title || name || "沪知助手";
   const currentProject = desktopWorkspace ? workspace.workspaceProjects.find((item) => item.kind === workspace.currentWorkspace?.kind && (item.kind === "personal" || item.case_id === workspace.currentWorkspace?.case_id)) : undefined;
   const currentCaseProject = currentProject?.kind === "case" && currentProject.serial_no ? currentProject : undefined;
   const decisionBusy = loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId;
@@ -160,7 +215,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           {desktopWorkspace && currentProject && <span className="assistant-workspace-current" title={currentProject.title}>{currentProject.kind === "case" ? `${currentProject.serial_no} · ${currentProject.title}` : currentProject.title}</span>}
           {logoSrc && <img className="assistant-brand-logo" src={logoSrc} alt="" width={24} height={24} />}
           <span className="assistant-bar-title">{name || "助手对话"}</span>
-          {name && state.conversation_title && <span className="assistant-selected-title" title={state.conversation_title}>{state.conversation_title}</span>}
+          {name && displayedState.conversation_title && <span className="assistant-selected-title" title={displayedState.conversation_title}>{displayedState.conversation_title}</span>}
+          {caseSession && <Tag color="green">案件智能体 · {caseSession.item.case_serial_no}</Tag>}
           {runningIds.length > 1 && <span className="assistant-running">{runningIds.length} 个对话正在回答</span>}
         </span>
         <span className={`assistant-mobile-title${name || logoSrc ? " is-branded" : ""}`} title={conversationTitle}>
@@ -186,11 +242,11 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           </Tooltip>
           <ConversationManager
             items={workspace.conversations}
-            activeId={state.conversation_id}
+            activeId={caseSession ? null : state.conversation_id}
             busy={loading || workspace.conversationBusy}
             runningIds={runningIds}
             onCreate={workspace.createConversation}
-            onSelect={workspace.selectConversation}
+            onSelect={(id) => { setCaseSession(null); return workspace.selectConversation(id); }}
             onDelete={workspace.deleteConversation}
             drawerClassName="assistant-conversation-drawer"
             listClassName="assistant-conversation-list"
@@ -207,7 +263,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       {!loadError && status && !status.ready && (
         <Alert className="assistant-alert" type="warning" showIcon title="个人智能体暂未就绪，请检查当前 OA 配置的大模型服务" />
       )}
-      {!hasMessages && <div className={`assistant-empty-state${logoSrc ? " has-logo" : ""}`}>
+      {!hasDisplayedMessages && <div className={`assistant-empty-state${logoSrc ? " has-logo" : ""}`}>
         {logoSrc && <img className="assistant-empty-logo" src={logoSrc} alt="" width={56} height={56} />}
         {desktopWorkspace ? <div className="assistant-workspace-greeting"><h1>今天想处理什么？</h1></div> : <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} />}
         {!desktopWorkspace && <div className="assistant-mobile-empty">
@@ -220,7 +276,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           </div>
         </div>}
       </div>}
-      {hasMessages && (
+      {hasDisplayedMessages && (
         <div className="assistant-thread-region">
           <div
             className={`assistant-thread${awayFromBottom ? " has-jump" : ""}`}
@@ -234,8 +290,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
               setAwayFromBottom(!following);
             }}
           >
-            {state.messages.map((item, index) => {
-              const thinking = !item.content && !item.stopped && sending && index === state.messages.length - 1;
+            {displayedState.messages.map((item, index) => {
+              const thinking = !item.content && !item.stopped && (caseSession?.sending || sending) && index === displayedState.messages.length - 1;
               const documentTarget = workspaceDocumentSaveTarget(item);
               return (
                 <div key={`${item.created_at || "message"}-${index}`} className={`assistant-message is-${item.role}`}>
@@ -247,8 +303,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                       ? <MessageText content={item.content} />
                       : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><span>{progressText}</span></span> : "")}
                     {item.stopped && <span className="assistant-stopped">{item.content ? "已停止，已保留生成内容" : "已停止"}</span>}
-                    {item.role === "assistant" && item.personal_document_save_error && !item.failed && !(sending && index === state.messages.length - 1) && <Alert type="warning" showIcon title="个人文档暂不可保存" description={item.personal_document_save_error} />}
-                    {item.role === "assistant" && documentTarget && !!item.content && !item.failed && !item.stopped && !(sending && index === state.messages.length - 1) && !state.pending_actions.some((action) => action.status === "pending" && action.preview?.path?.endsWith("/ai-space/files")) && <div className="personal-ai-document-actions">
+                    {item.role === "assistant" && item.personal_document_save_error && !item.failed && !(sending && index === displayedState.messages.length - 1) && <Alert type="warning" showIcon title="个人文档暂不可保存" description={item.personal_document_save_error} />}
+                    {item.role === "assistant" && documentTarget && !!item.content && !item.failed && !item.stopped && !(sending && index === displayedState.messages.length - 1) && !displayedState.pending_actions.some((action) => action.status === "pending" && action.preview?.path?.endsWith("/ai-space/files")) && <div className="personal-ai-document-actions">
                       {workspace.savedDocuments[index] ? <>
                         <span className="personal-ai-document-saved"><FileWordOutlined />{documentTarget === "case" ? "已存入案件 AI 空间" : "已存入个人 AI 空间"}</span>
                         {documentTarget === "personal" ? <Button type="link" icon={<FolderOpenOutlined />} onClick={() => setPersonalSpaceOpen(true)}>查看文件</Button> : <Button type="link" icon={<FolderOpenOutlined />} href={`?page=case-detail-${item.case_id}-${encodeURIComponent(item.case_no || "")}`} title="在案件文档的 AI 空间目录中查看">查看案件文件</Button>}
@@ -323,7 +379,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             maxLength={8000}
             autoSize={{ minRows: 1, maxRows: 5 }}
             placeholder="告诉智能体你要完成的 OA 工作"
-            disabled={loading || !status?.ready}
+            disabled={caseSession ? caseSession.loading || caseSession.sending : loading || !status?.ready}
             aria-label="给智能体的指令"
           />
           <div className="assistant-composer-actions">
@@ -357,7 +413,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     </>
   );
   return (
-    <section className={`assistant${hasMessages ? "" : " is-empty"}${desktopWorkspace ? " is-desktop-workspace" : ""}`} aria-label={name || "个人智能体"} ref={ref}>
+    <section className={`assistant${hasDisplayedMessages ? "" : " is-empty"}${desktopWorkspace ? " is-desktop-workspace" : ""}`} aria-label={name || "个人智能体"} ref={ref}>
       {desktopWorkspace && <AssistantWorkspaceSidebar
         workspace={workspace}
         name={name || "AI助手"}
@@ -366,7 +422,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         onOpenMemory={() => setMemoryOpen(true)}
         onImportSkills={() => workspaceToolsRef.current?.importSkills()}
         onOpenAgentCenter={onOpenAgentCenter}
-        onOpenCaseAgentConversation={(item: CaseAgentConversationSummary) => onOpenCaseAgent?.(item.case_id, item.case_serial_no)}
+        onOpenCaseAgentConversation={(item: CaseAgentConversationSummary) => void openCaseConversation(item)}
         onReopenConfirmation={reopen}
         onReturnWorkbench={onReturnOverview}
       />}
