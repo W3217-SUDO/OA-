@@ -143,7 +143,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     setInput("");
     setCaseSession((current) => current ? { ...current, sending: true, state: { ...current.state, messages: [...current.state.messages, userMessage, { role: "assistant", content: "", case_id: item.case_id, case_no: item.case_serial_no }] } } : current);
     try {
-      const response = await fetch(`/api/v1/case-spaces/${item.case_id}/agent/messages`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("access_token") || ""}` }, body: JSON.stringify({ message: content, skill_id: "general-office", attachment_ids: [], document_ids: [], stream: true, agent_id: item.agent_id, conversation_id: item.id }) });
+      const response = await fetch(`/api/v1/case-spaces/${item.case_id}/agent/messages`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("access_token") || ""}` }, body: JSON.stringify({ message: content, skill_id: workspace.skillId, attachment_ids: [], document_ids: [], stream: true, agent_id: item.agent_id, conversation_id: item.id }) });
       if (!response.ok || !response.body) throw new Error((await response.text()) || "案件智能体响应失败");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();

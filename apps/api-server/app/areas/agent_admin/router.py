@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_skills import public_skill_catalog
+from app.system_agent_skills import active_system_skills
 from app.config import settings
 from app.core.constants import case_agent_runtime
 from app.agent_permissions import is_actual_system_admin, require_agent_settings_management
@@ -13,11 +13,13 @@ from app.models import SystemConfig, User
 from app.security import current_identity
 from app.user_agent_skills import USER_SKILL_CONFIG_GROUP, USER_SKILL_CONFIG_PREFIX
 from app.areas.agent_admin.skills import router as skills_router
+from app.areas.agent_admin.system_skills import router as system_skills_router
 from app.areas.capability_market.router import router as capability_router
 
 
 router = APIRouter()
 router.include_router(skills_router)
+router.include_router(system_skills_router)
 router.include_router(capability_router)
 
 
@@ -27,9 +29,11 @@ async def agent_admin_overview(identity: dict = Depends(current_identity), db: A
     require_agent_settings_management(identity)
     runtime = case_agent_runtime.status()
     runtime.pop("skills", None)
+    system_skills = await active_system_skills(db)
+    runtime["skill_count"] = len(system_skills)
     overview = {
         "runtime": runtime,
-        "system_skills": public_skill_catalog(),
+        "system_skills": system_skills,
         "can_manage_global": True,
         "can_view_user_libraries": is_actual_system_admin(identity),
         "user_libraries": [],

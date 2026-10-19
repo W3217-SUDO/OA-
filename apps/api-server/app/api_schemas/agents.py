@@ -17,7 +17,7 @@ class CaseAgentProposedAction(BaseModel):
 
 class CaseAgentMessageInput(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
-    skill_id: str = Field(default="general-office", min_length=1, max_length=100)
+    skill_id: str | None = Field(default=None, max_length=100)
     proposed_action: CaseAgentProposedAction | None = None
     attachment_ids: list[int] = Field(default_factory=list, max_length=4)
     document_ids: list[int] | None = Field(default=None, max_length=12)

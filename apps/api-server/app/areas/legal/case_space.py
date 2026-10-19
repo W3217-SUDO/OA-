@@ -4,6 +4,7 @@ from app.core.constants import (
     case_agent_runtime,
     logger,
 )
+from app.system_agent_skills import active_system_skills
 from app.core.dependencies import (
     AsyncSession,
     BusinessRecord,
@@ -358,6 +359,7 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
             continue
 
     from app.core.contracts import _contract_customer_record_dicts
+    system_skills = await active_system_skills(db)
     context = {
         "schema_version": "1.1",
         "space": {"id": f"case:{case_record.id}", "kind": "business_graph", "case_id": case_record.id, "case_no": case_record.serial_no, "generated_at": datetime.now(timezone.utc)},
@@ -389,6 +391,8 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         "capabilities": capabilities,
         "agent": {
             **case_agent_runtime.status(),
+            "skills": system_skills,
+            "skill_count": len(system_skills),
             "shared_space_id": f"case:{case_record.id}",
             "private_thread_id": case_agent_runtime.thread_id(case_record.id, identity["username"]),
         },
@@ -408,6 +412,7 @@ async def case_agent_status(case_id: int, identity: dict = Depends(current_ident
     from app.core.permissions import _agent_skill_catalog_for_identity
     agent, conversation = await _case_agent_selection(case_id, agent_id, conversation_id, identity, db)
     runtime_status = case_agent_runtime.status()
+    skills = await _agent_skill_catalog_for_identity(identity, db)
     return {
         "case_id": case_id,
         "agent_id": agent.id,
@@ -418,7 +423,8 @@ async def case_agent_status(case_id: int, identity: dict = Depends(current_ident
         "thread_id": case_agent_runtime.thread_id(case_id, identity["username"]),
         "conversation_thread_id": case_agent_runtime.thread_id(case_id, identity["username"], agent.id, conversation.id),
         **runtime_status,
-        "skills": await _agent_skill_catalog_for_identity(identity, db),
+        "skills": skills,
+        "skill_count": len(skills),
     }
 
 
@@ -460,9 +466,6 @@ async def send_case_agent_message(
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.core.permissions import (
-        _agent_skill_for_identity,
-    )
     agent, conversation = await _case_agent_selection(case_id, body.agent_id, body.conversation_id, identity, db)
     runtime_agent_id, runtime_conversation_id = _runtime_selection(agent, conversation)
     context = await get_case_space_context(case_id, identity, db)
@@ -470,7 +473,8 @@ async def send_case_agent_message(
     if not case_agent_runtime.status()["ready"]:
         raise HTTPException(status_code=503, detail="案件智能体尚未就绪")
     proposed_action = body.proposed_action.model_dump() if body.proposed_action else None
-    selected_skill = await _agent_skill_for_identity(body.skill_id, identity, db)
+    from app.core.permissions import _agent_message_skill_for_identity
+    selected_skill, clean_message = await _agent_message_skill_for_identity(body.skill_id, body.message, identity, db)
     if proposed_action and not context["capabilities"].get("can_write"):
         raise HTTPException(status_code=403, detail="当前账号无权为该案件发起写操作")
     images: list[dict[str, object]] = []
@@ -566,7 +570,7 @@ async def send_case_agent_message(
         "operator": identity["username"],
         "agent_id": runtime_agent_id,
         "conversation_id": runtime_conversation_id,
-        "message": body.message,
+        "message": clean_message,
         "case_snapshot": context,
         "proposed_action": proposed_action,
         "images": images,

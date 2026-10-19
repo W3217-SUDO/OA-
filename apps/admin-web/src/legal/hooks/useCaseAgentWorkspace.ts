@@ -1,7 +1,8 @@
 import { message } from "antd";
 import type { ClipboardEvent, ComponentProps, Key } from "react";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_AGENT_SKILL } from "../../agentSkillRouting";
+import { availableAgentSkillId, DEFAULT_AGENT_SKILL, type AgentSkill } from "../../agentSkillRouting";
+import { subscribeAgentSkillCatalog } from "../../agentSkillCatalog";
 import { api } from "../../api";
 import type { CaseAgentDrawer } from "../CaseAgentDrawer";
 import { AGENT_DOCUMENT_LIMIT } from "../constants";
@@ -50,6 +51,12 @@ export function useCaseAgentWorkspace({
   const activeCaseAgentRequestRef = useRef<AbortController | null>(null);
   const activeAgentLoadRequestRef = useRef<AbortController | null>(null);
   const activeAgentDocumentsRequestRef = useRef<AbortController | null>(null);
+
+  useEffect(() => subscribeAgentSkillCatalog(async () => {
+    const { data } = await api.get<{ items: AgentSkill[] }>("/agent/skills");
+    setAgentStatus(current => current ? { ...current, skills: data.items } : current);
+    setAgentSkillId(current => availableAgentSkillId(current, data.items));
+  }), []);
 
   const stateWithAgentScreenshotPreviews = (nextState: CaseAgentState): CaseAgentState => ({
     ...nextState,
@@ -149,7 +156,7 @@ export function useCaseAgentWorkspace({
     clearAgentScreenshotPreviews();
     setAgentCase(row);
     setAgentOpen(true);
-    setAgentSkillId(preferredSkillId || DEFAULT_AGENT_SKILL);
+    setAgentSkillId(preferredSkillId ?? DEFAULT_AGENT_SKILL);
     setAgentStatus(null);
     setAgentState(null);
     setAgentInput("");
@@ -227,7 +234,7 @@ export function useCaseAgentWorkspace({
     agentOpen, closeCaseAgent, agentCase, agentDrawerWidth, startAgentDrawerResize,
     agentStatus, agentLoading, agentSending, agentSkillId, setAgentSkillId,
     openAgentFolder, agentConversations, conversationId, switchCaseConversation, createCaseConversation,
-    loadCaseAgent, agentState, agentDecisionLoading, decideCaseAgentAction,
+    loadCaseAgent: (row: CaseRow, resetMaterials?: boolean) => loadCaseAgent(row, resetMaterials, agentId ?? undefined, conversationId ?? undefined, agentSkillId), agentState, agentDecisionLoading, decideCaseAgentAction,
     restoreCaseAgentAction, agentHistoryExpanded, setAgentHistoryExpanded,
     sendCaseAgentMessage, agentMaterialPickerOpen, setAgentMaterialPickerOpen, toggleAgentMaterialPicker,
     agentDocuments, agentDocumentsLoading, agentDocumentIds, setAgentDocumentIds, updateAgentDocumentSelection,

@@ -28,16 +28,24 @@ from app.main import (
     get_case_workflow_guide,
     send_case_agent_message,
 )
-from app.models import BusinessRecord, FileAttachment, User, WorkflowEvent
+from app.models import BusinessRecord, FileAttachment, SystemConfig, User, WorkflowEvent
 
 
 class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+        async with self.engine.begin() as connection:
+            await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=[SystemConfig.__table__]))
+        self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
+        self.session_patch = patch("app.database.SessionLocal", self.sessions)
+        self.session_patch.start()
         self.runtime = CaseAgentRuntime(enabled=True, database_url="sqlite+aiosqlite:///:memory:")
         await self.runtime.start()
 
     async def asyncTearDown(self):
         await self.runtime.stop()
+        self.session_patch.stop()
+        await self.engine.dispose()
 
     def test_response_style_is_conclusion_first_and_actionable(self):
         self.assertIn("重点结论", RESPONSE_STYLE_RULES)
@@ -166,7 +174,7 @@ class CaseAgentRuntimeTest(unittest.IsolatedAsyncioTestCase):
         snapshot, messages, skill, images = self.runtime._request_model.await_args.args
         self.assertEqual(snapshot["case"]["serial_no"], "SHMS-MODEL-009")
         self.assertEqual(messages[-1]["content"], "案件有哪些期限风险？")
-        self.assertEqual(skill.id, "general-office")
+        self.assertIsNone(skill, "没有显式选择时不得注入通用办公指令")
         self.assertEqual(images, [])
 
     async def test_streaming_http_400_falls_back_to_non_stream_and_emits_content(self):
@@ -495,6 +503,8 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             poolclass=StaticPool,
         )
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
+        self.session_patch = patch("app.database.SessionLocal", self.sessions)
+        self.session_patch.start()
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
         self.runtime = CaseAgentRuntime(enabled=True, database_url="sqlite+aiosqlite:///:memory:")
@@ -505,6 +515,7 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         case_space_module.case_agent_runtime = self.original_runtime
         await self.runtime.stop()
+        self.session_patch.stop()
         await self.engine.dispose()
 
     async def _decide_action(self, case_id, action_id, body, identity, db, *, confirmation="frontend", origin="http://localhost"):

@@ -652,6 +652,7 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         with patch.object(personal_service, "PersonalMcpToolSession", wraps=personal_service.PersonalMcpToolSession) as tool_session, \
                 patch("app.core.oss_attachments._load_credentials", return_value=None), \
                 patch.object(personal_service, "_agent_skill_for_identity", new=AsyncMock(return_value=SimpleNamespace(id="test", name="测试技能"))), \
+                patch.object(personal_service, "_agent_message_skill_for_identity", new=AsyncMock(return_value=(SimpleNamespace(id="test", name="测试技能"), "生成文书"))), \
                 patch.object(personal_service, "prepare_materials", new=AsyncMock(return_value={"case": None, "readings": [], "can_save_document": False})), \
                 patch.object(personal_service, "build_context", new=AsyncMock(return_value={})), \
                 patch.object(personal_service, "_prompt_messages", return_value=[]), \

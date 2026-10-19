@@ -16,7 +16,8 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
 
-from .agent_skills import GENERAL_SKILL, SKILLS_BY_ID, AgentSkill, parse_skill_message, public_skill_catalog
+from .agent_skills import SKILLS_BY_ID, AgentSkill, split_skill_message
+from .system_agent_skills import runtime_system_skill
 
 
 ALLOWED_ACTION_TYPES = {
@@ -252,7 +253,7 @@ def _checkpoint_url(database_url: str, explicit_url: str) -> str:
 def build_case_model_messages(
     snapshot: dict[str, Any],
     messages: list[dict[str, Any]],
-    skill: AgentSkill = GENERAL_SKILL,
+    skill: AgentSkill | None = None,
     request_images: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     from .agent_mcp.model_context import MODEL_QUERY_RULES, model_result_view
@@ -261,6 +262,7 @@ def build_case_model_messages(
         **{key: value for key, value in snapshot.items() if key != "document_readings"},
     }
     context = json.dumps(model_result_view(prioritized_snapshot, 80_000), ensure_ascii=False, default=str)
+    skill_prompt = f"当前启用技能：{skill.name}。{skill.instruction}\n\n" if skill else ""
     prompt_messages: list[dict[str, Any]] = [
         {
             "role": "system",
@@ -305,7 +307,7 @@ def build_case_model_messages(
                 "不要声称操作已经执行；没有明确写操作要求时绝对不要输出 proposed_action。"
                 "任何写操作都必须服从当前案件空间 capabilities；对应能力为 false 时，"
                 "只能说明无权限，不能输出 proposed_action，也不能建议绕过权限。\n\n"
-                f"当前启用技能：{skill.name}。{skill.instruction}\n\n"
+                f"{skill_prompt}"
                 f"{MODEL_QUERY_RULES}\n当前案件空间数据：\n{context}"
             ),
         }
@@ -394,8 +396,6 @@ class CaseAgentRuntime:
             "model_configured": bool(self.api_base_url and self.api_key and self.model),
             "max_concurrency": self.max_concurrency,
             "write_requires_approval": True,
-            "skills": public_skill_catalog(),
-            "skill_count": len(public_skill_catalog()),
             "error": self.error,
         }
 
@@ -412,9 +412,11 @@ class CaseAgentRuntime:
             pending_actions.append(action)
             response = f"已生成待审批操作：{action['summary']}。审批前不会写入业务数据。"
         elif self.status()["model_configured"]:
-            skill_id = str(latest.get("skill_id") or GENERAL_SKILL.id)
+            skill_id = str(latest.get("skill_id") or "")
             skill_override = state.get("skill_override")
-            if isinstance(skill_override, dict) and str(skill_override.get("id") or "") == skill_id:
+            if skill_id in SKILLS_BY_ID:
+                selected_skill = await runtime_system_skill(skill_id)
+            elif isinstance(skill_override, dict) and str(skill_override.get("id") or "") == skill_id:
                 selected_skill = AgentSkill(
                     id=skill_id,
                     name=str(skill_override.get("name") or skill_id),
@@ -427,8 +429,10 @@ class CaseAgentRuntime:
                     quick_prompts=tuple(skill_override.get("quick_prompts") or ()),
                 )
             else:
-                selected_skill = SKILLS_BY_ID.get(skill_id, GENERAL_SKILL)
-            if not selected_skill.available:
+                if skill_id:
+                    raise ValueError("skill_definition_required")
+                selected_skill = None
+            if selected_skill is not None and not selected_skill.available:
                 response = f"“{selected_skill.name}”已接入技能目录，但暂不可执行：{selected_skill.unavailable_reason}。"
             else:
                 from .agent_mcp.model_tools import TOOL_RESULT_SINK
@@ -458,7 +462,7 @@ class CaseAgentRuntime:
             "last_response": response,
             "last_operator": latest.get("operator", ""),
             "updated_at": _now(),
-            "active_skill": str(latest.get("skill_id") or GENERAL_SKILL.id),
+            "active_skill": str(latest.get("skill_id") or ""),
             "request_images": [],
             "structured_results": structured_results,
         }
@@ -467,7 +471,7 @@ class CaseAgentRuntime:
         self,
         snapshot: dict[str, Any],
         messages: list[dict[str, Any]],
-        skill: AgentSkill = GENERAL_SKILL,
+        skill: AgentSkill | None = None,
         request_images: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any] | list[dict[str, Any]] | None]:
         from .agent_mcp.model_tools import MAX_TOOL_ROUNDS, MODEL_TOOLS, ModelToolSession, request_completion
@@ -587,7 +591,7 @@ class CaseAgentRuntime:
                 "last_response": last_response,
                 "last_operator": operator if messages else "",
                 "updated_at": str(legacy_state.get("updated_at") or ""),
-                "active_skill": str(last_user.get("skill_id") or GENERAL_SKILL.id),
+                "active_skill": str(last_user.get("skill_id") or ""),
                 "legacy_migrated": True,
             },
             as_node="case_assistant",
@@ -619,16 +623,25 @@ class CaseAgentRuntime:
     ) -> dict[str, Any]:
         if self.graph is None:
             raise RuntimeError(self.error or "LangGraph case agent is not ready")
-        await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
-        skill, clean_message = parse_skill_message(message)
+        marker_id, clean_message = split_skill_message(message)
+        skill = None
+        if marker_id in SKILLS_BY_ID:
+            skill = await runtime_system_skill(marker_id)
+        elif marker_id and (skill_override is None or skill_override.id != marker_id):
+            raise ValueError("skill_definition_required")
         if skill_override is not None:
+            if marker_id and marker_id != skill_override.id:
+                raise ValueError("skill_selection_conflict")
             skill = skill_override
+            if skill.id in SKILLS_BY_ID:
+                skill = await runtime_system_skill(skill.id)
+        await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
         user_message = {
             "id": uuid4().hex,
             "role": "user",
             "content": clean_message,
-            "skill_id": skill.id,
-            "skill_name": skill.name,
+            "skill_id": skill.id if skill else "",
+            "skill_name": skill.name if skill else "",
             "operator": operator,
             "created_at": _now(),
             "attachments": [
@@ -773,6 +786,6 @@ class CaseAgentRuntime:
             "last_response": state.get("last_response", ""),
             "last_operator": state.get("last_operator", ""),
             "updated_at": state.get("updated_at", ""),
-            "active_skill": state.get("active_skill", GENERAL_SKILL.id),
+            "active_skill": state.get("active_skill", ""),
             "structured_results": state.get("structured_results") or [],
         }

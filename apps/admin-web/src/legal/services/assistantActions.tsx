@@ -1,5 +1,5 @@
 import { message, Modal } from "antd";
-import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "../../agentSkillRouting";
+import { availableAgentSkillId, DEFAULT_AGENT_SKILL, encodeAgentSkillMessage } from "../../agentSkillRouting";
 import { api } from "../../api";
 import { AgentOperationPreview, agentOperationError } from "../../AgentOperationPreview";
 import { confirmCaseAgentDocument } from "./agentDocumentConfirmation";
@@ -80,11 +80,8 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             if (statusResult.status === "rejected") setAgentStatus(null);
             if (stateResult.status === "rejected") setAgentState(null);
             if (statusResult.status === "fulfilled" && stateResult.status === "fulfilled") {
-                const requestedSkill = preferredSkillId ? String(preferredSkillId) : "";
-                const requestedAvailable = requestedSkill && (statusResult.value?.skills || []).some((item: AgentSkill) => item.id === requestedSkill && item.available);
-                const activeSkill = String(stateResult.value?.active_skill || DEFAULT_AGENT_SKILL);
-                const activeAvailable = (statusResult.value?.skills || []).some((item: AgentSkill) => item.id === activeSkill && item.available);
-                setAgentSkillId(requestedAvailable ? requestedSkill : activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
+                const requestedSkill = preferredSkillId ?? (stateResult.value?.messages?.length ? stateResult.value?.active_skill ?? DEFAULT_AGENT_SKILL : DEFAULT_AGENT_SKILL);
+                setAgentSkillId(availableAgentSkillId(requestedSkill, statusResult.value?.skills || []));
             }
             const failure = stateResult.status === "rejected" ? stateResult.reason : statusResult.status === "rejected" ? statusResult.reason : null;
             if (failure) message.error(failure?.response?.data?.detail || "案件智能体加载失败");
@@ -130,7 +127,7 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
         const content = String(preset ?? agentInput).trim() || (agentSkillId === "screenshot-evidence" && agentScreenshots.length ? "请分析上传的截图证据" : "");
         if (!content)
             return message.warning("请输入要询问的案件问题");
-        const effectiveSkillId = isAiWordGenerationRequest(content) ? "legal-document-drafting" : agentSkillId;
+        const effectiveSkillId = agentSkillId && isAiWordGenerationRequest(content) ? "legal-document-drafting" : agentSkillId;
         const previousAssistantDocument = isExistingAnswerWordConversionRequest(content)
             ? [...(agentState?.messages || [])].reverse().find((item) => item.role === "assistant" && isUsableAiDocumentContent(item.content))?.content || ""
             : "";

@@ -53,6 +53,189 @@ function loadModule(name, dependencies, globals = {}) {
   return loadSource(entry);
 }
 
+test("系统技能查看完整声明，删除读取最新版本并明确确认后写入且真实刷新", async () => {
+  const calls = [], notices = [];
+  let revision = 3, refreshed = 0;
+  const item = { id: "general-office", name: "通用办公", category: "办公", description: "完整说明", source: "内置", available: true };
+  const instruction = "实际运行指令\n".repeat(1000);
+  const { SystemSkillPanel } = loadModule("../SystemSkillPanel.tsx", {
+    antd: {
+      Alert: "alert", Button: "button", Descriptions: Object.assign(props => React.createElement("descriptions", props), { Item: "description" }),
+      Drawer: ({ open, children, ...props }) => open ? React.createElement("drawer", props, children) : null,
+      Modal: ({ open, children, ...props }) => open ? React.createElement("modal", props, children) : null,
+      Space: "space", Spin: "spin", Tag: "tag", Tooltip: "tooltip", message: { success: value => notices.push(value) },
+    },
+    "./components/ResizableTable": ({ columns, dataSource }) => React.createElement("table", null, dataSource.map(row => React.createElement("tr", { key: row.id }, columns.at(-1).render(null, row)))),
+    "./api": { api: {
+      get: async path => { calls.push({ method: "GET", path }); return { data: { ...item, category: "最新分类", description: "最新说明", source: "最新来源", scope: "system", filename: "SKILL.md", content: `# 完整声明\n${instruction}`, instruction, quick_prompts: ["示例一", "示例二"], can_delete: true, revision, definition_sha256: "a".repeat(64), content_origin: "runtime_declaration", resources: [] } }; },
+      delete: async (path, config) => { calls.push({ method: "DELETE", path, config }); return { data: { id: item.id, scope: "system", deleted: true, deletion_mode: "registry_deactivation", revision: revision + 1 } }; },
+    } },
+  });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(SystemSkillPanel, { items: [item], canManage: true, onChanged: async () => { refreshed += 1; } })); });
+  const action = name => renderer.root.findAllByType("button").find(button => button.props["aria-label"] === `${name}通用办公`);
+  await act(async () => { await action("查看").props.onClick(); });
+  assert.equal(calls.at(-1).path, "/agent/system-skills/general-office/definition");
+  assert.equal(renderer.root.findAllByType("pre")[0].props.children, instruction);
+  assert.equal(renderer.root.findAllByType("li").length, 2);
+  assert.ok(renderer.root.findAllByType("description").some(field => field.props.children === "最新来源"), "详情元数据读取GET实际字段，不沿用列表快照");
+  assert.equal(renderer.root.findAllByType("modal").length, 0);
+  revision = 4;
+  await act(async () => { await action("删除").props.onClick(); });
+  assert.equal(calls.length, 2, "点击删除先重新读取详情，尚未DELETE");
+  await act(async () => { renderer.root.findByType("modal").props.onCancel(); });
+  assert.equal(calls.length, 2, "取消不写入");
+  await act(async () => { await action("删除").props.onClick(); });
+  assert.equal(renderer.root.findByType("modal").props.okButtonProps.danger, true);
+  await act(async () => { await renderer.root.findByType("modal").props.onOk(); });
+  assert.equal(calls.at(-1).path, "/agent/system-skills/general-office");
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.at(-1).config)), { data: { confirm: true, revision: 4, definition_sha256: "a".repeat(64) } });
+  assert.equal(refreshed, 1);
+  assert.equal(notices.length, 1);
+  assert.equal(renderer.root.findAllByType("drawer").length, 0);
+  await act(async () => { renderer.update(React.createElement(SystemSkillPanel, { items: [item], canManage: false, onChanged: async () => {} })); });
+  assert.equal(action("删除"), undefined, "非管理账号不出现删除控件");
+  assert.ok(action("查看"), "查看沿用原页面权限，不按删除权限隐藏");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("系统技能详情/删除失败显示真实错误，刷新失败不重复删除，失效读取不可打开确认", async () => {
+  const item = { id: "office", name: "办公", available: true };
+  let failure = "", deletes = 0, refreshes = 0, pending;
+  const { SystemSkillPanel } = loadModule("../SystemSkillPanel.tsx", {
+    antd: {
+      Alert: "alert", Button: "button", Descriptions: Object.assign(props => React.createElement("descriptions", props), { Item: "description" }),
+      Drawer: ({ open, children, ...props }) => open ? React.createElement("drawer", props, children) : null,
+      Modal: ({ open, children, ...props }) => open ? React.createElement("modal", props, children) : null,
+      Space: "space", Spin: "spin", Tag: "tag", Tooltip: "tooltip", message: { success() {} },
+    },
+    "./components/ResizableTable": ({ columns }) => React.createElement("table", null, columns.at(-1).render(null, item)),
+    "./personal-agent/types": { errorText: (error, fallback) => error.response?.data?.detail || error.message || fallback },
+    "./api": { api: {
+      get: async () => {
+        if (failure === "read") throw { response: { status: 403, data: { detail: "无权读取系统技能" } } };
+        const data = { ...item, scope: "system", content: "完整声明", instruction: "指令", quick_prompts: [], content_origin: "runtime_declaration", can_delete: failure !== "permission", revision: 1, definition_sha256: "b".repeat(64) };
+        if (failure === "pending") return new Promise(resolve => { pending = () => resolve({ data }); });
+        return { data };
+      },
+      delete: async () => { deletes += 1; if (failure === "delete") throw { response: { status: 409, data: { detail: "注册版本已变化，请重新查看" } } }; return { data: { id: item.id, scope: "system", deleted: true, deletion_mode: "registry_deactivation", revision: 2 } }; },
+    } },
+  });
+  let renderer;
+  const props = { items: [item], canManage: true, onChanged: async () => { refreshes += 1; if (refreshes === 1) throw new Error("目录连接失败"); } };
+  await act(async () => { renderer = create(React.createElement(SystemSkillPanel, props)); });
+  const action = name => renderer.root.findAllByType("button").find(button => button.props["aria-label"] === `${name}办公`);
+  const hasError = text => renderer.root.findAllByType("alert").some(alert => alert.props.title.includes(text));
+  failure = "read";
+  await act(async () => { await action("删除").props.onClick(); });
+  assert.ok(hasError("无权读取")); assert.equal(renderer.root.findAllByType("modal").length, 0);
+  failure = "permission";
+  await act(async () => { await action("删除").props.onClick(); });
+  assert.ok(hasError("无权删除")); assert.equal(renderer.root.findAllByType("modal").length, 0);
+  failure = "delete";
+  await act(async () => { await action("删除").props.onClick(); });
+  await act(async () => { await renderer.root.findByType("modal").props.onOk(); });
+  assert.ok(hasError("注册版本已变化")); assert.equal(refreshes, 0);
+  failure = "";
+  await act(async () => { await action("删除").props.onClick(); });
+  await act(async () => { await renderer.root.findByType("modal").props.onOk(); });
+  assert.ok(hasError("已删除，但目录刷新失败")); assert.equal(action("删除").props.disabled, true);
+  await act(async () => { await renderer.root.findByType("alert").props.action.props.onClick(); });
+  assert.equal(refreshes, 2); assert.equal(deletes, 2, "刷新重试不再次DELETE");
+  failure = "pending";
+  await act(async () => { action("删除").props.onClick(); });
+  await act(async () => { renderer.root.findByType("drawer").props.onClose(); pending(); });
+  assert.equal(renderer.root.findAllByType("modal").length, 0, "关闭后晚到的响应不能重新打开确认");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("空技能编码与个人草稿保留原默认，删除后置空且不替换其他技能", async () => {
+  const routing = loadModule("../agentSkillRouting.ts", {});
+  assert.equal(routing.DEFAULT_AGENT_SKILL, "general-office");
+  assert.equal(routing.encodeAgentSkillMessage("", " 普通问题 "), "普通问题");
+  assert.equal(routing.encodeAgentSkillMessage("general-office", "问题"), "[[skill:general-office]]\n问题");
+  const { usePersonalDrafts } = loadModule("../personal-agent/usePersonalDrafts.ts", {});
+  let drafts, renderer;
+  function Probe() { drafts = usePersonalDrafts(); return null; }
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  const catalog = [{ id: "general-office", available: true }, { id: "other", available: true }];
+  await act(async () => { drafts.refreshSkills(catalog); drafts.update("a", "input", "草稿A"); drafts.update("b", "skillId", ""); drafts.update("c", "skillId", "other"); });
+  assert.equal(drafts.items.a.skillId, "general-office");
+  await act(async () => { drafts.refreshSkills(catalog.slice(1)); });
+  assert.equal(drafts.items.a.skillId, ""); assert.equal(drafts.items.a.input, "草稿A");
+  assert.equal(drafts.items.b.skillId, ""); assert.equal(drafts.items.c.skillId, "other");
+  assert.equal(drafts.empty.current.skillId, "", "新草稿默认不能恢复已删除通用办公");
+  await act(async () => { drafts.update("d", "input", "新草稿"); drafts.refreshSkills(catalog); });
+  assert.equal(drafts.items.d.skillId, "", "显式空选项不因目录变更自动选回默认");
+  assert.equal(drafts.empty.current.skillId, "general-office", "新草稿在通用办公可用时维持原默认");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("系统技能目录通知刷新已挂载个人工作区，空技能真实发送且失败向管理面板传播", async () => {
+  const catalog = loadModule("../agentSkillCatalog.ts", {});
+  let items = [{ id: "general-office", name: "办公", available: true }, { id: "other", name: "其他", available: true }], fail = false, reads = 0;
+  const generations = [], errors = [];
+  const state = { conversation_id: "conversation", messages: [], pending_actions: [], dismissed_action_ids: [] };
+  const { usePersonalWorkspace } = loadModule("../personal-agent/usePersonalWorkspace.ts", {
+    antd: { ...require("antd"), message: { error: value => errors.push(value), warning: value => errors.push(value) } },
+    "../legal/constants": {},
+    "../legal/services/agentDocumentConfirmation": { confirmCaseAgentDocument() {} },
+    "./personalAiDocumentConfirmation": { confirmPersonalAiDocument() {} },
+    "../agentSkillCatalog": catalog,
+    "../api": { api: { get: async path => {
+      if (path === "/agent/skills") { reads++; if (fail) throw new Error("真实目录请求失败"); return { data: { items } }; }
+      assert.equal(path, "/personal-agent/status"); return { data: { ready: true } };
+    } } },
+    "./usePersonalMcpConnection": { usePersonalMcpConnection: () => ({ intercept: () => false, close() {} }) },
+    "./usePersonalConversations": { usePersonalConversations: () => ({ loading: false, load: async () => {}, locked: () => false, capture: () => ({}), refresh: async () => {} }) },
+    "./useConversationRuntime": { useConversationRuntime: () => ({ state, activities: {}, reset() {}, anyRunning: () => false, running: () => false, stopping: () => false, get: () => state, generate: async (_conversation, payload, message) => { generations.push({ payload, message }); return state; } }) },
+  });
+  let workspace, renderer;
+  function Probe() { workspace = usePersonalWorkspace(); return null; }
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  assert.equal(workspace.skillId, "general-office");
+  await act(async () => { workspace.setInput("保留草稿"); items = items.slice(1); await catalog.refreshAgentSkillCatalogConsumers(); });
+  assert.equal(workspace.skillId, ""); assert.equal(workspace.input, "保留草稿"); assert.equal(workspace.skills.length, 1);
+  await act(async () => { await workspace.send(); });
+  assert.equal(generations[0].payload.skill_id, ""); assert.equal(generations[0].payload.content, "保留草稿");
+  assert.equal(generations[0].message.skill_name, undefined, "不向history伪写通用办公技能名");
+  await act(async () => { workspace.setSkillId("general-office"); await workspace.send("显式已删技能"); });
+  assert.equal(generations.length, 1, "已删显式ID不能被自动换为空技能发出");
+  assert.ok(errors.some(value => value.includes("所选技能已停用")));
+  fail = true;
+  await assert.rejects(catalog.refreshAgentSkillCatalogConsumers(), /真实目录请求失败/);
+  await act(async () => { renderer.unmount(); });
+  const before = reads; await catalog.refreshAgentSkillCatalogConsumers(); assert.equal(reads, before, "卸载后解除通知订阅");
+});
+
+test("案件技能加载保留历史空值/显式空值，缺失ID清空而不是自动替换", async () => {
+  let picked, active = "", messages = [], items = [{ id: "general-office", available: true }, { id: "other", available: true }];
+  const { createCaseAssistantActions } = loadModule("services/assistantActions.tsx", {
+    antd: { message: { error: text => assert.fail(text) } },
+    "../../AgentOperationPreview": {},
+    "./agentDocumentConfirmation": {},
+    "../constants": {},
+    "../../api": { api: { get: async path => {
+      if (path.endsWith("/agents")) return { data: { agents: [{ id: 1 }] } };
+      if (path.endsWith("/conversations")) return { data: { conversations: [{ id: 2 }] } };
+      return { data: path.endsWith("/status") ? { skills: items } : { active_skill: active, messages } };
+    } } },
+  });
+  const noop = () => {};
+  const context = { setAgentLoading: noop, setAgentStatus: noop, setAgentState: noop, setAgentDocuments: noop, setAgentDocumentIds: noop,
+    setAgentSkillId: value => { picked = value; }, setAgentCatalog: noop, setAgentConversations: noop, setAgentId: noop, setConversationId: noop,
+    activeAgentLoadRequestRef: { current: null }, activeAgentDocumentsRequestRef: { current: null }, setAgentDocumentsLoading: noop };
+  const actions = createCaseAssistantActions(context);
+  await actions.loadCaseAgent({ id: 8 }); assert.equal(picked, "general-office", "新对话仍用可用的原默认");
+  messages = [{ role: "user", content: "普通问题" }];
+  await actions.loadCaseAgent({ id: 8 }); assert.equal(picked, "", "历史明确空技能不恢复默认");
+  active = "other";
+  await actions.loadCaseAgent({ id: 8 }, false, undefined, undefined, ""); assert.equal(picked, "", "用户手动清空优先于旧active_skill");
+  await actions.loadCaseAgent({ id: 8 }, false, undefined, undefined, "deleted"); assert.equal(picked, "", "显式失效ID不自动换成active技能");
+  items = items.slice(1); active = "general-office";
+  await actions.loadCaseAgent({ id: 8 }); assert.equal(picked, "", "已删除默认不能复活");
+});
+
 test("skill market browses server catalog, previews full instructions and installs only after confirmation", async () => {
   const requests = [], installed = [];
   let previewFails = false, catalogFails = false, empty = false, refreshFails = false;
@@ -342,7 +525,7 @@ test("personal AI skill directory preserves owned definitions and downloads with
 test("global skill management entry requires both authorized overview and can_manage and never selects personal chat skill", async () => {
   let canManage = true, overviewDenied = false, globalReads = 0;
   const { default: AgentAdminPage } = loadModule("../AgentAdminPage.tsx", {
-    antd: { Alert: "alert", Button: "button", Card: "card", Descriptions: Object.assign(props => React.createElement("descriptions", props), { Item: "description" }), Empty: "empty", Space: "space", Tabs: "tabs", Tag: "tag", message: { error() {} } },
+    antd: { Alert: "alert", Button: "button", Card: "card", Descriptions: Object.assign(props => React.createElement("descriptions", props), { Item: "description" }), Drawer: ({ open, children }) => open ? React.createElement("drawer", null, children) : null, Modal: Object.assign(({ open, children }) => open ? React.createElement("modal", null, children) : null, { confirm() {} }), Empty: "empty", Space: "space", Tabs: "tabs", Tag: "tag", message: { error() {} } },
     "./components/ResizableTable": "table", "./personal-agent/SkillManager": { SkillManager: "skill-manager" },
     "./capability-market/CapabilityMarket": { CapabilityMarket: "capability-market" },
     "./personal-agent/types": { errorText: (error, fallback) => error.message || fallback },
@@ -442,7 +625,7 @@ test("agent service streams an answer, records an approval, and exposes upstream
   } };
   const { createCaseAssistantActions } = loadModule("services/assistantActions.tsx", {
     antd: { ...require("antd"), message: messages },
-    "../../agentSkillRouting": { DEFAULT_AGENT_SKILL: "qa", encodeAgentSkillMessage: (_skill, value) => value },
+    "../../agentSkillRouting": { ...loadModule("../agentSkillRouting.ts", {}), DEFAULT_AGENT_SKILL: "qa", encodeAgentSkillMessage: (_skill, value) => value },
     "../../api": { api },
     "../constants": {
       AGENT_DOCUMENT_LIMIT: 4, aiWordDocumentName: () => "answer.docx",
@@ -1699,7 +1882,8 @@ test("personal AI mobile tools close their existing popover before opening the s
   let mediaChange;
   let opened = 0;
   const media = { get matches() { return mobile; }, addEventListener: (_event, listener) => { mediaChange = listener; }, removeEventListener() {} };
-  const workspace = { status: { commands: [] }, loading: false, stopping: false, uploading: false, decisionId: "", conversationBusy: false, skills: [], skillId: "general-office", selectedCase: null, materials: [], caseMaterials: [] };
+  const chosenSkills = [];
+  const workspace = { status: { commands: [] }, loading: false, stopping: false, uploading: false, decisionId: "", conversationBusy: false, skills: [], skillId: "general-office", setSkillId: value => chosenSkills.push(value), selectedCase: null, materials: [], caseMaterials: [] };
   const { AssistantWorkspaceTools } = loadModule("../personal-agent/AssistantWorkspaceTools.tsx", {
     antd: { Button: component("button"), Popover: ({ content, children, open, ...props }) => React.createElement("popover", { open, ...props }, children, open ? content : null), Segmented: component("segmented"), Select: component("select"), Tooltip: component("tooltip"), message: { error: (text) => assert.fail(text) } },
     "./usePersonalWorkspace": { MATERIAL_ACCEPT: ".docx" },
@@ -1721,6 +1905,9 @@ test("personal AI mobile tools close their existing popover before opening the s
   mobile = false;
   await act(async () => mediaChange());
   assert.equal(renderer.root.findAllByType("popover").length, 0);
+  assert.equal(renderer.root.findByType("select").props.allowClear, true);
+  await act(async () => { renderer.root.findByType("select").props.onChange(undefined); });
+  assert.deepEqual(chosenSkills, [""], "实际Select清空传空ID而不是undefined/default");
   assert.equal(renderer.root.findAllByType("button").some((item) => item.props.className === "personal-ai-space-mobile-entry"), false, "桌面工具组不重复挂入口");
   const selections = [];
   const desktop = { ...workspace, status: { commands: [{ id: "cases" }] }, chooseCaseMaterials: (item, files) => selections.push({ item, files }) };
@@ -1992,6 +2179,7 @@ test("Office structured writer failures block replay unlike definite prewrite re
 });
 
 test("agent workspace releases screenshot URLs on removal and unmount, and reports upload failures", async () => {
+  const skillCatalog = loadModule("../agentSkillCatalog.ts", {});
   const notices = [];
   const urls = [];
   let failUpload = false;
@@ -1999,7 +2187,7 @@ test("agent workspace releases screenshot URLs on removal and unmount, and repor
   let resolveUpload;
   let uploadSignal;
   let streamController;
-  const api = { post: async (_path, _form, options) => {
+  const api = { get: async path => { assert.equal(path, "/agent/skills"); return { data: { items: [{ id: "other", available: true }] } }; }, post: async (_path, _form, options) => {
     if (pendingUpload) {
       uploadSignal = options.signal;
       return new Promise((resolve) => { resolveUpload = resolve; });
@@ -2014,7 +2202,8 @@ test("agent workspace releases screenshot URLs on removal and unmount, and repor
   class FormDataMock { append() {} }
   const { useCaseAgentWorkspace } = loadModule("hooks/useCaseAgentWorkspace.ts", {
     antd: { message: { error: (value) => notices.push(value), warning: (value) => notices.push(value), success: () => {}, info: () => {} } },
-    "../../agentSkillRouting": { DEFAULT_AGENT_SKILL: "qa" },
+    "../../agentSkillRouting": { ...loadModule("../agentSkillRouting.ts", {}), DEFAULT_AGENT_SKILL: "qa" },
+    "../../agentSkillCatalog": skillCatalog,
     "../../api": { api },
     "../constants": { AGENT_DOCUMENT_LIMIT: 4 },
     "../services/assistantActions": { createCaseAssistantActions: (context) => ({
@@ -2035,6 +2224,8 @@ test("agent workspace releases screenshot URLs on removal and unmount, and repor
   await act(async () => { tree = create(React.createElement(Probe)); });
   await act(async () => current.openCaseAgent({ id: 8 }));
   assert.equal(current.drawerProps.agentOpen, true);
+  await act(async () => { await skillCatalog.refreshAgentSkillCatalogConsumers(); });
+  assert.equal(current.drawerProps.agentSkillId, "", "案件窗口接收真实目录刷新，删除当前选项后清空而不选其他技能");
   const file = { name: "shot.png", type: "image/png", size: 100 };
   await act(async () => current.drawerProps.uploadCaseAgentScreenshot(file));
   assert.equal(current.drawerProps.agentScreenshots.length, 1);

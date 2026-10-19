@@ -7,11 +7,11 @@ from app.core.constants import (
 )
 from app.core.dependencies import (
     AgentDocument, AsyncSession, BusinessRecord, ContractApprovalStep, ContractObject,
-    ContractPaymentLine, FileAttachment, GENERAL_SKILL, HTTPException, HrSubrecord,
+    ContractPaymentLine, FileAttachment, HTTPException, HrSubrecord,
     IprCaseFileCustomImportBatch, IprOfficialImportBatch, JobRole, LegacyCaseTaskHistory, RolePermission,
     SKILLS_BY_ID, SQLAlchemyError, SystemMenu, SystemParameter, User,
     WorkflowEvent, and_, custom_skill_agent, custom_skill_public, date,
-    func, or_, public_skill_catalog, secrets, select,
+    func, or_, secrets, select,
     text, timedelta, user_role_ids,
 )
 from app.models_shared import (
@@ -1739,19 +1739,23 @@ async def _agent_skill_catalog_for_identity(identity: dict, db: AsyncSession) ->
     )
     _, custom_records = await _user_agent_skill_store(identity["username"], db)
     from app.global_agent_skills import global_skill_store
+    from app.system_agent_skills import active_system_skills
     _, shared = await global_skill_store(db)
-    return [*[{**item, "scope": "system"} for item in public_skill_catalog()],
+    return [*(await active_system_skills(db)),
             *[custom_skill_public(item) for item in shared if item.get("enabled", True)],
             *[custom_skill_public(item) for item in custom_records]]
 
 
-async def _agent_skill_for_identity(skill_id: str, identity: dict, db: AsyncSession):
+async def _agent_skill_for_identity(skill_id: str | None, identity: dict, db: AsyncSession):
     from app.core.documents import (
         _user_agent_skill_store,
     )
-    normalized = str(skill_id or GENERAL_SKILL.id).strip()
+    normalized = str(skill_id or "").strip()
+    if not normalized:
+        return None
     if normalized in SKILLS_BY_ID:
-        skill = SKILLS_BY_ID[normalized]
+        from app.system_agent_skills import require_active_system_skill
+        skill = await require_active_system_skill(normalized, db)
         if not skill.available:
             raise HTTPException(status_code=409, detail=skill.unavailable_reason or "该技能暂不可用")
         return skill
@@ -1773,6 +1777,16 @@ async def _agent_skill_for_identity(skill_id: str, identity: dict, db: AsyncSess
     if not skill.available:
         raise HTTPException(status_code=409, detail="该技能已停用")
     return skill
+
+
+async def _agent_message_skill_for_identity(skill_id, message, identity, db):
+    from app.agent_skills import split_skill_message
+    marker_id, clean_message = split_skill_message(message)
+    if marker_id:
+        await _agent_skill_for_identity(marker_id, identity, db)
+        if skill_id and skill_id != marker_id:
+            raise HTTPException(422, "消息技能标识与选择不一致")
+    return await _agent_skill_for_identity(skill_id or marker_id, identity, db), clean_message
 
 
 def _require_case_agent_action_access(action_type: str, capabilities: dict) -> None:

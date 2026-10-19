@@ -149,6 +149,7 @@ class GlobalSkillTest(unittest.IsolatedAsyncioTestCase):
         from app.core.permissions import _agent_skill_catalog_for_identity, _agent_skill_for_identity
         shared, personal = record(), normalize_custom_skill(PAYLOAD)
         with patch("app.global_agent_skills.global_skill_store", AsyncMock(return_value=(None, [shared]))), \
+                patch("app.system_agent_skills.active_system_skills", AsyncMock(return_value=[])), \
                 patch("app.core.documents._user_agent_skill_store", AsyncMock(return_value=(None, [personal]))):
             catalog = await _agent_skill_catalog_for_identity(USER, object())
             self.assertIn(GLOBAL_ID, {item["id"] for item in catalog})

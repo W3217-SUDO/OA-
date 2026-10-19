@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { message } from "antd";
 import { api } from "../api";
+import { subscribeAgentSkillCatalog } from "../agentSkillCatalog";
 import { aiExcelDocumentName, aiWordDocumentName, isAiSpreadsheetGenerationRequest, isAiWordGenerationRequest, isUsableAiDocumentContent } from "../legal/constants";
 import { confirmCaseAgentDocument } from "../legal/services/agentDocumentConfirmation";
 import { confirmPersonalAiDocument } from "./personalAiDocumentConfirmation";
@@ -41,7 +42,7 @@ export function usePersonalWorkspace() {
   const id = state.conversation_id || "";
   const draftKey = conversationDraftKey(id, conversations.workspace);
   const mcpConnection = usePersonalMcpConnection(draftKey);
-  const draft = drafts.items[draftKey] || EMPTY_DRAFT;
+  const draft = drafts.items[draftKey] || drafts.empty.current;
   const { input, skillId, responseMode, materials, caseMaterials, selectedCase, savedDocuments, savedSpreadsheets, decisionResult, decisionFailures } = draft;
   const sending = !!runtime.activities[id];
   const stopping = !!runtime.activities[id]?.stopping;
@@ -70,6 +71,9 @@ export function usePersonalWorkspace() {
     setSkills(data.items);
     drafts.refreshSkills(data.items);
   };
+  const refreshSkillsRef = useRef(refreshSkills);
+  refreshSkillsRef.current = refreshSkills;
+  useEffect(() => subscribeAgentSkillCatalog(() => refreshSkillsRef.current()), []);
   const load = async () => {
     if (runtime.anyRunning()) { message.warning("请先停止正在运行的对话再刷新"); return; }
     setLoading(true); setLoadError("");
@@ -167,7 +171,7 @@ export function usePersonalWorkspace() {
     const view = conversations.capture();
     const targetId = target?.conversation_id || id;
     const targetKey = conversationDraftKey(targetId, view.workspace);
-    const targetDraft = draftsRef.current[targetKey] || EMPTY_DRAFT;
+    const targetDraft = draftsRef.current[targetKey] || drafts.empty.current;
     const { skillId, responseMode, materials, caseMaterials, selectedCase } = targetDraft;
     const content = (override ?? targetDraft.input).trim();
     // 先截出个人连接与凭据，禁止创建普通消息、会话或进入模型生成链。
@@ -182,7 +186,7 @@ export function usePersonalWorkspace() {
       return;
     }
     const skill = skills.find((item) => item.id === skillId && item.available);
-    if (!skill) { message.error("所选技能已停用或不存在，请重新选择"); return; }
+    if (skillId && !skill) { message.error("所选技能已停用或不存在，请清空技能或重新选择"); return; }
     // 只锁住启动阶段；模型生成期间允许其他对话独立发送。
     sendStarts.current.add(targetKey);
     let written = targetKey;
@@ -198,9 +202,9 @@ export function usePersonalWorkspace() {
         drafts.move(targetKey, written);
       }
       const referencedCase = view.workspace && !caseMaterials.length ? null : selectedCase;
-      const metadata = { skill_name: skill.name, case_id: referencedCase?.id, case_no: referencedCase?.serial_no };
+      const metadata = { skill_name: skill?.name, case_id: referencedCase?.id, case_no: referencedCase?.serial_no };
       const generation = runtime.generate(conversation, { content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: referencedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast", ...(view.workspace ? { workspace: view.workspace } : {}) }, { role: "user", content, ...metadata, attachments: [...materials, ...caseMaterials] }, metadata);
-      beforeSend = draftsRef.current[written] || EMPTY_DRAFT;
+      beforeSend = draftsRef.current[written] || drafts.empty.current;
       // 只消费本轮快照，停止等待期间的新输入和新材料留给下一轮。
       if (override === undefined) updateDraft(written, "input", (current) => current === targetDraft.input ? "" : current);
       updateDraft(written, "materials", (current) => current.filter((item) => !materials.some((sent) => sent.id === item.id)));

@@ -3,6 +3,7 @@ import { Button, Drawer, Select, Tooltip } from "antd";
 import { AppstoreAddOutlined, FolderOpenOutlined, PaperClipOutlined, PlusOutlined } from "@ant-design/icons";
 import type { WorkspaceCase, WorkspaceSkill } from "./types";
 import { skillChoiceLabel } from "./skillScope";
+import { NO_AGENT_SKILL_OPTION } from "../agentSkillRouting";
 
 type Props = {
   skills: WorkspaceSkill[];
@@ -34,7 +35,7 @@ export function MobileComposerOptions({ skills, skillId, busy, uploading, canUse
       <div className="workspace-mobile-composer-sheet">
         <label className="workspace-mobile-skill-field">
           <span>办公技能</span>
-          <Select aria-label="选择办公技能" value={skillId} disabled={busy} onChange={onSkill} popupMatchSelectWidth options={skills.map((item) => ({ value: item.id, label: skillChoiceLabel(item), disabled: !item.available, title: item.description }))} />
+          <Select aria-label="选择办公技能" value={skillId} disabled={busy} allowClear onChange={value => onSkill(value ?? "")} popupMatchSelectWidth options={[NO_AGENT_SKILL_OPTION, ...skills.map((item) => ({ value: item.id, label: skillChoiceLabel(item), disabled: !item.available, title: item.description }))]} />
         </label>
         {canUseCases && <Button icon={<FolderOpenOutlined />} disabled={busy} title={selectedCase?.title} onClick={() => { setOpen(false); onCase(); }}>{selectedCase ? `关联案件 · ${selectedCase.serial_no}` : "关联案件"}</Button>}
         {selectedCase && <Button icon={<FolderOpenOutlined />} disabled={busy} onClick={() => { setOpen(false); onMaterials(); }}>选择案件材料</Button>}

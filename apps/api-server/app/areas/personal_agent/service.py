@@ -18,7 +18,7 @@ from app.api_schemas.tasks import TaskInput
 from app.config import settings
 from app.core.constants import UPLOAD_ROOT
 from app.core.dashboard_todos import dashboard_todos
-from app.core.permissions import _agent_skill_for_identity, _record_scope_conditions, _require_record_module_menu, _user_permission_payload
+from app.core.permissions import _agent_message_skill_for_identity, _agent_skill_for_identity, _record_scope_conditions, _require_record_module_menu, _user_permission_payload
 from app.core.system import _record_module_menu_allowed
 from app.core.tasks import _task_dict
 from app.core.request_metrics import measure_phase
@@ -411,8 +411,9 @@ def _action_from_model(action: dict[str, Any], identity: dict[str, Any], context
     return {"id": str(uuid4()), "type": action_type, "payload": safe_payload, "summary": summary, "status": "pending", "requested_by": identity["username"], "created_at": _now()}
 
 
-async def generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, conversation_id: str | None = None, skill_id: str = "general-office", attachment_ids: list[int] | None = None, case_id: int | None = None, document_ids: list[int] | None = None, response_mode: ResponseMode = "fast", on_progress: ProgressCallback | None = None, workspace: dict[str, Any] | None = None) -> dict[str, Any]:
+async def generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, conversation_id: str | None = None, skill_id: str | None = None, attachment_ids: list[int] | None = None, case_id: int | None = None, document_ids: list[int] | None = None, response_mode: ResponseMode = "fast", on_progress: ProgressCallback | None = None, workspace: dict[str, Any] | None = None) -> dict[str, Any]:
     reject_mcp_chat_credentials(text)
+    await _agent_message_skill_for_identity(skill_id, text, identity, db)
     async with conversations.conversation_operation(_user_dir(identity["username"]), conversation_id, cancellable=True, workspace=workspace) as state:
         identity = await personal_identity(identity, db)
         await require_state_access(state, identity, db, workspace)
@@ -447,15 +448,15 @@ async def stop_response(identity: dict[str, Any], conversation_id: str, *, db: A
     return {"state": await project_personal_actions(state, identity, db)}
 
 
-async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, state: dict[str, Any], skill_id: str, attachment_ids: list[int] | None, case_id: int | None, document_ids: list[int] | None, response_mode: ResponseMode, on_progress: ProgressCallback | None) -> dict[str, Any]:
+async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, state: dict[str, Any], skill_id: str | None, attachment_ids: list[int] | None, case_id: int | None, document_ids: list[int] | None, response_mode: ResponseMode, on_progress: ProgressCallback | None) -> dict[str, Any]:
     reject_mcp_chat_credentials(text)
     username = identity["username"]
-    skill = await _agent_skill_for_identity(skill_id, identity, db)
+    skill, text = await _agent_message_skill_for_identity(skill_id, text, identity, db)
     if on_progress:
         await on_progress("正在读取本轮材料…" if attachment_ids or document_ids or case_id else "正在准备问题…")
     with measure_phase("personal_agent.materials"):
         materials = await prepare_materials(identity, db, attachment_ids or [], case_id, document_ids or [])
-    metadata = {"skill_id": skill.id, "skill_name": skill.name, "case_id": case_id, "case_no": (materials["case"] or {}).get("case", {}).get("serial_no", ""), "attachments": [{"id": item["id"], "name": item["name"], "case_id": case_id if item["id"] in (document_ids or []) else None} for item in materials["readings"]]}
+    metadata = {"skill_id": skill.id if skill else "", "skill_name": skill.name if skill else "", "case_id": case_id, "case_no": (materials["case"] or {}).get("case", {}).get("serial_no", ""), "attachments": [{"id": item["id"], "name": item["name"], "case_id": case_id if item["id"] in (document_ids or []) else None} for item in materials["readings"]]}
     user_message = {"role": "user", "content": text, "created_at": _now(), **metadata}
     state["messages"].append(user_message)
     state["updated_at"] = _now()
@@ -486,6 +487,8 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
         state["memory_summary_metadata"] = memory_metadata
     await _save_state(username, state)
     tools = PersonalMcpToolSession(identity, db, conversation_id=state["conversation_id"])
+    if skill:
+        skill = await _agent_skill_for_identity(skill.id, identity, db)
     raw = await request_model(_prompt_messages(identity, state, context, text, skill, materials, memory["recalled"], memory.get("created")), on_delta, tools=tools, response_mode=response_mode, on_progress=on_progress, model_tools=tools.model_tools)
     response, model_action = _extract_action(raw)
     state["structured_results"] = tools.structured_results
@@ -511,7 +514,7 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
     from app.core.ai_spreadsheet import has_markdown_table
     personal_capability = await personal_save_capability(identity, db)
     personal_save = personal_capability["can_save"]
-    state["messages"].append({"role": "assistant", "content": response, "created_at": _now(), "skill_name": skill.name, "case_id": case_id, "case_no": metadata["case_no"],
+    state["messages"].append({"role": "assistant", "content": response, "created_at": _now(), "skill_name": skill.name if skill else "", "case_id": case_id, "case_no": metadata["case_no"],
                               "can_save_document": personal_save or materials["can_save_document"],
                               "can_save_personal_document": personal_save, "can_save_case_document": materials["can_save_document"],
                               "can_save_spreadsheet": personal_save and has_markdown_table(response),

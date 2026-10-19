@@ -7,6 +7,7 @@ import { SkillManager } from "./SkillManager";
 import { skillChoiceLabel } from "./skillScope";
 import { errorText, type Material, type ResponseMode } from "./types";
 import { MATERIAL_ACCEPT, type usePersonalWorkspace } from "./usePersonalWorkspace";
+import { NO_AGENT_SKILL_OPTION } from "../agentSkillRouting";
 import "./assistant-workspace-tools.css";
 
 export type AssistantWorkspaceToolsHandle = { importSkills: () => void };
@@ -50,8 +51,9 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
         aria-label="选择技能"
         value={workspace.skillId}
         disabled={busy}
-        onChange={workspace.setSkillId}
-        options={workspace.skills.map((skill) => ({ value: skill.id, label: skillChoiceLabel(skill), disabled: !skill.available }))}
+        allowClear
+        onChange={value => workspace.setSkillId(value ?? "")}
+        options={[NO_AGENT_SKILL_OPTION, ...workspace.skills.map((skill) => ({ value: skill.id, label: skillChoiceLabel(skill), disabled: !skill.available }))]}
       />
       {workspace.status?.supports_response_modes && <Segmented
         aria-label="回答模式"

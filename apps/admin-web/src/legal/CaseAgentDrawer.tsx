@@ -12,6 +12,7 @@ import { Alert,Button,Drawer,Image,Input,message,Modal,Select,Space,Tag,Tree } f
 import { useEffect, useState } from "react";
 import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
 import { AgentToolResult } from "../AgentToolResult";
+import { NO_AGENT_SKILL_OPTION } from "../agentSkillRouting";
 import type { ClipboardEvent,Key,PointerEvent as ReactPointerEvent } from "react";
 import {
 AGENT_DOCUMENT_LIMIT,
@@ -158,8 +159,9 @@ export const CaseAgentDrawer = ({
           <span>办公技能</span>
           <Select
             value={agentSkillId}
-            onChange={setAgentSkillId}
-            options={(agentStatus?.skills || []).map((item) => ({ value: item.id, label: `${item.name}${item.available ? "" : "（待配置）"}`, disabled: !item.available }))}
+            allowClear
+            onChange={value => setAgentSkillId(value ?? "")}
+            options={[NO_AGENT_SKILL_OPTION, ...(agentStatus?.skills || []).map((item) => ({ value: item.id, label: `${item.name}${item.available ? "" : "（待配置）"}`, disabled: !item.available }))]}
           />
           <small>{(agentStatus?.skills || []).find((item) => item.id === agentSkillId)?.description || "选择本轮对话使用的办公技能"}</small>
         </div>

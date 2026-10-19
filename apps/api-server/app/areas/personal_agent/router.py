@@ -33,7 +33,7 @@ router.include_router(ai_space_router)
 class PersonalMessageInput(BaseModel):
     conversation_id: str | None = Field(default=None, max_length=64)
     content: str = Field(min_length=1, max_length=8000)
-    skill_id: str = Field(default="general-office", max_length=120)
+    skill_id: str | None = Field(default=None, max_length=120)
     attachment_ids: list[int] = Field(default_factory=list, max_length=12)
     case_id: int | None = Field(default=None, ge=1)
     document_ids: list[int] = Field(default_factory=list, max_length=12)

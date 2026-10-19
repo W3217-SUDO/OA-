@@ -6,7 +6,8 @@ import { AgentMessageContent } from "./AgentMessageContent";
 import { AgentOperationPreview, agentOperationError, hasAgentOperationPreview, type AgentActionPreview } from "./AgentOperationPreview";
 import { AgentToolRequests } from "./AgentToolRequests";
 import { AgentToolResult } from "./AgentToolResult";
-import { DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, type AgentSkill } from "./agentSkillRouting";
+import { availableAgentSkillId, DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, NO_AGENT_SKILL_OPTION, type AgentSkill } from "./agentSkillRouting";
+import { subscribeAgentSkillCatalog } from "./agentSkillCatalog";
 import { AGENT_DOCUMENT_LIMIT, buildAgentDocumentTree } from "./legal/constants";
 import type { CaseAgentDocument } from "./legal/types";
 import { skillChoiceLabel } from "./personal-agent/skillScope";
@@ -102,7 +103,7 @@ export default function AgentCenterPage({ onOpenPersonalAgent, onOpenCaseAgentFo
       setListLoading(false);
     }
   };
-  const loadAgent = async (record: CaseOption) => {
+  const loadAgent = async (record: CaseOption, preferredSkillId?: string) => {
     const generation = ++loadGenerationRef.current;
     const isCurrent = () => generation === loadGenerationRef.current && selectedIdRef.current === record.id;
     setAgentLoading(true);
@@ -123,9 +124,8 @@ export default function AgentCenterPage({ onOpenPersonalAgent, onOpenCaseAgentFo
       const availableIds = new Set(availableDocuments.map((item) => item.id));
       setDocuments(availableDocuments);
       setDocumentIds((current) => current.filter((id) => availableIds.has(id)).slice(0, AGENT_DOCUMENT_LIMIT));
-      const activeSkill = String(stateRes.data?.active_skill || DEFAULT_AGENT_SKILL);
-      const activeAvailable = (statusRes.data?.skills || []).some((item: AgentSkill) => item.id === activeSkill && item.available);
-      setSkillId(activeAvailable ? activeSkill : DEFAULT_AGENT_SKILL);
+      const activeSkill = preferredSkillId ?? (stateRes.data?.messages?.length ? String(stateRes.data?.active_skill ?? DEFAULT_AGENT_SKILL) : DEFAULT_AGENT_SKILL);
+      setSkillId(availableAgentSkillId(activeSkill, statusRes.data?.skills || []));
     } catch (error: any) {
       if (!isCurrent()) return;
       setStatus(null);
@@ -337,8 +337,9 @@ export default function AgentCenterPage({ onOpenPersonalAgent, onOpenCaseAgentFo
     const items = (data.items || []) as CustomAgentSkill[];
     setCatalogSkills(items);
     setStatus((current) => current ? { ...current, skills: items } : current);
-    if (!items.some((item) => item.id === skillId && item.available)) setSkillId(DEFAULT_AGENT_SKILL);
+    setSkillId(current => availableAgentSkillId(current, items));
   };
+  useEffect(() => subscribeAgentSkillCatalog(refreshSkillCatalog), []);
   const openSkillManager = async () => {
     setSkillManagerOpen(true);
     try { await refreshSkillCatalog(); } catch (error: any) { message.error(error?.response?.data?.detail || "技能库加载失败"); }
@@ -392,7 +393,7 @@ export default function AgentCenterPage({ onOpenPersonalAgent, onOpenCaseAgentFo
                 <span>{PHASE_SHORT_NAMES[phase.code] || phase.name}</span>
               </div>)}
             </div> : <div className="agent-phase-strip-placeholder" />}
-            <Space wrap><Button size="small" icon={<ReloadOutlined />} loading={agentLoading} disabled={sending} onClick={() => void loadAgent(selected)}>刷新会话</Button><Tag color={status?.ready ? "success" : "warning"}>{status?.ready ? "服务已连接" : "服务未就绪"}</Tag><Tag>{status?.model || "模型未配置"}</Tag><Tag color="blue">已关联业务数据</Tag><Tag color="gold">人工审批</Tag></Space>
+            <Space wrap><Button size="small" icon={<ReloadOutlined />} loading={agentLoading} disabled={sending} onClick={() => void loadAgent(selected, skillId)}>刷新会话</Button><Tag color={status?.ready ? "success" : "warning"}>{status?.ready ? "服务已连接" : "服务未就绪"}</Tag><Tag>{status?.model || "模型未配置"}</Tag><Tag color="blue">已关联业务数据</Tag><Tag color="gold">人工审批</Tag></Space>
           </div>
           <Modal
             open={Boolean(activeAction)}
@@ -422,8 +423,9 @@ export default function AgentCenterPage({ onOpenPersonalAgent, onOpenCaseAgentFo
             <div className="agent-composer-skill">
               <Select
                 value={skillId}
-                onChange={setSkillId}
-                options={skills.map((skill) => ({ value: skill.id, label: skillChoiceLabel(skill), disabled: !skill.available }))}
+                onChange={value => setSkillId(value ?? "")}
+                allowClear
+                options={[NO_AGENT_SKILL_OPTION, ...skills.map((skill) => ({ value: skill.id, label: skillChoiceLabel(skill), disabled: !skill.available }))]}
                 popupMatchSelectWidth={false}
               />
               <Button type="text" icon={<AppstoreAddOutlined />} title="管理我的技能" onClick={() => void openSkillManager()} />

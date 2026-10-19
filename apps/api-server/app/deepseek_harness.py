@@ -12,7 +12,7 @@ from uuid import uuid4
 import httpx
 import websockets
 
-from .agent_skills import GENERAL_SKILL, AgentSkill
+from .agent_skills import AgentSkill
 from .case_agent import (
     CaseAgentRuntime,
     _MODEL_CHUNK_CALLBACK,
@@ -346,7 +346,7 @@ class DeepSeekHarnessCaseAgentRuntime(CaseAgentRuntime):
         self,
         snapshot: dict[str, Any],
         messages: list[dict[str, Any]],
-        skill: AgentSkill = GENERAL_SKILL,
+        skill: AgentSkill | None = None,
         request_images: list[dict[str, Any]] | None = None,
     ) -> tuple[str, dict[str, Any] | list[dict[str, Any]] | None]:
         from .agent_mcp.model_tools import MAX_TOOL_ROUNDS, ModelToolSession

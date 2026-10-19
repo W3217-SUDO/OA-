@@ -6,6 +6,9 @@ import Table from "./components/ResizableTable";
 import { SkillManager } from "./personal-agent/SkillManager";
 import { errorText, type WorkspaceSkill } from "./personal-agent/types";
 import { CapabilityMarket } from "./capability-market/CapabilityMarket";
+import { SystemSkillPanel } from "./SystemSkillPanel";
+import type { AgentSkill } from "./agentSkillRouting";
+import { refreshAgentSkillCatalogConsumers } from "./agentSkillCatalog";
 
 // 允许结构测试使用最小 antd mock，同时生产环境仍使用真实抽屉和确认弹窗。
 const Drawer = AntDrawer || ((props: any) => props.open ? <div>{props.children}</div> : null);
@@ -21,16 +24,6 @@ type Runtime = {
   write_requires_approval: boolean;
   error?: string;
 };
-type SystemSkill = {
-  id: string;
-  name: string;
-  category: string;
-  description: string;
-  source: string;
-  available: boolean;
-  unavailable_reason: string;
-  quick_prompts: string[];
-};
 type UserSkill = {
   id: string; name: string; category: string; description?: string; source?: string;
   instruction?: string; quick_prompts?: string[]; enabled: boolean;
@@ -42,25 +35,11 @@ type UserLibrary = {
 };
 type Overview = {
   runtime: Runtime;
-  system_skills: SystemSkill[];
+  system_skills: AgentSkill[];
   user_libraries: UserLibrary[];
   can_manage_global: boolean;
   can_view_user_libraries: boolean;
 };
-
-const skillColumns = [
-  { title: "名称", dataIndex: "name", width: 150 },
-  { title: "分类", dataIndex: "category", width: 90 },
-  { title: "说明", dataIndex: "description" },
-  { title: "来源", dataIndex: "source", width: 260, ellipsis: true },
-  {
-    title: "状态",
-    width: 200,
-    render: (_: unknown, item: SystemSkill) => item.available
-      ? <Tag color="success">可用</Tag>
-      : <Tag color="warning">{item.unavailable_reason || "不可用"}</Tag>,
-  },
-];
 
 const libraryColumns = (onView: (item: UserLibrary) => void) => [
   { title: "账号", dataIndex: "username", width: 160 },
@@ -133,6 +112,15 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
 
   useEffect(() => { void load(); }, [load]);
 
+  const refreshSystemSkills = useCallback(async () => {
+    const results = await Promise.allSettled([
+      api.get<Overview>("/agent-admin/overview").then(({ data }) => { setOverview(data); }),
+      refreshAgentSkillCatalogConsumers(),
+    ]);
+    const failure = results.find(result => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
+  }, []);
+
   const runtime = overview?.runtime;
   const canViewUserLibraries = isSystemAdmin && overview?.can_view_user_libraries === true;
   const openUserSkills = async (owner: UserLibrary) => {
@@ -158,7 +146,7 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
       {error && <Alert type="error" showIcon title="智能体设置加载未完成" description={error} action={<Button loading={loading} onClick={() => void load()}>重试</Button>} />}
       <div hidden={tab !== "global"}>
         <Card title="全局技能" loading={loading && !overview} extra={<Button loading={loading} icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>}>
-          <p>启用的全局技能可供全所账号选用；个人技能仍只属于原账号，不会迁移到全局。系统内置技能保持只读。</p>
+          <p>启用的全局技能可供全所账号选用；个人技能仍只属于原账号，不会迁移到全局。</p>
           {overview && canManage && <Button type="primary" disabled={loading} onClick={() => setSkillsOpen(true)}>管理全局技能 · 从市场安装</Button>}
           {!canManage && !loading && !error && <Alert type="info" title="当前账号仅可查看和选用已启用的全局技能，不能修改。" />}
           {!loading && !error && !globalSkills.length && <Empty description="尚未安装全局技能" />}
@@ -188,15 +176,7 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
         )}
       </Card>
       <Card title="系统技能">
-        <Table
-          rowKey="id"
-          size="small"
-          loading={loading}
-          columns={skillColumns}
-          dataSource={overview?.system_skills || []}
-          pagination={false}
-          scroll={{ x: 900 }}
-        />
+        <SystemSkillPanel items={overview?.system_skills || []} loading={loading} canManage={overview?.can_manage_global === true} onChanged={refreshSystemSkills} />
       </Card>
       <Card title="全局技能（可管理）" extra={canManage ? <Button type="link" onClick={() => setSkillsOpen(true)}>安装全局技能</Button> : <span>只读</span>}>
         <Table

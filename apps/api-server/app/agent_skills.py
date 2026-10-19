@@ -182,16 +182,22 @@ def public_skill_catalog() -> list[dict]:
 
 
 def encode_skill_message(skill_id: str, message: str) -> str:
-    normalized = skill_id if skill_id in SKILLS_BY_ID else GENERAL_SKILL.id
-    return f"{SKILL_MARKER_PREFIX}{normalized}]]\n{message.strip()}"
+    return f"{SKILL_MARKER_PREFIX}{skill_id}]]\n{message.strip()}" if skill_id else message.strip()
 
 
-def parse_skill_message(message: str) -> tuple[AgentSkill, str]:
+def split_skill_message(message: str) -> tuple[str, str]:
     content = str(message or "").strip()
     if content.startswith(SKILL_MARKER_PREFIX):
         marker_end = content.find("]]", len(SKILL_MARKER_PREFIX))
         if marker_end > 0:
             skill_id = content[len(SKILL_MARKER_PREFIX):marker_end].strip()
-            skill = SKILLS_BY_ID.get(skill_id, GENERAL_SKILL)
-            return skill, content[marker_end + 2:].lstrip()
-    return GENERAL_SKILL, content
+            return skill_id, content[marker_end + 2:].lstrip()
+    return "", content
+
+
+def parse_skill_message(message: str) -> tuple[AgentSkill | None, str]:
+    from fastapi import HTTPException
+    skill_id, content = split_skill_message(message)
+    if skill_id and skill_id not in SKILLS_BY_ID:
+        raise HTTPException(404, "系统技能不存在")
+    return SKILLS_BY_ID.get(skill_id), content
