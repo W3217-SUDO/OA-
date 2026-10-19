@@ -1,15 +1,13 @@
-"""个人自定义远程MCP的声明与安全投影，不依赖市场条目。"""
+"""自定义远程MCP的声明与安全投影，不依赖市场条目。"""
 from copy import deepcopy
 import json
 import re
 from urllib.parse import parse_qsl, urlsplit
 
 from fastapi import HTTPException
-from sqlalchemy import select
-from app.models import SystemConfig
 
 from .connector_format import public_configuration, validate_configuration
-from .connector_store import CONNECTOR_CONFIG_PREFIX, config_key, decrypt, public_state, stored
+from .connector_store import decrypt, public_state
 from .connector_transport import validate_endpoint
 
 SOURCE = 'personal-mcp'
@@ -56,7 +54,7 @@ def normalize_configuration(value):
         if not 1 <= len(name) <= 80 or not name.strip() or not name.isprintable():
             raise HTTPException(422, '服务名称须为1至80个可打印字符，不能包含控制字符或仅有空白')
         if set(server) - {'type', 'url', 'headers', 'authUrl'}:
-            raise HTTPException(422, '个人MCP仅接受远程服务类型、地址、请求头和授权页面，不支持本地命令或其他字段')
+            raise HTTPException(422, '自定义MCP仅接受远程服务类型、地址、请求头和授权页面，不支持本地命令或其他字段')
         if not isinstance(server.get('type'), str) or server['type'] not in {'streamableHttp', 'streamable-http', 'http', 'sse'}:
             raise HTTPException(422, '请选择远程MCP接入类型')
         try:
@@ -66,44 +64,6 @@ def normalize_configuration(value):
         except ValueError:
             raise HTTPException(422, '服务地址格式无效') from None
     return config
-
-
-def personal_record(record, identity):
-    value = record.value
-    return (record.key.startswith(CONNECTOR_CONFIG_PREFIX)
-            and value.get('schema_version') == 1 and value.get('scope') == 'personal'
-            and value.get('owner') == identity['username'] and value.get('source') == SOURCE
-            and isinstance(value.get('item_id'), str) and re.fullmatch(ID_PATTERN, value['item_id']))
-
-
-async def require_personal_record(identifier, identity, db, *, lock=False):
-    record = await stored(identifier, 'personal', identity, db, lock=lock)
-    if record is None or not personal_record(record, identity):
-        raise HTTPException(404, '个人MCP连接不存在')
-    if record.key != config_key(identifier, 'personal', identity):
-        raise HTTPException(409, '个人MCP连接归属不一致')
-    return record
-
-
-async def personal_records(identity, db):
-    records = (await db.scalars(select(SystemConfig).where(
-        SystemConfig.key.startswith(CONNECTOR_CONFIG_PREFIX),
-        SystemConfig.value['scope'].as_string() == 'personal',
-        SystemConfig.value['owner'].as_string() == identity['username'],
-        SystemConfig.value['source'].as_string() == SOURCE,
-    ))).all()
-    return [record for record in records if personal_record(record, identity)
-            and record.key == config_key(record.value['item_id'], 'personal', identity)]
-
-
-async def list_personal_connections(identity, db):
-    return [personal_state(record) for record in await personal_records(identity, db)]
-
-
-async def personal_connection_groups(identity, db):
-    return [{'id': record.value['item_id'], 'name': record.value['display_name'],
-             'revision': record.value['revision'], 'status': record.value['status']}
-            for record in await personal_records(identity, db)]
 
 
 def redact_verification(result, configuration):
@@ -151,5 +111,5 @@ def personal_state(record):
                                else 'upstream_unreachable')
     else:
         state['error_code'] = ''
-    return {**state, 'id': item['id'], 'name': item['name'], 'scope': 'personal',
+    return {**state, 'id': item['id'], 'name': item['name'], 'scope': record.value['scope'], 'can_manage': True,
             'capabilities': dict(CAPABILITIES), 'verification_kind': VERIFICATION_KIND}

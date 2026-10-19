@@ -178,7 +178,7 @@ class CapabilityMarketTest(unittest.IsolatedAsyncioTestCase):
 
 class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
     @contextmanager
-    def sdk_transport(self):
+    def sdk_transport(self, identity=None):
         import httpx2
         from app.agent_mcp.auth import AuthContext, _auth_context
         self.sdk_calls = []
@@ -211,7 +211,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             instance.inner = httpx2.MockTransport(handler)
             instance.failure = ''
 
-        identity = {'username': 'CODEX-MCP-OWNER', 'role': 'user', 'department': ''}
+        identity = identity or self.identities['CODEX-MCP-OWNER']
         context = AuthContext(self.app, 'CODEX-isolated-oa-bearer', {
             'type': 'http', 'method': 'POST', 'path': '/api/v1/personal-agent/messages',
             'headers': [(b'origin', b'http://localhost:5173'), (b'x-oa-agent-confirmation', b'frontend')],
@@ -237,8 +237,17 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
         self.app.include_router(personal_router)
         self.app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 
+        self.identities = {}
+        for name in ('CODEX-MCP-OWNER', 'CODEX-MCP-OTHER', 'CODEX-MCP-ADMIN', 'CODEX-MCP-PAGE-ADMIN', 'CODEX-MCP-DELEGATE'):
+            actual_role = 'admin' if name == 'CODEX-MCP-ADMIN' else 'user'
+            self.identities[name] = {'username': name, 'role': actual_role, 'department': '',
+                                     '_actual_role': actual_role, '_actual_role_ids': [actual_role],
+                                     'menu_keys': [], 'action_keys': [], '_user_action_keys': []}
+        self.identities['CODEX-MCP-PAGE-ADMIN'].update(role='admin', role_ids=['admin'], _page_menu_capability=True)
+        self.identities['CODEX-MCP-DELEGATE']['_user_action_keys'] = ['agent.settings.global.manage']
+
         async def identity(x_user: str = Header(default='CODEX-MCP-OWNER')):
-            return {'username': x_user, 'role': 'user', 'department': ''}
+            return dict(self.identities[x_user])
 
         async def database():
             async with self.sessions() as db:
@@ -263,6 +272,192 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(self.secret, response.text)
         return response.json()
 
+    async def create_for(self, username):
+        response = await self.client.post(self.base, headers={'X-User': username},
+                                          json={'name': 'CODEX连接-' + username, 'configuration': self.configuration})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertNotIn(self.secret, response.text)
+        return response.json()
+
+    async def test_scope_default_uses_actual_admin_not_page_role_or_delegated_management(self):
+        from app.areas.capability_market.connector_store import config_key
+        personal = await self.create()
+        async with self.sessions() as db:
+            original = deepcopy((await db.scalars(select(SystemConfig))).one().value)
+        for username, expected in [('CODEX-MCP-PAGE-ADMIN', 'personal'), ('CODEX-MCP-DELEGATE', 'personal'),
+                                    ('CODEX-MCP-ADMIN', 'global')]:
+            created = await self.create_for(username)
+            self.assertEqual(created['scope'], expected)
+            listing = (await self.client.get(self.base, headers={'X-User': username})).json()
+            self.assertEqual(listing['default_scope'], expected)
+            self.assertEqual(listing['can_manage_global'], username != 'CODEX-MCP-PAGE-ADMIN')
+        # 原个人连接不迁移；同一账号成为真实管理员后只影响新建默认值。
+        self.identities['CODEX-MCP-OWNER'].update(role='user', _actual_role='admin', _actual_role_ids=['admin'])
+        promoted = await self.create()
+        self.assertEqual(promoted['scope'], 'global')
+        async with self.sessions() as db:
+            row = await db.scalar(select(SystemConfig).where(SystemConfig.key == config_key(
+                personal['id'], 'personal', self.identities['CODEX-MCP-OWNER'])))
+            self.assertEqual(row.value, original)
+        own_legacy = await self.client.get(self.base + '/' + personal['id'])
+        self.assertEqual(own_legacy.json()['scope'], 'personal')
+        self.assertEqual(own_legacy.json()['revision'], personal['revision'])
+
+    async def test_no_settings_permissions_personal_crud_verify_and_global_config_denied(self):
+        from app.areas.capability_market.connector_store import owner_for
+        from fastapi import HTTPException
+        identity = self.identities['CODEX-MCP-OWNER']
+        self.assertEqual(identity['menu_keys'], [])
+        self.assertEqual(identity['action_keys'], [])
+        self.assertEqual(identity['_user_action_keys'], [])
+        shared = await self.create_for('CODEX-MCP-ADMIN')
+        shared_url = self.base + '/' + shared['id']
+        listing = (await self.client.get(self.base)).json()
+        self.assertEqual(listing['items'], [])
+        self.assertFalse(listing['can_manage_global'])
+        summary = listing['available_connections'][0]
+        self.assertEqual(set(summary), {'id', 'name', 'scope', 'revision', 'status', 'can_manage'})
+        self.assertEqual(summary['scope'], 'global')
+        self.assertFalse(summary['can_manage'])
+        self.assertNotIn(self.secret, json.dumps(listing))
+        with self.assertRaises(HTTPException):
+            owner_for('global', identity)
+        self.assertEqual((await self.client.get(shared_url, params={'scope': 'global'})).status_code, 403)
+        body = {'name': 'CODEX尝试管理全局', 'configuration': self.configuration, 'revision': shared['revision']}
+        self.assertEqual((await self.client.put(shared_url, params={'scope': 'global'}, json=body)).status_code, 403)
+        with patch('app.areas.capability_market.personal_mcp_routes.verify_configuration', new=AsyncMock()) as verify:
+            rejected = await self.client.post(shared_url + '/verify', params={'scope': 'global'}, json={'revision': shared['revision']})
+            self.assertEqual(rejected.status_code, 403)
+            verify.assert_not_awaited()
+        self.assertEqual((await self.client.delete(shared_url, params={'scope': 'global', 'revision': shared['revision']})).status_code, 403)
+        delegated = await self.client.get(shared_url, params={'scope': 'global'}, headers={'X-User': 'CODEX-MCP-DELEGATE'})
+        self.assertEqual(delegated.status_code, 200, delegated.text)
+        self.assertEqual(delegated.json()['scope'], 'global')
+        own = await self.create()
+        own_url = self.base + '/' + own['id']
+        self.assertEqual((await self.client.get(own_url)).status_code, 200)
+        updated = await self.client.put(own_url, json={**body, 'name': 'CODEX本人连接', 'revision': own['revision']})
+        self.assertEqual(updated.status_code, 200, updated.text)
+        with patch('app.areas.capability_market.personal_mcp_routes.verify_configuration', new=AsyncMock(return_value={
+            'status': 'verified', 'servers': [], 'error': ''})) as verify:
+            verified = await self.client.post(own_url + '/verify', json={'revision': updated.json()['revision']})
+            self.assertEqual(verified.status_code, 200, verified.text)
+            self.assertTrue(verified.json()['ok'])
+            verify.assert_awaited_once()
+        removed = await self.client.delete(own_url, params={'revision': updated.json()['revision']})
+        self.assertEqual(removed.status_code, 200, removed.text)
+        self.assertEqual((await self.client.get(own_url)).status_code, 404)
+
+    async def test_ordinary_user_global_discovery_and_confirmed_call_without_configuration_access(self):
+        from app.areas.personal_agent.mcp_tools import PersonalMcpToolSession
+        from app.areas.personal_agent.confirmation_history import prepare_personal_action
+        from app.areas.personal_agent.service import _decide_action
+        shared = await self.create_for('CODEX-MCP-ADMIN')
+        async with self.sessions() as db, AsyncExitStack() as stack:
+            identity, context = stack.enter_context(self.sdk_transport())
+            tools = PersonalMcpToolSession(identity, db, conversation_id='CODEX-GLOBAL-MCP')
+            with patch('app.areas.capability_market.personal_mcp.decrypt', side_effect=AssertionError('组摘要不得解密')):
+                groups = await tools.execute('personal_mcp_list_groups', {})
+            group = groups['groups'][0]
+            self.assertEqual(group['scope'], 'global')
+            self.assertEqual(group['connection_id'], shared['id'])
+            discovered = await tools.execute('personal_mcp_search_tools', {'group_id': group['group_id']})
+            self.assertIn('tools', discovered, discovered)
+            descriptor = discovered['tools'][0]
+            self.assertEqual(descriptor['scope'], 'global')
+            self.assertNotIn(self.secret, json.dumps(discovered))
+            self.assertNotIn('configuration', descriptor)
+            self.assertNotIn('headers', descriptor)
+            prepared = await tools.execute('personal_mcp_call_tool', {'tool_id': descriptor['tool_id'], 'arguments': {'query': 'CODEX'}})
+            self.assertEqual(prepared['result']['status'], 'pending')
+            self.assertFalse(any(call['method'] == 'tools/call' for call in self.sdk_calls))
+            action = {**tools.pending_actions[0], 'id': str(uuid4()), 'status': 'pending', 'requested_by': identity['username']}
+            self.assertEqual(action['payload']['scope'], 'global')
+            self.assertEqual(action['payload']['connection_id'], shared['id'])
+            self.assertEqual(action['payload']['revision'], shared['revision'])
+            conversation = {'conversation_id': 'CODEX-GLOBAL-MCP', 'conversation_title': 'CODEX全局调用',
+                            'messages': [], 'pending_actions': [action]}
+            await prepare_personal_action(action, identity, conversation, db)
+            await db.commit()
+            context.scope['path'] = '/api/v1/personal-agent/actions/' + action['id'] + '/decision'
+            with patch('app.areas.personal_agent.service._save_state', new=AsyncMock()):
+                outcome = await _decide_action(identity, db, action['id'], 'approved', '', conversation)
+            self.assertEqual(outcome['status'], 'approved')
+            self.assertEqual(len([call for call in self.sdk_calls if call['method'] == 'tools/call']), 1)
+            self.assertNotIn(self.secret, json.dumps(outcome, ensure_ascii=False))
+
+    async def test_global_confirmation_rejects_scope_target_revision_and_legacy_payload_changes(self):
+        from fastapi import HTTPException
+        from app.areas.personal_agent.mcp_tools import PersonalMcpToolSession
+        from app.areas.personal_agent.confirmation_history import prepare_personal_action, begin_personal_decision
+        from app.areas.capability_market.remote_tools import execute_call
+        shared = await self.create_for('CODEX-MCP-ADMIN')
+        own = await self.create()
+        async with self.sessions() as db, AsyncExitStack() as stack:
+            identity, context = stack.enter_context(self.sdk_transport())
+            tools = PersonalMcpToolSession(identity, db, conversation_id='CODEX-BOUND-MCP')
+            await tools.execute('personal_mcp_list_groups', {})
+            discovered = await tools.execute('personal_mcp_search_tools', {'group_id': 'global:' + shared['id']})
+            await tools.execute('personal_mcp_call_tool', {'tool_id': discovered['tools'][0]['tool_id'], 'arguments': {'query': 'CODEX'}})
+            action = {**tools.pending_actions[0], 'id': str(uuid4()), 'status': 'pending', 'requested_by': identity['username']}
+            conversation = {'conversation_id': 'CODEX-BOUND-MCP', 'conversation_title': 'CODEX范围绑定'}
+            await prepare_personal_action(action, identity, conversation, db)
+            await db.commit()
+            context.scope['path'] = '/api/v1/personal-agent/actions/' + action['id'] + '/decision'
+            await begin_personal_decision(action, 'approved', '', identity, conversation, db)
+            for changed in [dict(action['payload'], scope='personal'), dict(action['payload'], connection_id=own['id']),
+                            dict(action['payload'], revision='0' * 32)]:
+                with self.assertRaises(HTTPException):
+                    await execute_call(changed, identity, db, action_id=action['id'])
+            with self.assertRaises(HTTPException):
+                await execute_call(action['payload'], self.identities['CODEX-MCP-OTHER'], db, action_id=action['id'])
+            await db.rollback()
+            updated = await self.client.put(self.base + '/' + shared['id'], params={'scope': 'global'},
+                                            headers={'X-User': 'CODEX-MCP-ADMIN'}, json={
+                'name': shared['name'], 'configuration': self.configuration, 'revision': shared['revision']})
+            self.assertEqual(updated.status_code, 200, updated.text)
+            with self.assertRaises(HTTPException) as stale:
+                await execute_call(action['payload'], identity, db, action_id=action['id'])
+            self.assertEqual(stale.exception.status_code, 409)
+            self.assertFalse(any(call['method'] == 'tools/call' for call in self.sdk_calls))
+            await db.rollback()
+            legacy = {**action, 'id': str(uuid4()), 'payload': {key: value for key, value in action['payload'].items() if key != 'scope'}}
+            await prepare_personal_action(legacy, identity, conversation, db)
+            await db.commit()
+            await begin_personal_decision(legacy, 'approved', '', identity, conversation, db)
+            with self.assertRaises(HTTPException) as missing:
+                await execute_call(legacy['payload'], identity, db, action_id=legacy['id'])
+            self.assertEqual(missing.exception.status_code, 409)
+            self.assertIn('范围缺失', missing.exception.detail)
+            self.assertFalse(any(call['method'] == 'tools/call' for call in self.sdk_calls))
+
+    async def test_same_identifier_in_personal_and_global_has_distinct_runtime_targets(self):
+        from app.areas.capability_market.connector_store import save_configuration
+        from app.areas.capability_market.personal_mcp import item_for
+        from app.areas.personal_agent.mcp_tools import PersonalMcpToolSession
+        shared = await self.create_for('CODEX-MCP-ADMIN')
+        hidden = await self.create_for('CODEX-MCP-OTHER')
+        async with self.sessions() as db, AsyncExitStack() as stack:
+            identity, context = stack.enter_context(self.sdk_transport())
+            await save_configuration(item_for(shared['id'], 'CODEX同编号个人连接'), 'personal', identity, db,
+                                     self.configuration, [], '')
+            tools = PersonalMcpToolSession(identity, db, conversation_id='CODEX-SCOPED-MCP')
+            groups = await tools.execute('personal_mcp_list_groups', {})
+            self.assertEqual({item['group_id'] for item in groups['groups']},
+                             {'personal:' + shared['id'], 'global:' + shared['id']})
+            self.assertNotIn(hidden['id'], json.dumps(groups))
+            tool_ids = []
+            for scope in ('personal', 'global'):
+                discovered = await tools.execute('personal_mcp_search_tools', {'group_id': scope + ':' + shared['id']})
+                descriptor = discovered['tools'][0]
+                self.assertEqual(descriptor['scope'], scope)
+                self.assertEqual(descriptor['connection_id'], shared['id'])
+                tool_ids.append(descriptor['tool_id'])
+                await tools.execute('personal_mcp_call_tool', {'tool_id': descriptor['tool_id'], 'arguments': {'query': 'CODEX'}})
+            self.assertNotEqual(*tool_ids)
+            self.assertEqual([action['payload']['scope'] for action in tools.pending_actions], ['personal', 'global'])
+            self.assertFalse(any(call['method'] == 'tools/call' for call in self.sdk_calls))
+
     async def test_lifecycle_encryption_owner_revision_preservation_and_cleanup(self):
         state = await self.create()
         url = self.base + '/' + state['id']
@@ -275,7 +470,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(decrypt(row), self.configuration)
         other = {'X-User': 'CODEX-MCP-OTHER'}
         self.assertEqual((await self.client.get(url, headers=other)).status_code, 404)
-        self.assertEqual((await self.client.get(self.base, headers=other)).json(), {'items': []})
+        self.assertEqual((await self.client.get(self.base, headers=other)).json()['items'], [])
         self.assertEqual((await self.client.get(self.base)).json()['items'][0]['id'], state['id'])
         body = {'name': state['name'], 'configuration': state['configuration'], 'revision': state['revision'],
                 'keep_credentials': [['mcp.json', 'mcpServers', 'default', 'headers', 'Authorization']]}
@@ -292,7 +487,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             row = (await db.scalars(select(SystemConfig))).one()
             self.assertEqual(decrypt(row), self.configuration)
         deleted = await self.client.delete(url, params={'revision': updated.json()['revision']})
-        self.assertEqual(deleted.json(), {'id': state['id'], 'deleted': True})
+        self.assertEqual(deleted.json(), {'id': state['id'], 'scope': 'personal', 'deleted': True})
         self.assertEqual((await self.client.get(url)).status_code, 404)
         async with self.sessions() as db:
             self.assertEqual((await db.scalars(select(SystemConfig))).all(), [])
@@ -377,7 +572,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             with patch('app.areas.capability_market.personal_mcp.decrypt', side_effect=AssertionError('组发现不得解密配置')):
                 groups = await tools.execute('personal_mcp_list_groups', {})
             self.assertEqual(groups['groups'][0]['name'], state['name'])
-            discovered = await tools.execute('personal_mcp_search_tools', {'group_id': state['id']})
+            discovered = await tools.execute('personal_mcp_search_tools', {'group_id': state['scope'] + ':' + state['id']})
             self.assertIn('tools', discovered, discovered)
             tool = discovered['tools'][0]
             prepared = await tools.execute('personal_mcp_call_tool', {'tool_id': tool['tool_id'], 'arguments': {'query': 'CODEX'}})
@@ -427,7 +622,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             identity, context = stack.enter_context(self.sdk_transport())
             tools = PersonalMcpToolSession(identity, db, conversation_id='CODEX-MCP-CONVERSATION')
             await tools.execute('personal_mcp_list_groups', {})
-            found = await tools.execute('personal_mcp_search_tools', {'group_id': state['id']})
+            found = await tools.execute('personal_mcp_search_tools', {'group_id': state['scope'] + ':' + state['id']})
             descriptor = found['tools'][0]
             bad = await tools.execute('personal_mcp_call_tool', {'tool_id': descriptor['tool_id'], 'arguments': {'query': 5}})
             self.assertTrue(bad['isError'])
@@ -454,7 +649,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             identity, context = stack.enter_context(self.sdk_transport())
             from app.areas.capability_market.remote_tools import current_configuration
             with self.assertRaises(HTTPException) as changed:
-                await current_configuration(state['id'], state['revision'], identity, db)
+                await current_configuration(state['id'], state['revision'], identity, db, scope='personal')
             self.assertEqual(changed.exception.status_code, 409)
 
     async def test_runtime_schema_secret_echo_logs_and_service_direct_credential_guard(self):
@@ -477,7 +672,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             tools = PersonalMcpToolSession(identity, db, conversation_id='CODEX-MCP-CONVERSATION')
             await tools.execute('personal_mcp_list_groups', {})
             self.sdk_schema['properties'][self.secret] = {'type': 'string'}
-            result = await tools.execute('personal_mcp_search_tools', {'group_id': state['id']})
+            result = await tools.execute('personal_mcp_search_tools', {'group_id': state['scope'] + ':' + state['id']})
             self.assertTrue(result['isError'])
             self.assertNotIn(self.secret, json.dumps(result))
             with patch('app.areas.personal_agent.service._user_dir') as directory:
@@ -567,7 +762,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
                 identity, context = stack.enter_context(self.sdk_transport())
                 tools = PersonalMcpToolSession(identity, db, conversation_id='CODEX-MCP-CONVERSATION')
                 await tools.execute('personal_mcp_list_groups', {})
-                found = await tools.execute('personal_mcp_search_tools', {'group_id': state['id']})
+                found = await tools.execute('personal_mcp_search_tools', {'group_id': state['scope'] + ':' + state['id']})
                 await tools.execute('personal_mcp_call_tool', {'tool_id': found['tools'][0]['tool_id'], 'arguments': {'query': 'CODEX'}})
                 action = {**tools.pending_actions[0], 'id': str(uuid4()), 'status': 'pending', 'requested_by': identity['username']}
                 conversation = {'conversation_id': 'CODEX-MCP-CONVERSATION', 'conversation_title': 'CODEX确认',

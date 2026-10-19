@@ -14,6 +14,10 @@
 .assistant .personal-mcp-result{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:0;overflow-wrap:anywhere}
 .assistant .personal-mcp-result>strong{font-size:14px}
 .assistant .personal-mcp-result .ant-tag{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.assistant .personal-mcp-scope{display:flex;align-items:flex-start;flex-wrap:wrap;gap:4px 8px;min-width:0;font-size:13px}
+.assistant .personal-mcp-scope>span:last-child{flex:1;min-width:140px;overflow-wrap:anywhere}
+.assistant .personal-mcp-scope .ant-tag,.assistant .personal-mcp-item-title .ant-tag{flex:none;margin:0;white-space:normal;overflow-wrap:anywhere}
+.assistant .personal-mcp-item-title{display:flex;align-items:flex-start;flex-wrap:wrap;gap:4px 8px;min-width:0;overflow-wrap:anywhere}
 .assistant .personal-mcp-list-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid #e5e9ed;padding-top:8px;font-size:13px}
 .assistant .personal-mcp-list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
 .assistant .personal-mcp-list>li{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;font-size:13px}

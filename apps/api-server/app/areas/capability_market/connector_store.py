@@ -30,6 +30,10 @@ def owner_for(scope, identity):
 
 def config_key(item_id, scope, identity):
     owner = owner_for(scope, identity)
+    return connector_config_key(item_id, scope, owner)
+
+
+def connector_config_key(item_id, scope, owner):
     digest = hashlib.sha256(json.dumps([scope, owner, item_id], separators=(',', ':')).encode()).hexdigest()[:40]
     return CONNECTOR_CONFIG_PREFIX + digest
 

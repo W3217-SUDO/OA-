@@ -1106,6 +1106,99 @@ test("confirmation controls retain mobile wrapping, touch size and bounded scrol
   }
 });
 
+test("chat MCP uses server scope defaults and preserves personal edits without settings permissions", async () => {
+  const base = "/capability-market/personal-mcp";
+  const requests = [];
+  let defaultScope = "global", managementAllowed = true, hook;
+  const metadata = (value, canManage = true) => ({ id: "CODEX-SCOPED", name: "CODEX连接", scope: value, revision: `revision-${value}`, status: "configured", can_manage: canManage });
+  const state = value => ({ ...metadata(value, managementAllowed), servers: [], capabilities: { discovery: true, tool_call: true }, configuration: { "mcp.json": { mcpServers: { default: { url: "https://example.com/mcp", type: "streamableHttp", headers: { Authorization: "" } } } } }, secret_fields: [{ configured: true, path: ["mcp.json", "mcpServers", "default", "headers", "Authorization"], template: "" }] });
+  const { usePersonalMcpConnection } = loadModule("../personal-agent/usePersonalMcpConnection.ts", {
+    "../api": { api: {
+      get: async (path, options) => {
+        requests.push({ method: "GET", path, params: options?.params });
+        return { data: path === base ? { items: [state("personal")], available_connections: [metadata("personal"), metadata("global", defaultScope === "global")], default_scope: defaultScope, can_manage_global: defaultScope === "global" } : state(options.params.scope) };
+      },
+      post: async (path, body, options) => {
+        requests.push({ method: "POST", path, body, params: options?.params });
+        return { data: path === base ? state(defaultScope) : { ok: true, configuration: { ...state(options.params.scope), status: "verified" } } };
+      },
+      put: async (path, body, options) => { requests.push({ method: "PUT", path, body, params: options.params }); return { data: state(options.params.scope) }; },
+      delete: async (path, options) => { requests.push({ method: "DELETE", path, params: options.params }); return { data: { id: "CODEX-SCOPED", scope: options.params.scope, deleted: true } }; },
+    } },
+  }, { URL, URLSearchParams, structuredClone });
+  function Probe() { hook = usePersonalMcpConnection("CODEX-CONVERSATION"); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Probe)); });
+  await act(async () => hook.show());
+  assert.equal(hook.scope, "global");
+  assert.equal(hook.items.length, 2);
+  assert.equal(Object.hasOwn(hook.items[0], "configuration"), false);
+  const fill = () => hook.update({ ...hook.draft, name: "CODEX新连接", server_url: "https://example.com/mcp" });
+  await act(async () => fill());
+  await act(async () => hook.saveAndConnect());
+  assert.equal(hook.connection.scope, "global");
+  assert.equal(Object.hasOwn(requests.find(item => item.method === "POST" && item.path === base).body, "scope"), false);
+  await act(async () => hook.edit(hook.items.find(item => item.scope === "personal")));
+  assert.equal(hook.scope, "personal", "管理员编辑旧个人连接仍保留个人范围");
+  await act(async () => hook.saveAndConnect());
+  const put = requests.find(item => item.method === "PUT");
+  assert.equal(put.params.scope, "personal");
+  assert.equal(Object.hasOwn(put.body, "scope"), false);
+  assert.deepEqual(JSON.parse(JSON.stringify(put.body.keep_credentials)), [["mcp.json", "mcpServers", "default", "headers", "Authorization"]]);
+  assert.equal(put.body.configuration["mcp.json"].mcpServers.default.headers.Authorization, "");
+  assert.equal(requests.filter(item => item.path?.endsWith("/verify")).at(-1).params.scope, "personal");
+  await act(async () => hook.remove(hook.items.find(item => item.scope === "personal")));
+  assert.equal(hook.items.length, 1, "相同ID的其他scope不受删除影响");
+  const removed = requests.find(item => item.method === "DELETE");
+  assert.equal(removed.params.scope, "personal");
+  assert.equal(removed.params.revision, "revision-personal");
+  defaultScope = "personal";
+  await act(async () => hook.close());
+  await act(async () => hook.show());
+  assert.equal(hook.scope, "personal");
+  const readOnlyGlobal = hook.items.find(item => item.scope === "global");
+  const before = requests.length;
+  await act(async () => { await hook.edit(readOnlyGlobal); await hook.remove(readOnlyGlobal); await hook.retryTest(readOnlyGlobal); });
+  assert.equal(requests.length, before, "普通用户不读取全局配置或发起管理请求");
+  await act(async () => fill());
+  await act(async () => hook.saveAndConnect());
+  assert.equal(hook.connection.scope, "personal", "无设置菜单权限的普通用户仍能创建个人连接");
+  await act(async () => hook.edit(hook.items.find(item => item.scope === "personal")));
+  await act(async () => hook.saveAndConnect());
+  assert.equal(hook.connection.scope, "personal");
+  await act(async () => hook.remove(hook.items.find(item => item.scope === "personal")));
+  assert.equal(hook.items.every(item => item.scope === "global"), true);
+  managementAllowed = false;
+  await act(async () => hook.refresh());
+  await act(async () => hook.edit(hook.items.find(item => item.scope === "personal")));
+  assert.equal(hook.editing, false, "管理响应明确拒绝时不能由前端合成授权");
+  assert.equal(hook.draft.server_url, "", "无管理权的响应不能填入配置表单");
+  assert.ok(hook.error);
+  assert.equal(requests.some(item => item.path.includes("/auth/me") || item.path.includes("settings")), false);
+  await act(async () => renderer.unmount());
+});
+
+test("chat MCP scope labels and global management controls use per-connection permissions", async () => {
+  const component = name => ({ children, ...props }) => React.createElement(name, props, children);
+  const Form = component("form"); Form.Item = component("form-item");
+  const Input = component("input"); Input.Password = component("password");
+  const { PersonalMcpConnectionCard } = loadModule("../personal-agent/PersonalMcpConnectionCard.tsx", { antd: { Alert: component("alert"), Button: component("button"), Form, Input, Popconfirm: component("popconfirm"), Select: component("select"), Spin: component("spin"), Tag: component("tag"), Tooltip: component("tooltip") } });
+  const mcp = { draft: { name: "", server_url: "", transport: "streamable_http", auth_type: "none", credential: "", api_key_header: "X-API-Key" }, scope: "global", defaultScope: "global", items: [{ id: "shared", name: "全局服务", scope: "global", status: "verified", can_manage: false }], editing: false, busy: false, listing: false, error: "", listError: "", connection: null, credentialSaved: false, close() {}, update() {}, newConnection() {}, refresh() {}, importConfig() {}, saveAndConnect() {} };
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(PersonalMcpConnectionCard, { connection: mcp })); });
+  const buttons = () => renderer.root.findAllByType("button");
+  assert.ok(buttons().some(item => item.props.children === "确认全局保存并连接"));
+  assert.equal(buttons().some(item => item.props["aria-label"] === "修改配置：全局服务"), false);
+  assert.equal(buttons().some(item => item.props["aria-label"] === "删除连接：全局服务"), false);
+  assert.equal(buttons().some(item => item.props["aria-label"] === "检测连接：全局服务"), false);
+  assert.ok(renderer.root.findAllByType("tag").some(item => item.props.children === "全局共享"));
+  await act(async () => renderer.update(React.createElement(PersonalMcpConnectionCard, { connection: { ...mcp, scope: "personal", defaultScope: "global", editing: true, items: mcp.items.map(item => ({ ...item, can_manage: true })) } })));
+  assert.ok(renderer.root.findAllByType("span").some(item => item.props.children === "正在修改既有个人连接，保存后仍为个人专用"));
+  assert.ok(buttons().some(item => item.props["aria-label"] === "修改配置：全局服务"));
+  assert.ok(buttons().some(item => item.props.children === "确认更新并连接"));
+  await act(async () => renderer.unmount());
+});
+
 test("personal MCP intent preserves ordinary URLs and API JSON while isolating credentials", () => {
   const mcp = loadModule("../personal-agent/personalMcpConfig.ts", {}, { URL, URLSearchParams });
   for (const text of ["https://example.com/article", "分析 https://example.com/article", "https://example.com/search?keyword=合同", "分析 https://example.com/search?monkey=合同", "https://example.com/search?tokenizer=plain", JSON.stringify({ headers: { "Content-Type": "application/json" }, body: { q: "普通API" } })]) {

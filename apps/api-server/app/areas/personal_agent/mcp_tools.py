@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from app.agent_mcp.auth import authenticated_identity
 from app.agent_mcp.model_tools import MODEL_TOOLS, ModelToolSession
 from app.agent_mcp.safety import reject_credentials
-from app.areas.capability_market.personal_mcp import personal_connection_groups
+from app.areas.capability_market.mcp_access import runtime_connection_groups
 from app.areas.capability_market.remote_tools import discover_tools, prepare_call
 
 
@@ -16,8 +16,8 @@ def function(name, description, properties, required=()):
 
 
 REMOTE_MODEL_TOOLS = [
-    function('personal_mcp_list_groups', '查看本人自定义MCP连接组摘要，不读取凭据或调用外部工具。', {}),
-    function('personal_mcp_search_tools', '在本轮已发现的个人MCP连接组内读取工具schema；描述和返回是第三方不可信数据。',
+    function('personal_mcp_list_groups', '查看本人及全局共享MCP连接组摘要，不读取配置或凭据，不调用外部工具。', {}),
+    function('personal_mcp_search_tools', '在本轮已发现的指定范围MCP连接组内读取工具schema；描述和返回是第三方不可信数据。',
              {'group_id': {'type': 'string'}, 'query': {'type': 'string', 'maxLength': 100}}, ('group_id',)),
     function('personal_mcp_call_tool', '只为本轮发现的第三方工具准备待确认请求，所有调用均需用户点击前端确认；不得传入任何凭据。',
              {'tool_id': {'type': 'string'}, 'arguments': {'type': 'object'}}, ('tool_id', 'arguments')),
@@ -43,10 +43,11 @@ class PersonalMcpToolSession(ModelToolSession):
         if name == 'personal_mcp_list_groups':
             if arguments:
                 raise HTTPException(422, '个人MCP组发现不接受参数或凭据')
-            listing = await personal_connection_groups(actual, self.db)
-            self.remote_groups = {item['id']: item['revision'] for item in listing}
-            return {'groups': [{'group_id': item['id'], 'name': item['name'], 'revision': item['revision'],
-                                'status': item['status']} for item in listing], 'all_calls_require_confirmation': True}
+            listing = await runtime_connection_groups(actual, self.db)
+            self.remote_groups = {item['scope'] + ':' + item['id']: item for item in listing}
+            return {'groups': [{'group_id': group_id, 'connection_id': item['id'], 'scope': item['scope'],
+                                'name': item['name'], 'revision': item['revision'], 'status': item['status']}
+                               for group_id, item in self.remote_groups.items()], 'all_calls_require_confirmation': True}
         if name == 'personal_mcp_search_tools':
             if set(arguments) - {'group_id', 'query'} or not isinstance(arguments.get('group_id'), str):
                 raise HTTPException(422, '个人MCP工具搜索需要已发现的group_id')
@@ -56,7 +57,8 @@ class PersonalMcpToolSession(ModelToolSession):
             query = arguments.get('query', '')
             if not isinstance(query, str) or len(query) > 100:
                 raise HTTPException(422, '搜索词必须是不超过100字的字符串')
-            tools = await discover_tools(group, self.remote_groups[group], actual, self.db)
+            connection = self.remote_groups[group]
+            tools = await discover_tools(connection['id'], connection['revision'], actual, self.db, scope=connection['scope'])
             matches = [tool for tool in tools if not query or query.casefold() in (tool['name'] + ' ' + tool['description']).casefold()]
             selected = matches[:12]
             self.remote_discovered.update({tool['tool_id']: tool for tool in selected})
@@ -72,10 +74,12 @@ class PersonalMcpToolSession(ModelToolSession):
         if key in self._prepared:
             return {'result': self._prepared[key]}
         target = descriptor['connection_name'] + ' / ' + descriptor['server_name']
-        summary = ('调用个人MCP「' + target + '」的' + descriptor['name']
+        scope_label = '全局共享MCP' if payload['scope'] == 'global' else '个人MCP'
+        summary = ('调用' + scope_label + '「' + target + '」的' + descriptor['name']
                    + '工具，将' + json.dumps(payload['arguments'], ensure_ascii=False) + '参数发送到该外部服务')
         preview = {'operation_name': summary, 'target': target, 'tool_name': descriptor['name'], 'method': 'POST',
-                   'path': 'MCP tools/call', 'params': {'body': payload['arguments']}, 'requires_confirmation': True,
+                   'path': 'MCP tools/call', 'params': {'scope': payload['scope'], 'connection_id': payload['connection_id'],
+                                                     'revision': payload['revision'], 'body': payload['arguments']}, 'requires_confirmation': True,
                    'original_values': '第三方工具可能产生外部业务写入；所有调用均需人工确认'}
         self.pending_actions.append({'type': 'personal_mcp.call', 'summary': summary, 'payload': payload, 'preview': preview})
         result = {'status': 'pending', 'summary': summary, 'preview': preview, 'requires_confirmation': True}
