@@ -120,6 +120,12 @@ async def _source_query(identity, db, mode, statuses, filters):
         "source_object": obj, "source_header": source,
     }
     details = line_from.with_only_columns(*(value.label(key) for key, value in line_columns.items())).where(relation)
+    projection_header_ids = filters.get("_projection_header_ids")
+    if mode == "normal" and projection_header_ids:
+        # 默认列表只展开当前页历史头；总数和金额在轻量头查询中完成。
+        details = details.where(head.id.in_(projection_header_ids))
+        amount_header_ids = select(head.id).where(head.id.in_(projection_header_ids))
+        visible_legacy_amounts = legacy_assigned_amounts(header_ids=amount_header_ids)
     modern = exists(select(BusinessRecord.id).where(BusinessRecord.module == "finance_settlement",
         BusinessRecord.status != "已删除", BusinessRecord.data["receipt_id"].as_integer() == receipts.c.receipt_id))
     common = {"header_id": head.id, "receipt_id": receipts.c.receipt_id, "receipt_no": receipts.c.receipt_no,
@@ -160,6 +166,8 @@ async def _source_query(identity, db, mode, statuses, filters):
             visible_legacy_amounts, visible_legacy_amounts.c.header_id == head.id).where(
                 ~modern, _text(source, "SettlementStatus").in_([key for key, value in NORMAL_STATES.items() if value in statuses]))
         query = query.outerjoin(linked_customer, and_(linked_customer.id == head.customer_record_id, linked_customer.module == "customer"))
+        if projection_header_ids:
+            query = query.where(head.id.in_(projection_header_ids))
     else:
         raw_phase = _text(linked_case.data["legacy_record"], "CasePhaseId")
         stored_phase = _text(linked_case.data, "case_phase_id")
@@ -242,9 +250,131 @@ def _row(value, show_amount, archive):
             "PaymentId": source.get("PaymentId"), "SeqId": obj.get("SeqId")}, "data": data}
 
 
+async def _read_normal_legacy_page_fast(identity, db, *, statuses, page, page_size):
+    """无筛选普通结算列表只展开当前页，保持历史头汇总口径。"""
+    from app.core.finance import _visible_incoming_payment_statement
+    from app.core.system import _allowed_field_keys
+
+    visible = await _visible_incoming_payment_statement(identity, db, include_amounts=False)
+    receipts = visible.with_only_columns(
+        IncomingPayment.id.label("receipt_id"),
+        IncomingPayment.receipt_no,
+        LEGACY_INCOMING_SOURCE.c.source_header_id,
+    ).where(LEGACY_INCOMING_SOURCE.c.source_header_id.is_not(None)).cte(
+        "normal_fast_receipts"
+    ).prefix_with("MATERIALIZED", dialect="postgresql")
+    head = LegacyFinanceRecord
+    source = head.source_payload
+    status_codes = [key for key, value in NORMAL_STATES.items() if value in statuses]
+    modern = exists(select(BusinessRecord.id).where(
+        BusinessRecord.module == "finance_settlement",
+        BusinessRecord.status != "已删除",
+        BusinessRecord.data["receipt_id"].as_integer() == receipts.c.receipt_id,
+    ))
+    header_query = select(
+        head.id.label("header_id"),
+        head.legacy_id.label("header_legacy_id"),
+        receipts.c.receipt_id,
+        receipts.c.receipt_no,
+        head.customer_record_id,
+        source.label("source_header"),
+    ).select_from(head).join(
+        receipts, receipts.c.source_header_id == head.id,
+    ).where(
+        head.source_table == "FAM_AR_Payment",
+        head.is_active.is_(True),
+        _text(source, "SettlementStatus").in_(status_codes),
+        ~modern,
+    )
+    header_rows = header_query.subquery("normal_fast_headers")
+    header_ids_query = select(header_rows.c.header_id)
+    assigned = legacy_assigned_amounts(header_ids=header_ids_query)
+    amount_columns = {
+        "receipt_amount": _money(header_rows.c.source_header, "CashedAmount"),
+        "allocated_amount": _money(header_rows.c.source_header, "AppliedAmount"),
+        "remaining_amount": case(
+            (_money(header_rows.c.source_header, "CashedAmount").is_(None), None),
+            (_money(header_rows.c.source_header, "CashedAmount") - _money(header_rows.c.source_header, "AppliedAmount") > 0,
+             _money(header_rows.c.source_header, "CashedAmount") - _money(header_rows.c.source_header, "AppliedAmount")),
+            else_=0,
+        ),
+        "agency_settlement_amount": _money(header_rows.c.source_header, "CaseNonOfficeFeeSettlementAmount"),
+        "archive_fee": _money(header_rows.c.source_header, "CaseFeeArchiveAmount"),
+        "actual_settlement_amount": _money(header_rows.c.source_header, "CaseFeeSettlementAmount"),
+    }
+    amount_columns.update({key: assigned.c[key] for key in (
+        "assigned_official_fee", "assigned_agency_fee", "assigned_other_fee",
+    )})
+    aggregate = select(
+        func.count().label("total"),
+        *(_complete_sum(value).label(key) for key, value in amount_columns.items()),
+        *( (func.count() - func.count(value)).label(key + "_missing") for key, value in amount_columns.items()),
+    ).select_from(header_rows.outerjoin(assigned, assigned.c.header_id == header_rows.c.header_id))
+    aggregate_row = (await db.execute(aggregate)).mappings().one()
+    total = int(aggregate_row["total"] or 0)
+
+    def total_value(key):
+        value = aggregate_row[key]
+        return None if value is None else round(float(value), 2)
+
+    start = (page - 1) * page_size
+    page_ids = [value for value in (await db.scalars(
+        select(header_rows.c.header_id).order_by(
+            func.substr(_text(header_rows.c.source_header, "CashedDate"), 1, 10).desc(),
+            header_rows.c.header_id.desc(),
+        ).offset(start).limit(page_size)
+    )).all()]
+    if not page_ids:
+        allowed = await _allowed_field_keys(identity, db)
+        show_amount = "finance.amount" in allowed
+        return {
+            "items": [], "total": total,
+            "totals": {key: (None if not show_amount else total_value(key)) for key in amount_columns},
+            "unknown_amount_counts": {key: int(aggregate_row[key + "_missing"] or 0) for key in amount_columns},
+            "unknown_phase_total": 0, "unknown_eligibility_total": 0, "unknown_date_total": 0,
+            "page": page, "page_size": page_size,
+        }
+    page_filters = {"_projection_header_ids": page_ids}
+    query, details = await _source_query(identity, db, "normal", statuses, page_filters)
+    allowed = await _allowed_field_keys(identity, db)
+    show_amount = "finance.amount" in allowed
+    rows = [_row(dict(value), show_amount, False)
+            for value in (await db.execute(query)).mappings()]
+    detail_rows = (await db.execute(details.where(LegacyFinanceRecord.id.in_(page_ids)))).mappings()
+    by_header: dict[int, list[dict]] = {}
+    for value in detail_rows:
+        detail = {key: (float(part) if isinstance(part, Decimal) else part)
+                  for key, part in value.items() if key not in {"source_header", "source_object"}}
+        by_header.setdefault(value["header_id"], []).append(detail)
+    for row in rows:
+        row["data"]["allocation_details"] = by_header.get(row["legacy_record_id"], [])
+    totals = {key: (None if not show_amount else total_value(key)) for key in amount_columns}
+    return {
+        "items": rows, "total": total,
+        "totals": totals,
+        "unknown_amount_counts": {key: int(aggregate_row[key + "_missing"] or 0) for key in amount_columns},
+        "unknown_phase_total": 0, "unknown_eligibility_total": 0, "unknown_date_total": 0,
+        "page": page, "page_size": page_size,
+    }
+
+
 async def read_imported_settlement_page(modern_rows, identity, db, *, mode, statuses=(), filters=None, page=1, page_size=10, projection_ids=None):
     from app.core.system import _allowed_field_keys
     filters = filters or {}
+
+    fast_filter_names = (
+        "customer", "case_no", "customer_manager", "received_from", "received_to", "payer",
+        "payment_method", "applied_by", "applied_from", "applied_to", "hearing_lawyer",
+        "assistant", "reviewer", "reviewed_from", "reviewed_to", "paid_from", "paid_to",
+        "source_person",
+    )
+    if (
+        mode == "normal" and not modern_rows and projection_ids is None
+        and all(not filters.get(name) for name in fast_filter_names)
+    ):
+        return await _read_normal_legacy_page_fast(
+            identity, db, statuses=set(statuses), page=page, page_size=page_size,
+        )
 
     # 没有可见历史回款头时，后续历史明细、案件关联和状态汇总都不可能产生行。
     # 先做一次轻量存在性查询，避免空结果请求仍构造整套历史投影关联 SQL。
