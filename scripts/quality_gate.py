@@ -352,7 +352,7 @@ def main() -> int:
                 run("frontend-dependencies", [npm, "audit", "--audit-level=low"], WEB, environment)
                 run("backend-regression", regression_command, API, environment)
                 run("postgres-domain-boundaries", [sys.executable, "tests/run_regression.py", "--group", "integration", "--file", "postgres_domain_boundaries_test.py", "--report", str(report_dir / "postgres-domain.json")], API, environment)
-                run("harness-health", [sys.executable, "scripts/verify_harness.py", "--node", args.node, "--report-dir", str(report_dir)], ROOT, environment)
+                run("harness-health", [sys.executable, "scripts/verify_harness.py", "--report-dir", str(report_dir)], ROOT, environment)
             if args.profile != "source":
                 runtime = report_dir / "runtime"
                 run("runtime-package", [sys.executable, "scripts/runtime_package.py", "build", "--output", str(runtime)], ROOT, environment)

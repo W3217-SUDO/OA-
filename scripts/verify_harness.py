@@ -49,7 +49,6 @@ async def verify(report_dir):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--node", help="保留门禁调用参数；官方 SDK 使用配套独立运行时")
     parser.add_argument("--report-dir", type=Path, required=True)
     args = parser.parse_args()
     args.report_dir.mkdir(parents=True, exist_ok=True)
