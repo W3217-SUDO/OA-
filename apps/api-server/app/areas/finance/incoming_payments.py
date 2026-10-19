@@ -86,7 +86,7 @@ async def list_incoming_payments(
         _allowed_field_keys,
     )
     from app.areas.finance.incoming_query import (
-        incoming_customer_fields, incoming_customers, incoming_summary,
+        has_effective_incoming_filters, incoming_customer_fields, incoming_customers, incoming_summary,
         parse_incoming_filters, read_incoming_query, read_incoming_query_from_hz_read_model,
     )
     filter_values = parse_incoming_filters(view, filters)
@@ -107,7 +107,8 @@ async def list_incoming_payments(
     simple_page_query = (
         db.get_bind().dialect.name == "postgresql"
         and (page is not None or page_size is not None)
-        and not keyword and not filters and not bank_source and not payment_status
+        and not keyword and not has_effective_incoming_filters(view, filter_values)
+        and not bank_source and not payment_status
         and view not in {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb")}
     )
     statement = await _visible_incoming_payment_statement(identity, db, include_amounts=not simple_page_query)

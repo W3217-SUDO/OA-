@@ -22,6 +22,9 @@ RECORD_CENTER_VALUES = {
 
 # 旧导入未保存源库命名空间；新导入必须按真实头外键读取，不能跨库按裸主键拼接。
 _LEGACY_PAYMENT_ID = LegacyFinanceRecord.source_payload["PaymentId"].as_string()
+# 关联键：有真实头外键时按 ID，否则按回款编号。两种前缀互不相等，等值关联与
+# “ID 相等 或（双方都无 ID 且编号相等）”完全等价，但可以使用哈希连接。
+_UNQUALIFIED_MATCH_KEY = literal("rcpt:HZ-RCPT-") + _LEGACY_PAYMENT_ID
 _LEGACY_UNQUALIFIED_SOURCE = select(
     cast(literal(None), Integer).label("record_id"),
     func.max(LegacyFinanceRecord.id).label("source_header_id"),
@@ -29,6 +32,7 @@ _LEGACY_UNQUALIFIED_SOURCE = select(
     func.max(cast(LegacyFinanceRecord.source_payload["GroupId"].as_string(), String)).label("group_id"),
     func.max(LegacyFinanceRecord.source_payload["PaymentModeName"].as_string()).label("payment_method"),
     func.max(cast(LegacyFinanceRecord.source_payload["SettlementStatus"].as_string(), String)).label("settlement_status"),
+    _UNQUALIFIED_MATCH_KEY.label("match_key"),
 ).where(
     LegacyFinanceRecord.source_table == "FAM_AR_Payment",
     LegacyFinanceRecord.is_active.is_(True),
@@ -44,6 +48,7 @@ _LEGACY_LINKED_SOURCE = select(
     cast(LegacyFinanceRecord.source_payload["GroupId"].as_string(), String).label("group_id"),
     LegacyFinanceRecord.source_payload["PaymentModeName"].as_string().label("payment_method"),
     cast(LegacyFinanceRecord.source_payload["SettlementStatus"].as_string(), String).label("settlement_status"),
+    (literal("id:") + cast(LegacyFinanceRecord.id, String)).label("match_key"),
 ).where(
     LegacyFinanceRecord.source_table == "FAM_AR_Payment",
     LegacyFinanceRecord.is_active.is_(True),
@@ -59,15 +64,16 @@ INCOMING_CENTER = func.coalesce(IncomingPayment.finance_scope, case(
 
 
 def _incoming_source_relation():
+    # 原条件：hz 且（双方 ID 非空且相等，或双方 ID 均为空且回款编号 = "HZ-RCPT-" + PaymentId）。
+    # 写成单一组合键的等值比较后语义不变；原 OR 条件只能嵌套循环逐对比较（约 2000 万对）。
+    payment_key = case(
+        (IncomingPayment.legacy_finance_record_id.is_not(None),
+         literal("id:") + cast(IncomingPayment.legacy_finance_record_id, String)),
+        else_=literal("rcpt:") + IncomingPayment.receipt_no,
+    )
     return and_(
         IncomingPayment.source_kind == "hz_crm_20260930",
-        or_(
-            and_(IncomingPayment.legacy_finance_record_id.is_not(None),
-                 IncomingPayment.legacy_finance_record_id == LEGACY_INCOMING_SOURCE.c.record_id),
-            and_(IncomingPayment.legacy_finance_record_id.is_(None),
-                 LEGACY_INCOMING_SOURCE.c.record_id.is_(None),
-                 IncomingPayment.receipt_no == literal("HZ-RCPT-") + LEGACY_INCOMING_SOURCE.c.payment_id),
-        ),
+        payment_key == LEGACY_INCOMING_SOURCE.c.match_key,
     )
 
 

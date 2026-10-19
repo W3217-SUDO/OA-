@@ -80,6 +80,28 @@ def parse_incoming_filters(view: str, filters: str) -> dict:
     return values
 
 
+def has_effective_incoming_filters(view: str, filters: dict) -> bool:
+    """筛选是否真正限制结果；判定与 matches_incoming_filters 的跳过规则一致。
+
+    页面无条件查询时也会提交 ``filters={}`` 或全为空值的对象，这类请求与不传
+    ``filters`` 的结果相同，应同样走只读投影的简单分页路径。
+    """
+    date_index = 2 if view in BANK_VIEWS else 0 if view in RECEIPT_VIEWS else 9
+    for key, value in filters.items():
+        if value is None or value == "" or value in ("请选择", "全部"):
+            continue
+        index = int(key.removeprefix("routeField"))
+        if index == date_index:
+            start, end = value
+            if not start and not end:
+                continue
+        elif view == QUERY_VIEW and index == 10 and isinstance(value, list):
+            if ",".join(value) in ("", "请选择", "全部"):
+                continue
+        return True
+    return False
+
+
 def incoming_customer_fields(item, customers_by_title: dict, users_by_username: dict) -> dict:
     customer = customers_by_title.get(item.claimed_customer.strip())
     if not customer:
@@ -293,6 +315,12 @@ async def read_incoming_query_from_hz_read_model(
         return None
     def money(value):
         return float(value or 0) / 100
+    # 合计键与 incoming_totals 完全相同（含“金额”“到账金额”等同一金额的别名）。
+    cents = {
+        "amount": hz.amount, "allocated_amount": (hz.amount or 0) - (hz.remaining or 0),
+        "remaining_amount": hz.remaining,
+        **{field: getattr(hz, field) for field in ASSIGNED_FIELDS},
+    }
     result = {
         "total": int(hz.count or 0) + len(local_items),
         "summary": {
@@ -304,24 +332,45 @@ async def read_incoming_query_from_hz_read_model(
             "remaining": money(hz.remaining) + (local_summary["remaining"] or 0) if show_amount else None,
         },
         "totals": {
-            "回款金额": money(hz.amount) + (local_totals["回款金额"] or 0) if show_amount else None,
-            "已分金额": money(hz.amount - hz.remaining) + (local_totals["已分金额"] or 0) if show_amount else None,
-            "未分金额": money(hz.remaining) + (local_totals["未分金额"] or 0) if show_amount else None,
-            "已分官费": money(hz.assigned_official_fee) + (local_totals["已分官费"] or 0) if show_amount else None,
-            "已分代理费": money(hz.assigned_agency_fee) + (local_totals["已分代理费"] or 0) if show_amount else None,
-            "已分其他费用": money(hz.assigned_other_fee) + (local_totals["已分其他费用"] or 0) if show_amount else None,
+            header: money(cents[field]) + (local_totals[header] or 0) if show_amount else None
+            for header, field in TOTAL_FIELDS.items()
         },
     }
-    page_items = list((await db.scalars(statement.order_by(
+    if int(hz.count or 0) + len(local_items) == 0:
+        # 与 incoming_summary 对空列表的结果保持同一类型。
+        result["summary"].update({key: value for key, value in incoming_summary([], show_amount).items()
+                                  if key in ("amount", "remaining")})
+    page_ids = list((await db.scalars(statement.with_only_columns(IncomingPayment.id).order_by(
         IncomingPayment.received_date.desc(), IncomingPayment.id.desc(),
     ).offset((page - 1) * page_size).limit(page_size))).all())
-    projected = list((await db.execute(select(
-        hz_allocation_read_models.c.payment_id,
-        *(hz_allocation_read_models.c[field].label(field) for field in ASSIGNED_FIELDS),
-    ).where(hz_allocation_read_models.c.payment_id.in_([item.id for item in page_items])))).mappings().all()) if page_items else []
+    page_items = await _page_items_with_legacy_amounts(page_ids, db)
     result.update(
         page=page, page_size=page_size, items=page_items,
         customers=await incoming_customers(page_items, db),
-        read_model_summaries={row["payment_id"]: row for row in projected},
+        read_model_summaries={},
     )
     return result
+
+
+async def _page_items_with_legacy_amounts(page_ids: list[int], db) -> list:
+    """按慢路径同一口径读取当前页回款（含旧系统分配金额及基线），只聚合本页表头。
+
+    旧金额聚合按表头分组，限定表头集合不改变任一表头的结果；行数据因此与全量
+    可见集合聚合时完全相同，分配状态标签等派生字段也由同一函数计算。
+    """
+    if not page_ids:
+        return []
+    from app.core.finance_centers import incoming_source_statement
+
+    header_ids = incoming_source_statement(include_amounts=False).with_only_columns(
+        LEGACY_INCOMING_SOURCE.c.source_header_id,
+    ).where(
+        IncomingPayment.id.in_(page_ids),
+        IncomingPayment.source_kind == "hz_crm_20260930",
+        LEGACY_INCOMING_SOURCE.c.source_header_id.is_not(None),
+    ).distinct()
+    rows = (await db.scalars(incoming_source_statement(legacy_header_ids=header_ids).where(
+        IncomingPayment.id.in_(page_ids),
+    ))).all()
+    by_id = {item.id: item for item in rows}
+    return [by_id[item_id] for item_id in page_ids if item_id in by_id]
