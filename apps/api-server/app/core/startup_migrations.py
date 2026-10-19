@@ -19,6 +19,10 @@ from app.core.dashboard_finance_read_model_migration import (
 )
 from app.core.dashboard_revision import MIGRATION_REVISION as DASHBOARD_REVISION
 from app.core.dashboard_revision_migration import upgrade_dashboard_revision, validate_dashboard_revision
+from app.core.hz_allocation_read_model_migration import (
+    MIGRATION_REVISION as HZ_ALLOCATION_READ_MODEL_REVISION,
+    upgrade_hz_allocation_read_model,
+)
 from app.legacy_schema import (
     align_legacy_column_types,
     align_legacy_constraints,
@@ -97,6 +101,10 @@ def _apply_incoming_finance(connection: Connection, _upgrade_schema: Callable[[C
     upgrade_incoming_finance_schema(connection)
 
 
+def _apply_hz_allocation_read_model(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    upgrade_hz_allocation_read_model(connection)
+
+
 def _run_versioned_schema_migrations(
     connection: Connection,
     upgrade_schema: Callable[[Connection], None],
@@ -107,6 +115,7 @@ def _run_versioned_schema_migrations(
         (SCHEMA_BOOTSTRAP_REVISION, _apply_schema_bootstrap),
         (LEGACY_SETTLEMENT_INDEX_REVISION, _apply_legacy_settlement_indexes),
         (INCOMING_FINANCE_REVISION, _apply_incoming_finance),
+        (HZ_ALLOCATION_READ_MODEL_REVISION, _apply_hz_allocation_read_model),
         (NOTIFICATION_DELIVERY_REVISION, _apply_notification_delivery),
         (RECORD_READ_MODEL_REVISION, _apply_record_read_model),
         (DASHBOARD_FINANCE_REVISION, _apply_dashboard_finance),

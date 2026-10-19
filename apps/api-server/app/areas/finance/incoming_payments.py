@@ -78,7 +78,7 @@ async def list_incoming_payments(
     )
     from app.areas.finance.incoming_query import (
         incoming_customer_fields, incoming_customers, incoming_summary,
-        parse_incoming_filters, read_incoming_query,
+        parse_incoming_filters, read_incoming_query, read_incoming_query_from_hz_read_model,
     )
     filter_values = parse_incoming_filters(view, filters)
     if bank_source:
@@ -91,7 +91,12 @@ async def list_incoming_payments(
         bank_code = bank_source.strip().lower()
         if bank_code not in aliases:
             raise HTTPException(422, "银行筛选条件无效")
-    statement = await _visible_incoming_payment_statement(identity, db)
+    simple_page_query = (
+        db.get_bind().dialect.name == "postgresql"
+        and (page is not None or page_size is not None)
+        and not keyword and not view and not filters and not bank_source and not payment_status
+    )
+    statement = await _visible_incoming_payment_statement(identity, db, include_amounts=not simple_page_query)
     if bank_source:
         statement = statement.where(or_(
             func.lower(func.trim(IncomingPayment.bank_source)) == bank_code,
@@ -102,7 +107,19 @@ async def list_incoming_payments(
     can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     users = list((await db.scalars(select(User).where(User.is_active.is_(True)))).all())
     users_by_username = {user.username.lower(): user for user in users}
-    if page is not None or page_size is not None or view or filters:
+    if simple_page_query:
+        result = await read_incoming_query_from_hz_read_model(
+            statement, page or 1, page_size or 20, can_view_amount, db,
+        )
+        if result is None:
+            statement = await _visible_incoming_payment_statement(identity, db)
+            result = await read_incoming_query(
+                statement, keyword, view, filter_values, page, page_size,
+                can_view_amount, users_by_username, db, use_statement_rows=True,
+            )
+        items = result["items"]
+        customers_by_title = result.pop("customers")
+    elif page is not None or page_size is not None or view or filters:
         result = await read_incoming_query(
             statement, keyword, view, filter_values, page, page_size,
             can_view_amount, users_by_username, db,
@@ -117,8 +134,14 @@ async def list_incoming_payments(
         customers_by_title = await incoming_customers(items, db)
         result = {"total": len(items), "summary": incoming_summary(items, can_view_amount)}
     rows = []
+    read_model_summaries = result.pop("read_model_summaries", {})
     for item in items:
         payload = _incoming_payment_dict(item, show_amount=can_view_amount, users_by_username=users_by_username)
+        summary = read_model_summaries.get(item.id)
+        if summary is not None:
+            for field in ("assigned_official_fee", "assigned_agency_fee", "assigned_other_fee"):
+                payload[field] = float(summary[field]) if can_view_amount and summary[field] is not None else None
+            payload["allocation_status_label"] = ""
         payload.update(incoming_customer_fields(item, customers_by_title, users_by_username))
         rows.append(payload)
     result["items"] = rows

@@ -5,7 +5,7 @@ import math
 from datetime import date
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import Numeric, cast, case, func, select
 
 from app.core.contracts import _contract_person_values
 from app.core.finance import _incoming_payment_legacy_summary, _round_fee_amount
@@ -13,6 +13,7 @@ from app.core.formatters import _person_reference_display
 from app.models import BusinessRecord, IncomingPayment
 from app.core.finance_centers import INCOMING_CENTER, LEGACY_INCOMING_SOURCE
 from app.core.incoming_legacy_amounts import ASSIGNED_FIELDS, LEGACY_ASSIGNED_AMOUNTS
+from app.core.hz_allocation_read_model import hz_allocation_read_models
 
 
 BANK_VIEWS = {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb")}
@@ -252,4 +253,75 @@ async def read_incoming_query(statement, keyword: str, view: str, filters: dict,
         items = []
     result["items"] = items
     result["customers"] = await incoming_customers(items, db)
+    return result
+
+
+async def read_incoming_query_from_hz_read_model(
+    statement, page: int, page_size: int, show_amount: bool, db,
+) -> dict | None:
+    """用已验证 HZ 投影汇总简单分页查询，非 HZ 回款仍沿用原始明细口径。"""
+    base = statement.with_only_columns(
+        IncomingPayment.id, IncomingPayment.received_date, IncomingPayment.amount,
+        IncomingPayment.allocated_amount, IncomingPayment.status,
+        IncomingPayment.source_kind, IncomingPayment.allocations,
+    ).order_by(None).subquery("incoming_visible_rows")
+    hz_condition = base.c.source_kind == "hz_crm_20260930"
+    hz_query = select(
+        func.count(base.c.id).label("count"),
+        func.count(case((base.c.status == "待认领", 1))).label("unclaimed"),
+        func.count(case((base.c.status.in_(("待分配", "部分分配")), 1))).label("unallocated"),
+        func.count(case((base.c.status == "已分配", 1))).label("completed"),
+        func.sum(func.round(cast(base.c.amount * 100, Numeric(20, 4)), 0)).label("amount"),
+        func.sum(func.round(cast(func.greatest(base.c.amount - func.coalesce(base.c.allocated_amount, 0), 0) * 100, Numeric(20, 4)), 0)).label("remaining"),
+        func.count(hz_allocation_read_models.c.payment_id).label("projected_count"),
+        *(func.sum(func.round(cast(getattr(hz_allocation_read_models.c, field) * 100, Numeric(20, 4)), 0)).label(field)
+          for field in ASSIGNED_FIELDS),
+    ).select_from(base.outerjoin(
+        hz_allocation_read_models,
+        hz_allocation_read_models.c.payment_id == base.c.id,
+    )).where(hz_condition)
+    hz = (await db.execute(hz_query)).one()
+    if int(hz.count or 0) != int(hz.projected_count or 0):
+        return None
+
+    local_items = list((await db.scalars(statement.where(
+        IncomingPayment.source_kind != "hz_crm_20260930",
+    ).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc()))).all())
+    local_summary = incoming_summary(local_items, show_amount)
+    local_totals = incoming_totals(local_items, show_amount)
+    if any(local_totals.get(field) is None for field in TOTAL_FIELDS):
+        return None
+    def money(value):
+        return float(value or 0) / 100
+    result = {
+        "total": int(hz.count or 0) + len(local_items),
+        "summary": {
+            "total": int(hz.count or 0) + local_summary["total"],
+            "unclaimed": int(hz.unclaimed or 0) + local_summary["unclaimed"],
+            "unallocated": int(hz.unallocated or 0) + local_summary["unallocated"],
+            "completed": int(hz.completed or 0) + local_summary["completed"],
+            "amount": money(hz.amount) + (local_summary["amount"] or 0) if show_amount else None,
+            "remaining": money(hz.remaining) + (local_summary["remaining"] or 0) if show_amount else None,
+        },
+        "totals": {
+            "回款金额": money(hz.amount) + (local_totals["回款金额"] or 0) if show_amount else None,
+            "已分金额": money(hz.amount - hz.remaining) + (local_totals["已分金额"] or 0) if show_amount else None,
+            "未分金额": money(hz.remaining) + (local_totals["未分金额"] or 0) if show_amount else None,
+            "已分官费": money(hz.assigned_official_fee) + (local_totals["已分官费"] or 0) if show_amount else None,
+            "已分代理费": money(hz.assigned_agency_fee) + (local_totals["已分代理费"] or 0) if show_amount else None,
+            "已分其他费用": money(hz.assigned_other_fee) + (local_totals["已分其他费用"] or 0) if show_amount else None,
+        },
+    }
+    page_items = list((await db.scalars(statement.order_by(
+        IncomingPayment.received_date.desc(), IncomingPayment.id.desc(),
+    ).offset((page - 1) * page_size).limit(page_size))).all())
+    projected = list((await db.execute(select(
+        hz_allocation_read_models.c.payment_id,
+        *(hz_allocation_read_models.c[field].label(field) for field in ASSIGNED_FIELDS),
+    ).where(hz_allocation_read_models.c.payment_id.in_([item.id for item in page_items])))).mappings().all()) if page_items else []
+    result.update(
+        page=page, page_size=page_size, items=page_items,
+        customers=await incoming_customers(page_items, db),
+        read_model_summaries={row["payment_id"]: row for row in projected},
+    )
     return result

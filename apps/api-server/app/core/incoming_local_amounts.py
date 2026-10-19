@@ -115,9 +115,9 @@ def current_hz_summary(payment):
     return {field: summary.get(field) if valid else None for field in ASSIGNED_FIELDS}
 
 
-async def stamp_hz_allocation_summary(payment, db):
+async def stamp_hz_allocation_summary(payment, db, *, persist: bool = True):
     if payment.source_kind != "hz_crm_20260930":
-        return
+        return None
     from app.core.incoming_allocation_records import allocation_revision
 
     rows = deepcopy(payment.allocations or [])
@@ -182,9 +182,14 @@ async def stamp_hz_allocation_summary(payment, db):
                 totals[field] += amount
     if covered_amount is None or covered_amount != Decimal(str(payment.allocated_amount)):
         totals = dict.fromkeys(ASSIGNED_FIELDS, None)
-    payment.allocations = rows
-    payment.local_allocation_summary = {
+    summary = {
         "version": 1, "allocation_revision": allocation_revision(rows),
         "allocated_amount": payment.allocated_amount,
         **{field: float(amount.quantize(Decimal("0.01"))) if amount is not None else None for field, amount in totals.items()},
     }
+    if persist:
+        payment.allocations = rows
+        payment.local_allocation_summary = summary
+        from app.core.hz_allocation_read_model import sync_hz_allocation_read_model
+        await sync_hz_allocation_read_model(payment, db)
+    return summary
