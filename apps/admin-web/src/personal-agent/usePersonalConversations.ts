@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { api } from "../api";
-import type { ConversationSnapshot, WorkspaceConversation, WorkspaceState } from "./types";
+import type { CaseAgentConversationSummary, ConversationSnapshot, WorkspaceConversation, WorkspaceState } from "./types";
 import type { ConversationWorkspace, WorkspaceProject } from "./types";
 import { conversationWorkspaceKey, conversationWorkspaceParams, requireConversationWorkspace } from "./conversationWorkspace";
 import { useConversationSpaces, type ConversationView } from "./useConversationSpaces";
@@ -13,6 +13,7 @@ export function usePersonalConversations(onState: (state: WorkspaceState) => voi
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
+  const [caseAgentConversations, setCaseAgentConversations] = useState<CaseAgentConversationSummary[]>([]);
   const spaces = useConversationSpaces();
   const validate = (snapshot: ConversationSnapshot, workspace?: ConversationWorkspace) => {
     if (workspace && (conversationWorkspaceKey(requireConversationWorkspace(snapshot.workspace)) !== conversationWorkspaceKey(workspace)
@@ -22,7 +23,7 @@ export function usePersonalConversations(onState: (state: WorkspaceState) => voi
   };
   const apply = (snapshot: ConversationSnapshot, ticket: ConversationView) => {
     validate(snapshot, ticket.workspace);
-    if (spaces.isCurrent(ticket)) { setItems(snapshot.items); if (snapshot.workspaces) setProjects(snapshot.workspaces); setError(snapshot.active_unavailable_reason || ""); onState(snapshot.state); }
+    if (spaces.isCurrent(ticket)) { setItems(snapshot.items); if (snapshot.workspaces) setProjects(snapshot.workspaces); setCaseAgentConversations(snapshot.case_agent_conversations || []); setError(snapshot.active_unavailable_reason || ""); onState(snapshot.state); }
     else onBackgroundState?.(snapshot.state);
     return snapshot.state;
   };
@@ -36,12 +37,12 @@ export function usePersonalConversations(onState: (state: WorkspaceState) => voi
     const data = await read(ticket);
     validate(data, ticket.workspace);
     // 生成结束的旧空间请求只更新其原视图，不能覆盖之后切入的空间列表。
-    if (spaces.isCurrent(ticket)) { setItems(data.items); if (data.workspaces) setProjects(data.workspaces); setError(data.active_unavailable_reason || ""); }
+    if (spaces.isCurrent(ticket)) { setItems(data.items); if (data.workspaces) setProjects(data.workspaces); setCaseAgentConversations(data.case_agent_conversations || []); setError(data.active_unavailable_reason || ""); }
   };
   const openWorkspace = async (workspace?: ConversationWorkspace, register = false) => {
     if (workspace) workspace = requireConversationWorkspace(workspace);
     const ticket = spaces.change(workspace);
-    setItems([]); setLoading(true); setError("");
+    setItems([]); setCaseAgentConversations([]); setLoading(true); setError("");
     onState({ conversation_id: null, messages: [], pending_actions: [], dismissed_action_ids: [], ...(workspace ? { workspace } : {}) });
     try { return apply(register && workspace ? (await api.post<ConversationSnapshot>("/personal-agent/workspaces", { workspace })).data : await read(ticket), ticket); }
     catch (failure) { if (spaces.isCurrent(ticket)) setError(errorText(failure, "空间会话加载失败")); throw failure; }
@@ -68,5 +69,5 @@ export function usePersonalConversations(onState: (state: WorkspaceState) => voi
       return apply(response.data, appliedTicket);
     } finally { lock.current = false; setBusy(false); }
   };
-  return { items, projects, busy, loading, error, workspace: spaces.workspace, capture: spaces.capture, read, openWorkspace, locked: () => lock.current, load, refresh, create: (view?: ConversationView) => change("create", undefined, view), select: (id: string) => change("select", id), remove: (id: string) => change("delete", id) };
+  return { items, projects, caseAgentConversations, busy, loading, error, workspace: spaces.workspace, capture: spaces.capture, read, openWorkspace, locked: () => lock.current, load, refresh, create: (view?: ConversationView) => change("create", undefined, view), select: (id: string) => change("select", id), remove: (id: string) => change("delete", id) };
 }

@@ -75,3 +75,31 @@
 - 桌面端增加浅色上下文背景、圆角状态徽章、明确的案件工作区空态；窄屏端保留滚动和可点击区域，技能说明单独换行。
 - 修改文件：`apps/admin-web/src/legal/CaseAgentDrawer.tsx`、`apps/admin-web/src/case-center.css`。
 - 验证：前端类型检查通过；前端单测 223/223 通过；生产构建通过；真实浏览器验收和部署待完成。
+
+## 案件智能体历史会话未同步
+
+### 原始需求
+
+历史会话根本就没有同步过来
+
+### 证据
+
+- 截图：`/var/folders/lm/3mbkryqx3_d766wf4fpc708r0000gn/T/codex-clipboard-eee22235-6fd7-4505-83b8-110b5d221909.png`
+- 图片身份：智能体中心左侧案件空间 `HZMS2500987` 的“历史会话”区域。
+- 逐图观察：案件空间已显示并处于选中状态；“历史会话”区域显示空文件夹图标和“暂无对话”，下方仍有“刷新智能体”，说明不是入口缺失，而是案件智能体已有会话没有进入该列表。
+
+### 分流结论
+
+这是新系统内部两个会话存储链路未汇总的新能力问题，截图未要求旧系统对照；旧系统代码不适用。案件智能体会话仍按案件权限读取，不能把它们伪装成可删除的个人会话。
+
+### 根因与修改
+
+- 根因：个人智能体会话接口只读取个人空间 JSON 索引；案件智能体会话实际存放在 `case_agent_conversation` 业务记录并由案件智能体 LangGraph 线程读取，两个来源未汇总。
+- 后端 `GET /personal-agent/conversations` 在当前案件空间通过既有案件查看权限读取案件智能体、会话标题、更新时间和会话归属，新增只读 `case_agent_conversations` 投影；不写入个人会话索引，不泄露无权案件。
+- 前端案件空间“历史会话”下增加“案件智能体会话”分组，显示会话标题、智能体名称和更新时间；点击后进入对应案件智能体入口，个人会话仍沿用原有选择、删除和操作记录逻辑。
+- 修改文件：`apps/api-server/app/areas/personal_agent/service.py`、`apps/admin-web/src/personal-agent/types.ts`、`apps/admin-web/src/personal-agent/usePersonalConversations.ts`、`apps/admin-web/src/personal-agent/usePersonalWorkspace.ts`、`apps/admin-web/src/personal-agent/ConversationManager.tsx`、`apps/admin-web/src/personal-agent/AssistantWorkspaceSidebar.tsx`、`apps/admin-web/src/personal-agent/AssistantPanel.tsx`。
+
+### 验证与发布
+
+- 定向验证：后端 Python 编译和前端类型检查通过；前端单测 223/223 通过；生产构建、接口响应和浏览器验收待完成。
+- 部署版本、提交号、健康检查：待完成。

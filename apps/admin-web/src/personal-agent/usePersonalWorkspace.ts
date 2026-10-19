@@ -299,7 +299,7 @@ export function usePersonalWorkspace() {
     catch (error) { message.error(errorText(error, "空间切换失败")); }
   };
   return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, chooseCaseMaterials, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, saveSpreadsheet, savedDocuments, savedSpreadsheets, documentRevision, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation, draftKey,
-    currentWorkspace: conversations.workspace, workspaceProjects: conversations.projects, selectWorkspace, setProjectMode,
+    currentWorkspace: conversations.workspace, workspaceProjects: conversations.projects, caseAgentConversations: conversations.caseAgentConversations, selectWorkspace, setProjectMode,
     conversations: conversations.items, conversationBusy: conversations.busy, runningIds: Object.keys(runtime.activities),
     createConversation: () => changeConversation(() => conversations.create()), selectConversation: (target: string) => target === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(target)),
     deleteConversation: (target: string) => changeConversation(async () => { const next = await conversations.remove(target); runtime.forget(target); drafts.remove(target); return next; }),

@@ -4,6 +4,7 @@ import { ConfirmationHistory } from "./ConfirmationHistory";
 import { ConversationManager } from "./ConversationManager";
 import { ConversationWorkspaceNavigation } from "./ConversationWorkspaceNavigation";
 import type { ConfirmationDetail } from "./types";
+import type { CaseAgentConversationSummary } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 
 type Props = {
@@ -16,9 +17,10 @@ type Props = {
   onOpenAgentCenter?: () => void;
   onReopenConfirmation: (detail: ConfirmationDetail) => Promise<void>;
   onReturnWorkbench?: () => void;
+  onOpenCaseAgentConversation?: (item: CaseAgentConversationSummary) => void;
 };
 
-export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onOpenMemory, onImportSkills, onOpenAgentCenter, onReopenConfirmation, onReturnWorkbench }: Props) {
+export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onOpenMemory, onImportSkills, onOpenAgentCenter, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation }: Props) {
   const busy = workspace.loading || workspace.stopping || workspace.uploading || !!workspace.decisionId || workspace.conversationBusy;
   return <aside className="assistant-workspace-sidebar" aria-label="AI 工作区导航">
     <div className="assistant-workspace-brand">
@@ -35,6 +37,8 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
       onCreate={workspace.createConversation}
       onSelect={workspace.selectConversation}
       onDelete={workspace.deleteConversation}
+      caseAgentConversations={workspace.caseAgentConversations}
+      onSelectCaseAgentConversation={onOpenCaseAgentConversation}
       listClassName="assistant-conversation-list"
       rowClassName="assistant-conversation-row"
       selectClassName="assistant-conversation-select"

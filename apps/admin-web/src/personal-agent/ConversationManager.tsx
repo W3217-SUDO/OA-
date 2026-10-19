@@ -1,7 +1,8 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Button, Drawer, Empty, Modal, Spin, Tooltip, message } from "antd";
-import { DeleteOutlined, HistoryOutlined, LoadingOutlined, MessageOutlined, PlusOutlined } from "@ant-design/icons";
+import { DeleteOutlined, FolderOpenOutlined, HistoryOutlined, LoadingOutlined, MessageOutlined, PlusOutlined } from "@ant-design/icons";
 import { errorText, type WorkspaceConversation } from "./types";
+import type { CaseAgentConversationSummary } from "./types";
 
 type Props = {
   items: WorkspaceConversation[];
@@ -21,6 +22,8 @@ type Props = {
   showHistoryLabel?: boolean;
   presentation?: "drawer" | "sidebar";
   navigation?: ReactNode;
+  caseAgentConversations?: CaseAgentConversationSummary[];
+  onSelectCaseAgentConversation?: (item: CaseAgentConversationSummary) => void;
 };
 
 export function ConversationManager({ items, activeId, busy, loading = false, runningIds, onCreate, onSelect, onDelete,
@@ -31,6 +34,8 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
   showHistoryLabel = false,
   presentation = "drawer",
   navigation,
+  caseAgentConversations = [],
+  onSelectCaseAgentConversation,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [modal, contextHolder] = Modal.useModal();
@@ -72,6 +77,16 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
         <Tooltip title={runningIds.includes(item.id) ? "请先停止该对话的回答" : "删除对话"}><Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除对话：${item.title}`} disabled={busy || runningIds.includes(item.id)} onClick={() => remove(item)} /></Tooltip>
       </div>)}</div>
   </>;
+  const caseAgentList = caseAgentConversations.length ? <section className="assistant-case-agent-history" aria-label="案件智能体历史会话">
+    <div className="assistant-workspace-history-heading"><FolderOpenOutlined /><h2>案件智能体会话</h2></div>
+    <div className="assistant-conversation-list">
+      {caseAgentConversations.map((item) => <div className="assistant-conversation-row assistant-case-agent-conversation-row" key={`${item.agent_id}-${item.id}`}>
+        <button type="button" className="assistant-conversation-select" disabled={busy || !onSelectCaseAgentConversation} onClick={() => onSelectCaseAgentConversation?.(item)}>
+          <MessageOutlined /><span><b title={item.title}>{item.title}</b><small>{item.agent_name} · {item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</small></span>
+        </button>
+      </div>)}
+    </div>
+  </section> : null;
   if (presentation === "sidebar") return <>
     {contextHolder}
     <div className="assistant-workspace-navigation">
@@ -83,6 +98,7 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
     <section className="assistant-workspace-history" aria-label="历史会话" aria-busy={loading}>
       <div className="assistant-workspace-history-heading"><HistoryOutlined /><h2>历史会话</h2></div>
       {list}
+      {caseAgentList}
     </section>
   </>;
   return <>

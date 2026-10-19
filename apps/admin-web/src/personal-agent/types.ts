@@ -59,8 +59,9 @@ export type CompressionMetadata = {
 };
 export type WorkspaceState = { conversation_id?: string | null; conversation_title?: string; messages: WorkspaceMessage[]; pending_actions: PendingAction[]; dismissed_action_ids: string[]; structured_results?: unknown[]; memory_summary?: string; memory_summary_updated_at?: string; memory_summary_metadata?: CompressionMetadata; workspace?: ConversationWorkspace };
 export type WorkspaceConversation = { id: string; title: string; message_count: number; updated_at: string; workspace?: ConversationWorkspace };
+export type CaseAgentConversationSummary = { id: number; title: string; updated_at?: string | null; case_id: number; case_serial_no: string; agent_id: number; agent_name: string; source: "case_agent" };
 export type WorkspaceProject = { kind: "personal" | "case"; case_id?: number; serial_no?: string; title: string; available: boolean; unavailable_reason?: string };
-export type ConversationSnapshot = { items: WorkspaceConversation[]; active_id: string | null; state: WorkspaceState; workspace?: ConversationWorkspace; workspaces?: WorkspaceProject[]; active_unavailable_reason?: string };
+export type ConversationSnapshot = { items: WorkspaceConversation[]; active_id: string | null; state: WorkspaceState; workspace?: ConversationWorkspace; workspaces?: WorkspaceProject[]; case_agent_conversations?: CaseAgentConversationSummary[]; active_unavailable_reason?: string };
 export type WorkspaceCommand = { id: string; label: string; prompt: string; skill_id: string; icon: string };
 export type WorkspaceStatus = { ready: boolean; model: string; supports_response_modes?: boolean; commands: WorkspaceCommand[]; identity: { display_name?: string; department?: string; role?: string; permission_role?: string; staff_role?: string; position?: string } };
 export type WorkspaceCase = { id: number; serial_no: string; title: string };

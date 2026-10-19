@@ -132,6 +132,36 @@ async def manage_conversations(identity: dict[str, Any], action: str = "list", c
     return await _project_conversation_snapshot(snapshot, identity, db)
 
 
+async def _case_agent_conversation_snapshot(workspace: dict[str, Any] | None, identity: dict[str, Any], db: AsyncSession) -> list[dict[str, Any]]:
+    """读取当前案件空间可见的案件智能体会话，不写入个人会话索引。"""
+    if not workspace or workspace.get("kind") != "case":
+        return []
+    case = await require_workspace_access(workspace, identity, db)
+    agents = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case_agent",
+        BusinessRecord.data["case_id"].as_integer() == case.id,
+        BusinessRecord.status != "已删除",
+    ).order_by(BusinessRecord.created_at, BusinessRecord.id))).all())
+    if not agents:
+        return []
+    agent_by_id = {agent.id: agent for agent in agents}
+    rows = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case_agent_conversation",
+        BusinessRecord.data["case_agent_id"].as_integer().in_(tuple(agent_by_id)),
+        BusinessRecord.status != "已删除",
+    ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id))).all())
+    return [{
+        "id": row.id,
+        "title": row.title,
+        "updated_at": row.updated_at,
+        "case_id": case.id,
+        "case_serial_no": case.serial_no,
+        "agent_id": int((row.data or {}).get("case_agent_id")),
+        "agent_name": agent_by_id[int((row.data or {}).get("case_agent_id"))].title,
+        "source": "case_agent",
+    } for row in rows if int((row.data or {}).get("case_agent_id") or 0) in agent_by_id]
+
+
 async def _project_conversation_snapshot(snapshot, identity, db):
     scopes = {workspace_key(item): item for item in snapshot["workspaces"]}
     scopes.update({workspace_key(item["workspace"]): item["workspace"] for item in snapshot["items"]})
@@ -145,8 +175,10 @@ async def _project_conversation_snapshot(snapshot, identity, db):
         # 权限撤销后不泄露旧消息，也不替其他客户端改写全局 active。
         state = conversations.empty_state(None, state["workspace"])
     projected = await project_personal_actions(state, identity, db)
+    case_agent_conversations = await _case_agent_conversation_snapshot(snapshot.get("workspace"), identity, db)
     return {**snapshot, "items": items, "active_id": state["conversation_id"], "state": projected,
-            "workspaces": catalog, **({"active_unavailable_reason": blocked["unavailable_reason"]} if blocked else {})}
+            "workspaces": catalog, "case_agent_conversations": case_agent_conversations,
+            **({"active_unavailable_reason": blocked["unavailable_reason"]} if blocked else {})}
 
 
 def _safe_identity_payload(user: User, permissions: dict[str, Any]) -> dict[str, Any]:

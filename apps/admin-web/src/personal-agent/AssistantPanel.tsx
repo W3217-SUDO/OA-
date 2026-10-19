@@ -12,7 +12,7 @@ import { ConfirmationHistory } from "./ConfirmationHistory";
 import { PersonalAiSpace } from "./PersonalAiSpace";
 import { CaseAgentFileFolderModal } from "./CaseAgentFileFolderModal";
 import { agentOperationMessage, userFacingAgentText } from "../AgentOperationPreview";
-import { errorText, workspaceDocumentSaveTarget, type ConfirmationDetail, type PendingAction } from "./types";
+import { errorText, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 import "./assistant-panel.css";
 
@@ -366,6 +366,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         onOpenMemory={() => setMemoryOpen(true)}
         onImportSkills={() => workspaceToolsRef.current?.importSkills()}
         onOpenAgentCenter={onOpenAgentCenter}
+        onOpenCaseAgentConversation={(item: CaseAgentConversationSummary) => onOpenCaseAgent?.(item.case_id, item.case_serial_no)}
         onReopenConfirmation={reopen}
         onReturnWorkbench={onReturnOverview}
       />}
