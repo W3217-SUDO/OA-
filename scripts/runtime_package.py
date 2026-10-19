@@ -11,7 +11,6 @@ import subprocess
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 API_RESOURCE_FILES = {
-    "system_skill_packages.json",
     "legacy_schema_manifest.json",
     "core/investigation_regions.json",
     "areas/crm/conflict_rules_20260928.json",
@@ -42,6 +41,7 @@ API_RESOURCE_FILES = {
     "export_templates/huzhi/compensation-payment-application.docx",
     "export_templates/huzhi/print-table.docx",
 }
+API_OPTIONAL_RESOURCE_FILES = {"system_skill_packages.json"}
 WEB_EXTENSIONS = {
     ".html", ".js", ".css", ".json", ".svg", ".png", ".jpg", ".jpeg",
     ".gif", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".txt", ".webmanifest",
@@ -74,7 +74,7 @@ def allowed_path(relative: str) -> None:
         return
     if relative.startswith("api/app/"):
         resource = relative.removeprefix("api/app/")
-        if path.suffix == ".py" or resource in API_RESOURCE_FILES:
+        if path.suffix == ".py" or resource in API_RESOURCE_FILES | API_OPTIONAL_RESOURCE_FILES:
             return
     if relative.startswith("web/") and path.suffix.lower() in WEB_EXTENSIONS:
         return
@@ -129,6 +129,8 @@ def verify(package: Path) -> dict:
             raise ValueError(f"运行包哈希不一致：{relative}")
     required = {"api/app/main.py", "api/requirements.txt", "api/requirements.lock", "web/index.html", "web/build-info.json"}
     required.update(f"api/app/{relative}" for relative in API_RESOURCE_FILES)
+    if "api/app/system_skill_packages.py" in actual:
+        required.add("api/app/system_skill_packages.json")
     if not required.issubset(actual):
         raise ValueError("运行包缺少必需入口或构建标记")
     info = json.loads((package / "web/build-info.json").read_text(encoding="utf-8"))
@@ -160,7 +162,7 @@ def build(repository: Path, destination: Path) -> dict:
         if not source.is_file() or "__pycache__" in source.parts:
             continue
         relative = source.relative_to(api / "app").as_posix()
-        if source.suffix == ".py" or relative in API_RESOURCE_FILES:
+        if source.suffix == ".py" or relative in API_RESOURCE_FILES | API_OPTIONAL_RESOURCE_FILES:
             sources.append((source, f"api/app/{relative}"))
         elif source.suffix != ".md":
             raise ValueError(f"API存在未声明运行资源：{relative}")
