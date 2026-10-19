@@ -91,3 +91,38 @@ systemctl daemon-reload && systemctl restart sunhold-oa-api
 
 - 主进程的数据库连接静默断开时，最长 10 秒（心跳间隔）后才发现；这段时间内新主进程可能已接管，两个进程的后台循环会短暂重叠。仅在数据库连接异常时发生。
 - 多进程只消除排队，不降低单个慢查询本身的耗时；单接口优化见 `finance-endpoint-performance-analysis-20261019.md`。
+
+## 五、上线记录（2026-10-20）
+
+### 1.1.480 与多进程
+
+- 1.1.480（提交 `2bf8f79b`）按部署 skill 发布：发布租约、领号、门禁、封存、激活，队列/账本/回执齐全；GitHub `dev`、`main`、`v1.1.480` 一致。
+- 发布前 1.1.479（`codex-finance-totals-sticky-20261019`）已上线但缺少 `v1.1.479` 标签，分配器拒绝领号。核对生产 `current`=1.1.479、`source_commit`=`ed65394e`、manifest SHA256 `548ec423…` 与队列记录一致后补打该标签；其账本缺少的 1.1.479 记录未改动。
+- 启用：`/etc/systemd/system/sunhold-oa-api.service.d/60-workers.conf` 设置 `WEB_CONCURRENCY=4`。核对：4 个工作进程，后台主进程锁持有者 1 个，API/Web active，`/health` 200，公网 200，无错误日志。
+
+### PostgreSQL 内存配置
+
+改前生产库累计排序/聚合溢出写盘 22,988 次、154 GB（`work_mem` 为默认 4MB）。本地生产数据副本上对 21 个财务接口对比：
+
+| 接口 | work_mem 4MB | 64MB | 64MB + 关 JIT |
+|---|---|---|---|
+| 一般结算申请 | 10.1 秒 | 4.7 秒 | 4.3 秒 |
+| 待归档结算 | 14.4 秒 | 7.1 秒 | 7.1 秒 |
+| 归档结算付款 | 10.4 秒 | 5.1 秒 | 5.0 秒 |
+| 合计 | 80.8 秒 | 57.6 秒 | 55.9 秒 |
+
+关 JIT 只差 3%，未采用。`shared_buffers` 需重启数据库且收益无法验证，未改。
+
+已通过 `ALTER SYSTEM` + `pg_reload_conf()` 应用（无需重启）：
+
+| 参数 | 原值 | 新值 |
+|---|---|---|
+| `work_mem` | 4MB | 64MB |
+| `maintenance_work_mem` | 64MB | 512MB |
+| `effective_cache_size` | 8GB | 10GB |
+
+基线（用于之后对比溢出是否减少）：2026-10-20 01:08:58 `temp_files=22988`、`temp_bytes=154 GB`。
+
+回滚：`ALTER SYSTEM RESET work_mem; ALTER SYSTEM RESET maintenance_work_mem; ALTER SYSTEM RESET effective_cache_size; SELECT pg_reload_conf();`（改前的 `postgresql.auto.conf` 备份为 `postgresql.auto.conf.bak-claude-20261020`）。
+
+内存预算按保留 6 GB 余量：改后可用约 10.3 GB；`work_mem` 按需临时占用，最坏情况约 17 个连接同时做大聚合时约 4 GB，仍在余量内。
