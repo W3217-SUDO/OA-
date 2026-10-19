@@ -111,7 +111,7 @@ systemctl daemon-reload && systemctl restart sunhold-oa-api
 | 归档结算付款 | 10.4 秒 | 5.1 秒 | 5.0 秒 |
 | 合计 | 80.8 秒 | 57.6 秒 | 55.9 秒 |
 
-关 JIT 只差 3%，未采用。`shared_buffers` 需重启数据库且收益无法验证，未改。
+关 JIT 只差 3%，未采用。
 
 已通过 `ALTER SYSTEM` + `pg_reload_conf()` 应用（无需重启）：
 
@@ -126,3 +126,10 @@ systemctl daemon-reload && systemctl restart sunhold-oa-api
 回滚：`ALTER SYSTEM RESET work_mem; ALTER SYSTEM RESET maintenance_work_mem; ALTER SYSTEM RESET effective_cache_size; SELECT pg_reload_conf();`（改前的 `postgresql.auto.conf` 备份为 `postgresql.auto.conf.bak-claude-20261020`）。
 
 内存预算按保留 6 GB 余量：改后可用约 10.3 GB；`work_mem` 按需临时占用，最坏情况约 17 个连接同时做大聚合时约 4 GB，仍在余量内。
+
+### shared_buffers 提到 8GB（用户要求，2026-10-20 01:27）
+
+- 生产库 `huzhi_oa_20261003` 为 3.8 GB（另有 3.4 GB 的预拷贝库平时不访问）。`shared_buffers` 按实际读取的数据占用，预计稳定后约 4 GB，可用内存仍在 6 GB 以上。
+- `ALTER SYSTEM SET shared_buffers = '8GB'` 后重启 `postgresql@16-main`，1 秒恢复。核对：`shared_buffers`=8GB；PostgreSQL、API、Web active；`/health` 200；公网 200；后台主进程锁持有者 1 个（重启后自动重新选出）；API 无错误日志。
+- 重启后缓存为空，随访问逐步加载，前几分钟查询可能略慢。
+- 回滚：`ALTER SYSTEM SET shared_buffers = '2GB'` 后重启数据库；改前配置备份为 `postgresql.auto.conf.bak-claude-shared-buffers-20261020`。
