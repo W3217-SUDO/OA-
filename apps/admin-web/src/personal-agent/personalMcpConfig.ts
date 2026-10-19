@@ -45,11 +45,10 @@ export function hasConnectionCredential(text: string) {
     || /(?:authorization\s*[:=]\s*\S+|bearer\s+\S+|(?:api[-_ ]?key|token|密钥)\s*[:：=]\s*\S+)/i.test(nonUrlText);
 }
 
-// 配置只把公开连接信息交给模型，原始请求头和密钥不能进入普通消息。
+// 完整配置提交后端处理；等待期间的消息气泡不展示原始凭据。
 export function mcpChatMessage(raw: string): string {
-  if (!isMcpConnectionInput(raw) || !/^\s*(?:```(?:json)?\s*)?\{/.test(raw)) return raw;
-  const draft = parsePersonalMcpConfig(raw);
-  return `请帮我连接 MCP。连接名称：${draft.name || draft.server_name}；MCP 地址：${draft.server_url}；传输方式：${draft.transport}；认证方式：${draft.auth_type}。${draft.auth_type === "api_key" ? `认证请求头名称：${draft.api_key_header}。` : ""}${draft.credential ? "配置中的密钥没有发送给模型，请在连接确认时让我通过安全输入重新填写。" : "如需密钥，请让我通过安全输入填写。"}`;
+  return hasConnectionCredential(raw) || isMcpConnectionInput(raw)
+    ? "请配置此 MCP 连接（地址与凭据已提交，等待处理结果）。" : raw;
 }
 
 function object(value: unknown): Record<string, unknown> {

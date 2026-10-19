@@ -173,14 +173,8 @@ export function usePersonalWorkspace() {
     const targetKey = conversationDraftKey(targetId, view.workspace);
     const targetDraft = draftsRef.current[targetKey] || drafts.empty.current;
     const { skillId, responseMode, materials, caseMaterials, selectedCase } = targetDraft;
-    let content = (override ?? targetDraft.input).trim();
-    try { content = mcpChatMessage(content); }
-    catch (error) { message.error(errorText(error, "MCP 配置未识别，请只提供公开地址和认证方式")); return; }
-    // 公开连接需求正常交给模型；凭据仍不能创建普通消息或进入生成链。
-    if (mcpConnection.intercept(content)) {
-      updateDraft(targetKey, "input", "");
-      return;
-    }
+    const content = (override ?? targetDraft.input).trim();
+    const displayedContent = mcpChatMessage(content);
     if (!content || runtime.stopping(targetId) || sendStarts.current.has(targetKey) || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
     const unreadableMaterials = materials.filter((item) => item.status === "failed");
     if (unreadableMaterials.length) {
@@ -205,7 +199,7 @@ export function usePersonalWorkspace() {
       }
       const referencedCase = view.workspace && !caseMaterials.length ? null : selectedCase;
       const metadata = { skill_name: skill?.name, case_id: referencedCase?.id, case_no: referencedCase?.serial_no };
-      const generation = runtime.generate(conversation, { content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: referencedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast", ...(view.workspace ? { workspace: view.workspace } : {}) }, { role: "user", content, ...metadata, attachments: [...materials, ...caseMaterials] }, metadata);
+      const generation = runtime.generate(conversation, { content, skill_id: skillId, attachment_ids: materials.map((item) => item.id), case_id: referencedCase?.id, document_ids: caseMaterials.map((item) => item.id), response_mode: status.supports_response_modes ? responseMode : "fast", ...(view.workspace ? { workspace: view.workspace } : {}) }, { role: "user", content: displayedContent, ...metadata, attachments: [...materials, ...caseMaterials] }, metadata);
       beforeSend = draftsRef.current[written] || drafts.empty.current;
       // 只消费本轮快照，停止等待期间的新输入和新材料留给下一轮。
       if (override === undefined) updateDraft(written, "input", (current) => current === targetDraft.input ? "" : current);

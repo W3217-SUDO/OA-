@@ -550,7 +550,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
         routes = [route for route in self.app.routes if isinstance(route, APIRoute) and self.base in route.path]
         self.assertEqual(len(routes), 6)
         self.assertTrue(all(exclusion_reasons(route) for route in routes))
-        for content in [json.dumps(self.configuration), '连接MCP token=' + self.secret,
+        for content in ['连接MCP token=' + self.secret,
                         'https://example.com/mcp?api_key=' + self.secret]:
             with patch('app.areas.personal_agent.router.personal_identity', new=AsyncMock()) as identity:
                 response = await self.client.post('/api/v1/personal-agent/messages', json={'content': content})
@@ -560,6 +560,38 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
         from fastapi import HTTPException
         with self.assertRaises(HTTPException):
             reject_credentials({'api_key': self.secret})
+
+    async def test_chat_configures_supplied_secret_without_model_or_confirmation_card(self):
+        from app.areas.personal_agent.mcp_chat_input import extract_chat_connection
+        from app.areas.personal_agent.mcp_chat_connection import configure_chat_connection
+        submission = extract_chat_connection(json.dumps(self.configuration))
+        self.assertNotIn(self.secret, repr(submission))
+        self.assertNotIn(self.secret, submission.message())
+        for content in ['连接MCP 名称：CODEX https://example.com/mcp Bearer ' + self.secret,
+                        '连接MCP https://example.com/mcp API Key: ' + self.secret]:
+            parsed = extract_chat_connection(content)
+            self.assertEqual(parsed.credential.get_secret_value(), self.secret)
+            self.assertNotIn(self.secret, parsed.message())
+        state = {'conversation_id': 'CODEX-CONNECT-IN-CHAT', 'messages': [], 'pending_actions': []}
+        snapshots = []
+
+        async def capture(owner, value):
+            snapshots.append(deepcopy(value))
+
+        async with self.sessions() as db, AsyncExitStack() as stack:
+            identity, context = stack.enter_context(self.sdk_transport())
+            with patch('app.areas.personal_agent.mcp_chat_connection.authenticated_identity', AsyncMock(return_value=identity)), \
+                 patch('app.areas.personal_agent.service._save_state', side_effect=capture):
+                result = await configure_chat_connection(submission, identity, db, state, AsyncMock(), AsyncMock())
+            self.assertEqual(result['state']['messages'][-1]['connection_result']['status'], 'verified')
+            self.assertEqual(state['pending_actions'], [])
+            self.assertEqual([call['method'] for call in self.sdk_calls].count('initialize'), 1)
+            self.assertEqual([call['method'] for call in self.sdk_calls].count('tools/list'), 1)
+            self.assertFalse(any(call['method'] == 'tools/call' for call in self.sdk_calls))
+            self.assertNotIn(self.secret, json.dumps(snapshots))
+            record = (await db.scalars(select(SystemConfig))).one()
+            self.assertNotIn(self.secret, json.dumps(record.value))
+            self.assertEqual(decrypt(record), self.configuration)
 
     async def test_sdk_tools_call_only_after_confirmation_and_result_visible_in_current_dialog(self):
         from app.areas.personal_agent.mcp_tools import PersonalMcpToolSession
@@ -677,7 +709,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(self.secret, json.dumps(result))
             with patch('app.areas.personal_agent.service._user_dir') as directory:
                 with self.assertRaises(HTTPException):
-                    await generate_response(identity, db, json.dumps(self.configuration), AsyncMock())
+                    await generate_response(identity, db, '连接MCP https://example.com/mcp?api_key=' + self.secret, AsyncMock())
                 directory.assert_not_called()
 
     async def test_schema_keyword_names_are_data_but_real_constraints_remain_rejected(self):

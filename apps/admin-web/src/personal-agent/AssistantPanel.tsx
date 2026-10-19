@@ -13,7 +13,6 @@ import { PersonalAiSpace } from "./PersonalAiSpace";
 import { CaseAgentFileFolderModal } from "./CaseAgentFileFolderModal";
 import { PersonalMcpConnectionCard } from "./PersonalMcpConnectionCard";
 import { McpConnectionTurn } from "./McpConnectionTurn";
-import { hasConnectionCredential } from "./personalMcpConfig";
 import { agentOperationMessage, userFacingAgentText } from "../AgentOperationPreview";
 import { errorText, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
@@ -176,7 +175,6 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
 
   const submit = (text?: string) => {
     const content = (text ?? input).trim();
-    if (mcp.intercept(content)) { setInput(""); return; }
     if (!content || sendBlocked) return;
     // 草稿的清空和失败恢复交给工作区，避免拒绝发送或停止失败时丢失输入。
     followBottom();
@@ -385,8 +383,6 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
               submit();
             }}
             onPaste={(event) => {
-              const pasted = event.clipboardData.getData("text");
-              if (hasConnectionCredential(pasted)) { event.preventDefault(); mcp.intercept(pasted); return; }
               if (event.clipboardData.files.length) { event.preventDefault(); void workspace.upload(Array.from(event.clipboardData.files)); }
             }}
             maxLength={8000}

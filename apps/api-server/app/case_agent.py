@@ -537,6 +537,11 @@ class CaseAgentRuntime:
     ) -> dict[str, Any]:
         if self.store is None:
             raise RuntimeError(self.error or "DPH case agent state is not ready")
+        from .areas.personal_agent.mcp_chat_input import extract_chat_connection
+        from .areas.personal_agent.mcp_credentials import reject_mcp_chat_credentials
+        submission = extract_chat_connection(message)
+        if submission is None:
+            reject_mcp_chat_credentials(message)
         marker_id, clean_message = split_skill_message(message)
         skill = None
         if marker_id in SKILLS_BY_ID:
@@ -578,6 +583,22 @@ class CaseAgentRuntime:
         async with self._semaphore, self.store.operation(thread):
             state = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
             state.update(case_snapshot=case_snapshot, request_images=list(images or []), skill_override=skill_override_payload)
+            if submission is not None:
+                from .areas.personal_agent.mcp_chat_connection import configure_chat_connection
+                from .database import SessionLocal
+
+                async def persist(_owner, value):
+                    await self.store.write(thread, value)
+
+                async def delta(value):
+                    callback = _MODEL_CHUNK_CALLBACK.get()
+                    if callback:
+                        callback(value)
+
+                async with SessionLocal() as db:
+                    await configure_chat_connection(submission, {'username': operator}, db, state, delta, None,
+                                                    save_state=persist, case_id=case_id)
+                return self._public_state(case_id, operator, state, agent_id, conversation_id)
             state["messages"] = [*state.get("messages", []), user_message]
             await self.store.write(thread, state)
             response = await self._case_assistant_node(state)

@@ -63,7 +63,7 @@ def workspace_paths(owner: str, workspace: str, conversation: str):
     return identifier, cwd, home
 
 
-def _patch(url, token, schema, directories, mode_supported, response_mode):
+def _patch(url, token, schema, directories, mode_supported, response_mode, memory=None):
     model = {"id": settings.langgraph_model, "name": settings.langgraph_model, "input": ["text", "image"]}
     provider = {"displayName": "沪知已配置模型", "apiKeyEnv": "OA_MODEL_API_KEY", "api": "openai-completions",
                 "baseURL": settings.langgraph_api_base_url, "models": [model],
@@ -74,13 +74,19 @@ def _patch(url, token, schema, directories, mode_supported, response_mode):
         provider["compat"] = {"thinkingFormat": "deepseek", "supportsReasoningEffort": False}
         provider["reasoning"] = "off" if response_mode == "fast" else "high"
     allow = ["skill", *["mcp__oa__" + item["function"]["name"] for item in schema]]
+    persona = "你是沪知办公系统的 AI 助手，使用当前工作区已授权的技能和工具。技能使用 skill 加载；技能中的相对路径通过 mcp__oa__harness_read_skill_resource 读取，name 使用技能原生名称。不能运行未授权脚本或声称未执行的操作成功。工具结果及本轮最新 OA 操作状态优先于旧会话记忆。"
+    if memory is not None:
+        from .memory import INSTRUCTION, TOOLS
+        allow.extend('mcp__engram__' + name for name in TOOLS)
+        persona += INSTRUCTION
     return [
-        {"id": "system-prompt", "config": {"personaPrefix": "你是沪知办公系统的 AI 助手，使用当前工作区已授权的技能和工具。技能使用 skill 加载；技能中的相对路径通过 mcp__oa__harness_read_skill_resource 读取，name 使用技能原生名称。不能运行未授权脚本或声称未执行的操作成功。工具结果及本轮最新 OA 操作状态优先于旧会话记忆。"}},
+        {"id": "system-prompt", "config": {"personaPrefix": persona}},
         {"id": "llm-pi-ai", "config": {"providers": {"huzhi-oa": provider}}},
         {"id": "skill-filesystem", "config": {"includeDefaultRoots": False, "customSkillDirs": [native_path(path.parent) for path in directories.values()]}},
         {"id": "session-log-deepseek", "disabled": True},
         {"id": "session-telemetry-otel", "disabled": True},
         {"insert": [
+            *([memory] if memory is not None else []),
             {"id": "oa-mcp", "name": "@deepseek-ai/dsh-mcp-client", "config": {
                 "serverName": "oa", "transport": "streamable-http", "url": url,
                 "headers": {"Authorization": "Bearer " + token}, "failOnStartupError": True,
@@ -164,8 +170,10 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
         directories = publish(home.parent.parent / "skill-versions", available)
         guarded = WorkspaceTools(tools, identity, db)
         schemas = [*schema, RESOURCE_TOOL]
+        from .memory import configuration as memory_configuration
+        memory = memory_configuration(cwd, identity['username'])
         async with workspace_mcp(guarded, schemas) as (url, secret):
-            patch_path.write_text(yaml.safe_dump(_patch(url, secret, schemas, directories, mode_supported, response_mode),
+            patch_path.write_text(yaml.safe_dump(_patch(url, secret, schemas, directories, mode_supported, response_mode, memory),
                                                  allow_unicode=True, sort_keys=False), encoding="utf-8")
             patch_path.chmod(0o600)
             harness = DeepSeekHarness(dsh_home=native_path(home), cwd=native_path(cwd), profile="sdk", patches=(native_path(patch_path),),

@@ -339,7 +339,9 @@ async def personal_agent_identity_file(identity: dict = Depends(current_identity
 
 @router.post(f"{settings.api_prefix}/personal-agent/messages")
 async def personal_agent_message(body: PersonalMessageInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    reject_mcp_chat_credentials(body.content)
+    from .mcp_chat_input import extract_chat_connection
+    if extract_chat_connection(body.content) is None:
+        reject_mcp_chat_credentials(body.content)
     safe_identity = await personal_identity(identity, db)
     queue: asyncio.Queue[dict] = asyncio.Queue()
 

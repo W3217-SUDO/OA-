@@ -276,13 +276,14 @@ def _save_candidate(directory: Path, owner_user_id: int, conversation_id: str | 
 def prepare_memory_context(directory: Path, owner_user_id: int, conversation_id: str | None, case_id: int | None,
                         messages: list[dict[str, Any]], user_text: str, summary: str = "",
                         allowed_case_ids: list[int] | None = None,
-                        summary_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+                        summary_metadata: dict[str, Any] | None = None,
+                        save_explicit: bool = True) -> dict[str, Any]:
     expire_memories(directory, owner_user_id)
     state = {"directory": str(directory), "owner_user_id": owner_user_id,
              "conversation_id": conversation_id, "case_id": case_id,
              "allowed_case_ids": ([case_id] if allowed_case_ids is None and case_id else (allowed_case_ids or [])),
              "messages": messages, "user_text": user_text}
-    result = {**_extract_node(state), **_recall_node(state)}
+    result = {**(_extract_node(state) if save_explicit else {}), **_recall_node(state)}
     item = _save_candidate(directory, owner_user_id, conversation_id, case_id, result.get("candidate"), result.get("category"))
     if result.get("recalled"):
         _audit(directory, owner_user_id, "recalled", detail={"memory_ids": [item.get("id") for item in result["recalled"] if item.get("id")]}, conversation_id=conversation_id, case_id=case_id)

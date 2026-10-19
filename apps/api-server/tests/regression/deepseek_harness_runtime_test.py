@@ -41,7 +41,7 @@ def isolated_home():
 
 
 @asynccontextmanager
-async def model_server(requests):
+async def model_server(requests, choose_function=None):
     application = FastAPI()
 
     @application.post("/v1/chat/completions")
@@ -50,6 +50,9 @@ async def model_server(requests):
         requests.append(payload)
         first = len(requests) <= 2
         function = {"name": "skill", "arguments": json.dumps({"name": native_name("isolated-skill")})} if len(requests) == 1 else {"name": "mcp__oa__metadata_probe", "arguments": "{}"}
+        if choose_function is not None:
+            function = choose_function(len(requests))
+            first = function is not None
         delta = {"role": "assistant", "tool_calls": [{"index": 0, "id": "probe-call", "type": "function",
                  "function": function}]} if first else {"role": "assistant", "content": "核验完成"}
         async def stream():
@@ -76,6 +79,43 @@ async def model_server(requests):
 
 
 class DeepSeekHarnessRuntimeTest(unittest.IsolatedAsyncioTestCase):
+    async def test_native_memory_survives_new_conversation_and_isolates_workspace(self):
+        binary = os.environ.get('OA_TEST_ENGRAM_BINARY', '')
+        if not binary:
+            self.skipTest('未提供隔离 Engram 测试程序')
+        requests = []
+        marker = 'CODEX-PERSISTENT-RECALL-20261020'
+
+        def choose(index):
+            if index == 1:
+                return {'name': 'mcp__engram__mem_save', 'arguments': json.dumps({
+                    'title': marker, 'type': 'manual', 'content': marker})}
+            if index in (3, 5):
+                return {'name': 'mcp__engram__mem_search', 'arguments': json.dumps({'query': marker})}
+            return None
+
+        with isolated_home() as temporary:
+            async with model_server(requests, choose) as url:
+                with patch.object(settings, 'deepseek_harness_root', str(Path(temporary) / 'harness')), \
+                     patch.object(settings, 'personal_agent_root', str(Path(temporary) / 'personal')), \
+                     patch.object(settings, 'deepseek_harness_memory_command', binary), \
+                     patch.object(settings, 'langgraph_api_base_url', url), \
+                     patch.object(settings, 'langgraph_api_key', 'CODEX-isolated-model-key'), \
+                     patch.object(settings, 'langgraph_model', 'oa-probe'), \
+                     patch('app.harness_agent.runtime.definitions', AsyncMock(return_value=[])):
+                    for workspace, conversation in [('personal', 'first'), ('personal', 'fresh'), ('case:7', 'separate')]:
+                        await run([{'role': 'user', 'content': '核验原生长期记忆'}], AsyncMock(),
+                                  tools=AsyncMock(), schema=[], identity={'username': 'CODEX-memory-owner'},
+                                  db=AsyncMock(), workspace=workspace, conversation=conversation,
+                                  response_mode='fast', mode_supported=False, on_progress=None)
+                    first_search = [item for item in requests[3]['messages'] if item['role'] == 'tool']
+                    other_search = [item for item in requests[5]['messages'] if item['role'] == 'tool']
+                    self.assertIn(marker, json.dumps(first_search))
+                    self.assertNotIn('No memories found', json.dumps(first_search))
+                    self.assertIn('No memories found', json.dumps(other_search))
+                    for request in requests:
+                        self.assertIn('mcp__engram__mem_save', [item['function']['name'] for item in request['tools']])
+
     def test_factory_selects_native_runtime(self):
         runtime = create_case_agent_runtime(runtime_backend="deepseek-harness", enabled=False,
                                              database_url="sqlite+aiosqlite:///:memory:")

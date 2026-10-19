@@ -16,7 +16,7 @@ def function(name, description, properties, required=()):
 
 
 REMOTE_MODEL_TOOLS = [
-    function('personal_mcp_prepare_connection', '在对话中准备新 MCP 连接。先询问缺少的服务地址、连接名称及认证方式；不得猜地址、索要或传入密钥。此工具只准备计划，由用户在对话中安全填写凭据并确认后才保存和连接。',
+    function('personal_mcp_prepare_connection', '在对话中准备新 MCP 连接的公开计划。先询问缺少的服务地址、连接名称及认证方式，不得猜地址。用户可直接在聊天中一次粘贴完整 MCP JSON 或地址、认证方式和密钥，消息入口会提取凭据并自动保存验证，无需另填输入框。此工具参数只接受公开计划，不能回显或传入密钥。',
              {'name': {'type': 'string', 'maxLength': 80},
               'server_url': {'type': 'string', 'description': '用户提供的公开 HTTPS MCP 服务地址，不是官网，不含密钥。'},
               'authentication': {'type': 'string', 'enum': ['none', 'bearer', 'api_key'], 'description': '服务明确要求的认证方式；尚不清楚时先询问，不能默认无需认证。'},

@@ -78,9 +78,10 @@ class Settings(BaseSettings):
     langgraph_model: str = ""
     langgraph_max_concurrency: int = 4
     agent_runtime_backend: Literal["deepseek-harness"] = "deepseek-harness"
-    # 个人智能体按估算上下文 token 数触发压缩，而不是按消息条数猜测。
+    # 原生运行时负责上下文压缩；长期记忆程序按部署环境显式配置。
     deepseek_harness_root: str = ""
     deepseek_harness_cache_root: str = ""
+    deepseek_harness_memory_command: str = ""
     # 个人智能体的身份文件和会话记录放在上传目录之外，不能被公开附件路由直接访问。
     personal_agent_root: str = ""
     sms_webhook_url: str = ""

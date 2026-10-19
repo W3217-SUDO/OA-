@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { message } from "antd";
 import { api, AUTH_EXPIRED_EVENT } from "../api";
-import { emptyMcpDraft, hasConnectionCredential, parsePersonalMcpConfig, personalMcpConfiguration, validatePersonalMcpDraft, type PersonalMcpDraft } from "./personalMcpConfig";
+import { emptyMcpDraft, parsePersonalMcpConfig, personalMcpConfiguration, validatePersonalMcpDraft, type PersonalMcpDraft } from "./personalMcpConfig";
 import { personalMcpError, personalMcpVerificationError } from "./personalMcpErrors";
 import type { ConnectorConfiguration, ConnectorSecretField } from "../capability-market/connectorAuth";
 
@@ -83,11 +82,6 @@ export function usePersonalMcpConnection(sessionKey: string) {
       setDraft(emptyMcpDraft());
       setError(failure instanceof Error ? failure.message : "配置解析失败，请重新填写");
     }
-  };
-  const intercept = (text: string) => {
-    if (!hasConnectionCredential(text)) return false;
-    message.error("密钥不能发送到普通聊天。请先告诉我 MCP 地址和认证方式，在连接确认时使用安全输入填写密钥。");
-    return true;
   };
   const update = (next: PersonalMcpDraft) => {
     if (lock.current) return;
@@ -185,5 +179,5 @@ export function usePersonalMcpConnection(sessionKey: string) {
   const newConnection = () => { if (!lock.current) { setEditing(null); update(emptyMcpDraft()); } };
   const credentialSaved = !!editing && editing.auth === draft.auth_type && editing.header === draft.api_key_header && editing.keep.length > 0;
   const scope = editing?.connection.scope || connection?.scope || defaultScope;
-  return { open, draft, error, connection, items, listError, listing, busy, scope, defaultScope, editing: !!editing, credentialSaved, intercept, importConfig, update, close: reset, saveAndConnect, retryTest, show, refresh, edit, remove, newConnection };
+  return { open, draft, error, connection, items, listError, listing, busy, scope, defaultScope, editing: !!editing, credentialSaved, importConfig, update, close: reset, saveAndConnect, retryTest, show, refresh, edit, remove, newConnection };
 }

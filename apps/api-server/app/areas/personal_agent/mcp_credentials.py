@@ -26,4 +26,4 @@ def reject_mcp_chat_credentials(content):
             if _CONTEXT.search(content):
                 blocked = True
     if blocked:
-        raise HTTPException(422, 'MCP配置或凭据不能发送到聊天记录或模型；请先提供公开服务地址和认证方式，在连接确认时通过安全输入提交密钥')
+        raise HTTPException(422, '未识别到完整 MCP 连接声明；请在同一条消息中提供服务地址、认证方式和密钥，或粘贴完整 MCP JSON，无需另填输入框')
