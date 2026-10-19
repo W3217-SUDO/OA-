@@ -5,7 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import UPLOAD_ROOT
@@ -44,10 +44,19 @@ async def _visible_receipt_fee_ids(identity: dict, db: AsyncSession) -> set[int]
     case_nos = {case.serial_no for case in cases}
     if not case_ids:
         return set()
-    fees = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance"))).all()
+    # 只读取 id 与两个关联字段，不再把全部费用的完整 JSON 载入内存；SQL 先按文本缩小
+    # 候选范围，再沿用原来的精确比较，保证返回集合与旧实现一致。
+    case_id_text = BusinessRecord.data["case_id"].as_string()
+    case_no_text = BusinessRecord.data["case_no"].as_string()
+    candidates = (await db.execute(select(
+        BusinessRecord.id, BusinessRecord.data["case_id"], BusinessRecord.data["case_no"],
+    ).where(
+        BusinessRecord.module == "finance",
+        or_(case_id_text.in_([str(value) for value in case_ids]), case_no_text.in_(list(case_nos))),
+    ))).all()
     return {
-        fee.id for fee in fees
-        if (fee.data or {}).get("case_id") in case_ids or (fee.data or {}).get("case_no") in case_nos
+        fee_id for fee_id, fee_case_id, fee_case_no in candidates
+        if fee_case_id in case_ids or fee_case_no in case_nos
     }
 
 
