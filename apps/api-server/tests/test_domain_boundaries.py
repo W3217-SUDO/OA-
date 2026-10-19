@@ -655,7 +655,7 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
                 patch.object(personal_service, "_agent_message_skill_for_identity", new=AsyncMock(return_value=(SimpleNamespace(id="test", name="测试技能"), "生成文书"))), \
                 patch.object(personal_service, "prepare_materials", new=AsyncMock(return_value={"case": None, "readings": [], "can_save_document": False})), \
                 patch.object(personal_service, "build_context", new=AsyncMock(return_value={})), \
-                patch.object(personal_service, "_prompt_messages", return_value=[]), \
+                patch.object(personal_service, "_prompt_messages", return_value=[{"role": "system", "content": "隔离文档保存核验"}]), \
                 patch.object(personal_service, "request_model", new=AsyncMock(return_value="真实完整回答")) as model_request, \
                 patch.object(personal_service, "_save_state", new=AsyncMock()):
             result = await personal_service._generate_response(identity, self.db, "生成文书", AsyncMock(), state=state,
