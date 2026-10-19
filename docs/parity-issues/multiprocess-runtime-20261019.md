@@ -133,3 +133,9 @@ systemctl daemon-reload && systemctl restart sunhold-oa-api
 - `ALTER SYSTEM SET shared_buffers = '8GB'` 后重启 `postgresql@16-main`，1 秒恢复。核对：`shared_buffers`=8GB；PostgreSQL、API、Web active；`/health` 200；公网 200；后台主进程锁持有者 1 个（重启后自动重新选出）；API 无错误日志。
 - 重启后缓存为空，随访问逐步加载，前几分钟查询可能略慢。
 - 回滚：`ALTER SYSTEM SET shared_buffers = '2GB'` 后重启数据库；改前配置备份为 `postgresql.auto.conf.bak-claude-shared-buffers-20261020`。
+
+### shared_buffers 调整为 4GB（用户要求，2026-10-20 01:34）
+
+- 由 8GB 改为 4GB（约等于生产库 3.8 GB），重启 `postgresql@16-main` 1 秒恢复。核对：`shared_buffers`=4GB；PostgreSQL、API、Web active；`/health` 200；公网 200；后台主进程锁持有者 1 个；API 无错误日志。
+- 当前生效值：`shared_buffers`=4GB、`work_mem`=64MB、`maintenance_work_mem`=512MB、`effective_cache_size`=10GB。
+- 改前配置备份：`postgresql.auto.conf.bak-claude-shared-buffers-4g-20261020`（8GB 时的配置）。
