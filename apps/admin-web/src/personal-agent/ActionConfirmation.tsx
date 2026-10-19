@@ -52,8 +52,9 @@ export function ActionConfirmation({ action, deciding, decisionFailure, onDecide
   const visibleError = error || pendingFailure?.message || (action?.type !== "mcp.call" && action?.error != null ? agentOperationMessage(action.error) : "");
   const canDecide = action?.status === "pending" && (action.type !== "mcp.call" || currentStatus === "pending");
   const previewAction = action && request ? { ...action, summary: request.summary, preview: request.preview } : action;
+  const personalMcpPreviewMissing = action?.type === "personal_mcp.call" && !(action.preview?.operation_name && action.preview.method && action.preview.path && action.preview.params && action.preview.requires_confirmation === true);
   const decide = async (decision: "approved" | "rejected") => {
-    if (!action || !canDecide || deciding || loading || (decision === "approved" && error)) return;
+    if (!action || !canDecide || deciding || loading || (decision === "approved" && (error || personalMcpPreviewMissing))) return;
     try {
       if (await onDecide(action, decision)) onClose();
     } catch (failure: unknown) {
@@ -84,11 +85,12 @@ export function ActionConfirmation({ action, deciding, decisionFailure, onDecide
       <Button disabled={deciding} onClick={onClose}>关闭</Button>
       {canDecide && <>
         <Button icon={<CloseOutlined />} disabled={deciding || loading || !!pendingFailure} onClick={() => void decide("rejected")}>取消操作</Button>
-        <Button type="primary" icon={<CheckOutlined />} loading={deciding} disabled={deciding || loading || !!visibleError || !previewAction || !hasAgentOperationPreview(previewAction)} onClick={() => void decide("approved")}>确认并执行</Button>
+        <Button type="primary" icon={<CheckOutlined />} loading={deciding} disabled={deciding || loading || !!visibleError || personalMcpPreviewMissing || !previewAction || !hasAgentOperationPreview(previewAction)} onClick={() => void decide("approved")}>确认并执行</Button>
       </>}
     </Space>}>
     {currentStatus && <Tag color={currentStatus === "failed" ? "error" : currentStatus === "succeeded" ? "success" : "processing"} style={{ marginBottom: 12 }}>{STATUS_NAMES[currentStatus]}</Tag>}
     {visibleError && <Alert type="error" showIcon title={currentStatus === "failed" ? "操作执行失败" : "操作未完成"} description={visibleError} style={{ marginBottom: 12, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }} />}
+    {personalMcpPreviewMissing && <Alert type="error" showIcon title="外部工具调用预览不完整，不能确认执行" />}
     {pendingFailure && <Alert type={pendingFailure.state === "unknown" ? "warning" : "info"} showIcon title={pendingFailure.state === "syncing" ? "正在只读核对真实执行状态" : pendingFailure.state === "unknown" ? "执行状态未能核实，禁止重复提交" : "已读取最新对话状态，可在历史记录查看详情"} style={{ marginBottom: 12 }} />}
     {currentStatus && currentStatus !== "pending" && <Alert type={currentStatus === "succeeded" ? "success" : "warning"} showIcon title={currentStatus === "failed" ? "该确认请求已失败，不能重复执行" : `该请求${STATUS_NAMES[currentStatus]}，不能重复确认`} style={{ marginBottom: 12 }} />}
     <Spin spinning={loading}><div style={{ maxHeight: "60dvh", overflowY: "auto" }}>{previewAction && <AgentOperationPreview action={previewAction} />}</div></Spin>

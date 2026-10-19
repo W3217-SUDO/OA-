@@ -6,6 +6,8 @@ import { confirmCaseAgentDocument } from "../legal/services/agentDocumentConfirm
 import { confirmPersonalAiDocument } from "./personalAiDocumentConfirmation";
 import { usePersonalConversations } from "./usePersonalConversations";
 import { useConversationRuntime } from "./useConversationRuntime";
+import { usePersonalMcpConnection } from "./usePersonalMcpConnection";
+import { hasConnectionCredential, isMcpConnectionInput } from "./personalMcpConfig";
 import { EMPTY_PERSONAL_DRAFT as EMPTY_DRAFT, usePersonalDrafts } from "./usePersonalDrafts";
 import { conversationDraftKey, conversationWorkspaceKey, PERSONAL_CONVERSATION_WORKSPACE, requireConversationWorkspace } from "./conversationWorkspace";
 import { errorText, workspaceDocumentSaveTarget, type ConfirmationDetail, type ConversationWorkspace, type DecisionFailure, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
@@ -38,6 +40,7 @@ export function usePersonalWorkspace() {
   const state = runtime.state;
   const id = state.conversation_id || "";
   const draftKey = conversationDraftKey(id, conversations.workspace);
+  const mcpConnection = usePersonalMcpConnection(draftKey);
   const draft = drafts.items[draftKey] || EMPTY_DRAFT;
   const { input, skillId, responseMode, materials, caseMaterials, selectedCase, savedDocuments, savedSpreadsheets, decisionResult, decisionFailures } = draft;
   const sending = !!runtime.activities[id];
@@ -56,6 +59,8 @@ export function usePersonalWorkspace() {
   const setCaseMaterials = (value: SetStateAction<Material[]>) => updateDraft(draftKey, "caseMaterials", value);
   const changeConversation = async (operation: () => Promise<WorkspaceState>) => {
     if (uploadLock.current || decisionLock.current || dismissalLock.current || loading || sendStarts.current.has(draftKey)) throw new Error("请先完成当前文件、确认或收起操作，再切换对话");
+    mcpConnection.close();
+    if (isMcpConnectionInput(input) || hasConnectionCredential(input)) updateDraft(draftKey, "input", "");
     // 返回切换后的会话，便于调用方紧接着把问题发给这条对话。
     return await operation();
   };
@@ -165,6 +170,11 @@ export function usePersonalWorkspace() {
     const targetDraft = draftsRef.current[targetKey] || EMPTY_DRAFT;
     const { skillId, responseMode, materials, caseMaterials, selectedCase } = targetDraft;
     const content = (override ?? targetDraft.input).trim();
+    // 先截出个人连接与凭据，禁止创建普通消息、会话或进入模型生成链。
+    if (mcpConnection.intercept(content)) {
+      updateDraft(targetKey, "input", "");
+      return;
+    }
     if (!content || runtime.stopping(targetId) || sendStarts.current.has(targetKey) || uploadLock.current || decisionLock.current || conversations.locked() || loading || loadError || !status?.ready) return;
     const unreadableMaterials = materials.filter((item) => item.status === "failed");
     if (unreadableMaterials.length) {
@@ -292,13 +302,17 @@ export function usePersonalWorkspace() {
   const selectWorkspace = async (workspace: ConversationWorkspace) => {
     if (uploadLock.current || decisionLock.current || dismissalLock.current || conversations.locked() || loading) throw new Error("请先完成当前文件、确认或切换操作，再打开空间");
     if (workspace.kind === "case" && loadError) throw new Error("工作区加载失败，请先重试或返回个人空间");
+    mcpConnection.close();
+    if (isMcpConnectionInput(input) || hasConnectionCredential(input)) updateDraft(draftKey, "input", "");
     return conversations.openWorkspace(workspace, true);
   };
   const setProjectMode = async (enabled: boolean) => {
+    mcpConnection.close();
+    if (isMcpConnectionInput(input) || hasConnectionCredential(input)) updateDraft(draftKey, "input", "");
     try { await conversations.openWorkspace(enabled ? PERSONAL_CONVERSATION_WORKSPACE : undefined); }
     catch (error) { message.error(errorText(error, "空间切换失败")); }
   };
-  return { status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, chooseCaseMaterials, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, saveSpreadsheet, savedDocuments, savedSpreadsheets, documentRevision, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation, draftKey,
+  return { mcpConnection, status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, chooseCaseMaterials, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, saveSpreadsheet, savedDocuments, savedSpreadsheets, documentRevision, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation, draftKey,
     currentWorkspace: conversations.workspace, workspaceProjects: conversations.projects, caseAgentConversations: conversations.caseAgentConversations, selectWorkspace, setProjectMode,
     conversations: conversations.items, conversationBusy: conversations.busy, runningIds: Object.keys(runtime.activities),
     createConversation: () => changeConversation(() => conversations.create()), selectConversation: (target: string) => target === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(target)),

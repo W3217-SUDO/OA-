@@ -16,10 +16,12 @@ from app.security import current_identity
 from .catalog import catalog, definition, entry, install, installed_records, public_entry, summary
 from .connector_routes import router as connector_router
 from .connector_store import connection_states
+from .personal_mcp_routes import router as personal_mcp_router
 
 
 router = APIRouter(prefix=settings.api_prefix + "/capability-market", tags=["能力中心"])
 router.include_router(connector_router)
+router.include_router(personal_mcp_router)
 
 
 class InstallInput(BaseModel):

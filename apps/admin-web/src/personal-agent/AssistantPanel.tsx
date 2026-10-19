@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Input, List, Tag, Tooltip, message } from "antd";
-import { ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileExcelOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ApiOutlined, ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileExcelOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import AgentAvatar from "./AgentAvatar";
 import { ConversationManager } from "./ConversationManager";
@@ -11,6 +11,8 @@ import { ActionConfirmation } from "./ActionConfirmation";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { PersonalAiSpace } from "./PersonalAiSpace";
 import { CaseAgentFileFolderModal } from "./CaseAgentFileFolderModal";
+import { PersonalMcpConnectionCard } from "./PersonalMcpConnectionCard";
+import { hasConnectionCredential, isMcpConnectionInput } from "./personalMcpConfig";
 import { agentOperationMessage, userFacingAgentText } from "../AgentOperationPreview";
 import { errorText, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
@@ -58,6 +60,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   ref,
 ) {
   const { status, state, loading, loadError, sending, stopping, input, setInput, send, stop, decide, load } = workspace;
+  const mcp = workspace.mcpConnection;
   const threadRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
@@ -118,6 +121,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   }, [focusRequested, onFocusHandled]);
 
   const openCaseConversation = async (item: CaseAgentConversationSummary) => {
+    mcp.close();
     setCaseSession({ item, loading: true, sending: false, state: { conversation_id: String(item.id), conversation_title: item.title, messages: [], pending_actions: [], dismissed_action_ids: [], workspace: { kind: "case", case_id: item.case_id } } });
     try {
       const response = await fetch(`/api/v1/case-spaces/${item.case_id}/agent/state?agent_id=${encodeURIComponent(item.agent_id)}&conversation_id=${encodeURIComponent(item.id)}`, { headers: { Authorization: `Bearer ${localStorage.getItem("access_token") || ""}` } });
@@ -171,6 +175,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
 
   const submit = (text?: string) => {
     const content = (text ?? input).trim();
+    if (mcp.intercept(content)) { setInput(""); return; }
     if (!content || sendBlocked) return;
     // 草稿的清空和失败恢复交给工作区，避免拒绝发送或停止失败时丢失输入。
     followBottom();
@@ -246,7 +251,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             busy={loading || workspace.conversationBusy}
             runningIds={runningIds}
             onCreate={workspace.createConversation}
-            onSelect={(id) => { setCaseSession(null); return workspace.selectConversation(id); }}
+            onSelect={(id) => { mcp.close(); setCaseSession(null); return workspace.selectConversation(id); }}
             onDelete={workspace.deleteConversation}
             drawerClassName="assistant-conversation-drawer"
             listClassName="assistant-conversation-list"
@@ -263,7 +268,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       {!loadError && status && !status.ready && (
         <Alert className="assistant-alert" type="warning" showIcon title="个人智能体暂未就绪，请检查当前 OA 配置的大模型服务" />
       )}
-      {!hasDisplayedMessages && <div className={`assistant-empty-state${logoSrc ? " has-logo" : ""}`}>
+      {!hasDisplayedMessages && !mcp.open && <div className={`assistant-empty-state${logoSrc ? " has-logo" : ""}`}>
         {logoSrc && <img className="assistant-empty-logo" src={logoSrc} alt="" width={56} height={56} />}
         {desktopWorkspace ? <div className="assistant-workspace-greeting"><h1>今天想处理什么？</h1></div> : <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} />}
         {!desktopWorkspace && <div className="assistant-mobile-empty">
@@ -351,6 +356,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       )}
       <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeId) ?? null} deciding={!!workspace.decisionId} decisionFailure={activeId ? workspace.decisionFailures[activeId] : undefined} onDecide={decide} onClose={() => { setActiveAction(null); setHistoryAction(null); }} />
       <PersonalAiSpace open={personalSpaceOpen} onClose={() => setPersonalSpaceOpen(false)} revision={workspace.documentRevision} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} onOpenConversation={workspace.selectConversation} onSkillsChanged={workspace.refreshSkills} label={desktopWorkspace ? "AI生成文件夹" : undefined} />
+      {mcp.open && <PersonalMcpConnectionCard key={`${workspace.draftKey}:${caseSession?.item.id || "personal"}`} connection={mcp} />}
       <div className="assistant-composer"
         onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
         onDrop={(event) => {
@@ -360,6 +366,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         }}
       >
         <AssistantWorkspaceTools key={workspace.draftKey} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} onOpenMemory={() => setMemoryOpen(true)} />
+        <div><Button type="text" icon={<ApiOutlined />} onClick={mcp.show}>连接我的 MCP</Button></div>
         <form className="assistant-composer-input" onSubmit={(event) => { event.preventDefault(); submit(); }}>
           <Input.TextArea
             ref={inputRef}
@@ -374,12 +381,13 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
               submit();
             }}
             onPaste={(event) => {
+              const pasted = event.clipboardData.getData("text");
+              if (isMcpConnectionInput(pasted, mcp.open) || hasConnectionCredential(pasted)) { event.preventDefault(); mcp.intercept(pasted); setInput(""); return; }
               if (event.clipboardData.files.length) { event.preventDefault(); void workspace.upload(Array.from(event.clipboardData.files)); }
             }}
             maxLength={8000}
             autoSize={{ minRows: 1, maxRows: 5 }}
             placeholder="告诉智能体你要完成的 OA 工作"
-            disabled={caseSession ? caseSession.loading || caseSession.sending : loading || !status?.ready}
             aria-label="给智能体的指令"
           />
           <div className="assistant-composer-actions">
@@ -395,7 +403,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
               />
             </Tooltip>}
             {(!sending || !!input.trim()) && <Tooltip title={sending ? "打断并发送" : "发送"}>
-              <Button className="assistant-send" shape="circle" type="primary" icon={<ArrowUpOutlined />} aria-label={sending ? "打断并发送" : "发送"} htmlType="submit" disabled={sendBlocked || !input.trim()} />
+              <Button className="assistant-send" shape="circle" type="primary" icon={<ArrowUpOutlined />} aria-label={sending ? "打断并发送" : "发送"} htmlType="submit" disabled={!input.trim() || (sendBlocked && !isMcpConnectionInput(input, mcp.open) && !hasConnectionCredential(input))} />
             </Tooltip>}
           </div>
         </form>

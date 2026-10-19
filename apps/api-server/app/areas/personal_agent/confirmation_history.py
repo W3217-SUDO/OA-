@@ -26,7 +26,7 @@ async def project_personal_actions(state, identity, db):
     references = {}
     for action in actions:
         action_type = action.get("type")
-        if action_type not in {"mcp.call", "create_task", "approve_contract"}:
+        if action_type not in {"mcp.call", "create_task", "approve_contract", "personal_mcp.call"}:
             continue
         if action.get("requested_by") != identity["username"]:
             raise HTTPException(403, "待确认操作不属于当前账号")
@@ -91,7 +91,7 @@ def _personal_query(action_id, identity):
 
 
 async def prepare_personal_action(action, identity, state, db):
-    if action.get("type") not in {"create_task", "approve_contract"}:
+    if action.get("type") not in {"create_task", "approve_contract", "personal_mcp.call"}:
         raise HTTPException(422, "不支持的待确认操作")
     if action.get("requested_by") != identity["username"]:
         raise HTTPException(403, "只能存档本人请求的操作")
@@ -115,6 +115,8 @@ async def prepare_personal_action(action, identity, state, db):
 async def begin_personal_decision(action, decision, comment, identity, state, db):
     record = await db.scalar(_personal_query(action["id"], identity).with_for_update().execution_options(populate_existing=True))
     if record is None:
+        if action.get('type') == 'personal_mcp.call':
+            raise HTTPException(404, '个人MCP待确认请求不存在，禁止执行')
         # 升级前仍在原会话待确认的结构化请求，只在真实决定时存档，不回填聊天推测。
         record = await prepare_personal_action(action, identity, state, db)
     if record.status != "待确认":
@@ -202,7 +204,7 @@ async def _action_contexts(directory, identity, db):
         if workspace_key(state_workspace(state)) not in visible:
             continue
         for action in state["pending_actions"]:
-            if not isinstance(action, dict) or action.get("type") not in {"mcp.call", "create_task", "approve_contract"}:
+            if not isinstance(action, dict) or action.get("type") not in {"mcp.call", "create_task", "approve_contract", "personal_mcp.call"}:
                 continue
             if action.get("requested_by") != identity["username"]:
                 raise HTTPException(403, "操作卡不属于当前账号")

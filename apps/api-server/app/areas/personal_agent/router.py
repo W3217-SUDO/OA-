@@ -23,6 +23,7 @@ from app.areas.personal_agent.confirmation_history import read_confirmation_deta
 from app.areas.personal_agent.action_presentation import dismiss_personal_actions
 from app.areas.personal_agent.project_workspaces import ProjectWorkspace, normalize_workspace
 from app.areas.personal_agent.ai_space import router as ai_space_router
+from app.areas.personal_agent.mcp_credentials import reject_mcp_chat_credentials
 
 
 router = APIRouter()
@@ -314,6 +315,7 @@ async def personal_agent_identity_file(identity: dict = Depends(current_identity
 
 @router.post(f"{settings.api_prefix}/personal-agent/messages")
 async def personal_agent_message(body: PersonalMessageInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    reject_mcp_chat_credentials(body.content)
     safe_identity = await personal_identity(identity, db)
     queue: asyncio.Queue[dict] = asyncio.Queue()
 

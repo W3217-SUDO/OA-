@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.agent_permissions import require_agent_settings_management
 from app.models import SystemConfig
-from .connector_format import configuration_links, path_value, public_configuration, reference_links, secret_paths, set_path, validate_configuration
+from .connector_format import configured_secret, configuration_links, path_value, public_configuration, reference_links, secret_paths, set_path, validate_configuration
 
 CONNECTOR_CONFIG_PREFIX = 'agent_connector_'
 
@@ -48,7 +48,7 @@ def decrypt(record):
 
 async def stored(item_id, scope, identity, db, *, lock=False):
     query = select(SystemConfig).where(SystemConfig.key == config_key(item_id, scope, identity))
-    record = await db.scalar(query.with_for_update() if lock else query)
+    record = await db.scalar(query.with_for_update().execution_options(populate_existing=True) if lock else query)
     if record is not None:
         value = record.value
         if value.get('schema_version') != 1 or value.get('scope') != scope or value.get('owner') != owner_for(scope, identity) or value.get('item_id') != item_id:
@@ -102,9 +102,27 @@ async def save_configuration(item, scope, identity, db, configuration, keep_cred
             if path_value(config, path):
                 raise HTTPException(422, '同一凭据字段不能同时保留原值并提交新值')
             set_path(config, path, path_value(previous, path))
+    if item['source'] == 'personal-mcp':
+        credentials = {path_value(config, path) for path in secret_paths(config) if configured_secret(path_value(config, path))}
+        credentials.update(value[7:] for value in list(credentials) if value.lower().startswith('bearer ') and value[7:])
+        public_config, fields = public_configuration(config)
+
+        def contains_credential(value):
+            if isinstance(value, str):
+                return any(credential in value for credential in credentials)
+            if isinstance(value, dict):
+                return any(contains_credential(key) or contains_credential(child) for key, child in value.items())
+            if isinstance(value, list):
+                return any(contains_credential(child) for child in value)
+            return False
+
+        if contains_credential([item['name'], public_config, fields]):
+            raise HTTPException(422, '个人MCP名称或公开配置不能包含已配置的凭据')
     value = {'schema_version': 1, 'scope': scope, 'owner': owner_for(scope, identity), 'item_id': item['id'],
              'source': item['source'], 'revision': uuid4().hex, 'status': 'configured', 'servers': [], 'error': '',
              'last_checked': None, 'encrypted': cipher().encrypt(json.dumps(config, ensure_ascii=False).encode()).decode()}
+    if item['source'] == 'personal-mcp':
+        value['display_name'] = item['name']
     return await persist(record, item, scope, identity, db, value, '保存连接器配置')
 
 
@@ -118,6 +136,10 @@ async def save_verification(item, scope, identity, db, revision, result):
 
 async def connection_states(scope, identity, db):
     owner = 'global' if scope == 'global' else identity['username']
-    records = (await db.scalars(select(SystemConfig).where(SystemConfig.key.startswith(CONNECTOR_CONFIG_PREFIX)))).all()
+    records = (await db.scalars(select(SystemConfig).where(
+        SystemConfig.key.startswith(CONNECTOR_CONFIG_PREFIX),
+        SystemConfig.value['scope'].as_string() == scope,
+        SystemConfig.value['owner'].as_string() == owner,
+    ))).all()
     return {record.value['item_id']: {'status': record.value['status'], 'saved': True}
             for record in records if record.value.get('scope') == scope and record.value.get('owner') == owner}

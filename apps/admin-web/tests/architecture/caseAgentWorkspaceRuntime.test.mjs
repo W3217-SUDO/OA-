@@ -888,6 +888,7 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   const action = { id: "a1", type: "mcp.call", summary: "为2个案件新增期限提醒", status: "pending" };
   const decisions = [];
   const workspace = {
+    mcpConnection: { open: false, show() {}, close() {}, intercept() { return false; } },
     status: { ready: true }, state: { messages: [], pending_actions: [action], dismissed_action_ids: [], conversation_id: "c1" },
     visibleActions: [action], dismissalId: "", decisionFailures: {},
     loading: false, loadError: "", sending: false, stopping: false, input: "", conversations: [], runningIds: [],
@@ -1103,6 +1104,55 @@ test("confirmation controls retain mobile wrapping, touch size and bounded scrol
     assert.equal(value(center, ".workspace-pending-row > .ant-btn-icon-only", "height", width), "44px");
     assert.equal(value(confirmation, ".confirmation-history-detail .ant-modal-footer .ant-btn", "min-height", width), "44px");
   }
+});
+
+test("personal MCP intent preserves ordinary URLs and API JSON while isolating credentials", () => {
+  const mcp = loadModule("../personal-agent/personalMcpConfig.ts", {}, { URL, URLSearchParams });
+  for (const text of ["https://example.com/article", "分析 https://example.com/article", "https://example.com/search?keyword=合同", "分析 https://example.com/search?monkey=合同", "https://example.com/search?tokenizer=plain", JSON.stringify({ headers: { "Content-Type": "application/json" }, body: { q: "普通API" } })]) {
+    assert.equal(mcp.isMcpConnectionInput(text), false);
+    assert.equal(mcp.hasConnectionCredential(text), false);
+  }
+  for (const text of ["连接自己的MCP", "connect my MCP", "https://example.com/mcp", JSON.stringify({ mcpServers: { mine: { url: "https://example.com/service" } } })]) assert.equal(mcp.isMcpConnectionInput(text), true);
+  for (const verb of ["创建", "新建", "链接", "接通", "导入"]) {
+    assert.equal(mcp.isMcpConnectionInput(`${verb}MCP`), true);
+    assert.equal(mcp.isMcpConnectionInput(`MCP${verb}`), true);
+  }
+  assert.equal(mcp.isMcpConnectionInput("创建网页链接 https://example.com/article"), false);
+  assert.equal(mcp.isMcpConnectionInput("https://example.com/service", true), true);
+  for (const name of ["key", "credential", "credentials", "signature", "accessKey", "apiKey", "api_key", "x-api-key", "client_secret", "private_key", "clientKeyId", "passwd", "sig", "auth", "x-amz-credential", "x_amz_security_token", "token", "access_token", "%6bey"]) {
+    const url = `https://example.com/mcp?${name}=CODEX-NONSECRET`;
+    assert.equal(mcp.hasConnectionCredential(url), true);
+    assert.throws(() => mcp.parsePersonalMcpConfig(url));
+  }
+  assert.equal(mcp.hasConnectionCredential("https://example.com/search?key=CODEX-NONSECRET"), true);
+  assert.equal(mcp.hasConnectionCredential("https://invalid:port/search?keyword=合同"), false);
+  assert.equal(mcp.hasConnectionCredential("https://invalid:port/search?key=CODEX-NONSECRET"), true);
+  const draft = mcp.parsePersonalMcpConfig(JSON.stringify({ mcpServers: { mine: { url: "https://example.com/mcp", type: "streamableHttp", headers: { Authorization: "Bearer CODEX-NONSECRET" } } } }));
+  assert.equal(draft.credential, "CODEX-NONSECRET");
+  assert.equal(mcp.validatePersonalMcpDraft(draft), "");
+  assert.equal(mcp.personalMcpConfiguration({ ...draft, credential: "" })["mcp.json"].mcpServers.mine.headers.Authorization, "");
+});
+
+test("personal remote MCP confirmation uses generic preview and decision without local tool request APIs", async () => {
+  const component = name => ({ children, ...props }) => React.createElement(name, props, children);
+  const requests = [], decisions = [];
+  const { ActionConfirmation } = loadModule("../personal-agent/ActionConfirmation.tsx", {
+    antd: { Alert: component("alert"), Button: component("button"), Modal: ({ footer, children, ...props }) => React.createElement("modal", props, children, footer), Space: component("space"), Spin: component("spin"), Tag: component("tag"), message: { error() {} } },
+    "../api": { api: { get: async path => { requests.push(path); throw new Error("禁止读取本地工具请求"); } } },
+    "../AgentOperationPreview": { AgentOperationPreview: component("preview"), agentOperationError: error => error.message, agentOperationMessage: String, hasAgentOperationPreview: () => true },
+  });
+  const action = { id: "CODEX-REMOTE", type: "personal_mcp.call", status: "pending", summary: "调用个人 MCP", preview: { operation_name: "外部查询", method: "tools/call", path: "remote-tool", params: { arguments: { query: "公开资料" } }, requires_confirmation: true } };
+  let renderer;
+  const props = { action, deciding: false, onDecide: async (item, decision) => { decisions.push([item.id, decision]); return true; }, onClose() {} };
+  await act(async () => { renderer = create(React.createElement(ActionConfirmation, props)); });
+  const confirm = () => renderer.root.findAllByType("button").find(item => item.props.children === "确认并执行");
+  assert.equal(confirm().props.disabled, false);
+  await act(async () => confirm().props.onClick());
+  assert.deepEqual(decisions, [["CODEX-REMOTE", "approved"]]);
+  assert.deepEqual(requests, []);
+  await act(async () => renderer.update(React.createElement(ActionConfirmation, { ...props, action: { ...action, preview: undefined } })));
+  assert.equal(confirm().props.disabled, true);
+  await act(async () => renderer.unmount());
 });
 
 test("personal MCP confirmation rereads failed status and permits only manual cancellation of stale pending requests", async () => {
