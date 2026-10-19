@@ -97,8 +97,8 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
     </div>
     <section className="assistant-workspace-history" aria-label="历史会话" aria-busy={loading}>
       <div className="assistant-workspace-history-heading"><HistoryOutlined /><h2>历史会话</h2></div>
-      {list}
       {caseAgentList}
+      {list}
     </section>
   </>;
   return <>
