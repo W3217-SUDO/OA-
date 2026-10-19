@@ -1,4 +1,5 @@
 """系统管理路由编排。"""
+from time import monotonic
 from app.core.constants import (
     DEFAULT_HIDDEN_MENU_KEYS, DEFAULT_ROLE_PERMISSIONS,
     DEFAULT_SYSTEM_MENUS, FIELD_KEYS, MENU_KEYS, ROLE_DATA_SCOPES, SYSTEM_ACTION_BY_CODE,
@@ -27,6 +28,40 @@ from app.models_shared import (
 from fastapi import APIRouter, Request
 
 router = APIRouter()
+
+
+# 菜单结构变化不频繁，短 TTL 缓存只覆盖公共菜单树，不缓存用户权限结果。
+_NAVIGATION_MENU_CACHE_TTL_SECONDS = 5.0
+_navigation_menu_cache: tuple[float, list[dict]] | None = None
+
+
+def _clear_navigation_menu_cache() -> None:
+    """清除当前 API 进程内的导航菜单缓存。"""
+    global _navigation_menu_cache
+    _navigation_menu_cache = None
+
+
+async def _navigation_menu_items(db: AsyncSession) -> list[dict]:
+    """读取并序列化可用于导航的菜单树，避免每个登录请求重复 ORM 转换。"""
+    global _navigation_menu_cache
+    now = monotonic()
+    if _navigation_menu_cache and _navigation_menu_cache[0] > now:
+        return _navigation_menu_cache[1]
+    from app.core.permissions import _normalize_menu_permission_key
+    from app.core.system import _system_menu_dict
+
+    rows = (await db.scalars(
+        select(SystemMenu).where(
+            SystemMenu.is_active.is_(True),
+            SystemMenu.is_visible.is_(True),
+        ).order_by(SystemMenu.sort_order, SystemMenu.id)
+    )).all()
+    items = [
+        _system_menu_dict(item) for item in rows
+        if _normalize_menu_permission_key(item.key) in SYSTEM_MENU_ROUTE_KEYS or item.key.startswith("legacy-menu-")
+    ]
+    _navigation_menu_cache = (now + _NAVIGATION_MENU_CACHE_TTL_SECONDS, items)
+    return items
 
 
 @router.get("/health")
@@ -906,6 +941,7 @@ async def clear_all_system_caches(identity: dict = Depends(current_identity), db
     # Clear every populated category, including categories without a legacy row.
     # This is deliberately limited to this API process's dictionary cache.
     cleared_buckets = _clear_all_system_parameter_cache(identity["username"])
+    _clear_navigation_menu_cache()
     await _system_audit(db, identity, "清理系统缓存", "系统缓存:全部", {"cache_keys": cleared_buckets, "clear_all": True, "scope": "in_process_memory"})
     await db.commit()
     return {"cleared": cleared_buckets, "clear_all": True}
@@ -932,36 +968,28 @@ async def clear_system_cache(cache_key: str, identity: dict = Depends(current_id
 @router.get(f"{settings.api_prefix}/system/menus/navigation")
 async def navigation_menus(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _identity_role_ids, _normalize_menu_permission_key, _permission_payload_for_identity, _user_permission_payload,
+        _identity_role_ids, _permission_payload_for_identity, _user_permission_payload,
     )
-    from app.core.system import (
-        _system_menu_dict,
-    )
-    items = [
-        item for item in (await db.scalars(
-            select(SystemMenu).where(SystemMenu.is_active.is_(True), SystemMenu.is_visible.is_(True)).order_by(SystemMenu.sort_order, SystemMenu.id)
-        )).all()
-        if _normalize_menu_permission_key(item.key) in SYSTEM_MENU_ROUTE_KEYS or item.key.startswith("legacy-menu-")
-    ]
+    items = await _navigation_menu_items(db)
     if "admin" in _identity_role_ids(identity):
-        visible_keys = {item.key for item in items}
+        return {"items": items}
     else:
         user = await db.scalar(select(User).where(User.username == identity["username"]))
         permission = await _user_permission_payload(user, db) if user else await _permission_payload_for_identity(identity, db)
         visible_keys = {"dashboard", *permission["menu_keys"]}
         # Parent containers must remain visible for an authorized child, but
         # they are not themselves added as route grants.
-        menus_by_key = {item.key: item for item in items}
+        menus_by_key = {item["key"]: item for item in items}
         for key in list(visible_keys):
             item = menus_by_key.get(key)
-            parent_key = item.parent_key if item else ""
+            parent_key = item.get("parent_key") if item else ""
             visited: set[str] = set()
             while parent_key and parent_key not in visited:
                 visited.add(parent_key)
                 visible_keys.add(parent_key)
                 parent = menus_by_key.get(parent_key)
-                parent_key = parent.parent_key if parent else ""
-    return {"items": [_system_menu_dict(item) for item in items if item.key in visible_keys]}
+                parent_key = parent.get("parent_key") if parent else ""
+    return {"items": [item for item in items if item["key"] in visible_keys]}
 
 
 @router.get(f"{settings.api_prefix}/system/menus")
@@ -1019,6 +1047,7 @@ async def create_system_menu(body: SystemMenuInput, identity: dict = Depends(cur
     await db.flush()
     await _system_audit(db, identity, "创建系统菜单", f"系统菜单:{item.key}", {"id": item.id, "key": item.key})
     await db.commit()
+    _clear_navigation_menu_cache()
     await db.refresh(item)
     return _system_menu_dict(item)
 
@@ -1053,6 +1082,7 @@ async def update_system_menu_visibility(body: SystemMenuVisibilityBatchInput, id
     )).all())
     result = {"items": [_system_menu_dict(item) for item in refreshed], "visible_keys": sorted(requested)}
     await db.commit()
+    _clear_navigation_menu_cache()
     return result
 
 
@@ -1075,6 +1105,7 @@ async def update_system_menu(menu_id: int, body: SystemMenuUpdate, identity: dic
     item.updated_by = identity["username"]
     await _system_audit(db, identity, "更新系统菜单", f"系统菜单:{item.key}", {"id": item.id, "key": item.key})
     await db.commit(); await db.refresh(item)
+    _clear_navigation_menu_cache()
     return _system_menu_dict(item)
 
 
@@ -1097,6 +1128,7 @@ async def delete_system_menu(menu_id: int, identity: dict = Depends(current_iden
     await _system_audit(db, identity, "删除系统菜单", f"系统菜单:{item.key}", {"id": item.id, "key": item.key})
     await db.delete(item)
     await db.commit()
+    _clear_navigation_menu_cache()
 
 
 @router.post(f"{settings.api_prefix}/system/menus/reset")
@@ -1123,6 +1155,7 @@ async def reset_system_menus(identity: dict = Depends(current_identity), db: Asy
         item.is_visible = key not in DEFAULT_HIDDEN_MENU_KEYS; item.is_active = True; item.updated_by = identity["username"]
     await _system_audit(db, identity, "重置系统菜单", "系统菜单:重置", {"count": len(defaults)})
     await db.commit()
+    _clear_navigation_menu_cache()
     refreshed = (await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all()
     return {"items": [_system_menu_dict(item) for item in refreshed], "total": len(refreshed)}
 

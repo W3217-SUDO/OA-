@@ -1,5 +1,7 @@
 """按业务职责组织的 API 路由，保留原有端点行为与注册顺序。"""
 
+import asyncio
+
 from typing import Annotated
 
 from app.core.dependencies import (
@@ -22,8 +24,15 @@ from app.core.finance_centers import (
     refresh_incoming_payments,
 )
 from app.security import current_identity as contract_identity
+from app.database import SessionLocal
 
 router = APIRouter()
+
+
+async def _read_unclassified_total(identity: dict) -> int:
+    """在独立只读会话中统计顶部提示，避免阻塞回款列表查询。"""
+    async with SessionLocal() as count_db:
+        return await unclassified_incoming_count(identity, count_db)
 
 
 @router.get(f"{settings.api_prefix}/contracts/{{contract_id}}/incoming-payments")
@@ -81,6 +90,10 @@ async def list_incoming_payments(
         parse_incoming_filters, read_incoming_query, read_incoming_query_from_hz_read_model,
     )
     filter_values = parse_incoming_filters(view, filters)
+    unclassified_task = (
+        asyncio.create_task(_read_unclassified_total(identity))
+        if db.get_bind().dialect.name == "postgresql" else None
+    )
     if bank_source:
         aliases = {
             "icbc": ("工行", "工商银行"),
@@ -94,9 +107,13 @@ async def list_incoming_payments(
     simple_page_query = (
         db.get_bind().dialect.name == "postgresql"
         and (page is not None or page_size is not None)
-        and not keyword and not view and not filters and not bank_source and not payment_status
+        and not keyword and not filters and not bank_source and not payment_status
+        and view not in {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb")}
     )
     statement = await _visible_incoming_payment_statement(identity, db, include_amounts=not simple_page_query)
+    if view in {"finance-receipts-claim", "finance-receipts-pending", "finance-receipts-allocated"}:
+        from app.areas.finance.incoming_query import VIEW_STATUSES
+        statement = statement.where(IncomingPayment.status.in_(VIEW_STATUSES[view]))
     if bank_source:
         statement = statement.where(or_(
             func.lower(func.trim(IncomingPayment.bank_source)) == bank_code,
@@ -146,7 +163,10 @@ async def list_incoming_payments(
         rows.append(payload)
     result["items"] = rows
     result["finance_scope"] = identity.get("_finance_scope")
-    result["unclassified_total"] = await unclassified_incoming_count(identity, db)
+    result["unclassified_total"] = (
+        await unclassified_task if unclassified_task is not None
+        else await unclassified_incoming_count(identity, db)
+    )
     return result
 
 
