@@ -649,19 +649,23 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
 
         identity = {**await self.identity(), "display_name": self.actor.display_name}
         state = {"conversation_id": "original", "messages": [], "pending_actions": []}
-        with patch.object(personal_service, "ModelToolSession", wraps=personal_service.ModelToolSession) as tool_session, \
+        with patch.object(personal_service, "PersonalMcpToolSession", wraps=personal_service.PersonalMcpToolSession) as tool_session, \
                 patch("app.core.oss_attachments._load_credentials", return_value=None), \
                 patch.object(personal_service, "_agent_skill_for_identity", new=AsyncMock(return_value=SimpleNamespace(id="test", name="测试技能"))), \
                 patch.object(personal_service, "prepare_materials", new=AsyncMock(return_value={"case": None, "readings": [], "can_save_document": False})), \
                 patch.object(personal_service, "build_context", new=AsyncMock(return_value={})), \
                 patch.object(personal_service, "_prompt_messages", return_value=[]), \
-                patch.object(personal_service, "request_model", new=AsyncMock(return_value="真实完整回答")), \
+                patch.object(personal_service, "request_model", new=AsyncMock(return_value="真实完整回答")) as model_request, \
                 patch.object(personal_service, "_save_state", new=AsyncMock()):
             result = await personal_service._generate_response(identity, self.db, "生成文书", AsyncMock(), state=state,
                                                                skill_id="test", attachment_ids=[], case_id=None, document_ids=[],
                                                                response_mode="fast", on_progress=None)
         message = result["state"]["messages"][-1]
-        tool_session.assert_called_once_with(conversation_id="original")
+        tool_session.assert_called_once_with(identity, self.db, conversation_id="original")
+        model_request.assert_awaited_once()
+        tools = model_request.await_args.kwargs["tools"]
+        self.assertIsInstance(tools, personal_service.PersonalMcpToolSession)
+        self.assertIs(model_request.await_args.kwargs["model_tools"], tools.model_tools)
         self.assertTrue(message["can_save_document"])
         self.assertTrue(message["can_save_personal_document"])
         self.assertFalse(message["can_save_case_document"])
