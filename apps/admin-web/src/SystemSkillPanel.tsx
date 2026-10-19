@@ -5,12 +5,15 @@ import { api } from "./api";
 import type { AgentSkill } from "./agentSkillRouting";
 import Table from "./components/ResizableTable";
 import { errorText } from "./personal-agent/types";
+import { SystemSkillResources, type SystemSkillResource } from "./SystemSkillResources";
 import "./system-skill-panel.css";
 
 type Definition = AgentSkill & {
   id: string; name: string; scope: "system"; filename: string; content: string;
   instruction: string; quick_prompts: string[]; definition_sha256: string;
-  revision: number; can_delete: boolean; content_origin: "runtime_declaration";
+  revision: number; can_delete: boolean; content_origin: "runtime_declaration" | "upstream_package";
+  upstream?: { source: string; commit: string; content: string; sha256: string; excluded_resources: string[] } | null;
+  resources: SystemSkillResource[];
 };
 
 export function SystemSkillPanel({ items, loading, canManage, onChanged }: {
@@ -46,9 +49,11 @@ export function SystemSkillPanel({ items, loading, canManage, onChanged }: {
     try {
       const { data } = await api.get<Definition>(`/agent/system-skills/${encodeURIComponent(item.id)}/definition`, { signal: controller.signal });
       if (controller.signal.aborted) return;
-      if (data.id !== item.id || data.scope !== "system" || data.content_origin !== "runtime_declaration"
+      if (data.id !== item.id || data.scope !== "system" || !["runtime_declaration", "upstream_package"].includes(data.content_origin)
         || !Number.isInteger(data.revision) || data.revision < 0 || !/^[a-f0-9]{64}$/.test(data.definition_sha256)
-        || typeof data.content !== "string" || typeof data.instruction !== "string" || !Array.isArray(data.quick_prompts)) {
+        || typeof data.content !== "string" || typeof data.instruction !== "string" || !Array.isArray(data.quick_prompts)
+        || !Array.isArray(data.resources) || (data.content_origin === "upstream_package" && (!data.upstream
+          || typeof data.upstream.content !== "string" || !/^[a-f0-9]{40}$/.test(data.upstream.commit)))) {
         throw new Error("系统技能详情响应无效，请刷新后重试");
       }
       setDetail(data);
@@ -118,13 +123,20 @@ export function SystemSkillPanel({ items, loading, canManage, onChanged }: {
             <Descriptions.Item label="说明">{detail.description}</Descriptions.Item>
             <Descriptions.Item label="来源">{detail.source}</Descriptions.Item>
             <Descriptions.Item label="状态">{detail.available ? "可用" : detail.unavailable_reason || "不可用"}</Descriptions.Item>
-            <Descriptions.Item label="内容范围">运行时内联声明，不包含外部技能包资源</Descriptions.Item>
+            <Descriptions.Item label="内容范围">{detail.upstream ? "上游 SKILL.md 全文及配套文本，选中后加载原文" : "OA 内置指令"}</Descriptions.Item>
+            {detail.upstream && <Descriptions.Item label="原文来源"><a href={detail.upstream.source} target="_blank" rel="noopener noreferrer">{detail.upstream.source}</a></Descriptions.Item>}
+            {detail.upstream && <Descriptions.Item label="上游提交">{detail.upstream.commit}</Descriptions.Item>}
             <Descriptions.Item label="版本">{detail.revision}</Descriptions.Item>
             <Descriptions.Item label="内容摘要">{detail.definition_sha256}</Descriptions.Item>
           </Descriptions>
-          <h3>完整技能指令</h3><pre>{detail.instruction}</pre>
+          {detail.upstream ? <>
+            <h3>SKILL.md 原文全文</h3><pre>{detail.upstream.content}</pre>
+            <SystemSkillResources key={detail.id} skillId={detail.id} items={detail.resources} />
+            {!!detail.upstream.excluded_resources.length && <details><summary>未接入执行的脚本及其他资源（{detail.upstream.excluded_resources.length}）</summary><ul>{detail.upstream.excluded_resources.map(path => <li key={path}>{path}</li>)}</ul></details>}
+            <details><summary>实际发送给 AI 的完整技能指令（含 OA 权限边界）</summary><pre>{detail.instruction}</pre></details>
+          </> : <><h3>完整技能指令</h3><pre>{detail.instruction}</pre></>}
           <h3>快捷提示</h3>{detail.quick_prompts.length ? <ul>{detail.quick_prompts.map((prompt, index) => <li key={index}>{prompt}</li>)}</ul> : <p>无快捷提示</p>}
-          <h3>{detail.filename}</h3><pre>{detail.content}</pre>
+          <details><summary>{detail.filename}</summary><pre>{detail.content}</pre></details>
         </>}
       </div>
     </Drawer>

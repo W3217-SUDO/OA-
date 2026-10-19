@@ -5,7 +5,13 @@
 .system-skill-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: inherit; }
 .system-skill-detail h3 { font-size: 16px; margin: 20px 0 8px; }
 .system-skill-detail .ant-alert { margin-bottom: 12px; }
+.system-skill-detail details { margin-top: 16px; }
+.system-skill-detail summary { cursor: pointer; padding: 12px 0; }
+.system-skill-resource-controls { display: flex; gap: 8px; margin-bottom: 12px; }
+.system-skill-resource-controls .ant-select { flex: 1; min-width: 0; }
+.system-skill-resource-controls .ant-btn { flex: 0 0 auto; }
 @media (max-width: 760px) {
   .system-skill-detail .ant-descriptions-item-label { width: 88px; }
   .system-skill-detail ul { padding-left: 20px; }
+  .system-skill-resource-controls { flex-direction: column; }
 }

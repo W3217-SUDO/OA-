@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+
+from app.system_skill_packages import runtime_instruction
 
 
 SKILL_MARKER_PREFIX = "[[skill:"
@@ -174,6 +176,7 @@ AGENT_SKILLS: tuple[AgentSkill, ...] = (
 )
 
 
+AGENT_SKILLS = tuple(replace(skill, instruction=runtime_instruction(skill.id, skill.instruction)) for skill in AGENT_SKILLS)
 SKILLS_BY_ID = {skill.id: skill for skill in AGENT_SKILLS}
 
 

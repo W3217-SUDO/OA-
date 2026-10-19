@@ -9,6 +9,7 @@ from app.agent_permissions import require_agent_settings_management
 from app.agent_skills import AGENT_SKILLS, SKILLS_BY_ID
 from app.models import SystemConfig
 from app.skill_definitions import skill_definition
+from app.system_skill_packages import package_detail
 
 SYSTEM_SKILL_CONFIG_KEY = "agent_system_skills_v1"
 
@@ -58,8 +59,10 @@ async def system_skill_detail(skill_id, identity, db):
     require_agent_settings_management(identity)
     skill = await require_active_system_skill(skill_id, db)
     _, value = await system_skill_registry(db)
+    package = package_detail(skill_id)
     return {**skill.public_dict(), **skill_definition(asdict(skill), "system"), "instruction": skill.instruction,
-            "content_origin": "runtime_declaration", "resources": [], "can_delete": True,
+            "content_origin": "upstream_package" if package else "runtime_declaration",
+            "upstream": package, "resources": package['resources'] if package else [], "can_delete": True,
             "revision": value["revision"], "definition_sha256": definition_hash(skill)}
 
 

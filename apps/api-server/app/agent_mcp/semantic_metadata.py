@@ -96,7 +96,7 @@ def exclusion_reasons(route: APIRoute) -> list[str]:
     path = route.path.lower()
     segments = set(path.strip("/").split("/"))
     reasons = []
-    if "system-skills" in segments:
+    if "system-skills" in segments and route.endpoint.__name__ != "read_system_skill_resource":
         reasons.append("系统技能注册由人工设置入口管理，不向模型开放")
     if "capability-market" in segments and route.endpoint.__name__ != "read_capability_resource":
         reasons.append("能力目录与安装必须由人工入口管理，模型仅能读取已安装包的参考资料")

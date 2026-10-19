@@ -17,6 +17,15 @@ _CASE_DATES = (
 
 # 键同时绑定方法、路径及处理函数，避免同名函数或路由别名套用业务说明。
 _GUIDANCE = {
+    ("GET", "/agent/system-skills/{skill_id}/resources", "read_system_skill_resource"): {
+        "title": "读取系统技能参考资料",
+        "purpose": "按当前选中系统技能的资料目录，读取固定上游版本的完整原文参考资料，不执行脚本。",
+        "usage": ["path.skill_id 使用选中系统技能 ID；query.path 使用技能指令中列出的准确相对路径。",
+                  "query.offset 从0开始，query.limit 最大16000字符；有 next_offset 时继续按返回偏移读取。"],
+        "prerequisites": ["先读取本轮启用技能的 SKILL.md 原文，确定任务适用的参考资料。"],
+        "limitations": ["仅允许已注册且未注销的系统技能；不读取服务器任意文件、业务附件或执行上游脚本。"],
+        "search_terms": ["技能原文", "skill参考资料", "SKILL.md", "读取系统技能参考资料"],
+    },
     ("POST", "/cases/search", "search_ordinary_cases"): {
         "title": "检索普通案件",
         "purpose": "按原案件权限和筛选条件分页查询普通案件，返回匹配总数和阶段分布。",

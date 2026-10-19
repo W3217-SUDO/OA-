@@ -14,6 +14,7 @@ from app.security import current_identity
 from app.system_agent_skills import (
     SYSTEM_SKILL_CONFIG_KEY, active_system_skills, delete_system_skill, system_skill_detail,
 )
+from app.system_skill_packages import package_detail, read_package_resource
 
 ADMIN = {"username": "admin", "role": "admin"}
 USER = {"username": "employee", "role": "user", "_actual_user_id": 1}
@@ -70,7 +71,7 @@ class SystemSkillLifecycleTest(unittest.IsolatedAsyncioTestCase):
             return await delete_system_skill(skill_id, SystemSkillDeleteInput(
                 confirm=True, revision=detail["revision"], definition_sha256=detail["definition_sha256"]), ADMIN, db)
 
-    async def test_details_are_actual_declarations_not_vendor_packages_or_local_files(self):
+    async def test_details_and_runtime_use_actual_full_skill_content(self):
         async with self.sessions() as db:
             for skill in AGENT_SKILLS:
                 detail = await system_skill_detail(skill.id, ADMIN, db)
@@ -78,8 +79,35 @@ class SystemSkillLifecycleTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIn(skill.instruction, detail["content"])
                 self.assertEqual(detail["quick_prompts"], list(skill.quick_prompts))
                 self.assertEqual(detail["source"], skill.source)
-                self.assertEqual(detail["resources"], [])
-                self.assertEqual(detail["content_origin"], "runtime_declaration")
+                package = package_detail(skill.id)
+                if package:
+                    self.assertEqual(detail["content_origin"], "upstream_package")
+                    self.assertEqual(detail["upstream"], package)
+                    self.assertIn(package['content'], skill.instruction)
+                    self.assertGreater(len(package['content']), 1000)
+                    self.assertEqual(detail['resources'], package['resources'])
+                    from app.areas.personal_agent.service import _prompt_messages
+                    from app.case_agent import build_case_model_messages
+                    personal = _prompt_messages(USER, {'messages': []}, {'project_workspace': {}}, '使用当前技能', skill)
+                    case = build_case_model_messages({'case': {'id': 1}}, [], skill)
+                    self.assertIn(package['content'], personal[0]['content'])
+                    self.assertIn(package['content'], case[0]['content'])
+                    for resource in package['resources']:
+                        text = []
+                        offset = 0
+                        while True:
+                            page = read_package_resource(skill.id, resource['path'], offset, 16000)
+                            text.append(page['content'])
+                            if page['next_offset'] is None:
+                                break
+                            self.assertGreater(page['next_offset'], offset)
+                            offset = page['next_offset']
+                        self.assertEqual(len(''.join(text)), resource['characters'])
+                        import hashlib
+                        self.assertEqual(hashlib.sha256(''.join(text).encode()).hexdigest(), resource['sha256'])
+                else:
+                    self.assertEqual(detail["resources"], [])
+                    self.assertEqual(detail["content_origin"], "runtime_declaration")
                 self.assertTrue(detail["can_delete"])
                 self.assertEqual(detail["scope"], "system")
                 self.assertNotIn("\\", detail["filename"])
@@ -157,6 +185,11 @@ class SystemSkillLifecycleTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await client.get(path + "/definition")).status_code, 403)
             body = {"confirm": True, "revision": 0, "definition_sha256": "0" * 64}
             self.assertEqual((await client.request("DELETE", path, json=body)).status_code, 403)
+            resource_path = '/api/v1/agent/system-skills/security-review/resources'
+            response = await client.get(resource_path, params={'path': 'references/python-fastapi-web-server-security.md', 'limit': 100})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['next_offset'], 100)
+            self.assertEqual((await client.get(resource_path, params={'path': '../../.env'})).status_code, 404)
             identity = ADMIN
             detail = (await client.get(path + "/definition")).json()
             body["definition_sha256"] = detail["definition_sha256"]
@@ -164,11 +197,16 @@ class SystemSkillLifecycleTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await client.request("DELETE", path, json={"definition_sha256": body["definition_sha256"]})).status_code, 422)
             self.assertEqual((await client.request("DELETE", path, json=body)).status_code, 200)
             self.assertEqual((await client.get("/api/v1/agent/system-skills/missing/definition")).status_code, 404)
+            await self.delete('security-review')
+            self.assertEqual((await client.get(resource_path, params={'path': 'SKILL.md'})).status_code, 409)
         from app.agent_mcp.semantic_metadata import exclusion_reasons
         from fastapi.routing import APIRoute
         for route in router.routes:
             if isinstance(route, APIRoute):
-                self.assertTrue(exclusion_reasons(route))
+                if route.endpoint.__name__ == 'read_system_skill_resource':
+                    self.assertEqual(exclusion_reasons(route), [])
+                else:
+                    self.assertTrue(exclusion_reasons(route))
 
     async def test_generic_config_cannot_restore_registry_and_malformed_registry_fails(self):
         from app.core.system import _validate_system_config
