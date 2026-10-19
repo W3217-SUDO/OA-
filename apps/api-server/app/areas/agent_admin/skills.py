@@ -78,6 +78,8 @@ async def install_global_github(body: GitHubSkillInstallInput, identity: dict = 
     preview = await preview_github_skill(body.url)
     if preview["sha256"] != body.sha256:
         raise HTTPException(409, "GitHub技能内容已变化，请重新预览后安装")
+    from app.harness_agent.bundles import install_bundle
+    preview["bundle"] = await install_bundle(preview)
     record = await add_global_skill({**preview, "category": "GitHub"}, identity, db,
                                     source=preview["source"], digest=preview["sha256"])
     return formatted(record)

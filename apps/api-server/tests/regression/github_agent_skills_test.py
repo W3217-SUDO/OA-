@@ -1,6 +1,11 @@
 import asyncio
+import hashlib
+from io import BytesIO
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import AsyncMock, patch
+from zipfile import ZipFile
 
 import httpx
 from fastapi import HTTPException
@@ -146,13 +151,15 @@ class GitHubSkillInstallContractTest(unittest.IsolatedAsyncioTestCase):
 
         preview = parse_github_skill(CONTENT, github_skill_location('https://github.com/a/b'))
         identity = {'username': 'isolated-owner', 'role': 'user'}
-        db = object()
+        db = AsyncMock()
         with patch('app.github_agent_skills.preview_github_skill', AsyncMock(return_value=preview)), \
+                patch('app.harness_agent.bundles.install_bundle', AsyncMock(return_value={'id': 'a' * 64, 'commit': 'b' * 40, 'files': {'SKILL.md': preview['sha256']}})), \
                 patch('app.core.documents._user_agent_skill_store', AsyncMock(return_value=(None, []))) as store, \
                 patch('app.core.documents._save_user_agent_skills', AsyncMock()) as save:
             result = await github_skill_install(GitHubSkillInstallInput(url=preview['url'], sha256=preview['sha256']), identity, db)
             self.assertEqual(result['source'], preview['url'])
-            store.assert_awaited_once_with('isolated-owner', db)
+            self.assertEqual(store.await_count, 2)
+            store.assert_awaited_with('isolated-owner', db)
             saved = save.await_args.args
             self.assertEqual(saved[0], 'isolated-owner')
             self.assertEqual(saved[1][0]['sha256'], preview['sha256'])
@@ -168,7 +175,8 @@ class GitHubSkillInstallContractTest(unittest.IsolatedAsyncioTestCase):
         from app.user_agent_skills import normalize_custom_skill
 
         preview = parse_github_skill(CONTENT, github_skill_location('https://github.com/a/b'))
-        existing = {**normalize_custom_skill(preview, source=preview['source']), 'sha256': preview['sha256']}
+        existing = {**normalize_custom_skill(preview, source=preview['source']), 'sha256': preview['sha256'],
+                    'bundle': {'id': 'a' * 64, 'commit': 'b' * 40, 'files': {'SKILL.md': preview['sha256']}}}
         with patch('app.github_agent_skills.preview_github_skill', AsyncMock(return_value=preview)), \
                 patch('app.core.documents._user_agent_skill_store', AsyncMock(return_value=(None, [existing]))), \
                 patch('app.core.documents._save_user_agent_skills', AsyncMock()) as save:
@@ -185,6 +193,45 @@ class GitHubSkillInstallContractTest(unittest.IsolatedAsyncioTestCase):
                 await github_skill_install(body, {'username': 'isolated-owner'}, object())
             self.assertEqual(conflict.exception.status_code, 409)
             save.assert_not_awaited()
+
+
+class FullSkillBundleTest(unittest.TestCase):
+    def archive(self, extra):
+        content = BytesIO()
+        with ZipFile(content, 'w') as archive:
+            archive.writestr('repo-fixed/skills/example/SKILL.md', CONTENT)
+            for path, data in extra.items():
+                archive.writestr('repo-fixed/skills/example/' + path, data)
+        return content.getvalue()
+
+    def test_fixed_directory_keeps_resources_and_rejects_tampering(self):
+        from app.harness_agent.bundles import _unpack, read_resource
+        from app.user_agent_skills import normalize_custom_skill, custom_skill_agent
+        location = github_skill_location('https://github.com/a/b/tree/main/skills/example')
+        digest = hashlib.sha256(CONTENT).hexdigest()
+        with tempfile.TemporaryDirectory() as temporary, patch('app.harness_agent.bundles.storage_root', return_value=Path(temporary)):
+            bundle = _unpack(self.archive({'references/rules.md': b'authorized reference'}), location, digest)
+            bundle['commit'] = 'a' * 40
+            self.assertEqual(read_resource(bundle, 'references/rules.md'), b'authorized reference')
+            preview = parse_github_skill(CONTENT, location)
+            record = normalize_custom_skill({**preview, 'bundle': bundle}, source=preview['source'])
+            self.assertEqual(custom_skill_agent(record).bundle, bundle)
+            self.assertNotIn('bundle', custom_skill_agent(record).public_dict())
+            (Path(temporary) / bundle['id'] / 'references/rules.md').write_bytes(b'changed')
+            with self.assertRaises(HTTPException) as failure:
+                read_resource(bundle, 'references/rules.md')
+            self.assertEqual(failure.exception.status_code, 409)
+
+    def test_archive_escape_and_changed_preview_block_installation(self):
+        from app.harness_agent.bundles import _unpack
+        location = github_skill_location('https://github.com/a/b/tree/main/skills/example')
+        with tempfile.TemporaryDirectory() as temporary, patch('app.harness_agent.bundles.storage_root', return_value=Path(temporary)):
+            with self.assertRaises(ValueError):
+                _unpack(self.archive({'../outside.md': b'blocked'}), location, hashlib.sha256(CONTENT).hexdigest())
+            with self.assertRaises(HTTPException) as changed:
+                _unpack(self.archive({}), location, '0' * 64)
+            self.assertEqual(changed.exception.status_code, 409)
+            self.assertEqual(list(Path(temporary).iterdir()), [])
 
 
 if __name__ == '__main__':

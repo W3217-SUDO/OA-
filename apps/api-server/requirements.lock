@@ -515,6 +515,16 @@ cryptography==50.0.2 \
     --hash=sha256:fa8f5efb344d6908a1ce62f4a24e2e5780f825d6f53f5f50ec5ffacac72936cb \
     --hash=sha256:fdd28f912fccfec1846a94e2e1e8f9b0012f557f0c46fe4f3eb0d7a87afcf90b
     # via pyjwt
+deepseek-harness-runtime-bin==0.2.1rc2 \
+    --hash=sha256:0a0a4eb85a22cd9339972e6a5ced77a27ec791353a5b220e3e10b8cdbbdeca39 \
+    --hash=sha256:71ed869e3e9a0e3ea398521730889d2d7e154767834165f1553755818e3f2a78 \
+    --hash=sha256:80614eee24916ce97d692baf8aed3ba146ed00fc2155d266cb0ede98d9354139 \
+    --hash=sha256:96a173abd14141d5328a78791b69729cbfe22fa3e9daf1dc2600d0daa4d6bb28 \
+    --hash=sha256:d38c18f5117859feedaaa791a0eea37b8644bc187118e7e6f3afa231a5381cb7
+    # via deepseek-harness-sdk
+deepseek-harness-sdk==0.2.1rc2 \
+    --hash=sha256:30fc72c67f20ff4b46c6952087ea596fc70c2692001aa372185a24f9866bdc46
+    # via -r apps/api-server/requirements.txt
 distro==1.9.0 \
     --hash=sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed \
     --hash=sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2

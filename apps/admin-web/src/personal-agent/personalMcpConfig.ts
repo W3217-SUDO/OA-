@@ -45,6 +45,13 @@ export function hasConnectionCredential(text: string) {
     || /(?:authorization\s*[:=]\s*\S+|bearer\s+\S+|(?:api[-_ ]?key|token|密钥)\s*[:：=]\s*\S+)/i.test(nonUrlText);
 }
 
+// 配置只把公开连接信息交给模型，原始请求头和密钥不能进入普通消息。
+export function mcpChatMessage(raw: string): string {
+  if (!isMcpConnectionInput(raw) || !/^\s*(?:```(?:json)?\s*)?\{/.test(raw)) return raw;
+  const draft = parsePersonalMcpConfig(raw);
+  return `请帮我连接 MCP。连接名称：${draft.name || draft.server_name}；MCP 地址：${draft.server_url}；传输方式：${draft.transport}；认证方式：${draft.auth_type}。${draft.auth_type === "api_key" ? `认证请求头名称：${draft.api_key_header}。` : ""}${draft.credential ? "配置中的密钥没有发送给模型，请在连接确认时让我通过安全输入重新填写。" : "如需密钥，请让我通过安全输入填写。"}`;
+}
+
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("配置必须是 JSON 对象");
   return value as Record<string, unknown>;

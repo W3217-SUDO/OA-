@@ -60,6 +60,16 @@ def normalize_custom_skill(payload: dict[str, Any], *, skill_id: str = "", sourc
     digest = payload.get("sha256")
     if source.startswith("https://github.com/") and isinstance(digest, str) and re.fullmatch(r"[a-f0-9]{64}", digest):
         record["sha256"] = digest
+        bundle = payload.get("bundle")
+        if bundle is not None:
+            if (not isinstance(bundle, dict) or set(bundle) != {"id", "files", "commit"}
+                    or not re.fullmatch(r"[a-f0-9]{64}", str(bundle["id"]))
+                    or not re.fullmatch(r"[a-f0-9]{40}", str(bundle["commit"]))
+                    or not isinstance(bundle["files"], dict) or len(bundle["files"]) > 512
+                    or not all(isinstance(key, str) and re.fullmatch(r"[a-f0-9]{64}", str(value))
+                               for key, value in bundle["files"].items())):
+                raise ValueError("技能资源清单格式无效")
+            record["bundle"] = bundle
     return record
 
 
@@ -194,6 +204,7 @@ def custom_skill_agent(record: dict[str, Any]) -> AgentSkill:
             + str(record["instruction"])
         ),
         quick_prompts=tuple(record.get("quick_prompts") or []),
+        bundle=record.get("bundle"),
     )
 
 

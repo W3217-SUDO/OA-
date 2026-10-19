@@ -23,4 +23,5 @@ celery==5.5.3
 minio==7.2.16
 langgraph==1.2.10
 langgraph-checkpoint-postgres==3.1.2
+deepseek-harness-sdk==0.2.1rc2
 psycopg[binary,pool]==3.3.4

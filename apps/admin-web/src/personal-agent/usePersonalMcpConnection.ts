@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { message } from "antd";
 import { api, AUTH_EXPIRED_EVENT } from "../api";
-import { emptyMcpDraft, hasConnectionCredential, isMcpConnectionInput, parsePersonalMcpConfig, personalMcpConfiguration, validatePersonalMcpDraft, type PersonalMcpDraft } from "./personalMcpConfig";
+import { emptyMcpDraft, hasConnectionCredential, parsePersonalMcpConfig, personalMcpConfiguration, validatePersonalMcpDraft, type PersonalMcpDraft } from "./personalMcpConfig";
 import { personalMcpError, personalMcpVerificationError } from "./personalMcpErrors";
 import type { ConnectorConfiguration, ConnectorSecretField } from "../capability-market/connectorAuth";
 
@@ -84,18 +85,8 @@ export function usePersonalMcpConnection(sessionKey: string) {
     }
   };
   const intercept = (text: string) => {
-    const intent = isMcpConnectionInput(text, open);
-    if (!intent && !hasConnectionCredential(text)) return false;
-    if (lock.current) return true;
-    show();
-    if (!intent) {
-      setError("检测到疑似凭据，已阻止进入模型和聊天记录。连接 MCP 请在此填写地址和 Key；普通聊天请移除凭据后重发。");
-      return true;
-    }
-    if (/https?:\/\/|\{/.test(text)) {
-      const url = text.trim().match(/^(?:[^{}]*?(?:连接|接入|添加)\s*(?:MCP)?\s*[:：]?\s*)?(https?:\/\/\S+)$/i)?.[1];
-      importConfig(url || text);
-    }
+    if (!hasConnectionCredential(text)) return false;
+    message.error("密钥不能发送到普通聊天。请先告诉我 MCP 地址和认证方式，在连接确认时使用安全输入填写密钥。");
     return true;
   };
   const update = (next: PersonalMcpDraft) => {

@@ -70,6 +70,9 @@ async def add_global_skill(payload, identity, db, *, source="user-custom", diges
         if existing:
             if existing.get("sha256") != digest or any(existing.get(key) != record[key] for key in ("name", "description", "instruction")):
                 raise HTTPException(409, "该全局来源已有不同或已编辑版本，请先删除旧技能再安装")
+            if record.get("bundle") and not existing.get("bundle"):
+                existing["bundle"] = record["bundle"]
+                await save_global_skills(item, records, identity, db)
             return existing
     if len(records) >= CUSTOM_SKILL_LIMIT:
         raise HTTPException(409, f"全局最多保存 {CUSTOM_SKILL_LIMIT} 个技能")

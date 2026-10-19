@@ -84,7 +84,7 @@ export function SkillCatalog({ active, busy, onBusy, onInstalled, scope = "perso
       <Button disabled={busy} onClick={() => { setQuery(input.trim()); setRevision(value => value + 1); }}>搜索技能</Button>
       <Button icon={<ReloadOutlined />} aria-label="刷新技能目录" disabled={busy || loading} onClick={() => setRevision(value => value + 1)} />
     </div>
-    <p className="workspace-catalog-note">从来源网站读取真实技能目录。选择技能后查看完整指令，再确认安装到{scopeLabel}；仅导入 SKILL.md，不执行仓库脚本或下载依赖。</p>
+    <p className="workspace-catalog-note">从来源网站读取真实技能目录。选择技能后查看完整指令，再确认安装到{scopeLabel}；保留技能目录与参考资料，不自动执行仓库脚本或安装依赖。</p>
     {page?.note && <Alert type="info" showIcon title={page.note} />}
     {error && <Alert type="error" showIcon title="技能目录暂不可用" description={error} action={<Button disabled={busy} onClick={() => setRevision(value => value + 1)}>重试</Button>} />}
     {(previewError || refreshPending) && <Alert type={refreshPending ? "warning" : "error"} showIcon title={refreshPending ? scope === "global" ? "技能已安装，待刷新全局库" : "技能已安装，待刷新个人库" : "技能操作未完成"} description={previewError || "技能已安装，但技能库尚未刷新，请刷新重试"} action={refreshPending ? <Button disabled={busy} onClick={() => void retryRefresh()}>刷新{scopeLabel}</Button> : undefined} />}

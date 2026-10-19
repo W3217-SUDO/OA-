@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -71,6 +71,7 @@ class PersonalActionDecisionInput(BaseModel):
     conversation_id: str | None = Field(default=None, max_length=64)
     decision: str = Field(pattern="^(approved|rejected)$")
     comment: str = Field(default="", max_length=1000)
+    mcp_credential: SecretStr | None = Field(default=None, max_length=8192)
 
 
 class PersonalActionDismissInput(BaseModel):
@@ -125,19 +126,36 @@ async def github_skill_install(body: GitHubSkillInstallInput, identity: dict = D
     preview = await preview_github_skill(body.url)
     if preview["sha256"] != body.sha256:
         raise HTTPException(status_code=409, detail="GitHub 技能内容已变化，请重新预览后安装")
+    from sqlalchemy import select
+    from app.models import SystemConfig
+    from app.user_agent_skills import user_skill_config_key
+    from app.harness_agent.bundles import install_bundle
+
     _, skills = await _user_agent_skill_store(identity["username"], db)
     existing = next((item for item in skills if item.get("source") == preview["source"]), None)
     if existing:
         if (existing.get("sha256") != preview["sha256"]
                 or any(existing.get(field) != preview[field] for field in ("name", "description", "instruction"))):
             raise HTTPException(status_code=409, detail="该来源已有不同版本技能，请先删除旧技能再安装")
-        return custom_skill_public(existing)
-    if len(skills) >= CUSTOM_SKILL_LIMIT:
+        if existing.get("bundle"):
+            return custom_skill_public(existing)
+    elif len(skills) >= CUSTOM_SKILL_LIMIT:
         raise HTTPException(status_code=409, detail=f"每个账号最多保存 {CUSTOM_SKILL_LIMIT} 个自定义技能")
-    record = normalize_custom_skill({**preview, "category": "GitHub"}, source=preview["source"])
-    record["sha256"] = preview["sha256"]
-    skills.append(record)
-    await _save_user_agent_skills(identity["username"], skills, identity, db)
+    bundle = await install_bundle(preview)
+    # 下载不占用行锁；写回前重新核对原技能库，避免覆盖同时发生的编辑。
+    await db.rollback()
+    await db.scalar(select(SystemConfig).where(SystemConfig.key == user_skill_config_key(identity["username"]))
+                    .with_for_update().execution_options(populate_existing=True))
+    _, current = await _user_agent_skill_store(identity["username"], db)
+    if current != skills:
+        raise HTTPException(409, "个人技能库在下载期间发生变化，请刷新后重新安装")
+    if existing:
+        record = next(item for item in current if item["id"] == existing["id"])
+        record["bundle"] = bundle
+    else:
+        record = normalize_custom_skill({**preview, "bundle": bundle, "category": "GitHub"}, source=preview["source"])
+        current.append(record)
+    await _save_user_agent_skills(identity["username"], current, identity, db)
     return custom_skill_public(record)
 
 
@@ -146,8 +164,14 @@ async def personal_agent_status(identity: dict = Depends(current_identity), db: 
     safe_identity = await personal_identity(identity, db)
     from app.areas.personal_agent.ai_space_service import personal_save_capability
     file_capability = await personal_save_capability(safe_identity, db)
+    from app.harness_agent.runtime import readiness
+    native = readiness() if settings.agent_runtime_backend == "deepseek-harness" else None
     return {
-        "ready": bool(settings.langgraph_enabled and settings.langgraph_api_base_url and settings.langgraph_api_key and settings.langgraph_model),
+        "ready": bool(settings.langgraph_enabled and settings.langgraph_api_base_url and settings.langgraph_api_key and settings.langgraph_model
+                      and (native is None or native["ready"])),
+        "agent_runtime_backend": settings.agent_runtime_backend,
+        "harness_version": native["version"] if native else "",
+        "runtime_error": native["error"] if native else "",
         "model": settings.langgraph_model,
         "model_provider": settings.langgraph_model_provider,
         "runtime": "personal-agent",
@@ -363,5 +387,7 @@ async def personal_agent_message(body: PersonalMessageInput, identity: dict = De
 @router.post(f"{settings.api_prefix}/personal-agent/actions/{{action_id}}/decision")
 async def personal_agent_action_decision(action_id: str, body: PersonalActionDecisionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     safe_identity = await personal_identity(identity, db)
-    result = await decide_action(safe_identity, db, action_id, body.decision, body.comment, conversation_id=body.conversation_id)
+    result = await decide_action(safe_identity, db, action_id, body.decision, body.comment,
+                                 conversation_id=body.conversation_id,
+                                 mcp_credential=body.mcp_credential.get_secret_value() if body.mcp_credential else None)
     return {**result, "state": await project_personal_actions(result["state"], safe_identity, db)}

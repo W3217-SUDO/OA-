@@ -8,7 +8,7 @@ import { confirmPersonalAiDocument } from "./personalAiDocumentConfirmation";
 import { usePersonalConversations } from "./usePersonalConversations";
 import { useConversationRuntime } from "./useConversationRuntime";
 import { usePersonalMcpConnection } from "./usePersonalMcpConnection";
-import { hasConnectionCredential, isMcpConnectionInput } from "./personalMcpConfig";
+import { hasConnectionCredential, isMcpConnectionInput, mcpChatMessage } from "./personalMcpConfig";
 import { EMPTY_PERSONAL_DRAFT as EMPTY_DRAFT, usePersonalDrafts } from "./usePersonalDrafts";
 import { conversationDraftKey, conversationWorkspaceKey, PERSONAL_CONVERSATION_WORKSPACE, requireConversationWorkspace } from "./conversationWorkspace";
 import { errorText, workspaceDocumentSaveTarget, type ConfirmationDetail, type ConversationWorkspace, type DecisionFailure, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
@@ -173,8 +173,10 @@ export function usePersonalWorkspace() {
     const targetKey = conversationDraftKey(targetId, view.workspace);
     const targetDraft = draftsRef.current[targetKey] || drafts.empty.current;
     const { skillId, responseMode, materials, caseMaterials, selectedCase } = targetDraft;
-    const content = (override ?? targetDraft.input).trim();
-    // 先截出个人连接与凭据，禁止创建普通消息、会话或进入模型生成链。
+    let content = (override ?? targetDraft.input).trim();
+    try { content = mcpChatMessage(content); }
+    catch (error) { message.error(errorText(error, "MCP 配置未识别，请只提供公开地址和认证方式")); return; }
+    // 公开连接需求正常交给模型；凭据仍不能创建普通消息或进入生成链。
     if (mcpConnection.intercept(content)) {
       updateDraft(targetKey, "input", "");
       return;
@@ -232,7 +234,7 @@ export function usePersonalWorkspace() {
   };
   const stop = async () => { try { await runtime.stop(id); } catch (error) { message.error(errorText(error, "停止生成失败")); } };
 
-  const decide = async (action: PendingAction, decision: "approved" | "rejected") => {
+  const decide = async (action: PendingAction, decision: "approved" | "rejected", mcpCredential?: string) => {
     if (decisionLock.current) return false;
     if (loading || conversations.locked() || sendStarts.current.has(id)) throw new Error("正在加载或切换对话，请完成后再确认");
     if (!id) throw new Error("请先选择待确认操作所属的对话");
@@ -245,7 +247,7 @@ export function usePersonalWorkspace() {
       if (!current.pending_actions.some((item) => item.id === action.id && item.status === "pending")) throw new Error("待确认操作不存在或已处理，请核对最新状态");
       let response;
       try {
-        response = await api.post<{ state: WorkspaceState; result?: unknown }>(`/personal-agent/actions/${action.id}/decision`, { conversation_id: id, decision }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
+        response = await api.post<{ state: WorkspaceState; result?: unknown }>(`/personal-agent/actions/${action.id}/decision`, { conversation_id: id, decision, ...(mcpCredential !== undefined ? { mcp_credential: mcpCredential } : {}) }, { headers: { "X-OA-Agent-Confirmation": "frontend" }, timeout: action.type === "personal_mcp.connect" ? 40000 : undefined });
       } catch (error) {
         const failureMessage = errorText(error, "确认操作失败");
         updateDecisionFailure(id, action.id, { actionId: action.id, message: failureMessage, state: "syncing" });

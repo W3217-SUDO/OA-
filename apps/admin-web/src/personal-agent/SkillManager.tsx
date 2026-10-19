@@ -102,7 +102,7 @@ export function SkillManager({ open, onClose, skills, refresh, onSelect, scope: 
       }} /></div>}
       <section hidden={activeTab !== "github"} className="workspace-github-install" aria-label="从 GitHub 安装技能">
         <div className="workspace-section-heading"><b><GithubOutlined /> 从 GitHub 安装</b></div>
-        <p>粘贴公开 GitHub 技能目录或 SKILL.md 链接，先查看指令，再确认安装到{scopeLabel}。仅导入 SKILL.md 作为 OA 技能指令，仓库中的脚本和 references 不会自动执行。</p>
+        <p>粘贴公开 GitHub 技能目录或 SKILL.md 链接，先查看指令，再确认安装到{scopeLabel}。安装会保留固定版本的完整技能目录和参考资料；脚本不会自动执行，技能使用当前账号已授权的工具。</p>
         <div className="workspace-github-url">
           <Input aria-label="GitHub 技能链接" placeholder="https://github.com/owner/repo/tree/main/skills/example" value={githubUrl} disabled={busy} onChange={(event) => { setGithubUrl(event.target.value); setGithubPreview(null); setGithubError(""); }} onPressEnter={() => { if (!busy && githubUrl.trim()) void previewGithub(); }} />
           <Button icon={<GithubOutlined />} loading={busy} disabled={!githubUrl.trim() || busy} onClick={() => void previewGithub()}>预览技能</Button>

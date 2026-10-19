@@ -29,7 +29,7 @@ async def dismiss_personal_actions(directory, conversation_id, action_ids, ident
                 if not isinstance(request_id, str) or not request_id:
                     raise HTTPException(422, "工具请求缺少有效编号")
                 serials.append("MCP-" + request_id)
-            elif action.get("type") in {"create_task", "approve_contract", "personal_mcp.call"}:
+            elif action.get("type") in {"create_task", "approve_contract", "personal_mcp.call", "personal_mcp.connect"}:
                 serials.append("PA-" + action_id)
             else:
                 raise HTTPException(422, "操作卡类型无效")

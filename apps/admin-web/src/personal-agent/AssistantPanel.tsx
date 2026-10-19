@@ -12,7 +12,8 @@ import { ConfirmationHistory } from "./ConfirmationHistory";
 import { PersonalAiSpace } from "./PersonalAiSpace";
 import { CaseAgentFileFolderModal } from "./CaseAgentFileFolderModal";
 import { PersonalMcpConnectionCard } from "./PersonalMcpConnectionCard";
-import { hasConnectionCredential, isMcpConnectionInput } from "./personalMcpConfig";
+import { McpConnectionTurn } from "./McpConnectionTurn";
+import { hasConnectionCredential } from "./personalMcpConfig";
 import { agentOperationMessage, userFacingAgentText } from "../AgentOperationPreview";
 import { errorText, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
@@ -188,6 +189,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const currentProject = desktopWorkspace ? workspace.workspaceProjects.find((item) => item.kind === workspace.currentWorkspace?.kind && (item.kind === "personal" || item.case_id === workspace.currentWorkspace?.case_id)) : undefined;
   const currentCaseProject = currentProject?.kind === "case" && currentProject.serial_no ? currentProject : undefined;
   const decisionBusy = loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId;
+  const connectionActions = caseSession ? [] : workspace.visibleActions.filter((item) => item.type === "personal_mcp.connect" && item.status === "pending");
+  const ordinaryActions = workspace.visibleActions.filter((item) => item.type !== "personal_mcp.connect" || item.status !== "pending");
   const dismiss = async (action: PendingAction) => {
     setDismissalError("");
     try { await workspace.dismissAction(action); }
@@ -195,7 +198,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   };
   const dismissVisible = async () => {
     setDismissalError("");
-    try { await workspace.dismissActions(workspace.visibleActions); }
+    try { await workspace.dismissActions(ordinaryActions); }
     catch (error) { setDismissalError(errorText(error, "操作状态收起失败")); }
   };
   const reopen = async (detail: ConfirmationDetail) => {
@@ -320,22 +323,23 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                 </div>
               );
             })}
+            {connectionActions.map((action) => <McpConnectionTurn key={`${displayedState.conversation_id}:${action.id}`} action={action} busy={decisionBusy} blocked={!!workspace.decisionFailures[action.id]} onDecide={decide} />)}
           </div>
           {awayFromBottom && <button type="button" className="assistant-jump" onClick={followBottom}>回到最新回答</button>}
         </div>
       )}
       {dismissalError && <Alert className="assistant-alert" type="error" showIcon title="操作卡未收起" description={dismissalError} />}
       {Object.values(workspace.decisionFailures).filter((failure) => !failure.hidden && !state.pending_actions.some((action) => action.id === failure.actionId)).map((failure) => <Alert key={failure.actionId} className="assistant-decision-failure" type="error" showIcon closable={{ onClose: () => workspace.hideDecisionFailure(failure.actionId) }} title="操作未完成" description={failure.message} />)}
-      {!!workspace.visibleActions.length && (
+      {!!ordinaryActions.length && (
         <div className="assistant-pending">
           <div className="assistant-pending-heading">
-            <b>{workspace.visibleActions.some((action) => action.status === "pending") ? "待你确认的操作" : "操作状态"}</b>
+            <b>{ordinaryActions.some((action) => action.status === "pending") ? "待你确认的操作" : "操作状态"}</b>
             <Tooltip title="收起当前操作状态"><Button className="assistant-action-dismiss" type="text" icon={<CloseOutlined />} aria-label="收起当前操作状态" disabled={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId} loading={!!workspace.dismissalId} onClick={() => void dismissVisible()} /></Tooltip>
           </div>
           {decisionError && <Alert type="error" showIcon title="操作未完成" description={decisionError} />}
           <List
             size="small"
-            dataSource={workspace.visibleActions}
+            dataSource={ordinaryActions}
             renderItem={(item) => (
               <List.Item
                 actions={[
@@ -354,7 +358,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           />
         </div>
       )}
-      <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeId) ?? null} deciding={!!workspace.decisionId} decisionFailure={activeId ? workspace.decisionFailures[activeId] : undefined} onDecide={decide} onClose={() => { setActiveAction(null); setHistoryAction(null); }} />
+      <ActionConfirmation action={state.pending_actions.find((action) => action.id === activeId && !(action.type === "personal_mcp.connect" && action.status === "pending")) ?? null} deciding={!!workspace.decisionId} decisionFailure={activeId ? workspace.decisionFailures[activeId] : undefined} onDecide={decide} onClose={() => { setActiveAction(null); setHistoryAction(null); }} />
       <PersonalAiSpace open={personalSpaceOpen} onClose={() => setPersonalSpaceOpen(false)} revision={workspace.documentRevision} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} onOpenConversation={workspace.selectConversation} onSkillsChanged={workspace.refreshSkills} label={desktopWorkspace ? "AI生成文件夹" : undefined} />
       {mcp.open && <PersonalMcpConnectionCard key={`${workspace.draftKey}:${caseSession?.item.id || "personal"}`} connection={mcp} />}
       <div className="assistant-composer"
@@ -366,7 +370,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         }}
       >
         <AssistantWorkspaceTools key={workspace.draftKey} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} onOpenMemory={() => setMemoryOpen(true)} />
-        <div><Button type="text" icon={<ApiOutlined />} onClick={mcp.show}>连接我的 MCP</Button></div>
+        <div><Button type="text" icon={<ApiOutlined />} disabled={sendBlocked} onClick={() => submit("帮我连接一个 MCP 服务")}>连接我的 MCP</Button><Button type="text" onClick={mcp.show}>管理已有连接</Button></div>
         <form className="assistant-composer-input" onSubmit={(event) => { event.preventDefault(); submit(); }}>
           <Input.TextArea
             ref={inputRef}
@@ -382,7 +386,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             }}
             onPaste={(event) => {
               const pasted = event.clipboardData.getData("text");
-              if (isMcpConnectionInput(pasted, mcp.open) || hasConnectionCredential(pasted)) { event.preventDefault(); mcp.intercept(pasted); setInput(""); return; }
+              if (hasConnectionCredential(pasted)) { event.preventDefault(); mcp.intercept(pasted); return; }
               if (event.clipboardData.files.length) { event.preventDefault(); void workspace.upload(Array.from(event.clipboardData.files)); }
             }}
             maxLength={8000}
@@ -403,7 +407,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
               />
             </Tooltip>}
             {(!sending || !!input.trim()) && <Tooltip title={sending ? "打断并发送" : "发送"}>
-              <Button className="assistant-send" shape="circle" type="primary" icon={<ArrowUpOutlined />} aria-label={sending ? "打断并发送" : "发送"} htmlType="submit" disabled={!input.trim() || (sendBlocked && !isMcpConnectionInput(input, mcp.open) && !hasConnectionCredential(input))} />
+              <Button className="assistant-send" shape="circle" type="primary" icon={<ArrowUpOutlined />} aria-label={sending ? "打断并发送" : "发送"} htmlType="submit" disabled={!input.trim() || sendBlocked} />
             </Tooltip>}
           </div>
         </form>

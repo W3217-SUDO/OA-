@@ -26,4 +26,4 @@ def reject_mcp_chat_credentials(content):
             if _CONTEXT.search(content):
                 blocked = True
     if blocked:
-        raise HTTPException(422, 'MCP配置或凭据不能发送到聊天记录或模型，请在聊天内的个人MCP连接卡片中提交；地址密钥请改用请求头')
+        raise HTTPException(422, 'MCP配置或凭据不能发送到聊天记录或模型；请先提供公开服务地址和认证方式，在连接确认时通过安全输入提交密钥')

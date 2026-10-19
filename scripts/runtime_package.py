@@ -11,6 +11,7 @@ import subprocess
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 API_RESOURCE_FILES = {
+    "harness_agent/stream.mjs",
     "legacy_schema_manifest.json",
     "core/investigation_regions.json",
     "areas/crm/conflict_rules_20260928.json",

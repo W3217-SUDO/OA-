@@ -80,11 +80,8 @@ class Settings(BaseSettings):
     # 个人智能体按估算上下文 token 数触发压缩，而不是按消息条数猜测。
     personal_agent_context_token_budget: int = Field(default=12000, ge=1000, le=128000)
     personal_agent_context_summary_target_tokens: int = Field(default=6000, ge=500, le=64000)
-    deepseek_harness_base_url: str = "http://127.0.0.1:3081"
-    deepseek_harness_provider: str = "sunhold-oa"
-    deepseek_harness_agent_preset: str = "standard"
-    deepseek_harness_workspace: str = ""
-    deepseek_harness_timeout_seconds: float = 120
+    deepseek_harness_root: str = ""
+    deepseek_harness_cache_root: str = ""
     # 个人智能体的身份文件和会话记录放在上传目录之外，不能被公开附件路由直接访问。
     personal_agent_root: str = ""
     sms_webhook_url: str = ""

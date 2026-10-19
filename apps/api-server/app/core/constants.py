@@ -20,11 +20,6 @@ case_agent_runtime = create_case_agent_runtime(
     model_provider=settings.langgraph_model_provider,
     model=settings.langgraph_model,
     max_concurrency=settings.langgraph_max_concurrency,
-    harness_base_url=settings.deepseek_harness_base_url,
-    harness_provider=settings.deepseek_harness_provider,
-    harness_agent_preset=settings.deepseek_harness_agent_preset,
-    harness_workspace=settings.deepseek_harness_workspace,
-    harness_timeout_seconds=settings.deepseek_harness_timeout_seconds,
 )
 
 

@@ -19,10 +19,12 @@ class AgentSkill:
     unavailable_reason: str
     instruction: str
     quick_prompts: tuple[str, ...]
+    bundle: dict | None = None
 
     def public_dict(self) -> dict:
         payload = asdict(self)
         payload.pop("instruction", None)
+        payload.pop("bundle", None)
         payload["quick_prompts"] = list(self.quick_prompts)
         return payload
 
