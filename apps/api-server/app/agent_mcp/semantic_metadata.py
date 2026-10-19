@@ -5,6 +5,7 @@ import re
 from fastapi.routing import APIRoute
 
 from app.config import settings
+from app.agent_mcp.operation_guidance import get_operation_guidance
 
 
 # 这些 POST 已逐项核对原处理函数及其查询调用链，不写业务记录。
@@ -173,6 +174,9 @@ def is_write(route: APIRoute, method: str) -> bool:
 
 
 def title_for(route: APIRoute, method: str) -> str:
+    guidance = get_operation_guidance(route, method)
+    if guidance.get("title"):
+        return guidance["title"]
     key = operation_key(route, method)
     if method == "POST" and key[1] in {"/finance/fees", "/fees"}:
         return "新增费用草稿"
@@ -231,5 +235,11 @@ def describe(route: APIRoute, method: str, write: bool) -> tuple[str, bool]:
         text += f"已核对只读 POST：{READ_ONLY_POSTS[key]}。"
     if key in SIDE_EFFECT_GETS:
         text += f"注意 GET 有写副作用：{SIDE_EFFECT_GETS[key]}。"
+    guidance = get_operation_guidance(route, method)
+    if guidance.get("title"):
+        text += f"用途：{guidance['purpose']}。"
+        for field, label in (("usage", "使用方式"), ("prerequisites", "前置查询"), ("limitations", "范围限制")):
+            if guidance[field]:
+                text += f"{label}：{'；'.join(guidance[field])}。"
     text += "须持久化人工确认后调用，继续执行原权限、数据范围、校验和业务审批。" if write else "继续执行原权限和当前用户数据范围。"
     return text, corrupted

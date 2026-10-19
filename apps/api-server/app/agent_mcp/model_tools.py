@@ -13,7 +13,8 @@ from app.config import settings
 
 from .auth import get_auth_context, tool_origin
 from .catalog import ToolDefinition, get_catalog
-from .service import call_tool, search_tools
+from .service import call_tool, list_tool_groups, search_tools
+from .tool_groups import require_group
 from .model_context import bounded_model_payload, discovered_tools_view, model_result_view
 from .model_errors import model_error, unsupported_stream
 
@@ -25,12 +26,25 @@ MODEL_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "oa_list_tool_groups",
+            "description": "先按业务目标发现 OA 工具组，只返回组摘要及数量，不返回业务工具 schema。query 可省略以查看 25 个一级组；第 25 组含四个子组。跨组业务按需再次发现相关组。",
+            "parameters": {
+                "type": "object", "properties": {"query": {"type": "string", "minLength": 1}},
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "oa_search_tools",
-            "description": "按业务分组搜索 OA 当前已注册的真实业务接口，返回每个候选的完整 inputSchema、path/query/body/files 参数和必填项。上传类请求必须同时用上传、附件、文件、导入及 upload、attachment、file、import 同义词搜索；调用前必须先搜索，不要猜名称或字段。需要上传本地文件时，先通过已认证的 multipart /api/v1/agent-tools/upload 获取 attachment_id，再把该 ID 按候选工具的 files 参数传给 oa_call_tool；不能把路径、URL 或文件内容字符串直接放进业务工具参数。",
+            "description": "仅在本轮已发现的 group_id 内搜索真实业务工具，返回候选完整 inputSchema；第 25 组还须指定已发现的 subgroup_id。未指定 group_id 时只返回相关组摘要，不返回工具 schema。跨组前先发现对应组，再分别搜索。上传本地文件须先经已认证 multipart /api/v1/agent-tools/upload 取得 attachment_id，再按候选 files 参数传 ID，禁止传路径、URL 或文件内容。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "minLength": 1, "description": "用户要办理的具体业务，例如案件新增律师费用"},
+                    "group_id": {"type": "string", "pattern": "^(0[1-9]|1[0-9]|2[0-5])$", "description": "本轮已发现的一级业务组 ID"},
+                    "subgroup_id": {"type": "string", "enum": ["reporting", "notifications_feedback", "system_parameters", "ai_documents_skills"], "description": "第 25 组必须指定本轮已发现的子组"},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 12, "default": 8, "description": "候选数量；上传或导入涉及多个业务对象时建议使用 12"},
                 },
                 "required": ["query"],
@@ -42,7 +56,7 @@ MODEL_TOOLS = [
         "type": "function",
         "function": {
             "name": "oa_call_tool",
-            "description": "调用本轮搜索发现的 OA 工具。调用前必须按 path、query、body、files 分组读取并说明参数，标注必填项、已提供项和缺失项；缺失必填项先向用户询问，禁止直接调用后再用 422 让用户补填。arguments 严格对应其 inputSchema；查询立即执行，写操作仅生成待人工确认请求。此工具不能批准写入。",
+            "description": "调用本轮搜索发现的 OA 工具。先读取 usage 的用途、前置查询和限制，再按 path、query、body、files 分组读取并说明参数，标注必填项、来源、已提供项和缺失项；可查询的编号先查证，缺失且无法查询的必填项向用户询问，禁止猜值或靠 422 补填。arguments 严格对应完整 inputSchema；查询立即执行，写操作仅生成待人工确认请求。此工具不能批准写入。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -64,6 +78,8 @@ class ModelToolSession:
         self.case_id = case_id
         self.conversation_id = conversation_id
         self.discovered: dict[str, ToolDefinition] = {}
+        self.discovered_groups: set[str] = set()
+        self.discovered_subgroups: set[str] = set()
         self.pending_actions: list[dict[str, Any]] = []
         self.structured_results: list[dict[str, Any]] = []
         self._prepared: dict[str, dict[str, Any]] = {}
@@ -88,16 +104,35 @@ class ModelToolSession:
             return {"isError": True, "detail": "业务工具调用超时，未取得成功结果，请查询实际状态，不要重复提交写操作"}
 
     async def _execute(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if name == "oa_list_tool_groups":
+            if set(arguments) - {"query"}:
+                raise HTTPException(422, "组发现只接受可选 query")
+            return self._discover_groups(arguments.get("query"))
         if name == "oa_search_tools":
             query = arguments.get("query")
             limit = arguments.get("limit", 8)
-            if set(arguments) - {"query", "limit"} or not isinstance(query, str) or not query.strip():
+            if set(arguments) - {"query", "limit", "group_id", "subgroup_id"} or not isinstance(query, str) or not query.strip():
                 raise HTTPException(status_code=422, detail="搜索需要非空 query，且不能包含未知字段")
             if type(limit) is not int or not 1 <= limit <= 12:
                 raise HTTPException(status_code=422, detail="limit 必须是 1 至 12 的整数")
+            group_id = arguments.get("group_id")
+            subgroup_id = arguments.get("subgroup_id")
+            if group_id is None:
+                if subgroup_id is not None:
+                    raise HTTPException(422, "指定子组时必须同时指定 group_id")
+                return self._discover_groups(query.strip())
+            require_group(group_id, subgroup_id)
+            if group_id not in self.discovered_groups:
+                raise HTTPException(422, "必须先发现该业务组，再在组内搜索")
+            if group_id == "25":
+                if subgroup_id is None:
+                    return self._discover_groups("25")
+                if subgroup_id not in self.discovered_subgroups:
+                    raise HTTPException(422, "必须先发现第 25 组的对应子组")
             catalog = get_catalog(get_auth_context().application)
-            tools = search_tools(query.strip(), limit=limit)
+            tools = search_tools(query.strip(), limit=limit, group_id=group_id, subgroup_id=subgroup_id)
             result = discovered_tools_view(tools)
+            result.update({"group_id": group_id, "subgroup_id": subgroup_id})
             self.discovered.update({tool["name"]: catalog.get(tool["name"]) for tool in result["tools"]})
             return result
         if name != "oa_call_tool":
@@ -130,6 +165,13 @@ class ModelToolSession:
             self._prepared[call_key] = result
         self._collect_resources(result)
         return {"result": result}
+
+    def _discover_groups(self, query: str | None) -> dict[str, Any]:
+        result = list_tool_groups(query)
+        for group in result["groups"]:
+            self.discovered_groups.add(group["group_id"])
+            self.discovered_subgroups.update(item["subgroup_id"] for item in group.get("subgroups", []))
+        return {**result, "discovery_stage": "groups", "next_step": "选择已发现的 group_id 后组内搜索；25 组还须指定 subgroup_id"}
 
     def _collect_resources(self, value: object) -> None:
         if isinstance(value, list):

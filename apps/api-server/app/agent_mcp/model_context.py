@@ -1,7 +1,10 @@
 """模型专用查询投影；原接口、待确认操作和附件资源保持完整。"""
 
 import json
+from copy import deepcopy
 from typing import Any
+
+from .parameter_guidance import SEMANTIC_GUIDANCE_MARKER, STRUCTURAL_GUIDANCE_MARKER
 
 
 TOOL_RESULT_BYTES = 24_000
@@ -126,28 +129,59 @@ def model_result_view(value: Any, budget: int = TOOL_RESULT_BYTES) -> Any:
     raise RuntimeError("查询字段超出模型输入范围，请缩小查询范围")
 
 
+def _discovery_tool(tool: dict) -> dict:
+    """保留原说明与完整模式，仅移除显式标记的重复结构说明。"""
+    result = deepcopy(tool)
+    schema = result["inputSchema"]
+
+    def compact(node):
+        if isinstance(node, list):
+            for item in node:
+                compact(item)
+        elif isinstance(node, dict):
+            description = node.get("description")
+            if isinstance(description, str) and SEMANTIC_GUIDANCE_MARKER in description:
+                original, _, generated = description.rpartition(SEMANTIC_GUIDANCE_MARKER)
+                semantic, marker, _ = generated.partition(STRUCTURAL_GUIDANCE_MARKER)
+                if marker:
+                    node["description"] = "\n".join(filter(None, (original, semantic)))
+            for key, value in node.items():
+                if key not in {"enum", "const", "default", "examples"}:
+                    compact(value)
+
+    compact(schema)
+    # 公开目录仍保留参数速查表；模型直接读取完整模式，避免再次传输同一字段。
+    result.pop("parameter_groups", None)
+    documentation = result.get("parameter_documentation")
+    if isinstance(documentation, dict) and "gaps" in documentation:
+        documentation["gap_count"] = len(documentation.pop("gaps"))
+    return result
+
+
 def discovered_tools_view(tools: list[dict]) -> dict:
     visible = []
     for tool in tools:
+        tool = _discovery_tool(tool)
         candidate = {"tools": [*visible, tool]}
-        if encoded_size(candidate) > TOOL_RESULT_BYTES - 600:
-            continue
+        if encoded_size(candidate) > TOOL_RESULT_BYTES - 2_400:
+            if not visible:
+                raise RuntimeError(f"最相关工具 {tool['name']} 的完整参数定义超过模型输入限制；请使用原业务页面，不会跳过该候选或截断 schema")
+            break
         visible.append(tool)
-    if tools and not visible:
-        raise RuntimeError("工具参数定义过长，请使用原业务页面，不会截断参数定义后调用")
     groups: dict[str, list[dict]] = {}
     for tool in visible:
         domain = str(tool.get("domain") or "系统")
         groups.setdefault(domain, []).append(tool)
-    return {
+    return _checked_projection({
         "tools": visible,
         "groups": [
             {"domain": domain, "tool_count": len(items), "tool_names": [item["name"] for item in items]}
             for domain, items in sorted(groups.items())
         ],
         "omitted_tools": len(tools) - len(visible),
-        "notice": "工具按业务分组展示；每个工具均包含完整 inputSchema、参数分组和必填参数。未展示候选请缩小搜索词后重新发现。",
-    }
+        "omitted_tool_names": [tool["name"] for tool in tools[len(visible):]],
+        "notice": "工具按业务分组展示；inputSchema 保留完整约束和 path/query/body/files 分组，usage 提供用途和前置条件。参数说明不重复转述模式约束；未说明的业务规则及取值来源不得推断。未展示候选请缩小搜索词后重新发现。",
+    }, TOOL_RESULT_BYTES)
 
 
 def _text_size(payload: dict) -> int:

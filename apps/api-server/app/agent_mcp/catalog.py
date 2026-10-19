@@ -21,6 +21,10 @@ from app.agent_mcp.semantic_metadata import (
     READ_ONLY_POSTS, RESPONSE_MEDIA_TYPES, SIDE_EFFECT_GETS, describe, disabled_credential_fields, domain_for, exclusion_reasons,
     is_write, operation_key, title_for,
 )
+from app.agent_mcp.operation_guidance import get_operation_guidance
+from app.agent_mcp.semantic_search import semantic_score
+from app.agent_mcp.parameter_guidance import enrich_parameter_schema
+from app.agent_mcp.tool_groups import GROUPS, classify_tool, group_summaries, require_group
 
 
 def _invalid(loc: tuple, message: str, kind: str = "value_error") -> None:
@@ -176,6 +180,19 @@ class ToolDefinition:
     response_media_types: tuple[str, ...]
     is_binary_response: bool
     _route: APIRoute = field(repr=False, compare=False)
+    original_input_schema: dict | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def group_id(self) -> str:
+        return classify_tool(self._route, self.method)[0]
+
+    @property
+    def group_name(self) -> str:
+        return GROUPS[self.group_id][0]
+
+    @property
+    def subgroup_id(self) -> str | None:
+        return classify_tool(self._route, self.method)[1]
 
     def to_mcp(self) -> dict:
         return {
@@ -183,6 +200,7 @@ class ToolDefinition:
             "title": self.title,
             "description": self.description,
             "inputSchema": deepcopy(self.input_schema),
+            "_meta": {"oa/group_id": self.group_id, "oa/group_name": self.group_name, "oa/subgroup_id": self.subgroup_id},
             "annotations": {
                 "readOnlyHint": not self.is_write,
                 "destructiveHint": self.is_write,
@@ -349,6 +367,8 @@ _ACTION_INTENTS = {
     "remove": ("delete", "remove"),
     "审批": ("approve", "review", "审批", "审核"),
     "审核": ("approve", "review", "审批", "审核"),
+    "核准": ("approve", "review", "审批", "审核", "核准"),
+    "批准": ("approve", "review", "审批", "审核", "批准"),
     "approve": ("approve", "review"),
     "review": ("approve", "review"),
     "下载": ("download", "下载"),
@@ -377,6 +397,7 @@ def _tool_search_aliases(tool: ToolDefinition) -> tuple[str, ...]:
     for marker, words in _SEARCH_ALIAS_GROUPS:
         if marker in source:
             aliases.update(words)
+    aliases.update(get_operation_guidance(tool._route, tool.method)["search_terms"])
     return tuple(sorted(aliases))
 
 
@@ -413,16 +434,19 @@ class ToolCatalog:
                 raise ValueError(f"MCP 工具名称冲突：{method} {route.path}")
             operation = document["paths"][route.path_format][method.lower()]
             schema, media_type, files, restrictions = _tool_input(route, operation, document)
+            original_input_schema = deepcopy(schema)
+            schema = enrich_parameter_schema(route, method, schema, document)
             write = is_write(route, method)
             description, corrupted = describe(route, method, write)
             response_types, binary = _response_types(route, method, operation)
             tool = ToolDefinition(name, title_for(route, method), description, schema, method, route.path, write, media_type,
-                                  domain_for(route), files, response_types, binary, route)
+                                  domain_for(route), files, response_types, binary, route, original_input_schema)
             self.tools.append(tool)
             self._by_name[name] = tool
             self._inventory["operations"].append({"name": name, "title": tool.title, "method": method, "path": route.path, "endpoint": route.name,
                                                   "handler": route.endpoint.__name__,
-                                                  "domain": tool.domain, "is_write": write, "request_media_type": media_type,
+                                                  "domain": tool.domain, "group_id": tool.group_id, "subgroup_id": tool.subgroup_id,
+                                                  "is_write": write, "request_media_type": media_type,
                                                   "file_fields": files, "is_binary_response": binary})
             if restrictions:
                 self._inventory["credential_field_restrictions"].append({"method": method, "path": route.path,
@@ -434,6 +458,7 @@ class ToolCatalog:
             "tool_count": len(self.tools), "excluded_count": len(self._inventory["excluded"]),
             "read_count": sum(not tool.is_write for tool in self.tools), "write_count": sum(tool.is_write for tool in self.tools),
             "domains": dict(sorted(Counter(tool.domain for tool in self.tools).items())),
+            "tool_groups": self.list_groups(),
             "included_methods": dict(sorted(Counter(tool.method for tool in self.tools).items())),
             "multipart_count": sum(tool.request_media_type == "multipart/form-data" for tool in self.tools),
             "binary_response_count": sum(tool.is_binary_response for tool in self.tools),
@@ -451,7 +476,16 @@ class ToolCatalog:
             raise HTTPException(422, detail="未知或未开放的 OA MCP 工具")
         return self._by_name[name]
 
-    def search(self, query: str, limit: int = 8) -> list[ToolDefinition]:
+    def list_groups(self, query: str | None = None) -> list[dict]:
+        return group_summaries(self.tools, query)
+
+    def search(self, query: str, limit: int = 8, *, group_id: str | None = None, subgroup_id: str | None = None) -> list[ToolDefinition]:
+        if group_id is not None:
+            require_group(group_id, subgroup_id)
+            if group_id == "25" and subgroup_id is None:
+                raise HTTPException(422, detail="第 25 组必须指定 subgroup_id 后才能展开工具")
+        elif subgroup_id is not None:
+            raise HTTPException(422, detail="subgroup_id 必须同时指定 group_id")
         if not isinstance(query, str) or not query.strip():
             raise HTTPException(422, detail="请输入业务目标或接口关键词")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
@@ -497,6 +531,10 @@ class ToolCatalog:
         file_intent = any(marker in normalized_query for marker in ("附件", "文件", "file", "attachment", "文档", "document"))
         scored = []
         for tool in self.tools:
+            if group_id is not None and tool.group_id != group_id:
+                continue
+            if subgroup_id is not None and tool.subgroup_id != subgroup_id:
+                continue
             text = tool.description.lower()
             subject = " ".join((tool.domain, tool._route.name, tool.path)).lower()
             aliases = " ".join(_tool_search_aliases(tool))
@@ -504,7 +542,7 @@ class ToolCatalog:
             score = sum(4 if term in subject else 2 if term in aliases else 1 if term in text else 0 for term in expanded_terms)
             score += sum(10 if phrase in phrase_subject else 2 if phrase in text else 0 for phrase in phrases)
             if action_markers:
-                action_text = f"{subject} {tool.title.lower()} {text}"
+                action_text = f"{subject} {tool.title.lower()}"
                 action_hits = sum(1 for marker in action_markers if marker in action_text)
                 if action_hits:
                     score += 18 + min(action_hits, 3) * 3
@@ -516,12 +554,12 @@ class ToolCatalog:
             if import_intent:
                 score += 12 if "import" in subject else 3 if "upload" in subject or "batch" in subject else -5
             if file_intent:
-                # 文件类短词也必须命中通用上传接口；下载、查看、删除等同类接口仍保留，
-                # 但上传/导入动作优先展示，避免把“没有上传接口”误判为目录缺失。
-                score += 30 if "upload" in subject else 24 if "import" in subject else 8 if "attachment" in subject or "file" in subject else 0
+                # 文件词只增加对象相关性，具体动作由用户的上传、下载或查看意图决定。
+                score += 8 if any(marker in subject for marker in ("attachment", "file", "document")) else 0
             if normalized_query in text or normalized_query in aliases:
                 score += 8
-            if score:
+            score += semantic_score(tool, normalized_query)
+            if score > 0:
                 scored.append((score, tool.name, tool))
         return [tool for _, _, tool in sorted(scored, key=lambda item: (-item[0], item[1]))[:limit]]
 

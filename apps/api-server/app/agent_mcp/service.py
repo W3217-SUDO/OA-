@@ -14,6 +14,7 @@ from app.agent_mcp.auth import (
 )
 from app.agent_mcp.action_summary import summary_from_preview
 from app.agent_mcp.catalog import get_catalog
+from app.agent_mcp.operation_guidance import get_operation_guidance, parameter_documentation
 from app.agent_mcp.business_preflight import prepare_business_arguments
 from app.agent_mcp.safety import reject_credentials, render_path, require_business_record_target, require_case_scoped_target, safe_result
 from app.agent_mcp.transport import execute_original
@@ -69,9 +70,18 @@ def _parameter_groups(spec) -> dict[str, list[dict]]:
 
 def public_tool(spec) -> dict:
     parameter_groups = _parameter_groups(spec)
+    guidance = get_operation_guidance(spec._route, spec.method)
+    if guidance["documentation_status"] == "unknown":
+        guidance["purpose"] = f"{spec.title}；对应原接口 {spec.method} {spec.path}。业务前置条件尚未逐项核实。"
     return {
         **spec.to_mcp(), "method": spec.method, "path": spec.path, "is_write": spec.is_write,
         "request_media_type": spec.request_media_type, "domain": spec.domain,
+        "group_id": spec.group_id, "group_name": spec.group_name, "subgroup_id": spec.subgroup_id,
+        "file_fields": dict(spec.file_fields), "response_media_types": list(spec.response_media_types),
+        "is_binary_response": spec.is_binary_response,
+        "usage": guidance, "documentation_status": guidance["documentation_status"],
+        "documentation_gaps": guidance["documentation_gaps"],
+        "parameter_documentation": parameter_documentation(spec.input_schema),
         "parameter_groups": parameter_groups,
         "required_parameters": {
             group: [field["name"] for field in fields if field["required"]]
@@ -80,17 +90,23 @@ def public_tool(spec) -> dict:
     }
 
 
-def search_tools(query: str, limit: int = 8) -> list[dict]:
+def list_tool_groups(query: str | None = None) -> dict:
+    catalog = get_catalog(get_auth_context().application)
+    return {"groups": catalog.list_groups(query), "total_tool_count": len(catalog.tools)}
+
+
+def search_tools(query: str, limit: int = 8, *, group_id: str | None = None, subgroup_id: str | None = None) -> list[dict]:
     if not isinstance(query, str) or not query.strip() or type(limit) is not int or not 1 <= limit <= 12:
         raise HTTPException(422, "工具搜索需要非空关键词和 1 至 12 的结果数量")
     catalog = get_catalog(get_auth_context().application)
-    return [public_tool(spec) for spec in catalog.search(query.strip(), limit=limit)]
+    return [public_tool(spec) for spec in catalog.search(query.strip(), limit=limit, group_id=group_id, subgroup_id=subgroup_id)]
 
 
 def descriptor_fingerprint(spec) -> str:
     descriptor = {
         "name": spec.name, "method": spec.method, "path": spec.path,
-        "input_schema": spec.input_schema, "is_write": spec.is_write,
+        "input_schema": spec.original_input_schema if spec.original_input_schema is not None else spec.input_schema,
+        "is_write": spec.is_write,
         "request_media_type": spec.request_media_type, "file_fields": spec.file_fields,
         "response_media_types": spec.response_media_types, "is_binary_response": spec.is_binary_response,
         "handler": spec._route.endpoint.__module__ + "." + spec._route.endpoint.__qualname__,

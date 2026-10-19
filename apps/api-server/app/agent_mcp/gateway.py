@@ -18,7 +18,7 @@ from app.agent_mcp.catalog import get_catalog
 from app.agent_mcp.config import trusted_origins
 from app.agent_mcp.router import router
 from app.agent_mcp.safety import safe_result
-from app.agent_mcp.service import call_tool, search_tools
+from app.agent_mcp.service import call_tool, list_tool_groups, search_tools
 from app.agent_mcp.model_context import discovered_tools_view
 from app.config import settings
 from app.core.lifecycle import lifespan
@@ -27,8 +27,14 @@ from app.core.lifecycle import lifespan
 SEARCH_SCHEMA = {
     "type": "object", "properties": {
         "query": {"type": "string", "minLength": 1, "description": "业务目标及同义词，例如财务回款附件上传，或上传/附件/文件/导入"},
+        "group_id": {"type": "string", "pattern": "^(0[1-9]|1[0-9]|2[0-5])$"},
+        "subgroup_id": {"type": "string", "enum": ["reporting", "notifications_feedback", "system_parameters", "ai_documents_skills"]},
         "limit": {"type": "integer", "minimum": 1, "maximum": 12, "default": 8, "description": "上传或导入涉及多个业务对象时建议使用 12"},
     }, "required": ["query"], "additionalProperties": False,
+}
+GROUP_SCHEMA = {
+    "type": "object", "properties": {"query": {"type": "string", "minLength": 1}},
+    "additionalProperties": False,
 }
 
 
@@ -41,16 +47,27 @@ async def _list_tools(_, params):
         name="oa_search_tools", title="发现 OA 业务操作", description="按业务目标搜索全部已挂载的 OA 工具；结果按 domain 业务域分组，并返回真实参数模式、必填参数和 files 参数说明。",
         input_schema=SEARCH_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=True, open_world_hint=False),
     ))
+    tools.insert(0, types.Tool(
+        name="oa_list_tool_groups", title="发现 OA 业务工具组", description="仅返回 25 个一级组及第 25 组四个子组的用途摘要与数量，不包含工具 schema。",
+        input_schema=GROUP_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=True, open_world_hint=False),
+    ))
     return types.ListToolsResult(tools=tools)
 
 
 async def _call_tool(_, params):
     try:
         arguments = params.arguments or {}
-        if params.name == "oa_search_tools":
-            if set(arguments) - {"query", "limit"}:
+        if params.name == "oa_list_tool_groups":
+            if set(arguments) - {"query"}:
+                raise HTTPException(422, "组发现只接受可选 query")
+            result = list_tool_groups(arguments.get("query"))
+        elif params.name == "oa_search_tools":
+            if set(arguments) - {"query", "limit", "group_id", "subgroup_id"}:
                 raise HTTPException(422, "工具发现不接受未知参数")
-            result = discovered_tools_view(search_tools(arguments.get("query"), arguments.get("limit", 8)))
+            result = discovered_tools_view(search_tools(
+                arguments.get("query"), arguments.get("limit", 8),
+                group_id=arguments.get("group_id"), subgroup_id=arguments.get("subgroup_id"),
+            ))
         else:
             result = await call_tool(params.name, arguments)
         content = [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, allow_nan=False))]
@@ -113,7 +130,10 @@ def install_gateway(application) -> None:
     server = Server(
         "sunhold-oa", title="OA业务操作", on_list_tools=_list_tools, on_call_tool=_call_tool,
         on_list_resources=_list_resources, on_read_resource=_read_resource,
-        get_tool_input_schema=lambda name: SEARCH_SCHEMA if name == "oa_search_tools" else get_catalog(application).get(name).input_schema,
+        get_tool_input_schema=lambda name: (
+            GROUP_SCHEMA if name == "oa_list_tool_groups" else
+            SEARCH_SCHEMA if name == "oa_search_tools" else get_catalog(application).get(name).input_schema
+        ),
     )
     http_application = server.streamable_http_app(
         streamable_http_path="/mcp", json_response=True, stateless_http=True,
