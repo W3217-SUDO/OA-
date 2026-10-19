@@ -6,7 +6,7 @@ uvicorn 以多个工作进程运行时，进程内的 asyncio.Lock 和全局字�
 - ``run_background_leader``：用 PostgreSQL 会话级 advisory lock 选出唯一主进程，
   只有主进程运行会对外发消息或写业务数据的后台循环。主进程退出或连接断开时
   锁随会话释放，其他进程在下一轮竞争中接管。
-- ``file_lock`` / ``file_lock_sync``：基于 ``fcntl.flock`` 的文件锁，保护多个进程
+- ``file_lock`` / ``file_lock_sync``：使用操作系统原生文件锁，保护多个进程
   共享的磁盘状态文件的读-改-写。
 
 单进程运行或非 PostgreSQL 数据库（测试环境）时，行为与原先直接启动后台循环相同。
@@ -15,11 +15,12 @@ uvicorn 以多个工作进程运行时，进程内的 asyncio.Lock 和全局字�
 from __future__ import annotations
 
 import asyncio
-import fcntl
+import errno
 import hashlib
 import logging
 import os
 import tempfile
+import time
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager, suppress
 from pathlib import Path
@@ -28,6 +29,10 @@ from typing import AsyncIterator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+if os.name == 'nt':
+    import msvcrt
+else:
+    import fcntl
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +144,61 @@ def _open_lock_file(path: Path) -> int:
     return os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
 
 
+def _lock_descriptor(descriptor: int, *, blocking: bool) -> None:
+    if os.name != 'nt':
+        fcntl.flock(descriptor, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        return
+    while True:
+        try:
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+            return
+        except OSError as error:
+            if error.errno not in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
+                raise
+            if not blocking:
+                raise BlockingIOError(error.errno, str(error)) from error
+            time.sleep(0.01)
+
+
+def _unlock_descriptor(descriptor: int) -> None:
+    if os.name == 'nt':
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+    else:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+
+
+def windows_process_alive(pid: int) -> bool:
+    """Windows 只查询进程状态；不能用会终止进程的 os.kill(pid, 0)。"""
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.WaitForSingleObject.restype = wintypes.DWORD
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    handle = kernel.OpenProcess(0x00100000, False, pid)
+    if not handle:
+        error = ctypes.get_last_error()
+        if error == 87:
+            return False
+        if error == 5:
+            return True
+        raise ctypes.WinError(error)
+    try:
+        status = kernel.WaitForSingleObject(handle, 0)
+        if status == 258:
+            return True
+        if status == 0:
+            return False
+        raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        kernel.CloseHandle(handle)
+
+
 @asynccontextmanager
 async def file_lock(path: Path, *, poll_seconds: float = 0.01) -> AsyncIterator[None]:
     """跨进程独占文件锁；等待期间让出事件循环，不阻塞本进程其他请求。
@@ -150,14 +210,14 @@ async def file_lock(path: Path, *, poll_seconds: float = 0.01) -> AsyncIterator[
     try:
         while True:
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                _lock_descriptor(descriptor, blocking=False)
                 break
             except BlockingIOError:
                 await asyncio.sleep(poll_seconds)
         try:
             yield
         finally:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            _unlock_descriptor(descriptor)
     finally:
         os.close(descriptor)
 
@@ -167,11 +227,11 @@ def file_lock_sync(path: Path) -> Iterator[None]:
     """同步代码使用的跨进程文件锁；仅用于持锁时间极短的纯文件读写。"""
     descriptor = _open_lock_file(path)
     try:
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        _lock_descriptor(descriptor, blocking=True)
         try:
             yield
         finally:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            _unlock_descriptor(descriptor)
     finally:
         os.close(descriptor)
 

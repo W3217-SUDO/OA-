@@ -26,11 +26,10 @@ class FileLockTest(IsolatedAsyncioTestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         holder = subprocess.Popen([
             sys.executable, "-c",
-            "import fcntl, os, sys, time\n"
-            f"fd = os.open({str(path)!r}, os.O_RDWR | os.O_CREAT, 0o600)\n"
-            "fcntl.flock(fd, fcntl.LOCK_EX)\n"
-            "print('locked', flush=True)\n"
-            "time.sleep(0.6)\n",
+            "import time\nfrom pathlib import Path\nfrom app.core.process_coordination import file_lock_sync\n"
+            f"with file_lock_sync(Path({str(path)!r})):\n"
+            "    print('locked', flush=True)\n"
+            "    time.sleep(0.6)\n",
         ], stdout=subprocess.PIPE, text=True)
         try:
             self.assertEqual(holder.stdout.readline().strip(), "locked")
@@ -40,6 +39,8 @@ class FileLockTest(IsolatedAsyncioTestCase):
             self.assertGreaterEqual(waited, 0.3, "其他进程持锁期间不得进入")
         finally:
             holder.wait(timeout=10)
+            holder.stdout.close()
+            path.unlink(missing_ok=True)
 
     async def test_waiting_for_file_lock_does_not_block_event_loop(self):
         path = process_coordination.coordination_path(f"test-loop-{uuid4().hex}")
@@ -54,11 +55,10 @@ class FileLockTest(IsolatedAsyncioTestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         holder = subprocess.Popen([
             sys.executable, "-c",
-            "import fcntl, os, time\n"
-            f"fd = os.open({str(path)!r}, os.O_RDWR | os.O_CREAT, 0o600)\n"
-            "fcntl.flock(fd, fcntl.LOCK_EX)\n"
-            "print('locked', flush=True)\n"
-            "time.sleep(0.4)\n",
+            "import time\nfrom pathlib import Path\nfrom app.core.process_coordination import file_lock_sync\n"
+            f"with file_lock_sync(Path({str(path)!r})):\n"
+            "    print('locked', flush=True)\n"
+            "    time.sleep(0.4)\n",
         ], stdout=subprocess.PIPE, text=True)
         task = asyncio.create_task(ticker())
         try:
@@ -69,6 +69,8 @@ class FileLockTest(IsolatedAsyncioTestCase):
         finally:
             task.cancel()
             holder.wait(timeout=10)
+            holder.stdout.close()
+            path.unlink(missing_ok=True)
 
 
 class PersonalAgentCrossProcessTest(IsolatedAsyncioTestCase):

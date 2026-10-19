@@ -93,6 +93,9 @@ def _operation_key(directory: Path, conversation_id: str) -> str:
 def _process_alive(pid: object) -> bool:
     if not isinstance(pid, int) or pid <= 0:
         return False
+    if os.name == 'nt':
+        from app.core.process_coordination import windows_process_alive
+        return windows_process_alive(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
