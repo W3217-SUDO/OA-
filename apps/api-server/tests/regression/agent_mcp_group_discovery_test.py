@@ -21,10 +21,12 @@ class GroupCatalogTest(unittest.TestCase):
     def setUpClass(cls):
         cls.catalog = ToolCatalog(app)
 
-    def test_all_824_tools_have_one_primary_group_and_are_retrievable(self):
-        self.assertEqual(len(self.catalog.tools), 824)
+    def test_all_825_tools_have_one_primary_group_and_are_retrievable(self):
+        self.assertEqual(len(self.catalog.tools), 825)
         names = [tool.name for tool in self.catalog.tools]
-        self.assertEqual(len(set(names)), 824)
+        self.assertEqual(len(set(names)), 825)
+        resources = self.catalog.search('读取系统技能参考资料', group_id='25', subgroup_id='ai_documents_skills', limit=3)
+        self.assertEqual(resources[0].name, 'oa_read_system_skill_resource_get')
         counts = Counter()
         for tool in self.catalog.tools:
             with self.subTest(tool=tool.name):
@@ -41,13 +43,13 @@ class GroupCatalogTest(unittest.TestCase):
                 if tool.subgroup_id:
                     self.assertTrue(all(item.subgroup_id == tool.subgroup_id for item in found))
         print(f"Primary groups (deterministic directory coverage, not LLM accuracy): {dict(sorted(counts.items()))}")
-        self.assertEqual(sum(counts.values()), 824)
+        self.assertEqual(sum(counts.values()), 825)
 
     def test_25_group_summaries_have_counts_without_schemas(self):
         groups = self.catalog.list_groups()
         self.assertEqual({item["group_id"] for item in groups}, set(GROUPS))
         self.assertEqual(len(groups), 25)
-        self.assertEqual(sum(item["tool_count"] for item in groups), 824)
+        self.assertEqual(sum(item["tool_count"] for item in groups), 825)
         serialized = json.dumps(groups)
         for key in ("inputSchema", "properties", "$defs", "parameter_groups"):
             self.assertNotIn(key, serialized)
@@ -198,8 +200,8 @@ class GroupSessionTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(gateway, "get_catalog", return_value=self.catalog):
             result = await gateway._list_tools(None, None)
         tools = {item.name: item for item in result.tools}
-        self.assertEqual(len(result.tools), 826)
-        self.assertEqual(len(tools), 826)
+        self.assertEqual(len(result.tools), 827)
+        self.assertEqual(len(tools), 827)
         self.assertEqual(set(tools), {tool.name for tool in self.catalog.tools} | {"oa_search_tools", "oa_list_tool_groups"})
         for tool in self.catalog.tools:
             self.assertEqual(tools[tool.name].input_schema, tool.input_schema)

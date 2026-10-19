@@ -195,11 +195,11 @@ class ParameterGuidanceTest(unittest.TestCase):
                     missing += "业务用途/来源尚未核实" in description
         print(f"参数说明覆盖：{len(old)} 个工具，{fields} 个属性出现位置；其中 {missing} 个位置明确缺失专属业务说明。")
 
-    def test_all_824_pending_request_fingerprints_keep_pre_enrichment_bytes(self):
+    def test_all_825_pending_request_fingerprints_keep_pre_enrichment_bytes(self):
         with patch.object(catalog_module, "enrich_parameter_schema", side_effect=lambda route, method, schema, document: schema):
             baseline = catalog_module.ToolCatalog(app)
         originals = {tool.name: tool for tool in baseline.tools}
-        self.assertEqual(len(originals), 824)
+        self.assertEqual(len(originals), 825)
         mismatches = []
         for tool in self.catalog.tools:
             original = originals[tool.name]
@@ -212,7 +212,7 @@ class ParameterGuidanceTest(unittest.TestCase):
                 self.assertEqual(service.descriptor_fingerprint(original), original_fingerprint(original))
                 if original_fingerprint(original) != service.descriptor_fingerprint(tool):
                     mismatches.append(tool.name)
-        print(f"Pre-enrichment fingerprint compatibility: {len(originals) - len(mismatches)}/824")
+        print(f"Pre-enrichment fingerprint compatibility: {len(originals) - len(mismatches)}/825")
         self.assertEqual(mismatches, [])
 
     def test_fingerprint_keeps_original_descriptions_and_real_contract_changes(self):
