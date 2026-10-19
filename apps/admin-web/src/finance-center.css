@@ -302,12 +302,12 @@
 /* 回款汇总行位于 tbody 首行，需同时固定行本身和单元格，避免纵向滚动时被数据行覆盖。 */
 .finance-original-table-wrap .ant-table-tbody > tr.finance-incoming-grand-total {
   position: sticky;
-  top: 36px;
+  top: 0;
   z-index: 5;
 }
 .finance-original-table-wrap .ant-table-tbody > tr.finance-incoming-grand-total > td {
   position: sticky;
-  top: 36px;
+  top: 0;
   z-index: 5;
   background: #fffdf0 !important;
   box-shadow: 0 1px 0 #d8d8d8;
