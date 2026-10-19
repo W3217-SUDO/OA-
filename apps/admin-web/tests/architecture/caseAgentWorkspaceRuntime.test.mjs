@@ -114,7 +114,7 @@ test("系统技能详情/删除失败显示真实错误，刷新失败不重复�
     "./api": { api: {
       get: async () => {
         if (failure === "read") throw { response: { status: 403, data: { detail: "无权读取系统技能" } } };
-        const data = { ...item, scope: "system", content: "完整声明", instruction: "指令", quick_prompts: [], content_origin: "runtime_declaration", can_delete: failure !== "permission", revision: 1, definition_sha256: "b".repeat(64) };
+        const data = { ...item, scope: "system", content: "完整声明", instruction: "指令", quick_prompts: [], resources: [], content_origin: "runtime_declaration", can_delete: failure !== "permission", revision: 1, definition_sha256: "b".repeat(64) };
         if (failure === "pending") return new Promise(resolve => { pending = () => resolve({ data }); });
         return { data };
       },
