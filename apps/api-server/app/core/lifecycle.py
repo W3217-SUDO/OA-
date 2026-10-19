@@ -234,28 +234,31 @@ async def lifespan(_: FastAPI):
             ctypes.CDLL(None).malloc_trim(0)
         except (AttributeError, OSError):
             logger.warning("Unable to return released startup heap pages to the operating system")
-    await case_agent_runtime.start()
-    rule_task = asyncio.create_task(_business_rule_loop())
+    from app.core.process_coordination import run_background_leader, session_advisory_lock
+    # 多个工作进程同时启动时串行初始化 LangGraph 检查点表，避免并发建表失败
+    # 使个别进程的案件智能体处于不可用状态。
+    async with session_advisory_lock(engine, "case-agent-runtime-start"):
+        await case_agent_runtime.start()
+    # 缓存清理只清本进程缓存，每个工作进程都要运行。
     cache_cleanup_task = asyncio.create_task(_automatic_cache_cleanup_loop())
-    dingtalk_task = asyncio.create_task(_dingtalk_notification_loop())
-    notification_task = asyncio.create_task(notification_scheduler_loop())
+    # 业务规则会写数据，钉钉与短信会对外发送；多进程时只由取得 advisory lock 的
+    # 主进程运行，单进程或非 PostgreSQL 时与原先一样直接运行。
+    leader_task = asyncio.create_task(run_background_leader(engine, lambda: [
+        asyncio.create_task(_business_rule_loop()),
+        asyncio.create_task(_dingtalk_notification_loop()),
+        asyncio.create_task(notification_scheduler_loop()),
+    ]))
     try:
         await start_dashboard_metrics_cache()
         yield
     finally:
         try:
-            rule_task.cancel()
+            leader_task.cancel()
             cache_cleanup_task.cancel()
-            dingtalk_task.cancel()
-            notification_task.cancel()
             with suppress(asyncio.CancelledError):
-                await rule_task
+                await leader_task
             with suppress(asyncio.CancelledError):
                 await cache_cleanup_task
-            with suppress(asyncio.CancelledError):
-                await dingtalk_task
-            with suppress(asyncio.CancelledError):
-                await notification_task
             await case_agent_runtime.stop()
         finally:
             await close_dashboard_metrics_cache()

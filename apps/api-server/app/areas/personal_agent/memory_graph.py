@@ -8,6 +8,7 @@ confidence, task scope, and permission scope before it can be recalled.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -17,10 +18,36 @@ from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
 from app.config import settings
+from app.core.process_coordination import coordination_path, file_lock_sync
 
 
 _MEMORY_FILE = "memories.json"
 _AUDIT_FILE = "memory_audit.jsonl"
+_LOCK_DEPTH: dict[str, int] = {}
+
+
+def _memory_locked(function):
+    """记忆文件的读-改-写在多个 API 进程间互斥。
+
+    这些函数都在事件循环中同步执行、相互嵌套调用（例如流水线先过期再保存），
+    同一进程按目录记录嵌套深度，只在最外层获取文件锁，避免同进程重入阻塞。
+    """
+    @functools.wraps(function)
+    def wrapper(directory: Path, *args, **kwargs):
+        key = str(directory)
+        if _LOCK_DEPTH.get(key):
+            _LOCK_DEPTH[key] += 1
+            try:
+                return function(directory, *args, **kwargs)
+            finally:
+                _LOCK_DEPTH[key] -= 1
+        with file_lock_sync(coordination_path(f"personal-agent-memory:{key}")):
+            _LOCK_DEPTH[key] = 1
+            try:
+                return function(directory, *args, **kwargs)
+            finally:
+                _LOCK_DEPTH.pop(key, None)
+    return wrapper
 _EXPLICIT_MEMORY = re.compile(r"(?:记住|请记住|以后|今后|我的偏好|我习惯|保存这个偏好|记下来)[：:，,\s]*(.+)", re.I | re.S)
 _TOKEN = re.compile(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9_]{2,}")
 _CATEGORY_FACT = re.compile(r"(?:我叫|我是|我的(?:姓名|名字|公司|职位|职业|所在|生日)|来自|住在)")
@@ -317,6 +344,7 @@ def _graph():
 _MEMORY_GRAPH = _graph()
 
 
+@_memory_locked
 def _save_candidate(directory: Path, owner_user_id: int, conversation_id: str | None, case_id: int | None,
                     candidate: str | None, category: str | None) -> dict[str, Any] | None:
     if not candidate:
@@ -367,6 +395,7 @@ def _save_candidate(directory: Path, owner_user_id: int, conversation_id: str | 
     return item
 
 
+@_memory_locked
 def run_memory_pipeline(directory: Path, owner_user_id: int, conversation_id: str | None, case_id: int | None,
                         messages: list[dict[str, Any]], user_text: str, summary: str = "",
                         allowed_case_ids: list[int] | None = None,
@@ -393,6 +422,7 @@ def run_memory_pipeline(directory: Path, owner_user_id: int, conversation_id: st
             "recalled": result.get("recalled", []), "created": item}
 
 
+@_memory_locked
 def list_memories(directory: Path, owner_user_id: int, limit: int = 50) -> dict[str, Any]:
     expire_memories(directory, owner_user_id)
     data = _read(directory / _MEMORY_FILE)
@@ -411,6 +441,7 @@ def list_memories(directory: Path, owner_user_id: int, limit: int = 50) -> dict[
     return {"settings": data["settings"], "items": items[: max(1, min(limit, 100))]}
 
 
+@_memory_locked
 def delete_memory(directory: Path, owner_user_id: int, memory_id: str) -> bool:
     path = directory / _MEMORY_FILE
     data = _read(path)
@@ -425,6 +456,7 @@ def delete_memory(directory: Path, owner_user_id: int, memory_id: str) -> bool:
     return False
 
 
+@_memory_locked
 def expire_memories(directory: Path, owner_user_id: int | None = None, *, now: datetime | None = None) -> int:
     """Mark retained memories expired without physically deleting evidence."""
     path = directory / _MEMORY_FILE
@@ -467,6 +499,7 @@ def list_memory_audit(directory: Path, owner_user_id: int, limit: int = 100) -> 
     return list(reversed(rows))
 
 
+@_memory_locked
 def update_settings(directory: Path, owner_user_id: int, *, enabled: bool | None = None,
                     retention_days: int | None = None, recall_limit: int | None = None) -> dict[str, Any]:
     path = directory / _MEMORY_FILE

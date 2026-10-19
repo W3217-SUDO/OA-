@@ -16,6 +16,7 @@ import jwt
 from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
+from app.core.process_coordination import coordination_path, file_lock
 from app.core.bank_statement_import import read_statement, cell_text
 from app.pdf_runtime import serialized_pdfium
 
@@ -171,7 +172,9 @@ async def recognize_document(raw, filename, bank_source):
         raise ValueError('识别模型未配置，请联系管理员配置后重试')
     try:
         async with asyncio.timeout(480):
-            async with _recognition_slot:
+            # 外部识别接口全局只允许一个并发；进程内信号量之外加跨进程文件锁，
+            # 多个 API 工作进程时仍保持同一时刻只调用一次。
+            async with _recognition_slot, file_lock(coordination_path("bank-document-recognition"), poll_seconds=0.2):
                 async with httpx.AsyncClient(timeout=120) as client:
                     if Path(filename).suffix.lower() != '.zip':
                         rows = await _recognize_one(raw, filename, client)

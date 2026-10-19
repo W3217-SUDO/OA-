@@ -3,7 +3,7 @@ from time import monotonic
 from app.core.constants import (
     DEFAULT_HIDDEN_MENU_KEYS, DEFAULT_ROLE_PERMISSIONS,
     DEFAULT_SYSTEM_MENUS, FIELD_KEYS, MENU_KEYS, ROLE_DATA_SCOPES, SYSTEM_ACTION_BY_CODE,
-    SYSTEM_ACTION_DEFINITIONS, SYSTEM_CACHE_META, SYSTEM_CACHE_REGISTRY, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_PARAMETER_CACHE,
+    SYSTEM_ACTION_DEFINITIONS, SYSTEM_CACHE_META, SYSTEM_CACHE_REGISTRY, SYSTEM_MENU_ROUTE_KEYS,
     SYSTEM_PARAMETER_CATEGORIES, _LEGACY_CASE_TASK_HISTORY_ENTITIES, logger,
 )
 from app.core.dependencies import (
@@ -584,8 +584,12 @@ async def list_system_parameters(category: str = "", keyword: str = "", page: in
         raise HTTPException(status_code=403, detail="当前账号没有系统参数菜单权限")
     requested_categories = {category: visible_categories[category]} if category else visible_categories
     cache_key = category or "__all__"
-    if not keyword.strip() and cache_key in SYSTEM_PARAMETER_CACHE:
-        result = SYSTEM_PARAMETER_CACHE[cache_key]
+    from app.core.system_parameter_cache import (
+        read_system_parameter_cache, store_system_parameter_cache, system_parameter_fingerprint,
+    )
+    cached_result = await read_system_parameter_cache(db, cache_key) if not keyword.strip() else None
+    if cached_result is not None:
+        result = cached_result
         if not category:
             result = [item for item in result if item.get("category") in requested_categories]
         if page is None and page_size is None:
@@ -594,6 +598,8 @@ async def list_system_parameters(category: str = "", keyword: str = "", page: in
         total = len(result)
         start = (current_page - 1) * current_size
         return {"items": result[start:start + current_size], "total": total, "page": current_page, "page_size": current_size, "categories": requested_categories, "cached": True}
+    # 指纹须先于参数行读取，见 app/core/system_parameter_cache.py。
+    fingerprint = None if keyword.strip() else await system_parameter_fingerprint(db, requested_categories)
     statement = select(SystemParameter)
     if category: statement = statement.where(SystemParameter.category == category)
     else: statement = statement.where(SystemParameter.category.in_(requested_categories))
@@ -610,7 +616,7 @@ async def list_system_parameters(category: str = "", keyword: str = "", page: in
         statement = statement.where(or_(*keyword_fields))
     items = (await db.scalars(statement.order_by(SystemParameter.sort_order, SystemParameter.id))).all()
     result = [_system_parameter_dict(item) for item in items]
-    if not keyword.strip(): SYSTEM_PARAMETER_CACHE[cache_key] = result
+    if not keyword.strip(): store_system_parameter_cache(cache_key, requested_categories, fingerprint, result)
     if page is None and page_size is None:
         return {"items": result, "categories": requested_categories, "cached": False}
     current_page, current_size = page or 1, page_size or 15

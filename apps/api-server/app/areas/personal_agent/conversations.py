@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -12,10 +13,46 @@ from uuid import uuid4
 from fastapi import HTTPException
 from app.agent_mcp.action_summary import summary_from_preview
 from app.areas.personal_agent.project_workspaces import normalize_workspace, require_membership, state_workspace, workspace_key
+from app.core.process_coordination import coordination_path, file_lock
 
 
-STATE_LOCK = asyncio.Lock()
+class _StateLock:
+    """个人智能体文件状态锁：进程内 asyncio 锁加跨进程文件锁。
+
+    多个 API 工作进程共享同一份会话文件，进程内锁只能串行化本进程；持锁区段都是
+    短暂的同步文件读写，外加文件锁后各进程的读-改-写互不覆盖。
+    """
+
+    def __init__(self) -> None:
+        self._local = asyncio.Lock()
+        self._file = None
+
+    async def __aenter__(self) -> None:
+        await self._local.acquire()
+        try:
+            context = file_lock(coordination_path("personal-agent-state"))
+            await context.__aenter__()
+        except BaseException:
+            self._local.release()
+            raise
+        self._file = context
+
+    async def __aexit__(self, *exc_info) -> None:
+        context, self._file = self._file, None
+        try:
+            await context.__aexit__(*exc_info)
+        finally:
+            self._local.release()
+
+    def locked(self) -> bool:
+        return self._local.locked()
+
+
+STATE_LOCK = _StateLock()
 _ACTIVE_OPERATIONS: dict[tuple[Path, str], tuple[asyncio.Task, bool]] = {}
+_OPERATION_REGISTRY = "personal-agent-active-operations"
+_CANCEL_POLL_SECONDS = 0.25
+_FOREIGN_WAIT_POLL_SECONDS = 0.1
 _CONVERSATION_ID = re.compile(r"^(default|[0-9a-f]{32})$")
 _WORKSPACE_KEY = re.compile(r"^(personal|case:[1-9][0-9]*)$")
 
@@ -43,6 +80,104 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _registry_path() -> Path:
+    return coordination_path(_OPERATION_REGISTRY).with_suffix(".json")
+
+
+def _operation_key(directory: Path, conversation_id: str) -> str:
+    return f"{directory}|{conversation_id}"
+
+
+def _process_alive(pid: object) -> bool:
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _registry_read() -> dict[str, dict[str, Any]]:
+    """读取跨进程登记；文件以原子替换写入，无锁读取也只会看到完整版本。"""
+    try:
+        value = json.loads(_registry_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _registry_write(value: dict[str, dict[str, Any]]) -> None:
+    path = _registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    live = {key: entry for key, entry in value.items()
+            if isinstance(entry, dict) and _process_alive(entry.get("pid"))}
+    # 登记文件不是会话内容，单独原子写入，不计入会话文件的写入。
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(live, ensure_ascii=False), encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _foreign_operation(directory: Path, conversation_id: str) -> dict[str, Any] | None:
+    """其他工作进程中仍在运行的同一对话操作；本进程的操作由 _ACTIVE_OPERATIONS 记录。"""
+    entry = _registry_read().get(_operation_key(directory, conversation_id))
+    if not isinstance(entry, dict) or entry.get("pid") == os.getpid() or not _process_alive(entry.get("pid")):
+        return None
+    return entry
+
+
+def _registry_register(directory: Path, conversation_id: str, cancellable: bool) -> None:
+    registry = _registry_read()
+    registry[_operation_key(directory, conversation_id)] = {
+        "pid": os.getpid(), "cancellable": cancellable, "cancel_requested": False,
+    }
+    _registry_write(registry)
+
+
+def _registry_unregister(directory: Path, conversation_id: str) -> None:
+    registry = _registry_read()
+    key = _operation_key(directory, conversation_id)
+    entry = registry.get(key)
+    if isinstance(entry, dict) and entry.get("pid") == os.getpid():
+        del registry[key]
+        _registry_write(registry)
+
+
+def _registry_request_cancel(directory: Path, conversation_id: str) -> None:
+    registry = _registry_read()
+    entry = registry.get(_operation_key(directory, conversation_id))
+    if isinstance(entry, dict):
+        entry["cancel_requested"] = True
+        _registry_write(registry)
+
+
+async def _watch_foreign_cancel(directory: Path, conversation_id: str, task: asyncio.Task) -> None:
+    """其他进程收到“停止生成”时只能写登记；由本进程把取消转给正在生成的任务。"""
+    key = _operation_key(directory, conversation_id)
+    while True:
+        await asyncio.sleep(_CANCEL_POLL_SECONDS)
+        entry = _registry_read().get(key)
+        if isinstance(entry, dict) and entry.get("pid") == os.getpid() and entry.get("cancel_requested"):
+            if not task.done() and not task.cancelling():
+                task.cancel()
+            return
+
+
+async def _wait_foreign_operation(directory: Path, conversation_id: str, pid: int) -> None:
+    """等待其他进程中的生成任务保存部分回答并释放对话，与本进程等待任务结束一致。"""
+    key = _operation_key(directory, conversation_id)
+    while True:
+        entry = _registry_read().get(key)
+        if not isinstance(entry, dict) or entry.get("pid") != pid or not _process_alive(pid):
+            return
+        await asyncio.sleep(_FOREIGN_WAIT_POLL_SECONDS)
 
 
 def _index(directory: Path) -> dict[str, Any]:
@@ -261,7 +396,7 @@ async def delete_conversation(directory: Path, conversation_id: str, workspace: 
     async with STATE_LOCK:
         state = read_state(directory, conversation_id)
         require_membership(state, workspace)
-        if (directory, conversation_id) in _ACTIVE_OPERATIONS:
+        if (directory, conversation_id) in _ACTIVE_OPERATIONS or _foreign_operation(directory, conversation_id) is not None:
             raise HTTPException(status_code=409, detail="该对话正在处理，请完成或停止生成后再删除")
         if state["pending_actions"]:
             raise HTTPException(status_code=409, detail="请先处理或取消该对话的待确认操作，再删除对话")
@@ -313,29 +448,39 @@ async def conversation_operation(directory: Path, conversation_id: str | None, *
         if not state["conversation_id"]:
             raise HTTPException(status_code=409, detail="请先新建对话")
         key = (directory, state["conversation_id"])
-        if key in _ACTIVE_OPERATIONS:
+        if key in _ACTIVE_OPERATIONS or _foreign_operation(*key) is not None:
             raise HTTPException(status_code=409, detail="该对话正在处理，请稍后再试")
         task = asyncio.current_task()
         if task is None:
             raise RuntimeError("对话操作缺少运行任务")
         _ACTIVE_OPERATIONS[key] = (task, cancellable)
+        _registry_register(*key, cancellable)
+    watcher = asyncio.create_task(_watch_foreign_cancel(*key, task)) if cancellable else None
     try:
         yield state
     finally:
+        if watcher is not None:
+            watcher.cancel()
         async with STATE_LOCK:
             del _ACTIVE_OPERATIONS[key]
+            _registry_unregister(*key)
 
 
 async def stop_generation(directory: Path, conversation_id: str) -> dict[str, Any]:
+    foreign = None
     async with STATE_LOCK:
         read_state(directory, conversation_id)
         operation = _ACTIVE_OPERATIONS.get((directory, conversation_id))
-        if operation and not operation[1]:
+        if operation is None:
+            foreign = _foreign_operation(directory, conversation_id)
+        if (operation and not operation[1]) or (foreign is not None and not foreign.get("cancellable")):
             raise HTTPException(status_code=409, detail="该对话正在执行已确认的 OA 操作，不能中断")
         if operation:
             task = operation[0]
             if not task.cancelling():
                 task.cancel()
+        if foreign is not None:
+            _registry_request_cancel(directory, conversation_id)
     # 不持有文件锁等待取消，让生成任务保存部分回答并释放对话占用。
     if operation:
         try:
@@ -343,5 +488,7 @@ async def stop_generation(directory: Path, conversation_id: str) -> dict[str, An
         except asyncio.CancelledError:
             if asyncio.current_task().cancelling():
                 raise
+    if foreign is not None:
+        await _wait_foreign_operation(directory, conversation_id, foreign["pid"])
     async with STATE_LOCK:
         return read_state(directory, conversation_id)
