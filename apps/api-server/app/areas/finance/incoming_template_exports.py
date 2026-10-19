@@ -39,7 +39,12 @@ async def export_incoming_fee_query(
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     users = {user.username.lower(): user for user in (await db.scalars(select(User).where(User.is_active.is_(True)))).all()}
     # 与页面复用同一回款全集筛选；不携带显示分页，也不扩大到全部案件费用。
-    result = await read_incoming_query(statement, "", "finance-receipts-query", query, None, None, show_amount, users, db)
+    # PostgreSQL 下 statement 已把旧金额聚合联接到可见回款头，必须直接读取实体行；
+    # 另建汇总投影会再次引用同一子查询，导致 legacy_assigned_amounts 别名重复。
+    result = await read_incoming_query(
+        statement, "", "finance-receipts-query", query, None, None, show_amount, users, db,
+        use_statement_rows=db.get_bind().dialect.name == "postgresql",
+    )
     payments = result["items"]
     if selected_ids is not None and {payment.id for payment in payments} != selected_ids:
         raise HTTPException(409, "部分所选回款不符合当前筛选或无权导出")

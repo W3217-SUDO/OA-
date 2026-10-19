@@ -189,30 +189,31 @@ async def read_incoming_query(statement, keyword: str, view: str, filters: dict,
                               use_statement_rows: bool = False) -> dict:
     # 汇总阶段只读取筛选、统计和排序需要的字段。完整分配明细、备注及人员字段
     # 只在最终返回的当前页再次读取，保持结果一致并避免大批量 JSON 在内存中复制。
-    summary_projection = statement.with_only_columns(
-        IncomingPayment.id, IncomingPayment.received_date, IncomingPayment.receipt_no,
-        IncomingPayment.amount, IncomingPayment.allocated_amount, IncomingPayment.status,
-        IncomingPayment.payer_name, IncomingPayment.bank_reference, IncomingPayment.claimed_customer,
-        IncomingPayment.contract_no, IncomingPayment.allocations, IncomingPayment.source_kind,
-        IncomingPayment.remark, IncomingPayment.bank_source,
-        IncomingPayment.finance_scope,
-        IncomingPayment.payment_method,
-        IncomingPayment.local_allocation_summary,
-        INCOMING_CENTER.label("resolved_finance_scope"),
-        LEGACY_INCOMING_SOURCE.c.payment_method.label("legacy_payment_method"),
-        LEGACY_INCOMING_SOURCE.c.settlement_status.label("legacy_settlement_status"),
-        *(LEGACY_ASSIGNED_AMOUNTS.c[field].label("legacy_" + field) for field in ASSIGNED_FIELDS),
-        LEGACY_ASSIGNED_AMOUNTS.c.baseline_allocations.label("legacy_baseline_allocations"),
-        LEGACY_ASSIGNED_AMOUNTS.c.baseline_applied_amount.label("legacy_baseline_applied_amount"),
-    ).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc())
     if use_statement_rows:
         # PostgreSQL 路径的 statement 已把旧金额聚合限制到可见回款头；直接读取
         # ORM 行可保留 with_expression 注入的 legacy_* 字段，避免再次拼接全量聚合。
+        # 汇总投影不能再引用同一聚合子查询，否则 legacy_assigned_amounts 别名重复。
         items = list((await db.scalars(statement.order_by(
             IncomingPayment.received_date.desc(), IncomingPayment.id.desc(),
         ))).all())
         items_are_entities = True
     else:
+        summary_projection = statement.with_only_columns(
+            IncomingPayment.id, IncomingPayment.received_date, IncomingPayment.receipt_no,
+            IncomingPayment.amount, IncomingPayment.allocated_amount, IncomingPayment.status,
+            IncomingPayment.payer_name, IncomingPayment.bank_reference, IncomingPayment.claimed_customer,
+            IncomingPayment.contract_no, IncomingPayment.allocations, IncomingPayment.source_kind,
+            IncomingPayment.remark, IncomingPayment.bank_source,
+            IncomingPayment.finance_scope,
+            IncomingPayment.payment_method,
+            IncomingPayment.local_allocation_summary,
+            INCOMING_CENTER.label("resolved_finance_scope"),
+            LEGACY_INCOMING_SOURCE.c.payment_method.label("legacy_payment_method"),
+            LEGACY_INCOMING_SOURCE.c.settlement_status.label("legacy_settlement_status"),
+            *(LEGACY_ASSIGNED_AMOUNTS.c[field].label("legacy_" + field) for field in ASSIGNED_FIELDS),
+            LEGACY_ASSIGNED_AMOUNTS.c.baseline_allocations.label("legacy_baseline_allocations"),
+            LEGACY_ASSIGNED_AMOUNTS.c.baseline_applied_amount.label("legacy_baseline_applied_amount"),
+        ).order_by(IncomingPayment.received_date.desc(), IncomingPayment.id.desc())
         items = list((await db.execute(summary_projection)).all())
         items_are_entities = False
     if keyword:
