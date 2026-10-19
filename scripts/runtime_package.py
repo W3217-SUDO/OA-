@@ -11,7 +11,6 @@ import subprocess
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 API_RESOURCE_FILES = {
-    "harness_agent/stream.mjs",
     "legacy_schema_manifest.json",
     "core/investigation_regions.json",
     "areas/crm/conflict_rules_20260928.json",
@@ -42,7 +41,7 @@ API_RESOURCE_FILES = {
     "export_templates/huzhi/compensation-payment-application.docx",
     "export_templates/huzhi/print-table.docx",
 }
-API_OPTIONAL_RESOURCE_FILES = {"system_skill_packages.json"}
+API_OPTIONAL_RESOURCE_FILES = {"system_skill_packages.json", "harness_agent/stream.mjs"}
 WEB_EXTENSIONS = {
     ".html", ".js", ".css", ".json", ".svg", ".png", ".jpg", ".jpeg",
     ".gif", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".txt", ".webmanifest",
@@ -132,6 +131,8 @@ def verify(package: Path) -> dict:
     required.update(f"api/app/{relative}" for relative in API_RESOURCE_FILES)
     if "api/app/system_skill_packages.py" in actual:
         required.add("api/app/system_skill_packages.json")
+    if "api/app/harness_agent/runtime.py" in actual:
+        required.add("api/app/harness_agent/stream.mjs")
     if not required.issubset(actual):
         raise ValueError("运行包缺少必需入口或构建标记")
     info = json.loads((package / "web/build-info.json").read_text(encoding="utf-8"))
