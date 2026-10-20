@@ -39,7 +39,7 @@ export interface CaseQueriesDependencies {
         archived: number;
     }>>;
     readonly setProfile: React.Dispatch<React.SetStateAction<Profile>>;
-    readonly specialCaseList: { active: boolean; total: number; reload: () => Promise<boolean> };
+    readonly specialCaseList: { active: boolean; total: number; reload: () => Promise<boolean>; exportFile: () => Promise<{ data: Blob }> };
     readonly setCaseTypeOptions: React.Dispatch<React.SetStateAction<{
         value: string;
         label: string;
@@ -231,12 +231,21 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                 const profileRes = await api.get("/auth/me");
                 setProfile(profileRes.data);
                 if (initialView === "case-company-schedule") {
-                    const { data } = await api.get("/cases/reference-options");
+                    const [{ data }, feeTypes] = await Promise.all([
+                        api.get("/cases/reference-options"),
+                        api.get("/system/parameters/options", { params: { category: "fee_type" } }),
+                    ]);
                     setCaseTypeOptions(data.case_types);
                     setCourtOptions(data.courts);
                     setCourtOfficerOptions(data.court_officers);
                     setCaseLawyerOptions(data.case_lawyers);
                     setCaseAssistantOptions(data.case_assistants);
+                    setCaseFileTypeCatalog(data.case_file_types);
+                    const fileTypes = buildCaseFileTypeTreeOptions(data.case_file_types);
+                    setCaseFileTypeOptions(fileTypes);
+                    setCaseUploadCategory((current) => resolveCaseFileTypeSelection(current, fileTypes));
+                    setFeeTypeCatalog(feeTypes.data.items);
+                    await loadCaseRelations();
                 }
                 await context.specialCaseList.reload();
                 return;
@@ -616,15 +625,22 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         if (!(context.specialCaseList?.active ? context.specialCaseList.total : originalCases.length))
             return message.warning("当前查询没有可导出的案件");
         try {
-            const res = await api.get("/records/export", { params: { module: "case" }, responseType: "blob" });
+            const companySchedule = context.initialView === "case-company-schedule";
+            const res = companySchedule
+                ? await context.specialCaseList.exportFile()
+                : await api.get("/records/export", { params: { module: "case" }, responseType: "blob" });
             const url = URL.createObjectURL(res.data), link = document.createElement("a");
             link.href = url;
-            link.download = "案件资料.csv";
+            link.download = companySchedule ? "公司开庭排期案件.xls" : "案件资料.csv";
+            document.body.appendChild(link);
             link.click();
+            link.remove();
             URL.revokeObjectURL(url);
         }
-        catch {
-            message.error("案件导出失败");
+        catch (error: any) {
+            const payload = error?.response?.data;
+            const detail = payload instanceof Blob ? await payload.text() : payload?.detail;
+            message.error(detail || error?.message || "案件导出失败");
         }
     };
     const exportCounselCases = async (selectedOnly: boolean) => {

@@ -4,6 +4,25 @@ import type { CaseRow, Hearing } from "../types";
 
 type SpecialCaseRow = CaseRow | (Omit<Hearing, "id"> & { id: string; case: CaseRow });
 
+function queryParams(query: Record<string, any>, kind: string, scope: string, page: number, pageSize: number) {
+  const { payment_range, hearing_range, source_range, handling_lawyer, ...filters } = query;
+  return {
+    ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "")),
+    kind, scope, page, page_size: pageSize,
+    ...(kind === "schedule" ? {
+      handling_lawyer,
+      hearing_from: hearing_range?.[0]?.format("YYYY-MM-DD"),
+      hearing_to: hearing_range?.[1]?.format("YYYY-MM-DD"),
+      source_from: source_range?.[0]?.format("YYYY-MM-DD"),
+      source_to: source_range?.[1]?.format("YYYY-MM-DD"),
+    } : {}),
+    ...(payment_range?.length === 2 ? {
+      paid_from: payment_range[0].format("YYYY-MM-DD"),
+      paid_to: payment_range[1].format("YYYY-MM-DD"),
+    } : {}),
+  };
+}
+
 export function useSpecialCaseRecords(route: string) {
   const kind = route === "case-company-schedule" ? "schedule" : route.endsWith("-unclaimed") ? "unclaimed" : route.endsWith("-no-refund") ? "refund" : "";
   const scope = route.startsWith("case-mine") ? "mine" : route.startsWith("case-dept") ? "department" : "company";
@@ -30,24 +49,9 @@ export function useSpecialCaseRecords(route: string) {
     setTotal(0);
     setLoading(true);
     setError("");
-    const { payment_range, hearing_range, source_range, handling_lawyer, ...filters } = query;
     try {
       const { data } = await api.get("/cases/special-records", {
-        params: {
-          ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "")),
-          kind, scope, page: nextPage, page_size: nextSize,
-          ...(kind === "schedule" ? {
-            handling_lawyer,
-            hearing_from: hearing_range?.[0]?.format("YYYY-MM-DD"),
-            hearing_to: hearing_range?.[1]?.format("YYYY-MM-DD"),
-            source_from: source_range?.[0]?.format("YYYY-MM-DD"),
-            source_to: source_range?.[1]?.format("YYYY-MM-DD"),
-          } : {}),
-          ...(payment_range?.length === 2 ? {
-            paid_from: payment_range[0].format("YYYY-MM-DD"),
-            paid_to: payment_range[1].format("YYYY-MM-DD"),
-          } : {}),
-        },
+        params: queryParams(query, kind, scope, nextPage, nextSize),
       });
       if (request !== sequence.current) return false;
       setRows(data.items);
@@ -73,5 +77,10 @@ export function useSpecialCaseRecords(route: string) {
     return () => { sequence.current += 1; };
   }, [route]);
 
-  return { active: Boolean(kind), rows, total, page, pageSize, loading, error, search, reload: () => search() };
+  const exportFile = () => api.get<Blob>("/cases/special-records", {
+    params: { ...queryParams(current.current.query, kind, scope, 1, 200), export_format: "xls" },
+    responseType: "blob",
+  });
+
+  return { active: Boolean(kind), rows, total, page, pageSize, loading, error, search, exportFile, reload: () => search() };
 }

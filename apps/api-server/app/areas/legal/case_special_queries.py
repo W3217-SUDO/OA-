@@ -29,6 +29,7 @@ async def query_special_case_records(
     source_from: date | None = None, source_to: date | None = None,
     plaintiff: str = "", defendant: str = "", third_party: str = "", keyword: str = "", handling_lawyer: str = "",
     case_type: str = "", document_name: str = "", log_content: str = "",
+    export_format: Literal["xls"] | None = None,
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.contracts import _contract_customer_record_dicts
@@ -37,12 +38,16 @@ async def query_special_case_records(
 
     if paid_from and paid_to and paid_from > paid_to:
         raise HTTPException(422, "付款开始日期不能晚于结束日期")
-    await _require_record_module_menu("case", identity, db, action="查看")
+    await _require_record_module_menu("case", identity, db, action="导出" if export_format else "查看")
+    if export_format and kind != "schedule":
+        raise HTTPException(422, "此导出入口仅支持公司开庭排期")
     if kind == "schedule":
         if scope != "company":
             raise HTTPException(422, "公司开庭排期仅支持公司查询范围")
         from app.areas.legal.hearing_query import query_company_hearings
-        return await query_company_hearings(
+        from app.areas.legal.case_hearing_export import export_company_hearing_cases
+        query = export_company_hearing_cases if export_format else query_company_hearings
+        return await query(
             identity, db, page=page, page_size=page_size,
             hearing_from=hearing_from, hearing_to=hearing_to, source_from=source_from, source_to=source_to,
             filters={"serial_no": serial_no, "customer": customer, "notary_no": notary_no,

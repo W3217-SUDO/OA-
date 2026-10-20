@@ -4204,7 +4204,7 @@ async def export_selected_case_handover_manifest(ids: str = "", identity: dict =
     records = await _selected_ordinary_case_export_records(ids, identity, db)
     if "finance.amount" not in await _allowed_field_keys(identity, db):
         raise HTTPException(status_code=403, detail="当前账号无权导出交接清单中的财务金额")
-    projections = await case_export_projections(records, identity, db)
+    projections = await case_export_projections(records, identity, db, include_courts=False)
     content = handover_workbook(await handover_export_rows(records, projections, identity, db))
     filename = f"民事争议-交接清单-{date.today()}.xls"
     return Response(content=content, media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=handover.xls; filename*=UTF-8''{quote(filename)}"})
@@ -4217,7 +4217,7 @@ async def export_selected_case_print_table(ids: str = "", identity: dict = Depen
     from app.areas.legal.template_documents import render_case_print_tables
 
     records = await _selected_ordinary_case_export_records(ids, identity, db)
-    projections = await case_export_projections(records, identity, db)
+    projections = await case_export_projections(records, identity, db, include_courts=False)
     content = render_case_print_tables(records, projections)
     filename = f"案件打印表-{date.today()}.docx"
     return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f"attachment; filename=case-print-table.docx; filename*=UTF-8''{quote(filename)}"})

@@ -1,10 +1,11 @@
 """公司排期从案件法院资料和独立排期记录统一查询，不回填业务表。"""
 
 from fastapi import HTTPException
-from sqlalchemy import String, cast, func, literal, or_, select, union_all
+from sqlalchemy import String, case as sql_case, cast, func, literal, or_, select, union_all
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.core.formatters import _case_hearing_datetime
-from app.models import BusinessRecord, FileAttachment, HearingSchedule, WorkflowEvent
+from app.models import BusinessRecord, FileAttachment, HearingSchedule, SystemParameter, User, WorkflowEvent
 
 
 async def query_company_hearings(identity, db, *, page, page_size, filters, hearing_from, hearing_to, source_from, source_to):
@@ -16,29 +17,76 @@ async def query_company_hearings(identity, db, *, page, page_size, filters, hear
         if start and end and start > end:
             raise HTTPException(422, "开始日期不能晚于结束日期")
 
+    aliases = {}
+    person_filters = {key: filters.get(key, "").strip() for key in (
+        "hearing_lawyer", "handling_lawyer", "assistant", "investigator",
+    ) if filters.get(key, "").strip()}
+    if person_filters:
+        people = (await db.execute(select(User.username, User.display_name).where(or_(
+            *(column.icontains(value, autoescape=True) for value in person_filters.values()
+              for column in (User.username, User.display_name)),
+        )))).all()
+        for key, value in person_filters.items():
+            aliases[key] = {value}
+            for username, name in people:
+                if any(value.casefold() in str(part or "").casefold() for part in (username, name)):
+                    aliases[key].update(str(part).strip() for part in (username, name) if part)
+    if filters.get("court", "").strip():
+        value = filters["court"].strip()
+        courts = (await db.execute(select(SystemParameter.code, SystemParameter.name).where(
+            SystemParameter.category == "court",
+            or_(SystemParameter.code.icontains(value, autoescape=True), SystemParameter.name.icontains(value, autoescape=True)),
+        ))).all()
+        aliases["court"] = {value, *(part for row in courts for part in row if part)}
+
+    def matches(column, key):
+        return or_(*(column.icontains(value, autoescape=True)
+                     for value in aliases.get(key, {filters.get(key, "").strip()})))
+
     data = BusinessRecord.data
 
     def field(*keys):
         return func.coalesce(*(func.nullif(data[key].as_string(), "") for key in keys), "")
 
+    def array_matches(key, filter_key):
+        dialect = db.get_bind().dialect.name
+        if dialect == "postgresql":
+            value = cast(data[key], JSONB)
+            safe_array = sql_case((func.jsonb_typeof(value) == "array", value), else_=literal([], type_=JSONB))
+            values = func.jsonb_array_elements_text(safe_array).table_valued("value")
+        elif dialect == "sqlite":
+            values = func.json_each(data, f"$.{key}").table_valued("value")
+        else:
+            raise RuntimeError(f"开庭排期查询不支持数据库方言：{dialect}")
+        return select(1).select_from(values).where(matches(cast(values.c.value, String), filter_key)).exists()
+
     conditions = [BusinessRecord.module == "case", BusinessRecord.status != "已合并", *(await _record_scope_conditions(identity, db))]
     columns = {
         "serial_no": BusinessRecord.serial_no, "customer": BusinessRecord.customer,
         "plaintiff": field("plaintiff"), "defendant": field("opponent", "defendant"),
-        "third_party": field("third_party"), "notary_no": field("notary_no"),
-        "handling_lawyer": cast(data["handling_lawyers"], String),
-        "assistant": field("assistant"),
-        "investigator": field("investigator"), "case_type": field("case_type"),
+        "third_party": field("third_party", "third_parties"), "notary_no": field("notary_no", "notary_nos"),
+        "handling_lawyer": field("handling_lawyers", "handling_lawyer_usernames", "handling_lawyer"),
+        "assistant": field("assistant", "assistant_username"),
+        "investigator": field("investigator", "investigator_username"), "case_type": field("case_type"),
+    }
+    array_fields = {
+        "plaintiff": ("plaintiffs",), "defendant": ("defendants",), "third_party": ("third_parties",),
+        "notary_no": ("notary_nos",), "handling_lawyer": ("handling_lawyers", "handling_lawyer_usernames"),
+        "assistant": ("assistants", "assistant_usernames"),
     }
     for key, column in columns.items():
         value = filters.get(key, "").strip()
         if value:
-            conditions.append(column.icontains(value, autoescape=True))
+            if key == "case_type" and value in {"民事争议", "民事案件"}:
+                conditions.append(column.in_(("民事争议", "民事案件")))
+            else:
+                conditions.append(or_(matches(column, key), *(array_matches(name, key) for name in array_fields.get(key, ()))))
     keyword = filters.get("keyword", "").strip()
     if keyword:
         conditions.append(or_(*(column.icontains(keyword, autoescape=True) for column in (
             BusinessRecord.serial_no, BusinessRecord.title, BusinessRecord.customer,
             field("court_case_no"), field("first_court_case_no"), field("second_court_case_no"),
+            field("execution_court_case_no"), field("retrial_court_case_no"),
         ))))
     for key, model, column in (("document_name", FileAttachment, FileAttachment.original_name), ("log_content", WorkflowEvent, WorkflowEvent.comment)):
         value = filters.get(key, "").strip()
@@ -81,7 +129,7 @@ async def query_company_hearings(identity, db, *, page, page_size, filters, hear
             BusinessRecord.id.label("case_id"), literal(slot).label("slot"),
             day.label("day"), time.label("time"), court.label("court"),
             courtroom.label("courtroom"), literal(hearing_type).label("hearing_type"),
-            field("hearing_lawyer").label("hearing_lawyer"),
+            field("hearing_lawyer", "hearing_lawyer_username").label("hearing_lawyer"),
         ).where(BusinessRecord.id.in_(select(cases.c.id)), raw_date != "", ~duplicate, *exclusions))
     projections.append(select(
         HearingSchedule.case_record_id.label("case_id"),
@@ -98,9 +146,9 @@ async def query_company_hearings(identity, db, *, page, page_size, filters, hear
     if hearing_to:
         schedule_conditions.append(schedules.c.day <= hearing_to.isoformat())
     if filters.get("court", "").strip():
-        schedule_conditions.append(schedules.c.court.icontains(filters["court"].strip(), autoescape=True))
+        schedule_conditions.append(matches(schedules.c.court, "court"))
     if filters.get("hearing_lawyer", "").strip():
-        schedule_conditions.append(schedules.c.hearing_lawyer.icontains(filters["hearing_lawyer"].strip(), autoescape=True))
+        schedule_conditions.append(matches(schedules.c.hearing_lawyer, "hearing_lawyer"))
     total = int(await db.scalar(select(func.count()).select_from(schedules).where(*schedule_conditions)) or 0)
     rows = (await db.execute(select(schedules).where(*schedule_conditions).order_by(
         schedules.c.day, schedules.c.time, schedules.c.case_id, schedules.c.slot,

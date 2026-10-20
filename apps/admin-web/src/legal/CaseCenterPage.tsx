@@ -236,6 +236,7 @@ statusColors
 
 import { CaseAgentDrawer } from "./CaseAgentDrawer";
 import { CaseCreateWizard } from "./CaseCreateWizard";
+import { CaseOperationsMenu } from "./CaseOperationsMenu";
 import {
 CaseCaseTasksPanel,
 CaseCluesPanel,
@@ -764,7 +765,7 @@ export default function CaseCenterPage({
     get setReviewing() { return setReviewing; },
     get setSelectedCaseKeys() { return setSelectedCaseKeys; },
     get initialView() { return initialView; },
-    get loadOrdinaryCases() { return loadOrdinaryCases; },
+    get loadOrdinaryCases() { return initialView === "case-company-schedule" ? reloadCaseData : loadOrdinaryCases; },
     get caseQuery() { return caseQuery; },
     get originalPage() { return originalPage; },
     get originalPageSize() { return originalPageSize; },
@@ -840,7 +841,7 @@ export default function CaseCenterPage({
     get setCaseLogOpen() { return setCaseLogOpen; },
     get setCaseLogTarget() { return setCaseLogTarget; },
     get batchUpdateForm() { return batchUpdateForm; },
-    get selectedCaseKeys() { return selectedCaseKeys; },
+    get selectedCaseKeys() { return initialView === "case-company-schedule" ? selectedBatchCases.map((row) => row.id) : selectedCaseKeys; },
     get setBatchUpdateOpen() { return setBatchUpdateOpen; },
     get counselListMode() { return counselListMode; },
     get loadCounselCases() { return loadCounselCases; },
@@ -1439,7 +1440,7 @@ export default function CaseCenterPage({
     get loadCaseTaskDetail() { return loadCaseTaskDetail; },
     get onNavigate() { return onNavigate; },
     get batchFeeForm() { return batchFeeForm; },
-    get selectedCaseKeys() { return selectedCaseKeys; },
+    get selectedCaseKeys() { return initialView === "case-company-schedule" ? selectedBatchCases.map((row) => row.id) : selectedCaseKeys; },
     get profile() { return profile; },
     get setBatchFeeOpen() { return setBatchFeeOpen; },
     get getCaseCapability() { return getCaseCapability; },
@@ -2323,10 +2324,22 @@ export default function CaseCenterPage({
     ));
   const counselListMode = originalListMode && initialView.includes("counsel");
   const originalCases = ordinaryCases;
-  const selectedBatchCases = useMemo(
-    () => (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeySet.has(String(row.id))),
-    [counselCases, counselListMode, originalCases, selectedCaseKeySet],
-  );
+  const selectedBatchCases = useMemo(() => {
+    if (initialView === "case-company-schedule") {
+      const records = specialCaseList.rows.filter((row) => selectedCaseKeySet.has(String(row.id)))
+        .flatMap((row) => "case" in row && row.case ? [row.case] : []);
+      return [...new Map(records.map((row) => [row.id, row])).values()];
+    }
+    return (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeySet.has(String(row.id)));
+  }, [initialView, specialCaseList.rows, counselCases, counselListMode, originalCases, selectedCaseKeySet]);
+  useEffect(() => {
+    if (initialView === "case-company-schedule") {
+      const records = specialCaseList.rows.flatMap((row) => "case" in row && row.case ? [row.case] : []);
+      for (let index = 0; index < records.length; index += 100) {
+        void loadCaseCapabilities(records.slice(index, index + 100));
+      }
+    }
+  }, [initialView, specialCaseList.rows]);
   const loadBatchFeeContractOptions = async (expenseScope: string) => {
     batchFeeContractAbortRef.current?.abort();
     const controller = new AbortController();
@@ -2400,11 +2413,11 @@ export default function CaseCenterPage({
       optionsByType.every((options) => hasCaseFileTypeOption(option.value, options)),
     ));
   }, [caseFileTypeCatalog, caseRelations, selectedBatchCases]);
-  const selectedCase = (counselListMode?counselCases:originalCases).find((row) => selectedCaseKeySet.has(String(row.id)));
+  const selectedCase = selectedBatchCases[0];
   const selectedCaseConflict = useConflictReview(selectedCase?.id, selectedCase?.status === "待立案审批");
   const detailCaseConflict = useConflictReview(viewingCounselCase?.id, Boolean(viewingCounselCase));
   const selectedCaseCapability = getCaseCapability(selectedCase);
-  const selectedCases = (counselListMode ? counselCases : originalCases).filter((row) => selectedCaseKeySet.has(String(row.id)));
+  const selectedCases = selectedBatchCases;
   const canDeleteSelectedCompanyCase = isCompanyCaseListRoute(initialView)
     && ["admin", "manager"].includes(profile.role || "")
     && selectedCases.length > 0 && selectedCases.length === selectedCaseKeys.length
@@ -2928,6 +2941,25 @@ export default function CaseCenterPage({
     </div>}
   </div> : null;
   const companyScheduleCourtLevelLabel = getCompanyScheduleCourtLevels().find(([key]) => key === companyScheduleCourtInfo?.level)?.[1] || "";
+  const caseOperationsMenu = <CaseOperationsMenu
+    selected={Boolean(selectedCase)}
+    capabilities={selectedCaseCapability}
+    canAssignTeam={selectedCases.length > 0 && selectedCases.every((row) => getCaseCapability(row).can_assign_team)}
+    canChangePhase={selectedCases.length > 0 && selectedCases.every((row) => getCaseCapability(row).can_change_phase)}
+    onAction={(key) => {
+      if (!selectedCase) return message.warning("请先选择案件");
+      if (key === "upload-document") openCaseFileUpload();
+      if (key.startsWith("firm-")) openCaseFee(selectedCase, "律所", key.slice("firm-".length));
+      if (key.startsWith("platform-")) openCaseFee(selectedCase, "平台", key.slice("platform-".length));
+      if (key === "internal-fee") openCaseFee(selectedCase, "内部", "内部费用");
+      if (key === "batch-stage") void openPhaseChange(selectedCases);
+      else if (key.startsWith("batch-")) { batchUpdateForm.resetFields(); setBatchUpdateOpen(true); }
+      if (key.startsWith("document-")) void generateSelectedCaseDocuments(key.slice("document-".length));
+      if (key === "case-tasks") void openCaseTasks(selectedCase);
+      if (key === "case-logs") void openCounselDetail(selectedCase, "case-logs");
+      if (key === "export-print-table") exportCasePrintTable(selectedCases.map((row) => row.id));
+    }}
+  />;
   return (
     <div className={`case-center-page ${isCaseDetailView ? "case-detail-route" : ""} ${originalArchiveMode ? "case-archive-page" : ""}`}>
       {receiptUploadRows && <ReceiptBatchUploadModal rows={receiptUploadRows} onCancel={() => setReceiptUploadRows(null)} onUploaded={async () => { try { return await receiptList.reload(); } finally { setReceiptUploadRows(null); setSelectedCaseKeys([]); } }} />}
@@ -2998,7 +3030,7 @@ export default function CaseCenterPage({
           {specialMode==="refund"&&<Dropdown menu={{items:[{key:"view",label:"案件任务"},{key:"export",label:"导出案件打印表"}],onClick:({key})=>{if(key==="export")exportRefundCasePrintTable();else if(selectedSpecialRow)void openSpecialCaseTasks({case_record_id:selectedSpecialRow.data.case_record_id||selectedSpecialRow.data.case_id,case_no:selectedSpecialRow.data.case_no||selectedSpecialRow.serial_no});else message.warning("请先选择退费记录")}}}><Button>更多操作</Button></Dropdown>}
           {specialMode==="refund"&&<Button onClick={operateRefund}>退费操作</Button>}
           {specialMode==="unclaimed"&&<Button onClick={markCommissionPaid}>标识提成已发</Button>}
-          {specialMode==="schedule"&&<Button onClick={()=>void openSelectedScheduleHearing()}>更多操作</Button>}
+          {specialMode==="schedule"&&(initialView==="case-company-schedule"?caseOperationsMenu:<Button onClick={()=>void openSelectedScheduleHearing()}>更多操作</Button>)}
           {specialMode==="execution"&&<><Button onClick={()=>openExecutionStatus(specialRows.filter((row:CaseRow)=>selectedCaseKeySet.has(String(row.id))))}>修改执行状态</Button><Button onClick={()=>selectedSpecialRow?openProgress(selectedSpecialRow):message.warning("请先选择案件")}>更多操作</Button></>}
           {specialMode==="unclaimed"&&<Button onClick={()=>selectedSpecialRow?openCaseTasks(selectedSpecialRow):message.warning("请先选择案件")}>更多操作</Button>}
         </Space></div>}
@@ -3134,51 +3166,7 @@ export default function CaseCenterPage({
               {(["admin","manager"].includes(profile.role||""))&&<Button onClick={()=>{if(!selectedCaseKeys.length)return message.warning("请选择需要修改的案件");batchUpdateForm.resetFields();setBatchUpdateOpen(true);}}>批量修改</Button>}
               {canCreateSelectedCaseFees&&<Button onClick={()=>{const feeTypeId=initialFeeTypeId(feeTypeCatalog,"律所");const feeType=feeTypeSelection(feeTypeCatalog,feeTypeId);batchFeeForm.resetFields();batchFeeForm.setFieldsValue({expense_scope:"律所",fee_type_id:feeTypeId,expense_subtype:feeType?.name,handler:profile.username,case_contracts:selectedBatchCases.map((row)=>({case_id:row.id,contract_record_id:undefined}))});setBatchFeeOpen(true);}}>批量新增费用</Button>}
             </>}
-            <Dropdown
-              trigger={["click"]}
-              menu={{
-                items: selectedCase ? [
-                  { key: "upload-document", label: "上传案件文档", disabled: !selectedCaseCapability.can_upload_attachment },
-                  ...(selectedCaseCapability.can_create_finance ? [{ key: "firm-fees", label: "新增律所费用", children: [
-                    { key: "firm-官费", label: "新增官费" },
-                    { key: "firm-第三方费用", label: "新增第三方费用" },
-                    { key: "firm-代理费", label: "新增代理费" },
-                    { key: "firm-其他费用", label: "新增其他费用" },
-                  ] }, { key: "platform-fees", label: "新增平台费用", children: [
-                    { key: "platform-官费", label: "新增官费" },
-                    { key: "platform-第三方费用", label: "新增第三方费用" },
-                    { key: "platform-代理费", label: "新增代理费" },
-                    { key: "platform-其他费用", label: "新增其他费用" },
-                  ] }, { key: "internal-fee", label: "新增内部费用" }] : []),
-                  ...(["admin","manager"].includes(profile.role||"") ? [{ key: "batch-update", label: "批量修改", children: [
-                    { key: "batch-hearing-lawyer", label: "修改开庭律师" },
-                    { key: "batch-handling-lawyer", label: "修改经办律师" },
-                    { key: "batch-assistant", label: "修改律师助理" },
-                    { key: "batch-stage", label: "修改案件阶段" },
-                  ] }] : []),
-                  { key: "document-authorization-letter", label: "生成授权委托书" },
-                  { key: "document-law-firm-letter", label: "生成律所函" },
-                  { key: "document-identity-certificate", label: "生成身份证明" },
-                  { key: "document-settlement-list", label: "生成结算提成表" },
-                  { key: "case-tasks", label: "案件任务" },
-                  { key: "case-logs", label: "案件日志" },
-                  { key: "export-print-table", label: "导出案件打印表" },
-                ] : [{ key: "select", label: "请先选择案件", disabled: true }],
-                onClick: ({ key }) => {
-                  if (!selectedCase) return message.warning("请先选择案件");
-                  if (key === "upload-document") openCaseFileUpload();
-                  if (key.startsWith("firm-")) openCaseFee(selectedCase, "律所", key.slice("firm-".length));
-                  if (key.startsWith("platform-")) openCaseFee(selectedCase, "平台", key.slice("platform-".length));
-                  if (key === "internal-fee") openCaseFee(selectedCase, "内部", "内部费用");
-                  if (key === "batch-stage") void openPhaseChange(selectedCases);
-                  else if (key.startsWith("batch-")) { batchUpdateForm.resetFields(); setBatchUpdateOpen(true); }
-                  if (key.startsWith("document-")) void generateSelectedCaseDocuments(key.slice("document-".length));
-                  if (key === "case-tasks") openCaseTasks(selectedCase);
-                  if (key === "case-logs") void openCounselDetail(selectedCase);
-                  if (key === "export-print-table") exportCasePrintTable();
-                },
-              }}
-            ><Button aria-label="更多案件操作">更多操作 ▾</Button></Dropdown>
+            {caseOperationsMenu}
             {!counselListMode && initialView.includes("civil") && <Button onClick={() => setLegacyLsHistoryOpen(true)}>历史诉讼案件</Button>}
           </Space></div>}
         </Card>

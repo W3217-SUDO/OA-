@@ -1487,8 +1487,8 @@ async def _next_case_serial(case_type: str, db: AsyncSession) -> str:
         SystemParameter.name.in_(parameter_names),
         SystemParameter.is_active.is_(True),
     ).order_by(SystemParameter.sort_order, SystemParameter.id))
-    default_codes = {"民事案件": "MS", "刑事案件": "XS", "行政案件及国家赔偿": "XZ", "法律顾问": "GW", "仲裁": "ZC"}
-    type_code = str((parameter.extra or {}).get("letter_code") if parameter else default_codes.get(case_type, "AJ")).strip().upper()
+    default_codes = {"民事案件": "MS", "民事争议": "MS", "刑事案件": "XS", "行政案件及国家赔偿": "XZ", "法律顾问": "GW", "仲裁": "ZC"}
+    type_code = str((parameter.extra or {}).get("letter_code") if parameter and (parameter.extra or {}).get("letter_code") else default_codes.get(case_type, "AJ")).strip().upper()
     prefix = f"HZ{type_code}{datetime.now():%y}"
     existing = (await db.scalars(select(BusinessRecord.serial_no).where(
         BusinessRecord.module == "case",
