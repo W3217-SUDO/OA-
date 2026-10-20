@@ -17,11 +17,25 @@ description: OA 正式发布（Mac 发布机 → 生产服务器 oa-production-a
 - **问题表来源的候选**须先有 `docs/skills/problem-remediation/SKILL.md` 要求的逐行文档和证据；发布只代表已上线，不代表 `1/已验收`。
 - **授权。** 用户本轮明确要求发布才执行；“本地预览/先不提交”时只做本地。
 
+## 分支规则：dev 是测试，main 是已上线
+
+- **`dev`**：集成与测试分支。所有改动都先推到 `dev`（必须过 pre-push 门禁），可以包含尚未上线的提交。
+- **`main`**：只代表已经上线且验证没问题的代码。不在 `main` 上直接提交、不 merge commit、不 force-push，只做快进。
+- **何时合并到 `main`**：生产激活成功、`build-info.json` 显示本次 `N`/`TARGET`、健康检查和错误日志都正常后，立即把 `main` 快进到本次发布提交 `TARGET`（第 6 步）。用户要求先验收再合并时，等用户确认后再快进。回滚或发布失败时 `main` 不动。
+- **同步关系**：`main` 必须始终是 `dev` 的祖先（`git merge-base --is-ancestor origin/main origin/dev` 成立）。发布收尾后 `main` = 本次发布提交；发布期间 `dev` 上新增的提交等下一次发布再随之进入 `main`。快进被拒绝说明有人直接改了 `main`，停下查清，不强推。
+
 ## Mac 环境（一次性，已就绪则跳过）
 
 - Node 22：`~/.local/node`；门禁 Python：`~/.local/share/oa/quality-py312`（按两个 lock 文件带哈希安装）。`~/.zprofile` 已导出 `OA_QUALITY_NODE`、`OA_QUALITY_PYTHON`。
 - pre-push 门禁：`sh scripts/install-quality-hook.sh`（装到 `.git/hooks`，不设 `core.hooksPath`，不需要 PowerShell）。
-- GitHub 远端名 `origin`；只 fetch/push `origin`，不 `fetch --all`。
+- GitHub 远端名 `origin`；只 fetch `origin`，不 `fetch --all`。本机没有 GitHub HTTPS 凭据，推送走 SSH（本机密钥 `id_ed25519_oa` 已绑定 GitHub 账号 `W3217-SUDO`），不改 `origin` 的地址（refs 快照脚本要求 fetch/push 地址一致）：
+
+  ```bash
+  OA_GH=git@github.com:W3217-SUDO/OA-.git
+  export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519_oa -o IdentitiesOnly=yes -o BatchMode=yes"
+  ```
+
+- 工作区有别人未提交的改动时，门禁会拒绝推送：在临时 worktree（`git worktree add --detach <目录> origin/dev`）里 cherry-pick 自己的提交再推，推完用 `git reset --keep origin/dev` 同步本地 `dev`，别人的改动原样保留。
 - `apps/admin-web/node_modules` 用 `npm ci` 安装。
 
 ## 快速流程
@@ -45,7 +59,7 @@ git ls-remote --tags origin 'v1.1.*' | sed 's#.*/v##; s#\^{}##' | sort -t. -k3 -
 cd apps/admin-web && npm version "$N" --no-git-tag-version && cd ../..   # 同时改 package.json 与 package-lock.json
 git add -- apps/admin-web/package.json apps/admin-web/package-lock.json   # 加上本次必要的交接文档
 git commit -m "chore(release): set <主题> version $N [skip ci]"
-git push origin dev            # pre-push 门禁自动跑，失败就修，不绕过
+git push "$OA_GH" HEAD:dev      # pre-push 门禁自动跑，失败就修，不绕过
 TARGET=$(git rev-parse HEAD)
 ```
 
@@ -108,8 +122,9 @@ printf '%s\tactivating\t%s\t%s\t%s\t%s\n' "$N" "$TARGET" "$OWNER" "<范围>;seal
 curl -s https://huzhilawfirm.com/build-info.json     # version/source_commit = N/TARGET
 curl -s -o /dev/null -w '%{http_code}\n' https://huzhilawfirm.com/health
 "${OA_SSH[@]}" 'systemctl is-active sunhold-oa-api sunhold-oa-web; journalctl -u sunhold-oa-api --since "-5 min" -p err --no-pager | tail'
-git tag -a "v$N" -m "OA $N" "$TARGET" && git push origin "v$N"
-git push origin "$TARGET:main"        # 快进 main，复用同提交门禁
+git tag -a "v$N" -m "OA $N" "$TARGET" && git push "$OA_GH" "v$N"
+git push "$OA_GH" "$TARGET:main"      # 快进 main 到本次发布提交（dev 测试通过才进 main），复用同提交门禁
+git fetch origin && git merge-base --is-ancestor origin/main origin/dev && echo MAIN_SYNCED
 ```
 
 - 删除本次 staging 文件（只删自己上传的 `refs-$OWNER.json`、`$N.tgz`）和已合入的临时分支。
