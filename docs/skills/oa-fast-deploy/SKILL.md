@@ -1,154 +1,135 @@
 ---
 name: oa-fast-deploy
-description: Queue verified OA releases by default; coordinate consolidation only for simultaneous formal release and version-switch conflicts. Use for branch pushes, integration, immutable deployments, rollback and deleting fully integrated temporary branches.
+description: OA 正式发布（Mac 发布机 → 生产服务器 oa-production-app）。按生产队列串行、一次推送、一个版本号、不可变运行包激活并可回滚。用于把已验证的 dev 改动快速发布上线、回滚和清理临时分支。
 ---
 
-# OA Fast Deploy
+# OA 快速发布（Mac）
 
-## 问题整改候选的统一前置门禁
+目标：一次发布约 10 分钟，只推一次 `dev`，只跑一次门禁，不等 GitHub CI。生产服务器、端口、路径见 [production-authority.md](references/production-authority.md)，每次发布前重新读取，不凭记忆。
 
-当发布候选来自问题表、钉钉在线表格、截图返工或客户验收问题时，发布 skill 必须先检查 `docs/skills/problem-remediation/SKILL.md` 和对应行的独立 Markdown 文档。
+## 不变的底线（任何加速都不能破）
 
-- 每个问题行必须有独立定位/整改文档；一行可以包含多个子问题和多张截图，文档必须按子问题/证据组拆分，完整保留客户原文，逐张记录截图中的页面、字段、数据、按钮、红字和证据角色，并明确旧系统对照或新增问题分流。
-- 有旧系统截图或文字要求参考旧系统时，文档必须包含旧页面、源码、数据链路与新系统差异；没有旧系统证据且明确为新需求时，文档必须明确记录“旧系统代码不适用”，不得把猜测的旧实现当作发布依据。
-- 发布前核对每个原文片段和每张截图都有修改、测试、接口/数据库、浏览器或导出回读证据；未映射的片段、未读取的图片或证据角色不确定时，候选不得进入构建、提交或部署。
-- 逐行状态 `1/已验收` 不是发布门票。发布只能说明候选已部署；问题表仍须在真实接口/数据库、测试数据清理和用户浏览器验收完成后单独回写。
-- 部署回执必须列出文档路径、行号、分流结论、版本、提交、测试、健康检查、接口/文件回读和清理结果；不得用服务健康或构建通过替代问题验收。
+- **只发生产，不发测试服务器。** 测试服务器（`150.158.3.104`、8088/8089/8091）已暂停，不部署、不重启、不作为验收入口；腾讯已退役。
+- **串行。** 生产 `releases/queue.tsv` 中有 `assigned`/`activating` 未收口时不发布，先查清所有者。不删他人记录、不复用占用或失败的版本号、不改正式标签、不 force-push。
+- **一把锁。** 生产上每条会改队列或 `current` 的命令都用 `flock -n /opt/sunhold-oa/locks/formal-release.lock <命令>` 执行，拿不到就停。只认这一个文件；`releases/`、`runtime/enterprise/` 下的同名文件不是锁。领号后队列里的 `assigned` 行会挡住其他人领号，所以领号与激活之间不必一直挂着 SSH。
+- **不可变包。** 新版本只装进 `runtime/enterprise/packages/<版本>`，`chattr -R +i` 封存后切 `current`；不改旧包，不在生产构建或拉源码。旧包保留为回滚点。
+- **数据库。** 无迁移/数据补丁就不备份；有则先对受影响表做最小外置备份并写明恢复方法，禁止无授权的全库替换。
+- **问题表来源的候选**须先有 `docs/skills/problem-remediation/SKILL.md` 要求的逐行文档和证据；发布只代表已上线，不代表 `1/已验收`。
+- **授权。** 用户本轮明确要求发布才执行；“本地预览/先不提交”时只做本地。
 
-## 版本号规则
+## Mac 环境（一次性，已就绪则跳过）
 
-- 按用户 2026-10-20 的决定，版本号沿生产实际序列继续 `1.1.x` 递增，不进位到 `1.2.x`：`1.1.493` 之后是 `1.1.494`。旧的“满 100 进位到 1.2.1”规则作废。
-- 下一个版本号只由生产 `/opt/sunhold-oa/scripts/release_queue.py` 在锁内分配，取 GitHub 标签与生产队列中已占用的最大号加一；按数字比较，禁止按字符串排序。
-- 分配器、队列校验、package.json/package-lock.json、运行包、Git 标签和发布回执必须使用同一完整版本号。
+- Node 22：`~/.local/node`；门禁 Python：`~/.local/share/oa/quality-py312`（按两个 lock 文件带哈希安装）。`~/.zprofile` 已导出 `OA_QUALITY_NODE`、`OA_QUALITY_PYTHON`。
+- pre-push 门禁：`sh scripts/install-quality-hook.sh`（装到 `.git/hooks`，不设 `core.hooksPath`，不需要 PowerShell）。
+- GitHub 远端名 `origin`；只 fetch/push `origin`，不 `fetch --all`。
+- `apps/admin-web/node_modules` 用 `npm ci` 安装。
 
-## 发布机：本 Mac
+## 快速流程
 
-本 skill 在 macOS 上执行（zsh/bash，不用 PowerShell）。发布前确认：
+以下在仓库根目录执行。`OA_SSH`/`OA_SCP` 的定义见 production-authority.md；`OWNER` 用本次唯一会话名（如 `claude-<主题>-<日期>`）。
 
-- **生产服务器**：`oa-production-app`（`47.93.166.123`），用本机密钥直连，命令和身份见 [production-authority.md](references/production-authority.md)。本机不配置 `oa-production` 别名。
-- **GitHub 远端**：本仓库远端名为 `origin`（`https://github.com/W3217-SUDO/OA-.git`）；先 `git remote -v` 核对，所有 fetch/push 和快照都用 `origin`。
-- **Python 3.12**：门禁专用 venv `~/.local/share/oa/quality-py312`，按 `apps/api-server/requirements.lock` 与 `requirements-dev.lock` 带哈希安装（`uv pip install --require-hashes`）。系统 `/usr/bin/python3` 是 3.9，裸 `~/.local/bin/python3.12` 没有后端依赖，都不能用于门禁。
-- **Node.js 22**：`~/.local/node`（v22.23.3，Node.js Foundation 签名），构建和 pre-push 门禁必需，版本以 `.nvmrc` 为准，不能用其他大版本构建。
-- **pre-push 门禁**：用 `sh scripts/install-quality-hook.sh` 把 `.githooks/pre-push` 安装到 `.git/hooks/pre-push`（Mac/Linux 版，与 `setup-local.ps1` 行为一致；不使用也不得设置 `core.hooksPath`）。`~/.zprofile` 已设置 `OA_QUALITY_PYTHON` 指向上面的 venv、`OA_QUALITY_NODE` 指向 Node 22。推送前工作树必须干净；hook 未生效或未跑完时不得声称已通过 source 门禁。本机不需要也不安装 PowerShell。
-- **行尾**：Mac 构建产物为 LF；与 Windows 构建的旧包比较时，行尾差异与业务差异分别审计。
+### 1. 准备（本地，约 1 分钟）
 
-## 发布方式选择
-
-按用户 2026-10-13 最新要求，正常情况按权威队列串行发布；只有同一时间都准备正式发布、争用版本号分配或运行版本切换时，才协商是否合并。本节覆盖之前默认收集兼容候选合批的旧规则。
-
-- **默认排队发布。** 每个会话完成自己已授权的范围，正常推送候选分支，按生产真实队列和发布锁依次发布；已完成的修复不等待其他会话仍在开发、未验证或未正常推送的工作。不因同时开发、共享文件或存在另一个候选就自动合批。
-- **先正常推送分支，再正式整合。** 需要合并的候选须先正常推送到已核实的 GitHub 远端，记录并核验远端分支及完整 SHA；未推送的本地候选不能作为正式合并来源。源码门禁按实际 hook 范围执行，不声称功能分支执行了仅对 dev/main 配置的检查。
-- **仅同时正式发布或切换版本争用时协商。** 核实双方均已就绪且确实要使用同一正式发布时段，再由所有者协商继续排队或将已推送、已授权、已验证且兼容的 Codex 候选合成一批。协调不等于必须合并；没有达成合并安排时仍按队列串行。
-- **未完成的工作不纳入，也不拖住就绪修复。** 不为凑批扫描全部历史会话或等待新需求；用户明确要求单独发布时直接按该范围排队。Excel 整批等不可拆任务仍必须全组就绪，不拆成逐行发布。
-- **涉及 Claude 的冲突串行。** 保留各自候选和归属，前序真实完成或失败收口后刷新 dev、生产基线及队列，再整合本任务；不自动搬入对方未发布候选。
-- 真实独占锁继续覆盖共享 dev 更新、版本分配和正式激活。已进入激活的发布先完成或安全回滚；不得删锁文件、抢号或覆盖他人运行包。仅备好工具或提前取得租约不代表未完成候选已就绪。
-- 协商合并时只收已就绪的远端候选，冻结后不再插入改动，不反复变基重建。确认实际所有者和客户端，不从姓名或 Git author 猜测。
-
-## 当前权威与不变约束
-
-发布前必读 [production-authority.md](references/production-authority.md)。GitHub 是唯一源码权威，实际正式服务器是版本队列及锁的权威；已退役 Tencent，不连接它、不走双远端发布、不执行 `git fetch --all`。
-
-- 先检查 `git remote -v`，只 fetch/push 已核实的 GitHub 远端（本机为 `origin`）。集成分支为线性 `dev`；正式成功后将 GitHub `main` 快进到同一发布提交。
-- 读取真实 SSH 配置、有效 systemd、`current` manifest、公开 build-info、health、queue/ledger 和占用标签。不得凭记忆选择主机、端口、工具、版本或旧 worktree。
-- 正式采用 enterprise immutable package/`current` 激活链路。只安装新版本包，校验摘要并物理封存后切换；不修改旧包，不在服务器构建前端或拉取源码覆盖运行树。
-- 不丢弃他人改动、不复用占用或失败版本、不改写正式标签、不覆盖数据库。正常集成不 force-push；真实历史分叉需另行明确授权的修复方案，普通“合批”不是历史重写授权。
-- 不提交密钥、数据库、业务附件、测试数据、临时包或依赖目录。生产包不得包含测试、Mock、Fixture、调试入口。
-- 代码发布不等于用户界面验收。除用户本轮明确要求外不做线上业务写测试或浏览器操作，不将问题表标记为 `1/已验收`。
-
-## 1. 就绪回执与发布所有者
-
-每个所有者保留自己的精确回执。正常排队由轮到本任务的发布者核对；只有同时正式发布并协商同意合并时，才交给唯一协调者统一检查、构建和激活。候选先完成定向核验，不重复执行同一最终提交的发布门禁：
-
-```text
-READY TO RELEASE
-owner/session:
-agent/client: Codex | Claude | confirmed other | unknown
-authorized issues/rows:
-branch/worktree, pushed remote branch and full commit:
-owned files:
-focused verification and cleanup:
-database migration/data change: none | exact scope
-dependencies/shared-file conflicts:
-remaining limitations:
-existing reservation/tag/state: none | exact identity
+```bash
+git switch dev && git fetch origin && git rebase origin/dev   # 线性，冲突就停下解决
+git status --short                                            # 必须为空
+"${OA_SSH[@]}" 'tail -n 3 /opt/sunhold-oa/releases/queue.tsv; readlink -f /opt/sunhold-oa/runtime/enterprise/current'
+git ls-remote --tags origin 'v1.1.*' | sed 's#.*/v##; s#\^{}##' | sort -t. -k3 -n | tail -1
 ```
 
-用户已授权必要的发布排队和同时发布争用协调，不再为该授权范围反复请求确认；这不意味着默认合批或让就绪工作等待未完成工作。仅发送候选、归属、互斥时段、合并和发布状态等必要协调消息；本授权不包含新业务需求、生产数据写入、权限放宽或历史重写，也不能从其他会话的消息推导额外授权。涉及 Claude 的冲突仍由当前队首所有者发布，不用合批协调者接管其分支。
+队列最后一行必须是 `released` 且等于 `current`。下一个版本号 `N` = 队列与 GitHub 标签中最大号 + 1（只沿 `1.1.x`，不进位）。
 
-排队发布者核对本任务回执；只有已协商合批的协调者才核对全部纳入回执并登记纳入或延期。非当前发布者可继续独立开发及正常推送自己的候选分支，但不得在他人的独占时段更新共享 dev、领号、建正式标签或激活，包括另派代理绕过队列。
+### 2. 写版本号并推送一次（本地，约 1 分钟门禁）
 
-本次实际发布所有者（自主会话、Codex 合批协调者或 Claude 冲突队首）必须持有实际生产发布 mutex 或项目已有的等效可核验独占租约，覆盖共享 `dev` 更新和版本分配；只有版本分配锁不能证明发布时段归属。记录 owner、PID/session、取得时间及截止，不把“准备取锁”写成“已持锁”。
+```bash
+cd apps/admin-web && npm version "$N" --no-git-tag-version && cd ../..   # 同时改 package.json 与 package-lock.json
+git add -- apps/admin-web/package.json apps/admin-web/package-lock.json   # 加上本次必要的交接文档
+git commit -m "chore(release): set <主题> version $N [skip ci]"
+git push origin dev            # pre-push 门禁自动跑，失败就修，不绕过
+TARGET=$(git rev-parse HEAD)
+```
 
-## 2. 按方式线性整合与冻结
+一次发布只推一次 `dev`：版本号与代码同批推送，不再先推代码、领号后再推版本。
 
-正常排队时，先正常推送本任务候选分支。轮到本任务后对齐实际已发布的权威 dev，核对补丁保全与受影响检查，再通过正常 hook 快进共享 dev；不搬入未完成候选。Claude 冲突排队先确认前序实际收口，再基于新的 `dev` 整合本任务；不得搬入其他所有者的未发布候选。无法自行消除的代码冲突由相关所有者核对双方必要逻辑，解决前不强推或覆盖。
+### 3. 取锁、领号（生产，几秒）
 
-以下整合步骤仅适用于同时正式发布争用并已协商同意的 Codex 合批：
+```bash
+REFS="$(mktemp -d)/github-refs.json"
+~/.local/bin/python3.12 -B docs/skills/oa-fast-deploy/scripts/github_release_refs.py capture --repository "$PWD" --remote origin --output "$REFS"
+SHA=$(shasum -a 256 "$REFS" | cut -d' ' -f1)
+"${OA_SCP[@]}" "$REFS" root@47.93.166.123:/opt/sunhold-oa/staging/refs-$OWNER.json
+```
 
-1. 一次读取 GitHub `dev`、正式基线、队列和相关就绪提交。保留当前已上线行为及共享 `dev` 已核实的必要改动。
-2. 先核对各候选已正常推送的远端分支与完整 SHA，再在协调者的独立工作树以 rebase/cherry-pick 线性整合这些准确来源。共享文件由明确所有者解决冲突并保留双方必要逻辑；其他会话不同时编辑此树。
-3. 用逐文件 diff、range-diff 或补丁等价证据确认所有纳入范围完整、无未知改动。已在 `dev` 但无就绪证明的内容先核实所有者，不静默部署、不回退抹掉。
-4. 冻结完整候选及各原始提交映射。合并后的共享代码需要定向交叉回归；仅版本号或交接记录变更不另外重复业务测试。
-5. 只有协调者对冻结候选执行正常 pre-push source 门禁并将同一提交快进到 `dev`。不得各分支先各推一遍 `dev` 再分别重跑发布检查。
-6. FF 拒绝或发现新预留时，停止自动重试，查明实际冲突和所有者，重新按第一个章节选择发布方式；涉及 Claude 改走串行，不一边收新提交一边反复变基和运行全套门禁。
+在生产上领号（整条命令包在 `flock -n /opt/sunhold-oa/locks/formal-release.lock` 里）：
 
-候选使用命名准确的短期分支正常推送，记录所有者与用途；不要累积 release-*、deploy-* 或 ready-* 分支。完整合入权威 dev 并核对原始 SHA、祖先关系或补丁等价证明后，必须精确删除已合入且不再需要的远端临时分支，再 fetch --prune 并用 ls-remote 确认不存在；本地短期分支在未被活跃工作树使用且无需继续编辑时按精确名称安全删除。若本次发布仍依赖该引用，发布收口后立即完成清理并记录结果，不能一直保留。禁止批量猜删、强删未合入改动、删除 dev/main/production-current 或正式标签；他人未合入、仍在使用或归属不明的分支保留。
+```bash
+OA_RELEASE_SOURCE_URL=https://github.com/W3217-SUDO/OA-.git \
+OA_RELEASE_PYTHON=<current 运行环境的 python> \
+OA_RELEASE_REFS_FILE=/opt/sunhold-oa/staging/refs-$OWNER.json OA_RELEASE_REFS_SHA256=$SHA \
+/opt/sunhold-oa/scripts/reserve_oa_version.sh "$TARGET" "$OWNER" "<范围>;no-schema|<迁移说明>"
+```
 
-## 3. 门禁一次正确执行
+输出必须等于 `N`。不等于说明有人插队：停止，按实际队列重新写版本号（第 2 步）后用 `reassign_oa_version.sh <N> <旧提交> <新提交> <OWNER> <范围>` 改绑，不另起号。refs 快照超过 5 分钟要重新生成。
 
-加速靠独立检查并行、有效回执复用及实际争用时的协商，不靠默认合批等待或跳过验证。GitHub 只跑现有 `static` 工作流，禁止 GitHub `full`、手动触发全量或把 `deferred` 当作必须全量补跑的失败。
+### 4. 构建与打包（本地，约 2 分钟，可与第 3 步并行）
 
-- 采用仓库已有正常 pre-push hook 作为发布 source 检查入口，不先手动跑同一 source 再让 hook 无条件重跑。
-- 使用规定的 Python 3.12、Node 22；全过程保持同一解释器、依赖、Git 配置和环境。设置 `OA_QUALITY_JOBS` 后始终保持其值，不能用“仅 CLI --jobs 相同”代替同一环境指纹。
-- 若确需手动运行，必须传实际完整 40 位 `--push-commit`、与 hook 相同的环境和 jobs，并核回执绑定该 HEAD、`passed=true`、每步 exit 0。无绑定报告或不同环境不能冒充有效缓存。
-- 保存真实 source receipt/context，后续同 HEAD 的 `main` 同步复用正常 hook 回执。失配时记录可证实差异，不伪改缓存或报告，不把推测写成根因。
-- 最终提交包含本批全部版本及交接修改，之后停笔。同一最终 HEAD 的生产构建与 source hook 可独立并行；构建后不再改源码。
-- 对准确发布 SHA 查询 GitHub `static` run，要求 completed/success；读取质量 artifact 的 `profile=static`、`passed=true`、步骤 exit 0。拿不到 artifact 时明确限制，不伪称读取或触发 full。
+```bash
+cd apps/admin-web && npm ci && "$OA_QUALITY_NODE" scripts/build-production.mjs && cd ../..
+PKG="$(mktemp -d)/$N"
+"$OA_QUALITY_PYTHON" scripts/runtime_package.py build --output "$PKG"
+"$OA_QUALITY_PYTHON" scripts/runtime_package.py verify --output "$PKG"
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$(dirname "$PKG")" -czf "$PKG.tgz" "$N"   # 不带 macOS ._ 文件和扩展属性
+shasum -a 256 "$PKG.tgz"
+"${OA_SCP[@]}" "$PKG.tgz" root@47.93.166.123:/opt/sunhold-oa/staging/
+```
 
-## 4. 一批只分配一个新版本
+构建绑定 `TARGET`：构建后不再改源码；`build-info.json` 与 manifest 的版本和提交必须是 `N`/`TARGET`。
 
-功能候选验证及必要构建通过后，由本次实际发布所有者按生产权威脚本晚分配一个新号。采用 [production-authority.md](references/production-authority.md) 的新鲜 GitHub refs 快照及独立 SHA，不猜号、不启动新计数器。正常排队不等未完成候选；各独立发布按实际队列分别登记，不因排队填写 consolidated_into。下列原候选合并规则仅用于 Codex 合批或另获明确授权的合并，不用于 Claude 串行队列。
+### 5. 安装、封存、激活（生产，约 1 分钟，整段包在 `flock -n` 里）
 
-- 正常排队在轮到本任务且候选已验证后领取自己的唯一版本；已经协商合批的候选不得各自预占版本来制造争用，所有方式均不提前抢号。
-- 冲突前已存在的 assigned 候选保留原版本、提交、owner、scope 和时间。与所有者核对就绪证据及真实状态后，使用既有 allocator 的合并契约登记 `consolidates=<原版本列表>`，统一分配一个未占用的新版本。
-- 合并契约要求的标签、身份或就绪证据缺失时，核实并补齐真实证据；不伪造标签、删除预留、改 owner 或假记成功以绕过门禁。
-- 原候选不再单独激活。新包健康上线后才追加原记录 `consolidated_into=<新版本>`，失败时原记录保持可追踪。
-- 已进入实际激活的发布先完成或安全回滚，不能中途拆开它的临界区。其他未 activating 的候选保留真实身份和队列顺序，默认分别排队；只有所有者明确协商合并后才按合并契约收口，不因已有预留就强制合并或跳过队首。
-- 按唯一分配号一次更新 package.json、package-lock.json 的版本字段及本批必要交接信息，形成一个最终发布提交和 annotated tag；不在上线后为补文档反复触发新发布。
-- 最终正常 hook 与本地构建绑定同一 HEAD，GitHub `dev`/tag、版本文件、包及 manifest 一致后才允许激活。
+```bash
+E=/opt/sunhold-oa/runtime/enterprise
+sha256sum /opt/sunhold-oa/staging/$N.tgz                 # 与本地一致
+tar -xzf /opt/sunhold-oa/staging/$N.tgz -C $E/packages   # 目标目录必须原本不存在
+chown -R root:root $E/packages/$N && chattr -R +i $E/packages/$N
+printf '%s\tactivating\t%s\t%s\t%s\t%s\n' "$N" "$TARGET" "$OWNER" "<范围>;sealed" "$(date -u +%FT%T%:z)" | tee -a /opt/sunhold-oa/releases/queue.tsv >> /opt/sunhold-oa/releases/ledger.tsv
+<运行环境 python> -B $E/tools/<当前工具版本>/native_runtime.py --env-file /opt/sunhold-oa/private/production-native.env \
+    activate --package $E/packages/$N --current $E/current --expected-commit "$TARGET"
+```
 
-## 5. 严格构包与一次激活
+- 运行环境 python 与工具版本以 `systemctl cat sunhold-oa-api.service` 最后一条 `ExecStart` 为准。
+- 若 `apps/api-server/requirements.lock` 有变化（去掉 `\r` 后 SHA256 前 12 位不等于现用 `environments/requirements-<hash>-py3123`），这是慢路径：先在生产按新 lock 带哈希建新环境并更新 systemd drop-in，再激活。
+- `activate` 失败会自动切回旧包并重启；按实际结果记录 `failed`，该版本号作废。
+- 成功后追加 `released` 行（同上格式，范围加 `health=passed;current=$N`），写 `releases/$N-<主题>-receipt.json`（版本、提交、owner、包 SHA、manifest SHA、previous/current、health、时间）。
 
-读取实际运行的 native helper/解释器并核其 SHA，使用现有 runtime_package 验包；不上传覆盖目录。保留包大小、SHA、源码来源、完整文件集合及严格验包证明。
+### 6. 收尾（约 1 分钟）
 
-跨平台换行差异（旧包可能由 Windows 构建，本机为 LF）与业务差异分别审计。机械字节对齐仅在正式基线 manifest/raw hash、基线和候选 Git blob、候选内容均证明仅行尾不同后处理本地包；保留实际改动字节及包外 provenance，更新 manifest 并重新严格验包。不能静默归一化、不搬未知旧包、不改源码掩盖差异。
+```bash
+curl -s https://huzhilawfirm.com/build-info.json     # version/source_commit = N/TARGET
+curl -s -o /dev/null -w '%{http_code}\n' https://huzhilawfirm.com/health
+"${OA_SSH[@]}" 'systemctl is-active sunhold-oa-api sunhold-oa-web; journalctl -u sunhold-oa-api --since "-5 min" -p err --no-pager | tail'
+git tag -a "v$N" -m "OA $N" "$TARGET" && git push origin "v$N"
+git push origin "$TARGET:main"        # 快进 main，复用同提交门禁
+```
 
-数据库无变更则记录无需备份，不 dump。存在迁移/数据补丁时，按最小受影响表及关联行完成外置备份、SHA、恢复方案与审批；禁止无授权全库备份或替换生产数据。
+- 删除本次 staging 文件（只删自己上传的 `refs-$OWNER.json`、`$N.tgz`）和已合入的临时分支。
+- 汇报：版本、提交、健康结果、回滚点（上一版本）、待用户验收。不做线上业务写测试。
 
-- 上传本任务专属 staging，校验大小/SHA/工具归属和保护配置摘要，不清理未知路径。
-- 只有本次实际发布所有者激活一次。锁内重新核对当前基线、已验证目标、队列/所有者、refs 时效、保护配置及数据库范围。
-- 物理封存新包包括根目录和全部子路径，严格核 `chattr +i`。旧包完整保留为回滚点。
-- 准备租约正常释放后可由激活 helper重新非阻塞取锁并复查全部状态；不得宣称这段交接始终持锁，也不得外层持锁再让子进程重复取同一锁。
-- stdin 控制租约使用可保持输入的 `tty=true` 或已审控制文件机制。输入关闭、超时或异常退出按实际记录，不伪造正常释放或 exit 0。
-- 失败回滚以实际 `current` 指向判断：目标包才恢复原基线，原基线则验证健康，第三方目标拒绝覆盖。回滚须核原版本 health/build-info。
-- 健康通过、回执持久化、队列登记分别记录。回执 flush/fsync、回读校验后才称已保存；健康后的元数据失败明确 pending，不误回滚健康版本。
-- staging 只精确清理本任务拥有的文件。发布成功后清理失败记录待清理，不把健康发布改成失败或触发回滚。
+## 回滚
 
-## 6. 统一收尾与后续批次
+```bash
+<运行环境 python> -B $E/tools/<工具版本>/native_runtime.py --env-file /opt/sunhold-oa/private/production-native.env \
+    activate --package $E/packages/<上一版本> --current $E/current --expected-commit <上一版本提交>
+```
 
-核 current/manifest、API/Web/Nginx、公开 health/build-info、主资源及受影响页面少量 lazy 资源的 HTTP/SHA、严重日志、保护配置未变和正式回执。不要把这轮变成全站业务测试。
+包在 `flock -n` 里执行，队列追加 `rolled_back` 记录；有数据库迁移时按该版本记录的回滚说明处理。
 
-正常 hook复用最终回执将 GitHub `main` 快进，核 `dev`、`main`、annotated tag 和运行提交一致，查静态 CI。记录本批各原候选的整合结果，精确清理本批 staging 和已完整合入的多余短期分支，核验远端删除及 fetch/prune 结果，确认租约进程和必要执行会话退出；清理失败记录具体待清理分支，不宣称已清理。
+## 部署失败时
 
-正常排队分别汇报本任务版本、GitHub 同步和运行检查结果；仅已协商合批时一次汇报整批及各候选映射。均明确待用户验收，记录已合入临时分支的删除结果；后续工作按队列推进，冻结后新候选不得插入当前版本。
+激活失败、健康不过或卡在半途：先确认 `current` 实际指向（目标包则回滚，原基线则只验健康），记录 `failed`，向用户报告具体阻碍。需要后续盯守时用 `/loop 5m` 每 5 分钟只读检查，确认成功或回滚后删除该循环。
 
-## 7. 未成功部署的五分钟监督
+## 不再做的事（为提速删除）
 
-用户已要求：已授权的部署未成功或仍未收口时，必须建立每 5 分钟执行一次的监督任务，直到确认部署成功，再删除该任务。仅修改本 skill、准备候选或本地预览不触发部署，也不凭此规则扩大部署授权。
-
-- 使用当前客户端的原生定时能力建立当前发布会话的监督（Claude Code 用 `/loop 5m` 或 CronCreate；Codex 用 heartbeat），不使用 shell cron、长期 sleep 或额外独立发布者。创建前检查已有自动化；同一发布只保留一个监督任务，已有匹配任务则更新，不重复创建。记录自动化 ID、发布所有者、候选完整 SHA、已分配版本（尚未分配则明确未分配）、授权范围及回执位置；提示词不得含凭据。
-- 每次运行先读本 skill 和当前生产权威引用，刷新真实 queue/ledger、锁与所有者、GitHub refs、current/manifest、health/build-info 和上次回执，判断等待、可继续、失败或已成功。前次执行仍在运行时只检查状态，不并发启动第二次部署。
-- 排队、网络中断或外部状态未变化时继续五分钟监督；在原授权和真实互斥时段内，可以从最后一个已验证步骤继续。重试前核对已有版本、标签、包及激活状态，复用本任务有效记录，不重复领号或盲目重启、重建、激活。既有失败版本不得复用，是否分配新版本仍按权威队列规则处理。
-- 他人占锁、未收口预留、权限缺失、验证失败、代码冲突或需要新增授权时，记录具体阻碍并报告用户；只做安全的只读监督，不能抢锁、接管他人发布、绕过门禁或扩大生产写入。用户明确暂停或取消时立即停止相应动作，并按其要求暂停或删除监督任务；不因等待自行标记部署成功。
-- 成功必须依据第 6 节真实收尾证据：目标范围确已上线、运行版本/SHA 与包及 manifest 一致、服务及 health/build-info 正常、正式回执持久化且队列已收口、GitHub dev/main/tag 同步及准确 SHA 的 static 检查通过。仅有标签、HTTP 200、健康旧版本或局部上传不算成功；缺失证据或必要收尾 pending 时保留监督。用户界面验收仍单独标记，不冒充已验收。
-- 核实成功后，使用原生自动化删除能力按记录的准确 ID 删除本任务，回查确认已不存在，再汇报版本、SHA、成功证据和任务删除结果。删除失败或能力不可用时不得声称已删除：保持发布成功结论，明确监督任务待清理并补做精确清理，不为清理失败重新部署。自动化创建能力不可用时同样明确报告监督未建立，不以口头承诺代替。
+- 不等 GitHub Actions：版本提交带 `[skip ci]`，发布以本地 pre-push 门禁和生产健康为准（用户 2026-10 决定）。
+- 不默认合批、不做跨会话合并协调：多个就绪候选按队列各发各的。
+- 不为补文档再发版本；交接文档随版本提交一起推送。

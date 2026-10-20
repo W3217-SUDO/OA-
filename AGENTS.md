@@ -1,5 +1,11 @@
 # Codex 项目工作纪律
 
+## 测试服务器暂停与正式发布入口（用户要求，2026-10-20，优先于下文所有测试服务器条款）
+
+- 测试服务器 `150.158.3.104`（8088/8089/8091、`sunhold-dev-*` 服务、`/opt/sunhold-oa/worktrees/*`）暂停使用：不部署、不重启、不作为验收入口。下文“交接纪律”“当前会话补充规则”“8089 部署与版本号规则”“Immutable Release Version Rule”及 Excel 条款中关于 8089/测试服务器部署和验收的要求一律暂停，恢复须用户另行明确通知。
+- 正式发布只走 `docs/skills/oa-fast-deploy/SKILL.md`：生产服务器 `oa-production-app`（`47.93.166.123`，`https://huzhilawfirm.com`），不可变运行包，版本沿 `1.1.x` 递增。仍须用户本轮明确要求发布才执行。
+- macOS 上安装 pre-push 门禁用 `sh scripts/install-quality-hook.sh`（与 `setup-local.ps1 -InstallQualityHook -QualityHookOnly` 等价），不需要 PowerShell。
+
 ## 全局项目规则：OA 问题处理与旧系统对照分流
 
 所有会话处理 OA 问题表、钉钉在线表格、截图返工和客户验收问题时，必须遵守 `docs/skills/problem-remediation/SKILL.md`，并把每一行作为独立问题单元。
@@ -105,7 +111,7 @@
 - 四线程的完整目标、派工格式、六项汇报、通过/补证/返工/续派判定、20 分钟卡点升级、Git/浏览器/共享后端文件排队规则，以 `docs/superpowers/plans/2026-08-01-fast-full-site-parity-plan.md` 为当前执行协议。主会话每次续派前必须按该协议给出明确入口、允许修改范围和验收出口；子会话不得自行扩大范围或在汇报后空闲等待。
 - 浏览器验收不再采用全局独占排队。A/B/C/D 各自固定并维护旧系统与本地开发标签各 1 个，可同时对照；旧系统写动作仅限本任务自建 `CODEX-*` 数据。每个会话必须登记并只操作自己的两个标签 ID，不得导航、关闭或复用其他会话标签，也不得为子页面继续增加标签。
 
-## 8089 部署与版本号规则
+## 8089 部署与版本号规则（已暂停，见文首）
 
 - 本会话所有已验证修改必须部署到测试服务器公网入口 `http://150.158.3.104:8089/`，对应非 Docker 服务 `sunhold-dev-web` 和 `sunhold-dev-api`。
 - 部署必须按版本号管理，不能无版本覆盖。每次发布前读取当前版本号，发布后在汇报中写明本次部署版本号、部署目录、服务名、重启结果和健康检查结果。
@@ -115,7 +121,7 @@
 - 每次部署后必须执行并汇报：定向测试、前端生产构建、后端相关测试或 `py_compile`、`git diff --check`、`systemctl restart sunhold-dev-api sunhold-dev-web`、服务 active 状态、`/health`、目标页面 HTTP 200。
 - 不能把未部署、未重启、未健康检查或未打开 8089 验证的修改说成“服务器已解决”。
 
-## Immutable Release Version Rule
+## Immutable Release Version Rule（已暂停，见文首）
 
 - Release worktrees are immutable. Before every 8089 deployment, inspect the highest existing server release version, increment it by exactly one, and create a new `/opt/sunhold-oa/worktrees/release-vX.Y.Z` directory. Never reuse, edit, delete, or overwrite an earlier `release-v*` directory; earlier releases must remain available for rollback.
 - The release directory version, `apps/admin-web/package.json`, and both top-level version entries in `apps/admin-web/package-lock.json` must match. A deployment is not complete until the running systemd `WorkingDirectory` points to that exact new release directory and browser acceptance confirms the new build.

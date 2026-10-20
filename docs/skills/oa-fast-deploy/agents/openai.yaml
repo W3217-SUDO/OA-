@@ -1,4 +1,4 @@
 interface:
   display_name: "OA 快速发布"
-  short_description: "正常排队发布，仅同时正式切换争用时协商合并，合入后删除多余分支"
-  default_prompt: "使用 $oa-fast-deploy 按权威队列发布已验证改动，先正常推送候选分支再整合；仅同时正式发布和版本切换争用时协商是否合并，未完成工作不拖队列，完整合入后精确删除临时分支并核验，保留正常门禁、版本互斥、不可变包、回滚和待用户验收。"
+  short_description: "Mac 发布机按生产队列串行发布：一次推送、一个版本号、不可变包激活、可回滚"
+  default_prompt: "使用 $oa-fast-deploy 把已验证的 dev 改动发布到生产 oa-production-app：按生产队列串行，只推一次 dev 并通过 pre-push 门禁，flock 发布锁内领号与激活，不可变包封存后切换，核对健康并快进 main；测试服务器已暂停，不等 GitHub CI，结果待用户验收。"
