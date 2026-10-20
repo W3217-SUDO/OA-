@@ -22,6 +22,7 @@ TABLES = (
     "CRM_Customer_Contacts",
     "FCM_Contract",
     "Legal_Case",
+    "Legal_Case_Participant",
     "Legal_Investigation",
     "Legal_Investigation_Task",
     "Legal_Investigation_Clue",
@@ -38,6 +39,7 @@ SOURCE_COLUMNS = {
     },
     "FCM_Contract": {"ContractId", "ContractNo", "ContractName", "CustomerNo"},
     "Legal_Case": {"CaseId", "CaseNo", "CaseName", "CustomerNo", "ContractNo"},
+    "Legal_Case_Participant": {"CaseNo", "StaffName", "SortingIndex"},
     "Legal_Investigation": {"InvestigationId", "InvestigationNo", "ContractNo"},
     "Legal_Investigation_Task": {"TaskId", "TaskNo", "InvestigationNo"},
     "Legal_Investigation_Clue": {"ClueId", "ClueNo", "ClueGuid", "InvestigationTaskNo", "InvestigationNo"},
@@ -146,6 +148,28 @@ def customer_contacts(rows: list[dict]) -> list[dict]:
 
 
 CUSTOMER_TYPES = ("客户", "当事人")
+# 页面读取、但旧快照导入早期版本未写入的字段；只在记录里为空时补，页面上后来改过的值不覆盖。
+PAGE_KEYS = {"customer": ("registration_region", "registered_address"), "case": ("legacy_participants",), "clue": ("address", "product")}
+
+
+def case_participants(rows: list[dict]) -> list[dict]:
+    """旧案件参与人表转为 data.legacy_participants（页面显示与案件可见范围都读它）。"""
+    return [
+        {"staff_name": token(row["StaffName"]), "sorting_index": row.get("SortingIndex"), "case_no": token(row.get("CaseNo"))}
+        for row in sorted(rows, key=lambda item: (item.get("SortingIndex") is None, item.get("SortingIndex") or 0))
+        if token(row.get("StaffName"))
+    ]
+
+
+def fill_missing(pg, record_id: int, module: str, wanted: dict, report: Counter) -> None:
+    """给早先导入的记录补页面字段：只写当前为空的键。"""
+    (data,) = pg.execute("SELECT data FROM business_records WHERE id = %s", (record_id,)).fetchone()
+    data = dict(data or {})
+    todo = {key: wanted[key] for key in PAGE_KEYS[module] if wanted.get(key) not in (None, "", []) and data.get(key) in (None, "", [])}
+    if todo:
+        data.update(todo)
+        pg.execute("UPDATE business_records SET data = %s WHERE id = %s", (Jsonb(data), record_id))
+        report[f"{module}_page_keys_filled"] += 1
 
 
 def refresh_customer(pg, record_id: int, row: dict, contacts: list[dict], status: str, report: Counter) -> None:
@@ -225,6 +249,9 @@ def import_data(pg, tables: dict[str, list[dict]]) -> Counter:
     for contact in tables["CRM_Customer_Contacts"]:
         contacts_by_customer.setdefault(token(contact.get("CustomerNo")), []).append(contact)
     report["customer_contact_unresolved"] = sum(len(rows) for no, rows in contacts_by_customer.items() if no not in customers)
+    participants_by_case: dict[str, list[dict]] = {}
+    for participant in tables["Legal_Case_Participant"]:
+        participants_by_case.setdefault(token(participant.get("CaseNo")), []).append(participant)
     contracts = index_by(tables["FCM_Contract"], "ContractNo")
     investigations = index_by(tables["Legal_Investigation"], "InvestigationNo")
     tasks = index_by(tables["Legal_Investigation_Task"], "TaskNo")
@@ -242,6 +269,7 @@ def import_data(pg, tables: dict[str, list[dict]]) -> Counter:
         ids["customer"][no] = upsert_record(pg, "customer", no, token(row.get("CustomerName")), "", row, {"customer_no": no, "legacy_customer_id": row["CustomerId"], "contacts": contacts}, report, status)
         if report["customer_existing"] > existing_before:
             refresh_customer(pg, ids["customer"][no], row, contacts, status, report)
+            fill_missing(pg, ids["customer"][no], "customer", mapped_data("customer", row), report)
 
     for no, row in contracts.items():
         customer_no = token(row.get("CustomerNo"))
@@ -262,7 +290,10 @@ def import_data(pg, tables: dict[str, list[dict]]) -> Counter:
             raise ValueError(f"案件客户与合同不一致: {no}")
         customer_id = ids["customer"][customer_no]
         contract_id = ids["contract"][contract_no]
-        case_id = upsert_record(pg, "case", no, token(row.get("CaseName")), token(customers[customer_no].get("CustomerName")), row, {"customer_id": customer_id, "customer_record_id": customer_id, "customer_no": customer_no, "contract_id": contract_id, "contract_record_id": contract_id, "contract_no": contract_no, "case_type_id": row.get("CaseTypeId"), "case_phase_id": row.get("CasePhaseId"), "legacy_case_id": row["CaseId"]}, report)
+        case_existing_before = report["case_existing"]
+        case_id = upsert_record(pg, "case", no, token(row.get("CaseName")), token(customers[customer_no].get("CustomerName")), row, {"customer_id": customer_id, "customer_record_id": customer_id, "customer_no": customer_no, "contract_id": contract_id, "contract_record_id": contract_id, "contract_no": contract_no, "case_type_id": row.get("CaseTypeId"), "case_phase_id": row.get("CasePhaseId"), "legacy_case_id": row["CaseId"], "legacy_participants": case_participants(participants_by_case.get(no, []))}, report)
+        if report["case_existing"] > case_existing_before:
+            fill_missing(pg, case_id, "case", {"legacy_participants": case_participants(participants_by_case.get(no, []))}, report)
         ids["case"][no] = case_id
         pg.execute(
             """INSERT INTO contract_objects
@@ -313,7 +344,10 @@ def import_data(pg, tables: dict[str, list[dict]]) -> Counter:
         investigation = investigations[investigation_no]
         contract = contracts[token(investigation["ContractNo"])]
         customer_no = token(contract["CustomerNo"])
+        clue_existing_before = report["clue_existing"]
         clue_id = upsert_record(pg, "clue", no, token(row.get("StoreName") or row.get("Indictee")), token(customers[customer_no].get("CustomerName")), row, {"source_task_id": task_id, "source_task_record_id": task_id, "source_task_no": task_no, "investigation_id": investigation_id, "investigation_record_id": investigation_id, "investigation_no": investigation_no, "customer_no": customer_no, "contract_no": token(investigation["ContractNo"]), "legacy_clue_id": row["ClueId"]}, report)
+        if report["clue_existing"] > clue_existing_before:
+            fill_missing(pg, clue_id, "clue", mapped_data("clue", row), report)
         ids["clue"][no] = clue_id
         pg.execute(
             """INSERT INTO investigation_clue_links

@@ -56,6 +56,17 @@ class FakePg:
         if sql.startswith("SELECT status, data FROM business_records WHERE id"):
             record = next(item for item in self.records.values() if item["id"] == params[0])
             return FakeCursor((record["status"], record["data"]))
+        if sql.startswith("SELECT data FROM business_records WHERE id"):
+            record = next(item for item in self.records.values() if item["id"] == params[0])
+            return FakeCursor((record["data"],))
+        if sql.startswith("UPDATE business_records SET data = %s WHERE id"):
+            payload, record_id = params
+            record = next(item for item in self.records.values() if item["id"] == record_id)
+            record["data"] = dict(payload.obj)
+            self.updates.append(record_id)
+            return FakeCursor()
+        if sql.lstrip().startswith("INSERT INTO contract_objects"):
+            return FakeCursor()
         if sql.startswith("UPDATE business_records SET data"):
             payload, status, record_id = params
             record = next(item for item in self.records.values() if item["id"] == record_id)
@@ -76,7 +87,7 @@ def contact_row(contact_id, customer_no, **extra):
 
 
 def empty_tables(customers, contacts):
-    names = ("CRM_Customer", "CRM_Customer_Contacts", "FCM_Contract", "Legal_Case", "Legal_Investigation",
+    names = ("CRM_Customer", "CRM_Customer_Contacts", "FCM_Contract", "Legal_Case", "Legal_Case_Participant", "Legal_Investigation",
              "Legal_Investigation_Task", "Legal_Investigation_Clue", "Legal_Investigation_Clue_Evidence", "IPR_Case", "IPR_CaseType")
     tables = {name: [] for name in names}
     tables["CRM_Customer"], tables["CRM_Customer_Contacts"] = customers, contacts
@@ -137,6 +148,64 @@ class HzCustomerBackfillTests(unittest.TestCase):
         report = self.hz.import_data(pg, tables)
         self.assertEqual(report["customer_contact_unresolved"], 2)
         self.assertEqual(len(pg.records["C1"]["data"]["contacts"]), 1)
+
+
+def contract_row(no, customer_no):
+    return {"ContractId": 9, "ContractNo": no, "ContractName": "合同", "CustomerNo": customer_no}
+
+
+def case_row(no, customer_no, contract_no):
+    return {"CaseId": 20, "CaseNo": no, "CaseName": "案件", "CustomerNo": customer_no, "ContractNo": contract_no, "CaseTypeId": 110, "CasePhaseId": 1}
+
+
+@unittest.skipIf(psycopg is None, "需要 psycopg")
+class HzPageKeyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.hz = load_importer()
+
+    def tables_with_case(self):
+        tables = empty_tables([customer_row("C1", 1)], [])
+        tables["FCM_Contract"] = [contract_row("K1", "C1")]
+        tables["Legal_Case"] = [case_row("A1", "C1", "K1")]
+        tables["Legal_Case_Participant"] = [
+            {"CaseNo": "A1", "StaffName": "lawyer2", "SortingIndex": 2},
+            {"CaseNo": "A1", "StaffName": "lawyer1", "SortingIndex": 1},
+            {"CaseNo": "A1", "StaffName": " ", "SortingIndex": 3},
+        ]
+        return tables
+
+    def test_new_case_gets_participants_in_legacy_order(self):
+        pg = FakePg()
+        self.hz.import_data(pg, self.tables_with_case())
+        names = [item["staff_name"] for item in pg.records["A1"]["data"]["legacy_participants"]]
+        self.assertEqual(names, ["lawyer1", "lawyer2"])
+
+    def test_existing_case_without_participants_is_filled_once(self):
+        pg = FakePg()
+        tables = self.tables_with_case()
+        self.hz.import_data(pg, tables)
+        pg.records["A1"]["data"].pop("legacy_participants")
+        report = self.hz.import_data(pg, tables)
+        self.assertEqual(report["case_page_keys_filled"], 1)
+        self.assertEqual(len(pg.records["A1"]["data"]["legacy_participants"]), 2)
+        self.assertEqual(self.hz.import_data(pg, tables)["case_page_keys_filled"], 0)
+
+    def test_existing_case_keeps_participants_changed_on_the_page(self):
+        pg = FakePg()
+        tables = self.tables_with_case()
+        self.hz.import_data(pg, tables)
+        edited = [{"staff_name": "page-added"}]
+        pg.records["A1"]["data"]["legacy_participants"] = edited
+        self.hz.import_data(pg, tables)
+        self.assertEqual(pg.records["A1"]["data"]["legacy_participants"], edited)
+
+    def test_customer_and_clue_fall_back_to_the_columns_the_old_system_filled(self):
+        from hz_field_maps import mapped_data
+        customer = mapped_data("customer", {"CustomerType": 1, "City": "上海", "ContactAddress": "联系地址", "RegistrationCity": "", "RegistrationAddress": None})
+        self.assertEqual((customer["registration_region"], customer["registered_address"]), ("上海", "联系地址"))
+        clue = mapped_data("clue", {"HasProduct": "T", "Address": "", "LocationAddress": "店铺地址"})
+        self.assertEqual((clue["address"], clue["product"]), ("店铺地址", True))
 
 
 if __name__ == "__main__":

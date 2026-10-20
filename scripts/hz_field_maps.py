@@ -176,6 +176,9 @@ def mapped_data(module, row):
         # 旧库 CustomerType 为数字（1 为客户，0/2 为当事人）；页面只认“客户/当事人”。
         data["legacy_customer_type"] = row.get("CustomerType")
         data["customer_type"] = "客户" if row.get("CustomerType") == 1 else "当事人"
+        # 旧库注册地区、地址常只填联系地址/所在城市；页面读 registration_region 与 registered_address。
+        data["registration_region"] = text(row.get("RegistrationCity")) or text(row.get("City"))
+        data["registered_address"] = text(row.get("RegistrationAddress")) or text(row.get("ContactAddress"))
     if module == "contract":
         data["is_changed"] = enabled(row.get("IsChanged"))
     if module == "case":
@@ -195,4 +198,6 @@ def mapped_data(module, row):
                 data[key] = text(display)
         for key, column in {"has_product": "HasProduct", "has_tort": "HasTort", "audit_need_merge_case": "AuditNeedMergeCase"}.items():
             data[key] = enabled(row.get(column))
+        data["product"] = data["has_product"]
+        data["address"] = text(row.get("Address")) or text(row.get("LocationAddress"))
     return data
