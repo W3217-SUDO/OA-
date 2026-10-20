@@ -19,6 +19,10 @@ from app.core.dashboard_finance_read_model_migration import (
 )
 from app.core.dashboard_revision import MIGRATION_REVISION as DASHBOARD_REVISION
 from app.core.dashboard_revision_migration import upgrade_dashboard_revision, validate_dashboard_revision
+from app.core.finance_query_revision import (
+    MIGRATION_REVISION as FINANCE_QUERY_REVISION,
+    upgrade_finance_query_revision,
+)
 from app.core.hz_allocation_read_model_migration import (
     MIGRATION_REVISION as HZ_ALLOCATION_READ_MODEL_REVISION,
     upgrade_hz_allocation_read_model,
@@ -93,6 +97,10 @@ def _apply_dashboard_revision(connection: Connection, _upgrade_schema: Callable[
     upgrade_dashboard_revision(connection)
 
 
+def _apply_finance_query_revision(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    upgrade_finance_query_revision(connection)
+
+
 def _apply_dashboard_finance(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     upgrade_dashboard_finance_read_model(connection)
 
@@ -120,6 +128,7 @@ def _run_versioned_schema_migrations(
         (RECORD_READ_MODEL_REVISION, _apply_record_read_model),
         (DASHBOARD_FINANCE_REVISION, _apply_dashboard_finance),
         (DASHBOARD_REVISION, _apply_dashboard_revision),
+        (FINANCE_QUERY_REVISION, _apply_finance_query_revision),
     )
     for revision, migration in revisions:
         if connection.execute(

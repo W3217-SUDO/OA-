@@ -138,6 +138,7 @@ def _wrap_query(endpoint, path):
         arguments = bound.arguments
         if path in FINANCE_CONDITIONAL_QUERIES and not await _financial_query_branch(path, arguments):
             return await endpoint(**arguments)
+        from app.core.finance_query_revision import finance_revision_snapshot
         from app.core.query_cache import cached_query
 
         parameters = {key: value for key, value in arguments.items() if key not in {"db", "identity"}}
@@ -146,6 +147,9 @@ def _wrap_query(endpoint, path):
         return await cached_query(
             arguments["db"], arguments["identity"], f"finance.{endpoint.__name__}",
             parameters, lambda: endpoint(**arguments),
+            # 以全库（除高频非财务表）数据修订判定新鲜度；pg_current_snapshot 会因任何
+            # 表的任何提交而变化，财务结果几乎从不命中。
+            snapshot_reader=finance_revision_snapshot,
         )
 
     return cached_endpoint
