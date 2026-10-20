@@ -1,0 +1,2 @@
+# 枚举定义按原始字节归档，保持跨平台 SHA256 一致。
+enum-values.csv -text
