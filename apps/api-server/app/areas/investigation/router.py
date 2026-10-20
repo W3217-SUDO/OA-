@@ -90,12 +90,14 @@ async def investigation_action_capabilities(
         raise HTTPException(status_code=422, detail="一次最多查询 100 条调查记录的操作权限")
     user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
     from app.core.clue_audit_scope import clue_audit_condition
-    audit_condition = await clue_audit_condition(identity, db)
+    # 只判断本次请求的这几条记录（最多 100 条），不必为整体可见范围先扫描全部客户。
+    audit_condition = await clue_audit_condition(identity, db, record_ids=requested_ids)
     audit_ids = set((await db.scalars(select(BusinessRecord.id).where(
         BusinessRecord.id.in_(requested_ids), audit_condition,
     ))).all())
     brand_ids = set((await db.scalars(select(BusinessRecord.id).where(
-        BusinessRecord.id.in_(requested_ids), await clue_audit_condition(identity, db, include_job_permission=False),
+        BusinessRecord.id.in_(requested_ids),
+        await clue_audit_condition(identity, db, include_job_permission=False, record_ids=requested_ids),
     ))).all())
     record_scope = (audit_condition,) if scope == "audit" else tuple(await _record_scope_conditions(identity, db))
     records = list((await db.scalars(select(BusinessRecord).where(

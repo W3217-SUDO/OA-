@@ -920,7 +920,9 @@ async def _ensure_attachment_record_visible(record_id: int, identity: dict, db: 
             BusinessRecord.serial_no == str(data.get("clue_no") or ""),
             BusinessRecord.data["collection_evidence_record_id"].as_integer() == record.id,
         )
-        if await db.scalar(select(BusinessRecord.id).where(relation, await clue_audit_condition(identity, db))):
+        # 线索本身只判断这一条；证据要经关联找到线索，范围不固定，沿用整体可见范围。
+        scope = await clue_audit_condition(identity, db, record_ids=[record.id] if record.module == "clue" else None)
+        if await db.scalar(select(BusinessRecord.id).where(relation, scope)):
             await _require_record_module_menu("clue", identity, db, action="查看")
             return record
         # 不属于审核范围时按真实身份走原记录权限，不能因菜单临时提权继续读取。

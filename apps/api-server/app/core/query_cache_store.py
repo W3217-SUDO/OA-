@@ -92,8 +92,17 @@ async def _publish(key, token, snapshot, result, ttl):
     if isinstance(result, Response):
         logger.info("查询结果未进入共享缓存：响应对象；key=%s", key)
         return
+    # 同一数据修订下，上次已判定超限的查询结果不会变小：直接跳过整份结果的 JSON 编码（几十兆的结果会白白
+    # 编码数秒才发现超限）。标记带上限值与数据修订号，数据变化或上限调整后会重新判定。
+    marker = key + ":oversize"
+    marker_value = f"{settings.query_cache_max_payload_bytes}|{snapshot}"
+    stored = await shared.client().get(marker)
+    if (stored.decode() if isinstance(stored, bytes) else stored) == marker_value:
+        logger.info("查询结果未进入共享缓存：同一数据修订下已判定超限；key=%s", key)
+        return
     payload = await asyncio.to_thread(_encode, snapshot, result)
     if payload is None:
+        await shared.client().set(marker, marker_value, ex=ttl)
         logger.info("查询结果未进入共享缓存：超过大小准入限制；limit=%s key=%s",
                     settings.query_cache_max_payload_bytes, key)
         return

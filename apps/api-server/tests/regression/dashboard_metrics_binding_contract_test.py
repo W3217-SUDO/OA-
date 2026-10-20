@@ -1000,8 +1000,27 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(caught.exception.status_code, 503)
         self.compute.assert_not_awaited()
 
+    async def test_oversize_result_is_marked_so_the_same_revision_skips_the_encoding(self):
+        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock())
+        big = {"items": ["客户" * 1000]}
+        with patch.object(self.shared, "client", return_value=client), \
+                patch.object(self.store.settings, "query_cache_max_payload_bytes", 1024), \
+                patch.object(self.store.settings, "query_cache_ttl_seconds", 60):
+            await self.original_publish("key", "owner", "10:20:", big)
+            client.set.assert_awaited_once_with("key:oversize", "1024|10:20:", ex=60)
+            # 同一修订再次遇到：标记命中，不再编码整份结果
+            client.get.return_value = b"1024|10:20:"
+            with patch.object(self.store, "_encode", Mock(side_effect=AssertionError("不应再次编码"))):
+                await self.original_publish("key", "owner", "10:20:", big)
+            # 数据修订或上限变化后重新判定
+            client.get.return_value = b"1024|10:21:"
+            client.set.reset_mock()
+            await self.original_publish("key", "owner", "10:20:", big)
+            client.set.assert_awaited_once()
+        client.eval.assert_not_awaited()
+
     async def test_payload_limit_and_response_objects_are_explicit_admission_bypasses(self):
-        client = SimpleNamespace(eval=AsyncMock(return_value=1))
+        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock())
         with patch.object(self.shared, "client", return_value=client), \
                 patch.object(self.store.settings, "query_cache_max_payload_bytes", 1024):
             self.assertIsNone(self.store._encode("10:20:", {"items": ["客户" * 1000]}))
@@ -1029,7 +1048,7 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual((await self.original_read("key"))["result"], result)
 
     async def test_publish_uses_bounded_ttl_and_checks_owner_token(self):
-        client = SimpleNamespace(eval=AsyncMock(return_value=1))
+        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock())
         with patch.object(self.shared, "client", return_value=client):
             await self.original_publish("key", "owner", "10:20:", self.result)
             args = client.eval.await_args.args
@@ -1042,7 +1061,7 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(caught.exception.status_code, 503)
 
     async def test_explicit_dashboard_ttl_does_not_mutate_finance_configuration(self):
-        client = SimpleNamespace(eval=AsyncMock(return_value=1))
+        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock())
         with patch.object(self.shared, "client", return_value=client):
             await self.original_publish("key", "owner", "10:20:", self.result, ttl_seconds=300)
             self.assertEqual(client.eval.await_args.args[-1], 300)
@@ -1125,7 +1144,7 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValidationError):
             Settings(_env_file=None, query_cache_ttl_seconds=301)
 
-        client = SimpleNamespace(eval=AsyncMock(return_value=1))
+        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock())
         with patch.object(self.shared, "client", return_value=client), \
              patch.object(dashboard_cache.settings, "dashboard_metrics_cache_ttl_seconds", 86400):
             await dashboard_cache._publish_dashboard_query("key", "owner", "1:100:", self.result)

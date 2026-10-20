@@ -8,6 +8,7 @@ from app.core.dependencies import (
     SystemParameter, User, WorkflowEvent, date, datetime,
     or_, select, uuid4, uuid5, verify_password,
 )
+from app.core.json_relation_query import scalar_in_values
 from app.models_shared import (
     CustomerPortalLoginInput, LawFirmInput,
 )
@@ -385,9 +386,10 @@ async def _customer_roi_analytics(
     related_conditions = [BusinessRecord.module.in_({"case", "contract"}), *scope]
     related_links = []
     if related_ids:
-        related_links.append(BusinessRecord.id.in_(related_ids))
+        # 财务记录可达数万条；逐个编号绑定参数会超过驱动的 32767 个参数上限，改为单个 JSON 参数。
+        related_links.append(scalar_in_values(BusinessRecord.id, related_ids))
     if related_serials:
-        related_links.append(BusinessRecord.serial_no.in_(related_serials))
+        related_links.append(scalar_in_values(BusinessRecord.serial_no, related_serials))
     related_records = list((await db.scalars(select(BusinessRecord).where(
         *related_conditions, or_(*related_links),
     ))).all()) if related_links else []
@@ -404,9 +406,9 @@ async def _customer_roi_analytics(
     customer_nos.discard("")
     customer_links = []
     if customer_ids:
-        customer_links.append(BusinessRecord.id.in_(customer_ids))
+        customer_links.append(scalar_in_values(BusinessRecord.id, customer_ids))
     if customer_nos:
-        customer_links.append(BusinessRecord.serial_no.in_(customer_nos))
+        customer_links.append(scalar_in_values(BusinessRecord.serial_no, customer_nos))
     customers = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "customer", *scope, or_(*customer_links),
     ))).all()) if customer_links else []
@@ -452,7 +454,7 @@ async def _customer_roi_analytics(
         return None
 
     transaction_conditions = [
-        FinanceTransaction.finance_record_id.in_(set(source_by_id)),
+        scalar_in_values(FinanceTransaction.finance_record_id, source_by_id),
         FinanceTransaction.transaction_type.in_({"回款", "付款", "合同付款"}),
     ]
     if date_from:

@@ -13,6 +13,7 @@ from app.security import current_identity
 from app.core.permissions import _record_scope_conditions, _require_record_module_menu
 from app.core.constants import CASE_EVENT_TIME_ZONE
 from app.core.json_relation_query import scalar_in_values
+from app.core.record_projection_query import read_record_projections
 from app.areas.contract.export_workbooks import render_workbook
 
 router = APIRouter()
@@ -34,6 +35,14 @@ PHASE_LABEL_COLUMNS = {
     "执行终结": 23, "终结执行": 23, "执行亏损": 24, "执行异议": 25,
 }
 REFUND_COLUMNS = {10: 10, 20: 11, 30: 12, 35: 13, 40: 14}
+# 统计实际读取的字段（与下面的循环保持一致；新增读取字段时必须同步这里）。
+CASE_FIELDS = ("assistant_username", "assistant", "case_phase_id", "execution_status", "case_phase_name", "case_stage")
+CASE_LEGACY_FIELDS = ("CaseAssistant", "CasePhaseId")
+FEE_FIELDS = ("refund_status", "case_record_id", "case_id", "case_no")
+FEE_LEGACY_FIELDS = ("RefundStatus",)
+CUSTOMER_FIELDS = ("customer_managers",)
+CLUE_FIELDS = ("clue_status", "customer_reviewed_at")
+CLUE_LEGACY_FIELDS = ("Status",)
 REFUND_LABELS = {"准备材料": 10, "客户盖章": 11, "已提交法院": 12, "待法院现场办理": 13, "退费到客户": 14}
 
 
@@ -45,9 +54,10 @@ def _tokens(value):
 async def stage_statistics_rows(identity, db, *, action="导出"):
     await _require_record_module_menu("case", identity, db, action=action)
     conditions = await _record_scope_conditions(identity, db)
-    cases = list((await db.scalars(select(BusinessRecord).where(
+    # 只读统计用到的字段：整条业务记录带着完整历史 JSON，案件/费用/线索合计十几万条，整条读入会让接口超时。
+    cases = await read_record_projections(db, [
         BusinessRecord.module == "case", BusinessRecord.status.not_in({"已删除", "已合并"}), *conditions,
-    ))).all())
+    ], CASE_FIELDS, legacy_fields=CASE_LEGACY_FIELDS)
     users = list((await db.scalars(select(User))).all())
     names = {user.username: user.display_name or user.username for user in users}
     usernames = {user.display_name: user.username for user in users if user.display_name}
@@ -76,12 +86,12 @@ async def stage_statistics_rows(identity, db, *, action="导出"):
             values = rows.setdefault(username, [names.get(username, username), str(datetime.now(CASE_EVENT_TIME_ZONE).date()), *([0] * 28)])
             if column is not None:
                 values[column] += 1
-    fees = list((await db.scalars(select(BusinessRecord).where(
+    fees = await read_record_projections(db, [
         BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
         or_(scalar_in_values(BusinessRecord.data["case_id"].as_integer(), by_id),
             scalar_in_values(BusinessRecord.data["case_record_id"].as_integer(), by_id),
             scalar_in_values(BusinessRecord.data["case_no"].as_string(), by_no)),
-    ))).all()) if cases else []
+    ], FEE_FIELDS, legacy_fields=FEE_LEGACY_FIELDS) if cases else []
     for fee in fees:
         data = fee.data or {}
         legacy = data.get("legacy_record") or {}
@@ -95,11 +105,11 @@ async def stage_statistics_rows(identity, db, *, action="导出"):
             for username in assistants(case):
                 if username in rows:
                     rows[username][column] += 1
-    customers = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer", *conditions))).all())
+    customers = await read_record_projections(db, [BusinessRecord.module == "customer", *conditions], CUSTOMER_FIELDS)
     customer_by_id = {item.id: item for item in customers}
-    clues = list((await db.scalars(select(BusinessRecord).where(
+    clues = await read_record_projections(db, [
         BusinessRecord.module == "clue", BusinessRecord.status != "已删除", *conditions,
-    ))).all())
+    ], CLUE_FIELDS, legacy_fields=CLUE_LEGACY_FIELDS)
     from app.core.clue_audit_scope import _customer_relations
     relations, clue_source, customer_source = _customer_relations()
     customer_links = dict((await db.execute(relations.where(
