@@ -1,0 +1,2 @@
+-r ../../apps/api-server/requirements.txt
+pyodbc==5.3.0

@@ -1,0 +1,117 @@
+{
+  "source_snapshot": "hz_crm_20260930",
+  "base_field_maps": "../hz_field_maps.py",
+  "source_files": [
+    {
+      "file": "source_copy.py",
+      "source_sha256": "cb9a8b2e74813c12b500dd5dec15cda908611a4387c6261a3d7382058c9f9876",
+      "repository_sha256": "d8e7f18a9bfd753333d6ab1f5b14d6e1e167e538d4d44c3e6450012d119f6553"
+    },
+    {
+      "file": "common.py",
+      "source_sha256": "b47f423e0d4abb2e08a390b260eed114fa85435c02d8a3334af0ec92720d18e8",
+      "repository_sha256": "b486ff17ebe65d342aa6d07d2a7221a00a13dfec0317f9b6463b41283415c54f"
+    },
+    {
+      "file": "sql_projection.py",
+      "source_sha256": "d76e455bb1dd6ebc9d143077380262d681c5e5076be4d1576b8a942f17975931",
+      "repository_sha256": "d490823c0edcbbacb6fc6889078646b2dd27b3c2cf1524eb41f04458b5568c81"
+    },
+    {
+      "file": "dictionaries.py",
+      "source_sha256": "d2f345b985452758860481bb784c5909dd11f264c59b68deb38646b2720cb500",
+      "repository_sha256": "d0a751e5c52cc51d7e4f2d46733da235f14902c47271661a3499103b5312060e"
+    },
+    {
+      "file": "people.py",
+      "source_sha256": "e80e1dbcea90ec28f1b5e084302559068199021664fa6a78802678c173905a4e",
+      "repository_sha256": "d1de9947fd26666497c31519cf8849a508c17e53f107fccf5ecaf96c145ca146"
+    },
+    {
+      "file": "business.py",
+      "source_sha256": "3bc98dde75d0d05802c6d74b182a2a4d67a0f2efa66677273e6cb351adc0e5e7",
+      "repository_sha256": "15f996946cb369e99fb8fe439852e4565f8221a59cae926c35d44b499bcc0839"
+    },
+    {
+      "file": "relations.py",
+      "source_sha256": "fc71a0ec868dc6386ee7202aba8d4470bca85c8493b3728b7b0a4d8ecd092011",
+      "repository_sha256": "afb1b0cdfe83591beead654e719b9a559e02caf41757a084e68a8f30531650b5"
+    },
+    {
+      "file": "attachments.py",
+      "source_sha256": "52456145696b3db809656c896f719f2ee74c4faaad7a8d50d4333184d76ab3f5",
+      "repository_sha256": "4c0e94459d2c40b958bd2e61222b9cbfc988dece5c95f22537b5aa848581330e"
+    },
+    {
+      "file": "finance_history.py",
+      "source_sha256": "a3d84baebb4800853ad4cba6028b0b3d9ae32afc3663f0c8bb09fac7c6af896d",
+      "repository_sha256": "dc2c899f840385095c4d555248514be25227bfa1ecaf40a4cfac4e7da0e36ff3"
+    },
+    {
+      "file": "task_history.py",
+      "source_sha256": "7852d421cc77f9be302aa66bc742c909475fa54730d40c5247735bceed42c68d",
+      "repository_sha256": "1db8d6ad49f8e68b9795592ce4f6b5ea6b00cc65bce81bd8b56e7fba56d9af25"
+    },
+    {
+      "file": "events.py",
+      "source_sha256": "8a059d01c165112646db58aa3098a535eb5057f04c647088c027cd75b270cbbb",
+      "repository_sha256": "9cc3cb72edb3d33e54674a10008cdb99f2d8245c7c4a6e0c299bd582c692b91b"
+    },
+    {
+      "file": "page_dictionaries.py",
+      "source_sha256": "74c1667c40089f6cc1a4c766397181eb237b0e625f95b95e9b182f81c1ed9eb7",
+      "repository_sha256": "35bb2a8ca7a46dde2576cd3f8d68fadc37d06ff63952f4c2e098d33beb999997"
+    },
+    {
+      "file": "page_fields.py",
+      "source_sha256": "a98904b23166ec3bd5402f173a87967f0fdc8e68db6a3ee2b3e3f3447b929ac1",
+      "repository_sha256": "4fa7e344ed8a5223d42feffe748f60dd805385e71d4ec1933df1e203a20f999d"
+    },
+    {
+      "file": "page_relations.py",
+      "source_sha256": "096d5ec2a1fe4e68b7fd4704b05e43b1ae34de90394c2c540aff49757bccfc6d",
+      "repository_sha256": "03976be95d9cf005c44149db3f3dcddb3e749b62d201e8860b8428d1f407c7b9"
+    },
+    {
+      "file": "page_subrelations.py",
+      "source_sha256": "ee775653d9f146e3bea47e48a35703112193d206d9e032d9ddd5b8fb3f0ad582",
+      "repository_sha256": "556351df41dc74283f5d6f8711cfa76a070656b5377e6fc89521e65d6e71f296"
+    },
+    {
+      "file": "page_finance.py",
+      "source_sha256": "f0a04d6fa8f776d07abb0a5a22dae5722f249c10492ce3fdfad3b15eba56d10a",
+      "repository_sha256": "7b4eceaaa886c0c146f9db1f288685b4cbd1238b64c33e8857a8e1e86dd3a2ad"
+    },
+    {
+      "file": "page_warehouse.py",
+      "source_sha256": "042c52bfa46b2af87e22d00a96577466a044d92d3099ce5d9f11afe23045a0c8",
+      "repository_sha256": "3950e650e41b396bf94e6f833941e7778c41ba259c913b1226efb438b99b93b1"
+    },
+    {
+      "file": "page_presentation.py",
+      "source_sha256": "9a95a4da5417e3b4186db73788f2b21c8ab6c0b1875b94d52a65abab7ecf7600",
+      "repository_sha256": "f56a216bbc4ed3c5b3b6c5c89f832a9f338722b73ace51ad29fed9599dbb42fb"
+    },
+    {
+      "file": "page_contract_cleanup.py",
+      "source_sha256": "3eb8e6c258ebeb12ad31c227692b693573104de34a05532cb434f1ea0b3d6bb6",
+      "repository_sha256": "ad54acfe74451ac7bf5b98a9bd9710d104afc9d08fc565f55d151847b503fbb3"
+    }
+  ],
+  "enum_values_sha256": "d1c6d45389ed364bb202512b8e0593c22245f80376d33b927595157fec75b23d",
+  "adjustments": [
+    "包内相对导入；基础字段复用既有 hz_field_maps",
+    "报告通过 HZ_ALIGNMENT_OUTPUT_DIR 写入仓库外目录",
+    "仓库内 API 位置按本文件相对路径解析",
+    "原顶层执行段移入 main，导入模块不执行数据库写入",
+    "清理拷入模块未用导入及未调用的 insert_many 辅助函数；报告位置在连接前检查"
+  ],
+  "execution_scope": "仅保存迁移实现和字段映射，未执行数据库导入或生产部署",
+  "verification": {
+    "mapping_modules": 19,
+    "semantic_ast_preserved": 18,
+    "base_field_maps_unchanged": true,
+    "enum_metadata_unchanged": true,
+    "database_execution": false
+  }
+}
