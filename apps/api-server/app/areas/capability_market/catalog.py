@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.global_agent_skills import add_global_skill, global_skill_store
+from app.global_agent_skills import add_global_skill, can_manage_global, global_skill_store
 from app.models import SystemConfig
 from app.config import settings
 from app.user_agent_skills import CUSTOM_SKILL_LIMIT, custom_skill_public, normalize_custom_skill, user_skill_config_key
@@ -72,14 +72,19 @@ def definition(item):
             "instruction": item["instruction"] + boundary, "quick_prompts": item.get("quick_prompts", [])}
 
 
-async def installed_records(identity, db):
+async def installed_records(identity, db, *, include_disabled=False):
     from app.core.documents import _user_agent_skill_store
     _, personal = await _user_agent_skill_store(identity["username"], db)
     _, global_records = await global_skill_store(db)
+    if include_disabled:
+        visible_global = global_records if can_manage_global(identity) else [record for record in global_records if record.get("enabled", True)]
+        return [*personal, *visible_global]
     return [record for record in [*personal, *global_records] if record.get("enabled", True)]
 
 
 async def install(item, scope, identity, db):
+    if item["kind"] == "connector":
+        raise HTTPException(422, "连接器需要保存并验证MCP配置，不能安装为技能")
     if item["unavailable_reason"]:
         raise HTTPException(422, item["unavailable_reason"])
     payload = definition(item)

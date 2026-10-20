@@ -32,10 +32,11 @@ class InstallInput(BaseModel):
 
 @router.get("")
 async def capability_catalog(scope: Literal['personal', 'global'] = 'personal', identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    records = await installed_records(identity, db)
+    records = await installed_records(identity, db, include_disabled=True)
     connections = await connection_states(scope, identity, db)
     return {"items": [{**public_entry(item), "installed": [{"id": record["id"],
-                "scope": "global" if record["id"].startswith("global-") else "personal"}
+                "scope": "global" if record["id"].startswith("global-") else "personal",
+                "enabled": bool(record.get("enabled", True))}
                 for record in records if record.get("source") == item["source"]],
                 "connection": connections.get(item['id'])} for item in catalog()["items"]],
             "source_commit": catalog()["source_commit"], "can_manage_global": can_manage_global(identity),
