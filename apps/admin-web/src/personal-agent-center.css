@@ -74,6 +74,7 @@
 .workspace-message-files > .workspace-message-file.is-failed { border-color: #ffccc7; background: #fff2f0; }
 .workspace-message-files > .workspace-message-file.is-failed > small { color: #cf1322; }
 .workspace-thinking { color: #788790; font-size: 13px; }
+.workspace-tool-progress { max-width: 100%; margin: 8px 0 0; overflow-wrap: anywhere; }
 .workspace-message-actions { display: flex; align-items: center; margin-top: 6px; gap: 4px; }
 .workspace-message-actions .ant-btn { color: #738592; font-size: 12px; }
 .personal-agent-page .agent-message-content > :first-child { margin-top: 0; }

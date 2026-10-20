@@ -8,6 +8,7 @@ import { SkillFileImport } from "./SkillFileImport";
 import { managedSkills, skillBase, skillScopeLabel, type SkillScope } from "./skillScope";
 import "./workspace-context.css";
 import { CapabilityMarket } from "../capability-market/CapabilityMarket";
+import { SkillRuntimeStatus } from "./SkillRuntimeStatus";
 
 type Props = { open: boolean; onClose: () => void; skills: WorkspaceSkill[]; refresh: () => Promise<void>; onSelect?: (id: string) => void; scope?: SkillScope; mode?: "manage" | "import-only" };
 type GithubPreview = { name: string; description: string; instruction: string; source: string; sha256: string; url: string };
@@ -124,10 +125,10 @@ export function SkillManager({ open, onClose, skills, refresh, onSelect, scope: 
         </Space></div>
         <SkillFileImport key={scope} scope={scope} busy={busy} onBusy={setBusy} refresh={refresh} onSelect={onSelect} />
         {ownedSkills.map((skill) => <div className="workspace-skill-row" key={skill.id}>
-          <div><b>{skill.name}</b><p>{skill.description}</p>{githubSourceUrl(skill.source) ? <a className="workspace-skill-source" href={githubSourceUrl(skill.source)!} target="_blank" rel="noopener noreferrer">GitHub 来源：{skill.source}</a> : skill.source && <span className="workspace-skill-source">来源：{skill.source.startsWith("user-upload") ? "本地上传" : skill.source === "user-custom" ? "手工创建" : skill.source}</span>}</div><Space size={2} wrap>
-            {onSelect && <Button size="small" disabled={busy || !skill.available} onClick={() => { onSelect(skill.id); onClose(); }}>使用</Button>}
+          <div><b>{skill.name}</b><p>{skill.description}</p><SkillRuntimeStatus runtime={skill.skill_runtime} enabled={skill.enabled} details />{githubSourceUrl(skill.source) ? <a className="workspace-skill-source" href={githubSourceUrl(skill.source)!} target="_blank" rel="noopener noreferrer">GitHub 来源：{skill.source}</a> : skill.source && <span className="workspace-skill-source">来源：{skill.source.startsWith("user-upload") ? "本地上传" : skill.source === "user-custom" ? "手工创建" : skill.source}</span>}</div><Space size={2} wrap>
+            {onSelect && <Button size="small" disabled={busy || !skill.available || skill.skill_runtime?.ready === false} onClick={() => { onSelect(skill.id); onClose(); }}>使用</Button>}
             {!importOnly && <>
-              <label className="workspace-skill-toggle"><Switch size="small" checked={skill.available} disabled={busy} onChange={(value) => void toggle(skill, value)} aria-label={`启用${skill.name}`} /></label>
+              <label className="workspace-skill-toggle"><Switch size="small" checked={skill.enabled === undefined ? skill.available : skill.enabled} disabled={busy} onChange={(value) => void toggle(skill, value)} aria-label={`启用${skill.name}`} /></label>
               <Tooltip title="编辑技能"><Button type="text" icon={<EditOutlined />} disabled={busy} aria-label="编辑技能" onClick={() => { setEditingId(skill.id); setTab("custom"); form.setFieldsValue({ ...skill, quick_prompts: skill.quick_prompts.join("\n") }); }} /></Tooltip>
               <Tooltip title="删除技能"><Button type="text" danger icon={<DeleteOutlined />} disabled={busy} aria-label="删除技能" onClick={() => remove(skill)} /></Tooltip>
             </>}

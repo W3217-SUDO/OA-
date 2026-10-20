@@ -18,7 +18,7 @@ import yaml
 
 from app.config import settings
 from .bridge import workspace_mcp
-from .skills import RESOURCE_TOOL, WorkspaceTools, definitions, publish
+from .skills import RESOURCE_TOOL, SCRIPT_TOOL, WorkspaceTools, definitions, publish
 from .lease import session_lease
 from .paths import filesystem_path, native_path
 
@@ -74,7 +74,7 @@ def _patch(url, token, schema, directories, mode_supported, response_mode, memor
         provider["compat"] = {"thinkingFormat": "deepseek", "supportsReasoningEffort": False}
         provider["reasoning"] = "off" if response_mode == "fast" else "high"
     allow = ["skill", *["mcp__oa__" + item["function"]["name"] for item in schema]]
-    persona = "你是沪知办公系统的 AI 助手，使用当前工作区已授权的技能和工具。技能使用 skill 加载；技能中的相对路径通过 mcp__oa__harness_read_skill_resource 读取，name 使用技能原生名称。不能运行未授权脚本或声称未执行的操作成功。工具结果及本轮最新 OA 操作状态优先于旧会话记忆。"
+    persona = "你是沪知办公系统的 AI 助手，使用当前工作区已授权的技能和工具。技能使用 skill 加载；技能中的相对路径通过 mcp__oa__harness_read_skill_resource 读取，name 使用技能原生名称。技能包中的 Node/Python/Bash 脚本通过 mcp__oa__harness_run_skill_script 执行，path 为包内相对路径，args 为参数数组；无需为每个技能新增适配器。此执行器只准公网HTTP/HTTPS，不提供OA凭据、内网或其他工作区文件，不保留临时输出文件。仅依据执行结果回答，不声称未执行的操作成功。缺少依赖或执行失败必须明确说明。外部购买、提交、删除等写操作需用户明确授权。OA 业务操作仍使用已授权工具并保留前端写入确认，不能通过技能脚本绕过。工具结果及本轮最新 OA 操作状态优先于旧会话记忆。"
     if memory is not None:
         from .memory import INSTRUCTION, TOOLS
         allow.extend('mcp__engram__' + name for name in TOOLS)
@@ -168,8 +168,8 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
                 raise HTTPException(409, "原生会话归属映射不一致，未覆盖历史记录")
         available = await definitions(identity, db)
         directories = publish(home.parent.parent / "skill-versions", available)
-        guarded = WorkspaceTools(tools, identity, db)
-        schemas = [*schema, RESOURCE_TOOL]
+        guarded = WorkspaceTools(tools, identity, db, on_progress)
+        schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL]
         from .memory import configuration as memory_configuration
         memory = memory_configuration(cwd, identity['username'])
         async with workspace_mcp(guarded, schemas) as (url, secret):

@@ -31,7 +31,7 @@ def bundle_directory(identifier):
     return filesystem_path(storage_root() / identifier)
 
 
-def _unpack(content, location, expected):
+def _unpack(content, location, expected, source_text=None):
     relative = PurePosixPath(location["path"]).parent
     selected = {}
     try:
@@ -59,7 +59,17 @@ def _unpack(content, location, expected):
                 selected[path] = archive.read(item)
     except (BadZipFile, RuntimeError, NotImplementedError) as exc:
         raise HTTPException(422, "GitHub 技能归档损坏，未安装") from exc
-    if "SKILL.md" not in selected or hashlib.sha256(selected["SKILL.md"]).hexdigest() != expected:
+    skill_content = selected.get("SKILL.md", b"")
+    if source_text is not None:
+        # 市场索引使用 UTF-8 文本及统一换行；包内原始字节仍按资源摘要保存。
+        try:
+            indexed_text = skill_content.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
+        except UnicodeDecodeError as exc:
+            raise HTTPException(409, "市场技能原文不是 UTF-8，未安装") from exc
+        valid = indexed_text == source_text and hashlib.sha256(source_text.encode("utf-8")).hexdigest() == expected
+    else:
+        valid = hashlib.sha256(skill_content).hexdigest() == expected
+    if "SKILL.md" not in selected or not valid:
         raise HTTPException(409, "技能内容在预览后发生变化，请重新预览安装")
     manifest = {path: hashlib.sha256(data).hexdigest() for path, data in sorted(selected.items())}
     identifier = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
@@ -80,6 +90,7 @@ def _unpack(content, location, expected):
 async def install_bundle(preview):
     """只在用户确认安装时下载；密钥及 OA 登录信息不传向 GitHub。"""
     from app.github_agent_skills import github_skill_location
+    from .bundle_download import download_directory
     location = github_skill_location(preview["source"])
     repository = "/".join(quote(location[key], safe="") for key in ("owner", "repo"))
     try:
@@ -90,15 +101,10 @@ async def install_bundle(preview):
             commit = response.json().get("sha")
             if not isinstance(commit, str) or not re.fullmatch(r"[a-f0-9]{40}", commit):
                 raise HTTPException(422, "GitHub 返回的技能提交无效")
-            data = bytearray()
-            async with client.stream("GET", "https://codeload.github.com/" + repository + "/zip/" + commit) as archive:
-                if archive.status_code != 200:
-                    raise HTTPException(422, "无法下载此固定提交的完整技能目录")
-                async for chunk in archive.aiter_bytes():
-                    data.extend(chunk)
-                    if len(data) > 32 * 1024 * 1024:
-                        raise HTTPException(413, "技能仓库归档超过 32 MiB 上限")
-        result = await asyncio.to_thread(_unpack, bytes(data), location, preview["sha256"])
+            if re.fullmatch(r"[a-f0-9]{40}", location["ref"]) and commit != location["ref"]:
+                raise HTTPException(409, "GitHub 返回的提交与市场固定来源不同，未安装")
+            data = await download_directory(client, repository, commit, location)
+        result = await asyncio.to_thread(_unpack, data, location, preview["sha256"], preview.get("source_text"))
         return {**result, "commit": commit}
     except (httpx.HTTPError, TimeoutError) as exc:
         raise HTTPException(502, "完整技能目录下载失败，未安装") from exc

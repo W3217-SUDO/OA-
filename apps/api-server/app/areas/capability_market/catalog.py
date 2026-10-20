@@ -13,6 +13,7 @@ from app.global_agent_skills import add_global_skill, can_manage_global, global_
 from app.models import SystemConfig
 from app.config import settings
 from app.user_agent_skills import CUSTOM_SKILL_LIMIT, custom_skill_public, normalize_custom_skill, user_skill_config_key
+from .native_install import SCRIPT_ADAPTATION_REASONS, installation_reason, install_native, native_definition
 
 
 @lru_cache(maxsize=1)
@@ -52,15 +53,27 @@ def entry(item_id):
     return result
 
 
-def public_entry(item):
+def public_entry(item, records=()):
     value = {key: value for key, value in item.items() if key not in {"instruction", "resources", "license_documents", "connection_configs", "excluded_resources"}}
+    if item.get("kind") == "skill":
+        from app.harness_agent.script_runtime import runtime_status
+        value["unavailable_reason"] = installation_reason(item)
+        installed = [record for record in records if record.get("source") == item["source"]]
+        enabled = next((record for record in installed if record.get("enabled", True)), None)
+        if enabled and enabled.get("bundle"):
+            value["skill_runtime"] = runtime_status(enabled["bundle"], enabled["instruction"])
+        else:
+            value["skill_runtime"] = {
+                "mode": "script" if item.get("unavailable_reason") in SCRIPT_ADAPTATION_REASONS else "instruction",
+                "ready": False, "missing_dependencies": [], "resource_count": 0,
+                "message": "安装完整技能资源后由 DSH 加载" if not installed else "需要补齐完整资源或启用技能"}
     if item.get("avatar_file"):
         value["avatar"] = "/capability-market/avatars/" + item["id"]
         value["avatar_fetch"] = True
     return value
 
 
-def definition(item):
+def legacy_definition(item):
     resources = list(item["resources"])
     boundary = ("\n\n## OA 接入边界\n"
                 "只使用当前 OA 助手实际提供的工具，保留用户权限和人工操作确认。"
@@ -70,6 +83,25 @@ def definition(item):
                 + "\n".join(resources))
     return {"name": item["name"], "category": item["category"], "description": item["description"],
             "instruction": item["instruction"] + boundary, "quick_prompts": item.get("quick_prompts", [])}
+
+
+def definition(item):
+    return native_definition(item) if item.get("kind") == "skill" else legacy_definition(item)
+
+
+def installed_public(record, item):
+    enabled = bool(record.get("enabled", True))
+    value = {"id": record["id"], "scope": "global" if record["id"].startswith("global-") else "personal",
+             "enabled": enabled, "available": enabled,
+             "needs_resource_sync": item.get("kind") == "skill" and not record.get("bundle")}
+    if item.get("kind") == "skill":
+        from app.harness_agent.script_runtime import runtime_status
+        runtime = runtime_status(record.get("bundle"), record["instruction"])
+        if not enabled or value["needs_resource_sync"]:
+            runtime["ready"] = False
+            runtime["message"] = "技能已停用" if not enabled else "需要补齐完整技能资源"
+        value["skill_runtime"] = runtime
+    return value
 
 
 async def installed_records(identity, db, *, include_disabled=False):
@@ -85,8 +117,13 @@ async def installed_records(identity, db, *, include_disabled=False):
 async def install(item, scope, identity, db):
     if item["kind"] == "connector":
         raise HTTPException(422, "连接器需要保存并验证MCP配置，不能安装为技能")
-    if item["unavailable_reason"]:
-        raise HTTPException(422, item["unavailable_reason"])
+    reason = installation_reason(item)
+    if reason:
+        raise HTTPException(422, reason)
+    if item["kind"] == "skill":
+        result = await install_native(item, scope, identity, db, legacy_payload=legacy_definition(item))
+        return {**custom_skill_public(result), **installed_public(result, item),
+                "instruction": result["instruction"]}
     payload = definition(item)
     if scope == "global":
         result = await add_global_skill(payload, identity, db, source=item["source"], digest=item["sha256"])

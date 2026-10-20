@@ -31,11 +31,13 @@
 .capability-market-detail .ant-drawer-body { min-width: 0; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
 .capability-market-detail .ant-drawer-content { max-height: 100dvh; }
 .capability-market-detail .ant-alert { margin: 16px 0; }
+.capability-market-detail .ant-drawer-body > p, .capability-market-detail .ant-alert { overflow-wrap: anywhere; }
 .capability-market-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; line-height: 1.65; background: #f6f8fa; padding: 12px; border-radius: 4px; }
 .capability-market-detail details { margin-top: 20px; }
 .capability-market-detail summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
 .capability-market-detail li { overflow-wrap: anywhere; }
 .capability-market-detail-actions { display: flex; justify-content: flex-end; gap: 8px; padding-bottom: env(safe-area-inset-bottom); flex-wrap: wrap; }
+.capability-market-detail-actions .ant-btn { max-width: 100%; white-space: normal; height: auto; overflow-wrap: anywhere; }
 .capability-market-tool-list article { padding: 12px 0; border-bottom: 1px solid #d8dee4; overflow-wrap: anywhere; }
 .capability-market-tool-list h3 { font-size: 14px; margin: 0; }
 .capability-market-tool-list p { font-size: 13px; }

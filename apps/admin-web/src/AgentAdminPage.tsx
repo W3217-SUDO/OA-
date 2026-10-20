@@ -8,6 +8,7 @@ import { errorText, type WorkspaceSkill } from "./personal-agent/types";
 import { CapabilityMarket } from "./capability-market/CapabilityMarket";
 import { GlobalMcpWorkspace } from "./capability-market/GlobalMcpWorkspace";
 import { SystemSkillPanel } from "./SystemSkillPanel";
+import { SkillRuntimeStatus } from "./personal-agent/SkillRuntimeStatus";
 import type { AgentSkill } from "./agentSkillRouting";
 import { refreshAgentSkillCatalogConsumers } from "./agentSkillCatalog";
 import "./agent-admin-workspace.css";
@@ -78,6 +79,11 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
     const { data } = await api.get<{ items: WorkspaceSkill[]; can_manage: boolean }>("/agent/global-skills");
     setGlobalSkills(data.items); setCanManage(data.can_manage);
   }, []);
+  const refreshGlobalConsumers = async () => {
+    const results = await Promise.allSettled([refreshGlobals(), refreshAgentSkillCatalogConsumers()]);
+    const failure = results.find(result => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,7 +129,7 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
   } });
   const deleteGlobalSkill = (skill: WorkspaceSkill) => Modal.confirm({ title: `删除全局技能“${skill.name}”？`, content: "删除后所有账号都无法再选用该技能，已有对话记录保留。", okText: "确认删除", cancelText: "取消", okButtonProps: { danger: true }, onOk: async () => {
     if (!canManage) return;
-    try { await api.delete(`/agent/global-skills/${encodeURIComponent(skill.id)}`); message.success("全局技能已删除"); await refreshGlobals(); }
+    try { await api.delete(`/agent/global-skills/${encodeURIComponent(skill.id)}`); message.success("全局技能已删除"); await refreshGlobalConsumers(); }
     catch (failure) { message.error(errorText(failure, "全局技能删除失败")); throw failure; }
   } });
   const toggleGlobalSkill = async (skill: WorkspaceSkill, enabled: boolean) => {
@@ -131,7 +137,7 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
     setUpdatingSkill(skill.id);
     try {
       await api.patch(`/agent/global-skills/${encodeURIComponent(skill.id)}`, { enabled });
-      await refreshGlobals();
+      await refreshGlobalConsumers();
       message.success(enabled ? "全局技能已启用" : "全局技能已停用");
     } catch (failure) { message.error(errorText(failure, "全局技能更新失败，请刷新确认实际状态")); throw failure; }
     finally { setUpdatingSkill(""); }
@@ -173,7 +179,7 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
           {!loading && !error && !globalSkills.length && <Empty description="尚未安装全局技能" />}
           <div className="agent-admin-skill-list">{globalSkills.map(skill => <article key={skill.id}>
             <div className="agent-admin-skill-main"><strong>{skill.name}</strong><Tag color={skill.enabled === true ? "success" : "default"}>{skill.enabled === true ? "已启用" : "已停用"}</Tag><span>{skill.category}</span>
-              <p>{skill.description}</p><small>来源：{skill.source || "系统创建"}</small></div>
+              <p>{skill.description}</p><SkillRuntimeStatus runtime={skill.skill_runtime} enabled={skill.enabled} details /><small>来源：{skill.source || "系统创建"}</small></div>
             <div className="agent-admin-skill-actions">
               <Button icon={<EyeOutlined />} onClick={() => void openSkillDefinition(skill)}>详情</Button>
               {canManage && <><Switch aria-label={`${skill.name}启用状态`} checked={skill.enabled === true} loading={updatingSkill === skill.id} disabled={!!updatingSkill} onChange={enabled => confirmToggleGlobalSkill(skill, enabled)} />
@@ -224,7 +230,7 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
       {canViewUserLibraries && <Drawer title={skillOwner ? `${skillOwner.display_name || skillOwner.username} 的个人技能详情` : "个人技能详情"} open={!!skillOwner} onClose={() => setSkillOwner(null)} width="min(760px, 100vw)">
         <Table rowKey="id" loading={skillLoading} dataSource={skillDetails} pagination={false} locale={{ emptyText: "该账号没有个人技能" }} expandable={{ expandedRowRender: (skill: UserSkill) => <Descriptions size="small" column={1} bordered><Descriptions.Item label="完整技能指令"><pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{skill.instruction || "—"}</pre></Descriptions.Item><Descriptions.Item label="快捷指令">{skill.quick_prompts?.join("、") || "—"}</Descriptions.Item></Descriptions> }} columns={[{ title: "名称", dataIndex: "name", width: 150 }, { title: "分类", dataIndex: "category", width: 90 }, { title: "说明", dataIndex: "description" }, { title: "状态", width: 80, render: (_: unknown, skill: UserSkill) => <Tag color={skill.enabled ? "success" : "default"}>{skill.enabled ? "启用" : "停用"}</Tag> }, { title: "操作", width: 80, render: (_: unknown, skill: UserSkill) => <Button danger type="link" onClick={() => deleteUserSkill(skill)}>删除</Button> }]} />
       </Drawer>}
-      {canManage && <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} scope="global" skills={globalSkills} refresh={refreshGlobals} />}
+      {canManage && <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} scope="global" skills={globalSkills} refresh={refreshGlobalConsumers} />}
       <Drawer title={selectedSkill?.name || "全局技能详情"} open={!!selectedSkill} onClose={() => setSelectedSkill(null)} width={680} rootClassName="agent-admin-definition">
         {definitionLoading && <p>正在加载技能原文…</p>}
         {definitionError && <Alert type="error" showIcon title={definitionError} action={<Button onClick={() => selectedSkill && void openSkillDefinition(selectedSkill)}>重试</Button>} />}

@@ -13,7 +13,7 @@ from app.database import get_db
 from app.global_agent_skills import can_manage_global
 from app.agent_permissions import require_agent_settings_management
 from app.security import current_identity
-from .catalog import catalog, definition, entry, install, installed_records, public_entry, summary
+from .catalog import catalog, definition, entry, install, installed_public, installed_records, public_entry, summary
 from .connector_routes import router as connector_router
 from .connector_store import connection_states
 from .personal_mcp_routes import router as personal_mcp_router
@@ -34,9 +34,7 @@ class InstallInput(BaseModel):
 async def capability_catalog(scope: Literal['personal', 'global'] = 'personal', identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     records = await installed_records(identity, db, include_disabled=True)
     connections = await connection_states(scope, identity, db)
-    return {"items": [{**public_entry(item), "installed": [{"id": record["id"],
-                "scope": "global" if record["id"].startswith("global-") else "personal",
-                "enabled": bool(record.get("enabled", True))}
+    return {"items": [{**public_entry(item, records), "installed": [installed_public(record, item)
                 for record in records if record.get("source") == item["source"]],
                 "connection": connections.get(item['id'])} for item in catalog()["items"]],
             "source_commit": catalog()["source_commit"], "can_manage_global": can_manage_global(identity),
@@ -44,9 +42,10 @@ async def capability_catalog(scope: Literal['personal', 'global'] = 'personal', 
 
 
 @router.get("/items/{item_id}")
-async def capability_definition(item_id: str, _=Depends(current_identity)):
+async def capability_definition(item_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     item = entry(item_id)
-    return {**public_entry(item), "instruction": definition(item)["instruction"],
+    records = await installed_records(identity, db, include_disabled=True)
+    return {**public_entry(item, records), "instruction": definition(item)["instruction"],
             "resources": list(item["resources"]), "license_documents": item["license_documents"],
             "connection_configs": item.get("connection_configs", {}), "excluded_resources": item.get("excluded_resources", [])}
 

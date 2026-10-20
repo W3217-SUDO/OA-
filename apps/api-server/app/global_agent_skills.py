@@ -24,7 +24,7 @@ def can_manage_global(identity):
 
 async def global_skill_store(db, *, lock=False):
     query = select(SystemConfig).where(SystemConfig.key == GLOBAL_SKILL_CONFIG_KEY)
-    item = await db.scalar(query.with_for_update() if lock else query)
+    item = await db.scalar(query.with_for_update().execution_options(populate_existing=True) if lock else query)
     if item is None:
         return None, []
     value = item.value or {}

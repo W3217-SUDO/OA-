@@ -1,7 +1,8 @@
 import type { AgentSkill } from "../agentSkillRouting";
 import { agentOperationError, type AgentActionPreview } from "../AgentOperationPreview";
 
-export type WorkspaceSkill = AgentSkill & { custom?: boolean; enabled?: boolean; instruction?: string; source?: string; sha256?: string; scope?: "system" | "global" | "personal" };
+export type SkillRuntime = { mode: "instruction" | "script"; ready: boolean; missing_dependencies: string[]; resource_count: number; message: string };
+export type WorkspaceSkill = AgentSkill & { custom?: boolean; enabled?: boolean; instruction?: string; source?: string; sha256?: string; scope?: "system" | "global" | "personal"; skill_runtime?: SkillRuntime };
 export type ResponseMode = "fast" | "deep";
 export type MaterialStatus = "cached" | "readable" | "failed";
 export type Material = { id: number; name: string; case_id?: number; status?: MaterialStatus; error?: string };

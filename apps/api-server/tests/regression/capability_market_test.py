@@ -9,6 +9,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from copy import deepcopy
 from pathlib import Path
+import hashlib
+from io import BytesIO
+import tempfile
+from zipfile import ZipFile
 
 import httpx
 from sqlalchemy import select
@@ -127,6 +131,94 @@ class CapabilityMarketTest(unittest.IsolatedAsyncioTestCase):
         blocked = await self.client.post(self.base + "/items/" + connector["id"] + "/install",
                                          json={"scope": "personal", "sha256": connector["sha256"]}, headers=self.headers)
         self.assertEqual(blocked.status_code, 422)
+
+    async def test_native_market_install_keeps_resources_owner_idempotency_and_disabled_state(self):
+        from fastapi import HTTPException
+        from app.harness_agent.bundles import _unpack, read_resource
+        from app.github_agent_skills import github_skill_location
+        from app.areas.capability_market.catalog import legacy_definition
+        from app.core.documents import _save_user_agent_skills
+        from app.user_agent_skills import normalize_custom_skill
+
+        item = next(entry(value['id']) for value in catalog()['items'] if value['name'] == 'china-litigation-toolkit')
+        raw = item['resources']['SKILL.md'].encode()
+        archive = BytesIO()
+        location = github_skill_location(item['source'])
+        root = 'repo/' + str(Path(location['path']).parent).replace('\\', '/') + '/'
+        with ZipFile(archive, 'w') as package:
+            package.writestr(root + 'SKILL.md', raw)
+            package.writestr(root + 'scripts/calculate_lawsuit_fee.py', b'print(100)\n')
+        with tempfile.TemporaryDirectory() as temporary, patch('app.harness_agent.bundles.storage_root', return_value=Path(temporary)):
+            bundle = _unpack(archive.getvalue(), location, hashlib.sha256(raw).hexdigest())
+            bundle['commit'] = location['ref']
+            existing = normalize_custom_skill({**legacy_definition(item), 'sha256': item['sha256'], 'enabled': False}, source=item['source'])
+            async with self.sessions() as db:
+                await _save_user_agent_skills('CODEX-CAPABILITY-USER', [existing], {'username': 'CODEX-CAPABILITY-USER'}, db)
+            url = self.base + '/items/' + item['id'] + '/install'
+            body = {'scope': 'personal', 'sha256': item['sha256']}
+            with patch('app.areas.capability_market.native_install.install_bundle', AsyncMock(return_value=bundle)) as download:
+                installed = await self.client.post(url, json=body, headers=self.headers)
+                self.assertEqual(installed.status_code, 200, installed.text)
+                self.assertEqual(installed.json()['id'], existing['id'])
+                self.assertFalse(installed.json()['enabled'])
+                self.assertEqual(installed.json()['instruction'], item['instruction'])
+                repeated = await self.client.post(url, json=body, headers=self.headers)
+                self.assertEqual(repeated.status_code, 200, repeated.text)
+                self.assertEqual(download.await_count, 1)
+            async with self.sessions() as db:
+                row = await db.scalar(select(SystemConfig).where(SystemConfig.key.startswith('agent_skills_')))
+                saved = deepcopy(row.value['skills'][0])
+                self.assertEqual(read_resource(saved['bundle'], 'scripts/calculate_lawsuit_fee.py'), b'print(100)\n')
+                self.assertEqual(saved['id'], existing['id'])
+                self.assertFalse(saved['enabled'])
+                saved['instruction'] += '\n用户编辑内容必须保留'
+                row.value = {**row.value, 'skills': [saved]}
+                await db.commit()
+            async with self.sessions() as db:
+                row = await db.scalar(select(SystemConfig).where(SystemConfig.key.startswith('agent_skills_')))
+                self.assertTrue(row.value['skills'][0]['instruction'].endswith('用户编辑内容必须保留'))
+            with patch('app.areas.capability_market.native_install.install_bundle', AsyncMock()) as download:
+                conflict = await self.client.post(url, json=body, headers=self.headers)
+                self.assertEqual(conflict.status_code, 409, conflict.text)
+                download.assert_not_awaited()
+            async with self.sessions() as db:
+                with self.assertRaises(HTTPException):
+                    await _agent_skill_for_identity(existing['id'], {'username': 'CODEX-CAPABILITY-OTHER', 'role': 'user'}, db)
+
+    async def test_native_global_requires_manager_and_preserves_unrelated_adaptation_errors(self):
+        from app.areas.capability_market.native_install import installation_reason
+        from app.harness_agent.bundles import _unpack
+        from app.github_agent_skills import github_skill_location
+        item = next(entry(value['id']) for value in catalog()['items'] if value['name'] == 'china-litigation-toolkit')
+        self.assertFalse(installation_reason(item))
+        for changed in ({'kind': 'team'}, {'dependencies': ['external-service']}, {'instruction': 'TeamCreate protected tool'},
+                        {'unavailable_reason': '包格式需要适配，未安装：ValueError'}):
+            self.assertTrue(installation_reason({**item, **changed}))
+        location = github_skill_location(item['source'])
+        content = BytesIO()
+        raw = item['resources']['SKILL.md'].encode()
+        with ZipFile(content, 'w') as archive:
+            archive.writestr('repo/' + str(Path(location['path']).parent).replace('\\', '/') + '/SKILL.md', raw)
+        url = self.base + '/items/' + item['id'] + '/install'
+        body = {'scope': 'global', 'sha256': item['sha256']}
+        with tempfile.TemporaryDirectory() as temporary, patch('app.harness_agent.bundles.storage_root', return_value=Path(temporary)):
+            bundle = _unpack(content.getvalue(), location, hashlib.sha256(raw).hexdigest())
+            bundle['commit'] = location['ref']
+            download = AsyncMock(return_value=bundle)
+            with patch('app.areas.capability_market.native_install.install_bundle', download):
+                denied = await self.client.post(url, json=body, headers=self.headers)
+                self.assertEqual(denied.status_code, 403)
+                download.assert_not_awaited()
+                installed = await self.client.post(url, json=body, headers=self.admin_headers)
+                self.assertEqual(installed.status_code, 200, installed.text)
+                repeated = await self.client.post(url, json=body, headers=self.admin_headers)
+                self.assertEqual(repeated.status_code, 200, repeated.text)
+                self.assertEqual(installed.json()['id'], repeated.json()['id'])
+                self.assertEqual(download.await_count, 1)
+        async with self.sessions() as db:
+            row = await db.scalar(select(SystemConfig).where(SystemConfig.key == 'agent_global_skills_v1'))
+            self.assertEqual(len(row.value['skills']), 1)
+            self.assertEqual(row.value['skills'][0]['bundle'], bundle)
 
     async def test_connector_encryption_scope_revision_and_private_network_block(self):
         from app.areas.capability_market.connector_store import CONNECTOR_CONFIG_PREFIX, decrypt

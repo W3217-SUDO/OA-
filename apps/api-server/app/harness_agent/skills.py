@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -71,20 +72,46 @@ RESOURCE_TOOL = {"type": "function", "function": {
                     "offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 1, "maximum": 16000}},
                     "required": ["name", "path"], "additionalProperties": False}}}
 
+SCRIPT_TOOL = {"type": "function", "function": {
+    "name": "harness_run_skill_script", "description": "在受控容器中执行当前账号已安装且启用技能包内的 Node/Python/Bash 脚本。先用 skill 加载指令；name 为原生技能名，path 为包内相对脚本路径，args 为独立参数数组，指令的baseDir在此环境对应/skill，临时输出目录为/work。仅准公网HTTP/HTTPS，不提供OA凭据和内网访问，不保留临时输出文件；失败和缺依赖必须如实说明。",
+    "parameters": {"type": "object", "properties": {"name": {"type": "string"},
+        "path": {"type": "string", "maxLength": 500}, "args": {"type": "array", "maxItems": 32,
+        "items": {"type": "string", "maxLength": 2000}}}, "required": ["name", "path", "args"],
+        "additionalProperties": False}}}
+
 
 class WorkspaceTools:
-    def __init__(self, delegate, identity, db):
+    def __init__(self, delegate, identity, db, on_progress=None):
         self.delegate, self.identity, self.db = delegate, identity, db
+        self.on_progress = on_progress
 
     async def execute(self, name, arguments):
-        if name != "harness_read_skill_resource":
+        if name not in {"harness_read_skill_resource", "harness_run_skill_script"}:
             return await self.delegate.execute(name, arguments)
-        if not isinstance(arguments, dict) or set(arguments) - {"name", "path", "offset", "limit"}:
+        allowed = {"name", "path", "args"} if name == "harness_run_skill_script" else {"name", "path", "offset", "limit"}
+        if not isinstance(arguments, dict) or set(arguments) - allowed:
             raise HTTPException(422, "技能资源参数错误")
         available = await definitions(self.identity, self.db)
         skill = next((item for item in available if native_name(item.id) == arguments.get("name")), None)
         if skill is None:
             raise HTTPException(404, "技能不存在或当前账号无权使用")
+        if name == "harness_run_skill_script":
+            from .script_runtime import run_script
+            if self.on_progress:
+                await self.on_progress("正在执行技能：" + skill.name)
+            try:
+                result = await run_script(skill, arguments.get("path"), arguments.get("args"))
+            except asyncio.CancelledError:
+                if self.on_progress:
+                    await self.on_progress("技能执行已停止：" + skill.name)
+                raise
+            except Exception:
+                if self.on_progress:
+                    await self.on_progress("技能执行失败：" + skill.name)
+                raise
+            if self.on_progress:
+                await self.on_progress(("技能执行失败：" if result["isError"] else "技能执行完成：") + skill.name)
+            return result
         relative = PurePosixPath(str(arguments.get("path", "")))
         if relative.is_absolute() or ".." in relative.parts or "\\" in str(relative) or not relative.parts:
             raise HTTPException(422, "技能资源路径无效")

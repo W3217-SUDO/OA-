@@ -1,0 +1,26 @@
+[Unit]
+Description=OA isolated skill runner broker
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+EnvironmentFile=/etc/sunhold/skill-runner.env
+# 管理员按实际不可变包与 Python 路径填写启动命令，不加载 OA 的生产环境文件。
+ExecStart=/usr/bin/env ${OA_SKILL_RUNNER_PYTHON} -m app.harness_agent.script_broker
+RuntimeDirectory=oa-skill-runner
+RuntimeDirectoryMode=0750
+UMask=0077
+NoNewPrivileges=yes
+# Docker 守护进程必须能看见 broker 生成的只读临时技能包；API 的 PrivateTmp 保持原配置。
+PrivateTmp=no
+Restart=on-failure
+RestartSec=3
+MemoryMax=512M
+TasksMax=64
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

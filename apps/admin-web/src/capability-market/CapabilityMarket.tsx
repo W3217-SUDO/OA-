@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Drawer, Empty, Input, Pagination, Segmented, Skeleton, Tabs, Tag, Tooltip, message } from "antd";
 import { AppstoreOutlined, CheckOutlined, DownloadOutlined, LinkOutlined, ReloadOutlined, RobotOutlined, SearchOutlined, TeamOutlined, ToolOutlined } from "@ant-design/icons";
 import { api } from "../api";
-import { errorText, type WorkspaceSkill } from "../personal-agent/types";
+import { errorText, type SkillRuntime, type WorkspaceSkill } from "../personal-agent/types";
+import { SkillRuntimeStatus } from "../personal-agent/SkillRuntimeStatus";
+import { refreshAgentSkillCatalogConsumers } from "../agentSkillCatalog";
 import { skillScopeLabel, type SkillScope } from "../personal-agent/skillScope";
 import "./capability-market.css";
 import { CapabilityAvatar } from "./CapabilityAvatar";
@@ -12,7 +14,8 @@ type Capability = {
   id: string; kind: "expert" | "team" | "skill" | "connector"; name: string; description: string; category: string;
   author: string; license: string; version: string; tags: string[]; avatar: string; avatar_fetch?: boolean; source: string;
   members: { id: string; name: string; profession: string }[]; unavailable_reason: string; sha256: string;
-  installed: { id: string; scope: SkillScope }[];
+  installed: { id: string; scope: SkillScope; enabled?: boolean; available?: boolean; skill_runtime?: SkillRuntime; needs_resource_sync?: boolean }[];
+  skill_runtime?: SkillRuntime;
   connection?: { status: string; saved: boolean } | null;
 };
 type Definition = Omit<Capability, "installed"> & {
@@ -90,16 +93,25 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
   const installed = current?.installed.find(record => record.scope === scope);
   const savedSkill = managementView && current?.kind === "skill" ? installedSkills.find(skill => skill.source === current.source) : undefined;
   const selectedInstalled = installed || savedSkill;
+  const installedEnabled = savedSkill?.enabled ?? installed?.enabled;
+  const selectedRuntime = savedSkill?.skill_runtime || installed?.skill_runtime || detail?.skill_runtime;
+  const needsResourceSync = installed?.needs_resource_sync === true;
+  const canSelectInstalled = !!installed && installedEnabled !== false && (savedSkill?.available ?? installed.available) !== false && selectedRuntime?.ready !== false;
+  const refreshSkillConsumers = async (skill: WorkspaceSkill) => {
+    const results = await Promise.allSettled([Promise.resolve().then(() => onInstalled?.(skill)), refreshAgentSkillCatalogConsumers()]);
+    const failure = results.find(result => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
+  };
   const install = async () => {
-    if (!detail || !selected || operation.current || selectedInstalled || (managementView && (!canManage || selected.kind !== "skill"))) return;
+    if (!detail || !selected || operation.current || detail.unavailable_reason || (selectedInstalled && !needsResourceSync) || (managementView && (!canManage || selected.kind !== "skill"))) return;
     operation.current = true; setBusy(true); setDetailError("");
     let saved: WorkspaceSkill | null = null;
     try {
       const { data } = await api.post<WorkspaceSkill>(`/capability-market/items/${selected.id}/install`, { scope, sha256: detail.sha256 });
       saved = data;
-      setItems(previous => previous.map(item => item.id === selected.id ? { ...item, installed: [...item.installed.filter(record => record.scope !== scope), { id: data.id, scope }] } : item));
-      await onInstalled?.(data);
-      message.success(data.available ? `已安装到${skillScopeLabel(scope)}` : "已安装的技能处于停用状态，请在技能库启用");
+      setItems(previous => previous.map(item => item.id === selected.id ? { ...item, installed: [...item.installed.filter(record => record.scope !== scope), { id: data.id, scope, enabled: data.enabled, available: data.available, skill_runtime: data.skill_runtime, needs_resource_sync: false }] } : item));
+      await refreshSkillConsumers(data);
+      message.success(data.enabled === false ? "技能资源已保存；技能仍处于停用状态，请在技能库启用" : data.skill_runtime?.ready === false ? "技能已安装；运行依赖尚未就绪，请查看技能状态" : data.available ? `已安装到${skillScopeLabel(scope)}` : "已安装的技能处于停用状态，请在技能库启用");
     } catch (failure) {
       if (saved) setRefreshPending(saved);
       setDetailError(saved ? `能力已安装，但技能库刷新失败：${errorText(failure, "请刷新技能库")}` : errorText(failure, "安装失败"));
@@ -108,10 +120,15 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
   const refreshInstalled = async () => {
     if (!refreshPending || operation.current) return;
     operation.current = true; setBusy(true);
-    try { await onInstalled?.(refreshPending); setRefreshPending(null); setDetailError(""); }
+    try { await refreshSkillConsumers(refreshPending); setRefreshPending(null); setDetailError(""); }
     catch (failure) { setDetailError(`能力已安装，但技能库刷新失败：${errorText(failure, "请刷新技能库")}`); }
     finally { operation.current = false; setBusy(false); }
   };
+  const installAction = refreshPending ? <Button type="primary" icon={<ReloadOutlined />} loading={busy} onClick={() => void refreshInstalled()}>刷新技能库</Button>
+    : needsResourceSync ? <Button type="primary" icon={<DownloadOutlined />} loading={busy} disabled={!detail || !!detail.unavailable_reason || (managementView && !canManage)} onClick={() => void install()}>补齐技能资源</Button>
+    : installedEnabled === false && onManageInstalled ? <Button type="primary" onClick={() => { setSelected(null); onManageInstalled(); }}>已安装 · 已停用，去启用</Button>
+    : canSelectInstalled && onSelect ? <Button type="primary" icon={<CheckOutlined />} disabled={busy} onClick={() => { onSelect(installed!.id); setSelected(null); }}>使用</Button>
+    : <Button type="primary" icon={selectedInstalled ? <CheckOutlined /> : <DownloadOutlined />} loading={busy} disabled={!detail || !!detail.unavailable_reason || !!selectedInstalled || (managementView && !canManage)} onClick={() => void install()}>{selectedInstalled ? installedEnabled === false ? "已安装 · 已停用" : selectedRuntime?.ready === false ? "已安装 · 依赖未就绪" : "已安装" : managementView && !canManage ? "只读" : `安装到${skillScopeLabel(scope)}`}</Button>;
 
   return <section className="capability-market" aria-label={managementView ? "全局技能与连接器市场" : "专家、技能与连接器"}>
     <header className="capability-market-header">
@@ -139,15 +156,22 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
       </div>
       <Tabs className="capability-market-categories" activeKey={category} onChange={setCategory} items={categories.map(value => ({ key: value, label: value }))} />
       {loading && !items.length ? <Skeleton active paragraph={{ rows: 5 }} /> : !matching.length ? <Empty description={mine ? "尚未安装此类能力" : "没有匹配的能力"} /> : <div className="capability-market-grid">
-        {matching.slice((page - 1) * 24, page * 24).map(item => <article className="capability-market-card" key={item.id}>
+        {matching.slice((page - 1) * 24, page * 24).map(item => {
+          const record = item.installed.find(entry => entry.scope === scope);
+          const saved = managementView ? installedSkills.find(skill => skill.source === item.source) : undefined;
+          const hasInstalled = !!record || !!saved;
+          const enabled = saved?.enabled ?? record?.enabled;
+          const runtime = saved?.skill_runtime || record?.skill_runtime || item.skill_runtime;
+          return <article className="capability-market-card" key={item.id}>
           <div className="capability-market-card-heading">
             <CapabilityAvatar source={item.avatar} authenticated={item.avatar_fetch} />
             <div><h3>{item.name}</h3><small>{item.author || item.license}</small></div>
           </div>
           <p>{item.description}</p>
           <div className="capability-market-tags">{item.tags.map(tag => <Tag key={tag}>{tag}</Tag>)}{!item.tags.length && <Tag>{item.category}</Tag>}</div>
-          <footer><span>{managementView && installedSkills.some(skill => skill.source === item.source && skill.enabled === false) ? "已安装 · 已停用" : item.installed.some(record => record.scope === scope) || (managementView && installedSkills.some(skill => skill.source === item.source)) ? "已安装" : item.unavailable_reason ? "待适配" : managementView && !canManage ? "只读" : managementView || tab === "skills" ? "可安装" : "可导入指令"}</span><Button size="small" onClick={() => setSelected(item)}>查看详情</Button></footer>
-        </article>)}
+          <SkillRuntimeStatus runtime={runtime} enabled={hasInstalled ? enabled : undefined} />
+          <footer><span>{hasInstalled ? record?.needs_resource_sync ? "已安装 · 待补齐资源" : enabled === false ? "已安装 · 已停用" : "已安装" : item.unavailable_reason ? "待适配" : managementView && !canManage ? "只读" : managementView || tab === "skills" ? "可安装" : "可导入指令"}</span><Button size="small" onClick={() => setSelected(item)}>查看详情</Button></footer>
+        </article>; })}
       </div>}
       {matching.length > 24 && <Pagination className="capability-market-pagination" current={page} pageSize={24} total={matching.length} onChange={setPage} showSizeChanger={false} responsive />}
     </>}
@@ -168,12 +192,14 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
       {connectors.length > 24 && <Pagination className="capability-market-pagination" current={page} pageSize={24} total={connectors.length} onChange={setPage} showSizeChanger={false} responsive />}
     </>}
     <Drawer open={active && !!selected} onClose={() => { if (!busy) setSelected(null); }} title={selected?.name} width={680} zIndex={1500} rootClassName="capability-market-detail" maskClosable={!busy} closable={!busy}
-      footer={<div className="capability-market-detail-actions"><Button disabled={busy} onClick={() => setSelected(null)}>关闭</Button>{selected?.kind !== "connector" && (!managementView || selected?.kind === "skill") && (refreshPending ? <Button type="primary" icon={<ReloadOutlined />} loading={busy} onClick={() => void refreshInstalled()}>刷新技能库</Button> : installed && onSelect ? <Button type="primary" icon={<CheckOutlined />} disabled={busy} onClick={() => { onSelect(installed.id); setSelected(null); }}>使用</Button> : savedSkill?.enabled === false && onManageInstalled ? <Button type="primary" onClick={() => { setSelected(null); onManageInstalled(); }}>已安装 · 已停用，去启用</Button> : <Button type="primary" icon={selectedInstalled ? <CheckOutlined /> : <DownloadOutlined />} loading={busy} disabled={!detail || !!detail.unavailable_reason || !!selectedInstalled || (managementView && !canManage)} onClick={() => void install()}>{selectedInstalled ? "已安装" : managementView && !canManage ? "只读" : `安装到${skillScopeLabel(scope)}`}</Button>)}</div>}>
+      footer={<div className="capability-market-detail-actions"><Button disabled={busy} onClick={() => setSelected(null)}>关闭</Button>{selected?.kind !== "connector" && (!managementView || selected?.kind === "skill") && installAction}</div>}>
       {detailLoading ? <Skeleton active /> : detail && <>
         <p>{detail.description}</p><div className="capability-market-tags"><Tag>{detail.category}</Tag><Tag>{detail.license}</Tag>{detail.version && <Tag>v{detail.version}</Tag>}</div>
         <a href={detail.source} target="_blank" rel="noopener noreferrer">原始来源</a>
         {managementView && detail.kind === "skill" && <p>安装范围：全局。启用后全所账号可选用；OA 工具仍按登录账号权限执行，写入操作须在前端确认。</p>}
         {managementView && detail.kind === "skill" && <p>技能原文 SHA256：{detail.sha256}</p>}
+        {detail.kind === "skill" && <SkillRuntimeStatus runtime={selectedRuntime} enabled={installedEnabled} details />}
+        {needsResourceSync && <Alert type="info" showIcon title="已安装的版本缺少完整资源包" description="补齐后 DSH 才能读取技能脚本和参考资料；原启用状态保持不变。" />}
         {detail.kind === "connector" && (!managementView || canManage ? <ConnectorConfigPanel key={detail.id} itemId={detail.id} name={detail.name} scope={scope} onBusy={setBusy} onChanged={state => setItems(previous => previous.map(item => item.id === detail.id ? { ...item, connection: { status: state.status, saved: state.saved } } : item))} /> : <Alert type="info" showIcon title={`当前账号只读；${connectionLabel(current?.connection?.status)}`} />)}
         {detail.kind !== "connector" && detail.unavailable_reason && <Alert type="warning" showIcon title={detail.unavailable_reason} />}
         {detail.members.length > 1 && <section><h3><TeamOutlined /> 成员</h3>{detail.members.map(member => <p key={member.id}>{member.name} · {member.profession}</p>)}</section>}

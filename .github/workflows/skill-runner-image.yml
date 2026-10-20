@@ -1,0 +1,50 @@
+name: OA skill runner image
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - deploy/skill-runner/Dockerfile
+      - .github/workflows/skill-runner-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated runtime dependency image
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runner-artifact
+          docker pull node:22-bookworm-slim
+          BASE_IMAGE=$(docker image inspect node:22-bookworm-slim --format '{{index .RepoDigests 0}}')
+          docker build --build-arg RUNNER_BASE="$BASE_IMAGE" -t "oa-skill-runner:$GITHUB_SHA" deploy/skill-runner
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint /bin/bash "oa-skill-runner:$GITHUB_SHA" -ec '/usr/bin/node --version; /usr/bin/python3 --version'
+          IMAGE_ID=$(docker image inspect "oa-skill-runner:$GITHUB_SHA" --format '{{.Id}}')
+          docker save "oa-skill-runner:$GITHUB_SHA" | gzip -1 > runner-artifact/runner.tar.gz
+          export BASE_IMAGE IMAGE_ID
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          output = pathlib.Path('runner-artifact')
+          receipt = {
+              'source_commit': os.environ['GITHUB_SHA'],
+              'image_id': os.environ['IMAGE_ID'],
+              'base_image': os.environ['BASE_IMAGE'],
+              'dockerfile_sha256': hashlib.sha256(pathlib.Path('deploy/skill-runner/Dockerfile').read_bytes()).hexdigest(),
+              'archive_sha256': hashlib.file_digest((output / 'runner.tar.gz').open('rb'), 'sha256').hexdigest(),
+          }
+          (output / 'image-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oa-skill-runner-${{ github.sha }}
+          path: runner-artifact/
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0

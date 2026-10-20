@@ -28,6 +28,7 @@ async def workspace_mcp(tools, schemas):
     serial = asyncio.Lock()
     application = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
     functions = {item["function"]["name"]: item["function"] for item in schemas}
+    script_calls = {}
 
     @application.post("/mcp")
     async def invoke(request: Request):
@@ -46,6 +47,11 @@ async def workspace_mcp(tools, schemas):
             raise HTTPException(422, "MCP 请求格式错误")
         method, params = payload.get("method"), payload.get("params", {})
         if "id" not in payload:
+            if method == "notifications/cancelled" and isinstance(params, dict):
+                identifier = params.get("requestId")
+                if type(identifier) in {str, int} and identifier in script_calls:
+                    script_calls[identifier].cancel()
+                return Response(status_code=202)
             if method in {"notifications/initialized", "notifications/cancelled"}:
                 return Response(status_code=202)
             raise HTTPException(422, "未知 MCP 通知")
@@ -67,13 +73,47 @@ async def workspace_mcp(tools, schemas):
             return {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, default=str)}],
                     "isError": bool(isinstance(result, dict) and result.get("isError"))}
 
+        script = method == "tools/call" and isinstance(params, dict) and params.get("name") == "harness_run_skill_script"
+        task, monitor = None, None
         try:
             # 继承原请求的身份、案件范围和事务，不接受模型提供的用户名或令牌。
-            result = await context.run(asyncio.create_task, execute())
+            if script:
+                identifier = payload["id"]
+                if type(identifier) not in {str, int} or identifier in script_calls:
+                    raise HTTPException(422, "技能脚本请求编号无效或重复")
+                task = context.run(asyncio.create_task, execute())
+                script_calls[identifier] = task
+
+                async def disconnected():
+                    while not await request.is_disconnected():
+                        await asyncio.sleep(0.1)
+
+                monitor = asyncio.create_task(disconnected())
+                done, _ = await asyncio.wait({task, monitor}, return_when=asyncio.FIRST_COMPLETED)
+                if monitor in done:
+                    task.cancel()
+                result = await task
+            else:
+                result = await context.run(asyncio.create_task, execute())
             return JSONResponse({"jsonrpc": "2.0", "id": payload["id"], "result": result})
+        except asyncio.CancelledError:
+            if not script:
+                raise
+            return JSONResponse({"jsonrpc": "2.0", "id": payload["id"],
+                                 "error": {"code": -32800, "message": "技能脚本调用已取消"}})
         except HTTPException as exc:
             return JSONResponse({"jsonrpc": "2.0", "id": payload["id"],
                                  "error": {"code": -32000, "message": str(exc.detail)}})
+        finally:
+            if task is not None:
+                if script_calls.get(payload["id"]) is task:
+                    script_calls.pop(payload["id"])
+                if not task.done():
+                    task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            if monitor is not None:
+                monitor.cancel()
+                await asyncio.gather(monitor, return_exceptions=True)
 
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))
@@ -90,6 +130,10 @@ async def workspace_mcp(tools, schemas):
                 await asyncio.sleep(0.01)
         yield f"http://127.0.0.1:{listener.getsockname()[1]}/mcp", secret
     finally:
+        pending = list(script_calls.values())
+        for running in pending:
+            running.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
         server.should_exit = True
         try:
             await asyncio.wait_for(task, 5)

@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     deepseek_harness_root: str = ""
     deepseek_harness_cache_root: str = ""
     deepseek_harness_memory_command: str = ""
+    deepseek_harness_skill_socket: str = ""
     # 个人智能体的身份文件和会话记录放在上传目录之外，不能被公开附件路由直接访问。
     personal_agent_root: str = ""
     sms_webhook_url: str = ""

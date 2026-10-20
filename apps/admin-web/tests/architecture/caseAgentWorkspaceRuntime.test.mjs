@@ -424,6 +424,84 @@ test("capability market previews before install and preserves persisted success 
   await act(async () => { renderer.unmount(); });
 });
 
+test("市场补齐旧资源复用安装接口，刷新管理库及真实订阅目录并保留停用和依赖状态", async () => {
+  for (const scenario of [{ enabled: true, ready: true }, { enabled: true, ready: false }, { enabled: false, ready: false }]) {
+    const requests = [], notices = [], selected = [];
+    const catalog = loadModule("../agentSkillCatalog.ts", {});
+    const runtime = { mode: "script", ready: scenario.ready, missing_dependencies: scenario.enabled && !scenario.ready ? ["node"] : [], resource_count: 2, message: scenario.ready ? "运行环境就绪" : "当前运行环境未就绪" };
+    const saved = { id: "global-script", name: "脚本技能", scope: "global", enabled: scenario.enabled, available: scenario.enabled, skill_runtime: runtime };
+    const item = { id: "c".repeat(24), kind: "skill", name: "脚本技能", description: "读取真实资源", category: "办公", author: "技能作者", license: "MIT", version: "1", tags: [], avatar: "", source: "https://example.org/skill", members: [], unavailable_reason: "", sha256: "d".repeat(64), installed: [{ id: saved.id, scope: "global", enabled: scenario.enabled, available: scenario.enabled, needs_resource_sync: true, skill_runtime: { ...runtime, ready: false, resource_count: 0 } }] };
+    let stored = null, consumerSkills = [], globalSkills = [];
+    const api = {
+      get: async path => {
+        requests.push({ method: "GET", path });
+        if (path === "/capability-market") return { data: { items: [item] } };
+        if (path === `/capability-market/items/${item.id}`) return { data: { ...item, instruction: "完整脚本技能指令", resources: ["scripts/query.mjs"], license_documents: {}, connection_configs: {}, excluded_resources: [] } };
+        assert.ok(["/agent/skills", "/agent/global-skills"].includes(path));
+        return { data: { items: stored ? [stored] : [] } };
+      },
+      post: async (path, body) => { requests.push({ method: "POST", path, body }); stored = saved; return { data: saved }; },
+    };
+    const unsubscribe = catalog.subscribeAgentSkillCatalog(async () => { consumerSkills = (await api.get("/agent/skills")).data.items; });
+    const { CapabilityMarket } = loadModule("../capability-market/CapabilityMarket.tsx", {
+      antd: { Alert: "alert", Button: "button", Drawer: ({ open, footer, children }) => open ? React.createElement("drawer", null, children, footer) : null, Empty: "empty", Input: "input", Pagination: "pagination", Segmented: "segmented", Skeleton: "skeleton", Tabs: "tabs", Tag: "tag", Tooltip: "tooltip", message: { success: value => notices.push(value) } },
+      "./CapabilityAvatar": { CapabilityAvatar: "avatar" }, "../agentSkillCatalog": catalog,
+      "../personal-agent/types": { errorText: (error, fallback) => error.message || fallback }, "../api": { api },
+    });
+    let renderer;
+    const button = label => renderer.root.findAllByType("button").find(control => control.props.children === label);
+    try {
+      await act(async () => { renderer = create(React.createElement(CapabilityMarket, { active: true, managementView: true, scope: "global", onSelect: id => selected.push(id), onInstalled: async () => { globalSkills = (await api.get("/agent/global-skills")).data.items; } })); });
+      await act(async () => { button("查看详情").props.onClick(); });
+      assert.equal(requests.filter(request => request.method === "POST").length, 0, "查看旧技能不自动重装");
+      assert.equal(button("补齐技能资源").props.disabled, false);
+      await act(async () => { button("补齐技能资源").props.onClick(); });
+      const writes = requests.filter(request => request.method === "POST");
+      assert.equal(writes.length, 1);
+      assert.equal(writes[0].path, `/capability-market/items/${item.id}/install`);
+      assert.deepEqual(JSON.parse(JSON.stringify(writes[0].body)), { scope: "global", sha256: item.sha256 }, "复用原安装协议，不额外修改启停或绕过校验");
+      assert.equal(globalSkills[0], saved, "安装后重新读取管理库");
+      assert.equal(consumerSkills[0], saved, "已挂载的目录订阅者通过真实API读取保存结果");
+      assert.equal(consumerSkills[0].enabled, scenario.enabled, "补齐不能自动启用旧技能");
+      assert.equal(button("补齐技能资源"), undefined, "保存成功后清除待补齐状态");
+      if (scenario.enabled && scenario.ready) {
+        assert.deepEqual(notices, ["已安装到全局技能"]);
+        await act(async () => { button("使用").props.onClick(); });
+        assert.deepEqual(selected, [saved.id]);
+      } else {
+        assert.equal(button("使用"), undefined, "停用或依赖未就绪时不提供可用入口");
+        assert.equal(notices.some(value => value === "已安装到全局技能"), false, "available仅代表启停，不能伪报运行就绪");
+        assert.match(notices[0], scenario.enabled ? /运行依赖尚未就绪/ : /仍处于停用状态/);
+        assert.deepEqual(selected, []);
+      }
+    } finally {
+      unsubscribe();
+      if (renderer) await act(async () => { renderer.unmount(); });
+    }
+  }
+});
+
+test("助手已有流式正文仍显示真实调用进度，结束后移除且不标记为调用成功", async () => {
+  const { ConversationMessage } = loadModule("../personal-agent/ConversationMessage.tsx", {
+    antd: { Button: "button", Tooltip: "tooltip" },
+    "./types": { workspaceDocumentSaveTarget: () => null },
+    "../AgentMessageContent": { AgentMessageContent: ({ content }) => React.createElement("answer", null, content) },
+    "../AgentToolResult": { AgentToolResult: () => null },
+  });
+  const props = { item: { role: "assistant", content: "已读取部分信息，正在继续处理。" }, generating: true, readingMaterials: false, progress: "正在执行技能：列车查询", saved: false, savedSpreadsheet: false, busy: false, onCopy() {}, onPreview() {}, onSave() {}, onSaveSpreadsheet() {}, onViewFiles() {} };
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(ConversationMessage, props)); });
+  assert.equal(renderer.root.findByType("answer").props.children, props.item.content);
+  assert.equal(renderer.root.findByProps({ role: "status" }).props.children, props.progress);
+  await act(async () => { renderer.update(React.createElement(ConversationMessage, { ...props, progress: "正在读取技能输出" })); });
+  assert.equal(renderer.root.findByProps({ role: "status" }).props.children, "正在读取技能输出", "只显示服务端最新进度，不从所选技能推断执行结果");
+  await act(async () => { renderer.update(React.createElement(ConversationMessage, { ...props, generating: false })); });
+  assert.equal(renderer.root.findAllByProps({ role: "status" }).length, 0, "生成结束不遗留正在执行提示");
+  await act(async () => { renderer.update(React.createElement(ConversationMessage, { ...props, item: { role: "user", content: "查询列车" } })); });
+  assert.equal(renderer.root.findAllByProps({ role: "status" }).length, 0, "不把调用进度显示到用户消息中");
+  await act(async () => { renderer.unmount(); });
+});
+
 test("connector panel saves scoped configuration, preserves credentials and exposes links and failed verification", async () => {
   const requests = [], changed = [];
   const configuration = { "mcp.json": { mcpServers: { remote: { type: "streamableHttp", url: "https://example.org/mcp", headers: { Authorization: "" } } } } };

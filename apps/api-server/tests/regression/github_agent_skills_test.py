@@ -60,6 +60,34 @@ class GitHubSkillParserTest(unittest.TestCase):
 
 
 class GitHubSkillDownloadTest(unittest.IsolatedAsyncioTestCase):
+    async def test_fixed_skill_directory_download_checks_blob_and_ignores_unrelated_repository_files(self):
+        from app.harness_agent.bundle_download import download_directory
+        body = b'console.log("isolated resource")\n'
+        blob_sha = hashlib.sha1(b'blob ' + str(len(body)).encode() + b'\0' + body, usedforsecurity=False).hexdigest()
+        location = github_skill_location('https://github.com/a/b/tree/' + 'a' * 40 + '/skills/example')
+        calls = []
+
+        def respond(request):
+            calls.append(str(request.url))
+            self.assertNotIn('authorization', request.headers)
+            if request.url.path.endswith('/git/trees/' + 'a' * 40):
+                return httpx.Response(200, json={'tree': [{'path': 'skills', 'type': 'tree', 'sha': 'b' * 40},
+                    {'path': 'unrelated-large-file.bin', 'type': 'blob', 'size': 100000000}]})
+            if request.url.path.endswith('/git/trees/' + 'b' * 40):
+                return httpx.Response(200, json={'tree': [{'path': 'example', 'type': 'tree', 'sha': 'c' * 40}]})
+            if request.url.path.endswith('/git/trees/' + 'c' * 40):
+                return httpx.Response(200, json={'tree': [{'path': 'scripts/query.mjs', 'type': 'blob',
+                    'mode': '100644', 'size': len(body), 'sha': blob_sha}]})
+            self.assertEqual(request.url.host, 'raw.githubusercontent.com')
+            return httpx.Response(200, content=body)
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            content = await download_directory(client, 'a/b', 'a' * 40, location)
+        with ZipFile(BytesIO(content)) as archive:
+            self.assertEqual(archive.namelist(), ['fixed/skills/example/scripts/query.mjs'])
+            self.assertEqual(archive.read(archive.namelist()[0]), body)
+        self.assertEqual(len(calls), 4)
+
     async def test_slow_response_has_a_total_deadline(self):
         class SlowStream(httpx.AsyncByteStream):
             async def __aiter__(self):
@@ -196,6 +224,20 @@ class GitHubSkillInstallContractTest(unittest.IsolatedAsyncioTestCase):
 
 
 class FullSkillBundleTest(unittest.TestCase):
+    def test_market_text_digest_preserves_original_bom_and_crlf_bytes(self):
+        from app.harness_agent.bundles import _unpack, read_resource
+        location = github_skill_location('https://github.com/a/b/tree/main/skills/example')
+        source_text = CONTENT.decode()
+        original = b'\xef\xbb\xbf' + CONTENT.replace(b'\n', b'\r\n')
+        content = BytesIO()
+        with ZipFile(content, 'w') as archive:
+            archive.writestr('repo-fixed/skills/example/SKILL.md', original)
+        with tempfile.TemporaryDirectory() as temporary, patch('app.harness_agent.bundles.storage_root', return_value=Path(temporary)):
+            bundle = _unpack(content.getvalue(), location, hashlib.sha256(source_text.encode()).hexdigest(), source_text)
+            self.assertEqual(read_resource(bundle, 'SKILL.md'), original)
+            with self.assertRaises(HTTPException):
+                _unpack(content.getvalue(), location, hashlib.sha256(source_text.encode()).hexdigest(), source_text + 'changed')
+
     def archive(self, extra):
         content = BytesIO()
         with ZipFile(content, 'w') as archive:

@@ -22,10 +22,15 @@ class AgentSkill:
     bundle: dict | None = None
 
     def public_dict(self) -> dict:
+        from app.harness_agent.script_runtime import runtime_status
         payload = asdict(self)
         payload.pop("instruction", None)
         payload.pop("bundle", None)
         payload["quick_prompts"] = list(self.quick_prompts)
+        payload["skill_runtime"] = runtime_status(self.bundle, self.instruction)
+        if not self.available:
+            payload["skill_runtime"]["ready"] = False
+            payload["skill_runtime"]["message"] = self.unavailable_reason
         return payload
 
 
