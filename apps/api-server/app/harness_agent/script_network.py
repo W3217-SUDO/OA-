@@ -25,7 +25,7 @@ def network_rules(name, subnet):
     bridge, chain = identifiers(name)
     rules = [["-d", value, "-j", "REJECT"] for value in _PRIVATE]
     rules.extend([["-p", "tcp", "-m", "multiport", "--dports", "80,443", "-j", "ACCEPT"],
-                  ["-p", "udp", "-d", "1.1.1.1/32", "--dport", "53", "-j", "ACCEPT"], ["-j", "REJECT"]])
+                  ["-d", "1.1.1.1/32", "-p", "udp", "--dport", "53", "-j", "ACCEPT"], ["-j", "REJECT"]])
     return bridge, chain, rules
 
 

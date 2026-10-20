@@ -256,6 +256,10 @@ class DeepSeekHarnessRuntimeTest(unittest.IsolatedAsyncioTestCase):
         values = {chain: "\n".join(" ".join(["-A", chain, *rule]) for rule in rules),
                   "DOCKER-USER": f"-A DOCKER-USER -s {subnet} -j {chain}",
                   "INPUT": f"-A INPUT -i {bridge} -j REJECT"}
+        # Ubuntu iptables 的真实输出先列目标地址，再列协议和自动补充的协议模块。
+        values[chain] = "\n".join(
+            f"-A {chain} -d 1.1.1.1/32 -p udp -m udp --dport 53 -j ACCEPT"
+            if "1.1.1.1/32" in line else line for line in values[chain].splitlines())
         check_firewall(name, network, lambda command: values[command[-1]])
         self.assertTrue(any("169.254.0.0/16" in rule for rule in rules))
         values[chain] = f"-A {chain} -j ACCEPT\n" + values[chain]
