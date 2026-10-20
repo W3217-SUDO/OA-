@@ -293,19 +293,18 @@
 .finance-original-panel tr[class*="grand-total"] > td,
 .finance-original-panel tr[class*="page-total"] > td,
 .finance-original-panel .ant-table-summary > tr > td {
-  position: sticky;
-  top: 36px;
-  z-index: 3;
   background: #fffdf0 !important;
   box-shadow: 0 1px 0 #d8d8d8;
 }
-/* 回款汇总行位于 tbody 首行，需同时固定行本身和单元格，避免纵向滚动时被数据行覆盖。 */
-.finance-original-table-wrap .ant-table-tbody > tr.finance-incoming-grand-total {
+/* 表头已由组件分离；顶部汇总固定到表体零点，底部小计保持正常文档流，避免遮挡数据行。 */
+.finance-original-table-wrap .ant-table-body .ant-table-tbody > tr[class*="grand-total"],
+.finance-original-table-wrap .ant-table-body .ant-table-tbody > tr[class*="page-total"] {
   position: sticky;
   top: 0;
   z-index: 5;
 }
-.finance-original-table-wrap .ant-table-tbody > tr.finance-incoming-grand-total > td {
+.finance-original-table-wrap .ant-table-body .ant-table-tbody > tr[class*="grand-total"] > td,
+.finance-original-table-wrap .ant-table-body .ant-table-tbody > tr[class*="page-total"] > td {
   position: sticky;
   top: 0;
   z-index: 5;
