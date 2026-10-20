@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../../api";
+import { financeCenterApi } from "../services/financeCenterApi";
 import { financeErrorDetail } from "../financeErrors";
-import type { Fee, FinanceInternalQueueMeta } from "../types";
+import type { Fee, FinanceInternalQueueMeta, FinanceScope } from "../types";
 
 const internalQueries: Record<string, { path: string; scope?: string; kind?: string }> = {
   // Internal applications are a separate queue from external payment
@@ -48,7 +48,7 @@ export function internalFinanceQueryRequest(route: string, query: Record<string,
   return { path, params };
 }
 
-export function useInternalFinanceQuery(route: string, clearSelection: (keys: (string | number)[]) => void) {
+export function useInternalFinanceQuery(route: string, clearSelection: (keys: (string | number)[]) => void, financeScope: FinanceScope) {
   const [rows, setRows] = useState<Fee[]>([]);
   const [meta, setMeta] = useState<FinanceInternalQueueMeta>({ page: 1, pageSize: 15, total: 0, amountVisible: false, totalAmount: null });
   const [loading, setLoading] = useState(false);
@@ -62,7 +62,7 @@ export function useInternalFinanceQuery(route: string, clearSelection: (keys: (s
     setError(null);
     setMeta({ page: 1, pageSize: 15, total: 0, amountVisible: false, totalAmount: null });
     return () => { sequence.current += 1; pending.current?.abort(); };
-  }, [route]);
+  }, [route, financeScope]);
   const load = useCallback(async (query: Record<string, unknown>, page = current.current.page, pageSize = current.current.pageSize) => {
     const request = ++sequence.current;
     pending.current?.abort();
@@ -73,7 +73,7 @@ export function useInternalFinanceQuery(route: string, clearSelection: (keys: (s
     setError(null);
     try {
       const { path, params } = internalFinanceQueryRequest(route, query, page, pageSize);
-      const response = await api.get(path, { params, signal: controller.signal });
+      const response = await financeCenterApi(financeScope).get(path, { params, signal: controller.signal });
       if (controller.signal.aborted || request !== sequence.current) return null;
       const { data } = response;
       if (!Array.isArray(data.items) || !Number.isInteger(data.total) || data.total < 0
@@ -99,6 +99,6 @@ export function useInternalFinanceQuery(route: string, clearSelection: (keys: (s
     } finally {
       if (request === sequence.current) setLoading(false);
     }
-  }, [route, clearSelection]);
+  }, [route, clearSelection, financeScope]);
   return { rows, meta, loading, error, load };
 }

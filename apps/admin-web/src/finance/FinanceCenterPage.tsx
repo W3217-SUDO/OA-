@@ -582,7 +582,7 @@ function FinanceCenterContent({
   >([]);
   const { meta: incomingMeta, loading: incomingLoading, load: loadIncomingPayments } = useIncomingPaymentQuery(initialView, setIncoming, setSelectedOriginalRows, incomingScope);
   const isInternalQueueRoute = isInternalFinanceQuery(initialView);
-  const { rows: internalQueueRows, meta: internalQueueMeta, loading: internalQueueLoading, error: internalQueueError, load: loadInternalQueue } = useInternalFinanceQuery(initialView, setSelectedOriginalRows);
+  const { rows: internalQueueRows, meta: internalQueueMeta, loading: internalQueueLoading, error: internalQueueError, load: loadInternalQueue } = useInternalFinanceQuery(initialView, setSelectedOriginalRows, financeScope);
   const [paymentPrintPreview, setPaymentPrintPreview] =
     useState<PaymentPrintDocumentData | null>(null);
   const [paymentWordExportLoading, setPaymentWordExportLoading] = useState(false);

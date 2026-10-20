@@ -27,9 +27,9 @@ test("internal queues request real 200-row pages, retain server status and expos
   });
   let state;
   const clear = (keys) => cleared.push(keys);
-  const Probe = () => { state = useInternalFinanceQuery("finance-internal-settle", clear); return null; };
+  const Probe = ({ center }) => { state = useInternalFinanceQuery("finance-internal-settle", clear, center); return null; };
   let tree;
-  await act(async () => { tree = create(React.createElement(Probe)); });
+  await act(async () => { tree = create(React.createElement(Probe, { center: "firm" })); });
   await act(async () => state.load({ routeField1: "CODEX-CASE" }, 1, 200));
   assert.equal(state.rows.length, 200);
   assert.equal(state.rows[0].status, "已付款");
@@ -39,18 +39,23 @@ test("internal queues request real 200-row pages, retain server status and expos
   assert.equal(state.meta.totalCashedAmount, 40602);
   assert.equal(requests[0].path, "/finance/settlements/pending");
   assert.equal(requests[0].params.case_no, "CODEX-CASE");
+  assert.equal(requests[0].params.finance_scope, "firm");
   await act(async () => state.load({ routeField1: "CODEX-CASE" }, 2, 200));
   assert.deepEqual(state.rows.map((row) => row.id), [201]);
   assert.equal(state.rows[0].data.amount, 201);
   assert.equal(state.rows[0].data.cashed_amount, 402);
   assert.equal(state.meta.totalAmount, 20301);
   assert.equal(state.meta.totalCashedAmount, 40602);
+  await act(async () => tree.update(React.createElement(Probe, { center: "platform" })));
+  assert.equal(state.rows.length, 0);
+  await act(async () => state.load({}, 1, 200));
+  assert.equal(requests.at(-1).params.finance_scope, "platform");
   denied = true;
   await act(async () => { await assert.rejects(state.load({}, 1, 50), /无权/); });
   assert.equal(state.error, "无权查询内部费用");
   assert.equal(state.rows.length, 0);
   assert.equal(state.loading, false);
-  assert.equal(cleared.length, 3);
+  assert.equal(cleared.length, 4);
   const archive = internalFinanceQueryRequest("finance-internal-archive", {
     routeField2: "CODEX-APPLICANT", routeField5: "CODEX-CASE", routeField6: "CODEX-REQUEST",
   }, 1, 200);
@@ -70,7 +75,7 @@ test("internal queue late response cannot overwrite a newer page or route", asyn
   });
   let state;
   const clear = () => {};
-  const Probe = ({ route }) => { state = useInternalFinanceQuery(route, clear); return null; };
+  const Probe = ({ route }) => { state = useInternalFinanceQuery(route, clear, "firm"); return null; };
   let tree, first, second;
   await act(async () => { tree = create(React.createElement(Probe, { route: "finance-internal-audit" })); });
   await act(async () => { first = state.load({}, 1, 15); });
@@ -101,7 +106,7 @@ test("internal queue grand totals survive unequal pages and preserve zero, hidde
   });
   let state, tree;
   const clear = () => {};
-  const Probe = () => { state = useInternalFinanceQuery("finance-internal-payment", clear); return null; };
+  const Probe = () => { state = useInternalFinanceQuery("finance-internal-payment", clear, "firm"); return null; };
   await act(async () => { tree = create(React.createElement(Probe)); });
   for (const page of [1, 2]) {
     await act(async () => state.load({ routeField2: "CODEX-PAYEE" }, page, 1));
@@ -162,7 +167,7 @@ function loadModule(name, dependencies, globals = {}) {
     module, exports: module.exports,
     require: (specifier) => {
       if (specifier in dependencies) return dependencies[specifier];
-      if (specifier === "./financeCenterApi") return loadModule("services/financeCenterApi.ts", dependencies);
+      if (specifier === "./financeCenterApi" || specifier === "../services/financeCenterApi") return loadModule("services/financeCenterApi.ts", dependencies);
       if (specifier === "../financialValueDisplay") return loadModule("../financialValueDisplay.ts", dependencies);
       if (specifier === "../settlementIdentity") return loadModule("settlementIdentity.ts", dependencies);
       return require(specifier);
