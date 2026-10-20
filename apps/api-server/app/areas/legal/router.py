@@ -1058,23 +1058,34 @@ async def search_ordinary_cases(body: CounselCaseSearchInput, identity: dict = D
     from app.core.system import (
         _allowed_field_keys,
     )
-    from app.core.case_search_projection import matches_case_search_status, read_case_search_page
+    from app.core.case_search_projection import (
+        fast_case_search_eligible, fast_case_search_page, matches_case_search_status, read_case_search_page,
+    )
     from app.core.request_metrics import measure_phase
-    # 阶段树和列表共用非阶段筛选结果，不重复读取所有案件。
-    with measure_phase("cases.search"):
-        count_records = await _query_counsel_cases(
-            body, identity, db, counsel_only=False, include_status_filter=False, search_projection=True,
-        )
-    phase_counts: dict[str, int] = {}
-    for record in count_records:
-        phase = str(record.status or "")
-        phase_counts[phase] = phase_counts.get(phase, 0) + 1
-    records = [record for record in count_records if matches_case_search_status(record, body)]
-    total = len(records)
+    if fast_case_search_eligible(body):
+        # 只有范围、类型、阶段、排序和分页时，筛选、计数和分页都在数据库内完成。
+        from app.core.cases import _case_search_scope_conditions
+        with measure_phase("cases.search"):
+            scope_conditions = await _case_search_scope_conditions(body, identity, db)
+            phase_counts, total, page_records = await fast_case_search_page(body, scope_conditions, db)
+    else:
+        # 阶段树和列表共用非阶段筛选结果，不重复读取所有案件。
+        with measure_phase("cases.search"):
+            count_records = await _query_counsel_cases(
+                body, identity, db, counsel_only=False, include_status_filter=False, search_projection=True,
+            )
+        phase_counts = {}
+        for record in count_records:
+            phase = str(record.status or "")
+            phase_counts[phase] = phase_counts.get(phase, 0) + 1
+        records = [record for record in count_records if matches_case_search_status(record, body)]
+        total = len(records)
+        page_records = None
     allowed_fields = await _allowed_field_keys(identity, db)
     from app.core.case_list_tasks import attach_case_list_tasks
     with measure_phase("cases.page"):
-        page_records = await read_case_search_page(records, body.page, body.page_size, db)
+        if page_records is None:
+            page_records = await read_case_search_page(records, body.page, body.page_size, db)
         items = await _contract_customer_record_dicts(page_records, allowed_fields, db, identity=identity)
     with measure_phase("cases.tasks"):
         await attach_case_list_tasks(items, identity, db)

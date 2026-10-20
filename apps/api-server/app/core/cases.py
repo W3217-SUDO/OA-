@@ -1134,6 +1134,30 @@ async def _delete_case_events_for_case_cleanup(case_id: int, db: AsyncSession) -
         await db.delete(item)
 
 
+async def _case_search_scope_conditions(body: CounselCaseSearchInput, identity: dict, db: AsyncSession, *, relation_customer=None) -> list:
+    """普通案件检索的范围条件；快速路径与完整筛选共用，保证两者可见范围一致。"""
+    from app.core.permissions import (
+        _can_search_all_cases_from_global_search, _case_mine_scope_condition, _record_scope_conditions,
+    )
+    record_conditions = [BusinessRecord.module == "case", BusinessRecord.status != "已合并"]
+    global_company_scope = body.scope == "global" and await _can_search_all_cases_from_global_search(identity, db)
+    if body.dashboard_queue:
+        record_conditions.extend(await _record_scope_conditions(identity, db))
+    elif body.scope == "global":
+        # 客户等附加条件只能缩小结果，不能绕过无公司案件权限时的个人范围。
+        if not global_company_scope:
+            record_conditions.extend(await _record_scope_conditions(identity, db))
+            record_conditions.append(await _case_mine_scope_condition(identity, db))
+    elif body.scope == "department" and relation_customer is None:
+        from app.core.case_department_scope import department_case_condition
+        record_conditions.append(await department_case_condition(identity, db))
+    elif relation_customer is None:
+        record_conditions.extend(await _record_scope_conditions(identity, db))
+        if body.scope == "mine":
+            record_conditions.append(await _case_mine_scope_condition(identity, db))
+    return record_conditions
+
+
 async def _query_counsel_cases(
     body: CounselCaseSearchInput,
     identity: dict,
@@ -1150,7 +1174,7 @@ async def _query_counsel_cases(
         _record_belongs_to_customer,
     )
     from app.core.permissions import (
-        _can_search_all_cases_from_global_search, _case_mine_scope_condition, _record_scope_conditions,
+        _record_scope_conditions,
     )
     from app.core.case_search_projection import CASE_SEARCH_FIELDS, matches_case_search_status
     if body.dashboard_queue:
@@ -1181,22 +1205,7 @@ async def _query_counsel_cases(
         if start_date and end_date and start_date > end_date:
             raise HTTPException(status_code=422, detail=f"{label}范围无效")
     relation_customer = await _customer_or_404(body.customer_id, identity, db) if body.customer_id else None
-    record_conditions = [BusinessRecord.module == "case", BusinessRecord.status != "已合并"]
-    global_company_scope = body.scope == "global" and await _can_search_all_cases_from_global_search(identity, db)
-    if body.dashboard_queue:
-        record_conditions.extend(await _record_scope_conditions(identity, db))
-    elif body.scope == "global":
-        # 客户等附加条件只能缩小结果，不能绕过无公司案件权限时的个人范围。
-        if not global_company_scope:
-            record_conditions.extend(await _record_scope_conditions(identity, db))
-            record_conditions.append(await _case_mine_scope_condition(identity, db))
-    elif body.scope == "department" and relation_customer is None:
-        from app.core.case_department_scope import department_case_condition
-        record_conditions.append(await department_case_condition(identity, db))
-    elif relation_customer is None:
-        record_conditions.extend(await _record_scope_conditions(identity, db))
-        if body.scope == "mine":
-            record_conditions.append(await _case_mine_scope_condition(identity, db))
+    record_conditions = await _case_search_scope_conditions(body, identity, db, relation_customer=relation_customer)
     keyword = body.keyword.strip()
     if keyword and body.scope != "global":
         keyword_pattern = f"%{keyword}%"
@@ -1456,21 +1465,26 @@ async def _query_counsel_cases(
             if not advanced_passed:
                 continue
         filtered.append(record)
-    if body.sort_order == "case_no_asc":
-        filtered.sort(key=lambda item: (item.serial_no, item.id))
-    elif body.sort_order == "case_no_desc":
-        filtered.sort(key=lambda item: (item.serial_no, item.id), reverse=True)
-    elif body.sort_order == "created_asc":
-        filtered.sort(key=lambda item: (item.created_at or datetime.min, item.id))
-    elif body.sort_order == "created_desc":
-        filtered.sort(key=lambda item: (item.created_at or datetime.min, item.id), reverse=True)
-    elif body.sort_order == "updated_asc":
-        filtered.sort(key=lambda item: (item.updated_at or item.created_at or datetime.min, item.id))
-    elif body.sort_order == "status_asc":
-        filtered.sort(key=lambda item: (item.status or "", item.serial_no, item.id))
-    else:
-        filtered.sort(key=lambda item: (item.updated_at or item.created_at, item.id), reverse=True)
+    sort_case_search_records(filtered, body.sort_order)
     return filtered
+
+
+def sort_case_search_records(records: list, sort_order: str) -> None:
+    """普通案件检索的排序；完整筛选与快速路径共用，保证两者次序一致。"""
+    if sort_order == "case_no_asc":
+        records.sort(key=lambda item: (item.serial_no, item.id))
+    elif sort_order == "case_no_desc":
+        records.sort(key=lambda item: (item.serial_no, item.id), reverse=True)
+    elif sort_order == "created_asc":
+        records.sort(key=lambda item: (item.created_at or datetime.min, item.id))
+    elif sort_order == "created_desc":
+        records.sort(key=lambda item: (item.created_at or datetime.min, item.id), reverse=True)
+    elif sort_order == "updated_asc":
+        records.sort(key=lambda item: (item.updated_at or item.created_at or datetime.min, item.id))
+    elif sort_order == "status_asc":
+        records.sort(key=lambda item: (item.status or "", item.serial_no, item.id))
+    else:
+        records.sort(key=lambda item: (item.updated_at or item.created_at, item.id), reverse=True)
 
 
 async def _next_case_serial(case_type: str, db: AsyncSession) -> str:

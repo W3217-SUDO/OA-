@@ -8,6 +8,7 @@ from app.core.dependencies import (
     engine, gc, json, select, settings, suppress, sys, text, timezone,
 )
 from app.core.schema_alignment import (
+    align_business_record_json_indexes,
     align_core_legacy_schema,
     align_integration_legacy_schema,
 )
@@ -140,6 +141,7 @@ def _upgrade_schema(connection) -> None:
     # build; internal migrations must never appear in editable system config.
     connection.execute(text("DELETE FROM system_configs WHERE key = 'permission_capability_migrations'"))
     align_integration_legacy_schema(connection)
+    align_business_record_json_indexes(connection)
 
 
 async def _backfill_clue_generated_case_register_dates(db: AsyncSession) -> int:

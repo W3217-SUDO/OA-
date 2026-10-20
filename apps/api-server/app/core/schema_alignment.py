@@ -18,6 +18,30 @@ from app.models import (
 )
 
 
+# 案件详情、日志、关联财务等按 JSON 里的案件关联查找；没有索引时每次都要解析全表 JSON。
+BUSINESS_RECORD_JSON_INDEXES = (
+    ("ix_business_records_data_case_id", "(CAST(data ->> 'case_id' AS INTEGER))", "case_id"),
+    ("ix_business_records_data_case_record_id", "(CAST(data ->> 'case_record_id' AS INTEGER))", "case_record_id"),
+    ("ix_business_records_data_converted_case_id", "(CAST(data ->> 'converted_case_id' AS INTEGER))", "converted_case_id"),
+    ("ix_business_records_data_case_no", "((data ->> 'case_no'))", None),
+    ("ix_business_records_data_converted_case_no", "((data ->> 'converted_case_no'))", None),
+)
+
+
+def align_business_record_json_indexes(connection: Connection) -> None:
+    """PostgreSQL 上为高频 JSON 关联键建立表达式索引，表达式与查询生成的 SQL 保持一致。"""
+    if connection.dialect.name != "postgresql":
+        return
+    for name, expression, integer_key in BUSINESS_RECORD_JSON_INDEXES:
+        if integer_key and connection.execute(text(
+            "SELECT 1 FROM business_records WHERE data ->> :key IS NOT NULL "
+            "AND data ->> :key !~ '^\\s*-?[0-9]+\\s*$' LIMIT 1"
+        ), {"key": integer_key}).first():
+            # 存在不能转成整数的历史值时不建整数索引，避免启动失败；查询仍按原方式执行。
+            continue
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS {name} ON business_records {expression}"))
+
+
 def align_core_legacy_schema(connection: Connection) -> None:
     """补齐早期核心表的字段、索引和约束。"""
     columns = {item["name"] for item in inspect(connection).get_columns("file_attachments")}
