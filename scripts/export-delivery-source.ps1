@@ -119,7 +119,7 @@ try {
         if ($LASTEXITCODE -gt 7) { throw "复制 $directory 失败，robocopy=$LASTEXITCODE" }
     }
 
-    foreach ($file in @('AGENTS.md','README.md','.gitignore','docker-compose.yml','compose.prod.yml','compose.test-server.yml')) {
+    foreach ($file in @('AGENTS.md','README.md','.gitignore','docker-compose.yml','compose.prod.yml')) {
         $source = Join-Path $sourceRoot $file
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "缺少交付文件：$file" }
         Copy-Item -LiteralPath $source -Destination (Join-Path $TargetDirectory $file)

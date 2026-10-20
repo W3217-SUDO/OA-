@@ -59,13 +59,7 @@ docker compose --env-file .env.production \
   -f docker-compose.yml -f compose.prod.yml ps
 ```
 
-对于仅供 1～3 人验收、内存为 2GB 的非正式测试服务器，可在上述命令最后追加
-`-f compose.test-server.yml`。该覆盖文件把 Celery 固定为单并发，并收紧六个服务的
-CPU/内存上限；它不适用于正式交付或高并发运行。
-
-若测试机没有独立域名，可把 `deploy/nginx-test-server.conf.example` 安装到主机
-Nginx 的 `conf.d`，使用独立的 `8088` 端口转发至回环地址 `127.0.0.1:8080`。
-该入口仅用于验收，不提供 HTTPS；正式部署必须改用域名和 HTTPS。
+测试服务器已暂停；其 `compose.test-server.yml` 与 `deploy/nginx-test-server.conf.example` 已归档到标签 `archive/before-cleanup-20261020`，恢复测试服务器时从该标签取回。
 
 生产覆盖文件只把 Web 绑定到主机，默认为 `127.0.0.1:8080`。API、数据库、Redis 和 MinIO 控制台仅在 Compose 内部网络可访问。HTTPS 入口应设置真实客户端 IP 转发头，并将请求转发到该地址。
 
