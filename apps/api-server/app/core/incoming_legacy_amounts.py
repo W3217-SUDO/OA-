@@ -41,18 +41,28 @@ def attach_source_fee_type(statement, fee, head):
     unique_parameters = select(func.max(SystemParameter.id)).where(
         SystemParameter.category == "fee_type", parameter_source,
     ).group_by(SystemParameter.code).having(func.count() == 1)
+    # 迁移字典只有几十行；先物化所需字段。直接关联时规划器把外层估为 1 行而选嵌套循环，
+    # 每行明细都重新按主键查找全部字典行（数十万次）。关联条件与取值与原写法相同。
+    parameters = select(
+        parameter.code.label("code"),
+        parameter.name.label("name"),
+        source_text(parameter.extra["legacy_record"], "FeeTypeId").label("fee_type_id"),
+        source_text(parameter.extra["legacy_record"], "TypeId").label("type_id"),
+    ).where(parameter.id.in_(unique_parameters)).cte(
+        "unique_fee_type_parameters", nesting=True,
+    ).prefix_with("MATERIALIZED", dialect="postgresql")
     statement = statement.outerjoin(dictionary, and_(
         dictionary.source_table == "BAS_Case_FeeType", dictionary.legacy_id == dictionary_id,
         source_text(dictionary.source_payload, "FeeTypeId") == fee_type_id,
         source_text(dictionary.source_payload, "_source_database").is_not_distinct_from(database),
-    )).outerjoin(parameter, and_(database.is_(None), parameter.id.in_(unique_parameters),
-        parameter.code == fee_type_id,
-        source_text(parameter.extra["legacy_record"], "FeeTypeId") == fee_type_id))
+    )).outerjoin(parameters, and_(database.is_(None),
+        parameters.c.code == fee_type_id,
+        parameters.c.fee_type_id == fee_type_id))
     # 老批次没有原字典行；只使用迁移字典保留的真实 TypeId，不以中文名称补类别。
     type_id = case((dictionary.id.is_not(None), source_text(dictionary.source_payload, "TypeId")),
-                   (database.is_(None), source_text(parameter.extra["legacy_record"], "TypeId")))
+                   (database.is_(None), parameters.c.type_id))
     name = case((dictionary.id.is_not(None), dictionary.source_payload["FeeTypeName"].as_string()),
-                (database.is_(None), parameter.name))
+                (database.is_(None), parameters.c.name))
     return statement, type_id, name
 
 

@@ -1,10 +1,12 @@
 """旧结算只读投影：同源主键、主体、权限及筛选先在数据库中确定。"""
 
 from datetime import date
+from types import SimpleNamespace
 from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import Numeric, String, and_, case, cast, exists, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
 
 from app.core.finance_centers import LEGACY_INCOMING_SOURCE
@@ -72,7 +74,16 @@ async def _source_query(identity, db, mode, statuses, filters):
     head = LegacyFinanceRecord
     line = LegacyFinanceAllocation
     original_fee = aliased(LegacyFinanceRecord)
-    linked_case = aliased(BusinessRecord)
+    case_alias = aliased(BusinessRecord)
+    case_json = None
+    if db.get_bind().dialect.name == "postgresql":
+        # 需从案件取 9 个字段；data 为文本 JSON，每取一次都会重新解析整条案件。按主键关联
+        # 后，用 LATERAL 把该条案件转为 jsonb 一次（OFFSET 0 阻止内联到每个取值处），
+        # 再取同名字段，文本结果不变。
+        case_json = select(cast(case_alias.data, JSONB).label("data")).correlate(case_alias).offset(0).lateral(
+            "settlement_case_json")
+    linked_case = SimpleNamespace(id=case_alias.id, module=case_alias.module, customer=case_alias.customer,
+                                  data=case_json.c.data if case_json is not None else case_alias.data)
     linked_customer = aliased(BusinessRecord)
     source = head.source_payload
     obj = line.source_payload
@@ -90,7 +101,9 @@ async def _source_query(identity, db, mode, statuses, filters):
             original_fee.legacy_id == fee_id,
             _text(original_fee.source_payload, "CaseFeeId") == line.legacy_case_fee_id,
             _text(original_fee.source_payload, "_source_database").is_not_distinct_from(_text(source, "_source_database")))).outerjoin(
-        linked_case, and_(linked_case.id == line.case_record_id, linked_case.module == "case"))
+        case_alias, and_(linked_case.id == line.case_record_id, linked_case.module == "case"))
+    if case_json is not None:
+        line_from = line_from.outerjoin(case_json, literal(True))
     line_from, type_id, fee_name = attach_source_fee_type(line_from, original_fee, head)
     relation = and_(line.source_table == "FAM_AR_Payment_Object", line.is_active.is_(True),
         source_allocation_relation(line, head))

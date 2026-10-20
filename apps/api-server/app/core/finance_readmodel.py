@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 
-from sqlalchemy import Numeric, case, cast, func, or_, select
+from sqlalchemy import JSON, Numeric, case, cast, func, or_, select, type_coerce
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import FINANCE_FEE_TYPES
@@ -30,19 +30,24 @@ async def read_finance_summary(identity: dict, db: AsyncSession) -> dict:
     # 金额可能是数字或数字字符串；保留未填写的空值，不将其伪装成零。
     # SQLite强制转换会吞掉非法值，因此测试数据库仍逐项转换已填写金额。
     dialect = db.get_bind().dialect.name
+    source = BusinessRecord.data
     if dialect == "sqlite":
         amount_kind = func.json_type(BusinessRecord.data, "$.amount")
     elif dialect == "postgresql":
-        amount_kind = func.json_typeof(BusinessRecord.data["amount"])
+        # 精简查询表由触发器同事务维护，保存原 JSON 中同名字段的原值；取值与原表相同，
+        # 但每行只需解析很小的 JSON。缺行时回退原表数据。
+        from app.core.record_read_model import record_read_models
+        source = type_coerce(func.coalesce(record_read_models.c.data, BusinessRecord.data), JSON)
+        amount_kind = func.json_typeof(source["amount"])
     else:
         raise ValueError(f"财务概览不支持数据库类型：{dialect}")
     amounts = {fee_type: 0 for fee_type in FINANCE_FEE_TYPES}
     missing_amount_count = 0
-    fee_type_column = BusinessRecord.data["fee_type"].as_string()
+    fee_type_column = source["fee_type"].as_string()
     amount_conditions = [*conditions, BusinessRecord.module == "finance",
                          fee_type_column.in_(FINANCE_FEE_TYPES)]
     if dialect == "postgresql":
-        amount_text = BusinessRecord.data["amount"].as_string()
+        amount_text = source["amount"].as_string()
         numeric_amount = case(
             (amount_kind == "boolean", case((amount_text == "true", 1), else_=0)),
             else_=cast(amount_text, Numeric),
@@ -50,6 +55,8 @@ async def read_finance_summary(identity: dict, db: AsyncSession) -> dict:
         amount_rows = (
             select(fee_type_column.label("fee_type"), numeric_amount.label("amount"),
                    case((or_(amount_kind.is_(None), amount_kind == "null"), 1), else_=0).label("missing"))
+            .select_from(BusinessRecord)
+            .outerjoin(record_read_models, record_read_models.c.record_id == BusinessRecord.id)
             .where(*amount_conditions)
             .cte("finance_amount_rows")
             .prefix_with("MATERIALIZED", dialect="postgresql")
