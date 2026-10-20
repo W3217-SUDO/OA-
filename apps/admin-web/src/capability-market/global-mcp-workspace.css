@@ -11,6 +11,7 @@
 .global-mcp-workspace-drawer .ant-drawer-body { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
 .global-mcp-workspace-drawer .personal-mcp-card { min-height: 0; max-height: none; border: 0; overflow: visible; }
 .global-mcp-workspace-drawer .personal-mcp-body { padding: 0; overflow: visible; }
+.global-mcp-workspace-blocked { display: grid; gap: 16px; }
 @media (max-width: 767px) {
   .global-mcp-workspace-header, .global-mcp-workspace-list article { align-items: flex-start; flex-direction: column; }
   .global-mcp-workspace-actions { width: 100%; }

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Button, Drawer, Empty, Modal, Tag, Tooltip } from "antd";
 import { ApiOutlined, DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { PersonalMcpConnectionCard } from "../personal-agent/PersonalMcpConnectionCard";
@@ -7,21 +7,40 @@ import { connectionLabel } from "./ConnectorConfigPanel";
 import "./global-mcp-workspace.css";
 
 type Props = { active: boolean; canManage: boolean };
+type GlobalConnection = ReturnType<typeof usePersonalMcpConnection>["items"][number];
+type DrawerIntent = { kind: "create" } | { kind: "edit" | "verify"; item: GlobalConnection };
 
 export function GlobalMcpWorkspace({ active, canManage }: Props) {
   const mcp = usePersonalMcpConnection("agent-admin-global-mcp");
+  const [intent, setIntent] = useState<DrawerIntent | null>(null);
   useEffect(() => { if (active) void mcp.refresh(); }, [active]);
   const globals = mcp.items.filter(item => item.scope === "global");
   const canCreate = canManage && mcp.defaultScope === "global";
-  const close = () => { mcp.close(); void mcp.refresh(); };
+  const canUseCard = !!intent && canManage && mcp.scope === "global" && (
+    (intent.kind === "create" && canCreate) || mcp.editing || mcp.connection?.scope === "global"
+  );
+  const close = () => { setIntent(null); mcp.close(); void mcp.refresh(); };
 
   const openNew = () => {
+    if (!canCreate) return;
+    setIntent({ kind: "create" });
     mcp.newConnection();
     mcp.show();
   };
   const openEdit = (item: typeof globals[number]) => {
+    setIntent({ kind: "edit", item });
     mcp.show();
     void mcp.edit(item);
+  };
+  const openVerify = (item: typeof globals[number]) => {
+    setIntent({ kind: "verify", item });
+    mcp.show();
+    void mcp.retryTest(item);
+  };
+  const retry = () => {
+    if (intent?.kind === "edit") void mcp.edit(intent.item);
+    else if (intent?.kind === "verify") void mcp.retryTest(intent.item);
+    else void mcp.refresh();
   };
   const remove = (item: typeof globals[number]) => Modal.confirm({
     title: `删除全局 MCP“${item.name}”？`,
@@ -51,14 +70,19 @@ export function GlobalMcpWorkspace({ active, canManage }: Props) {
           <span>全局共享</span>
         </div>
         {canManage && item.can_manage && <div className="global-mcp-workspace-row-actions">
-          <Tooltip title="验证连接"><Button icon={<ApiOutlined />} aria-label={`验证连接：${item.name}`} disabled={mcp.busy} onClick={() => { mcp.show(); void mcp.retryTest(item); }} /></Tooltip>
+          <Tooltip title="验证连接"><Button icon={<ApiOutlined />} aria-label={`验证连接：${item.name}`} disabled={mcp.busy} onClick={() => openVerify(item)} /></Tooltip>
           <Tooltip title="修改配置"><Button icon={<EditOutlined />} aria-label={`修改配置：${item.name}`} disabled={mcp.busy} onClick={() => openEdit(item)} /></Tooltip>
           <Tooltip title="删除连接"><Button danger icon={<DeleteOutlined />} aria-label={`删除连接：${item.name}`} disabled={mcp.busy} onClick={() => remove(item)} /></Tooltip>
         </div>}
       </article>)}
     </div>
     <Drawer title="全局 MCP 配置" open={mcp.open && canManage} onClose={close} width={680} destroyOnHidden maskClosable={!mcp.busy} closable={!mcp.busy} rootClassName="global-mcp-workspace-drawer">
-      {mcp.open && <PersonalMcpConnectionCard connection={{ ...mcp, close, items: globals }} allowNewConnection={false} allowConfigImport={false} />}
+      {mcp.open && (canUseCard
+        ? <PersonalMcpConnectionCard connection={{ ...mcp, close, items: globals }} allowNewConnection={false} allowConfigImport={false} />
+        : <div className="global-mcp-workspace-blocked">
+          {mcp.busy || mcp.listing ? <p role="status">正在确认全局连接范围…</p> : <Alert type="error" showIcon title={mcp.error || mcp.listError || "无法确认全局连接范围，已阻止保存。"} />}
+          <div className="global-mcp-workspace-row-actions"><Button onClick={close}>关闭</Button><Button disabled={mcp.busy || mcp.listing} onClick={retry}>重试</Button></div>
+        </div>)}
     </Drawer>
   </section>;
 }

@@ -1403,6 +1403,44 @@ test("chat MCP scope labels and global management controls use per-connection pe
   await act(async () => renderer.unmount());
 });
 
+test("global MCP drawer blocks a writable form when delegated admin cannot load global configuration", async () => {
+  const shared = { id: "shared", name: "全局服务", scope: "global", status: "verified", can_manage: true };
+  const model = {
+    open: false, items: [shared], defaultScope: "personal", scope: "personal", editing: false,
+    connection: null, busy: false, listing: false, error: "", listError: "",
+    refresh() {}, show() { model.open = true; }, close() { model.open = false; },
+    edit() { model.error = "全局配置读取失败"; model.editing = false; model.connection = null; },
+    retryTest() {}, remove() {}, newConnection() {},
+  };
+  const { GlobalMcpWorkspace } = loadModule("../capability-market/GlobalMcpWorkspace.tsx", {
+    antd: { Alert: "alert", Button: "button", Drawer: ({ open, children }) => open ? React.createElement("drawer", null, children) : null, Empty: "empty", Modal: { confirm() {} }, Tag: "tag", Tooltip: "tooltip" },
+    "./ConnectorConfigPanel": { connectionLabel: () => "已验证" },
+    "../personal-agent/PersonalMcpConnectionCard": { PersonalMcpConnectionCard: "editable-card" },
+    "../personal-agent/usePersonalMcpConnection": { usePersonalMcpConnection: () => model },
+  });
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(GlobalMcpWorkspace, { active: true, canManage: true })); });
+  const button = label => renderer.root.findAllByType("button").find(item => item.props["aria-label"] === label || item.props.children === label);
+  assert.equal(button("新增全局 MCP"), undefined, "委派管理员不能从服务端个人默认范围新建全局连接");
+  await act(async () => { button("修改配置：全局服务").props.onClick(); });
+  assert.equal(renderer.root.findAllByType("editable-card").length, 0, "GET 失败后不显示可保存表单");
+  assert.ok(renderer.root.findAllByType("drawer").length);
+  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.title === "全局配置读取失败"));
+  assert.ok(button("重试"));
+  model.edit = () => { model.error = ""; model.editing = true; model.scope = "global"; };
+  await act(async () => { button("重试").props.onClick(); renderer.update(React.createElement(GlobalMcpWorkspace, { active: true, canManage: true })); });
+  assert.equal(renderer.root.findByType("editable-card").props.connection.scope, "global");
+  assert.equal(renderer.root.findByType("editable-card").props.allowConfigImport, false);
+  assert.equal(renderer.root.findByType("editable-card").props.allowNewConnection, false);
+  await act(async () => { renderer.unmount(); });
+
+  model.open = false; model.editing = false; model.scope = "global"; model.defaultScope = "global";
+  await act(async () => { renderer = create(React.createElement(GlobalMcpWorkspace, { active: true, canManage: true })); });
+  await act(async () => { button("新增全局 MCP").props.onClick(); });
+  assert.ok(renderer.root.findByType("editable-card"), "实际管理员仍可新建全局连接");
+  await act(async () => { renderer.unmount(); });
+});
+
 test("personal MCP intent preserves ordinary URLs and API JSON while isolating credentials", () => {
   const mcp = loadModule("../personal-agent/personalMcpConfig.ts", {}, { URL, URLSearchParams });
   for (const text of ["https://example.com/article", "分析 https://example.com/article", "https://example.com/search?keyword=合同", "分析 https://example.com/search?monkey=合同", "https://example.com/search?tokenizer=plain", JSON.stringify({ headers: { "Content-Type": "application/json" }, body: { q: "普通API" } })]) {
