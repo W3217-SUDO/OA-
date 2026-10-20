@@ -4,11 +4,11 @@ import { ApiOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PlusOutlined,
 import type { usePersonalMcpConnection } from "./usePersonalMcpConnection";
 import "./personal-mcp-connection.css";
 
-type Props = { connection: ReturnType<typeof usePersonalMcpConnection> };
+type Props = { connection: ReturnType<typeof usePersonalMcpConnection>; allowNewConnection?: boolean };
 
 const statusLabel: Record<string, string> = { configured: "已保存 · 未验证", verified: "握手与目录已验证", failed: "连接检测失败", unconfigured: "待配置" };
 
-export function PersonalMcpConnectionCard({ connection: mcp }: Props) {
+export function PersonalMcpConnectionCard({ connection: mcp, allowNewConnection = true }: Props) {
   const [configText, setConfigText] = useState("");
   const { draft, connection, busy } = mcp;
   const update = <K extends keyof typeof draft>(key: K, value: typeof draft[K]) => mcp.update({ ...draft, [key]: value });
@@ -36,7 +36,7 @@ export function PersonalMcpConnectionCard({ connection: mcp }: Props) {
         <div className="personal-mcp-actions">
           {connection.can_manage && <><Button icon={<ReloadOutlined />} loading={busy} disabled={busy} onClick={() => void mcp.retryTest()}>重新检测</Button>
           <Button icon={<EditOutlined />} disabled={busy} onClick={() => void mcp.edit(connection)}>修改配置</Button></>}
-          <Button icon={<PlusOutlined />} disabled={busy} onClick={newConnection}>添加另一个连接</Button>
+          {allowNewConnection && <Button icon={<PlusOutlined />} disabled={busy} onClick={newConnection}>添加另一个连接</Button>}
         </div>
       </div> : <Form layout="vertical" onFinish={() => void mcp.saveAndConnect()} autoComplete="off">
         <Form.Item label="粘贴 MCP 配置" htmlFor="personal-mcp-config">
@@ -53,7 +53,7 @@ export function PersonalMcpConnectionCard({ connection: mcp }: Props) {
           {draft.auth_type === "api_key" && <Form.Item label="API Key 请求头" htmlFor="personal-mcp-header" required><Input id="personal-mcp-header" value={draft.api_key_header} disabled={busy} onChange={event => update("api_key_header", event.target.value)} /></Form.Item>}
           {draft.auth_type !== "none" && <Form.Item label={draft.auth_type === "bearer" ? "Bearer Token" : "API Key"} htmlFor="personal-mcp-key" required={!mcp.credentialSaved}><Input.Password id="personal-mcp-key" value={draft.credential} visibilityToggle={false} autoComplete="new-password" disabled={busy} placeholder={mcp.credentialSaved ? "已保存，留空保留原凭据" : ""} onChange={event => update("credential", event.target.value)} /></Form.Item>}
         </div>
-        <div className="personal-mcp-actions"><Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={busy} disabled={busy || !mcp.scope}>{mcp.editing ? "确认更新并连接" : mcp.scope === "global" ? "确认全局保存并连接" : "确认个人保存并连接"}</Button>{mcp.editing && <Button disabled={busy} onClick={newConnection}>取消修改</Button>}<span>凭据加密保存 · 不进入模型或聊天记录</span></div>
+        <div className="personal-mcp-actions"><Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={busy} disabled={busy || !mcp.scope}>{mcp.editing ? "确认更新并连接" : mcp.scope === "global" ? "确认全局保存并连接" : "确认个人保存并连接"}</Button>{mcp.editing && allowNewConnection && <Button disabled={busy} onClick={newConnection}>取消修改</Button>}<span>凭据加密保存 · 不进入模型或聊天记录</span></div>
       </Form>}
       <div className="personal-mcp-list-heading"><strong>可用 MCP 连接</strong><Tooltip title="刷新连接列表"><Button type="text" icon={<ReloadOutlined />} aria-label="刷新连接列表" loading={mcp.listing} disabled={busy || mcp.listing} onClick={() => void mcp.refresh()} /></Tooltip></div>
       {mcp.listError && <Alert type="error" title={mcp.listError} showIcon />}

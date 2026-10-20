@@ -522,34 +522,50 @@ test("personal AI skill directory preserves owned definitions and downloads with
   await act(async () => { renderer.unmount(); });
 });
 
-test("global skill management entry requires both authorized overview and can_manage and never selects personal chat skill", async () => {
-  let canManage = true, overviewDenied = false, globalReads = 0;
+test("global skill management follows global permission even when overview is denied and never selects personal chat skill", async () => {
+  let canManage = true, overviewDenied = false, globalReads = 0, skillEnabled = true;
+  const confirmations = [], patches = [];
   const { default: AgentAdminPage } = loadModule("../AgentAdminPage.tsx", {
-    antd: { Alert: "alert", Button: "button", Card: "card", Descriptions: Object.assign(props => React.createElement("descriptions", props), { Item: "description" }), Drawer: ({ open, children }) => open ? React.createElement("drawer", null, children) : null, Modal: Object.assign(({ open, children }) => open ? React.createElement("modal", null, children) : null, { confirm() {} }), Empty: "empty", Space: "space", Tabs: "tabs", Tag: "tag", message: { error() {} } },
+    antd: { Alert: "alert", Button: "button", Card: "card", Descriptions: Object.assign(props => React.createElement("descriptions", props), { Item: "description" }), Drawer: ({ open, children }) => open ? React.createElement("drawer", null, children) : null, Modal: Object.assign(({ open, children }) => open ? React.createElement("modal", null, children) : null, { confirm: options => confirmations.push(options) }), Empty: "empty", Space: "space", Switch: "switch", Tabs: "tabs", Tag: "tag", message: { error() {}, success() {} } },
     "./components/ResizableTable": "table", "./personal-agent/SkillManager": { SkillManager: "skill-manager" },
     "./capability-market/CapabilityMarket": { CapabilityMarket: "capability-market" },
+    "./capability-market/GlobalMcpWorkspace": { GlobalMcpWorkspace: "global-mcp-workspace" },
+    "./SystemSkillPanel": { SystemSkillPanel: "system-skill-panel" },
     "./personal-agent/types": { errorText: (error, fallback) => error.message || fallback },
     "./api": { api: { get: async path => {
-      if (path === "/agent-admin/overview") { if (overviewDenied) throw new Error("管理员权限不足"); return { data: { runtime: {}, system_skills: [], user_libraries: [] } }; }
-      globalReads += 1; return { data: { items: [], can_manage: canManage } };
-    } } },
+      if (path === "/agent-admin/overview") { if (overviewDenied) { const denial = new Error("管理员权限不足"); denial.response = { status: 403 }; throw denial; } return { data: { runtime: {}, system_skills: [], user_libraries: [] } }; }
+      globalReads += 1; return { data: { items: [{ id: "shared-skill", name: "共享技能", category: "办公", enabled: skillEnabled }], can_manage: canManage } };
+    }, patch: async (path, body) => { patches.push({ path, body }); skillEnabled = body.enabled; } } },
   });
   let renderer;
   await act(async () => { renderer = create(React.createElement(AgentAdminPage)); });
-  const manage = () => renderer.root.findAllByType("button").find(item => item.props.children === "管理全局技能 · 从市场安装");
+  const manage = () => React.Children.toArray(renderer.root.findAllByType("card")[0].props.extra.props.children).find(item => item.props.children === "新增或导入");
+  assert.equal(renderer.root.findByType("tabs").props.items.slice(0, 3).map(item => item.key).join(","), "global,mcp,market");
   await act(async () => { manage().props.onClick(); });
   assert.equal(renderer.root.findByType("skill-manager").props.scope, "global");
+  assert.equal(renderer.root.findByType("skill-manager").props.open, true);
   assert.equal(renderer.root.findByType("skill-manager").props.onSelect, undefined);
+  await act(async () => { renderer.root.findByType("switch").props.onChange(false); });
+  assert.equal(confirmations.length, 1);
+  assert.equal(patches.length, 0, "开关点击不会直接写入");
+  assert.equal(renderer.root.findByType("switch").props.checked, true, "未确认时保持旧状态");
+  await act(async () => { confirmations[0].onCancel?.(); });
+  assert.equal(patches.length, 0, "取消不发 PATCH");
+  await act(async () => { await confirmations[0].onOk(); });
+  assert.equal(patches[0].path, "/agent/global-skills/shared-skill");
+  assert.equal(patches[0].body.enabled, false);
+  assert.equal(renderer.root.findByType("switch").props.checked, false);
   canManage = false;
   await act(async () => { renderer.update(React.createElement(AgentAdminPage, { key: "no-write" })); });
   assert.equal(manage(), undefined);
   assert.equal(renderer.root.findAllByType("skill-manager").length, 0);
   const beforeDenied = globalReads; overviewDenied = true; canManage = true;
   await act(async () => { renderer.update(React.createElement(AgentAdminPage, { key: "no-overview" })); });
-  assert.equal(globalReads, beforeDenied, "管理员overview失败不继续开放全局目录管理");
-  assert.equal(manage(), undefined);
-  assert.equal(renderer.root.findAllByType("skill-manager").length, 0);
-  assert.ok(renderer.root.findAllByType("alert").some(item => item.props.title === "智能体设置加载未完成" && item.props.description === "管理员权限不足"));
+  assert.equal(globalReads, beforeDenied + 1, "overview 拒绝时仍独立读取全局技能授权");
+  assert.ok(manage(), "全局接口授权的委派管理员仍可新增或导入");
+  assert.equal(renderer.root.findByType("skill-manager").props.scope, "global");
+  assert.equal(renderer.root.findByType("capability-market").props.canManage, true);
+  assert.equal(renderer.root.findAllByType("alert").some(item => item.props.title === "智能体设置加载未完成"), false);
   await act(async () => { renderer.unmount(); });
 });
 

@@ -7,11 +7,12 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src");
 const read = relative => fs.readFileSync(path.join(root, relative), "utf8");
 
-test("管理员页面保留能力市场、全局技能和运行状态入口", () => {
+test("管理员页面提供全局 Skill、全局 MCP、能力市场和运行状态入口", () => {
   const page = read("AgentAdminPage.tsx");
   assert.match(page, /CapabilityMarket/);
-  assert.match(page, /key: "capabilities"/);
   assert.match(page, /key: "global"/);
+  assert.match(page, /key: "mcp"/);
+  assert.match(page, /key: "market"/);
   assert.match(page, /key: "overview"/);
   assert.match(page, /\/agent-admin\/overview/);
 });
