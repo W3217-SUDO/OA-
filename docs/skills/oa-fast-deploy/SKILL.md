@@ -15,13 +15,13 @@ description: OA 正式发布（Mac 发布机 → 生产服务器 oa-production-a
 - **不可变包。** 新版本只装进 `runtime/enterprise/packages/<版本>`，`chattr -R +i` 封存后切 `current`；不改旧包，不在生产构建或拉源码。旧包保留为回滚点。
 - **数据库。** 无迁移/数据补丁就不备份；有则先对受影响表做最小外置备份并写明恢复方法，禁止无授权的全库替换。
 - **问题表来源的候选**须先有 `docs/skills/problem-remediation/SKILL.md` 要求的逐行文档和证据；发布只代表已上线，不代表 `1/已验收`。
-- **授权。** 用户本轮明确要求发布才执行；“本地预览/先不提交”时只做本地。
+- **授权。** 用户本轮明确要求发布才执行；“本地预览/先不提交”时只做本地。发布授权已包含健康通过后自动快进 `main`（见分支规则），无需另行确认。
 
 ## 分支规则：dev 是测试，main 是已上线
 
 - **`dev`**：集成与测试分支。所有改动都先推到 `dev`（必须过 pre-push 门禁），可以包含尚未上线的提交。
 - **`main`**：只代表已经上线且验证没问题的代码。不在 `main` 上直接提交、不 merge commit、不 force-push，只做快进。
-- **何时合并到 `main`**：生产激活成功、`build-info.json` 显示本次 `N`/`TARGET`、健康检查和错误日志都正常后，立即把 `main` 快进到本次发布提交 `TARGET`（第 6 步）。用户要求先验收再合并时，等用户确认后再快进。回滚或发布失败时 `main` 不动。
+- **何时合并到 `main`**：生产激活成功、`build-info.json` 显示本次 `N`/`TARGET`、健康检查和错误日志都正常后，立即把 `main` 快进到本次发布提交 `TARGET`（第 6 步）。**这一步自动执行，不再等用户确认**（用户 2026-10-21 决定）：用户要求发布即同时授权推送 `main`，发布流程里不得停下来询问“是否推 main”。只有回滚、发布失败、健康或错误日志不正常，或用户在本次发布请求里明确说“先不要推 main”时，`main` 才不动；此时要在汇报里写明原因。
 - **同步关系**：`main` 必须始终是 `dev` 的祖先（`git merge-base --is-ancestor origin/main origin/dev` 成立）。发布收尾后 `main` = 本次发布提交；发布期间 `dev` 上新增的提交等下一次发布再随之进入 `main`。快进被拒绝说明有人直接改了 `main`，停下查清，不强推。
 
 ## Mac 环境（一次性，已就绪则跳过）
@@ -123,7 +123,7 @@ curl -s https://huzhilawfirm.com/build-info.json     # version/source_commit = N
 curl -s -o /dev/null -w '%{http_code}\n' https://huzhilawfirm.com/health
 "${OA_SSH[@]}" 'systemctl is-active sunhold-oa-api sunhold-oa-web; journalctl -u sunhold-oa-api --since "-5 min" -p err --no-pager | tail'
 git tag -a "v$N" -m "OA $N" "$TARGET" && git push "$OA_GH" "v$N"
-git push "$OA_GH" "$TARGET:main"      # 快进 main 到本次发布提交（dev 测试通过才进 main），复用同提交门禁
+git push "$OA_GH" "$TARGET:main"      # 健康通过后自动快进 main 到本次发布提交，复用同提交门禁；回滚/失败/不健康时不执行
 git fetch origin && git merge-base --is-ancestor origin/main origin/dev && echo MAIN_SYNCED
 ```
 
