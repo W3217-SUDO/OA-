@@ -173,6 +173,9 @@ def mapped_data(module, row):
         for key, column in {"is_assisted": "IsAssisted", "is_shared": "IsShared", "fee_reduction": "IsFeeReducing"}.items():
             data[key] = "是" if enabled(row.get(column)) else "否"
         data["is_vip"] = text(row.get("CustomerLevelName")).upper() == "VIP"
+        # 旧库 CustomerType 为数字（1 为客户，0/2 为当事人）；页面只认“客户/当事人”。
+        data["legacy_customer_type"] = row.get("CustomerType")
+        data["customer_type"] = "客户" if row.get("CustomerType") == 1 else "当事人"
     if module == "contract":
         data["is_changed"] = enabled(row.get("IsChanged"))
     if module == "case":

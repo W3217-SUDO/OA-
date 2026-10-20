@@ -19,6 +19,7 @@ from hz_field_maps import mapped_data
 SOURCE = "hz_crm_20260930"
 TABLES = (
     "CRM_Customer",
+    "CRM_Customer_Contacts",
     "FCM_Contract",
     "Legal_Case",
     "Legal_Investigation",
@@ -30,7 +31,8 @@ TABLES = (
 )
 
 SOURCE_COLUMNS = {
-    "CRM_Customer": {"CustomerId", "CustomerNo", "CustomerName"},
+    "CRM_Customer": {"CustomerId", "CustomerNo", "CustomerName", "CustomerType", "IsActived"},
+    "CRM_Customer_Contacts": {"ContactsId", "CustomerNo"},
     "FCM_Contract": {"ContractId", "ContractNo", "ContractName", "CustomerNo"},
     "Legal_Case": {"CaseId", "CaseNo", "CaseName", "CustomerNo", "ContractNo"},
     "Legal_Investigation": {"InvestigationId", "InvestigationNo", "ContractNo"},
@@ -119,6 +121,27 @@ def index_by(rows: list[dict], key: str) -> dict[str, dict]:
     return result
 
 
+def flag(value, default=True) -> bool:
+    text_value = token(value).upper()
+    return default if not text_value else text_value in {"Y", "T", "1", "TRUE"}
+
+
+def customer_contacts(rows: list[dict]) -> list[dict]:
+    """旧联系人表转为客户记录 data.contacts，字段与 legacy_sync 的反向投影一致。"""
+    return [
+        {
+            "id": f"legacy-{row['ContactsId']}", "name": token(row.get("Contacts")),
+            "position": token(row.get("ContactsTitle")), "project_role": token(row.get("ProjectRole")),
+            "email": token(row.get("Email")), "office_phone": token(row.get("OfficePhone")),
+            "phone": token(row.get("Mobilephone")), "im_account": token(row.get("IM")),
+            "is_contacted": flag(row.get("IsContacted")), "is_people_base": flag(row.get("IsPeopleBASE")),
+            "is_received_email": flag(row.get("IsReceivedEmail")), "is_primary": flag(row.get("IsDefault"), False),
+            "is_valid": flag(row.get("IsActived")),
+        }
+        for row in sorted(rows, key=lambda item: item["ContactsId"])
+    ]
+
+
 def record_data(module: str, row: dict, **relations) -> dict:
     return {
         "migration_source": SOURCE,
@@ -128,7 +151,7 @@ def record_data(module: str, row: dict, **relations) -> dict:
     }
 
 
-def upsert_record(pg, module: str, serial: str, title: str, customer: str, row: dict, relations: dict, report: Counter) -> int:
+def upsert_record(pg, module: str, serial: str, title: str, customer: str, row: dict, relations: dict, report: Counter, status: str = "历史数据") -> int:
     if not serial or len(serial) > 64:
         raise ValueError(f"{module} 编号无效: {serial!r}")
     existing = pg.execute(
@@ -150,9 +173,9 @@ def upsert_record(pg, module: str, serial: str, title: str, customer: str, row: 
         """INSERT INTO business_records
            (module, serial_no, title, customer, status, owner, department,
             description, data, created_at, updated_at)
-           VALUES (%s, %s, %s, %s, '历史数据', 'admin', '沪知', '', %s, %s, %s)
+           VALUES (%s, %s, %s, %s, %s, 'admin', '沪知', '', %s, %s, %s)
            RETURNING id""",
-        (module, serial, (title or serial)[:255], customer[:255], Jsonb(payload), created_at, updated_at),
+        (module, serial, (title or serial)[:255], customer[:255], status, Jsonb(payload), created_at, updated_at),
     ).fetchone()[0]
     report[f"{module}_created"] += 1
     return record_id
@@ -173,6 +196,9 @@ def historical_reference(pg, entity_type: str, key: str, row: dict) -> int:
 def import_data(pg, tables: dict[str, list[dict]]) -> Counter:
     report = Counter()
     customers = index_by(tables["CRM_Customer"], "CustomerNo")
+    contacts_by_customer: dict[str, list[dict]] = {}
+    for contact in tables["CRM_Customer_Contacts"]:
+        contacts_by_customer.setdefault(token(contact.get("CustomerNo")), []).append(contact)
     contracts = index_by(tables["FCM_Contract"], "ContractNo")
     investigations = index_by(tables["Legal_Investigation"], "InvestigationNo")
     tasks = index_by(tables["Legal_Investigation_Task"], "TaskNo")
@@ -184,7 +210,7 @@ def import_data(pg, tables: dict[str, list[dict]]) -> Counter:
     ids: dict[str, dict[str, int]] = {name: {} for name in ("customer", "contract", "case", "investigation", "task", "clue", "ipr_case")}
 
     for no, row in customers.items():
-        ids["customer"][no] = upsert_record(pg, "customer", no, token(row.get("CustomerName")), "", row, {"customer_no": no, "legacy_customer_id": row["CustomerId"]}, report)
+        ids["customer"][no] = upsert_record(pg, "customer", no, token(row.get("CustomerName")), "", row, {"customer_no": no, "legacy_customer_id": row["CustomerId"], "contacts": customer_contacts(contacts_by_customer.get(no, []))}, report, "历史数据" if flag(row.get("IsActived")) else "已回收")
 
     for no, row in contracts.items():
         customer_no = token(row.get("CustomerNo"))
