@@ -32,6 +32,17 @@
 .personal-ai-space-file-error { color: #b42318; white-space: pre-wrap; overflow-wrap: anywhere; }
 .personal-ai-space-file-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .personal-ai-space-file-actions .ant-btn { min-width: 44px; min-height: 44px; }
+.personal-ai-space-file-actions .ant-btn { max-width: 100%; height: auto; white-space: normal; overflow-wrap: anywhere; }
+.personal-ai-file-preview .ant-modal-title { padding-right: 36px; overflow-wrap: anywhere; }
+.personal-ai-file-preview .ant-modal-close, .personal-ai-file-preview .ant-modal-footer .ant-btn { min-width: 44px; min-height: 44px; }
+.personal-ai-file-preview .ant-modal-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.personal-ai-file-preview .ant-modal-footer > .ant-btn { margin: 0; }
+.personal-ai-file-preview-content { min-height: 120px; min-width: 0; max-width: 100%; overflow: auto; }
+.personal-ai-pdf-content { display: flex; min-width: 0; height: 60vh; min-height: 160px; }
+@media (max-width: 768px) {
+  .personal-ai-file-preview .ant-modal { max-width: calc(100vw - 24px); margin-inline: auto; }
+  .personal-ai-file-preview .ant-modal-body { max-height: 65vh; overflow: auto; }
+}
 .personal-ai-space-drawer .ant-pagination-prev, .personal-ai-space-drawer .ant-pagination-next { min-width: 44px; min-height: 44px; }
 .personal-ai-document-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 8px; }
 .personal-ai-document-saved { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; color: #667085; overflow-wrap: anywhere; }

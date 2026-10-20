@@ -1288,6 +1288,11 @@ export default function App() {
   const isChatWorkspace = active === "ai-chat" || (active === "dashboard" && dashboardView === "conversation");
   const isDesktopAiWorkspace = active === "ai-chat" && !isNarrowViewport;
   useEffect(() => { setAiSystemNavigationOpen(false); }, [active, isNarrowViewport]);
+  useEffect(() => {
+    // 工作台、页签和历史导航共用同一收起规则，固定展开偏好保持不变。
+    setMobileSidebarOpen(false);
+    setSidebarHoverExpanded(false);
+  }, [active]);
   const chatViewportRef = useMobileChatViewport(loggedIn && permissionsReady && isChatWorkspace);
   const visibleOpenPages = openPages.filter((item) => isWorkspaceRouteGranted(
     normalizeWorkspaceRoute(item.key), grantedMenuKeys, permissionAdministrator,
@@ -1494,6 +1499,8 @@ export default function App() {
   }, [active, effectiveMenuItems, loggedIn, siteBrand, personalAgentName]);
   const navigate = (route: string) => {
     const normalizedRoute = resolveGrantedMenuRoute(normalizeWorkspaceRoute(route), effectiveMenuItems, grantedMenuKeys, permissionAdministrator);
+    setMobileSidebarOpen(false);
+    setSidebarHoverExpanded(false);
     if (normalizedRoute === "contract-new") {
       if (sessionStorage.getItem(CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY) !== "customer") {
         clearContractCustomerContext(sessionStorage);

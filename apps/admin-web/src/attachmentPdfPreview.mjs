@@ -50,10 +50,10 @@ export const pdfPreviewStyle = `
 
 const MAX_CANVAS_PIXELS = 8_000_000;
 
-export async function renderAttachmentPdfPreview(target, blob) {
+export async function renderAttachmentPdfPreview(target, blob, options = {}) {
   const doc = target.document;
   const view = doc.defaultView;
-  const root = doc.querySelector(".pdf-preview");
+  const root = options.root ?? doc.querySelector(".pdf-preview");
   if (!root) throw new Error("PDF 预览页面初始化失败");
   const scroll = root.querySelector(".pdf-scroll");
   const canvas = root.querySelector("canvas");
@@ -136,15 +136,19 @@ export async function renderAttachmentPdfPreview(target, blob) {
   const destroy = async () => {
     if (closed) return;
     closed = true;
+    target.removeEventListener?.("beforeunload", closeRenderer);
+    options.signal?.removeEventListener("abort", closeRenderer);
     observer.disconnect();
     renderTask?.cancel();
     canvas.width = 0;
     canvas.height = 0;
     await loadingTask?.destroy();
   };
-  target.addEventListener("beforeunload", () => {
+  const closeRenderer = () => {
     void destroy().catch((error) => globalThis.reportError(error));
-  }, { once: true });
+  };
+  target.addEventListener("beforeunload", closeRenderer, { once: true });
+  options.signal?.addEventListener("abort", closeRenderer, { once: true });
   previous.addEventListener("click", () => {
     if (busy || failed || pageNumber <= 1) return;
     pageNumber -= 1;
@@ -159,6 +163,7 @@ export async function renderAttachmentPdfPreview(target, blob) {
   });
 
   try {
+    if (options.signal?.aborted) { await destroy(); return; }
     const bytes = new Uint8Array(await blob.arrayBuffer());
     if (closed) return;
     GlobalWorkerOptions.workerSrc = workerUrl;

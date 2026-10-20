@@ -1,0 +1,20 @@
+.investigation-region-trigger.ant-btn { width: 100%; min-height: 44px; height: auto; justify-content: flex-start; text-align: left; white-space: normal; }
+.investigation-region-trigger.ant-btn > span:last-child { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.investigation-region-trigger .anticon { flex: none; }
+.investigation-region-modal .ant-modal-title { padding-right: 36px; }
+.investigation-region-modal .ant-modal-close { width: 44px; height: 44px; }
+.investigation-region-modal .ant-btn { min-width: 44px; min-height: 44px; }
+.investigation-region-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.investigation-region-toolbar > span { flex: 1 1 140px; }
+.investigation-region-groups { max-height: 55vh; overflow: auto; overscroll-behavior: contain; }
+.investigation-region-group { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 8px; padding: 8px 0; border-top: 1px solid #e5e9ee; }
+.investigation-region-group .ant-checkbox-wrapper { min-height: 44px; margin-inline-start: 0; align-items: center; overflow-wrap: anywhere; }
+.investigation-region-group .ant-checkbox-group { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 8px; }
+.investigation-region-modal .ant-modal-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.investigation-region-modal .ant-modal-footer > .ant-btn { margin: 0; }
+@media (max-width: 768px) {
+  .investigation-region-modal .ant-modal { max-width: calc(100vw - 24px); margin-inline: auto; }
+  .investigation-region-group { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .investigation-region-group .ant-checkbox-group { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .investigation-region-groups { max-height: 50vh; }
+}

@@ -6,7 +6,7 @@ import { errorText } from "./types";
 import { PersonalAiSpaceFiles } from "./PersonalAiSpaceFiles";
 import { PersonalAiOfficeEditor } from "./PersonalAiOfficeEditor";
 import { PersonalAiDocumentEditor } from "./PersonalAiDocumentEditor";
-import { AttachmentPreviewContent, type PreviewAttachment } from "../components/common/AttachmentContent";
+import { PersonalAiFilePreview } from "./PersonalAiFilePreview";
 import { downloadPersonalAiFile, type PersonalAiDocument, type PersonalAiFile, type PersonalAiFileDeleteResult, type PersonalAiFilePage, type PersonalAiSpaceInfo } from "./personalAiSpaceApi";
 import "./personal-ai-space.css";
 
@@ -28,11 +28,10 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [downloadingId, setDownloadingId] = useState("");
-  const [preview, setPreview] = useState<PreviewAttachment | null>(null);
+  const [preview, setPreview] = useState<{ file: PersonalAiFile; blob?: Blob } | null>(null);
   const [officeFile, setOfficeFile] = useState<PersonalAiFile | null>(null);
   const [officeBusy, setOfficeBusy] = useState(false);
   const officeOperation = useRef(false);
-  const [previewFileId, setPreviewFileId] = useState("");
   const [editor, setEditor] = useState<PersonalAiDocument | null>(null);
   const [editorBusy, setEditorBusy] = useState(false);
   const [latestSavedId, setLatestSavedId] = useState("");
@@ -42,7 +41,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
   const deleteLock = useRef(false);
   const fileRead = useRef<AbortController | null>(null);
   useEffect(() => () => fileRead.current?.abort(), []);
-  const closePreview = () => { if (preview?.url) URL.revokeObjectURL(preview.url); setPreview(null); setPreviewFileId(""); };
+  const closePreview = () => setPreview(null);
   const close = () => {
     if (editorBusy || officeOperation.current || deleteLock.current) return;
     fileRead.current?.abort();
@@ -69,20 +68,9 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
     catch (failure) { setError(errorText(failure, "文件下载失败")); }
     finally { setDownloadingId(""); }
   };
-  const previewOffice = async (file: PersonalAiFile) => {
-    if (editorBusy || officeOperation.current || deleteLock.current || previewFileId) return;
-    const controller = new AbortController();
-    fileRead.current?.abort(); fileRead.current = controller;
-    setError(""); setPreviewFileId(file.id);
-    try {
-      const { data } = await api.get<Blob>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/download`, { responseType: "blob", signal: controller.signal });
-      if (controller.signal.aborted) return;
-      const kind = /\.(xlsx|xls)$/i.test(file.name) ? "xlsx" : "docx";
-      setPreview({ name: file.name, kind, blob: data });
-    } catch (failure) {
-      if (!controller.signal.aborted) setError(errorText(failure, "文件在线查看加载失败"));
-      setPreviewFileId("");
-    }
+  const previewFile = (file: PersonalAiFile) => {
+    if (editorBusy || officeOperation.current || deleteLock.current || preview) return;
+    setError(""); setPreview({ file });
   };
   const openEditor = async (file: PersonalAiFile) => {
     if (editorBusy || officeOperation.current || deleteLock.current) return;
@@ -109,7 +97,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       if (data.id !== deleteTarget.id || data.status !== "deleted" || data.blob_status !== "retained") throw new Error("删除结果尚未确认，请刷新文件夹核对，未隐藏该文件");
       if (editor?.id === data.id) setEditor(null);
       if (officeFile?.id === data.id) setOfficeFile(null);
-      if (previewFileId === data.id) closePreview();
+      if (preview?.file.id === data.id) closePreview();
       if (latestSavedId === data.id) setLatestSavedId("");
       setDeleteTarget(null);
       if (files) setPage(Math.min(page, Math.max(1, Math.ceil((files.total - 1) / files.page_size))));
@@ -135,12 +123,11 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       <div className="personal-ai-space-toolbar"><Tooltip title={`刷新${label}`}><Button icon={<ReloadOutlined />} aria-label={`刷新${label}`} loading={loading} onClick={() => setRefresh((value) => value + 1)} /></Tooltip>{files && <span>共 {files.total} 个文件</span>}</div>
       {space && !space.configured && <Alert type="warning" showIcon title="OSS 尚未配置，不能保存新文件" />}
       {error && <Alert type="error" showIcon title="个人空间操作未完成" description={error} />}
-      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} deletingId={deleting ? deleteTarget?.id : undefined} latestSavedId={latestSavedId} busy={busy || editorBusy || officeBusy || deleting || !!previewFileId} onDownload={(file) => void download(file)} onPreview={(file) => void previewOffice(file)} onEdit={(file) => void openEditor(file)} onDelete={(file) => { if (!officeOperation.current && !editorBusy && !deleteLock.current) { setDeleteError(""); setDeleteTarget(file); } }} onConversation={(id) => void openConversation(id)} />}
+      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} deletingId={deleting ? deleteTarget?.id : undefined} latestSavedId={latestSavedId} busy={busy || editorBusy || officeBusy || deleting || !!preview} onDownload={(file) => void download(file)} onPreview={previewFile} onEdit={(file) => void openEditor(file)} onDelete={(file) => { if (!officeOperation.current && !editorBusy && !deleteLock.current) { setDeleteError(""); setDeleteTarget(file); } }} onConversation={(id) => void openConversation(id)} />}
       {files && files.total > 0 && <Pagination simple current={files.page} pageSize={files.page_size} total={files.total} disabled={loading} showSizeChanger={false} onChange={setPage} />}
     </div>
-    <Modal open={!!preview} title={`在线查看：${preview?.name || ""}`} width={preview?.kind === "pdf" ? 1000 : 860} footer={<Button onClick={closePreview}>关闭</Button>} onCancel={closePreview} destroyOnHidden>
-      <AttachmentPreviewContent preview={preview} />
-    </Modal>
+    {preview && <PersonalAiFilePreview key={preview.file.id} file={preview.file} blob={preview.blob} downloading={downloadingId === preview.file.id} downloadError={error}
+      onClose={closePreview} onDownload={() => void download(preview.file)} onEdit={() => { const file = preview.file; closePreview(); void openEditor(file); }} />}
     {editor && <PersonalAiDocumentEditor document={editor} onBusy={setEditorBusy} onClose={() => { if (!editorBusy) setEditor(null); }} onVersionCreated={versionCreated} onSaved={(file, document) => {
       if (file.case_id === null && file.name.toLowerCase().endsWith(".docx")) { setEditor(null); setOfficeFile(file); }
       else setEditor(document);
@@ -155,7 +142,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
     </Modal>
     {officeFile && <PersonalAiOfficeEditor key={officeFile.id} file={officeFile} disabled={deleting || editorBusy} onBusy={(value) => { officeOperation.current = value; setOfficeBusy(value); }}
       onClose={() => { if (!officeOperation.current) setOfficeFile(null); }} onVersionCreated={versionCreated} onSaved={(file, blob) => {
-      closePreview(); setOfficeFile(null); setPreviewFileId(file.id); setPreview({ name: file.name, kind: /\.xlsx?$/i.test(file.name) ? "xlsx" : "docx", blob });
+      setOfficeFile(null); setPreview({ file, blob });
       }} />}
   </Drawer>;
 }

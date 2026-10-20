@@ -1,7 +1,8 @@
-import { Drawer, Card, Form, Alert, Input, Select, DatePicker, Cascader, Button, Space, Tag } from "antd";
+import { Drawer, Card, Form, Alert, Input, Select, DatePicker, Button, Space, Tag } from "antd";
 import Table from "../components/ResizableTable";
 import { isLegacyInvestigationRecord } from "./constants";
 import { taskRegionLabel } from "./taskRegionDisplay";
+import { InvestigationRegionPicker } from "./InvestigationRegionPicker";
 import type { Row, TaskRow, Contract } from "./types";
 
 interface TaskDetailDrawerProps {
@@ -224,15 +225,7 @@ export default function TaskDetailDrawer({
             rules={[{ required: true, type: "array", min: 1, message: "请至少选择一个调查区域" }]}
             extra="可跨省选择多个省、市，调查区域须在父任务授权范围内"
           >
-            <Cascader
-              options={taskRegionOptions}
-              multiple
-              changeOnSelect
-              maxTagCount={3}
-              placeholder="请选择一个或多个调查区域"
-              showSearch
-              expandTrigger="hover"
-            />
+            <InvestigationRegionPicker options={taskRegionOptions} />
           </Form.Item>
           <Space style={{ marginBottom: 16 }}>
             <Button size="small" onClick={() => taskForm.setFieldValue(

@@ -37,6 +37,15 @@ export type PersonalAiFileEditResult = { file: PersonalAiFile; supersedes: strin
 export type PersonalAiFileDeleteResult = { id: string; status: "deleted"; blob_status: "retained" };
 export type PersonalAiDocumentRequest = { conversation_id: string; message_index: number; name: string; expected_content_sha256: string; format?: "word" | "xlsx" };
 
+export function personalAiFilePreviewKind(name: string): string | null {
+  if (/\.docx$/i.test(name)) return "docx";
+  if (/\.xlsx?$/i.test(name)) return "xlsx";
+  if (/\.pdf$/i.test(name)) return "pdf";
+  if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) return "image";
+  if (/\.(md|txt|csv|json)$/i.test(name)) return "text";
+  return null;
+}
+
 export async function personalAiMessageSha256(content: string): Promise<string> {
   if (!globalThis.crypto?.subtle) throw new Error("当前连接不支持安全摘要计算，请使用 HTTPS 或本机安全连接");
   const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
