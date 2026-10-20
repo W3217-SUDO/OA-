@@ -26,6 +26,146 @@ async function loadActualModule(relative) {
   return import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}#${++moduleSequence}`);
 }
 
+async function courtRefundHarness(t) {
+  const state = { amount: 0, mode: "ok", calls: [], reads: [], messages: [], closed: 0, refreshed: 0, resets: 0 };
+  const storage = new Map();
+  const fields = new Map([["request_key", "CODEX-REQUEST"]]);
+  const originalWindow = globalThis.window;
+  globalThis.window = { sessionStorage: {
+    getItem: key => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: key => storage.delete(key),
+  } };
+  globalThis.__paymentReworkMessages = Object.fromEntries(["success", "error", "warning"].map(kind => [
+    kind, value => state.messages.push({ kind, value }),
+  ]));
+  globalThis.__paymentReworkApi = {
+    post: async (url, body) => {
+      state.calls.push({ url, body });
+      if (state.mode === "denied") throw { response: { status: 403, data: { detail: "无权办理该案件退费" } } };
+      state.saved = url.endsWith("/clear-projection")
+        ? { module: "finance", id: 8, data: { refund_amount_override: 0, refund_requested_amount_override: 0 } }
+        : { module: "refund", id: 99, data: { ...body } };
+      if (state.mode === "lost") throw new Error("响应丢失");
+      return { data: state.mode === "mismatch" ? { ...state.saved, data: { ...state.saved.data, amount: 0 } } : state.saved };
+    },
+    get: async (url, options) => {
+      state.reads.push({ url, options });
+      if (state.mode === "missing") throw { response: { status: 404, data: {} } };
+      return { data: state.saved };
+    },
+  };
+  t.after(() => {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    delete globalThis.__paymentReworkMessages;
+    delete globalThis.__paymentReworkApi;
+  });
+  const form = {
+    validateFields: async () => ({ amount: state.amount }), getFieldValue: key => fields.get(key),
+    setFieldValue: (key, value) => fields.set(key, value),
+    resetFields: () => { state.resets++; fields.clear(); fields.set("request_key", `CODEX-REOPEN-${state.resets}`); },
+  };
+  const { createCaseFinanceActions } = await loadActualModule("../src/legal/services/financeActions.tsx");
+  const actions = createCaseFinanceActions({
+    courtRefundFee: { id: 8, serial_no: "FY-OWNED", data: { fee_type: "官方费用", court: "测试法院" } },
+    viewingCounselCase: { id: 7, serial_no: "CODEX-CASE", customer: "测试客户", data: {} },
+    courtRefundForm: form, profile: { username: "CODEX-USER", display_name: "测试人员" },
+    setCourtRefundFee: value => { assert.equal(value, null); state.closed++; },
+    openCounselDetail: async () => { state.refreshed++; },
+  });
+  return { state, storage, form, actions };
+}
+
+test("案件零值只调用源费专用动作，真实结果确认后关闭，明确拒绝不误报", async t => {
+  const { state, storage, actions } = await courtRefundHarness(t);
+  await actions.createCourtRefund();
+  assert.equal(state.calls[0].url, "/finance/fees/8/court-refund/clear-projection");
+  assert.equal(state.calls[0].body, undefined);
+  assert.deepEqual(state.messages.at(-1), { kind: "success", value: "法院退费金额已归零" });
+  assert.deepEqual([state.closed, state.refreshed, state.resets, storage.size], [1, 1, 1, 0]);
+  state.mode = "denied";
+  await actions.createCourtRefund();
+  assert.deepEqual(state.messages.at(-1), { kind: "error", value: "无权办理该案件退费" });
+  assert.equal(state.closed, 1);
+  assert.equal(storage.size, 0);
+  state.mode = "ok";
+  state.amount = 12;
+  await actions.createCourtRefund();
+  assert.equal(state.calls.at(-1).url, "/finance/refunds");
+  assert.equal(state.calls.at(-1).body.amount, 12);
+  assert.equal(state.messages.at(-1).value, "法院退费申请已创建");
+  assert.ok(state.calls.every(call => !call.url.endsWith("/reset")));
+});
+
+test("零值已提交但响应丢失，重开改正数也先查源费而不建普通退款", async t => {
+  const { state, storage, form, actions } = await courtRefundHarness(t);
+  state.mode = "lost";
+  await actions.createCourtRefund();
+  assert.equal(storage.size, 1);
+  assert.equal(state.closed, 0);
+  assert.match(state.messages.at(-1).value, /结果未确认/);
+  form.resetFields();
+  state.amount = 12;
+  state.mode = "ok";
+  await actions.createCourtRefund();
+  assert.equal(state.calls.length, 1);
+  assert.equal(state.reads[0].url, "/records/8");
+  assert.equal(state.messages.at(-1).kind, "warning");
+  assert.match(state.messages.at(-1).value, /当前金额12未提交/);
+  assert.equal(state.closed, 0);
+  await actions.createCourtRefund();
+  assert.equal(state.calls.length, 1);
+});
+
+test("正数响应丢失后编辑金额只核对原键，不换键、不误报当前金额成功", async t => {
+  const { state, actions } = await courtRefundHarness(t);
+  state.amount = 12;
+  state.mode = "lost";
+  await actions.createCourtRefund();
+  state.amount = 15;
+  state.mode = "ok";
+  await actions.createCourtRefund();
+  assert.equal(state.calls.length, 1);
+  assert.equal(state.reads[0].url, "/finance/fees/8/court-refund/request");
+  assert.equal(state.reads[0].options.params.request_key, "CODEX-REQUEST");
+  assert.match(state.messages.at(-1).value, /当前金额15未提交/);
+  assert.equal(state.closed, 0);
+  assert.equal(state.messages.filter(item => item.kind === "success").length, 0);
+});
+
+test("原键查询404保持不确定，查询证实原正数后才成功且没有重发", async t => {
+  const { state, storage, actions } = await courtRefundHarness(t);
+  state.amount = 12;
+  state.mode = "lost";
+  await actions.createCourtRefund();
+  state.mode = "missing";
+  await actions.createCourtRefund();
+  assert.match(state.messages.at(-1).value, /结果仍未确认/);
+  assert.equal(storage.size, 1);
+  assert.equal(state.closed, 0);
+  assert.equal(state.calls.length, 1);
+  state.mode = "ok";
+  await actions.createCourtRefund();
+  assert.equal(state.messages.at(-1).kind, "success");
+  assert.equal(state.closed, 1);
+  assert.equal(state.calls.length, 1);
+  assert.equal(storage.size, 0);
+});
+
+test("HTTP成功但返回金额不符不能提示成功，随后仍只查原请求", async t => {
+  const { state, actions } = await courtRefundHarness(t);
+  state.amount = 12;
+  state.mode = "mismatch";
+  await actions.createCourtRefund();
+  assert.equal(state.closed, 0);
+  assert.equal(state.messages.at(-1).kind, "error");
+  state.mode = "ok";
+  await actions.createCourtRefund();
+  assert.equal(state.calls.length, 1);
+  assert.equal(state.closed, 1);
+});
+
 test("实际案件请款入口使用跨入口可申请余额，零余额不打开申请，驳回后可按释放余额重提", async () => {
   const warnings = [];
   let reads = 0;

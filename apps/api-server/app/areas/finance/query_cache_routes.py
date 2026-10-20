@@ -101,6 +101,11 @@ FINANCE_CONDITIONAL_QUERIES = {
     "/system/parameters/options": "list_system_parameter_options",
 }
 
+# 未知提交结果必须实时核对，仍执行同样的路由和依赖完整性检查。
+FINANCE_REALTIME_QUERIES = {
+    "/finance/fees/{fee_id}/court-refund/request": "get_finance_fee_court_refund_request",
+}
+
 FINANCIAL_RECORD_MODULES = frozenset({
     "finance", "contract_payment", "invoice", "refund", "finance_package",
     "finance_settlement", "finance_fee_inform", "jar_fee",
@@ -153,7 +158,7 @@ def install_finance_query_cache(app: FastAPI) -> None:
     for route in app.routes:
         if isinstance(route, APIRoute) and route.methods == {"GET"} and route.path.startswith(prefix + "/"):
             routes_by_path[route.path[len(prefix):]].append(route)
-    expected = {**FINANCE_JSON_QUERIES, **FINANCE_CONDITIONAL_QUERIES}
+    expected = {**FINANCE_JSON_QUERIES, **FINANCE_CONDITIONAL_QUERIES, **FINANCE_REALTIME_QUERIES}
     audited = set(expected) | FINANCE_FILE_QUERIES
     finance_paths = {path for path in routes_by_path if path.startswith("/finance/") or path in {"/receivables", "/receivables/detail"}}
     unaudited = finance_paths - audited
@@ -175,4 +180,5 @@ def install_finance_query_cache(app: FastAPI) -> None:
         if set(signature(endpoint).parameters) != parsed_parameters | dependencies:
             raise RuntimeError(f"财务缓存入口含非查询参数：{path}")
         # FastAPI 已生成的 handler 持有此 dependant；仅改执行函数，不重建或跳过认证依赖。
-        route.dependant.call = _wrap_query(endpoint, path)
+        if path not in FINANCE_REALTIME_QUERIES:
+            route.dependant.call = _wrap_query(endpoint, path)

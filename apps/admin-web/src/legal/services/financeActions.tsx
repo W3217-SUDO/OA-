@@ -551,33 +551,81 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         const { courtRefundFee, viewingCounselCase, courtRefundForm, profile, setCourtRefundFee, openCounselDetail } = context;
         if (!courtRefundFee || !viewingCounselCase)
             return;
+        if (courtRefundForm.getFieldValue("court_refund_submitting"))
+            return;
+        if (courtRefundForm.getFieldValue("court_refund_confirmed_request"))
+            return message.warning("上次请求已核实，当前修改未提交，请关闭并重新打开后申请");
+        const storageKey = `sunhold:court-refund-pending:${profile.username}:${courtRefundFee.id}`;
+        let checkingPrevious = false;
+        courtRefundForm.setFieldValue("court_refund_submitting", true);
         try {
             const values = await courtRefundForm.validateFields();
             const requestKey = courtRefundForm.getFieldValue("request_key");
-            courtRefundForm.setFieldValue("request_key", requestKey);
-            if (Number(values.amount) === 0) {
-                await api.post(`/finance/fees/${courtRefundFee.id}/court-refund/reset`);
+            if (!requestKey)
+                throw new Error("退款请求标识缺失，请关闭并重新打开后申请");
+            const currentRequest = {
+                request_key: requestKey,
+                fee_record_id: courtRefundFee.id,
+                case_no: viewingCounselCase.serial_no,
+                customer: viewingCounselCase.customer,
+                court: courtRefundFee.data.court || viewingCounselCase.data.court || "",
+                original_payment_no: courtRefundFee.data.document_no || courtRefundFee.serial_no,
+                amount: Number(values.amount),
+                applicant: profile.display_name || profile.username,
+                reason: courtRefundFee.data.fee_type === "代理费" ? "代理费法院退费" : "诉讼费退款",
+            };
+            const saved = window.sessionStorage.getItem(storageKey);
+            const request: typeof currentRequest = saved ? JSON.parse(saved) : currentRequest;
+            checkingPrevious = Boolean(saved);
+            if (request.fee_record_id !== courtRefundFee.id)
+                throw new Error("待核对请求的来源费用不一致，不能继续提交");
+            let response;
+            if (checkingPrevious) {
+                // 未知结果只查证原请求，不能换键或按当前修改再次写入。
+                response = request.amount === 0
+                    ? await api.get(`/records/${courtRefundFee.id}`)
+                    : await api.get(`/finance/fees/${courtRefundFee.id}/court-refund/request`, {
+                        params: { request_key: request.request_key },
+                    });
             } else {
-                await api.post("/finance/refunds", {
-                    request_key: requestKey,
-                    fee_record_id: courtRefundFee.id,
-                    case_no: viewingCounselCase.serial_no,
-                    customer: viewingCounselCase.customer,
-                    court: courtRefundFee.data.court || viewingCounselCase.data.court || "",
-                    original_payment_no: courtRefundFee.data.document_no || courtRefundFee.serial_no,
-                    amount: Number(values.amount),
-                    applicant: profile.display_name || profile.username,
-                    reason: courtRefundFee.data.fee_type === "代理费" ? "代理费法院退费" : "诉讼费退款",
-                });
+                window.sessionStorage.setItem(storageKey, JSON.stringify(request));
+                response = request.amount === 0
+                    ? await api.post(`/finance/fees/${courtRefundFee.id}/court-refund/clear-projection`)
+                    : await api.post("/finance/refunds", request);
             }
-            message.success(Number(values.amount) === 0 ? "法院退费金额已归零" : "法院退费申请已创建");
+            const result = response.data;
+            const verified = request.amount === 0
+                ? result?.module === "finance" && result.id === request.fee_record_id
+                    && result.data?.refund_amount_override === 0 && result.data?.refund_requested_amount_override === 0
+                : result?.module === "refund" && Number(result.id) > 0
+                    && Object.entries(request).every(([key, value]) => result.data?.[key] === value);
+            if (!verified)
+                throw new Error("退款处理结果尚未核实，请再次确认以只读核对，勿重复申请");
+            courtRefundForm.setFieldValue("court_refund_confirmed_request", true);
+            window.sessionStorage.removeItem(storageKey);
+            if (checkingPrevious && request.amount !== currentRequest.amount) {
+                message.warning(`已核实上次金额${request.amount}的处理结果；当前金额${currentRequest.amount}未提交，请关闭并重新打开后申请`);
+                return;
+            }
+            message.success(request.amount === 0 ? "法院退费金额已归零" : "法院退费申请已创建");
             setCourtRefundFee(null);
             courtRefundForm.resetFields();
             await openCounselDetail(viewingCounselCase);
         }
         catch (error: any) {
-            if (!error?.errorFields)
-                message.error(error?.response?.data?.detail || "法院退费申请创建失败");
+            if (!error?.errorFields) {
+                const status = error?.response?.status;
+                if (!checkingPrevious && status >= 400 && status < 500)
+                    window.sessionStorage.removeItem(storageKey);
+                message.error(checkingPrevious && status === 404
+                    ? "尚未查到上次请求，结果仍未确认，请稍后核对，勿重复申请"
+                    : !status || status >= 500
+                        ? `退款处理结果未确认，请再次确认以只读核对，勿重复申请${error?.message ? `：${error.message}` : ""}`
+                        : error?.response?.data?.detail || "退款申请失败");
+            }
+        }
+        finally {
+            courtRefundForm.setFieldValue("court_refund_submitting", false);
         }
     };
     const openPaymentRequest = async (row: CaseRow) => {

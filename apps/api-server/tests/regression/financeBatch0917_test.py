@@ -3,7 +3,7 @@ import unittest
 from datetime import date
 from sqlalchemy import select, func
 from finance_0916_batch_test import FinanceBatchTest, API, IDENTITY, app, current_identity
-from app.models import BusinessRecord, IncomingPayment, SystemParameter, User
+from app.models import BusinessRecord, FinanceTransaction, IncomingPayment, JobRole, SystemParameter, User, WorkflowEvent
 
 class Batch0917Test(unittest.IsolatedAsyncioTestCase):
     asyncTearDown = FinanceBatchTest.asyncTearDown
@@ -119,6 +119,72 @@ class Batch0917Test(unittest.IsolatedAsyncioTestCase):
             ))
             self.assertEqual(before_agency_count, 1)
 
+        preview = await self.client.get(
+            f'{API}/cases/{self.case_id}/commission-preview', params={'source_fee_id': agency_fee_id},
+        )
+        self.assertEqual(preview.status_code, 200, preview.text)
+        commission = await self.client.post(f'{API}/cases/{self.case_id}/commissions', json={
+            'source_fee_id': agency_fee_id,
+            'items': [{'preview_key': preview.json()['items'][0]['preview_key'], 'actual_amount': 4}],
+        })
+        self.assertEqual(commission.status_code, 201, commission.text)
+        commission_id = commission.json()['items'][0]['id']
+        self.assertEqual(commission.json()['items'][0]['status'], '待审批')
+        self.assertTrue(commission.json()['items'][0]['data']['is_refund'])
+        for kind, expected in (('refund', True), ('commission', False)):
+            queue = await self.client.get(f'{API}/finance/internal-review-requests', params={'kind': kind})
+            self.assertEqual(queue.status_code, 200, queue.text)
+            self.assertEqual(commission_id in {row['id'] for row in queue.json()['items']}, expected)
+        payments = await self.client.get(f'{API}/finance/payment-applications/query', params={'scope': 'mine'})
+        self.assertEqual(payments.status_code, 200, payments.text)
+        self.assertNotIn(commission_id, {row['id'] for row in payments.json()['items']})
+        async with self.sessions() as db:
+            preserved = {}
+            for record_id in (agency_fee_id, commission_id):
+                item = await db.get(BusinessRecord, record_id)
+                preserved[record_id] = (item.status, dict(item.data), item.updated_at)
+            before_refunds = await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == 'refund'))
+            before_transactions = await db.scalar(select(func.count()).select_from(FinanceTransaction))
+
+        # 零值动作只修改源费投影，反复打开保存也不创建普通退款业务单。
+        zero_body = {**body, 'amount': 0, 'request_key': 'batch0917-create-zero'}
+        zero_path = f'{API}/finance/fees/{self.fee_id}/court-refund/clear-projection'
+        zero = await self.client.post(zero_path)
+        self.assertEqual(zero.status_code, 200, zero.text)
+        self.assertEqual(zero.json()['id'], self.fee_id)
+        self.assertEqual(zero.json()['module'], 'finance')
+        self.assertNotIn('refund_fee_id', zero.json()['data'])
+        retry = await self.client.post(zero_path)
+        self.assertEqual(retry.status_code, 200, retry.text)
+        self.assertEqual(retry.json()['id'], zero.json()['id'])
+        invalid = await self.client.post(f'{API}/finance/refunds', json=zero_body)
+        self.assertEqual(invalid.status_code, 422, invalid.text)
+        not_a_refund = await self.client.post(f'{API}/finance/refunds/{self.fee_id}/submit', json={})
+        self.assertEqual(not_a_refund.status_code, 404, not_a_refund.text)
+        async with self.sessions() as db:
+            self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == 'refund')), before_refunds)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(FinanceTransaction)), before_transactions)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent).where(
+                WorkflowEvent.record_id == self.fee_id, WorkflowEvent.action == '法院退费显示归零',
+            )), 1)
+            for record_id, snapshot in preserved.items():
+                item = await db.get(BusinessRecord, record_id)
+                self.assertEqual((item.status, item.data, item.updated_at), snapshot)
+            self.assertEqual((await db.get(BusinessRecord, self.fee_id)).data['refund_amount_override'], 0)
+        relations = await self.client.get(f'{API}/cases/{self.case_id}/relations')
+        self.assertEqual(relations.status_code, 200, relations.text)
+        original = next(row for row in relations.json()['fees'] if row['id'] == self.fee_id)
+        self.assertEqual(original['data']['refund_amount'], 0)
+
+        positive = await self.client.post(f'{API}/finance/refunds', json={
+            **body, 'amount': 10, 'request_key': 'batch0917-positive-after-zero',
+        })
+        self.assertEqual(positive.status_code, 201, positive.text)
+        relations = await self.client.get(f'{API}/cases/{self.case_id}/relations')
+        self.assertEqual(relations.status_code, 200, relations.text)
+        original = next(row for row in relations.json()['fees'] if row['id'] == self.fee_id)
+        self.assertEqual(original['data']['refund_amount'], 50)
+
         result = await self.client.patch(
             f"{API}/finance/refunds/{refund['id']}/amount",
             json={'amount': 0, 'comment': '归零回归'},
@@ -140,6 +206,229 @@ class Batch0917Test(unittest.IsolatedAsyncioTestCase):
         original = next(row for row in relations.json().get('fees', []) if row['id'] == self.fee_id)
         self.assertEqual(original['data']['refund_amount'], 0)
         self.assertEqual(original['data']['refund_requested_amount'], 0)
+
+        restored = await self.client.patch(
+            f"{API}/finance/refunds/{refund['id']}/amount", json={'amount': 40},
+        )
+        self.assertEqual(restored.status_code, 200, restored.text)
+        async with self.sessions() as db:
+            self.assertNotIn('refund_amount_override', (await db.get(BusinessRecord, self.fee_id)).data)
+
+    async def test_refund_request_key_requires_equal_payload_and_lookup_is_owner_scoped(self):
+        body = {
+            'fee_record_id': self.fee_id, 'case_no': 'CODEX-0916-case', 'customer': 'Batch customer',
+            'court': '法院', 'original_payment_no': 'receipt-key', 'amount': 40,
+            'applicant': '回归申请人', 'request_key': 'batch0917-payload-key',
+        }
+        first = await self.client.post(f'{API}/finance/refunds', json=body)
+        self.assertEqual(first.status_code, 201, first.text)
+        retry = await self.client.post(f'{API}/finance/refunds', json=body)
+        self.assertEqual(retry.status_code, 201, retry.text)
+        self.assertEqual(retry.json()['id'], first.json()['id'])
+        for changed in ({'amount': 20}, {'court': '其他法院'}, {'remark': '另一项申请'}, {'refund_account': 'different'}):
+            conflict = await self.client.post(f'{API}/finance/refunds', json={**body, **changed})
+            self.assertEqual(conflict.status_code, 409, conflict.text)
+        lookup = f'{API}/finance/fees/{self.fee_id}/court-refund/request'
+        found = await self.client.get(lookup, params={'request_key': body['request_key']})
+        self.assertEqual(found.status_code, 200, found.text)
+        self.assertEqual(found.json()['id'], first.json()['id'])
+        missing = await self.client.get(lookup, params={'request_key': 'not-committed-or-still-running'})
+        self.assertEqual(missing.status_code, 404, missing.text)
+        async with self.sessions() as db:
+            db.add(User(username='CODEX-B-other-admin', display_name='隔离其他管理员', role='admin',
+                        department='test', password_hash='unused', is_active=True))
+            await db.commit()
+        app.dependency_overrides[current_identity] = lambda: {'username': 'CODEX-B-other-admin', 'role': 'admin', 'department': 'test'}
+        try:
+            denied = await self.client.get(lookup, params={'request_key': body['request_key']})
+            self.assertEqual(denied.status_code, 404, denied.text)
+        finally:
+            app.dependency_overrides[current_identity] = lambda: IDENTITY
+        async with self.sessions() as db:
+            self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == 'refund')), 1)
+            saved = await db.get(BusinessRecord, first.json()['id'])
+            self.assertEqual(saved.data['amount'], 40)
+        # 原始金额快照也参与比较，不把按分进位后的相同金额视为相同请求。
+        fractional = {**body, 'request_key': 'batch0917-fractional-key', 'amount': .015}
+        created = await self.client.post(f'{API}/finance/refunds', json=fractional)
+        self.assertEqual(created.status_code, 201, created.text)
+        repeated = await self.client.post(f'{API}/finance/refunds', json=fractional)
+        self.assertEqual(repeated.status_code, 201, repeated.text)
+        self.assertEqual(repeated.json()['id'], created.json()['id'])
+        self.assertEqual(created.json()['data']['amount'], .02)
+        changed = await self.client.post(f'{API}/finance/refunds', json={**fractional, 'amount': .02})
+        self.assertEqual(changed.status_code, 409, changed.text)
+        # 核对旧版已存在的零元申请：同键改正数必须冲突，不能冒称正数成功。
+        async with self.sessions() as db:
+            old = await db.get(BusinessRecord, first.json()['id'])
+            old_data = dict(old.data)
+            old_data.pop('request_payload')
+            old.data = {**old_data, 'amount': 0}
+            await db.commit()
+        old_zero = await self.client.get(lookup, params={'request_key': body['request_key']})
+        self.assertEqual(old_zero.status_code, 200, old_zero.text)
+        self.assertEqual(old_zero.json()['data']['amount'], 0)
+        old_conflict = await self.client.post(f'{API}/finance/refunds', json=body)
+        self.assertEqual(old_conflict.status_code, 409, old_conflict.text)
+
+    async def test_refund_create_canonical_amount_and_update_keeps_zero_contract(self):
+        from fastapi import HTTPException
+        from app.agent_mcp.catalog import ToolCatalog
+        from app.api_schemas.finance import LitigationRefundInput, RefundAmountUpdateInput
+        from app.core.finance import _round_fee_amount
+
+        body = {
+            'fee_record_id': self.fee_id, 'case_no': 'CODEX-0916-case', 'customer': 'Batch customer',
+            'court': '法院', 'original_payment_no': 'receipt-cent', 'amount': .01,
+            'applicant': '回归申请人', 'request_key': 'batch0917-cent-key',
+        }
+        zero_path = f'{API}/finance/fees/{self.fee_id}/court-refund/clear-projection'
+        zero = await self.client.post(zero_path)
+        self.assertEqual(zero.status_code, 200, zero.text)
+        async with self.sessions() as db:
+            source_before = dict((await db.get(BusinessRecord, self.fee_id)).data)
+            counts_before = [await db.scalar(select(func.count()).select_from(model))
+                             for model in (BusinessRecord, WorkflowEvent, FinanceTransaction)]
+        catalog = ToolCatalog(app)
+        create_tool = next(spec for spec in catalog.tools if spec.path == f'{API}/finance/refunds' and spec.method == 'POST')
+        update_tool = next(spec for spec in catalog.tools if spec.path == f'{API}/finance/refunds/{{refund_id}}/amount')
+        self.assertEqual(create_tool.input_schema['properties']['body']['properties']['amount']['exclusiveMinimum'], 0)
+        self.assertEqual(update_tool.input_schema['properties']['body']['properties']['amount']['minimum'], 0)
+        self.assertEqual(RefundAmountUpdateInput(amount=0).amount, 0)
+        self.assertEqual(_round_fee_amount(0), 0)
+        invalid = await self.client.post(f'{API}/finance/refunds', json={**body, 'amount': 0})
+        self.assertEqual(invalid.status_code, 422, invalid.text)
+        with self.assertRaises(HTTPException) as invalid_mcp:
+            create_tool.validate_arguments({'body': {**body, 'amount': 0}})
+        self.assertEqual(invalid_mcp.exception.status_code, 422)
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(BusinessRecord, self.fee_id)).data, source_before)
+            self.assertEqual([await db.scalar(select(func.count()).select_from(model))
+                              for model in (BusinessRecord, WorkflowEvent, FinanceTransaction)], counts_before)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == 'refund')), 0)
+        # 保留485的ROUND_UP：合法正数按原规则量化，幂等仍比较原始请求而非量化结果。
+        for index, value in enumerate((.001, .004, .005, .01)):
+            with self.subTest(amount=value):
+                request = {**body, 'amount': value, 'request_key': f"{body['request_key']}-{index}"}
+                self.assertEqual(_round_fee_amount(value), .01)
+                self.assertEqual(LitigationRefundInput(**request).amount, value)
+                self.assertEqual(create_tool.validate_arguments({'body': request})['body']['amount'], value)
+                valid = await self.client.post(f'{API}/finance/refunds', json=request)
+                self.assertEqual(valid.status_code, 201, valid.text)
+                refund = valid.json()
+                self.assertEqual(refund['data']['amount'], .01)
+                self.assertEqual(refund['data']['request_payload']['amount'], value)
+                repeated = await self.client.post(f'{API}/finance/refunds', json=request)
+                self.assertEqual(repeated.status_code, 201, repeated.text)
+                self.assertEqual(repeated.json()['id'], refund['id'])
+                conflict = await self.client.post(f'{API}/finance/refunds', json={
+                    **request, 'amount': .01 if value < .01 else .02,
+                })
+                self.assertEqual(conflict.status_code, 409, conflict.text)
+                async with self.sessions() as db:
+                    self.assertEqual((await db.get(BusinessRecord, refund['data']['refund_fee_id'])).data['amount'], .01)
+        async with self.sessions() as db:
+            self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == 'refund')), 4)
+        # update不收紧ge=0；只让退款单与派生费使用同一既有量化金额。
+        update_path = f"{API}/finance/refunds/{refund['id']}/amount"
+        for value in (.001, .004, .005):
+            changed = await self.client.patch(update_path, json={'amount': value})
+            self.assertEqual(changed.status_code, 200, changed.text)
+            self.assertEqual(changed.json()['data']['amount'], .01)
+            async with self.sessions() as db:
+                self.assertEqual((await db.get(BusinessRecord, refund['data']['refund_fee_id'])).data['amount'], .01)
+        cleared = await self.client.patch(update_path, json={'amount': 0})
+        self.assertEqual(cleared.status_code, 200, cleared.text)
+        self.assertEqual(cleared.json()['data']['amount'], 0)
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(BusinessRecord, self.fee_id)).data['refund_amount_override'], 0)
+            self.assertEqual((await db.get(BusinessRecord, refund['data']['refund_fee_id'])).data['amount'], .01)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == 'refund')), 4)
+
+    async def test_zero_projection_requires_action_and_cannot_use_generic_update(self):
+        viewer = {'username': 'CODEX-B-refund-viewer', 'role': 'user', 'department': 'test'}
+        async with self.sessions() as db:
+            db.add_all([
+                JobRole(code='CODEX-B-VIEWER', name='隔离费用查看岗', permissions=['case-mine', 'finance-fee-query'],
+                        data_scope='全所数据', is_active=True),
+                User(username=viewer['username'], display_name='隔离费用查看人', role='user', department='test',
+                     password_hash='unused', is_active=True, profile={'permission_role_code': 'CODEX-B-VIEWER'}),
+            ])
+            await db.commit()
+            before = dict((await db.get(BusinessRecord, self.fee_id)).data)
+        app.dependency_overrides[current_identity] = lambda: viewer
+        try:
+            visible = await self.client.get(f'{API}/records/{self.fee_id}')
+            self.assertEqual(visible.status_code, 200, visible.text)
+            denied = await self.client.post(f'{API}/finance/fees/{self.fee_id}/court-refund/clear-projection')
+            self.assertEqual(denied.status_code, 403, denied.text)
+            self.assertIn('案件费用操作权限', denied.text)
+        finally:
+            app.dependency_overrides[current_identity] = lambda: IDENTITY
+        bypass = await self.client.patch(f'{API}/records/{self.fee_id}', json={
+            'data': {**before, 'refund_amount_override': 0, 'refund_requested_amount_override': 0},
+        })
+        self.assertEqual(bypass.status_code, 200, bypass.text)
+        self.assertFalse(bypass.json()['IsSuccess'])
+        self.assertIn('专用入口', bypass.json()['Message'])
+        create_bypass = await self.client.post(f'{API}/records', json={
+            'module': 'finance', 'serial_no': 'CODEX-B-generic-bypass', 'title': '隔离绕过尝试',
+            'data': {**before, 'refund_amount_override': 0, 'refund_requested_amount_override': 0},
+        })
+        self.assertEqual(create_bypass.status_code, 422, create_bypass.text)
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(BusinessRecord, self.fee_id)).data, before)
+            self.assertIsNone(await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == 'CODEX-B-generic-bypass')))
+            self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent)), 0)
+
+    async def test_zero_projection_mcp_requires_human_confirmation_and_lookup_is_realtime(self):
+        from unittest.mock import AsyncMock, patch
+        from fastapi import HTTPException
+        from app.agent_mcp import service
+        from app.agent_mcp.auth import AuthContext, _auth_context
+        from app.agent_mcp.catalog import ToolCatalog
+
+        catalog = ToolCatalog(app)
+        endpoint = f'{API}/finance/fees/{{fee_id}}/court-refund/clear-projection'
+        tool = next(spec for spec in catalog.tools if spec.path == endpoint and spec.method == 'POST')
+        self.assertTrue(tool.is_write)
+        lookup_path = f'{API}/finance/fees/{{fee_id}}/court-refund/request'
+        route = next(route for route in app.routes if getattr(route, 'path', '') == lookup_path)
+        self.assertIs(route.dependant.call, route.endpoint)
+        token = _auth_context.set(AuthContext(app, 'CODEX-B-isolated-token', {
+            'type': 'http', 'path': f'{API}/mcp', 'method': 'POST', 'headers': [],
+        }))
+        try:
+            with patch.object(service, 'SessionLocal', self.sessions), \
+                 patch.object(service, 'authenticated_identity', new=AsyncMock(return_value=IDENTITY)), \
+                 patch.object(service, 'execute_original', new=AsyncMock()) as execute:
+                pending = await service.call_tool(tool.name, {'path': {'fee_id': self.fee_id}})
+                self.assertEqual(pending['status'], 'pending')
+                self.assertTrue(pending['preview']['requires_confirmation'])
+                execute.assert_not_awaited()
+                with self.assertRaises(HTTPException) as denied:
+                    async with self.sessions() as db:
+                        await service.decide_tool_request(pending['request_id'], 'approved', IDENTITY, db)
+                self.assertEqual(denied.exception.status_code, 403)
+                frontend_path = f"{API}/agent-tools/requests/{pending['request_id']}/decision"
+                frontend_token = _auth_context.set(AuthContext(app, 'CODEX-B-isolated-token', {
+                    'type': 'http', 'path': frontend_path, 'method': 'POST', 'headers': [],
+                }))
+                try:
+                    with self.assertRaises(HTTPException) as untrusted:
+                        async with self.sessions() as db:
+                            await service.decide_tool_request(pending['request_id'], 'approved', IDENTITY, db)
+                    self.assertEqual(untrusted.exception.status_code, 403)
+                    execute.assert_not_awaited()
+                finally:
+                    _auth_context.reset(frontend_token)
+            async with self.sessions() as db:
+                self.assertNotIn('refund_amount_override', (await db.get(BusinessRecord, self.fee_id)).data)
+                self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == 'refund')), 0)
+                confirmation = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == 'agent_mcp_action'))
+                self.assertEqual(confirmation.status, '待确认')
+        finally:
+            _auth_context.reset(token)
 
     async def test_official_refund_atomic_duplicate_and_projection(self):
         async with self.sessions() as db:

@@ -84,6 +84,7 @@ async def update_refund_amount(refund_id: int, body: RefundAmountUpdateInput, id
     await _require_record_owner_or_manager(item, identity, db)
     if item.status not in {"草稿", "已驳回"}:
         raise HTTPException(status_code=409, detail="当前退款状态不能修改金额")
+    amount = _round_fee_amount(body.amount)
     data = dict(item.data or {})
     fee_id = int(data.get("fee_record_id") or 0)
     if fee_id:
@@ -98,6 +99,11 @@ async def update_refund_amount(refund_id: int, body: RefundAmountUpdateInput, id
             # the source litigation-fee projection explicitly zero instead of
             # re-summing prior attempts into 0.01/50.01.
             fee.data = {**(fee.data or {}), "refund_amount_override": 0, "refund_requested_amount_override": 0}
+        else:
+            source_data = dict(fee.data or {})
+            source_data.pop("refund_amount_override", None)
+            source_data.pop("refund_requested_amount_override", None)
+            fee.data = source_data
     if data.get("refund_fee_id"):
         from app.core.agency_refund import update_agency_refund_fee_amount
         other_refunds = list((await db.scalars(select(BusinessRecord).where(
@@ -111,9 +117,9 @@ async def update_refund_amount(refund_id: int, body: RefundAmountUpdateInput, id
         # previously generated lawyer-agency-refund fee untouched, as required
         # by the fee ledger's historical semantics.
         if body.amount > 0:
-            await update_agency_refund_fee_amount(item, body.amount, db)
+            await update_agency_refund_fee_amount(item, amount, db)
     old_amount = float(data.get("amount") or 0)
-    item.data = {**data, "amount": _round_fee_amount(body.amount), "amount_updated_by": identity["username"], "amount_updated_at": datetime.now().isoformat(timespec="seconds")}
+    item.data = {**data, "amount": amount, "amount_updated_by": identity["username"], "amount_updated_at": datetime.now().isoformat(timespec="seconds")}
     db.add(WorkflowEvent(record_id=item.id, action="修改退款金额", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{old_amount:.2f} → {body.amount:.2f}；{body.comment}"))
     await db.commit(); await db.refresh(item)
     return await _record_dict_for_identity(item, identity, db)
@@ -170,6 +176,9 @@ async def create_litigation_refund(body: LitigationRefundInput, identity: dict =
     from app.core.permissions import (
         _ensure_record_visible, _record_dict_for_identity,
     )
+    amount = _round_fee_amount(body.amount)
+    if amount <= 0:
+        raise HTTPException(status_code=422, detail="退款建单金额按分计必须大于0")
     case_record = await _finance_linked_case(body.case_no, identity, db)
     if not case_record: raise HTTPException(status_code=422, detail="诉讼费退款必须关联案件")
     fee_record = None
@@ -181,12 +190,18 @@ async def create_litigation_refund(body: LitigationRefundInput, identity: dict =
         agency_refund = source_data.get("fee_type") == "代理费" and str(source_data.get("expense_scope") or "律所") == "律所" and not source_data.get("refund_fee")
         if fee_record.module != "finance" or (source_data.get("fee_type") != "官方费用" and not agency_refund):
             raise HTTPException(status_code=422, detail="法院退费只能关联官费或律所代理费")
+        if str((fee_record.data or {}).get("case_no") or "") != case_record.serial_no:
+            raise HTTPException(status_code=409, detail="退款费用与案件不一致")
         if body.request_key:
             existing = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "refund", BusinessRecord.owner == identity["username"], BusinessRecord.data["fee_record_id"].as_integer() == fee_record.id, BusinessRecord.data["request_key"].as_string() == body.request_key))
             if existing:
+                requested = body.model_dump(mode="json")
+                saved = existing.data or {}
+                # 新申请保留原始请求；历史申请只能逐字段核对已有持久内容。
+                original_request = saved.get("request_payload") if "request_payload" in saved else {key: saved.get(key) for key in requested}
+                if original_request != requested:
+                    raise HTTPException(status_code=409, detail="同一退款请求标识的内容已变化，请先核对原退款申请")
                 return await _record_dict_for_identity(existing, identity, db)
-        if str((fee_record.data or {}).get("case_no") or "") != case_record.serial_no:
-            raise HTTPException(status_code=409, detail="退款费用与案件不一致")
         original_amount = _round_fee_amount(abs(float((fee_record.data or {}).get("amount") or 0)))
         linked_refunds = list((await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "refund",
@@ -194,18 +209,64 @@ async def create_litigation_refund(body: LitigationRefundInput, identity: dict =
             ~BusinessRecord.status.in_({"已驳回", "已作废"}),
         ))).all())
         already_requested = _round_fee_amount(sum(float((refund.data or {}).get("amount") or 0) for refund in linked_refunds))
-        if _round_fee_amount(body.amount) + already_requested > original_amount:
+        if amount + already_requested > original_amount:
             raise HTTPException(status_code=422, detail="退款金额不能超过原费用金额")
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
-    serial = f"TF{datetime.now():%Y%m%d%H%M%S%f}"; data = body.model_dump(mode="json"); data["amount"] = _round_fee_amount(body.amount); data["case_id"] = case_record.id; data["case_record_id"] = case_record.id; data["case_no"] = case_record.serial_no
+    if fee_record:
+        source_data = dict(fee_record.data or {})
+        # 正常退费恢复关联申请汇总，避免旧零值覆盖真实新金额。
+        source_data.pop("refund_amount_override", None)
+        source_data.pop("refund_requested_amount_override", None)
+        fee_record.data = source_data
+    serial = f"TF{datetime.now():%Y%m%d%H%M%S%f}"; data = body.model_dump(mode="json"); data["amount"] = amount; data["case_id"] = case_record.id; data["case_record_id"] = case_record.id; data["case_no"] = case_record.serial_no
+    if body.request_key:
+        data["request_payload"] = body.model_dump(mode="json")
     item = BusinessRecord(module="refund", serial_no=serial, title=f"{body.case_no}{'代理费法院退费' if agency_refund else '诉讼费退款'}", customer=body.customer.strip(), status="草稿", owner=identity["username"], department=user.department, description=body.remark, data=data)
     db.add(item); await db.flush(); db.add(WorkflowEvent(record_id=item.id, action="创建诉讼费退款申请", to_status=item.status, operator=identity["username"], comment=f"{body.court}：{data['amount']:.2f} 元"))
     # 律所官费和代理费法院退费均生成同额代理费退费，保留原费用类型和退费流程。
-    if body.amount > 0 and fee_record and str((fee_record.data or {}).get("expense_scope") or "律所") == "律所":
+    if fee_record and str((fee_record.data or {}).get("expense_scope") or "律所") == "律所":
         from app.core.agency_refund import create_agency_refund_fee
         await create_agency_refund_fee(item, fee_record, identity, db)
     await db.commit(); await db.refresh(item); return await _record_dict_for_identity(item, identity, db)
+
+
+@router.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/court-refund/clear-projection")
+async def clear_finance_fee_court_refund_projection(fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """仅归零源费用的退费显示，保留退款申请及派生费、提成和流水。"""
+    from app.core.permissions import _ensure_record_module, _record_dict_for_identity
+
+    source = await _ensure_record_module(fee_id, "finance", identity, db)
+    source = await db.scalar(select(BusinessRecord).where(BusinessRecord.id == source.id).with_for_update().execution_options(populate_existing=True))
+    await _require_linked_case_fee_action(source, "case.fee.refund", identity, db)
+    data = source.data or {}
+    agency_fee = data.get("fee_type") == "代理费" and data.get("expense_scope") == "律所" and not data.get("refund_fee")
+    if data.get("fee_type") != "官方费用" and not agency_fee:
+        raise HTTPException(422, "法院退费只能关联官费或律所代理费")
+    if data.get("refund_amount_override") == 0 and data.get("refund_requested_amount_override") == 0:
+        return await _record_dict_for_identity(source, identity, db)
+    source.data = {**data, "refund_amount_override": 0, "refund_requested_amount_override": 0}
+    db.add(WorkflowEvent(record_id=source.id, action="法院退费显示归零", from_status=source.status,
+        to_status=source.status, operator=identity["username"], comment="仅归零源费用显示，保留原退款及派生记录"))
+    await db.commit()
+    await db.refresh(source)
+    return await _record_dict_for_identity(source, identity, db)
+
+
+@router.get(f"{settings.api_prefix}/finance/fees/{{fee_id}}/court-refund/request")
+async def get_finance_fee_court_refund_request(fee_id: int, request_key: str = Query(..., min_length=1, max_length=64), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """按本人、源费和原请求键核对不确定的退款建单结果。"""
+    from app.core.permissions import _ensure_record_module, _record_dict_for_identity
+
+    await _ensure_record_module(fee_id, "finance", identity, db)
+    refund = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.module == "refund", BusinessRecord.owner == identity["username"],
+        BusinessRecord.data["fee_record_id"].as_integer() == fee_id,
+        BusinessRecord.data["request_key"].as_string() == request_key,
+    ))
+    if not refund:
+        raise HTTPException(404, "尚未查到该请求的退款申请，不能据此判定先前提交未执行")
+    return await _record_dict_for_identity(refund, identity, db)
 
 
 @router.post(f"{settings.api_prefix}/finance/refunds/{{refund_id}}/submit")

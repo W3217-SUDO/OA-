@@ -370,8 +370,8 @@ class LitigationRefundInput(BaseModel):
     case_no: str
     court: str
     original_payment_no: str
-    # Zero explicitly clears the current court-refund projection.
-    amount: float = Field(ge=0)
+    # 退款建单必须为正数；源费显示归零使用独立动作。
+    amount: float = Field(gt=0)
     applicant: str
     refund_account_name: str = ""
     refund_bank: str = ""
