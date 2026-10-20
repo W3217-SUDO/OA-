@@ -58,7 +58,7 @@ export function GlobalMcpWorkspace({ active, canManage }: Props) {
       </article>)}
     </div>
     <Drawer title="全局 MCP 配置" open={mcp.open && canManage} onClose={close} width={680} destroyOnHidden maskClosable={!mcp.busy} closable={!mcp.busy} rootClassName="global-mcp-workspace-drawer">
-      {mcp.open && <PersonalMcpConnectionCard connection={{ ...mcp, close, items: globals }} allowNewConnection={false} />}
+      {mcp.open && <PersonalMcpConnectionCard connection={{ ...mcp, close, items: globals }} allowNewConnection={false} allowConfigImport={false} />}
     </Drawer>
   </section>;
 }

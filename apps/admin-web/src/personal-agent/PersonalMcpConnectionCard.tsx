@@ -4,11 +4,11 @@ import { ApiOutlined, CloseOutlined, DeleteOutlined, EditOutlined, PlusOutlined,
 import type { usePersonalMcpConnection } from "./usePersonalMcpConnection";
 import "./personal-mcp-connection.css";
 
-type Props = { connection: ReturnType<typeof usePersonalMcpConnection>; allowNewConnection?: boolean };
+type Props = { connection: ReturnType<typeof usePersonalMcpConnection>; allowNewConnection?: boolean; allowConfigImport?: boolean };
 
 const statusLabel: Record<string, string> = { configured: "已保存 · 未验证", verified: "握手与目录已验证", failed: "连接检测失败", unconfigured: "待配置" };
 
-export function PersonalMcpConnectionCard({ connection: mcp, allowNewConnection = true }: Props) {
+export function PersonalMcpConnectionCard({ connection: mcp, allowNewConnection = true, allowConfigImport = true }: Props) {
   const [configText, setConfigText] = useState("");
   const { draft, connection, busy } = mcp;
   const update = <K extends keyof typeof draft>(key: K, value: typeof draft[K]) => mcp.update({ ...draft, [key]: value });
@@ -39,12 +39,12 @@ export function PersonalMcpConnectionCard({ connection: mcp, allowNewConnection 
           {allowNewConnection && <Button icon={<PlusOutlined />} disabled={busy} onClick={newConnection}>添加另一个连接</Button>}
         </div>
       </div> : <Form layout="vertical" onFinish={() => void mcp.saveAndConnect()} autoComplete="off">
-        <Form.Item label="粘贴 MCP 配置" htmlFor="personal-mcp-config">
+        {allowConfigImport && <Form.Item label="粘贴 MCP 配置" htmlFor="personal-mcp-config">
           <div className="personal-mcp-import">
             <Input.Password id="personal-mcp-config" value={configText} visibilityToggle={false} autoComplete="new-password" disabled={busy} placeholder="MCP URL 或 JSON 配置" onChange={event => setConfigText(event.target.value)} onPaste={event => { event.preventDefault(); importConfig(event.clipboardData.getData("text")); }} />
             <Button disabled={busy || !configText.trim()} onClick={() => importConfig(configText)}>载入配置</Button>
           </div>
-        </Form.Item>
+        </Form.Item>}
         <div className="personal-mcp-fields">
           <Form.Item label="连接名称" htmlFor="personal-mcp-name" required><Input id="personal-mcp-name" value={draft.name} maxLength={100} disabled={busy} onChange={event => update("name", event.target.value)} /></Form.Item>
           <Form.Item label="MCP 地址" htmlFor="personal-mcp-url" required><Input.Password id="personal-mcp-url" value={draft.server_url} visibilityToggle={false} autoComplete="new-password" disabled={busy} placeholder="https://…/mcp" onChange={event => update("server_url", event.target.value)} /></Form.Item>

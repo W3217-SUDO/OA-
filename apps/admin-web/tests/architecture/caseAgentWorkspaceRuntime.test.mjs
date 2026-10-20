@@ -1391,6 +1391,11 @@ test("chat MCP scope labels and global management controls use per-connection pe
   assert.equal(buttons().some(item => item.props["aria-label"] === "删除连接：全局服务"), false);
   assert.equal(buttons().some(item => item.props["aria-label"] === "检测连接：全局服务"), false);
   assert.ok(renderer.root.findAllByType("tag").some(item => item.props.children === "全局共享"));
+  assert.ok(renderer.root.findAllByType("form-item").some(item => item.props.label === "粘贴 MCP 配置"), "个人入口仍提供配置导入");
+  await act(async () => renderer.update(React.createElement(PersonalMcpConnectionCard, { connection: { ...mcp, editing: true }, allowNewConnection: false, allowConfigImport: false })));
+  assert.equal(renderer.root.findAllByType("form-item").some(item => item.props.label === "粘贴 MCP 配置"), false, "全局编辑入口不提供清除编辑范围的配置导入");
+  assert.equal(buttons().some(item => item.props.children === "取消修改"), false, "全局编辑入口不转入新建连接");
+  assert.ok(buttons().some(item => item.props.children === "确认更新并连接"));
   await act(async () => renderer.update(React.createElement(PersonalMcpConnectionCard, { connection: { ...mcp, scope: "personal", defaultScope: "global", editing: true, items: mcp.items.map(item => ({ ...item, can_manage: true })) } })));
   assert.ok(renderer.root.findAllByType("span").some(item => item.props.children === "正在修改既有个人连接，保存后仍为个人专用"));
   assert.ok(buttons().some(item => item.props["aria-label"] === "修改配置：全局服务"));
