@@ -145,7 +145,8 @@ def _incoming_payment_legacy_summary(item: IncomingPayment) -> dict:
     }
 
 
-async def _visible_incoming_payment_statement(identity: dict, db: AsyncSession, *, include_amounts=True):
+async def _visible_incoming_payment_statement(identity: dict, db: AsyncSession, *, include_amounts=True,
+                                             payment_conditions=()):
     from app.core.permissions import _record_scope_conditions
 
     from app.core.finance_centers import incoming_center_conditions
@@ -159,6 +160,9 @@ async def _visible_incoming_payment_statement(identity: dict, db: AsyncSession, 
             IncomingPayment.claimant == identity["username"],
             IncomingPayment.claimed_customer.in_(visible_customer_titles),
         ))
+    # 调用方只读取部分回款时传入其筛选条件：等价于对结果追加 where，同时把旧金额
+    # 聚合限定到这些回款的回款头（按回款头分组，各行金额不变）。
+    conditions.extend(payment_conditions)
     # 旧系统分配金额的聚合包含大量 JSON 和案件费用关联。先用不带旧金额的可见
     # 回款集合取得所有旧表头 ID，再把这些 ID 限制传入聚合子查询；不能限制到当前页，
     # 否则列表的全局汇总会与旧系统不一致。
@@ -2690,8 +2694,16 @@ async def _general_settlement_rows(
     )
     from app.core.finance_centers import incoming_center_conditions, incoming_settlement_candidates, LEGACY_INCOMING_SOURCE
     candidates = incoming_settlement_candidates(identity, receipt_ids=receipt_ids) if not receipt_detail else None
+    if candidates is not None:
+        legacy_header_ids = select(candidates.c.source_header_id)
+    elif receipt_ids is not None and db.get_bind().dialect.name == "postgresql":
+        # 回款详情只读取指定回款；旧金额只聚合这些回款的旧回款头，各行金额不变。
+        from app.core.finance_centers import legacy_header_ids_for
+        legacy_header_ids = legacy_header_ids_for(IncomingPayment.id.in_(receipt_ids))
+    else:
+        legacy_header_ids = None
     payment_query = incoming_source_statement(
-        legacy_header_ids=select(candidates.c.source_header_id) if candidates is not None else None,
+        legacy_header_ids=legacy_header_ids,
     ).where(*incoming_center_conditions(identity))
     if not receipt_detail:
         # 旧回款只按原待提交状态进入既有申请，已审及已付原状态不得重建成待结算。

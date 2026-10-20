@@ -22,8 +22,8 @@ def allocation_revision(rows):
 async def authorized_payment(payment_id, identity, db, *, lock=False):
     from app.core.permissions import _record_scope_conditions
     from app.core.system import _allowed_field_keys
-    from app.core.finance_centers import incoming_source_statement
-    stmt = incoming_source_statement().where(IncomingPayment.id == payment_id)
+    from app.core.finance_centers import incoming_source_for
+    stmt = incoming_source_for(db, IncomingPayment.id == payment_id)
     payment = await db.scalar(stmt.with_for_update(of=IncomingPayment) if lock else stmt)
     if payment is None:
         raise HTTPException(404, '银行到账记录不存在')

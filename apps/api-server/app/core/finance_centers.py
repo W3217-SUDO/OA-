@@ -108,6 +108,31 @@ def incoming_source_statement(*, include_amounts=True, legacy_header_ids=None):
     )
 
 
+def legacy_header_ids_for(*payment_conditions):
+    """符合条件的回款所对应的旧系统回款头，用于把旧金额聚合限定到实际读取的行。"""
+    return incoming_source_statement(include_amounts=False).with_only_columns(
+        LEGACY_INCOMING_SOURCE.c.source_header_id,
+    ).where(
+        *payment_conditions,
+        IncomingPayment.source_kind == "hz_crm_20260930",
+        LEGACY_INCOMING_SOURCE.c.source_header_id.is_not(None),
+    ).distinct()
+
+
+def incoming_source_for(db, *payment_conditions):
+    """与 incoming_source_statement().where(*payment_conditions) 返回相同的行和字段。
+
+    旧金额按回款头分组聚合，只聚合结果行自身的回款头不会改变任何一行的金额；
+    原写法每次都聚合全部回款头，查一笔回款也要扫描整个历史分配账本。
+    SQLite 测试库保持原写法。
+    """
+    if db.get_bind().dialect.name != "postgresql":
+        return incoming_source_statement().where(*payment_conditions)
+    return incoming_source_statement(
+        legacy_header_ids=legacy_header_ids_for(*payment_conditions),
+    ).where(*payment_conditions)
+
+
 def payment_center(payment):
     return payment.finance_scope or payment.resolved_finance_scope
 
@@ -118,8 +143,8 @@ async def refresh_incoming_payment(payment, db):
 
 async def refresh_incoming_payments(payments, db):
     payment_ids = [inspect(payment).identity[0] for payment in payments]
-    refreshed = list((await db.scalars(incoming_source_statement().where(
-        IncomingPayment.id.in_(payment_ids),
+    refreshed = list((await db.scalars(incoming_source_for(
+        db, IncomingPayment.id.in_(payment_ids),
     ).execution_options(populate_existing=True))).all())
     by_id = {payment.id: payment for payment in refreshed}
     if set(by_id) != set(payment_ids):

@@ -128,9 +128,10 @@ async def invoice_export_values(rows, identity, db):
     receipt_links = await read_fee_receipts(list(fees.values()), fees_by_case,
         {number for number, linked in fees_by_case.items() if number and len(linked) == 1}, db, filter_related=True)
     payment_ids = {payment.id for links in receipt_links.values() for payment, _amount in links}
-    statement = await _visible_incoming_payment_statement(identity, db)
-    visible_payments = {payment.id: payment for payment in await _scalars_in_batches(db, payment_ids,
-        lambda batch: statement.where(IncomingPayment.id.in_(batch)))}
+    from app.core.json_relation_query import scalar_in_values
+    visible_payments = {payment.id: payment for payment in (await db.scalars(await _visible_incoming_payment_statement(
+        identity, db, payment_conditions=[scalar_in_values(IncomingPayment.id, payment_ids)],
+    ))).all()} if payment_ids else {}
     payments_by_fee = {fee_id: {payment.id: visible_payments[payment.id] for payment, _amount in links if payment.id in visible_payments}
         for fee_id, links in receipt_links.items()}
     values = []
@@ -277,8 +278,9 @@ async def enrich_settlement_exports(rows, identity, db, *, include_invoice_field
             for case_no in set([invoice_data.get("case_no")] + list(invoice_data.get("case_nos") or [])) - {None, ""}:
                 invoices_by_case_no.setdefault(str(case_no), {})[invoice.id] = invoice
     receipt_ids = {int(row["data"]["receipt_id"]) for row in modern_rows if row["data"].get("receipt_id")}
-    payment_statement = await _visible_incoming_payment_statement(identity, db)
-    payments = {payment.id: payment for payment in (await db.scalars(payment_statement.where(IncomingPayment.id.in_(receipt_ids)))).all()}
+    payment_statement = await _visible_incoming_payment_statement(
+        identity, db, payment_conditions=[IncomingPayment.id.in_(receipt_ids)])
+    payments = {payment.id: payment for payment in (await db.scalars(payment_statement)).all()}
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     for row in modern_rows:
         receipt_id = row["data"].get("receipt_id")

@@ -20,7 +20,7 @@ from app.core.incoming_settlement import (_active_settlements_by_receipt, _rever
 from app.core.finance_centers import (
     finance_center_identity as current_identity, incoming_center_conditions,
     require_incoming_center, require_record_center, record_center_conditions,
-    unclassified_incoming_count, incoming_source_statement, refresh_incoming_payment,
+    unclassified_incoming_count, incoming_source_for, refresh_incoming_payment,
     refresh_incoming_payments,
 )
 from app.security import current_identity as contract_identity
@@ -46,8 +46,8 @@ async def list_contract_incoming_payments(
     from app.core.system import _allowed_field_keys
 
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
-    statement = (await _visible_incoming_payment_statement(identity, db)).where(
-        contract_incoming_condition(contract, db),
+    statement = await _visible_incoming_payment_statement(
+        identity, db, payment_conditions=[contract_incoming_condition(contract, db)],
     )
     payments = list((await db.scalars(statement.order_by(
         IncomingPayment.received_date.desc(), IncomingPayment.id.desc(),
@@ -403,7 +403,7 @@ async def get_incoming_payment(payment_id: int, identity: dict = Depends(current
     from app.core.system import (
         _allowed_field_keys,
     )
-    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id))
     require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if identity.get("role") not in {"admin", "auditor"}:
@@ -445,7 +445,7 @@ async def view_assigned_incoming_payment(payment_id: int, identity: dict = Depen
     from app.core.system import (
         _allowed_field_keys,
     )
-    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id))
     require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if identity.get("role") not in {"admin", "auditor"}:
@@ -477,7 +477,7 @@ async def claim_incoming_payment(payment_id: int, body: IncomingPaymentClaimInpu
     from app.core.system import (
         _allowed_field_keys,
     )
-    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id))
     require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.status not in {"待认领", "待分配"} or item.allocated_amount > 0: raise HTTPException(status_code=409, detail="已发生分配的到账不能重新认领")
@@ -504,7 +504,7 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
     from app.core.permissions import (
         _record_scope_conditions,
     )
-    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id))
     require_incoming_center(item, identity)
     if not item:
         raise HTTPException(status_code=404, detail="银行到账记录不存在")
@@ -712,7 +712,7 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
     from app.core.system import (
         _allowed_field_keys,
     )
-    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id))
     require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.status not in {"待分配", "部分分配"} or not item.claimed_customer: raise HTTPException(status_code=409, detail="到账认领到客户后才能分配")
@@ -933,7 +933,7 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
 async def delete_incoming_payment(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="仅管理者、财务端或财务审核端可删除银行到账")
-    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id))
     require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.status not in {"待认领", "待分配"} or item.allocated_amount > 0 or item.allocations:
@@ -958,7 +958,7 @@ async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateIn
         _allowed_field_keys,
     )
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以编辑银行到账")
-    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id).with_for_update(of=IncomingPayment))
+    item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id).with_for_update(of=IncomingPayment))
     require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if identity.get("role") != "admin" and item.operator != identity["username"] and item.claimant != identity["username"]:
@@ -1014,7 +1014,7 @@ async def incoming_payment_refund_candidates(payment_id: int, identity: dict = D
     from app.core.permissions import (
         _record_scope_conditions,
     )
-    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id))
     require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.allocations or item.allocated_amount > 0: raise HTTPException(status_code=409, detail="已发生分配的到账不能领取退费")
@@ -1044,7 +1044,7 @@ async def refund_claim_incoming_payment(payment_id: int, body: IncomingPaymentRe
     from app.core.system import (
         _allowed_field_keys,
     )
-    item = await db.scalar(incoming_source_statement().where(IncomingPayment.id == payment_id))
+    item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id))
     require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
     if item.status not in {"待认领", "待分配"} or item.allocated_amount > 0: raise HTTPException(status_code=409, detail="已发生分配的到账不能重新认领")
@@ -1073,7 +1073,7 @@ async def revoke_incoming_payment_allocations(body: IncomingPaymentRevokeInput, 
     )
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以批量撤销分配")
     payment_ids = list(dict.fromkeys(body.payment_ids))
-    items = list((await db.scalars(incoming_source_statement().where(IncomingPayment.id.in_(payment_ids), *incoming_center_conditions(identity)))).all())
+    items = list((await db.scalars(incoming_source_for(db, IncomingPayment.id.in_(payment_ids), *incoming_center_conditions(identity)))).all())
     if len(items) != len(payment_ids): raise HTTPException(status_code=404, detail="部分银行到账记录不存在")
     active_settlements = await _active_settlements_by_receipt(db, set(payment_ids))
     if active_settlements:

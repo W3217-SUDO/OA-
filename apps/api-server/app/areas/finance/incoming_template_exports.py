@@ -33,9 +33,8 @@ async def export_incoming_fee_query(
 
     query = parse_incoming_filters("finance-receipts-query", filters)
     selected_ids = set(_export_ids(ids)) if ids.strip() else None
-    statement = await _visible_incoming_payment_statement(identity, db)
-    if selected_ids is not None:
-        statement = statement.where(IncomingPayment.id.in_(selected_ids))
+    statement = await _visible_incoming_payment_statement(
+        identity, db, payment_conditions=[IncomingPayment.id.in_(selected_ids)] if selected_ids is not None else ())
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     users = {user.username.lower(): user for user in (await db.scalars(select(User).where(User.is_active.is_(True)))).all()}
     # 与页面复用同一回款全集筛选；不携带显示分页，也不扩大到全部案件费用。

@@ -120,7 +120,9 @@ def legacy_assigned_amounts(*, header_ids=None):
     )
     if header_ids is not None:
         statement = statement.where(head.id.in_(header_ids))
-    evidence = statement.subquery("legacy_line_evidence")
+    # 逐行证据（类别判断含大量 JSON 取值与字符串替换）先物化一次；作为普通子查询时
+    # PostgreSQL 会把 kind 等表达式内联进每个聚合列，按列重复计算并反复解析原文 JSON。
+    evidence = statement.cte("legacy_line_evidence", nesting=True).prefix_with("MATERIALIZED", dialect="postgresql")
     amount = cast(func.nullif(evidence.c.cashed_amount, ""), Numeric(20, 2))
     columns = []
     for label, field in zip(("official", "agency", "other"), ASSIGNED_FIELDS):

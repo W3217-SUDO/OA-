@@ -15,7 +15,7 @@ from app.core.incoming_settlement import (_active_settlements_by_receipt, _settl
 from app.core.incoming_allocation_projection import normalize_settlement_allocation_times
 from app.core.finance_centers import (
     finance_center_identity as current_identity, settlement_center_conditions,
-    require_incoming_center, incoming_source_statement,
+    require_incoming_center, incoming_source_for,
     legacy_incoming_status_counts,
 )
 from app.core.imported_settlement_projection import read_imported_settlement_page
@@ -62,8 +62,8 @@ async def apply_general_settlements(body: FinanceSettlementApplyInput, identity:
         _general_settlement_rows,
     )
     receipt_ids = list(dict.fromkeys(body.receipt_ids))
-    locked_receipts = list((await db.scalars(incoming_source_statement().where(
-        IncomingPayment.id.in_(receipt_ids),
+    locked_receipts = list((await db.scalars(incoming_source_for(
+        db, IncomingPayment.id.in_(receipt_ids),
     ).with_for_update(of=IncomingPayment))).all())
     if len(locked_receipts) != len(receipt_ids):
         raise HTTPException(status_code=404, detail="部分回款不存在")

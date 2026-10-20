@@ -68,10 +68,10 @@ async def handover_export_rows(records, projections: list[dict], identity: dict,
             amounts[case_id].append(_amount(data.get("amount")))
             modern_fee_keys.update((case_id, *key) for key in _fee_source_keys(fee))
 
-    visible_statement = await _visible_incoming_payment_statement(identity, db)
-    payments = (await db.scalars(visible_statement.where(
+    visible_statement = await _visible_incoming_payment_statement(identity, db, payment_conditions=[
         json_scalar_overlap(IncomingPayment.allocations, fee_ids | set(legacy_fee_ids)),
-    ).order_by(IncomingPayment.received_date, IncomingPayment.id))).all()
+    ])
+    payments = (await db.scalars(visible_statement.order_by(IncomingPayment.received_date, IncomingPayment.id))).all()
     for payment in payments:
         matched = set()
         for allocation in payment.allocations or []:
