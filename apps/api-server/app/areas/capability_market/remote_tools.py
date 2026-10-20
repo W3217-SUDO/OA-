@@ -12,7 +12,8 @@ from .connector_store import decrypt
 from .personal_mcp import redact_verification
 from .mcp_access import bound_scope, require_runtime_connection
 from .remote_schema import checked_schema, schema_fingerprint, validate_arguments
-from .remote_session import remote_session, session_tools
+from .remote_session import remote_error, remote_session, session_tools
+from .remote_files import store_remote_files
 
 
 async def current_configuration(identifier, revision, identity, db, *, scope, lock=False):
@@ -87,7 +88,7 @@ async def execute_call(payload, identity, db, *, action_id):
         raise HTTPException(422, '远程工具参数不能包含凭据')
     # 持有当前连接行锁直到结果落库，防止确认后配置更换造成目的地漂移。
     async with asyncio.timeout(25):
-        async with remote_session(server) as (session, initialized):
+        async with remote_session(server, file_results=True) as (session, initialized):
             tools = await session_tools(session)
             tool = next((tool for tool in tools if tool.name == payload['tool_name']), None)
             if tool is None or schema_fingerprint(tool.input_schema) != payload['schema_fingerprint']:
@@ -95,10 +96,11 @@ async def execute_call(payload, identity, db, *, action_id):
             if redact_verification(tool.input_schema, configuration) != tool.input_schema:
                 raise HTTPException(502, '外部工具schema包含连接凭据回声，已阻断调用')
             validate_arguments(tool.input_schema, payload['arguments'])
-            result = await session.call_tool(tool.name, arguments=payload['arguments'])
+            try:
+                result = await session.call_tool(tool.name, arguments=payload['arguments'])
+            except Exception as exc:
+                raise HTTPException(502, remote_error(exc, 'tools/call', server)) from None
             if result.is_error:
                 raise HTTPException(502, '外部MCP工具报告执行失败，请核对外部实际状态，禁止重复提交')
-            value = safe_remote(result.model_dump(mode='json', by_alias=True), configuration)
-            if len(json.dumps(value, ensure_ascii=False).encode()) > 65536:
-                raise HTTPException(502, '外部MCP工具已返回，但结果超过64KB限制，请核对外部实际状态，禁止重复提交')
-            return value
+    return await store_remote_files(result, configuration, identity, db, tool_name=payload['tool_name'],
+                                    conversation_id=request.data['conversation_id'], action_id=action_id)

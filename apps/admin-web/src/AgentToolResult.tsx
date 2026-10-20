@@ -43,10 +43,10 @@ export function AgentToolResult({ result, showDetails = false }: { result: unkno
     }
   };
   return <>
-    {!!resources.length && <Space wrap style={{ marginTop: 12 }}>
+    {!!resources.length && <Space wrap style={{ marginTop: 12, maxWidth: "100%", minWidth: 0 }}>
       {resources.map((resource) => <Button key={resource.endpoint} size="small" icon={<DownloadOutlined />} title={resource.name}
         loading={downloading === resource.endpoint} disabled={Boolean(downloading) && downloading !== resource.endpoint}
-        style={{ height: "auto", minHeight: 24, whiteSpace: "normal", overflowWrap: "anywhere", maxWidth: "100%" }}
+        style={{ height: "auto", minHeight: 44, minWidth: 44, whiteSpace: "normal", overflowWrap: "anywhere", maxWidth: "100%" }}
         onClick={() => void download(resource)}>{resource.name}</Button>)}
     </Space>}
     {showDetails && result !== undefined && result !== null && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(result, null, 2)}</pre>}

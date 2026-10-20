@@ -182,6 +182,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
         import httpx2
         from app.agent_mcp.auth import AuthContext, _auth_context
         self.sdk_calls = []
+        self.sdk_sse = False
         self.sdk_schema = {'type': 'object', 'properties': {'query': {'type': 'string'}},
                            'required': ['query'], 'additionalProperties': False}
         self.sdk_result = {'content': [{'type': 'text', 'text': 'CODEX远程真实协议返回'}],
@@ -205,7 +206,11 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
                 result = self.sdk_result
             else:
                 raise AssertionError('意外协议方法')
-            return httpx2.Response(200, json={'jsonrpc': '2.0', 'id': payload['id'], 'result': result})
+            envelope = {'jsonrpc': '2.0', 'id': payload['id'], 'result': result}
+            if self.sdk_sse and method == 'tools/call':
+                return httpx2.Response(200, content=('event: message\ndata: ' + json.dumps(envelope) + '\n\n').encode(),
+                                       headers={'content-type': 'text/event-stream'})
+            return httpx2.Response(200, json=envelope)
 
         def network_init(instance):
             instance.inner = httpx2.MockTransport(handler)
@@ -630,6 +635,84 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             archived = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == 'personal_agent_action'))).one()
             self.assertEqual(archived.status, '已执行')
             self.assertNotIn(self.secret, json.dumps(archived.data, ensure_ascii=False))
+
+    async def test_large_sse_pdf_becomes_workspace_file_without_binary_chat_history(self):
+        import base64
+        import hashlib
+        from app.areas.personal_agent.mcp_tools import PersonalMcpToolSession
+        from app.areas.personal_agent.confirmation_history import prepare_personal_action
+        from app.areas.personal_agent.service import _decide_action
+
+        state = await self.create()
+        pdf = b'%PDF-1.7\n' + b'0' * (2 * 1024 * 1024) + b'\n%%EOF'
+        encoded = base64.b64encode(pdf).decode()
+        for workspace in ({'kind': 'personal'}, {'kind': 'case', 'case_id': 789}):
+            async with self.sessions() as db, AsyncExitStack() as stack:
+                identity, context = stack.enter_context(self.sdk_transport())
+                tools = PersonalMcpToolSession(identity, db, conversation_id='CODEX-MCP-CONVERSATION')
+                await tools.execute('personal_mcp_list_groups', {})
+                found = await tools.execute('personal_mcp_search_tools', {'group_id': state['scope'] + ':' + state['id']})
+                await tools.execute('personal_mcp_call_tool', {'tool_id': found['tools'][0]['tool_id'], 'arguments': {'query': 'CODEX'}})
+                action = {**tools.pending_actions[0], 'id': str(uuid4()), 'status': 'pending', 'requested_by': identity['username']}
+                conversation = {'conversation_id': 'CODEX-MCP-CONVERSATION', 'conversation_title': 'CODEX文件确认',
+                                'workspace': workspace, 'messages': [], 'pending_actions': [action]}
+                await prepare_personal_action(action, identity, conversation, db)
+                await db.commit()
+                context.scope['path'] = '/api/v1/personal-agent/actions/' + action['id'] + '/decision'
+                self.sdk_sse = True
+                self.sdk_result = {'content': [{'type': 'resource', 'resource': {
+                    'uri': 'file:///external/patent.pdf', 'mimeType': 'application/pdf', 'blob': encoded}}], 'isError': False}
+                file_id = uuid4().hex
+                saved = AsyncMock(return_value={'file': {'id': file_id, 'attachment_id': 987,
+                    'name': 'lookup-1.pdf', 'content_type': 'application/pdf', 'size': len(pdf),
+                    'sha256': hashlib.sha256(pdf).hexdigest()}})
+                case = object() if workspace['kind'] == 'case' else None
+                scope = AsyncMock(return_value=case)
+                stack.enter_context(patch('app.areas.personal_agent.service._save_state', new=AsyncMock()))
+                stack.enter_context(patch('app.areas.personal_agent.service._user_dir', return_value=Path('CODEX-isolated')))
+                stack.enter_context(patch('app.areas.personal_agent.conversations.get_conversation_state', new=AsyncMock(return_value=conversation)))
+                stack.enter_context(patch('app.areas.personal_agent.project_workspaces.require_workspace_access', new=scope))
+                stack.enter_context(patch('app.areas.capability_market.remote_files.save_generated_file', new=saved))
+                outcome = await _decide_action(identity, db, action['id'], 'approved', '', conversation)
+                self.assertEqual(outcome['status'], 'approved')
+                self.assertEqual(len([call for call in self.sdk_calls if call['method'] == 'tools/call']), 1)
+                saved.assert_awaited_once()
+                self.assertEqual(saved.await_args.kwargs['content'], pdf)
+                self.assertIs(saved.await_args.kwargs['case_record'], case)
+                self.assertEqual(saved.await_args.kwargs['source_request_id'], action['id'])
+                scope.assert_awaited_once_with(workspace, identity, db)
+                self.assertLess(len(json.dumps(outcome)), 10000)
+                self.assertNotIn(encoded, json.dumps(conversation))
+                self.assertEqual(conversation['messages'][-1]['tool_result']['files'][0]['file_id'], file_id)
+                archived = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == 'PA-' + action['id']))
+                self.assertEqual(archived.status, '已执行')
+
+    async def test_file_encoding_metadata_limits_and_protocol_errors_are_explicit(self):
+        import base64
+        from fastapi import HTTPException
+        from mcp.types import CallToolResult
+        from mcp.shared.exceptions import MCPError
+        from app.areas.capability_market.remote_files import store_remote_files
+        from app.areas.capability_market.remote_session import remote_error
+
+        async with self.sessions() as db:
+            with self.sdk_transport() as (identity, context), patch('app.areas.capability_market.remote_files.save_generated_file', new=AsyncMock()) as save:
+                for blob in ('not base64!', base64.b64encode(b'<html>not PDF</html>').decode()):
+                    result = CallToolResult.model_validate({'content': [{'type': 'resource', 'resource': {
+                        'uri': 'file:///external/patent.pdf', 'mimeType': 'application/pdf', 'blob': blob}}]})
+                    with self.assertRaises(HTTPException):
+                        await store_remote_files(result, self.configuration, identity, db,
+                            tool_name='lookup', conversation_id='CODEX-MCP-CONVERSATION', action_id='CODEX-invalid')
+                result = CallToolResult.model_validate({'content': [{'type': 'text', 'text': 'x' * 65537}]})
+                with self.assertRaises(HTTPException):
+                    await store_remote_files(result, self.configuration, identity, db,
+                        tool_name='lookup', conversation_id='CODEX-MCP-CONVERSATION', action_id='CODEX-oversize')
+                save.assert_not_awaited()
+                detail = remote_error(MCPError(-32000, 'SSE stream failed ' + self.secret), 'tools/call',
+                                      self.configuration['mcp.json']['mcpServers']['default'])
+                self.assertIn('tools/call', detail)
+                self.assertIn('-32000', detail)
+                self.assertNotIn(self.secret, detail)
 
     async def test_runtime_schema_ref_invalid_arguments_revision_and_schema_changes_block_call(self):
         from fastapi import HTTPException

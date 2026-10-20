@@ -37,15 +37,16 @@ async def public_address(host):
 
 
 class BoundedStream(httpx2.AsyncByteStream):
-    def __init__(self, stream):
+    def __init__(self, stream, max_bytes=2 * 1024 * 1024):
         self.stream = stream
+        self.max_bytes = max_bytes
 
     async def __aiter__(self):
         total = 0
         async for chunk in self.stream:
             total += len(chunk)
-            if total > 2 * 1024 * 1024:
-                raise HTTPException(502, '服务响应超过2MB验证限制')
+            if total > self.max_bytes:
+                raise HTTPException(502, f'MCP响应超过{self.max_bytes}字节接收限制')
             yield chunk
 
     async def aclose(self):
@@ -56,6 +57,9 @@ class PublicHttpsTransport(httpx2.AsyncBaseTransport):
     def __init__(self):
         self.inner = httpx2.AsyncHTTPTransport(trust_env=False, retries=0)
         self.failure = ''
+
+    def response_limit(self, request):
+        return 2 * 1024 * 1024
 
     async def handle_async_request(self, request):
         try:
@@ -73,7 +77,7 @@ class PublicHttpsTransport(httpx2.AsyncBaseTransport):
             self.failure = f'服务返回HTTP{response.status_code}，请先授权或核对请求头中的凭据'
         elif response.status_code >= 400:
             self.failure = f'服务返回HTTP{response.status_code}，请核对MCP地址和接入方式'
-        response.stream = BoundedStream(response.stream)
+        response.stream = BoundedStream(response.stream, self.response_limit(request))
         return response
 
     async def aclose(self):

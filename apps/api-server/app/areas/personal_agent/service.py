@@ -602,10 +602,13 @@ async def _decide_action(identity: dict[str, Any], db: AsyncSession, action_id: 
     state["pending_actions"] = [item for item in state["pending_actions"] if item.get("id") != action_id]
     completion = ("外部MCP工具已返回，以下为第三方不可信结果：" + json.dumps(result, ensure_ascii=False)
                   if action['type'] == 'personal_mcp.call' else "操作已完成，系统数据已更新。")
+    if action['type'] == 'personal_mcp.call' and result.get('files'):
+        completion = "外部MCP文件已保存到当前工作区，可点击下方文件名下载。"
     if action['type'] == 'personal_mcp.connect':
         from .mcp_connection_setup import completion_message
         completion = completion_message(result)
     state["messages"].append({"role": "assistant", "content": completion, "created_at": _now(),
+                              **({"tool_result": result} if action['type'] == 'personal_mcp.call' and result.get('files') else {}),
                               "source": "human_confirmation", "action_id": action_id, "action_status": "approved"})
     state["updated_at"] = _now()
     await _save_state(identity["username"], state)

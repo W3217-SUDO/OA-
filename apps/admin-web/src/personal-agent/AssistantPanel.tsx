@@ -3,6 +3,7 @@ import { Alert, Button, Input, List, Tag, Tooltip, message } from "antd";
 import { ApiOutlined, ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileExcelOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import AgentAvatar from "./AgentAvatar";
+import { AgentToolResult } from "../AgentToolResult";
 import { ConversationManager } from "./ConversationManager";
 import { AssistantWorkspaceTools, type AssistantWorkspaceToolsHandle } from "./AssistantWorkspaceTools";
 import { AssistantWorkspaceSidebar } from "./AssistantWorkspaceSidebar";
@@ -308,6 +309,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                     {item.content
                       ? <MessageText content={item.content} />
                       : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><span>{progressText}</span></span> : "")}
+                    {item.role === "assistant" && <AgentToolResult result={item.tool_result} />}
                     {item.stopped && <span className="assistant-stopped">{item.content ? "已停止，已保留生成内容" : "已停止"}</span>}
                     {item.role === "assistant" && item.personal_document_save_error && !item.failed && !(sending && index === displayedState.messages.length - 1) && <Alert type="warning" showIcon title="个人文档暂不可保存" description={item.personal_document_save_error} />}
                     {item.role === "assistant" && documentTarget && !!item.content && !item.failed && !item.stopped && !(sending && index === displayedState.messages.length - 1) && !displayedState.pending_actions.some((action) => action.status === "pending" && action.preview?.path?.endsWith("/ai-space/files")) && <div className="personal-ai-document-actions">
