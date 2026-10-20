@@ -32,7 +32,10 @@ TABLES = (
 
 SOURCE_COLUMNS = {
     "CRM_Customer": {"CustomerId", "CustomerNo", "CustomerName", "CustomerType", "IsActived"},
-    "CRM_Customer_Contacts": {"ContactsId", "CustomerNo"},
+    "CRM_Customer_Contacts": {
+        "ContactsId", "CustomerNo", "Contacts", "ContactsTitle", "ProjectRole", "Email", "OfficePhone",
+        "Mobilephone", "IM", "IsContacted", "IsPeopleBASE", "IsReceivedEmail", "IsDefault", "IsActived",
+    },
     "FCM_Contract": {"ContractId", "ContractNo", "ContractName", "CustomerNo"},
     "Legal_Case": {"CaseId", "CaseNo", "CaseName", "CustomerNo", "ContractNo"},
     "Legal_Investigation": {"InvestigationId", "InvestigationNo", "ContractNo"},
@@ -142,6 +145,28 @@ def customer_contacts(rows: list[dict]) -> list[dict]:
     ]
 
 
+CUSTOMER_TYPES = ("客户", "当事人")
+
+
+def refresh_customer(pg, record_id: int, row: dict, contacts: list[dict], status: str, report: Counter) -> None:
+    """补齐早先导入的客户：旧数字类型、缺失联系人、应回收状态；已被页面改过的值不覆盖。"""
+    current_status, data = pg.execute("SELECT status, data FROM business_records WHERE id = %s", (record_id,)).fetchone()
+    data = dict(data or {})
+    wanted = mapped_data("customer", row)
+    changed = False
+    if data.get("customer_type") not in CUSTOMER_TYPES:
+        data["customer_type"] = wanted["customer_type"]
+        data["legacy_customer_type"] = wanted["legacy_customer_type"]
+        changed = True
+    if not data.get("contacts") and contacts:
+        data["contacts"] = contacts
+        changed = True
+    new_status = status if current_status == "历史数据" and status == "已回收" else current_status
+    if changed or new_status != current_status:
+        pg.execute("UPDATE business_records SET data = %s, status = %s WHERE id = %s", (Jsonb(data), new_status, record_id))
+        report["customer_backfilled"] += 1
+
+
 def record_data(module: str, row: dict, **relations) -> dict:
     return {
         "migration_source": SOURCE,
@@ -199,6 +224,7 @@ def import_data(pg, tables: dict[str, list[dict]]) -> Counter:
     contacts_by_customer: dict[str, list[dict]] = {}
     for contact in tables["CRM_Customer_Contacts"]:
         contacts_by_customer.setdefault(token(contact.get("CustomerNo")), []).append(contact)
+    report["customer_contact_unresolved"] = sum(len(rows) for no, rows in contacts_by_customer.items() if no not in customers)
     contracts = index_by(tables["FCM_Contract"], "ContractNo")
     investigations = index_by(tables["Legal_Investigation"], "InvestigationNo")
     tasks = index_by(tables["Legal_Investigation_Task"], "TaskNo")
@@ -210,7 +236,12 @@ def import_data(pg, tables: dict[str, list[dict]]) -> Counter:
     ids: dict[str, dict[str, int]] = {name: {} for name in ("customer", "contract", "case", "investigation", "task", "clue", "ipr_case")}
 
     for no, row in customers.items():
-        ids["customer"][no] = upsert_record(pg, "customer", no, token(row.get("CustomerName")), "", row, {"customer_no": no, "legacy_customer_id": row["CustomerId"], "contacts": customer_contacts(contacts_by_customer.get(no, []))}, report, "历史数据" if flag(row.get("IsActived")) else "已回收")
+        contacts = customer_contacts(contacts_by_customer.get(no, []))
+        status = "历史数据" if flag(row.get("IsActived")) else "已回收"
+        existing_before = report["customer_existing"]
+        ids["customer"][no] = upsert_record(pg, "customer", no, token(row.get("CustomerName")), "", row, {"customer_no": no, "legacy_customer_id": row["CustomerId"], "contacts": contacts}, report, status)
+        if report["customer_existing"] > existing_before:
+            refresh_customer(pg, ids["customer"][no], row, contacts, status, report)
 
     for no, row in contracts.items():
         customer_no = token(row.get("CustomerNo"))
