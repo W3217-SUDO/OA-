@@ -487,11 +487,15 @@ async def query_refund_case_fees(
         refund_status=refund_status, refund_amount_from=refund_amount_from,
         refund_amount_to=refund_amount_to, hearing_lawyer=hearing_lawyer,
         assistant=assistant, case_stages=case_stages, fee_types=fee_types,
+        defer_person_display=True,
     )
     start = (page - 1) * page_size
+    # 人员显示字段逐行独立且不参与筛选、排序和统计，只对当前页补齐。
+    from app.core.finance_person_projection import apply_finance_person_displays
+    page_rows = await apply_finance_person_displays(rows[start:start + page_size], db)
     from app.core.dashboard_scope import dashboard_fee_cases
-    related = await dashboard_fee_cases(rows[start:start + page_size], identity, db) if dashboard_queue else {}
-    return {**related, "items": rows[start:start + page_size], "total": len(rows), "page": page, "page_size": page_size}
+    related = await dashboard_fee_cases(page_rows, identity, db) if dashboard_queue else {}
+    return {**related, "items": page_rows, "total": len(rows), "page": page, "page_size": page_size}
 
 
 @router.post(f"{settings.api_prefix}/finance/case-fees/batch-update")

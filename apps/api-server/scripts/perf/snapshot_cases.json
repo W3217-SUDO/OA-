@@ -3,323 +3,555 @@
     "id": "finance.internal_fees.default",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "company", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.mine",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "mine", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "mine",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.case_no",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "company", "case_no": "GDMS2400332", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "case_no": "GDMS2400332",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.case_no_miss",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "company", "case_no": "CODEX-NOT-EXIST-9999", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "case_no": "CODEX-NOT-EXIST-9999",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.payment_status_paid",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "company", "payment_status": "已付", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "payment_status": "已付",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.payment_status_unpaid",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "company", "payment_status": "未付", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "payment_status": "未付",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.paid_range",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "company", "paid_from": "2025-01-01", "paid_to": "2026-10-15", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "paid_from": "2025-01-01",
+      "paid_to": "2026-10-15",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.fee_types",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "company", "fee_types": "内部费用", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "fee_types": "内部费用",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.combo",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "company", "case_no": "GDMS2400332", "payment_status": "已付", "paid_from": "2024-01-01", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "case_no": "GDMS2400332",
+      "payment_status": "已付",
+      "paid_from": "2024-01-01",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.page2",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "company", "page": 2, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "page": 2,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.review",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "review", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "review",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.archive",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "archive", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "archive",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.refused",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "refused", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "refused",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.internal_fees.payment",
     "endpoint": "app.areas.finance.router.list_internal_fees",
     "path": "/api/v1/finance/internal-fees",
-    "params": {"scope": "payment", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "payment",
+      "page": 1,
+      "page_size": 200
+    }
   },
-
   {
     "id": "finance.fees.default",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "company", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.fees.mine",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "mine", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "mine",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.fees.case_no",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "company", "case_no": "GDMS2400332", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "case_no": "GDMS2400332",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.fees.case_no_miss",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "company", "case_no": "CODEX-NOT-EXIST-9999", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "case_no": "CODEX-NOT-EXIST-9999",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.fees.payment_status",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "company", "payment_status": "已付款", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "payment_status": "已付款",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.fees.unpaid_official",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "company", "unpaid_official": true, "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "unpaid_official": true,
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.fees.external_only",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "company", "external_only": true, "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "external_only": true,
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.fees.paid_range",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "company", "paid_from": "2025-01-01", "paid_to": "2026-10-15", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "paid_from": "2025-01-01",
+      "paid_to": "2026-10-15",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.fees.customer",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "company", "customer": "无印良品", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "customer": "无印良品",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.fees.fee_types",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "company", "fee_types": "代理费", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "fee_types": "代理费",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.fees.combo",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "company", "case_no": "GDMS2400332", "payment_status": "已付款", "paid_from": "2024-01-01", "fee_types": "代理费", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "case_no": "GDMS2400332",
+      "payment_status": "已付款",
+      "paid_from": "2024-01-01",
+      "fee_types": "代理费",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.fees.page2",
     "endpoint": "app.areas.finance.router.query_finance_fees",
     "path": "/api/v1/finance/fees/query",
-    "params": {"scope": "company", "page": 2, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "page": 2,
+      "page_size": 200
+    }
   },
-
   {
     "id": "finance.case_fee_refunds.default",
     "endpoint": "app.areas.finance.router.query_refund_case_fees",
     "path": "/api/v1/finance/case-fees/refunds",
-    "params": {"page": 1, "page_size": 200}
+    "params": {
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.case_fee_refunds.case_no",
     "endpoint": "app.areas.finance.router.query_refund_case_fees",
     "path": "/api/v1/finance/case-fees/refunds",
-    "params": {"case_no": "GDMS2400332", "page": 1, "page_size": 200}
+    "params": {
+      "case_no": "GDMS2400332",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.case_fee_refunds.refund_status",
     "endpoint": "app.areas.finance.router.query_refund_case_fees",
     "path": "/api/v1/finance/case-fees/refunds",
-    "params": {"refund_status": "待审批", "page": 1, "page_size": 200}
+    "params": {
+      "refund_status": "待审批",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.case_fee_refunds.paid_range",
     "endpoint": "app.areas.finance.router.query_refund_case_fees",
     "path": "/api/v1/finance/case-fees/refunds",
-    "params": {"paid_from": "2025-01-01", "paid_to": "2026-10-15", "page": 1, "page_size": 200}
+    "params": {
+      "paid_from": "2025-01-01",
+      "paid_to": "2026-10-15",
+      "page": 1,
+      "page_size": 200
+    }
   },
-
   {
     "id": "finance.invoices.default",
     "endpoint": "app.areas.finance.router.list_invoice_applications",
     "path": "/api/v1/finance/invoices",
-    "params": {"scope": "company", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.invoices.pending",
     "endpoint": "app.areas.finance.router.list_invoice_applications",
     "path": "/api/v1/finance/invoices",
-    "params": {"scope": "pending", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "pending",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.invoices.case_no",
     "endpoint": "app.areas.finance.router.list_invoice_applications",
     "path": "/api/v1/finance/invoices",
-    "params": {"scope": "company", "case_no": "GDMS2400332", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "case_no": "GDMS2400332",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.invoices.invoice_status",
     "endpoint": "app.areas.finance.router.list_invoice_applications",
     "path": "/api/v1/finance/invoices",
-    "params": {"scope": "company", "invoice_status": "已开票", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "invoice_status": "已开票",
+      "page": 1,
+      "page_size": 200
+    }
   },
-
   {
     "id": "finance.incoming.default",
     "endpoint": "app.areas.finance.incoming_payments.list_incoming_payments",
     "path": "/api/v1/finance/incoming-payments",
-    "params": {"page": 1, "page_size": 200}
+    "params": {
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.incoming.status_allocated",
     "endpoint": "app.areas.finance.incoming_payments.list_incoming_payments",
     "path": "/api/v1/finance/incoming-payments",
-    "params": {"payment_status": "已分配", "page": 1, "page_size": 200}
+    "params": {
+      "payment_status": "已分配",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.incoming.status_pending_claim",
     "endpoint": "app.areas.finance.incoming_payments.list_incoming_payments",
     "path": "/api/v1/finance/incoming-payments",
-    "params": {"payment_status": "待认领", "page": 1, "page_size": 200}
+    "params": {
+      "payment_status": "待认领",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.incoming.keyword_miss",
     "endpoint": "app.areas.finance.incoming_payments.list_incoming_payments",
     "path": "/api/v1/finance/incoming-payments",
-    "params": {"keyword": "CODEX-NOT-EXIST-9999", "page": 1, "page_size": 200}
+    "params": {
+      "keyword": "CODEX-NOT-EXIST-9999",
+      "page": 1,
+      "page_size": 200
+    }
   },
-
   {
     "id": "finance.payment_workflow.print",
     "endpoint": "app.areas.finance.payment_workflow.list_workflow_payments",
     "path": "/api/v1/finance/payment-workflow/list",
-    "params": {"stage": "print"}
+    "params": {
+      "stage": "print"
+    }
   },
   {
     "id": "finance.payment_workflow.writeoff",
     "endpoint": "app.areas.finance.payment_workflow.list_workflow_payments",
     "path": "/api/v1/finance/payment-workflow/list",
-    "params": {"stage": "writeoff"}
+    "params": {
+      "stage": "writeoff"
+    }
   },
-
   {
     "id": "finance.settlements_pending.default",
     "endpoint": "app.areas.finance.internal_payments.list_pending_finance_settlements",
     "path": "/api/v1/finance/settlements/pending",
-    "params": {"page": 1, "page_size": 200}
+    "params": {
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "finance.settlements_pending.case_no",
     "endpoint": "app.areas.finance.internal_payments.list_pending_finance_settlements",
     "path": "/api/v1/finance/settlements/pending",
-    "params": {"case_no": "GDMS2400332", "page": 1, "page_size": 200}
+    "params": {
+      "case_no": "GDMS2400332",
+      "page": 1,
+      "page_size": 200
+    }
   },
-
   {
     "id": "finance.general_settlements_pending.default",
     "endpoint": "app.areas.finance.settlements.list_general_settlement_candidates",
     "path": "/api/v1/finance/general-settlements/pending",
-    "params": {"page": 1, "page_size": 200}
+    "params": {
+      "page": 1,
+      "page_size": 200
+    }
   },
-
   {
     "id": "crm.customers.default",
     "endpoint": "app.areas.crm.router.list_customers",
     "path": "/api/v1/customers",
-    "params": {"scope": "company", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "crm.customers.mine",
     "endpoint": "app.areas.crm.router.list_customers",
     "path": "/api/v1/customers",
-    "params": {"scope": "mine", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "mine",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "crm.customers.public",
     "endpoint": "app.areas.crm.router.list_customers",
     "path": "/api/v1/customers",
-    "params": {"scope": "public", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "public",
+      "page": 1,
+      "page_size": 200
+    }
   },
   {
     "id": "crm.customers.name",
     "endpoint": "app.areas.crm.router.list_customers",
     "path": "/api/v1/customers",
-    "params": {"scope": "company", "customer_name": "无印良品", "page": 1, "page_size": 200}
+    "params": {
+      "scope": "company",
+      "customer_name": "无印良品",
+      "page": 1,
+      "page_size": 200
+    }
   },
-
   {
     "id": "system.notifications.default",
     "endpoint": "app.areas.system.router.list_notifications",
     "path": "/api/v1/notifications",
-    "params": {"page": 1, "page_size": 100}
+    "params": {
+      "page": 1,
+      "page_size": 100
+    }
   },
   {
     "id": "system.notifications.unread",
     "endpoint": "app.areas.system.router.list_notifications",
     "path": "/api/v1/notifications",
-    "params": {"unread_only": true, "page": 1, "page_size": 100}
+    "params": {
+      "unread_only": true,
+      "page": 1,
+      "page_size": 100
+    }
   },
   {
     "id": "system.notifications.sent",
     "endpoint": "app.areas.system.router.list_notifications",
     "path": "/api/v1/notifications",
-    "params": {"sent_only": true, "page": 1, "page_size": 100}
+    "params": {
+      "sent_only": true,
+      "page": 1,
+      "page_size": 100
+    }
   },
-
   {
     "id": "tp.unread_messages.default",
     "endpoint": "app.areas.tp.router.list_unread_task_messages",
     "path": "/api/v1/tasks/unread-messages",
-    "params": {"page": 1, "page_size": 200}
+    "params": {
+      "page": 1,
+      "page_size": 200
+    }
   },
-
   {
     "id": "system.dashboard.default",
     "endpoint": "app.areas.system.router.dashboard",
     "path": "/api/v1/dashboard",
     "params": {}
+  },
+  {
+    "id": "finance.receipt_files.default",
+    "endpoint": "app.areas.finance.receipt_files.list_receipt_fees",
+    "params": {},
+    "path": "/api/v1/finance/receipt-files/fees"
+  },
+  {
+    "id": "finance.receipt_files.serial_no",
+    "endpoint": "app.areas.finance.receipt_files.list_receipt_fees",
+    "params": {
+      "serial_no": "GDMS2400332"
+    },
+    "path": "/api/v1/finance/receipt-files/fees"
+  },
+  {
+    "id": "finance.receipt_files.miss",
+    "endpoint": "app.areas.finance.receipt_files.list_receipt_fees",
+    "params": {
+      "serial_no": "CODEX-NOT-EXIST-9999"
+    },
+    "path": "/api/v1/finance/receipt-files/fees"
   }
 ]

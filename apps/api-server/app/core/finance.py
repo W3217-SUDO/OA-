@@ -1417,6 +1417,8 @@ async def _invoice_case_fee_rows(
     force_amount_projection: bool = False,
     exclude_invoice_id: int | None = None,
     summary_only: bool = False,
+    source_records: dict[int, BusinessRecord] | None = None,
+    defer_person_display: bool = False,
 ) -> list[dict]:
     from app.core.cases import (
         _case_party_values,
@@ -1751,7 +1753,9 @@ async def _invoice_case_fee_rows(
         })
         result["data"] = result_data
         rows.append(result)
-    if not summary_only:
+        if source_records is not None:
+            source_records[item.id] = item
+    if not summary_only and not defer_person_display:
         from app.core.finance_person_projection import apply_finance_person_displays
         await apply_finance_person_displays(rows, db)
     return rows
@@ -1780,6 +1784,8 @@ async def _fee_query_rows(
     fee_types: str = "", ids: set[int] | None = None,
     scope_authorized_fee_ids: set[int] | None = None,
     summary_only: bool = False,
+    source_records: dict[int, BusinessRecord] | None = None,
+    defer_person_display: bool = False,
 ) -> list[dict]:
     if "_dashboard_fee_ids" in identity:
         scope_authorized_fee_ids = identity["_dashboard_fee_ids"]
@@ -1794,7 +1800,8 @@ async def _fee_query_rows(
         paid_to=paid_to, fee_types=fee_types, payer_name="",
         cashed_from=None, cashed_to=None, ids=ids, include_all_fee_types=True,
         scope_authorized_fee_ids=scope_authorized_fee_ids,
-        summary_only=summary_only,
+        summary_only=summary_only, source_records=source_records,
+        defer_person_display=defer_person_display,
     )
     filtered: list[dict] = []
     for row in rows:
@@ -1893,6 +1900,7 @@ async def _refund_case_fee_rows(
     ids: set[int] | None = None,
     pending_only: bool = True,
     include_not_required: bool = False,
+    defer_person_display: bool = False,
 ) -> list[dict]:
     from app.core.legacy_sync import (
         _legacy_case_fee_projection,
@@ -1904,6 +1912,8 @@ async def _refund_case_fee_rows(
     selected_ids = ids
     if authorized_ids is not None:
         selected_ids = authorized_ids if selected_ids is None else selected_ids.intersection(authorized_ids)
+    # 费用记录在查询阶段已读入内存；沿用同一批对象，避免对全部费用再整行读取一遍。
+    source_records: dict[int, BusinessRecord] = {}
     rows = await _fee_query_rows(
         identity, db, scope="company", case_no=case_no,
         court_case_no=court_case_no, refund_amount_from=None,
@@ -1912,9 +1922,10 @@ async def _refund_case_fee_rows(
         paid_to=paid_to, hearing_lawyer=hearing_lawyer,
         assistant=assistant, case_stages=case_stages, fee_types=fee_types,
         ids=selected_ids, scope_authorized_fee_ids=authorized_ids,
+        source_records=source_records, defer_person_display=defer_person_display,
     )
     from app.core.query_batches import _scalars_in_batches
-    fee_ids = {int(row["id"]) for row in rows}
+    fee_ids = {int(row["id"]) for row in rows} - source_records.keys()
     records = await _scalars_in_batches(
         db,
         fee_ids,
@@ -1922,7 +1933,7 @@ async def _refund_case_fee_rows(
             BusinessRecord.module == "finance", BusinessRecord.id.in_(batch),
         ),
     ) if fee_ids else []
-    records_by_id = {item.id: item for item in records}
+    records_by_id = {**source_records, **{item.id: item for item in records}}
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     result: list[dict] = []
     for row in rows:
