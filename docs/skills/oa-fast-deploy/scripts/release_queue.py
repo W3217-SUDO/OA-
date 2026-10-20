@@ -11,21 +11,9 @@ from pathlib import Path
 from github_release_refs import load_snapshot
 
 
-VERSION = re.compile(r"1\.(\d+)\.(\d+)")
+VERSION = re.compile(r"1\.1\.(\d+)")
 COMMIT = re.compile(r"[0-9a-f]{40}")
 PENDING = {"assigned", "activating"}
-
-
-def version_key(value):
-    match = VERSION.fullmatch(value)
-    if not match:
-        raise ValueError(f"版本号格式无效: {value}")
-    return int(match[1]), int(match[2])
-
-
-def next_version(value):
-    minor, patch = version_key(value)
-    return f"1.{minor + 1}.1" if patch >= 100 else f"1.{minor}.{patch + 1}"
 
 
 def required(name):
@@ -57,10 +45,11 @@ def read_queue(path):
 def validate_target(target, snapshot, states):
     if not COMMIT.fullmatch(target) or target != snapshot["refs"]["refs/heads/dev"]:
         raise ValueError("目标不是当前已发布的 GitHub dev")
-    released = max((number for number, row in states.items() if row[1] == "released"), key=version_key)
+    released = max((number for number, row in states.items() if row[1] == "released"),
+                   key=lambda number: int(VERSION.fullmatch(number)[1]))
     tags = {ref[len("refs/tags/v"):]: commit for ref, commit in snapshot["refs"].items()
             if ref.startswith("refs/tags/v") and not ref.endswith("^{}")}
-    missing = {number for number in tags if version_key(number) > version_key(released) and number not in states}
+    missing = {number for number in tags if int(VERSION.fullmatch(number)[1]) > int(VERSION.fullmatch(released)[1]) and number not in states}
     if missing:
         raise ValueError(f"GitHub 已占用版本缺少生产队列接管记录: {sorted(missing)}")
     active_tag = f"refs/tags/v{released}"
@@ -77,8 +66,8 @@ def reservation(target, owner, scope, snapshot, states, consolidation):
     pending = {number for number, row in states.items() if row[1] in PENDING}
     if pending - consolidation:
         raise ValueError(f"在先发布仍未完成: {sorted(pending - consolidation)}")
-    highest = max(set(tags) | set(states), key=version_key)
-    number = next_version(highest)
+    highest = max(int(VERSION.fullmatch(number)[1]) for number in set(tags) | set(states))
+    number = f"1.1.{highest + 1}"
     if consolidation:
         scope += ";consolidates=" + ",".join(sorted(consolidation))
     return number, [[number, "assigned", target, owner, scope, datetime.now(timezone.utc).isoformat()]]

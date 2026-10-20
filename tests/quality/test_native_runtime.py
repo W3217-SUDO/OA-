@@ -6,6 +6,7 @@ import io
 import json
 import os
 import re
+import shutil
 import sys
 import subprocess
 import tempfile
@@ -527,8 +528,18 @@ class SourceQualityGateTest(unittest.TestCase):
                 files[-1].write_text("changed installed dependency lock\n", encoding="utf-8")
                 self.assertNotEqual(fingerprint, quality_gate.source_fingerprint("a" * 40, "node", "v22.20.0", 2))
 
-    @unittest.skipIf(os.name == "nt", "Windows PowerShell 输出编码与 pwsh 行为不同；钩子安装须在 Linux CI 验证")
+    @unittest.skipIf(os.name == "nt", "Windows PowerShell 输出编码与 pwsh 行为不同；钩子安装须在 Linux/macOS 验证")
     def test_hook_installer_preserves_external_hooks_and_updates_managed_templates(self):
+        # macOS/Linux 使用 install-quality-hook.sh；装有 pwsh 时同时验证 setup-local.ps1，两者行为必须一致。
+        installers = {"sh": lambda root: ["sh", str(SCRIPTS / "install-quality-hook.sh"), str(root)]}
+        if shutil.which("pwsh"):
+            setup = str(SCRIPTS / "setup-local.ps1").replace("'", "''")
+            installers["pwsh"] = lambda root: ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference='Stop'; . '{}'; $root='{}'; Install-QualityPrePushHook".format(setup, str(root).replace("'", "''"))]
+        for name, build in installers.items():
+            with self.subTest(installer=name):
+                self.check_hook_installer(build)
+
+    def check_hook_installer(self, build):
         with temporary_directory("oa-test-hook-installer-") as temporary:
             root = Path(temporary).resolve()
             subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
@@ -537,10 +548,7 @@ class SourceQualityGateTest(unittest.TestCase):
             content = (SCRIPTS.parent / ".githooks/pre-push").read_text(encoding="utf-8").replace("\r\n", "\n")
             template.write_text(content, encoding="utf-8", newline="\n")
             hook = root / ".git/hooks/pre-push"
-            shell = "powershell" if os.name == "nt" else "pwsh"
-            setup = str(SCRIPTS / "setup-local.ps1").replace("'", "''")
-            target = str(root).replace("'", "''")
-            command = [shell, "-NoProfile", "-Command", f"$ErrorActionPreference='Stop'; . '{setup}'; $root='{target}'; Install-QualityPrePushHook"]
+            command = build(root)
 
             def install(code):
                 completed = subprocess.run(command, capture_output=True, encoding="utf-8")

@@ -15,11 +15,22 @@ description: Queue verified OA releases by default; coordinate consolidation onl
 - 逐行状态 `1/已验收` 不是发布门票。发布只能说明候选已部署；问题表仍须在真实接口/数据库、测试数据清理和用户浏览器验收完成后单独回写。
 - 部署回执必须列出文档路径、行号、分流结论、版本、提交、测试、健康检查、接口/文件回读和清理结果；不得用服务健康或构建通过替代问题验收。
 
-## 版本号进位规则
+## 版本号规则
 
-- 发布版本使用语义化版本号；当前 `1.1.x` 的最后一组数字达到 `100` 后，下一版本自动进位为 `1.2.1`，不再生成 `1.1.101`。
-- 进位后继续按最后一组数字递增：`1.2.1`、`1.2.2`……达到 `1.2.100` 后再进入 `1.3.1`。
-- 分配器、队列校验、package.json/package-lock.json、运行包、Git 标签和发布回执必须使用同一进位后的完整版本号；禁止按字符串排序或只递增第三段。
+- 按用户 2026-10-20 的决定，版本号沿生产实际序列继续 `1.1.x` 递增，不进位到 `1.2.x`：`1.1.493` 之后是 `1.1.494`。旧的“满 100 进位到 1.2.1”规则作废。
+- 下一个版本号只由生产 `/opt/sunhold-oa/scripts/release_queue.py` 在锁内分配，取 GitHub 标签与生产队列中已占用的最大号加一；按数字比较，禁止按字符串排序。
+- 分配器、队列校验、package.json/package-lock.json、运行包、Git 标签和发布回执必须使用同一完整版本号。
+
+## 发布机：本 Mac
+
+本 skill 在 macOS 上执行（zsh/bash，不用 PowerShell）。发布前确认：
+
+- **生产服务器**：`oa-production-app`（`47.93.166.123`），用本机密钥直连，命令和身份见 [production-authority.md](references/production-authority.md)。本机不配置 `oa-production` 别名。
+- **GitHub 远端**：本仓库远端名为 `origin`（`https://github.com/W3217-SUDO/OA-.git`）；先 `git remote -v` 核对，所有 fetch/push 和快照都用 `origin`。
+- **Python 3.12**：门禁专用 venv `~/.local/share/oa/quality-py312`，按 `apps/api-server/requirements.lock` 与 `requirements-dev.lock` 带哈希安装（`uv pip install --require-hashes`）。系统 `/usr/bin/python3` 是 3.9，裸 `~/.local/bin/python3.12` 没有后端依赖，都不能用于门禁。
+- **Node.js 22**：`~/.local/node`（v22.23.3，Node.js Foundation 签名），构建和 pre-push 门禁必需，版本以 `.nvmrc` 为准，不能用其他大版本构建。
+- **pre-push 门禁**：用 `sh scripts/install-quality-hook.sh` 把 `.githooks/pre-push` 安装到 `.git/hooks/pre-push`（Mac/Linux 版，与 `setup-local.ps1` 行为一致；不使用也不得设置 `core.hooksPath`）。`~/.zprofile` 已设置 `OA_QUALITY_PYTHON` 指向上面的 venv、`OA_QUALITY_NODE` 指向 Node 22。推送前工作树必须干净；hook 未生效或未跑完时不得声称已通过 source 门禁。本机不需要也不安装 PowerShell。
+- **行尾**：Mac 构建产物为 LF；与 Windows 构建的旧包比较时，行尾差异与业务差异分别审计。
 
 ## 发布方式选择
 
@@ -37,7 +48,7 @@ description: Queue verified OA releases by default; coordinate consolidation onl
 
 发布前必读 [production-authority.md](references/production-authority.md)。GitHub 是唯一源码权威，实际正式服务器是版本队列及锁的权威；已退役 Tencent，不连接它、不走双远端发布、不执行 `git fetch --all`。
 
-- 先检查 `git remote -v`，只 fetch/push 已核实的 GitHub 远端。集成分支为线性 `dev`；正式成功后将 GitHub `main` 快进到同一发布提交。
+- 先检查 `git remote -v`，只 fetch/push 已核实的 GitHub 远端（本机为 `origin`）。集成分支为线性 `dev`；正式成功后将 GitHub `main` 快进到同一发布提交。
 - 读取真实 SSH 配置、有效 systemd、`current` manifest、公开 build-info、health、queue/ledger 和占用标签。不得凭记忆选择主机、端口、工具、版本或旧 worktree。
 - 正式采用 enterprise immutable package/`current` 激活链路。只安装新版本包，校验摘要并物理封存后切换；不修改旧包，不在服务器构建前端或拉取源码覆盖运行树。
 - 不丢弃他人改动、不复用占用或失败版本、不改写正式标签、不覆盖数据库。正常集成不 force-push；真实历史分叉需另行明确授权的修复方案，普通“合批”不是历史重写授权。
@@ -110,7 +121,7 @@ existing reservation/tag/state: none | exact identity
 
 读取实际运行的 native helper/解释器并核其 SHA，使用现有 runtime_package 验包；不上传覆盖目录。保留包大小、SHA、源码来源、完整文件集合及严格验包证明。
 
-Windows 换行差异与业务差异分别审计。机械字节对齐仅在正式基线 manifest/raw hash、基线和候选 Git blob、候选内容均证明仅行尾不同后处理本地包；保留实际改动字节及包外 provenance，更新 manifest 并重新严格验包。不能静默归一化、不搬未知旧包、不改源码掩盖差异。
+跨平台换行差异（旧包可能由 Windows 构建，本机为 LF）与业务差异分别审计。机械字节对齐仅在正式基线 manifest/raw hash、基线和候选 Git blob、候选内容均证明仅行尾不同后处理本地包；保留实际改动字节及包外 provenance，更新 manifest 并重新严格验包。不能静默归一化、不搬未知旧包、不改源码掩盖差异。
 
 数据库无变更则记录无需备份，不 dump。存在迁移/数据补丁时，按最小受影响表及关联行完成外置备份、SHA、恢复方案与审批；禁止无授权全库备份或替换生产数据。
 
@@ -135,7 +146,7 @@ Windows 换行差异与业务差异分别审计。机械字节对齐仅在正式
 
 用户已要求：已授权的部署未成功或仍未收口时，必须建立每 5 分钟执行一次的监督任务，直到确认部署成功，再删除该任务。仅修改本 skill、准备候选或本地预览不触发部署，也不凭此规则扩大部署授权。
 
-- 使用 Codex 原生自动化，默认建立当前发布会话的 heartbeat，不使用 shell cron、长期 sleep 或额外独立发布者。创建前检查已有自动化；同一发布只保留一个监督任务，已有匹配任务则更新，不重复创建。记录自动化 ID、发布所有者、候选完整 SHA、已分配版本（尚未分配则明确未分配）、授权范围及回执位置；提示词不得含凭据。
+- 使用当前客户端的原生定时能力建立当前发布会话的监督（Claude Code 用 `/loop 5m` 或 CronCreate；Codex 用 heartbeat），不使用 shell cron、长期 sleep 或额外独立发布者。创建前检查已有自动化；同一发布只保留一个监督任务，已有匹配任务则更新，不重复创建。记录自动化 ID、发布所有者、候选完整 SHA、已分配版本（尚未分配则明确未分配）、授权范围及回执位置；提示词不得含凭据。
 - 每次运行先读本 skill 和当前生产权威引用，刷新真实 queue/ledger、锁与所有者、GitHub refs、current/manifest、health/build-info 和上次回执，判断等待、可继续、失败或已成功。前次执行仍在运行时只检查状态，不并发启动第二次部署。
 - 排队、网络中断或外部状态未变化时继续五分钟监督；在原授权和真实互斥时段内，可以从最后一个已验证步骤继续。重试前核对已有版本、标签、包及激活状态，复用本任务有效记录，不重复领号或盲目重启、重建、激活。既有失败版本不得复用，是否分配新版本仍按权威队列规则处理。
 - 他人占锁、未收口预留、权限缺失、验证失败、代码冲突或需要新增授权时，记录具体阻碍并报告用户；只做安全的只读监督，不能抢锁、接管他人发布、绕过门禁或扩大生产写入。用户明确暂停或取消时立即停止相应动作，并按其要求暂停或删除监督任务；不因等待自行标记部署成功。
