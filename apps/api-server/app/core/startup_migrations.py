@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from app.database import Base
 from app.core.notification_schema_migration import upgrade_notification_delivery_schema
 from app.core.record_read_model_migration import upgrade_record_read_model
+from app.core.schema_alignment import align_business_record_json_indexes
 from app.core.incoming_finance_schema_migration import (
     MIGRATION_REVISION as INCOMING_FINANCE_REVISION, upgrade_incoming_finance_schema,
 )
@@ -45,6 +46,7 @@ SCHEMA_BOOTSTRAP_REVISION = "startup_schema_bootstrap_v1"
 LEGACY_SETTLEMENT_INDEX_REVISION = "legacy_settlement_query_indexes_v1"
 NOTIFICATION_DELIVERY_REVISION = "notification_delivery_outbox_v1"
 RECORD_READ_MODEL_REVISION = "business_record_read_model_v1"
+CASE_LINK_JSON_INDEX_REVISION = "business_record_case_link_json_indexes_v1"
 
 
 def _apply_schema_bootstrap(connection: Connection, upgrade_schema: Callable[[Connection], None]) -> None:
@@ -89,6 +91,11 @@ def _apply_legacy_settlement_indexes(connection: Connection, _upgrade_schema: Ca
     ))
 
 
+def _apply_case_link_json_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    """已完成历史结构升级的数据库也独立补齐案件关联 JSON 表达式索引。"""
+    align_business_record_json_indexes(connection)
+
+
 def _apply_record_read_model(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     upgrade_record_read_model(connection)
 
@@ -129,6 +136,7 @@ def _run_versioned_schema_migrations(
         (DASHBOARD_FINANCE_REVISION, _apply_dashboard_finance),
         (DASHBOARD_REVISION, _apply_dashboard_revision),
         (FINANCE_QUERY_REVISION, _apply_finance_query_revision),
+        (CASE_LINK_JSON_INDEX_REVISION, _apply_case_link_json_indexes),
     )
     for revision, migration in revisions:
         if connection.execute(
