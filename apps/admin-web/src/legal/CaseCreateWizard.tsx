@@ -6,6 +6,8 @@ import { resolveCaseSourcePerson } from "../caseContractPrefill";
 import type { CaseRow,ContractRow } from "./types";
 import { useConflictReview } from "../conflict-review/useConflictReview";
 import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
+import { useCaseCreatePartyInputs } from "./useCaseCreatePartyInputs";
+import "./case-create-parties.css";
 
 interface LitigantLabels {
   plaintiff: string;
@@ -94,6 +96,11 @@ export const CaseCreateWizard = ({
   finishCreateFlow,
 }: CaseCreateWizardProps) => {
   const conflict = useConflictReview(createdCaseId ?? undefined, createStep > 0);
+  const partyInputs = useCaseCreatePartyInputs(createForm, createFlowToken);
+  const withPartyInputs = (action: () => void | Promise<void>) => {
+    partyInputs.commitInputs();
+    return action();
+  };
   const resolveCasePersonValue = (source: string) => {
     const normalized = String(source || "").trim();
     if (!normalized) return "";
@@ -155,19 +162,19 @@ export const CaseCreateWizard = ({
         )}
         {createStep === 1 && (
           <div className="case-create-step"><div className="case-create-section-title">当事人信息</div><div className="case-create-fields">
-            <Form.Item label={litigantLabels.plaintiff} name="plaintiffs"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
-            <Form.Item label={litigantLabels.plaintiffAgent} name="plaintiff_agents"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
+            <Form.Item label={litigantLabels.plaintiff} name="plaintiffs"><Select mode="tags" {...partyInputs.selectProps("plaintiffs")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
+            <Form.Item label={litigantLabels.plaintiffAgent} name="plaintiff_agents"><Select mode="tags" {...partyInputs.selectProps("plaintiff_agents")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
             <Form.Item label={litigantLabels.defendant} required={!isCounselCreate}>
-              <Space.Compact block>
+              <div className="case-create-defendant-input">
                 <Form.Item name="defendants" noStyle rules={[{ required: true, message: "请输入至少一名被告" }]}>
-                  <Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" style={{ width: "calc(100% - 90px)" }} />
+                  <Select mode="tags" {...partyInputs.selectProps("defendants")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" />
                 </Form.Item>
-                <Button icon={<EditOutlined />} onClick={openCreateDefendantEditor}>填写对方当事人证件</Button>
-              </Space.Compact>
+                <Button icon={<EditOutlined />} onClick={() => withPartyInputs(openCreateDefendantEditor)}>填写对方当事人证件</Button>
+              </div>
             </Form.Item>
-            <Form.Item label={litigantLabels.defendantAgent} name="defendant_agents"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
-            <Form.Item label={litigantLabels.third} name="third_parties"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
-            <Form.Item label={litigantLabels.thirdAgent} name="third_party_agents"><Select mode="tags" tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
+            <Form.Item label={litigantLabels.defendantAgent} name="defendant_agents"><Select mode="tags" {...partyInputs.selectProps("defendant_agents")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
+            <Form.Item label={litigantLabels.third} name="third_parties"><Select mode="tags" {...partyInputs.selectProps("third_parties")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
+            <Form.Item label={litigantLabels.thirdAgent} name="third_party_agents"><Select mode="tags" {...partyInputs.selectProps("third_party_agents")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
             <Form.Item label="备注" name="litigant_comment"><Input.TextArea rows={3} /></Form.Item>
           </div></div>
         )}
@@ -194,8 +201,8 @@ export const CaseCreateWizard = ({
           <Space>
             {createStep === 0 && <Button type="primary" loading={createSubmitting} onClick={advanceCreateStep}>下一步</Button>}
             {createStep === 1 && (isCounselCreate
-              ? <Button type="primary" loading={createSubmitting} onClick={() => void saveLitigants(true)}>完成</Button>
-              : <><Button type="primary" loading={createSubmitting} onClick={advanceCreateStep}>下一步</Button>{!isAdministrativeCreate && <Button loading={createSubmitting} onClick={() => void saveLitigants(true)}>完成</Button>}</>)}
+              ? <Button type="primary" loading={createSubmitting} onClick={() => void withPartyInputs(() => saveLitigants(true))}>完成</Button>
+              : <><Button type="primary" loading={createSubmitting} onClick={() => withPartyInputs(advanceCreateStep)}>下一步</Button>{!isAdministrativeCreate && <Button loading={createSubmitting} onClick={() => void withPartyInputs(() => saveLitigants(true))}>完成</Button>}</>)}
             {createStep === 2 && <><Button disabled={createSubmitting} onClick={() => setCreateStep(1)}>上一步</Button><Button type="primary" loading={createSubmitting} onClick={finishCreateFlow}>完成</Button></>}
           </Space>
         </div>

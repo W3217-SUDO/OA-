@@ -4518,6 +4518,8 @@ export default function CaseCenterPage({
       <Modal
         width={560}
         open={createDefendantEditorOpen}
+        className="case-create-party-identities"
+        zIndex={1300}
         title="填写对方当事人证件"
         okText="确定"
         cancelText="取消"

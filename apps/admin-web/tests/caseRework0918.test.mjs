@@ -45,3 +45,110 @@ test('线索输入建议、重新打开刷新、过期请求取消、保留选�
   await act(async () => { root.unmount(); });
   assert(pending.config.signal.aborted);
 });
+
+test('新建当事人输入同步收录、去重、删除证件及切换创建流程清空输入', async () => {
+  const { useCaseCreatePartyInputs } = await load('../src/legal/useCaseCreatePartyInputs.ts', {});
+  const values = { defendants: ['已有被告'], defendant_identities: [{ name: '已有被告', identity_no: '旧证件' }] };
+  const form = { getFieldValue: key => values[key], setFieldsValue: patch => Object.assign(values, patch) };
+  let inputs, root;
+  function Probe({ token }) { inputs = useCaseCreatePartyInputs(form, token); return null; }
+  await act(async () => { root = create(React.createElement(Probe, { token: 'first' })); });
+  try {
+    await act(async () => {
+      inputs.selectProps('defendants').onOpenChange(true);
+      inputs.selectProps('defendants').onSearch(' 新被告，已有被告,第二名新被告 ');
+      inputs.commitInputs();
+      assert.deepEqual(values.defendants, ['已有被告', '新被告', '第二名新被告']);
+    });
+    assert.equal(inputs.selectProps('defendants').searchValue, '');
+    assert.equal(inputs.selectProps('defendants').open, false);
+    await act(async () => {
+      inputs.selectProps('defendants').onSearch('离焦新增');
+      inputs.selectProps('defendants').onBlur();
+    });
+    assert(values.defendants.includes('离焦新增'));
+    await act(async () => {
+      inputs.selectProps('defendants').onSearch('回车新增');
+      inputs.selectProps('defendants').onChange([...values.defendants, '回车新增']);
+      inputs.commitInputs();
+    });
+    assert.equal(values.defendants.filter(name => name === '回车新增').length, 1);
+    await act(async () => { inputs.selectProps('defendants').onChange(['新被告']); });
+    assert.deepEqual(values.defendant_identities, []);
+    await act(async () => {
+      inputs.selectProps('plaintiffs').onSearch('新增原告');
+      inputs.selectProps('third_parties').onSearch('新增第三人');
+      inputs.selectProps('defendant_agents').onSearch('新增代理人');
+      inputs.commitInputs();
+    });
+    assert.deepEqual(values.plaintiffs, ['新增原告']);
+    assert.deepEqual(values.third_parties, ['新增第三人']);
+    assert.deepEqual(values.defendant_agents, ['新增代理人']);
+    await act(async () => { inputs.selectProps('defendants').onSearch('不应带入下一案件'); });
+    await act(async () => { root.update(React.createElement(Probe, { token: 'second' })); });
+    await act(async () => { inputs.commitInputs(); });
+    assert.deepEqual(values.defendants, ['新被告']);
+    assert.equal(inputs.selectProps('defendants').searchValue, '');
+  } finally { await act(async () => { root.unmount(); }); }
+});
+
+test('新被告从未提交输入进入证件、下一步及最终保存，失败不前进', async () => {
+  const requests = [], messages = [], steps = [], completed = [];
+  const values = { plaintiffs: ['客户'], defendants: [] };
+  const form = {
+    getFieldValue: key => values[key],
+    getFieldsValue: () => ({ ...values }),
+    setFieldsValue: patch => Object.assign(values, patch),
+  };
+  let apiError;
+  const { createCaseWorkflowActions } = await load('../src/legal/services/workflowActions.tsx', {
+    put: async (path, body) => {
+      requests.push({ path, body });
+      if (apiError) throw { response: { data: { detail: apiError } } };
+      return { data: {} };
+    },
+  }, messages);
+  const { useCaseCreatePartyInputs } = await load('../src/legal/useCaseCreatePartyInputs.ts', {});
+  let inputs, root, identities = [];
+  function Probe() { inputs = useCaseCreatePartyInputs(form, 'CODEX-C-ROW2'); return null; }
+  const actions = createCaseWorkflowActions({
+    createForm: form, createdCaseId: 42, createStep: 1, isCounselCreate: false,
+    setCreateSubmitting() {}, setCreateStep: step => steps.push(step),
+    redirectAfterCreate: () => completed.push(true),
+    createDefendantEditorForm: { validateFields: async () => ({ party_identities: identities }) },
+    setCreateDefendantEditorOpen() {},
+  });
+  await act(async () => { root = create(React.createElement(Probe)); });
+  try {
+    await actions.saveLitigants(false);
+    assert.equal(requests.length, 0);
+    assert.equal(messages.at(-1), '请输入至少一名被告');
+    await act(async () => {
+      inputs.selectProps('defendants').onSearch('CODEX-C-新被告');
+      assert.deepEqual(values.defendants, []);
+      inputs.commitInputs();
+      identities = form.getFieldValue('defendants').map(name => ({
+        party_role: '被告/被申请人', name, organization_type: '个人', identity_no: '310101199001010011',
+      }));
+    });
+    await actions.saveCreateDefendants();
+    await actions.advanceCreateStep();
+    assert.deepEqual(steps, [2]);
+    assert.equal(requests.at(-1).path, '/cases/42/litigants');
+    assert.deepEqual(requests.at(-1).body.defendants, ['CODEX-C-新被告']);
+    assert.deepEqual(requests.at(-1).body.defendant_identities, [{
+      name: 'CODEX-C-新被告', organization_type: '个人', identity_no: '310101199001010011',
+    }]);
+    await actions.finishCreateFlow();
+    assert.equal(requests.at(-1).path, '/cases/42/judicial');
+    assert.equal(completed.length, 1);
+    await actions.saveLitigants(true);
+    assert.deepEqual(requests.slice(-2).map(item => item.path), ['/cases/42/litigants', '/cases/42/judicial']);
+    assert.equal(completed.length, 2);
+    apiError = '请补充对方当事人证件信息：CODEX-C-新被告';
+    await actions.saveLitigants(false);
+    assert.equal(messages.at(-1), apiError);
+    assert.deepEqual(steps, [2]);
+    assert.equal(completed.length, 2);
+  } finally { await act(async () => { root.unmount(); }); }
+});

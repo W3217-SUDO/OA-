@@ -163,6 +163,40 @@ class CaseLitigantCustomerProjectionRow19Test(unittest.IsolatedAsyncioTestCase):
             )), 0)
             self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent)), 0)
 
+    async def test_new_defendant_identity_validation_and_creation_completion(self) -> None:
+        name = "CODEX-C-20261020-ROW2-新被告"
+        payload = {"plaintiffs": ["既有原告客户"], "defendants": [name]}
+        missing = await self.client.put(f"{API}/cases/{self.case_id}/litigants", json=payload)
+        self.assertEqual(missing.status_code, 422, missing.text)
+        self.assertIn(name, missing.json()["detail"])
+        payload["defendant_identities"] = [{"name": name, "organization_type": "个人", "identity_no": "invalid"}]
+        invalid = await self.client.put(f"{API}/cases/{self.case_id}/litigants", json=payload)
+        self.assertEqual(invalid.status_code, 422, invalid.text)
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            self.assertNotIn("defendants", case.data)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+                BusinessRecord.module == "customer", BusinessRecord.title == name,
+            )), 0)
+
+        payload["defendant_identities"][0]["identity_no"] = "310101199001010011"
+        saved = await self.client.put(f"{API}/cases/{self.case_id}/litigants", json=payload)
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["data"]["defendants"], [name])
+        self.assertEqual(saved.json()["data"]["case_creation_step"], "litigants")
+        completed = await self.client.put(f"{API}/cases/{self.case_id}/judicial", json={})
+        self.assertEqual(completed.status_code, 200, completed.text)
+        self.assertEqual(completed.json()["data"]["case_creation_step"], "completed")
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            self.assertEqual(case.data["defendants"], [name])
+            self.assertEqual(case.data["defendant_identities"], payload["defendant_identities"])
+            party = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "customer", BusinessRecord.title == name))
+            self.assertIsNotNone(party)
+            self.assertEqual(party.data["identity_no"], "310101199001010011")
+            self.assertEqual(party.data["case_litigant_origin"]["case_id"], self.case_id)
+            self.assertIsNotNone(await db.scalar(select(LegacyCustomer).where(LegacyCustomer.CustomerName == name)))
+
     async def test_criminal_detail_uses_the_same_party_register(self) -> None:
         payload = {
             "plaintiffs": ["CODEX-827-19-刑事原告"],

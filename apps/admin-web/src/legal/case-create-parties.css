@@ -1,0 +1,47 @@
+.case-create-defendant-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+@media (max-width: 575px) {
+  .case-create-wizard-form .ant-form-item-control.ant-col-offset-5 {
+    margin-inline-start: 0;
+  }
+}
+
+.case-create-defendant-input > .ant-select {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  .case-create-defendant-input {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .case-create-defendant-input > .ant-btn {
+    grid-row: 1;
+    justify-self: start;
+    max-width: 100%;
+    min-height: 44px;
+    height: auto;
+    white-space: normal;
+  }
+
+  .case-create-wizard-form .ant-select {
+    min-width: 0;
+    min-height: 44px;
+  }
+
+  .case-create-actions .ant-btn {
+    min-height: 44px;
+  }
+
+  .case-create-party-identities .ant-select,
+  .case-create-party-identities .ant-input,
+  .case-create-party-identities .ant-modal-footer .ant-btn {
+    min-height: 44px;
+  }
+}
