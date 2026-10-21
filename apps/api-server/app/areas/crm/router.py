@@ -1862,7 +1862,7 @@ async def list_party_library(
     scope: str = Query("company", pattern="^(mine|department|company|recycle)$"),
     case_no: str = Query("", max_length=64),
     name: str = Query("", max_length=200),
-    case_category: str = Query("", pattern="^(民事|行政|刑事|仲裁|法律顾问|其他|)$"),
+    case_category: str = Query("", pattern="^(民事|行政|刑事|仲裁|法律顾问|非诉讼|其他|)$"),
     page: int = Query(1, ge=0),
     page_size: int = Query(15, ge=0, le=200),
     identity: dict = Depends(current_identity),
@@ -1876,7 +1876,7 @@ async def list_party_library(
     page_size = page_size or 15
     # 菜单：当事人中心 → 我的/部门/公司当事人 → 各案件类型；回收站单独一项。
     scope_short = {"mine": "mine", "department": "dept", "company": "company", "recycle": "recycle"}[scope]
-    category_suffix = {"民事": "civil", "行政": "admin", "刑事": "criminal", "仲裁": "arbitration", "法律顾问": "advisor"}.get(case_category)
+    category_suffix = {"民事": "civil", "行政": "admin", "刑事": "criminal", "仲裁": "arbitration", "法律顾问": "advisor", "非诉讼": "nonlit"}.get(case_category)
     permission = await _permission_payload_for_identity(identity, db)
     granted = set(permission.get("menu_keys") or [])
     allowed = f"party-{scope_short}" in granted or (category_suffix is not None and f"party-{scope_short}-{category_suffix}" in granted)

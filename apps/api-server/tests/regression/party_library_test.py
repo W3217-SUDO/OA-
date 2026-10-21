@@ -8,7 +8,7 @@ from app.areas.crm.router import list_party_library
 from app.core.party_library import build_entries, case_category, case_party_layout, rebuild_party_library, register_unnumbered_parties
 from app.database import Base
 from app.core.crm import _next_party_serial_no
-from app.models import BusinessRecord, User
+from app.models import BusinessRecord, IprCaseCustomer, User
 
 ADMIN = {"username": "admin", "role": "admin", "_page_menu_capability": True}
 
@@ -152,6 +152,45 @@ class PartyLibraryQueryTest(unittest.IsolatedAsyncioTestCase):
             ])
             await db.commit()
             self.assertEqual(await _next_party_serial_no(db), f"DSR{yy}00008")  # 客户编号不影响当事人流水
+
+    async def test_non_litigation_ipr_case_lists_linked_applicants_but_not_clients(self):
+        async with self.sessions() as db:
+            client = BusinessRecord(module="customer", serial_no="HZKH-C", title="专利客户", customer="", status="正常", owner="u1",
+                                    data={"customer_type": "客户", "customer_managers": ["u1"]})
+            applicant = BusinessRecord(module="customer", serial_no="SHKH1400088", title="某大学", customer="", status="T", owner="u1",
+                                       data={"customer_type": "申请人"})
+            another_client = BusinessRecord(module="customer", serial_no="HZKH-D", title="另一客户", customer="", status="正常", owner="u1",
+                                            data={"customer_type": "客户"})
+            self_applicant = BusinessRecord(module="customer", serial_no="SHKH1400099", title="自己申请的公司", customer="", status="T", owner="u1",
+                                            data={"customer_type": "申请人"})
+            db.add_all([client, applicant, another_client, self_applicant])
+            await db.flush()
+            ipr = BusinessRecord(module="ipr_case", serial_no="CODEX-PU-1", title="专利", customer="专利客户", status="年费监控", owner="u1",
+                                 data={"case_type": "国内发明专利", "customer_id": client.id})
+            db.add(ipr)
+            await db.flush()
+            own = BusinessRecord(module="ipr_case", serial_no="CODEX-TM-1", title="商标", customer="自己申请的公司", status="已受理", owner="u1",
+                                 data={"case_type": "国内商标", "customer_id": self_applicant.id})
+            db.add(own)
+            await db.flush()
+            db.add(IprCaseCustomer(case_record_id=own.id, customer_record_id=self_applicant.id, is_primary=True, created_by="t"))
+            db.add_all([
+                IprCaseCustomer(case_record_id=ipr.id, customer_record_id=client.id, is_primary=True, created_by="t"),
+                IprCaseCustomer(case_record_id=ipr.id, customer_record_id=applicant.id, is_primary=False, created_by="t"),
+                IprCaseCustomer(case_record_id=ipr.id, customer_record_id=another_client.id, is_primary=False, created_by="t"),
+            ])
+            await db.commit()
+        await self._rebuild()
+        result = await self._list(case_category="非诉讼")
+        rows = {r["case_no"]: r for r in result["items"]}
+        self.assertEqual(set(rows), {"CODEX-PU-1", "CODEX-TM-1"})  # 客户类型的关联不进库
+        self.assertEqual((rows["CODEX-PU-1"]["subject_name"], rows["CODEX-PU-1"]["party_no"], rows["CODEX-PU-1"]["subject_position"],
+                          rows["CODEX-PU-1"]["our_parties"], rows["CODEX-PU-1"]["case_category"]),
+                         ("某大学", "SHKH1400088", "申请人", ["专利客户"], "非诉讼"))
+        # 申请人就是案件委托人本人时，仍是非诉讼案件产生的当事人
+        self.assertEqual((rows["CODEX-TM-1"]["subject_name"], rows["CODEX-TM-1"]["party_no"]), ("自己申请的公司", "SHKH1400099"))
+        self.assertEqual(rows["CODEX-PU-1"]["managers"], ["u1"])
+        self.assertEqual((await self._list(case_category="其他"))["total"], 2)  # 诉讼案件的数据不受影响
 
     async def test_register_unnumbered_gives_dsr_numbers_once_and_keeps_existing_numbers(self):
         from datetime import datetime

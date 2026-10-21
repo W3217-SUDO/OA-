@@ -4,6 +4,7 @@ import unicodedata
 
 from sqlalchemy import delete, func, insert, select
 
+from app.data_models.ipr_cases import IprCaseCustomer
 from app.data_models.party_library import PartyLibraryEntry
 from app.data_models.records import BusinessRecord
 
@@ -15,6 +16,7 @@ _THIRD = "第三人"
 
 
 CASE_CATEGORIES = ("民事", "行政", "刑事", "仲裁", "法律顾问")
+NON_LITIGATION = "非诉讼"  # 知识产权（商标/专利/著作权）等非诉讼案件，当事人是案件关联的申请人
 
 
 def case_category(case_type) -> str:
@@ -142,12 +144,47 @@ def rebuild_party_library(connection) -> int:
         managers = managers_by_id.get(customer_id) or ([owner] if owner else [])
         rows.extend(build_entries(
             {"id": case_id, "serial_no": serial_no, "customer": customer, "data": data, "status": case_status}, client_titles, managers, party_records))
-        if len(rows) >= 2000:
-            connection.execute(insert(PartyLibraryEntry), rows)
-            rows = []
-    if rows:
-        connection.execute(insert(PartyLibraryEntry), rows)
+    rows.extend(_non_litigation_entries(connection, customers, managers_by_id, party_records))
+    for start in range(0, len(rows), 2000):
+        connection.execute(insert(PartyLibraryEntry), rows[start:start + 2000])
     return int(connection.scalar(select(func.count()).select_from(PartyLibraryEntry)) or 0)
+
+
+def _non_litigation_entries(connection, customers, managers_by_id, party_records) -> list[dict]:
+    """非诉讼（知识产权）案件：案件关联的非“客户”类型主体（多为申请人）是当事人；案件委托人列在“我方当事人”里。"""
+    by_id = {record_id: (title, data or {}, serial) for record_id, title, _, data, serial in customers}
+    links: dict[int, list[int]] = {}
+    for case_record_id, customer_record_id in connection.execute(
+            select(IprCaseCustomer.case_record_id, IprCaseCustomer.customer_record_id)
+            .order_by(IprCaseCustomer.case_record_id, IprCaseCustomer.sorting_index, IprCaseCustomer.id)).all():
+        links.setdefault(case_record_id, []).append(customer_record_id)
+    entries: list[dict] = []
+    cases = connection.execute(select(
+        BusinessRecord.id, BusinessRecord.serial_no, BusinessRecord.customer, BusinessRecord.owner, BusinessRecord.data,
+        BusinessRecord.status,
+    ).where(BusinessRecord.module == "ipr_case")).all()
+    for case_id, serial_no, customer, owner, data, status in cases:
+        data = data or {}
+        client = str(customer or "").strip()
+        try:
+            customer_id = int(data.get("customer_id") or 0)
+        except (TypeError, ValueError):
+            customer_id = 0
+        managers = managers_by_id.get(customer_id) or ([owner] if owner else [])
+        for linked_id in links.get(case_id, []):
+            if linked_id not in by_id:
+                continue
+            title, linked_data, linked_serial = by_id[linked_id]
+            if linked_data.get("customer_type", "客户") == "客户":
+                continue  # 客户不进当事人库；类型是申请人等的，即使就是案件委托人本人，也是非诉讼案件产生的当事人
+            entries.append({
+                "party_no": linked_serial, "customer_record_id": linked_id, "case_id": case_id, "case_no": serial_no,
+                "case_category": NON_LITIGATION, "subject_name": title, "subject_type": "当事人",
+                "subject_position": "申请人", "our_parties": [client] if client else [], "our_position": "",
+                "opponent_parties": [], "opponent_position": "", "managers": managers,
+                "manager_key": "|" + "|".join(managers) + "|" if managers else "", "case_status": str(status or ""),
+            })
+    return entries
 
 
 def upgrade_party_library(connection):

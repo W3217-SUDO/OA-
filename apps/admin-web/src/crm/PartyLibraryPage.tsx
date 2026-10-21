@@ -8,6 +8,7 @@ interface PartyLibraryRow {
   id: number;
   case_id: number;
   case_no: string;
+  case_category: string;
   party_no: string;
   subject_name: string;
   subject_position: string;
@@ -110,7 +111,7 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
         columns={[
           {
             title: "案号", dataIndex: "case_no", width: 170,
-            render: (value: string, row) => (onOpenCase ? <a onClick={() => onOpenCase(row)}>{value}</a> : value),
+            render: (value: string, row) => (onOpenCase && row.case_category !== "非诉讼" ? <a onClick={() => onOpenCase(row)}>{value}</a> : value),
           },
           { title: "我方当事人", dataIndex: "our_parties", render: joinNames },
           { title: "诉讼地位", dataIndex: "our_position", width: 90, render: (value: string) => value || "—" },

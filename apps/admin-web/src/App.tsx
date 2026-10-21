@@ -295,6 +295,7 @@ const menuItems: NavItem[] = [
           { key: "party-mine-criminal", label: "刑事案件当事人" },
           { key: "party-mine-arbitration", label: "仲裁案件当事人" },
           { key: "party-mine-advisor", label: "法律顾问当事人" },
+          { key: "party-mine-nonlit", label: "非诉讼案件当事人" },
         ],
       },
       {
@@ -306,6 +307,7 @@ const menuItems: NavItem[] = [
           { key: "party-dept-criminal", label: "刑事案件当事人" },
           { key: "party-dept-arbitration", label: "仲裁案件当事人" },
           { key: "party-dept-advisor", label: "法律顾问当事人" },
+          { key: "party-dept-nonlit", label: "非诉讼案件当事人" },
         ],
       },
       {
@@ -317,6 +319,7 @@ const menuItems: NavItem[] = [
           { key: "party-company-criminal", label: "刑事案件当事人" },
           { key: "party-company-arbitration", label: "仲裁案件当事人" },
           { key: "party-company-advisor", label: "法律顾问当事人" },
+          { key: "party-company-nonlit", label: "非诉讼案件当事人" },
         ],
       },
       { key: "party-recycle", label: "当事人回收站" },
@@ -1695,9 +1698,9 @@ export default function App() {
       <PartyLibraryPage
         key={route}
         scope={({ mine: "mine", dept: "department", company: "company", recycle: "recycle" } as Record<string, string>)[route.split("-")[1]] || "company"}
-        category={({ civil: "民事", admin: "行政", criminal: "刑事", arbitration: "仲裁", advisor: "法律顾问" } as Record<string, string>)[route.split("-")[2]] || ""}
+        category={({ civil: "民事", admin: "行政", criminal: "刑事", arbitration: "仲裁", advisor: "法律顾问", nonlit: "非诉讼" } as Record<string, string>)[route.split("-")[2]] || ""}
         isAdmin={permissionAdministrator}
-        onOpenCase={(row) => navigate(`case-detail-${row.case_id}-${encodeURIComponent(row.case_no)}`)}
+        onOpenCase={(row) => row.case_category === "非诉讼" ? undefined : navigate(`case-detail-${row.case_id}-${encodeURIComponent(row.case_no)}`)}
       />
     ) : route === "customer-conflict" ? (
       <CustomerConflictPage />
