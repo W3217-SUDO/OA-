@@ -92,19 +92,24 @@ cd apps/admin-web && npm ci && "$OA_QUALITY_NODE" scripts/build-production.mjs &
 PKG="$(mktemp -d)/$N"
 "$OA_QUALITY_PYTHON" scripts/runtime_package.py build --output "$PKG"
 "$OA_QUALITY_PYTHON" scripts/runtime_package.py verify --output "$PKG"
-COPYFILE_DISABLE=1 tar --no-xattrs -C "$(dirname "$PKG")" -czf "$PKG.tgz" "$N"   # 不带 macOS ._ 文件和扩展属性
-shasum -a 256 "$PKG.tgz"
-"${OA_SCP[@]}" "$PKG.tgz" root@47.93.166.123:/opt/sunhold-oa/staging/
+# 只传差异（用户 2026-10-21 决定，所有发布都这样）：以生产上一版（current 指向的包）为参照做增量上传，
+# 未变文件直接复用，通常只传 1MB 左右、1 分钟内完成；整包 scp 在这条线路上要 15 分钟以上，不再使用。
+PREV=$("${OA_SSH[@]}" 'readlink -f /opt/sunhold-oa/runtime/enterprise/current')
+"${OA_SSH[@]}" "mkdir -p /opt/sunhold-oa/staging/$N-dir"
+rsync -a -c -z -e "ssh -i ~/.ssh/id_ed25519_oa -o IdentitiesOnly=yes -o BatchMode=yes" --link-dest="$PREV/" "$PKG/" root@47.93.166.123:/opt/sunhold-oa/staging/$N-dir/
+# 逐文件核对：本地与服务器文件清单的 SHA256 汇总必须一致，文件数也一致，否则不得继续
+(cd "$PKG" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256)
+"${OA_SSH[@]}" "cd /opt/sunhold-oa/staging/$N-dir && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum"
 ```
 
-构建绑定 `TARGET`：构建后不再改源码；`build-info.json` 与 manifest 的版本和提交必须是 `N`/`TARGET`。
+构建绑定 `TARGET`：构建后不再改源码；`build-info.json` 与 manifest 的版本和提交必须是 `N`/`TARGET`。构建和校验始终在 Mac 上完成，生产只接收核对一致的包，不在生产构建或拉源码。
 
 ### 5. 安装、封存、激活（生产，约 1 分钟，整段包在 `flock -n` 里）
 
 ```bash
 E=/opt/sunhold-oa/runtime/enterprise
-sha256sum /opt/sunhold-oa/staging/$N.tgz                 # 与本地一致
-tar -xzf /opt/sunhold-oa/staging/$N.tgz -C $E/packages   # 目标目录必须原本不存在
+test ! -e $E/packages/$N                                 # 目标目录必须原本不存在
+cp -a /opt/sunhold-oa/staging/$N-dir $E/packages/$N       # 复制成独立文件，不与旧包共用硬链接
 chown -R root:root $E/packages/$N && chattr -R +i $E/packages/$N
 printf '%s\tactivating\t%s\t%s\t%s\t%s\n' "$N" "$TARGET" "$OWNER" "<范围>;sealed" "$(date -u +%FT%T%:z)" | tee -a /opt/sunhold-oa/releases/queue.tsv >> /opt/sunhold-oa/releases/ledger.tsv
 <运行环境 python> -B $E/tools/<当前工具版本>/native_runtime.py --env-file /opt/sunhold-oa/private/production-native.env \
@@ -127,7 +132,7 @@ git push "$OA_GH" "$TARGET:main"      # 健康通过后自动快进 main 到本�
 git fetch origin && git merge-base --is-ancestor origin/main origin/dev && echo MAIN_SYNCED
 ```
 
-- 删除本次 staging 文件（只删自己上传的 `refs-$OWNER.json`、`$N.tgz`）和已合入的临时分支。
+- 删除本次 staging 文件（只删自己上传的 `refs-$OWNER.json`、`$N-dir`）和已合入的临时分支。回执里记录包内文件清单的 SHA256 汇总（替代原来的 tgz SHA）。
 - 汇报：版本、提交、健康结果、回滚点（上一版本）、待用户验收。不做线上业务写测试。
 
 ## 回滚
