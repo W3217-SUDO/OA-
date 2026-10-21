@@ -107,7 +107,7 @@ def _patch(url, token, schema, directories, mode_supported, response_mode, memor
 def _environment():
     # SDK 默认继承宿主环境；显式清空业务数据库、OSS、钉钉及 OA 登录相关配置。
     allowed = {"PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "LANG", "LC_ALL"}
-    environment = {key: "" for key in os.environ if key.upper() not in allowed}
+    environment = {key: value if key.upper() in allowed else "" for key, value in os.environ.items()}
     configured = settings.deepseek_harness_cache_root.strip()
     cache = Path(configured).expanduser() if configured else Path(tempfile.gettempdir()) / "oa-harness-runtime"
     if not cache.is_absolute() or cache.is_symlink():

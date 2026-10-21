@@ -28,7 +28,6 @@ def package_environment(home: Path) -> dict:
     if configured:
         if not Path(configured).is_absolute() or not Path(configured).is_dir():
             raise HTTPException(503, "DSH 插件工具目录未就绪")
-        environment["PATH"] = configured + os.pathsep + environment.get("PATH", "")
     return environment
 
 
