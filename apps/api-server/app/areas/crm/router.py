@@ -1854,3 +1854,115 @@ async def list_customers(
         "page_size": page_size,
         "summary": summary,
     }
+
+
+@router.get(f"{settings.api_prefix}/parties")
+async def list_parties(
+    scope: str = Query("company", pattern="^(mine|recycle|department|company)$"),
+    name: str = "",
+    party_type: str = Query("", max_length=64),
+    manager: str = "",
+    page: int = Query(1, ge=0),
+    page_size: int = Query(15, ge=0, le=200),
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """当事人中心列表：只读独立的 parties 表，不再经过客户记录。"""
+    from app.core.permissions import _permission_payload_for_identity
+    from app.core.system import _allowed_field_keys, _record_dict
+    from app.data_models.parties import Party
+    page = page or 1
+    page_size = page_size or 15
+    current_user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
+    if not current_user:
+        raise HTTPException(status_code=401, detail="当前用户不存在或已停用")
+    scope_menu_keys = {"mine": "party-mine", "recycle": "party-recycle", "department": "party-dept", "company": "party-company"}
+    permission = await _permission_payload_for_identity(identity, db)
+    if not identity.get("_page_menu_capability") and scope_menu_keys[scope] not in set(permission.get("menu_keys") or []):
+        raise HTTPException(status_code=403, detail="当前账号未开通该当事人页面权限")
+    conditions = [Party.status == "已回收"] if scope == "recycle" else [Party.status.not_in(["已回收", "公海"])]
+    if name.strip():
+        like = f"%{name.strip()}%"
+        conditions.append(or_(Party.serial_no.ilike(like), Party.name.ilike(like)))
+    if party_type.strip():
+        conditions.append(Party.party_type == party_type.strip())
+    # 负责人/案源人/当事人管理人都按用户名或唯一的显示名匹配，规则与客户列表一致。
+    def tokens_of(user_rows) -> set[str]:
+        return {str(value or "").strip() for row in user_rows for value in row if str(value or "").strip()}
+
+    needs_people = scope in {"mine", "recycle", "department"} or bool(manager.strip())
+    people: set[str] | None = None
+    if scope in {"mine", "recycle"}:
+        people = {current_user.username}
+        display_name = str(current_user.display_name or "").strip()
+        if display_name and int(await db.scalar(select(func.count()).select_from(User).where(
+                User.is_active.is_(True), User.display_name == display_name)) or 0) == 1:
+            people.add(display_name)
+    elif scope == "department":
+        people = tokens_of((await db.execute(select(User.username, User.display_name).where(
+            User.is_active.is_(True), User.department == current_user.department))).all())
+    manager_tokens: set[str] = set()
+    if manager.strip():
+        manager_tokens = {manager.strip()}
+        names = list((await db.scalars(select(User.username).where(
+            User.is_active.is_(True), User.display_name == manager.strip()))).all())
+        if len(names) == 1:
+            manager_tokens.add(names[0])
+
+    def participants(owner: str, data: dict) -> set[str]:
+        managers = data.get("customer_managers") or []
+        managers = managers if isinstance(managers, list) else [managers]
+        source = data.get("customer_source") or data.get("source_person") or ""
+        return {str(value).strip() for value in (owner, source, *managers) if str(value or "").strip()}
+
+    order = (Party.updated_at.desc(), Party.id.desc())
+    if not needs_people:
+        total = int(await db.scalar(select(func.count()).select_from(Party).where(*conditions)) or 0)
+        page_rows = (await db.scalars(select(Party).where(*conditions).order_by(*order)
+                                      .offset((page - 1) * page_size).limit(page_size))).all()
+    else:
+        candidates = (await db.execute(select(Party.id, Party.owner, Party.data["customer_managers"],
+                                              Party.data["customer_source"], Party.data["source_person"])
+                                       .where(*conditions).order_by(*order))).all()
+        matched = []
+        for pid, owner, managers, source, source_person in candidates:
+            data = {"customer_managers": managers, "customer_source": source, "source_person": source_person}
+            who = participants(owner, data)
+            if people is not None and not who & people:
+                continue
+            if manager_tokens and not who & manager_tokens:
+                continue
+            matched.append(pid)
+        total = len(matched)
+        ids = matched[(page - 1) * page_size: page * page_size]
+        by_id = {row.id: row for row in (await db.scalars(select(Party).where(Party.id.in_(ids)))).all()} if ids else {}
+        page_rows = [by_id[i] for i in ids if i in by_id]
+    from app.core.customer_readmodel import customer_person_names, customer_relationship_counts
+    allowed_fields = await _allowed_field_keys(identity, db)
+    views = [SimpleNamespace(
+        id=party.id, module="customer", serial_no=party.serial_no, title=party.name, customer="",
+        status=party.status, owner=party.owner, department=party.department, description=party.description,
+        data=party.data, created_at=party.created_at, updated_at=party.updated_at,
+    ) for party in page_rows]
+    counts = await customer_relationship_counts(db, views) if views else {}
+    person_names = await customer_person_names(db, views) if views else {}
+
+    def person_display(value: object) -> str:
+        token = str(value or "").strip()
+        return person_names.get(token.casefold(), token)
+
+    items = []
+    for view, party in zip(views, page_rows):
+        row = _record_dict(view, allowed_fields)
+        data = row.get("data") or {}
+        managers = data.get("customer_managers") or ([row.get("owner")] if row.get("owner") else [])
+        managers = managers if isinstance(managers, list) else [managers]
+        source = data.get("customer_source") or data.get("source_person") or row.get("owner")
+        row["data"] = {
+            **data, **counts[view.id], "customer_type": party.party_type or data.get("customer_type", ""),
+            "customer_manager_display_names": [person_display(value) for value in managers if str(value or "").strip()],
+            "customer_source_display_name": person_display(source),
+        }
+        items.append(row)
+    return {"items": items, "total": total, "page": page, "page_size": page_size, "summary": {}}
+

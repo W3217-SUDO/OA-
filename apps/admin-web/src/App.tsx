@@ -281,6 +281,17 @@ const menuItems: NavItem[] = [
     ],
   },
   {
+    key: "party",
+    icon: <TeamOutlined />,
+    label: "当事人中心",
+    children: [
+      { key: "party-mine", label: "我的当事人" },
+      { key: "party-dept", label: "部门当事人" },
+      { key: "party-company", label: "公司当事人" },
+      { key: "party-recycle", label: "当事人回收站" },
+    ],
+  },
+  {
     key: "contract",
     icon: <FileTextOutlined />,
     label: "合同中心",
@@ -1651,7 +1662,7 @@ export default function App() {
       <SealCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "customer-conflict" ? (
       <CustomerConflictPage />
-    ) : route.startsWith("customer-") ? (
+    ) : route.startsWith("customer-") || route.startsWith("party-") ? (
       <CustomerCenterPage initialView={route} onNavigate={navigate} />
     ) : route === "system-law-firms" ? (
       <LawFirmPage />

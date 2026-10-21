@@ -32,6 +32,7 @@ interface CustomerListProps {
   keyword: string;
   customerType: string;
   customerTypeOptions: { value: string; label: string }[];
+  partyMode?: boolean;
   managerKeyword: string;
   managerLocked: boolean;
   managerDisplay: string;
@@ -60,7 +61,7 @@ interface CustomerListProps {
   onPageSizeChange: (value: number) => void;
 }
 
-export function CustomerList({ initialView, rows, total, page, pageSize, customerPageCount, customerPageNumbers, jumpPage, loading, keyword, customerType, customerTypeOptions, managerLocked, managerDisplay, isOriginalCustomerList, isReadOnlyCustomerList, selectedRowKeys, listSummary, directory, originalActionItems, onKeywordChange, onCustomerTypeChange, onManagerKeywordChange, onSearch, onReset, onSelectedRowKeysChange, onStartCreate, onOpenDetail, onOpenCustomerCommunication, onOpenCustomerContracts, onOpenCustomerCivilCases, onOpenCustomerIprCases, onRunOriginalAction, onGoToPage, onJumpPageChange, onPageSizeChange }: CustomerListProps) {
+export function CustomerList({ initialView, partyMode, rows, total, page, pageSize, customerPageCount, customerPageNumbers, jumpPage, loading, keyword, customerType, customerTypeOptions, managerLocked, managerDisplay, isOriginalCustomerList, isReadOnlyCustomerList, selectedRowKeys, listSummary, directory, originalActionItems, onKeywordChange, onCustomerTypeChange, onManagerKeywordChange, onSearch, onReset, onSelectedRowKeysChange, onStartCreate, onOpenDetail, onOpenCustomerCommunication, onOpenCustomerContracts, onOpenCustomerCivilCases, onOpenCustomerIprCases, onRunOriginalAction, onGoToPage, onJumpPageChange, onPageSizeChange }: CustomerListProps) {
   const amount = (value?: number) => Number(value || 0).toFixed(2);
   const displayDate = (value?: string) => {
     const parsed = dayjs(value);
@@ -79,7 +80,7 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
 
   const columns = [
     {
-      title: "客户编号",
+      title: partyMode ? "当事人编号" : "客户编号",
       dataIndex: "serial_no",
       width: 235,
       align: "center" as const,
@@ -96,7 +97,7 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
       ),
     },
     {
-      title: "客户名称",
+      title: partyMode ? "当事人名称" : "客户名称",
       dataIndex: "title",
       width: 294,
       align: "center" as const,
@@ -275,8 +276,8 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
   return (
     <Card
       className="panel customer-list-panel"
-      title="客户列表"
-      extra={(
+      title={partyMode ? "当事人列表" : "客户列表"}
+      extra={partyMode ? null : (
         <Dropdown
           trigger={["click"]}
           menu={{
@@ -292,20 +293,20 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
       )}
     >
       <div className="customer-query">
-        <label>客户名称</label>
+        <label>{partyMode ? "当事人名称" : "客户名称"}</label>
         <Input
           value={keyword}
           onChange={(e) => onKeywordChange(e.target.value)}
           onPressEnter={onSearch}
           allowClear
         />
-        <label>客户/当事人</label>
+        <label>{partyMode ? "类型" : "客户/当事人"}</label>
         <Select
           value={customerType}
           onChange={onCustomerTypeChange}
           options={customerTypeOptions}
         />
-        <label>客户管理人</label>
+        <label>{partyMode ? "负责人" : "客户管理人"}</label>
         <Input
           disabled={managerLocked}
           value={managerDisplay}
@@ -382,7 +383,7 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
             <Button onClick={() => {
               const selected = rows.find((row) => selectedRowKeys.includes(row.id));
               if (selected) void onOpenDetail(selected);
-            }}>客户查看</Button>
+            }}>{partyMode ? "当事人查看" : "客户查看"}</Button>
           )}
           {originalActionItems.length > 0 && (
             <Dropdown

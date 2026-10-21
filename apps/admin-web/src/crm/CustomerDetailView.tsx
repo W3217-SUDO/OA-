@@ -31,6 +31,7 @@ interface CustomerDetailViewProps {
   customer: Customer;
   directory: DirectoryUser[];
   customerTypeOptions: { value: string; label: string }[];
+  partyMode?: boolean;
   detailTab: string;
   detailLoading: boolean;
   recordError: string;
@@ -75,7 +76,7 @@ interface CustomerDetailViewProps {
   onCreateCustomerEvent: () => void;
 }
 
-export function CustomerDetailView({ initialView, customer, directory, customerTypeOptions, detailTab, detailLoading, recordError, historyError, customerEventError, sharedObjectsError, contactPage, contactPageSize, contactTotal, customerEvents, events, attachments, sharedObjects, customerLicenseAttachment, customerLicenseThumb, canManage, customerEventForm, onTabChange, onClose, onRefreshContacts, onContactPageChange, onNewContact, onViewContact, onEditContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onViewDocument, onDownloadDocument, onDeleteDocument, onDeleteNote, onEditNote, onNewNote, onNewDocument, onOpenLicenseUpload, onOpenContracts, onNewContract, onCreateCustomerEvent }: CustomerDetailViewProps) {
+export function CustomerDetailView({ initialView, partyMode, customer, directory, customerTypeOptions, detailTab, detailLoading, recordError, historyError, customerEventError, sharedObjectsError, contactPage, contactPageSize, contactTotal, customerEvents, events, attachments, sharedObjects, customerLicenseAttachment, customerLicenseThumb, canManage, customerEventForm, onTabChange, onClose, onRefreshContacts, onContactPageChange, onNewContact, onViewContact, onEditContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onViewDocument, onDownloadDocument, onDeleteDocument, onDeleteNote, onEditNote, onNewNote, onNewDocument, onOpenLicenseUpload, onOpenContracts, onNewContract, onCreateCustomerEvent }: CustomerDetailViewProps) {
   const userLabels = (values: unknown) => displayChinesePersonNames(values, directory);
   const userLabel = (value: string) => displayChinesePersonName(value, directory);
 
@@ -117,11 +118,12 @@ export function CustomerDetailView({ initialView, customer, directory, customerT
     : initialView === "customer-dept-recycle" ? "部门回收站"
     : initialView === "customer-recycle" ? "个人回收站"
     : "我的客户";
+  const shownTitle = partyMode ? viewTitle.replace("客户", "当事人") : viewTitle;
 
   return (
     <Card className="customer-view-page" loading={detailLoading}>
       <div className="customer-view-tabbar">
-        <span>{viewTitle}</span>
+        <span>{shownTitle}</span>
         <Button type="text" aria-label="关闭客户查看" onClick={onClose}>×</Button>
       </div>
       {recordError && <Alert type="warning" showIcon message={recordError} style={{ marginBottom: 8 }} />}

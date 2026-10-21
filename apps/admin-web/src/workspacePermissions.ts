@@ -40,7 +40,7 @@ export function isWorkspaceRouteGranted(
   // 详情和控制台队列沿用对应业务页授权，不把组件使用的父路由当作额外授权。
   if (route === "case-global-search" || route.startsWith("case-detail-")) return hasCaseRead();
   if (route === "case-agent-center") return hasFamily("case");
-  if (route.startsWith("customer-detail-")) return hasFamily("customer");
+  if (route.startsWith("customer-detail-")) return hasFamily("customer", "party");
   if (["contract-detail-", "contract-change-", "contract-payment-apply-", "contract-invoice-apply-", "contract-investigation-"].some((prefix) => route.startsWith(prefix))) {
     return hasFamily("contract");
   }
