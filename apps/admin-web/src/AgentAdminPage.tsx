@@ -170,7 +170,7 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
         ...(overview ? [{ key: "overview", label: canViewUserLibraries ? "运行状态与个人库" : "运行状态", disabled: capabilityBusy }] : []),
       ]} />
       {error && <Alert type="error" showIcon title="智能体设置加载未完成" description={error} action={<Button loading={loading} onClick={() => void load()}>重试</Button>} />}
-      <div hidden={tab !== "plugins"}><DshPluginCenter active={tab === "plugins"} canManage={isSystemAdmin} onBusy={setCapabilityBusy} /></div>
+      {tab === "plugins" && <DshPluginCenter active canManage={isSystemAdmin} onBusy={setCapabilityBusy} />}
       <div hidden={tab !== "global"}>
         <Card title="全局 Skill" loading={loading && !globalSkills.length} extra={<Space wrap>
           <Button loading={loading} icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
