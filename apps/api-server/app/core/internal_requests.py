@@ -185,7 +185,13 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
             row["status"] = "待审批"
             row["data"] = {**(row.get("data") or {}), "is_refund": True}
     from app.core.finance_person_projection import apply_finance_person_displays
-    return await apply_finance_person_displays(group_commission_applications(full), db)
+    grouped = group_commission_applications(full)
+    def application_order(row):
+        data = row.get("data") or {}
+        return (str(data.get("internal_payment_submitted_at") or data.get("payment_applied_at")
+                    or data.get("application_date") or row.get("created_at") or ""), row["id"])
+    grouped.sort(key=application_order, reverse=True)
+    return await apply_finance_person_displays(grouped, db)
 
 
 async def review_internal_applications(
@@ -216,6 +222,8 @@ async def review_internal_applications(
     lifecycle_statuses = await _case_commission_lifecycle_statuses(members, db)
     for item in members:
         data = item.data or {}
+        if data.get("internal_payment_submitted") is False:
+            raise HTTPException(409, "费用尚未提交付款申请，不能直接审批")
         commission = is_explicit_internal_commission(data)
         member_kind = "refund" if item.id in refund_ids else "commission" if commission else "other"
         if not is_internal_fee(data) or member_kind != kind:
@@ -243,13 +251,23 @@ async def pending_case_fee_settlements(identity: dict, db: AsyncSession) -> list
         BusinessRecord.data["source_fee_id"].as_integer() > 0,
         *scope,
     ))).all()
-    source_ids = {
-        int((item.data or {}).get("source_fee_id"))
-        for item in commissions
-        if (item.data or {}).get("commission_type")
-        and not (item.data or {}).get("commission_paid")
-        and item.status not in {"已撤回", "已驳回", "已拒绝", "已作废"}
-    }
+    # 原费用与其付款明细均可迁入，同一旧提成只计来源实体一次。
+    valid_commissions = [item for item in commissions
+                         if ((item.data or {}).get("commission_type")
+                             or (item.data or {}).get("legacy_kind") == "internal_fee_source")
+                         and not (item.data or {}).get("commission_paid")
+                         and (item.data or {}).get("legacy_kind") != "internal_payment_line"
+                         and item.status not in {"已撤回", "已驳回", "已拒绝", "已作废"}]
+    commission_amounts = {}
+    for item in valid_commissions:
+        data = item.data or {}
+        source_id = int(data["source_fee_id"])
+        value = data.get("actual_commission") if data.get("actual_commission") is not None else data.get("amount")
+        if value is None or (source_id in commission_amounts and commission_amounts[source_id] is None):
+            commission_amounts[source_id] = None
+        else:
+            commission_amounts[source_id] = round(commission_amounts.get(source_id, 0) + float(value), 2)
+    source_ids = set(commission_amounts)
     legacy_sources = await legacy_case_fee_settlement_sources(db)
     legacy_source_ids = {record_id for record_id, source in legacy_sources.items() if source["eligible"]}
     source_ids.update(legacy_source_ids)
@@ -284,6 +302,9 @@ async def pending_case_fee_settlements(identity: dict, db: AsyncSession) -> list
         legacy_source = legacy_sources.get(row["id"])
         row["data"] = {
             **data,
+            "amount": commission_amounts.get(row["id"]) if data.get("amount") is not None else None,
+            "actual_commission": commission_amounts.get(row["id"]) if data.get("amount") is not None else None,
+            "commission_amount_available": commission_amounts.get(row["id"]) is not None,
             "cashed_amount": max(float(data["cashed_amount"]), legacy_source["cashed_amount"])
             if legacy_source and data.get("cashed_amount") is not None else data.get("cashed_amount"),
             "case_source": data.get("case_source") or case_data.get("case_source") or case_data.get("business_owner") or "",
@@ -372,6 +393,8 @@ async def submit_internal_application(
 ) -> dict:
     """由申请人整单提交尚未审批的内部请款。"""
     first, candidates = await _locked_internal_application(fee_id, identity, db)
+    if any((item.data or {}).get("internal_payment_submitted") is False for item in candidates):
+        raise HTTPException(409, "请先从案件内部结算提交付款申请")
     applicant = str((first.data or {}).get("applicant") or "").strip()
     if not applicant or applicant != str(identity.get("username") or "").strip():
         raise HTTPException(403, "只有请款申请人可以提交审批")

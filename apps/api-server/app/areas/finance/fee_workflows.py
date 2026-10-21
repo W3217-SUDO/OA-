@@ -7,6 +7,23 @@ from app.areas.finance.fee_action_guards import _is_internal_application as _is_
 
 router = APIRouter()
 
+from app.api_schemas.finance import InternalPaymentRequestInput, InternalPaymentSelectionInput, InternalPaymentRequestLine
+
+
+@router.post(f"{settings.api_prefix}/finance/internal-applications/payment-preview")
+async def preview_internal_payment_requests(body: InternalPaymentSelectionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.internal_payment_requests import prepare_internal_payment_requests
+
+    rows, submitted = await prepare_internal_payment_requests(body.fee_ids, identity, db, lock=False)
+    return {"items": [{"id": item.id, "submitted": item.id in submitted} for item in rows]}
+
+
+@router.post(f"{settings.api_prefix}/finance/internal-applications/payment-requests")
+async def create_internal_payment_requests(body: InternalPaymentRequestInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.internal_payment_requests import register_internal_payment_requests
+
+    return await register_internal_payment_requests(body.lines, body.comment, identity, db)
+
 
 @router.get(f"{settings.api_prefix}/finance/fees/{{fee_id}}/readiness")
 async def finance_fee_readiness(fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
@@ -150,6 +167,15 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
         _ensure_record_module, _record_dict_for_identity, _require_record_owner_or_manager,
     )
     item = await _ensure_record_module(fee_id, "finance", identity, db)
+    from app.core.finance_batch_parity import is_internal_fee
+    if body.amount is not None and is_internal_fee(item.data or {}) and (
+        (item.data or {}).get("commission_created_at") or (item.data or {}).get("commission_lifecycle")
+    ):
+        from app.core.internal_payment_requests import register_internal_payment_requests
+
+        return await register_internal_payment_requests([
+            InternalPaymentRequestLine(fee_id=fee_id, **body.model_dump()),
+        ], body.comment, identity, db)
     if _is_internal_application(item):
         if body.amount is not None:
             raise HTTPException(409, "内部请款单付款申请不能按单笔费用提交")

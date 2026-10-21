@@ -2376,12 +2376,7 @@ async def _sync_case_commission_lifecycle(
         data["commission_lifecycle_status"] = target_status
         data["commission_lifecycle_changed_at"] = changed_at
         data["commission_lifecycle_changed_by"] = operator
-        if target_status == "待审批":
-            data.setdefault("payment_applied_at", changed_at)
-            data.setdefault("payment_applied_by", operator)
-        else:
-            data.pop("payment_applied_at", None)
-            data.pop("payment_applied_by", None)
+        # 生命周期推进不是用户提交请款，不能生成或抹除显式申请事实。
         item.status = target_status
         item.data = data
         db.add(WorkflowEvent(
@@ -2511,6 +2506,8 @@ async def _internal_fee_rows(
         BusinessRecord.data["fee_type"].as_string() == "内部费用",
         BusinessRecord.status != "已删除", *fee_conditions,
     ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()))).all())
+    if scope in {"applications", "review", "queue", "payment"}:
+        fees = [item for item in fees if (item.data or {}).get("internal_payment_submitted") is not False]
     imported_source_data: dict[int, dict] = {}
     imported_source_ids = {
         int((item.data or {}).get("internal_fee_record_id"))

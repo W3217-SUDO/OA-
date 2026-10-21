@@ -1976,9 +1976,9 @@ function FinanceCenterContent({
       row.status === "草稿" &&
       (canManage || row.owner === currentUser.username);
     const mayCancel = mayChange &&
-      ["草稿", "待结算", "待归档", "待审批"].includes(row.status);
+      ["草稿", "待到账", "待分配", "待结算", "待归档", "待审批"].includes(row.status);
     const mayRollback = mayChange &&
-      ["待结算", "待归档", "待审批", "已审批", "待付款"].includes(row.status);
+      ["待到账", "待分配", "待结算", "待归档", "待审批", "已审批", "待付款"].includes(row.status);
     return (
       <Space size={0}>
         {maySubmit && (

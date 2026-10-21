@@ -201,9 +201,15 @@ def internal_page(rows: list[dict], page: int, page_size: int, *, amount_visible
             ) for data in data_rows), 2),
             "total_cashed_amount": round(sum(float(data.get("cashed_amount") or 0) for data in data_rows), 2),
         }
+    missing_amount_count = sum((row.get("data") or {}).get("commission_amount_available") is False for row in rows)
+    if amount_visible and missing_amount_count:
+        totals["total_amount"] = None
+        totals["total_actual_commission"] = None
     return {
         "items": rows[start:start + page_size], "total": len(rows),
         **totals, "amount_visible": amount_visible,
+        "amount_totals_complete": missing_amount_count == 0,
+        "missing_commission_amount_count": missing_amount_count,
         "page": page, "page_size": page_size,
     }
 

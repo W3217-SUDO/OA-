@@ -38,8 +38,10 @@ export async function prepareInternalFeePayment(
   })) {
     throw new Error("所选费用不属于当前案件，不能一起申请付款");
   }
-  const applications = rows.filter((row) => String(row.data.payment_application_no || "").trim()
-    || String(row.data.applicant || "").trim() || row.data.internal_application_id);
+  const preview = await api.post("/finance/internal-applications/payment-preview", { fee_ids: rows.map((row) => row.id) });
+  const applicationIds = new Set<number>((preview.data.items as { id: number; submitted: boolean }[])
+    .filter((item) => item.submitted).map((item) => item.id));
+  const applications = rows.filter((row) => applicationIds.has(row.id));
   if (applications.length) {
     const groups = Array.from(new Map(applications.map((row) => [
       String(row.data.payment_application_no || row.data.internal_application_id || row.serial_no), row,
@@ -75,33 +77,29 @@ export async function prepareInternalFeePayment(
     });
     return null;
   }
-  const payees = rows.map((row) => String(row.data.payment_payee || row.data.payee || "").trim());
-  if (payees.some((payee) => !payee) || new Set(payees).size !== 1) throw new Error("请选择同一收款人的内部费用；收款人缺失时请先完善费用");
   return rows.map((row) => {
-    if (!["草稿", "已退回", "已审批", "部分付款"].includes(row.status)) throw new Error(`费用 ${row.serial_no} 当前状态“${row.status}”不能申请付款`);
+    if (!["草稿", "已退回", "待到账", "待分配", "待结算", "待归档", "待审批", "已审批"].includes(row.status)) throw new Error(`费用 ${row.serial_no} 当前状态“${row.status}”不能申请付款`);
     const total = amount(row.data.amount, "费用金额");
-    const requested = amount(row.data.payment_requested_amount, "已申请金额", true);
+
     const paid = amount(row.data.paid_amount, "已付款金额", true);
-    if (total <= 0 || requested < 0 || paid < 0) throw new Error(`费用 ${row.serial_no} 金额不符合付款申请条件`);
-    const remaining = Math.round((total - Math.max(requested, paid)) * 100) / 100;
+    if (total <= 0 || paid < 0) throw new Error(`费用 ${row.serial_no} 金额不符合付款申请条件`);
+    const remaining = Math.round((total - paid) * 100) / 100;
     if (remaining <= 0) throw new Error(`费用 ${row.serial_no} 已申请或没有可申请付款的余额，请勿重复申请`);
     return { ...row, data: { ...row.data, payment_remaining_amount: remaining } };
   });
 }
 
-/** 仅处理内部费用步骤；部分成功时移除已确认提交项，保留其余明细和输入。 */
+/** 所选内部费用在服务端统一校验并原子登记，失败时完整保留明细和输入。 */
 export async function submitPreparedInternalPayments(context: Pick<CaseFinanceDependencies,
   "createdCaseFees" | "caseFeePaymentDrafts" | "caseFeeSubmitting" | "setCaseFeeSubmitting" | "feeCase"
   | "closeCaseFeeCreator" | "load" | "viewingCounselCase" | "openCounselDetail" | "setCreatedCaseFees" | "setCaseFeePaymentDrafts"
 >): Promise<void> {
   const { createdCaseFees: rows, caseFeePaymentDrafts: drafts, caseFeeSubmitting, setCaseFeeSubmitting,
-    feeCase, closeCaseFeeCreator, load, viewingCounselCase, openCounselDetail, setCreatedCaseFees, setCaseFeePaymentDrafts } = context;
+    feeCase, closeCaseFeeCreator, load, viewingCounselCase, openCounselDetail } = context;
   if (caseFeeSubmitting || !rows.length) return;
   if (rows.length !== drafts.length) return void message.warning("付款申请明细已变化，请关闭后重新选择");
   if (drafts.some((draft) => !draft.payment_payee?.trim() || !draft.payment_account?.trim()))
     return void message.warning("请输入内部费用收款人和付款账号");
-  if (new Set(drafts.map((draft) => draft.payment_payee!.trim())).size !== 1)
-    return void message.warning("请选择同一收款人的内部费用申请付款");
   try {
     rows.forEach((row) => {
       if (amount(row.data.payment_remaining_amount ?? row.data.amount, "申请金额") <= 0)
@@ -111,27 +109,22 @@ export async function submitPreparedInternalPayments(context: Pick<CaseFinanceDe
     return void message.warning(error instanceof Error ? error.message : "申请金额无效");
   }
   setCaseFeeSubmitting(true);
-  const completed = new Set<number>();
   try {
-    for (const [index, row] of rows.entries()) {
-      const draft = drafts[index];
-      await api.post(`/finance/fees/${row.id}/submit`, {
-        amount: Number(row.data.payment_remaining_amount ?? row.data.amount),
-        payment_payee: draft.payment_payee!.trim(), payment_account: draft.payment_account!.trim(),
-        payment_remark: String(draft.payment_remark || "").trim(),
-        comment: String(draft.payment_remark || `案件 ${feeCase?.serial_no || ""} 申请付款`).trim(),
-      });
-      completed.add(row.id);
-    }
+    await api.post("/finance/internal-applications/payment-requests", {
+      lines: rows.map((row, index) => ({
+        fee_id: row.id, amount: Number(row.data.payment_remaining_amount ?? row.data.amount),
+        payment_payee: drafts[index].payment_payee!.trim(), payment_account: drafts[index].payment_account!.trim(),
+        payment_remark: String(drafts[index].payment_remark || "").trim(),
+      })),
+      comment: `案件 ${feeCase?.serial_no || ""} 申请付款`,
+    });
   } catch (error: any) {
-    setCreatedCaseFees(rows.filter((row) => !completed.has(row.id)));
-    setCaseFeePaymentDrafts(drafts.filter((_, index) => !completed.has(rows[index].id)));
-    message.error(`${completed.size ? `已提交 ${completed.size} 条，其余费用未全部提交；` : ""}${error?.response?.data?.detail || "付款申请结果未确认，请刷新核对后再处理"}`);
+    message.error(error?.response?.data?.detail || "付款申请结果未确认，请刷新核对后再处理");
     return;
   } finally {
     setCaseFeeSubmitting(false);
   }
-  message.success(`已提交 ${completed.size} 条付款申请`);
+  message.success(`已提交 ${rows.length} 条付款申请`);
   closeCaseFeeCreator();
   try {
     await load();

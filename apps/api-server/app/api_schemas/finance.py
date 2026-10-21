@@ -189,6 +189,20 @@ class FinanceActionInput(BaseModel):
     payment_remark: str = Field(default="", max_length=1000)
 
 
+class InternalPaymentSelectionInput(BaseModel):
+    fee_ids: list[int] = Field(min_length=1, max_length=200)
+
+
+class InternalPaymentRequestLine(FinanceActionInput):
+    fee_id: int = Field(gt=0)
+    amount: float = Field(gt=0)
+
+
+class InternalPaymentRequestInput(BaseModel):
+    lines: list[InternalPaymentRequestLine] = Field(min_length=1, max_length=200)
+    comment: str = Field(default="", max_length=1000)
+
+
 class FinancePaymentTypeCreateInput(BaseModel):
     nature: str = Field(min_length=1, max_length=64)
     payee: str = Field(min_length=1, max_length=255)

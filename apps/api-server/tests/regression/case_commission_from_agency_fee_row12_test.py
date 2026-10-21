@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, HrSubrecord, IncomingPayment, User, WorkflowEvent
+from app.models import BusinessRecord, HrSubrecord, IncomingPayment, User, WorkflowEvent, SystemConfig
 from app.security import current_identity
 
 
@@ -36,8 +36,8 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         settle_config = route_config.split('"finance-internal-settle": {', 1)[1].split("},", 1)[0]
         for header in ("案号", "原告", "被告", "金额", "回款单位", "到账金额", "到账时间", "结算状态", "案件阶段", "案源人", "开庭律师", "律师助理", "调查员", "品管"):
             self.assertIn(f'"{header}"', settle_config)
-        self.assertIn('initialView === "finance-internal-settle"', queries)
-        self.assertIn('api.get("/finance/settlements/pending")', queries)
+        internal_queries = (REPO_ROOT / "apps/admin-web/src/finance/hooks/useInternalFinanceQuery.ts").read_text(encoding="utf-8")
+        self.assertIn('"finance-internal-settle": { path: "/finance/settlements/pending" }', internal_queries)
         self.assertIn("回款单位: data.received_payer_name", page)
         self.assertIn("到账金额: isInvoiceUnissuedRoute", page)
         self.assertIn("originalRoutesView: FinanceOriginalRoutesViewProps", view)
@@ -52,8 +52,8 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         self.assertIn("disabled={!selectedOriginalRows.length}", mark_paid_button)
         self.assertIn('onClick={() => runSettlementMoreAction("mark-paid")}', mark_paid_button)
         self.assertIn('if (key === "mark-paid")', page)
-        self.assertIn("await markSettlementCommissionPaid(selectedOriginalRows.map(Number))", page)
-        self.assertIn('api.post("/finance/settlements/mark-commission-paid", { fee_ids: feeIds })', settlement_actions)
+        self.assertIn("await markSettlementCommissionPaid(selectedOriginalRows.map(Number), financeScope)", page)
+        self.assertIn('financeCenterApi(financeScope).post("/finance/settlements/mark-commission-paid", { fee_ids: feeIds })', settlement_actions)
 
     async def asyncSetUp(self):
         self.engine = create_async_engine(
@@ -185,7 +185,14 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             }],
         })
         self.assertEqual(response.status_code, 201, response.text)
-        return response.json()["items"][0]
+        item = response.json()["items"][0]
+        applied = await self.client.post(f"{API}/finance/internal-applications/payment-requests", json={
+            "lines": [{"fee_id": item["id"], "amount": item["data"]["amount"],
+                       "payment_payee": item["data"]["payee"], "payment_account": "CODEX-R12-ACCOUNT"}],
+            "comment": "生命周期测试显式申请",
+        })
+        self.assertEqual(applied.status_code, 200, applied.text)
+        return item
 
     async def _mark_source_fee_received(self) -> None:
         """为依赖到账前置条件的生命周期用例补齐已到账且已分配事实。"""
@@ -324,7 +331,8 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(all(row.status == "待结算" for row in rows))
             self.assertTrue(all((row.data or {}).get("payment_status") == "待结算" for row in rows))
             self.assertTrue(all((row.data or {}).get("payment_application_no") == result["application_no"] for row in rows))
-            self.assertTrue(all((row.data or {}).get("payment_requested_amount") == (row.data or {}).get("amount") for row in rows))
+            self.assertTrue(all((row.data or {}).get("payment_requested_amount") == 0 for row in rows))
+            self.assertTrue(all((row.data or {}).get("internal_payment_submitted") is False for row in rows))
             self.assertTrue(all(not (row.data or {}).get("payment_applied_at") for row in rows))
             events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id.in_([row.id for row in rows])))).all())
             self.assertEqual(len(events), 2)
@@ -358,7 +366,7 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(projected_row["status"], "待结算")
         self.assertEqual(projected_row["data"]["payment_status"], "待结算")
 
-        pending = await self.client.get(f"{API}/finance/settlements/pending")
+        pending = await self.client.get(f"{API}/finance/settlements/pending", params={"finance_scope": "firm"})
         self.assertEqual(pending.status_code, 200, pending.text)
         pending_rows = [item for item in pending.json()["items"] if item["id"] == self.fee_id]
         self.assertEqual(len(pending_rows), 1)
@@ -379,14 +387,14 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
                 module="finance_settlement", serial_no="CODEX-831-R12-SETTLEMENT",
                 title="第12行一般结算", customer="第12行客户", status="待付款",
                 owner=IDENTITY["username"], department=IDENTITY["department"],
-                data={"allocation_details": [{"fee_id": self.fee_id, "case_id": self.case_id}]},
+                data={"finance_scope":"firm", "allocation_details": [{"fee_id": self.fee_id, "case_id": self.case_id}]},
             )
             db.add(settlement)
             await db.commit()
             settlement_id = settlement.id
 
         paid = await self.client.post(
-            f"{API}/finance/general-settlements/applications/payment",
+            f"{API}/finance/general-settlements/applications/payment", params={"finance_scope": "firm"},
             json={"application_ids": [settlement_id], "action": "paid", "comment": "一般结算完成"},
         )
         self.assertEqual(paid.status_code, 200, paid.text)
@@ -395,7 +403,7 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(commission.status, "待归档")
             self.assertEqual((commission.data or {}).get("payment_status"), "待归档")
 
-        pending = await self.client.get(f"{API}/finance/settlements/pending")
+        pending = await self.client.get(f"{API}/finance/settlements/pending", params={"finance_scope": "firm"})
         self.assertEqual(pending.status_code, 200, pending.text)
         self.assertIn(self.fee_id, [item["id"] for item in pending.json()["items"]])
 
@@ -413,6 +421,8 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             case = await db.get(BusinessRecord, self.case_id)
             case.status = "亏损审核"
             case.data = {**(case.data or {}), "archive_type": "deficit", "archive_submitter": ""}
+            db.add(SystemConfig(key="case_archive_file_sequence",label="案件归档流水",group="运行配置",
+                value={"last_sequence":1},updated_by=IDENTITY["username"]))
             await db.commit()
         archived = await self.client.post(
             f"{API}/cases/{self.case_id}/archive/review",
@@ -486,7 +496,7 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
                 module="finance_settlement", serial_no="CODEX-831-R12-ROLLBACK",
                 title="第12行一般结算回退", customer="第12行客户", status="已付款",
                 owner=IDENTITY["username"], department=IDENTITY["department"],
-                data={"allocation_details": [{"fee_id": self.fee_id, "case_id": self.case_id}]},
+                data={"finance_scope":"firm", "allocation_details": [{"fee_id": self.fee_id, "case_id": self.case_id}]},
             )
             db.add(settlement)
             await db.flush()
@@ -497,7 +507,7 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             settlement_id = settlement.id
 
         rolled_back = await self.client.post(
-            f"{API}/finance/general-settlements/applications/payment",
+            f"{API}/finance/general-settlements/applications/payment", params={"finance_scope": "firm"},
             json={"application_ids": [settlement_id], "action": "rollback", "comment": "付款回退"},
         )
         self.assertEqual(rolled_back.status_code, 200, rolled_back.text)
