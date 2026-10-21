@@ -80,16 +80,23 @@ export function useInternalFinanceQuery(route: string, clearSelection: (keys: (s
           || !Number.isInteger(data.page) || data.page < 1 || !Number.isInteger(data.page_size) || data.page_size < 1) {
         throw new Error("内部费用分页响应无效");
       }
-      const validAmount = (value: unknown) => data.amount_visible ? Number.isFinite(value) : value === null;
+      const incomplete = data.amount_totals_complete === false;
+      if (incomplete && (!Number.isInteger(data.missing_commission_amount_count) || data.missing_commission_amount_count < 1))
+        throw new Error("内部费用汇总响应无效");
+      const validAmount = (value: unknown) => data.amount_visible
+        ? Number.isFinite(value) || (incomplete && value === null)
+        : value === null;
       if (typeof data.amount_visible !== "boolean" || !validAmount(data.total_amount)
           || (route === "finance-internal-payment" && !validAmount(data.total_actual_commission))
-          || (route === "finance-internal-settle" && !validAmount(data.total_cashed_amount))) {
+          || (route === "finance-internal-settle" && !(data.amount_visible
+            ? Number.isFinite(data.total_cashed_amount) : data.total_cashed_amount === null))) {
         throw new Error("内部费用汇总响应无效");
       }
       current.current = { page: data.page, pageSize: data.page_size };
       setRows(data.items);
       setMeta({ ...current.current, total: data.total, amountVisible: data.amount_visible,
-        totalAmount: data.total_amount, totalActualCommission: data.total_actual_commission, totalCashedAmount: data.total_cashed_amount });
+        totalAmount: data.total_amount, totalActualCommission: data.total_actual_commission, totalCashedAmount: data.total_cashed_amount,
+        amountTotalsComplete: !incomplete, missingCommissionAmountCount: data.missing_commission_amount_count });
       return response;
     } catch (cause) {
       if (controller.signal.aborted || request !== sequence.current) return null;

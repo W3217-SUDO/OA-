@@ -80,9 +80,10 @@ export function InternalQueueSummary({ meta, headers, selectable }: { meta: Fina
     {selectable && <Table.Summary.Cell index={0} />}
     {headers.map((header, index) => {
       const amount = amounts[header];
-      if (header in amounts && meta.amountVisible && !Number.isFinite(amount)) throw new Error("内部费用汇总响应无效");
+      const missingAmount = meta.amountTotalsComplete === false && amount === null;
+      if (header in amounts && meta.amountVisible && !Number.isFinite(amount) && !missingAmount) throw new Error("内部费用汇总响应无效");
       return <Table.Summary.Cell key={`${header}-${index}`} index={index + Number(selectable)}>
-        {header in amounts ? meta.amountVisible ? amount!.toFixed(2) : "无权限" : index === 0 ? "合计" : null}
+        {header in amounts ? meta.amountVisible ? missingAmount ? "待核对" : amount!.toFixed(2) : "无权限" : index === 0 ? "合计" : null}
       </Table.Summary.Cell>;
     })}
   </Table.Summary.Row>;

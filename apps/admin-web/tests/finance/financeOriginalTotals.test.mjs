@@ -72,6 +72,11 @@ test("internal grand total preserves exact server zero and payment-package total
   const internalCells = nodes(internal).filter((node) => node.type === SummaryCell);
   assert.equal(internalCells[2].props.children, "0.00");
   assert.throws(() => totals.InternalQueueSummary({ meta: { amountVisible: true, totalAmount: 100 }, headers: ["实际提成"], selectable: false }), /汇总响应无效/);
+  const incomplete = totals.InternalQueueSummary({
+    meta: { amountVisible: true, totalAmount: null, totalCashedAmount: 1000, amountTotalsComplete: false },
+    headers: ["金额", "到账金额"], selectable: false,
+  });
+  assert.deepEqual(nodes(incomplete).filter((node) => node.type === SummaryCell).map(node => node.props.children), ["待核对", "1000.00"]);
   const rows = [{ id: 1, data: { total_amount: 0, amount: 10 } }, { id: 2, data: { amount: 7.5 } }];
   const body = totals.PaymentPackageTotalBody({ rows, headers: ["付款编号", "付款总金额"], children: "rows" });
   assert.equal(nodes(body).filter((node) => node.type === "td")[1].props.children, "7.50");

@@ -288,6 +288,8 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
           >
             <FinanceOriginalQueryView {...originalQueryView} />
             {internalQueueError && <Alert type="error" showIcon message={internalQueueError} />}
+            {internalQueueMeta?.amountVisible && internalQueueMeta.amountTotalsComplete === false &&
+              <Alert type="warning" showIcon message={`有 ${internalQueueMeta.missingCommissionAmountCount} 条来源费用缺少可核对的提成金额，提成合计待核对；到账金额仍按实际回款显示。`} />}
             <div className="finance-original-table-wrap">
               <Table
                 rowKey="id"

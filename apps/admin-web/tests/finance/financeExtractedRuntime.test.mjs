@@ -99,8 +99,10 @@ test("internal queue grand totals survive unequal pages and preserve zero, hidde
       items: mode === "empty" ? [] : mode === "hidden" ? [{ id: params.page, data: {} }] : fixtures.slice(params.page - 1, params.page),
       total: mode === "empty" ? 0 : 2, page: params.page, page_size: params.page_size,
       amount_visible: mode === "missing" ? undefined : mode !== "hidden",
-      total_amount: mode === "hidden" ? null : mode === "empty" ? 0 : 100,
-      total_actual_commission: mode === "hidden" ? null : mode === "empty" ? 0 : mode === "invalid" ? undefined : 90,
+      total_amount: ["hidden", "incomplete"].includes(mode) ? null : mode === "empty" ? 0 : 100,
+      total_actual_commission: ["hidden", "incomplete"].includes(mode) ? null : mode === "empty" ? 0 : mode === "invalid" ? undefined : 90,
+      amount_totals_complete: mode !== "incomplete",
+      missing_commission_amount_count: mode === "incomplete" ? 1 : 0,
     } }) } },
     "../financeErrors": { financeErrorDetail: (error) => error.message },
   });
@@ -124,6 +126,12 @@ test("internal queue grand totals survive unequal pages and preserve zero, hidde
   assert.equal(state.meta.amountVisible, false);
   assert.equal(state.meta.totalAmount, null);
   assert.equal(state.meta.totalActualCommission, null);
+  mode = "incomplete";
+  await act(async () => state.load({}, 1, 200));
+  assert.equal(state.meta.amountVisible, true);
+  assert.equal(state.meta.amountTotalsComplete, false);
+  assert.equal(state.meta.totalAmount, null);
+  assert.equal(state.meta.missingCommissionAmountCount, 1);
   for (mode of ["missing", "invalid"]) {
     await act(async () => { await assert.rejects(state.load({}, 1, 200), /汇总响应无效/); });
     assert.equal(state.error, "内部费用汇总响应无效");

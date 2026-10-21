@@ -200,7 +200,7 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
                                   "case_no": "T930-CASE", "amount": amount}],
                 ))
             await db.commit()
-        result = await self.client.get(f"{settings.api_prefix}/finance/settlements/pending")
+        result = await self.client.get(f"{settings.api_prefix}/finance/settlements/pending", params={"finance_scope": "firm"})
         self.assertEqual(result.status_code, 200, result.text)
         items = result.json()["items"]
         self.assertEqual([row["id"] for row in items], [self.normal_source_id])
@@ -210,13 +210,13 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(items[0]["data"]["cashed_amount"], 55)
         self.assertEqual(items[0]["data"]["cashed_date"], "2026-09-29")
         self.assertEqual(items[0]["data"]["received_payer_name"], "回款单位乙")
-        marked = await self.client.post(f"{settings.api_prefix}/finance/settlements/mark-commission-paid", json={
+        marked = await self.client.post(f"{settings.api_prefix}/finance/settlements/mark-commission-paid", params={"finance_scope": "firm"}, json={
             "fee_ids": [self.normal_source_id], "comment": "已发放",
         })
         self.assertEqual(marked.status_code, 200, marked.text)
-        after = await self.client.get(f"{settings.api_prefix}/finance/settlements/pending")
+        after = await self.client.get(f"{settings.api_prefix}/finance/settlements/pending", params={"finance_scope": "firm"})
         self.assertEqual(after.json()["items"], [])
-        duplicate = await self.client.post(f"{settings.api_prefix}/finance/settlements/mark-commission-paid", json={
+        duplicate = await self.client.post(f"{settings.api_prefix}/finance/settlements/mark-commission-paid", params={"finance_scope": "firm"}, json={
             "fee_ids": [self.normal_source_id],
         })
         self.assertEqual(duplicate.status_code, 409)

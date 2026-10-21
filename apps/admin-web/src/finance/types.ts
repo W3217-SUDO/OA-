@@ -45,6 +45,8 @@ export type FinanceInternalQueueMeta = FinancePageMeta & {
   totalAmount: number | null;
   totalActualCommission?: number | null;
   totalCashedAmount?: number | null;
+  amountTotalsComplete?: boolean;
+  missingCommissionAmountCount?: number;
 };
 export type FinanceInvoicePageMeta = FinanceAmountPageMeta & { totalExtraAmount: number };
 export type FinanceUnissuedPageMeta = FinanceAmountPageMeta & {
