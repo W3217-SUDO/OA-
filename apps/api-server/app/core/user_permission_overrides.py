@@ -55,7 +55,8 @@ async def update_user_permission_overrides(
         if body.menu_keys is not None:
             menu_keys = list(dict.fromkeys(body.menu_keys))
             legacy_keys = set((await db.scalars(select(SystemMenu.key).where(~SystemMenu.key.in_(SYSTEM_MENU_ROUTE_KEYS)))).all())
-            invalid = sorted(set(menu_keys) - (set(MENU_KEYS) | legacy_keys))
+            # 控制台是所有账号的基础页面，页面授权编辑器保存时总会带上它，不算无效。
+            invalid = sorted(set(menu_keys) - (set(MENU_KEYS) | legacy_keys | {"dashboard"}))
             if invalid:
                 raise HTTPException(422, f"无效菜单权限：{', '.join(invalid)}")
             if "user-center" not in menu_keys:
