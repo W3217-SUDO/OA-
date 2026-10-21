@@ -19,7 +19,7 @@ interface PartyLibraryRow {
   managers: string[];
 }
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE_OPTIONS = ["15", "30", "50", "100"];
 const joinNames = (names: string[]) => (names || []).join("、") || "—";
 
 const SCOPE_TITLES: Record<string, string> = { mine: "我的当事人", department: "部门当事人", company: "公司当事人", recycle: "当事人回收站" };
@@ -28,27 +28,29 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
   const [rows, setRows] = useState<PartyLibraryRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
   const [loading, setLoading] = useState(false);
   const [caseNo, setCaseNo] = useState("");
   const [name, setName] = useState("");
   const [peopleCount, setPeopleCount] = useState(0);
 
-  const load = useCallback(async (nextPage = 1, filters = { caseNo, name, category }) => {
+  const load = useCallback(async (nextPage = 1, filters = { caseNo, name, category }, size = pageSize) => {
     setLoading(true);
     try {
       const { data } = await api.get("/party-library", {
-        params: { scope, case_no: filters.caseNo, name: filters.name, case_category: filters.category, page: nextPage, page_size: PAGE_SIZE },
+        params: { scope, case_no: filters.caseNo, name: filters.name, case_category: filters.category, page: nextPage, page_size: size },
       });
       setRows(data.items || []);
       setTotal(Number(data.total || 0));
       setPeopleCount(Number(data.people_count || 0));
       setPage(nextPage);
+      setPageSize(size);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "当事人库加载失败");
     } finally {
       setLoading(false);
     }
-  }, [scope, category, caseNo, name]);
+  }, [scope, category, caseNo, name, pageSize]);
 
   useEffect(() => { void load(1); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -90,8 +92,13 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
         loading={loading}
         dataSource={rows}
         pagination={{
-          current: page, pageSize: PAGE_SIZE, total, showSizeChanger: false,
-          showTotal: (count) => `共有${count}条，${peopleCount}人`, onChange: (next) => void load(next),
+          current: page, pageSize, total, showSizeChanger: true, pageSizeOptions: PAGE_SIZE_OPTIONS, showQuickJumper: true,
+          showTotal: (count) => `共有${count}条，${peopleCount}人`,
+          onChange: (next, size) => void load(size !== pageSize ? 1 : next, undefined, size),
+          locale: {
+            items_per_page: "条/页", jump_to: "跳至", jump_to_confirm: "确定", page: "页",
+            prev_page: "上一页", next_page: "下一页", prev_5: "向前 5 页", next_5: "向后 5 页", prev_3: "向前 3 页", next_3: "向后 3 页",
+          },
         }}
         columns={[
           {
