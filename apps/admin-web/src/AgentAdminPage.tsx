@@ -163,10 +163,10 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
   return (
     <div className="agent-scope-admin" data-testid="agent-admin-page">
       <Tabs activeKey={tab} onChange={key => { if (!capabilityBusy) setTab(key); }} items={[
-        { key: "plugins", label: "DSH 插件中心", disabled: capabilityBusy },
         { key: "global", label: "全局 Skill", disabled: capabilityBusy },
         { key: "mcp", label: "全局 MCP", disabled: capabilityBusy },
         { key: "market", label: "能力市场", disabled: capabilityBusy },
+        { key: "plugins", label: "DSH 插件中心", disabled: capabilityBusy },
         ...(overview ? [{ key: "overview", label: canViewUserLibraries ? "运行状态与个人库" : "运行状态", disabled: capabilityBusy }] : []),
       ]} />
       {error && <Alert type="error" showIcon title="智能体设置加载未完成" description={error} action={<Button loading={loading} onClick={() => void load()}>重试</Button>} />}
