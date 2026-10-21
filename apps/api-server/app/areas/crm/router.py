@@ -1948,3 +1948,44 @@ async def rebuild_party_library_entries(
     total = await db.run_sync(lambda session: rebuild_party_library(session.connection()))
     await db.commit()
     return {"total": total}
+
+
+@router.get(f"{settings.api_prefix}/parties/{{party_id}}")
+async def get_party(
+    party_id: int,
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """当事人具体信息：编号、类型、负责人、证件信息和所在案件。"""
+    from app.core.json_relation_query import scalar_in_values
+    from app.core.permissions import _permission_payload_for_identity, _visible_record_ids
+    from app.data_models.parties import PartyRecord
+    from app.data_models.party_library import PartyLibraryEntry as Entry
+    permission = await _permission_payload_for_identity(identity, db)
+    if not identity.get("_page_menu_capability") and not any(
+            str(key).startswith("party") for key in (permission.get("menu_keys") or [])):
+        raise HTTPException(status_code=403, detail="当前账号未开通当事人中心权限")
+    party = await db.get(PartyRecord, party_id)
+    if party is None:
+        raise HTTPException(status_code=404, detail="当事人不存在")
+    case_conditions = [Entry.party_id == party_id]
+    if identity.get("role") != "admin":
+        # 只显示自己有权查看的案件，没有任何可见案件时不透露这个当事人。
+        case_conditions.append(scalar_in_values(Entry.case_id, list(await _visible_record_ids(identity, db))))
+    entries = (await db.scalars(select(Entry).where(*case_conditions).order_by(Entry.case_no.desc()))).all()
+    if identity.get("role") != "admin" and not entries:
+        raise HTTPException(status_code=404, detail="当事人不存在")
+    data = party.data or {}
+    return {
+        "id": party.id, "party_no": party.party_no, "name": party.name, "party_type": party.party_type,
+        "source_customer_id": party.source_customer_id, "owner": party.owner, "department": party.department,
+        "managers": party.managers, "status": party.status, "description": party.description,
+        "organization_type": data.get("organization_type", ""),
+        "identity_no": data.get("identity_no") or data.get("credit_code") or "",
+        "created_by": party.created_by, "created_at": party.created_at,
+        "cases": [{
+            "case_id": row.case_id, "case_no": row.case_no, "case_category": row.case_category,
+            "position": row.subject_position, "our_parties": row.our_parties, "our_position": row.our_position,
+            "opponent_parties": row.opponent_parties, "opponent_position": row.opponent_position,
+        } for row in entries],
+    }

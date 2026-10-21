@@ -4,7 +4,7 @@ import unittest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.areas.crm.router import list_party_library
+from app.areas.crm.router import get_party, list_party_library
 from app.core.party_library import build_entries, case_category, case_party_layout, next_party_no, rebuild_party_library
 from app.database import Base
 from app.core.crm import _next_party_serial_no
@@ -204,6 +204,33 @@ class PartyLibraryQueryTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len((await db.execute(BusinessRecord.__table__.select().where(BusinessRecord.module == "customer"))).all()), customers_before)
         self.assertEqual({r["subject_name"]: r["party_no"] for r in (await self._list())["items"]},
                          {"乙": f"DSR{yy}00001", "丙": f"DSR{yy}00002"})
+
+    async def test_party_detail_shows_number_and_cases_and_hides_unseen_parties(self):
+        from fastapi import HTTPException
+        listed = (await self._list())["items"]
+        party_id = next(r["party_id"] for r in listed if r["subject_name"] == "乙")
+        async with self.sessions() as db:
+            detail = await get_party(party_id, identity=ADMIN, db=db)
+        self.assertTrue(detail["party_no"].startswith("DSR"))
+        self.assertEqual((detail["name"], detail["party_type"], detail["owner"], detail["managers"]), ("乙", "当事人", "u1", ["u1"]))
+        self.assertEqual([(c["case_no"], c["position"], c["our_parties"]) for c in detail["cases"]], [("CODEX-PL-A1", "被告", ["甲"])])
+        async with self.sessions() as db:
+            with self.assertRaises(HTTPException) as missing:
+                await get_party(999999, identity=ADMIN, db=db)
+            self.assertEqual(missing.exception.status_code, 404)
+        # 没有任何案件的当事人：管理员能看（所在案件为空），普通账号查不到
+        async with self.sessions() as db:
+            db.add(BusinessRecord(module="customer", serial_no="HZKH2610088", title="无案件当事人", customer="", status="T", owner="u1",
+                                  data={"customer_type": "未设置"}))
+            await db.commit()
+        await self._rebuild()
+        async with self.sessions() as db:
+            lone_id = (await db.execute(PartyRecord.__table__.select().where(PartyRecord.name == "无案件当事人"))).first().id
+            self.assertEqual((await get_party(lone_id, identity=ADMIN, db=db))["cases"], [])
+            user = {"username": "u1", "role": "user", "_page_menu_capability": True}
+            with self.assertRaises(HTTPException) as hidden:
+                await get_party(lone_id, identity=user, db=db)
+            self.assertEqual(hidden.exception.status_code, 404)
 
     async def test_next_serial_counts_only_the_party_table(self):
         from datetime import datetime

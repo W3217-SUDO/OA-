@@ -78,6 +78,7 @@ _PAGE_MENU_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("/hr", ("@root:hr",)),
     ("/customers", ("@root:customer",)),
     ("/party-library", ("@root:party",)),
+    ("/parties", ("@root:party",)),
     ("/customer-portal", ("@root:customer",)),
     ("/contracts", ("@root:contract",)),
     ("/contract-payment-applications", ("@root:finance", "@root:platform-finance", "@root:contract")),
