@@ -1442,15 +1442,18 @@ async def _invoice_case_fee_rows(
     scope_conditions = await _record_scope_conditions(identity, db)
     fee_conditions = list(scope_conditions)
     if ids is not None:
-        fee_conditions.append(BusinessRecord.id.in_(ids))
+        # 待结算、待缴官费等会传入上千个费用编号；大集合用单个参数传入，避免逐个绑定参数的规划开销。
+        fee_conditions.append(_record_id_in(ids))
     if scope == "mine":
         fee_conditions.append(BusinessRecord.owner == identity["username"])
     if scope_authorized_fee_ids is not None:
         # Keep the full authorized fee context for ambiguous legacy links and
         # invoice allocation; only the SQL retrieval is partitioned.
+        # 指定 ids 时下方只保留 ids 内的费用，所以只读取授权与 ids 的交集，结果不变。
+        load_ids = scope_authorized_fee_ids if ids is None else set(scope_authorized_fee_ids) & set(ids)
         if summary_only:
             fees = []
-            authorized_ids = list(scope_authorized_fee_ids)
+            authorized_ids = list(load_ids)
             for offset in range(0, len(authorized_ids), 400):
                 fees.extend(await read_fee_summaries(db, [
                     BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
@@ -1458,7 +1461,7 @@ async def _invoice_case_fee_rows(
                 ]))
         else:
             fees = await _scalars_in_batches(
-                db, scope_authorized_fee_ids,
+                db, load_ids,
                 lambda batch: select(BusinessRecord).where(
                     BusinessRecord.module == "finance", BusinessRecord.status != "已删除", BusinessRecord.id.in_(batch),
                 ),
@@ -1765,16 +1768,73 @@ async def _invoice_case_fee_rows(
     return rows
 
 
+LARGE_ID_SET = 500
+
+
+def _record_id_in(ids):
+    """少量编号用普通 IN 走主键索引；上百上千个编号用单个参数传入，避免逐个绑定参数的解析和规划开销。"""
+    if len(ids) <= LARGE_ID_SET:
+        return BusinessRecord.id.in_(ids)
+    from app.core.json_relation_query import scalar_in_values
+    return scalar_in_values(BusinessRecord.id, ids)
+
+
+OFFICIAL_FEE_CANDIDATE_LIMIT = 20000
+# 可见费用少时全量聚合已经够快，子集路径额外的全库唯一性核对反而更慢；只在全所量级的范围启用。
+OFFICIAL_FEE_NARROWING_MIN_SCANNED = 10000
+
+
+def _is_official_fee_type(base_type: str, display_type: str) -> bool:
+    return (base_type == "官方费用" or "官费" in display_type or "诉讼费" in display_type
+            or display_type in {"保全费", "执行费"})
+
+
 def _matches_unpaid_official_fee(data: dict) -> bool:
     base_type = str(data.get("base_fee_type") or "")
     display_type = str(data.get("fee_type") or "")
     amount_due = float(data.get("amount") or 0) - float(data.get("paid_amount") or 0)
     return (
-        (base_type == "官方费用" or "官费" in display_type or "诉讼费" in display_type
-         or display_type in {"保全费", "执行费"})
+        _is_official_fee_type(base_type, display_type)
         and str(data.get("payment_status") or "") not in {"已付款", "已驳回", "已作废"}
         and not amount_due <= 0
     )
+
+
+async def _official_fee_candidate_ids(
+    identity: dict, db: AsyncSession, *, scope: str, ids: set[int] | None,
+    scope_authorized_fee_ids: set[int] | None,
+) -> tuple[set[int], int]:
+    """按 _invoice_case_fee_rows 的同一可见范围，只读类型字段挑出官费类费用 ID；同时返回扫描的费用数。"""
+    from types import SimpleNamespace
+
+    from app.core.formatters import _case_fee_display_type
+    from app.core.permissions import _record_scope_conditions
+
+    type_keys = ("fee_type_name", "case_fee_type_name", "expense_subtype", "fee_type")
+    conditions = [BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
+                  *(await _record_scope_conditions(identity, db))]
+    if scope == "mine":
+        conditions.append(BusinessRecord.owner == identity["username"])
+    statement = select(BusinessRecord.id, BusinessRecord.title, *(BusinessRecord.data[key] for key in type_keys))
+    if scope_authorized_fee_ids is not None:
+        # 与原路径一致：授权 ID 路径不叠加记录范围条件。授权集合用单个参数传入，集合大小不影响语句结构。
+        authorized = set(scope_authorized_fee_ids) if ids is None else set(scope_authorized_fee_ids) & set(ids)
+        conditions = [BusinessRecord.module == "finance", BusinessRecord.status != "已删除"]
+        if ids is not None:
+            conditions.append(_record_id_in(authorized))
+        # 预筛只在授权集合达到全所量级时运行；此时整表读取几列再在内存中按授权过滤，比传入数万个编号更快。
+        rows = [row for row in (await db.execute(statement.where(*conditions))).all() if row.id in authorized]
+    else:
+        if ids is not None:
+            conditions.append(BusinessRecord.id.in_(ids))
+        rows = (await db.execute(statement.where(*conditions))).all()
+    candidates = set()
+    for row in rows:
+        data = {key: value for key, value in zip(type_keys, row[2:]) if value is not None}
+        display_type = _case_fee_display_type(SimpleNamespace(data=data, title=row.title))
+        if _is_official_fee_type(str(data.get("fee_type") or ""), display_type):
+            candidates.add(row.id)
+    return candidates, len(rows)
 
 
 async def _fee_query_rows(
@@ -1794,6 +1854,22 @@ async def _fee_query_rows(
     if "_dashboard_fee_ids" in identity:
         scope_authorized_fee_ids = identity["_dashboard_fee_ids"]
         scope = "company"
+    # 只在工作台“待缴官费”的授权费用集合足够大时预筛：按记录范围的普通查询收益很小，部分账号反而更慢。
+    large_authorized_scope = (
+        scope_authorized_fee_ids is not None and len(scope_authorized_fee_ids) >= OFFICIAL_FEE_NARROWING_MIN_SCANNED
+    )
+    if unpaid_official and large_authorized_scope:
+        # 官费类型只由费用记录本身决定；先挑出官费候选，再只对候选计算付款、开票、到账和退费聚合。
+        # ids 子集路径会按全库重新判断案号是否唯一，聚合口径与全量计算一致。
+        candidate_ids, scanned = await _official_fee_candidate_ids(
+            identity, db, scope=scope, ids=ids, scope_authorized_fee_ids=scope_authorized_fee_ids,
+        )
+        if not candidate_ids:
+            return []
+        # 费用少或候选占比高时子集路径反而更慢；候选过多时 IN 参数会超过驱动上限。这些情况退回原全量计算。
+        if (scanned >= OFFICIAL_FEE_NARROWING_MIN_SCANNED and len(candidate_ids) * 2 <= scanned
+                and len(candidate_ids) <= OFFICIAL_FEE_CANDIDATE_LIMIT):
+            ids = candidate_ids
     rows = await _invoice_case_fee_rows(
         identity, db, scope=scope, case_no=case_no,
         court_case_no=court_case_no, notary_no=notary_no,

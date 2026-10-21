@@ -256,8 +256,10 @@ async def pending_case_fee_settlements(identity: dict, db: AsyncSession) -> list
     if not source_ids:
         return []
     from app.core.finance_centers import record_center_conditions
+    from app.core.finance import _record_id_in
+    # 上千个来源编号用单个参数传入，避免逐个绑定参数带来的解析和规划开销。
     source_ids = set((await db.scalars(select(BusinessRecord.id).where(
-        BusinessRecord.id.in_(source_ids), *scope, *record_center_conditions(identity),
+        _record_id_in(source_ids), *scope, *record_center_conditions(identity),
     ))).all())
     if not source_ids:
         return []
