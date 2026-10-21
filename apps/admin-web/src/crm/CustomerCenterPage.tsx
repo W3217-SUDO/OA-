@@ -76,6 +76,9 @@ import {
   initialProfile,
 } from "./constants";
 
+// 类型筛选的“不限类型”取值，与后端 /customers 的 customer_type 约定一致。
+const ALL_CUSTOMER_TYPES = "全部";
+
 export default function CustomerCenterPage({
   initialView,
   onNavigate,
@@ -102,11 +105,16 @@ export default function CustomerCenterPage({
   // ========== State ==========
   const [allRows, setAllRows] = useState<Customer[]>([]);
   const [keyword, setKeyword] = useState("");
-  const [customerType, setCustomerType] = useState("客户");
+  const [customerType, setCustomerType] = useState(ALL_CUSTOMER_TYPES);
   const [customerTypeOptions, setCustomerTypeOptions] = useState<{ value: string; label: string }[]>([
     { value: "客户", label: "客户" },
     { value: "当事人", label: "当事人" },
   ]);
+  // 列表筛选在各类型之外加“全部”并默认选它；新建/编辑表单仍用原来的类型选项。
+  const listCustomerTypeOptions = useMemo(
+    () => [{ value: ALL_CUSTOMER_TYPES, label: "全部" }, ...customerTypeOptions.filter((item, index, all) => all.findIndex((other) => other.value === item.value) === index)],
+    [customerTypeOptions],
+  );
   const [managerKeyword, setManagerKeyword] = useState("");
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(initialView === "customer-new");
@@ -207,7 +215,7 @@ export default function CustomerCenterPage({
       // Dedicated APIs already apply the personal/department/company/public/shared/recent scope and paging.
     }
     else list = list.filter((x) => x.status !== "已回收");
-    if (!isOriginalCustomerList && customerType)
+    if (!isOriginalCustomerList && customerType && customerType !== ALL_CUSTOMER_TYPES)
       list = list.filter((x) => (x.data.customer_type || "客户") === customerType);
     if (!isOriginalCustomerList && managerKeyword.trim())
       list = list.filter((x) =>
@@ -356,7 +364,7 @@ export default function CustomerCenterPage({
         const options = customerTypeResult.value.data.customer_types || [];
         if (options.length) {
           setCustomerTypeOptions(options);
-          if (!options.some((item: { value: string }) => item.value === customerType)) setCustomerType(options[0].value);
+          if (customerType !== ALL_CUSTOMER_TYPES && !options.some((item: { value: string }) => item.value === customerType)) setCustomerType(ALL_CUSTOMER_TYPES);
         }
       } else message.warning("客户类型加载失败，暂使用缓存选项");
     } catch (error: any) {
@@ -1303,7 +1311,7 @@ export default function CustomerCenterPage({
   };
 
   const handleResetSearch = () => {
-    const resetCustomerType = customerTypeOptions[0]?.value || "客户";
+    const resetCustomerType = ALL_CUSTOMER_TYPES;
     setKeyword("");
     setCustomerType(resetCustomerType);
     setManagerKeyword("");
@@ -1424,7 +1432,7 @@ export default function CustomerCenterPage({
           loading={loading}
           keyword={keyword}
           customerType={customerType}
-          customerTypeOptions={customerTypeOptions}
+          customerTypeOptions={listCustomerTypeOptions}
           managerKeyword={managerKeyword}
           managerLocked={managerLocked}
           managerDisplay={managerDisplay}
