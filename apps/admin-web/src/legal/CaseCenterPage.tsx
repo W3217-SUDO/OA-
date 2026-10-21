@@ -557,8 +557,6 @@ export default function CaseCenterPage({
   const [paymentTypeSearch, setPaymentTypeSearch] = useState("");
   const [paymentTypeCreateTarget, setPaymentTypeCreateTarget] = useState<PaymentTypeCreateTarget | null>(null);
   const [paymentTypeCreating, setPaymentTypeCreating] = useState(false);
-  const [paymentPackagePreview, setPaymentPackagePreview] = useState<any | null>(null);
-  const [paymentPackageLoading, setPaymentPackageLoading] = useState(false);
   const [caseTaskCreateCase, setCaseTaskCreateCase] = useState<CaseRow | null>(null);
   const [caseTaskMaterialFiles, setCaseTaskMaterialFiles] = useState<UploadFile[]>([]);
   const [caseTaskKind, setCaseTaskKind] = useState<CaseTaskKind>("案件任务");
@@ -1405,7 +1403,7 @@ export default function CaseCenterPage({
     get caseUploadRef() { return caseUploadRef; },
   });
 
-  const { saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, submitPaymentRequest, previewInternalPayment, submitInternalPayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, createFeeInform, confirmFeeInformArrival, uploadFeeInformBill, openCaseReceiptFiles, saveFeeInformLinks, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions } = createCaseFinanceActions({
+  const { saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, submitPaymentRequest, previewInternalPayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, createFeeInform, confirmFeeInformArrival, uploadFeeInformBill, openCaseReceiptFiles, saveFeeInformLinks, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions } = createCaseFinanceActions({
     get invoiceBatch() { return invoiceBatch; },
     get loadCaseInvoiceBatch() { return loadCaseInvoiceBatch; },
     get counselDetailAssistedFeePage() { return counselDetailAssistedFeePage; },
@@ -1472,6 +1470,7 @@ export default function CaseCenterPage({
     get caseFeePaymentDrafts() { return caseFeePaymentDrafts; },
     get createdCaseFees() { return createdCaseFees; },
     get setCaseFeeSubmitting() { return setCaseFeeSubmitting; },
+    get caseFeeSubmitting() { return caseFeeSubmitting; },
     get closeCaseFeeCreator() { return closeCaseFeeCreator; },
     get courtRefundFee() { return courtRefundFee; },
     get courtRefundForm() { return courtRefundForm; },
@@ -1479,10 +1478,6 @@ export default function CaseCenterPage({
     get counselDetailCapabilities() { return counselDetailCapabilities; },
     get setPaymentRequestFee() { return setPaymentRequestFee; },
     get paymentRequestFee() { return paymentRequestFee; },
-    get setPaymentPackageLoading() { return setPaymentPackageLoading; },
-    get setPaymentPackagePreview() { return setPaymentPackagePreview; },
-    get paymentPackagePreview() { return paymentPackagePreview; },
-    get paymentPackageLoading() { return paymentPackageLoading; },
     get refundCompleting() { return refundCompleting; },
     get refundCompleteForm() { return refundCompleteForm; },
     get setRefundCompleting() { return setRefundCompleting; },
@@ -2856,8 +2851,13 @@ export default function CaseCenterPage({
 
   const handleInternalFeeAction=(key:string)=>{
     if(key==="create")return openCaseFeeBySubtype("内部","内部费用");
-    if(!requireSingleFee(selectedInternalFeeKeys,selectedInternalFee,key==="payment"?"申请付款":key==="edit"?"修改":"删除"))return;
-    if(key==="payment")return void previewInternalPayment(selectedInternalFee!);
+    if(key==="payment"){
+      const rows=internalFeeRows.filter(row=>selectedInternalFeeKeys.includes(row.id));
+      if(!rows.length){message.warning("请先选择需要申请付款的内部费用");return;}
+      if(rows.length!==selectedInternalFeeKeys.length){message.warning("所选费用已变化，请刷新后重新选择");return;}
+      return void previewInternalPayment(rows);
+    }
+    if(!requireSingleFee(selectedInternalFeeKeys,selectedInternalFee,key==="edit"?"修改":"删除"))return;
     if(key==="edit")return editCaseFee(selectedInternalFee!);
     deleteCaseFee(selectedInternalFee!);
   };
@@ -3624,13 +3624,15 @@ export default function CaseCenterPage({
       </Modal>
       <Drawer
         open={Boolean(feeCase)}
-        title={activeFeeContractScope === "平台" && feeSubtypePreset === "agency" ? "新增平台代理费" : "新增费用"}
+        title={activeFeeContractScope === "内部" && caseFeeCreateStep === 1 ? "申请付款" : activeFeeContractScope === "平台" && feeSubtypePreset === "agency" ? "新增平台代理费" : "新增费用"}
         width={620}
-        className="case-fee-create-drawer"
-        onClose={closeCaseFeeCreator}
+        className={`case-fee-create-drawer${activeFeeContractScope === "内部" ? " case-internal-fee-payment-drawer" : ""}`}
+        onClose={() => { if (activeFeeContractScope !== "内部" || !caseFeeSubmitting) closeCaseFeeCreator(); }}
+        maskClosable={activeFeeContractScope !== "内部" || !caseFeeSubmitting}
+        closable={activeFeeContractScope !== "内部" || !caseFeeSubmitting}
         footer={<Space className="case-fee-drawer-footer">
           <Button type="primary" loading={caseFeeSubmitting} onClick={() => caseFeeCreateStep === 0 ? void createCaseFee() : void submitCreatedCaseFeePayments()}>{caseFeeCreateStep === 0 ? (agencyOnlyFeeDraft ? "保存" : "下一步") : "申请付款"}</Button>
-          <Button onClick={closeCaseFeeCreator}>取消</Button>
+          <Button disabled={activeFeeContractScope === "内部" && caseFeeSubmitting} onClick={closeCaseFeeCreator}>取消</Button>
         </Space>}
       >
         <Steps size="small" current={caseFeeCreateStep} items={agencyOnlyFeeDraft ? [{ title: "新增费用" }] : [{ title: "新增费用" }, { title: "申请付款" }]} />
@@ -3667,9 +3669,9 @@ export default function CaseCenterPage({
         </> : <>
           <Alert className="case-fee-legacy-tip" type="info" title="温馨提示" description={activeFeeContractScope === "内部" ? <ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个案号生成一个申请单。</li></ol> : <ol><li>同一付款单位可以申请付款，否则请按实际业务进行操作。</li><li>申请付款按照每个合同号生成一个申请单。</li><li>代理费不允许付款。</li></ol>} />
           {casePaymentTypesError && activeFeeContractScope !== "内部" && <Alert type="error" title={casePaymentTypesError} action={createdCaseFees[0] && <Button size="small" onClick={() => void loadCasePaymentTypes(casePaymentTypeFeeRef.current || createdCaseFees[0].id, paymentTypeSearch)}>重新加载</Button>} />}
-          {activeFeeContractScope === "内部" ? <div className="case-fee-payment-table">
+          {activeFeeContractScope === "内部" ? <div className="case-fee-payment-table case-internal-payment-table">
             <div className="case-fee-payment-head"><span>案号</span><span>费用类型</span><span>金额</span><span>收款人</span><span>付款账号</span></div>
-            {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}><span>{feeCase?.serial_no || "—"}</span><span>{row.data.expense_subtype || row.data.fee_type || "—"}</span><span>{row.data.amount ?? 0}</span><Input value={caseFeePaymentDrafts[index]?.payment_payee || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_payee: event.target.value } : item))} /><Input value={caseFeePaymentDrafts[index]?.payment_account || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_account: event.target.value } : item))} /></div>)}
+            {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}><span>{feeCase?.serial_no || "—"}</span><span>{row.data.expense_subtype || row.data.fee_type || "—"}</span><span>{row.data.payment_remaining_amount ?? row.data.amount}</span><Input aria-label="收款人" placeholder="收款人" value={caseFeePaymentDrafts[index]?.payment_payee || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_payee: event.target.value } : item))} /><Input aria-label="付款账号" placeholder="付款账号" value={caseFeePaymentDrafts[index]?.payment_account || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_account: event.target.value } : item))} /></div>)}
           </div> : <div className="case-fee-payment-table case-fee-payment-unit-table">
             <div className="case-fee-payment-head"><span>合同号</span><span>案号</span><span>费用类型</span><span>金额</span><span>付款备注</span><span>收款单位</span><span>操作</span></div>
             {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}>
@@ -3774,22 +3776,6 @@ export default function CaseCenterPage({
         />
         </>}
       </Drawer>
-      <Modal
-        open={Boolean(paymentPackagePreview)}
-        title={`申请付款：${paymentPackagePreview?.source?.request_no || ""}`}
-        okText="提交付款申请"
-        cancelText="取消"
-        confirmLoading={paymentPackageLoading}
-        onOk={submitInternalPayment}
-        onCancel={() => setPaymentPackagePreview(null)}
-      >
-        <Alert type="info" showIcon title="请确认付款申请来源与金额" style={{ marginBottom: 12 }} />
-        <p>案件号：{paymentPackagePreview?.source?.case_no || "—"}</p>
-        <p>客户：{paymentPackagePreview?.source?.customer || "—"}</p>
-        <p>费用编号：{paymentPackagePreview?.source?.request_no || "—"}</p>
-        <p>金额：{paymentPackagePreview?.total_amount ?? paymentPackagePreview?.source?.amount ?? "—"}</p>
-        <p>付款包号：{paymentPackagePreview?.package_no || "—"}</p>
-      </Modal>
       <Drawer
         open={Boolean(paymentRequestFee)}
         title="申请付款"

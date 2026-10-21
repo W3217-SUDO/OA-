@@ -11,11 +11,11 @@ import { resolveCaseFeeInvoiceEligibility } from "../../caseFeeInvoiceEligibilit
 import { resolveCaseFileTypeSelection } from "../../caseFifthBatchParity.mjs";
 import { buildExternalPaymentRequestPayload } from "../../casePaymentUnitParity.mjs";
 import { PLATFORM_AGENCY_FEE_SUBTYPE } from "../../caseRelationConsumption.mjs";
-import { buildCasePaymentContext } from "../../caseSecondBatchParity";
 import { feeTypeSelection, initialFeeTypeId, type FeeTypeCatalogItem } from "../../feeTypeHierarchy.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { caseReceiptFiles } from "../caseReceiptFiles";
 import { openCaseFeeFilesDialog } from "./caseFeeFilesDialog";
+import { prepareInternalFeePayment, submitPreparedInternalPayments } from "./caseInternalFeePayment";
 import type { CaseAssistedFee, CaseCommissionPreview, CaseCommissionPreviewRow, CaseCommissionResult, CaseDetailCapabilities, CaseFileTypeOption, CasePaymentTypeOption, CaseRow, ContractRow, PaymentTypeCreateTarget, Profile, TaskRow } from "../types";
 import type { CaseInvoiceBatch, CaseInvoiceImportResult, LoadCaseInvoiceBatch } from "../hooks/useCaseInvoiceBatch";
 /** legal finance operations; dependencies are read when each operation runs. */
@@ -96,6 +96,7 @@ export interface CaseFinanceDependencies {
     }[];
     readonly createdCaseFees: CaseRow[];
     readonly setCaseFeeSubmitting: React.Dispatch<React.SetStateAction<boolean>>;
+    readonly caseFeeSubmitting: boolean;
     readonly closeCaseFeeCreator: () => void;
     readonly courtRefundFee: CaseRow | null;
     readonly courtRefundForm: FormInstance<any>;
@@ -103,10 +104,6 @@ export interface CaseFinanceDependencies {
     readonly counselDetailCapabilities: CaseDetailCapabilities;
     readonly setPaymentRequestFee: React.Dispatch<React.SetStateAction<CaseRow | null>>;
     readonly paymentRequestFee: CaseRow | null;
-    readonly setPaymentPackageLoading: React.Dispatch<React.SetStateAction<boolean>>;
-    readonly setPaymentPackagePreview: React.Dispatch<any>;
-    readonly paymentPackagePreview: any;
-    readonly paymentPackageLoading: boolean;
     readonly refundCompleting: CaseRow | null;
     readonly refundCompleteForm: FormInstance<any>;
     readonly setRefundCompleting: React.Dispatch<React.SetStateAction<CaseRow | null>>;
@@ -511,7 +508,8 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         }
     };
     const submitCreatedCaseFeePayments = async () => {
-        const { caseFeePaymentDrafts, createdCaseFees, setCaseFeeSubmitting, feeCase, closeCaseFeeCreator, load, viewingCounselCase, openCounselDetail } = context;
+        const { caseFeePaymentDrafts, createdCaseFees, setCaseFeeSubmitting, feeCase, closeCaseFeeCreator, load, viewingCounselCase, openCounselDetail, isInternalCaseFee } = context;
+        if (createdCaseFees.length && createdCaseFees.every(isInternalCaseFee)) return submitPreparedInternalPayments(context);
         if (caseFeePaymentDrafts.some((item, index) => createdCaseFees[index]?.data.expense_scope !== "内部" && createdCaseFees[index]?.data.fee_type !== "官方费用" && !item.payment_type_id)) {
             message.warning("请选择系统付款单位");
             return;
@@ -669,28 +667,30 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 message.error(error?.response?.data?.detail || "付款申请提交失败");
         }
     };
-    const previewInternalPayment = async (row: CaseRow) => {
-        const { counselDetailCapabilities, setPaymentPackageLoading, viewingCounselCase, setPaymentPackagePreview } = context;
-        if (row.status !== "已审批")
-            return message.warning("仅已审批内部费用可以申请付款");
-        if (!counselDetailCapabilities.can_create_finance)
+    const previewInternalPayment = async (selection: CaseRow | CaseRow[]) => {
+        const { counselDetailCapabilities, viewingCounselCase, profile, onNavigate, caseFeeSubmitting,
+            setCaseFeeSubmitting, setCreatedCaseFees, setCaseFeePaymentDrafts, setCaseFeeCreateStep,
+            setFeeCase, setEditingFeeRow, feeForm } = context;
+        if (!counselDetailCapabilities.can_apply_fee_payment)
             return message.warning("当前账号没有申请付款权限");
-        setPaymentPackageLoading(true);
+        if (!viewingCounselCase || caseFeeSubmitting) return;
+        setCaseFeeSubmitting(true);
         try {
-            const { data } = await api.post("/finance/payment-packages/preview", { fee_ids: [row.id] });
-            const caseContext = buildCasePaymentContext({
-                caseRecordId: row.data.case_id || row.data.case_record_id || viewingCounselCase?.id,
-                caseNo: row.data.case_no || viewingCounselCase?.serial_no,
-                feeId: row.id,
-                feeNo: row.serial_no,
-            });
-            setPaymentPackagePreview({ ...data, source: { ...caseContext, request_no: row.serial_no, customer: row.customer, amount: row.data.amount, title: row.title } });
-        }
-        catch (error: any) {
-            message.error(error?.response?.data?.detail || "付款申请预览失败");
-        }
-        finally {
-            setPaymentPackageLoading(false);
+            const rows = await prepareInternalFeePayment(Array.isArray(selection) ? selection : [selection], viewingCounselCase, profile.username, onNavigate);
+            if (!rows) return;
+            setEditingFeeRow(null);
+            feeForm.resetFields();
+            feeForm.setFieldsValue({ items: rows.map((row) => ({ ...row.data, expense_scope: "内部" })) });
+            setCreatedCaseFees(rows);
+            setCaseFeePaymentDrafts(rows.map((row) => ({ payment_remark: String(row.data.payment_remark || ""),
+                payment_payee: String(row.data.payment_payee || row.data.payee || ""),
+                payment_account: String(row.data.payment_account || "") })));
+            setCaseFeeCreateStep(1);
+            setFeeCase(viewingCounselCase);
+        } catch (error: any) {
+            message.error(error?.response?.data?.detail || error?.message || "内部费用申请信息读取失败");
+        } finally {
+            setCaseFeeSubmitting(false);
         }
     };
     const submitCaseFeePayment = async (row: CaseRow) => {
@@ -712,25 +712,6 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             return;
         }
         openPaymentRequest(row);
-    };
-    const submitInternalPayment = async () => {
-        const { paymentPackagePreview, paymentPackageLoading, setPaymentPackageLoading, setPaymentPackagePreview, load, onNavigate } = context;
-        if (!paymentPackagePreview || paymentPackageLoading)
-            return;
-        setPaymentPackageLoading(true);
-        try {
-            const { data } = await api.post("/finance/payment-packages", { fee_ids: [paymentPackagePreview.source.fee_id], package_no: paymentPackagePreview.package_no, comment: `案件 ${paymentPackagePreview.source.case_no} 内部费用付款申请` });
-            message.success(`付款申请 ${data.serial_no || paymentPackagePreview.package_no} 已提交`);
-            setPaymentPackagePreview(null);
-            await load();
-            onNavigate?.("finance-payment-mine");
-        }
-        catch (error: any) {
-            message.error(error?.response?.data?.detail || "付款申请提交失败");
-        }
-        finally {
-            setPaymentPackageLoading(false);
-        }
     };
     const startCaseInvoiceImport = async () => {
         const { invoiceBatch, loadCaseInvoiceBatch } = context;
@@ -1134,5 +1115,5 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             setCaseCommissionSubmitting(false);
         }
     };
-    return { loadCounselDetailAssistedFees, saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, openRelatedFee, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, openPaymentRequest, submitPaymentRequest, previewInternalPayment, submitCaseFeePayment, submitInternalPayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, refreshCaseFeeDetail, createFeeInform, loadLatestFeeInform, openFeeInformArrival, confirmFeeInformArrival, openFeeInformBill, uploadFeeInformBill, downloadFeeInformBill, openCaseReceiptFiles, unlockFeeInform, openFeeInformLinks, saveFeeInformLinks, deleteFeeInform, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions };
+    return { loadCounselDetailAssistedFees, saveCounselDetailAssistedFee, confirmCounselDetailAssistedFee, submitSettlementAmount, submitCaseTaskFeedback, openRelatedFee, submitCounselBatchFee, openCaseFee, loadCasePaymentTypes, createCasePaymentType, createCaseFee, submitCreatedCaseFeePayments, createCourtRefund, openPaymentRequest, submitPaymentRequest, previewInternalPayment, submitCaseFeePayment, startCaseInvoiceImport, completeRefund, submitInformDateBatchUpdate, refreshCaseFeeDetail, createFeeInform, loadLatestFeeInform, openFeeInformArrival, confirmFeeInformArrival, openFeeInformBill, uploadFeeInformBill, downloadFeeInformBill, openCaseReceiptFiles, unlockFeeInform, openFeeInformLinks, saveFeeInformLinks, deleteFeeInform, handleExternalFeeOperation, openCaseCommission, submitCaseCommissions };
 }

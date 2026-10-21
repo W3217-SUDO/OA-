@@ -131,6 +131,7 @@ import type { FinanceOriginalQueryViewProps } from "./FinanceOriginalQueryView";
 import type { RefundCaseFeeOperationMenuProps, RefundCaseFeeMarkButtonProps, RefundCaseFeeModalsProps } from "./RefundCaseFeeActions";
 import { financeErrorDetail, financeErrorMessageText } from "./financeErrors";
 import { amountQueryRange, dateQueryRange, queryArray, queryTextValue, type FinanceOriginalQuery } from "./originalQuery";
+import { clearInternalApplicationQuery, readInternalApplicationQuery } from "./internalApplicationNavigation";
 import { createFinanceAccountingActions, rollbackFinanceTransactionRequest } from "./services/accountingActions";
 import { createFinanceDocumentsActions } from "./services/documentsActions";
 import { createFinanceInvoicesActions, loadInvoiceRecord, withdrawInvoiceApplication } from "./services/invoicesActions";
@@ -466,6 +467,7 @@ function FinanceCenterContent({
     () => consumeDashboardFeeQuery(initialView),
     [initialView],
   );
+  const internalApplicationQuerySeed = useMemo(() => readInternalApplicationQuery(initialView), [initialView]);
   const [originalQueryDraft, setOriginalQueryDraft] = useState<FinanceOriginalQuery>(dashboardFeeQuerySeed);
   const [originalQuery, setOriginalQuery] = useState<FinanceOriginalQuery>(
     dashboardFeeQuerySeed,
@@ -1297,6 +1299,8 @@ function FinanceCenterContent({
           }
       : initialView === "finance-payment-audit"
         ? { status: "待审批" }
+        : initialView === "finance-internal-mine"
+          ? internalApplicationQuerySeed
         : initialView === "finance-payment-waiting"
           ? { status: "待付款" }
           : initialView === "finance-payment-print"
@@ -1327,6 +1331,7 @@ function FinanceCenterContent({
                         : {};
     setOriginalQueryDraft(defaults);
     setOriginalQuery(defaults);
+    if (initialView === "finance-internal-mine") clearInternalApplicationQuery();
     setSelectedOriginalRows([]);
     setLocalListPage({ page: 1, pageSize: 15 });
     setPaymentPrintPreview(null);
