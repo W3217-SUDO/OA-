@@ -2069,7 +2069,11 @@ test("personal AI mobile tools close their existing popover before opening the s
 });
 
 test("personal AI space shows known Chinese source labels and preserves unknown source values", () => {
-  const { PersonalAiSpaceFiles } = loadModule("../personal-agent/PersonalAiSpaceFiles.tsx", { antd: { Button: () => null, Empty: () => null, Tag: () => null, Tooltip: () => null } });
+  const { PersonalAiSpaceFiles } = loadModule("../personal-agent/PersonalAiSpaceFiles.tsx", {
+    antd: { Button: () => null, Empty: () => null, Tag: () => null, Tooltip: () => null },
+    "../api": { api: { get: () => assert.fail("来源展示不能请求文件") } },
+    "./types": { errorText: () => assert.fail("来源展示不能触发操作错误") },
+  });
   const text = (node) => typeof node === "string" || typeof node === "number" ? String(node) : React.Children.toArray(node?.props?.children).map(text).join("");
   for (const [source, label] of [["mcp_export", "案件导出"], ["mcp_generated", "智能体生成文件"], ["case_draft", "案件AI草稿"], ["case_upload", "案件AI上传"], ["case_migration", "案件AI迁移"], ["assistant_message", "助手回答"], ["personal_identity", "个人身份文件"], ["personal_edit", "在线编辑新版本"], ["future_source", "future_source"], ["toString", "toString"]]) {
     const rendered = PersonalAiSpaceFiles({ items: [{ id: "CODEX-file", name: "CODEX文稿.docx", status: "failed", size: 10, created_at: "2026-10-13T00:00:00Z", source_kind: source, conversation_id: null, source_request_id: null, error: null, download_url: null }], downloadingId: "", busy: false, onDownload: () => assert.fail("来源展示不能下载"), onConversation: () => assert.fail("无来源会话不能导航") });
