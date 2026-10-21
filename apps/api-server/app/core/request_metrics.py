@@ -60,6 +60,17 @@ def measure_phase(name):
             metrics.phases[name] = metrics.phases.get(name, 0) + perf_counter() - started
 
 
+def add_phase(name, seconds, metrics=None):
+    """记录一段已经算好的耗时（如在线程里测得的），与 measure_phase 合并输出。"""
+    metrics = metrics or _current.get()
+    if metrics is not None and not metrics.closed:
+        metrics.phases[name] = metrics.phases.get(name, 0) + seconds
+
+
+def current_metrics():
+    return _current.get()
+
+
 def install_query_metrics(engine):
     @event.listens_for(engine.sync_engine, "before_cursor_execute")
     def before_execute(conn, cursor, statement, parameters, context, executemany):

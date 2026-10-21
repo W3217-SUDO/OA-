@@ -9,6 +9,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -175,23 +176,28 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
                 raise HTTPException(409, "原生会话归属记录损坏，未覆盖历史记录") from None
             if mapping != {"format": 1, "session": identifier}:
                 raise HTTPException(409, "原生会话归属映射不一致，未覆盖历史记录")
-        available = await definitions(identity, db)
-        directories = publish(home.parent.parent / "skill-versions", available)
-        guarded = WorkspaceTools(tools, identity, db, on_progress)
-        schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL]
-        from .memory import configuration as memory_configuration
-        memory = memory_configuration(cwd, identity['username'])
-        from .plugins import attach
-        profile = attach(home)
+        from app.core.request_metrics import add_phase, current_metrics, measure_phase
+        metrics = current_metrics()  # 线程里测得的耗时也记到本次请求，慢请求日志里可看到各段耗时
+        with measure_phase("agent.prepare"):
+            available = await definitions(identity, db)
+            directories = publish(home.parent.parent / "skill-versions", available)
+            guarded = WorkspaceTools(tools, identity, db, on_progress)
+            schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL]
+            from .memory import configuration as memory_configuration
+            memory = memory_configuration(cwd, identity['username'])
+            from .plugins import attach
+            profile = attach(home)
         async with workspace_mcp(guarded, schemas) as (url, secret):
             patch_path.write_text(yaml.safe_dump(_patch(url, secret, schemas, directories, mode_supported, response_mode, memory,
                                                       native_plugins=profile != "sdk"),
                                                  allow_unicode=True, sort_keys=False), encoding="utf-8")
             patch_path.chmod(0o600)
+            started = time.perf_counter()
             harness = DeepSeekHarness(dsh_home=native_path(home), cwd=native_path(cwd), profile=profile, patches=(native_path(patch_path),),
                                        provider="huzhi-oa", model=settings.langgraph_model, env=_environment(),
                                        reasoning_effort=("off" if response_mode == "fast" else "high") if mode_supported else None,
                                        initialize_timeout_seconds=40, request_timeout_seconds=180)
+            add_phase("agent.harness_init", time.perf_counter() - started, metrics)
             loop = asyncio.get_running_loop()
             queue = asyncio.Queue()
 
@@ -201,27 +207,38 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
                     if isinstance(text, str) and text:
                         loop.call_soon_threadsafe(queue.put_nowait, ("delta", text))
                 elif item.method == "session.event" and (item.payload.get("event") or {}).get("type") == "tool/call":
+                    add_phase("agent.tool_calls_x1000", 0.001, metrics)  # 次数：毫秒值即调用次数
                     loop.call_soon_threadsafe(queue.put_nowait, ("progress", "正在调用工作区工具…"))
 
             def execute():
                 try:
+                    opened = time.perf_counter()
                     session = harness.resume_session(identifier) if resumed else harness.start_session(identifier)
                     session.get_working_directory()
                     if not resumed:
                         marker.write_text(json.dumps({"format": 1, "session": identifier}), encoding="utf-8")
-                    return session.run(_content(messages, resumed=resumed), on_notification=notification)
+                    add_phase("agent.session_open", time.perf_counter() - opened, metrics)
+                    running = time.perf_counter()
+                    try:
+                        return session.run(_content(messages, resumed=resumed), on_notification=notification)
+                    finally:
+                        add_phase("agent.session_run", time.perf_counter() - running, metrics)
                 finally:
                     loop.call_soon_threadsafe(queue.put_nowait, ("finished", ""))
 
             if on_progress:
                 await on_progress("正在启动工作区智能体…")
             runner = asyncio.create_task(asyncio.to_thread(execute))
+            first_delta = None
             async with asyncio.timeout(180):
                 while True:
                     kind, value = await queue.get()
                     if kind == "finished":
                         break
                     if kind == "delta":
+                        if first_delta is None:
+                            first_delta = time.perf_counter()
+                            add_phase("agent.first_delta", first_delta - started, metrics)
                         await on_delta(value)
                     elif on_progress:
                         await on_progress(value)
@@ -242,7 +259,9 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
         raise HTTPException(503, "Harness 本地运行资源不可用，系统错误码：" + str(exc.errno)) from None
     finally:
         if harness is not None:
+            closing = time.perf_counter()
             await asyncio.to_thread(harness.close)
+            add_phase("agent.harness_close", time.perf_counter() - closing)
         if runner is not None:
             await asyncio.gather(runner, return_exceptions=True)
         patch_path.unlink(missing_ok=True)
