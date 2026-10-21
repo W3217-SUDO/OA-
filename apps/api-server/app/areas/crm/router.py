@@ -1922,8 +1922,25 @@ async def list_party_library(
     people_count = int(await db.scalar(select(func.count(Entry.subject_name.distinct())).where(*conditions)) or 0)
     rows = (await db.scalars(select(Entry).where(*conditions).order_by(Entry.case_no.desc(), Entry.id)
                              .offset((page - 1) * page_size).limit(page_size))).all()
+    # 我方当事人可点：优先对应当事人档案，其次是委托客户档案。
+    from app.data_models.parties import PartyRecord
+    our_names = {name for row in rows for name in (row.our_parties or [])}
+    party_ids = {title: pid for pid, title in (await db.execute(
+        select(PartyRecord.id, PartyRecord.name).where(PartyRecord.name.in_(our_names)).order_by(PartyRecord.id.desc()))).all()} if our_names else {}
+    customers_by_title = {title: (cid, serial) for cid, title, serial in (await db.execute(
+        select(BusinessRecord.id, BusinessRecord.title, BusinessRecord.serial_no).where(
+            BusinessRecord.module == "customer", BusinessRecord.status != "已回收", BusinessRecord.title.in_(our_names)
+        ).order_by(BusinessRecord.id.desc()))).all()} if our_names else {}
+
+    def our_party_links(names):
+        return [{"name": name, "party_id": party_ids.get(name),
+                 "customer_id": customers_by_title.get(name, (None, ""))[0] if name not in party_ids else None,
+                 "customer_serial_no": customers_by_title.get(name, (None, ""))[1] if name not in party_ids else ""}
+                for name in (names or [])]
+
     return {
         "items": [{
+            "our_party_links": our_party_links(row.our_parties),
             "id": row.id, "case_id": row.case_id, "case_no": row.case_no, "case_category": row.case_category, "party_no": row.party_no,
             "party_id": row.party_id, "customer_record_id": row.customer_record_id, "subject_name": row.subject_name,
             "case_phase": row.case_phase, "closed_at": row.closed_at,

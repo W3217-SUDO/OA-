@@ -81,6 +81,7 @@ import { useMobileChatViewport } from "./personal-agent/useMobileChatViewport";
 import AiChatPage from "./personal-agent/AiChatPage";
 import { PersonalWorkspaceProvider } from "./personal-agent/PersonalWorkspaceProvider";
 import "./personal-agent/mobile-chat-layout.css";
+import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 
 function reloadAppShell() {
   const url = new URL(window.location.href);
@@ -1700,6 +1701,7 @@ export default function App() {
         scope={({ mine: "mine", dept: "department", company: "company", recycle: "recycle" } as Record<string, string>)[route.split("-")[1]] || "company"}
         category={({ civil: "民事", admin: "行政", criminal: "刑事", arbitration: "仲裁", advisor: "法律顾问", nonlit: "非诉讼" } as Record<string, string>)[route.split("-")[2]] || ""}
         isAdmin={permissionAdministrator}
+        onOpenCustomer={(target) => { rememberCustomerDetailTarget(target); navigate("customer-company"); }}
         onOpenCase={(row) => row.case_category === "非诉讼" ? undefined : navigate(`case-detail-${row.case_id}-${encodeURIComponent(row.case_no)}`)}
       />
     ) : route === "customer-conflict" ? (

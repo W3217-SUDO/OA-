@@ -272,6 +272,25 @@ class PartyLibraryQueryTest(unittest.IsolatedAsyncioTestCase):
                          (["甲"], "原告", ["乙", "丙"], "被告"))
         self.assertEqual(row["managers"], ["u1"])
 
+    async def test_our_party_names_link_to_the_client_record_or_the_party_record(self):
+        async with self.sessions() as db:
+            db.add(BusinessRecord(module="case", serial_no="CODEX-PL-A4", title="共同", customer="甲", status="文书准备", owner="admin",
+                                  data={"plaintiff": "甲,戊", "defendant": "己"}))
+            await db.commit()
+        async with self.sessions() as db:
+            db.add(BusinessRecord(module="customer", serial_no="HZKH2610002", title="戊", customer="", status="T", owner="u1",
+                                  data={"customer_type": "申请人"}))
+            await db.commit()
+        await self._rebuild()
+        row = next(r for r in (await self._list(name="己"))["items"] if r["case_no"] == "CODEX-PL-A4")
+        links = {item["name"]: item for item in row["our_party_links"]}
+        self.assertEqual(set(links), {"甲", "戊"})
+        self.assertIsNotNone(links["甲"]["customer_id"])  # 委托客户 → 客户详情
+        self.assertEqual(links["甲"]["customer_serial_no"], "CODEX-PL-C1")
+        self.assertIsNone(links["甲"]["party_id"])
+        self.assertIsNotNone(links["戊"]["party_id"])  # 当事人 → 当事人信息
+        self.assertIsNone(links["戊"]["customer_id"])
+
     async def test_people_count_is_people_not_rows(self):
         async with self.sessions() as db:
             db.add(BusinessRecord(module="case", serial_no="CODEX-PL-A3", title="二", customer="甲", status="文书准备", owner="admin",

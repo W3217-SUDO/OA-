@@ -16,6 +16,7 @@ interface PartyLibraryRow {
   subject_name: string;
   subject_position: string;
   our_parties: string[];
+  our_party_links: { name: string; party_id: number | null; customer_id: number | null; customer_serial_no: string }[];
   our_position: string;
   opponent_parties: string[];
   opponent_position: string;
@@ -33,7 +34,7 @@ interface PartyDetail {
 
 const SCOPE_TITLES: Record<string, string> = { mine: "我的当事人", department: "部门当事人", company: "公司当事人", recycle: "当事人回收站" };
 
-export default function PartyLibraryPage({ scope = "company", category = "", isAdmin = false, onOpenCase }: { scope?: string; category?: string; isAdmin?: boolean; onOpenCase?: (row: PartyLibraryRow) => void }) {
+export default function PartyLibraryPage({ scope = "company", category = "", isAdmin = false, onOpenCase, onOpenCustomer }: { scope?: string; category?: string; isAdmin?: boolean; onOpenCase?: (row: PartyLibraryRow) => void; onOpenCustomer?: (target: { id: number; serial_no: string; title: string }) => void }) {
   const [rows, setRows] = useState<PartyLibraryRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -133,7 +134,21 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
             title: "案号", dataIndex: "case_no", width: 170,
             render: (value: string, row) => (onOpenCase && row.case_category !== "非诉讼" ? <a onClick={() => onOpenCase(row)}>{value}</a> : value),
           },
-          { title: "我方当事人", dataIndex: "our_parties", render: joinNames },
+          {
+            title: "我方当事人", dataIndex: "our_parties",
+            render: (_: string[], row) => {
+              const links = row.our_party_links || [];
+              if (!links.length) return "—";
+              return links.map((item, index) => (
+                <span key={`${item.name}-${index}`}>
+                  {index > 0 ? "、" : ""}
+                  {item.party_id ? <a onClick={() => void openDetail(item.party_id)}>{item.name}</a>
+                    : item.customer_id && onOpenCustomer ? <a onClick={() => onOpenCustomer({ id: item.customer_id as number, serial_no: item.customer_serial_no, title: item.name })}>{item.name}</a>
+                    : item.name}
+                </span>
+              ));
+            },
+          },
           { title: "诉讼地位", dataIndex: "our_position", width: 90, render: (value: string) => value || "—" },
           { title: "案件阶段", dataIndex: "case_phase", width: 110, render: (value: string) => value || "—" },
           { title: "归档日期", dataIndex: "closed_at", width: 110, render: (value: string) => value || "—" },
