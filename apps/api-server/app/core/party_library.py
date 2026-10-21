@@ -2,13 +2,17 @@
 import re
 import unicodedata
 
+from datetime import datetime
+
 from sqlalchemy import delete, func, insert, select
 
 from app.data_models.ipr_cases import IprCaseCustomer
+from app.data_models.parties import PartyRecord
 from app.data_models.party_library import PartyLibraryEntry
 from app.data_models.records import BusinessRecord
 
 MIGRATION_REVISION = "party_library_v1"
+PARTY_MASTER_REVISION = "party_master_v1"
 _SPLIT = re.compile(r"[,，、;；\n]+")
 _PLAINTIFF = "原告"
 _DEFENDANT = "被告"
@@ -91,6 +95,7 @@ def case_party_layout(case: dict) -> dict:
 
 
 def build_entries(case: dict, client_titles: set[str], managers: list[str], party_records: dict | None = None) -> list[dict]:
+    """party_records：规范化名称 -> (当事人表 id, 当事人编号, 来源客户记录 id)。"""
     manager_key = "|" + "|".join(managers) + "|" if managers else ""
     layout = case_party_layout(case)
     client = str(case.get("customer") or "").strip()
@@ -102,7 +107,8 @@ def build_entries(case: dict, client_titles: set[str], managers: list[str], part
             continue  # 客户不进当事人库，只作为“我方当事人”出现在行里
         record = (party_records or {}).get(_normalize(name))
         entries.append({
-            "party_no": record[1] if record else "", "customer_record_id": record[0] if record else None,
+            "party_id": record[0] if record else None, "party_no": record[1] if record else "",
+            "customer_record_id": record[2] if record else None,
             "case_id": case["id"], "case_no": case["serial_no"], "subject_name": name,
             "case_category": category,
             "subject_type": "当事人",
@@ -114,22 +120,99 @@ def build_entries(case: dict, client_titles: set[str], managers: list[str], part
     return entries
 
 
+def next_party_no(existing_numbers, year: str | None = None) -> str:
+    """新建当事人编号：DSR + 两位年份 + 5 位流水，只按当事人表里的编号计数。"""
+    prefix = f"DSR{datetime.now():%y}" if year is None else f"DSR{year}"
+    top = max((int(number[len(prefix):]) for number in existing_numbers
+               if number.startswith(prefix) and number[len(prefix):].isdigit() and len(number) == len(prefix) + 5), default=0)
+    return f"{prefix}{top + 1:05d}"
+
+
+def sync_parties_from_customers(connection) -> int:
+    """把客户表里非“客户”类型的记录登记进当事人表，编号沿用客户编号；只读客户表，不改它。"""
+    have = {row[0] for row in connection.execute(select(PartyRecord.source_customer_id).where(PartyRecord.source_customer_id.is_not(None))).all()}
+    taken = {row[0] for row in connection.execute(select(PartyRecord.party_no)).all()}
+    rows = []
+    for record_id, serial_no, title, owner, department, status, data, description in connection.execute(select(
+            BusinessRecord.id, BusinessRecord.serial_no, BusinessRecord.title, BusinessRecord.owner, BusinessRecord.department,
+            BusinessRecord.status, BusinessRecord.data, BusinessRecord.description,
+    ).where(BusinessRecord.module == "customer").order_by(BusinessRecord.id)).all():
+        data = data or {}
+        kind = data.get("customer_type", "客户")
+        if kind == "客户" or record_id in have or serial_no in taken or not str(title or "").strip():
+            continue
+        managers = data.get("customer_managers") or ([owner] if owner else [])
+        rows.append({
+            "party_no": serial_no, "name": str(title).strip(), "party_type": str(kind or "当事人"), "source_customer_id": record_id,
+            "owner": owner or "", "department": department or "",
+            "managers": [str(item) for item in (managers if isinstance(managers, list) else [managers]) if item],
+            "status": status or "", "description": description or "", "data": data, "created_by": "migration",
+        })
+        taken.add(serial_no)
+    for start in range(0, len(rows), 1000):
+        connection.execute(insert(PartyRecord), rows[start:start + 1000])
+    return len(rows)
+
+
+def _register_missing_parties(connection, rows: list[dict]) -> int:
+    """案件里出现过、当事人表里没有的人，登记进当事人表并发 DSR 号；只写当事人表。"""
+    unresolved: dict[str, dict] = {}
+    for row in rows:
+        if not row["party_no"]:
+            unresolved.setdefault(_normalize(row["subject_name"]), row)
+    if not unresolved:
+        return 0
+    taken = {number for (number,) in connection.execute(select(PartyRecord.party_no)).all()}
+    from app.data_models.identity import User
+    departments = dict(connection.execute(select(User.username, User.department)).all())
+    created: dict[str, tuple[str, str]] = {}
+    new_rows = []
+    for key, row in unresolved.items():
+        number = next_party_no(taken)
+        taken.add(number)
+        owner = (row["managers"] or [""])[0]
+        new_rows.append({
+            "party_no": number, "name": row["subject_name"], "party_type": "当事人", "source_customer_id": None,
+            "owner": owner, "department": departments.get(owner, "") or "", "managers": list(row["managers"] or []),
+            "status": "潜在", "description": f"由案件 {row['case_no']} 当事人信息登记",
+            "data": {"case_litigant_origin": {"case_id": row["case_id"], "case_no": row["case_no"], "roles": [row["subject_position"]]}},
+            "created_by": "system",
+        })
+        created[key] = (number, row["subject_name"])
+    for start in range(0, len(new_rows), 1000):
+        connection.execute(insert(PartyRecord), new_rows[start:start + 1000])
+    ids = {_normalize(name): pid for pid, name in connection.execute(
+        select(PartyRecord.id, PartyRecord.name).where(PartyRecord.party_no.in_([number for number, _ in created.values()]))).all()}
+    for row in rows:
+        key = _normalize(row["subject_name"])
+        if not row["party_no"] and key in created:
+            row["party_no"] = created[key][0]
+            row["party_id"] = ids.get(key)
+    return len(new_rows)
+
+
 def rebuild_party_library(connection) -> int:
-    """按案件重建整张表；案件和客户数据不改动。"""
+    """先把客户表里的当事人类型记录登记进当事人表，再按案件重建当事人库，案件里没登记过的人自动登记并发 DSR 号。
+    只写当事人表和当事人库，不改案件和客户表。"""
+    sync_parties_from_customers(connection)
     customers = connection.execute(select(
-        BusinessRecord.id, BusinessRecord.title, BusinessRecord.owner, BusinessRecord.data, BusinessRecord.serial_no,
+        BusinessRecord.id, BusinessRecord.title, BusinessRecord.owner, BusinessRecord.data,
     ).where(BusinessRecord.module == "customer", BusinessRecord.status != "已回收").order_by(BusinessRecord.id)).all()
-    client_titles = {_normalize(title) for _, title, _, data, _ in customers if (data or {}).get("customer_type", "客户") == "客户" and _normalize(title)}
-    # 当事人沿用档案里的编号：从客户挪来的是原客户编号，新建的是 DSR 编号；同名取最早的一条。
-    party_records: dict[str, tuple[int, str]] = {}
-    for record_id, title, _, data, record_serial in customers:
-        if (data or {}).get("customer_type", "客户") != "客户" and _normalize(title):
-            party_records.setdefault(_normalize(title), (record_id, record_serial))
+    client_titles = {_normalize(title) for _, title, _, data in customers if (data or {}).get("customer_type", "客户") == "客户" and _normalize(title)}
+    # 当事人沿用档案里的编号；同名取最早的一条，已回收的不参与对应。
+    party_records: dict[str, tuple[int, str, int | None]] = {}
+    party_by_customer: dict[int, tuple[int, str]] = {}
+    for pid, number, name, customer_id, status in connection.execute(select(
+            PartyRecord.id, PartyRecord.party_no, PartyRecord.name, PartyRecord.source_customer_id, PartyRecord.status,
+    ).order_by(PartyRecord.source_customer_id.is_(None), PartyRecord.id)).all():  # 同名时优先沿用从客户挪来的老编号
+        if customer_id is not None:
+            party_by_customer[customer_id] = (pid, number)
+        if status != "已回收" and _normalize(name):
+            party_records.setdefault(_normalize(name), (pid, number, customer_id))
     managers_by_id = {}
-    for record_id, _, owner, data, _ in customers:
+    for record_id, _, owner, data in customers:
         managers = (data or {}).get("customer_managers") or ([owner] if owner else [])
         managers_by_id[record_id] = [str(item) for item in (managers if isinstance(managers, list) else [managers]) if item]
-    connection.execute(delete(PartyLibraryEntry))
     rows: list[dict] = []
     cases = connection.execute(select(
         BusinessRecord.id, BusinessRecord.serial_no, BusinessRecord.customer, BusinessRecord.owner, BusinessRecord.data,
@@ -144,15 +227,17 @@ def rebuild_party_library(connection) -> int:
         managers = managers_by_id.get(customer_id) or ([owner] if owner else [])
         rows.extend(build_entries(
             {"id": case_id, "serial_no": serial_no, "customer": customer, "data": data, "status": case_status}, client_titles, managers, party_records))
-    rows.extend(_non_litigation_entries(connection, customers, managers_by_id, party_records))
+    rows.extend(_non_litigation_entries(connection, managers_by_id, party_by_customer))
+    _register_missing_parties(connection, rows)
+    connection.execute(delete(PartyLibraryEntry))
     for start in range(0, len(rows), 2000):
         connection.execute(insert(PartyLibraryEntry), rows[start:start + 2000])
     return int(connection.scalar(select(func.count()).select_from(PartyLibraryEntry)) or 0)
 
 
-def _non_litigation_entries(connection, customers, managers_by_id, party_records) -> list[dict]:
-    """非诉讼（知识产权）案件：案件关联的非“客户”类型主体（多为申请人）是当事人；案件委托人列在“我方当事人”里。"""
-    by_id = {record_id: (title, data or {}, serial) for record_id, title, _, data, serial in customers}
+def _non_litigation_entries(connection, managers_by_id, party_by_customer) -> list[dict]:
+    """非诉讼（知识产权）案件：案件关联的当事人表里的主体（多为申请人）是当事人；案件委托人列在“我方当事人”里。"""
+    parties = {pid: (number, name) for pid, number, name in connection.execute(select(PartyRecord.id, PartyRecord.party_no, PartyRecord.name)).all()}
     links: dict[int, list[int]] = {}
     for case_record_id, customer_record_id in connection.execute(
             select(IprCaseCustomer.case_record_id, IprCaseCustomer.customer_record_id)
@@ -172,14 +257,12 @@ def _non_litigation_entries(connection, customers, managers_by_id, party_records
             customer_id = 0
         managers = managers_by_id.get(customer_id) or ([owner] if owner else [])
         for linked_id in links.get(case_id, []):
-            if linked_id not in by_id:
-                continue
-            title, linked_data, linked_serial = by_id[linked_id]
-            if linked_data.get("customer_type", "客户") == "客户":
-                continue  # 客户不进当事人库；类型是申请人等的，即使就是案件委托人本人，也是非诉讼案件产生的当事人
+            if linked_id not in party_by_customer:
+                continue  # 关联的是客户，不进当事人库
+            party_id, number = party_by_customer[linked_id]
             entries.append({
-                "party_no": linked_serial, "customer_record_id": linked_id, "case_id": case_id, "case_no": serial_no,
-                "case_category": NON_LITIGATION, "subject_name": title, "subject_type": "当事人",
+                "party_id": party_id, "party_no": number, "customer_record_id": linked_id, "case_id": case_id, "case_no": serial_no,
+                "case_category": NON_LITIGATION, "subject_name": parties[party_id][1], "subject_type": "当事人",
                 "subject_position": "申请人", "our_parties": [client] if client else [], "our_position": "",
                 "opponent_parties": [], "opponent_position": "", "managers": managers,
                 "manager_key": "|" + "|".join(managers) + "|" if managers else "", "case_status": str(status or ""),
@@ -187,64 +270,14 @@ def _non_litigation_entries(connection, customers, managers_by_id, party_records
     return entries
 
 
-def upgrade_party_library(connection):
-    PartyLibraryEntry.__table__.create(connection, checkfirst=True)
+def upgrade_party_master(connection):
+    """当事人表建表并登记；当事人库表结构随之重建（它是由案件生成的派生数据）。"""
+    PartyRecord.__table__.create(connection, checkfirst=True)
+    PartyLibraryEntry.__table__.drop(connection, checkfirst=True)
+    PartyLibraryEntry.__table__.create(connection)
     rebuild_party_library(connection)
 
 
-_ROLE_BY_POSITION = {"申请人": _PLAINTIFF, "被申请人": _DEFENDANT}
-
-
-async def register_unnumbered_parties(db, identity: dict) -> dict:
-    """给案件里出现过、但没有档案的当事人建档并发放 DSR 当事人编号，然后重建当事人库。
-
-    只新增“当事人”类型的档案；已有档案（含沿用客户编号的）和案件数据都不改。
-    """
-    from uuid import uuid4
-    from datetime import date
-
-    from app.core.crm import _mark_customer_modified, _next_party_serial_no
-    from app.core.legacy_sync import _sync_legacy_projection
-    from app.data_models.identity import User
-    from app.data_models.records import WorkflowEvent
-
-    pending = (await db.execute(
-        select(PartyLibraryEntry.subject_name, PartyLibraryEntry.case_id, PartyLibraryEntry.case_no,
-               PartyLibraryEntry.subject_position, PartyLibraryEntry.managers)
-        .where(PartyLibraryEntry.party_no == "").order_by(PartyLibraryEntry.id)
-    )).all()
-    first_seen: dict[str, tuple] = {}
-    for name, case_id, case_no, position, managers in pending:
-        first_seen.setdefault(_normalize(name), (name, case_id, case_no, position, managers))
-    existing = {_normalize(title) for (title,) in (await db.execute(
-        select(BusinessRecord.title).where(BusinessRecord.module == "customer"))).all()}
-    created = 0
-    for normalized, (name, case_id, case_no, position, managers) in first_seen.items():
-        if not normalized or normalized in existing:
-            continue
-        role = _ROLE_BY_POSITION.get(position, position) or _DEFENDANT
-        owner = (managers or [identity["username"]])[0]
-        owner_department = await db.scalar(select(User.department).where(User.username == owner))
-        party = BusinessRecord(
-            module="customer", serial_no=await _next_party_serial_no(db), title=name, customer=name,
-            status="潜在", owner=owner, department=owner_department or "上海分所",
-            description=f"由案件 {case_no} 当事人信息补发当事人编号",
-            data={
-                "customer_type": "当事人", "level": "潜在客户", "customer_managers": list(managers or [owner]),
-                "shared_with": [], "is_shared": "否", "is_assisted": "否", "fee_reduction": "否",
-                "customer_guid": str(uuid4()), "customer_source": "案件当事人",
-                "file_date": date.today().isoformat(), "contact_accounts": [], "contact": "",
-                "case_litigant_origin": {"case_id": case_id, "case_no": case_no, "roles": [role]},
-            },
-        )
-        _mark_customer_modified(party, identity)
-        db.add(party)
-        await db.flush()
-        db.add(WorkflowEvent(record_id=party.id, action="创建当事人", to_status=party.status, operator=identity["username"],
-                             comment=f"补发当事人编号：案件 {case_no}（{role}）"))
-        await _sync_legacy_projection(party, identity, db)
-        existing.add(normalized)
-        created += 1
-    await db.flush()
-    total = await db.run_sync(lambda session: rebuild_party_library(session.connection()))
-    return {"created": created, "entries": total}
+def upgrade_party_library(connection):
+    """第一版：当事人库建表。当事人表上线后，这一版的内容由 upgrade_party_master 接管重建。"""
+    PartyLibraryEntry.__table__.create(connection, checkfirst=True)

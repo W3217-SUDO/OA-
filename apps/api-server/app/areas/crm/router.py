@@ -460,6 +460,16 @@ async def customer_conflicts(
         }
         if _normalize_conflict_entity(customer.title) == needle or any(_normalize_conflict_entity(value) == needle for value in contact_names) or customer_identity_match:
             related_customer_names.add(customer.title)
+    # 当事人表里的主体（新建当事人不再写客户表）按同样的名称/证件规则参与检索。
+    from app.data_models.parties import PartyRecord
+    for party in (await db.scalars(select(PartyRecord))).all():
+        party_data = party.data or {}
+        party_identity_match = identity_needle in {
+            str(party_data.get("identity_no") or "").replace(" ", "").upper(),
+            str(party_data.get("credit_code") or "").replace(" ", "").upper(),
+        }
+        if _normalize_conflict_entity(party.name) == needle or party_identity_match:
+            related_customer_names.add(party.name)
     matching_cases = list(dict.fromkeys([
         *direct_matching_cases,
         *(case_record for case_record in cases if case_record.customer in related_customer_names),
@@ -1915,7 +1925,7 @@ async def list_party_library(
     return {
         "items": [{
             "id": row.id, "case_id": row.case_id, "case_no": row.case_no, "case_category": row.case_category, "party_no": row.party_no,
-            "customer_record_id": row.customer_record_id, "subject_name": row.subject_name,
+            "party_id": row.party_id, "customer_record_id": row.customer_record_id, "subject_name": row.subject_name,
             "subject_type": row.subject_type, "subject_position": row.subject_position,
             "our_parties": row.our_parties, "our_position": row.our_position,
             "opponent_parties": row.opponent_parties, "opponent_position": row.opponent_position,
@@ -1931,24 +1941,10 @@ async def rebuild_party_library_entries(
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
-    """案件当事人变动后按案件数据重新生成当事人库（只重建本表，不改案件和客户）。"""
+    """案件当事人变动后重新生成当事人库：同时把案件里还没登记的人登记进当事人表并发 DSR 号（不改案件和客户表）。"""
     from app.core.party_library import rebuild_party_library
     if identity.get("role") != "admin":
         raise HTTPException(status_code=403, detail="只有管理员可以重建当事人库")
     total = await db.run_sync(lambda session: rebuild_party_library(session.connection()))
     await db.commit()
     return {"total": total}
-
-
-@router.post(f"{settings.api_prefix}/party-library/register-unnumbered")
-async def register_unnumbered_party_library_parties(
-    identity: dict = Depends(current_identity),
-    db: AsyncSession = Depends(get_db),
-):
-    """给案件里没有档案的当事人建档并补发 DSR 当事人编号（仅管理员）。"""
-    from app.core.party_library import register_unnumbered_parties
-    if identity.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="只有管理员可以补发当事人编号")
-    result = await register_unnumbered_parties(db, identity)
-    await db.commit()
-    return result

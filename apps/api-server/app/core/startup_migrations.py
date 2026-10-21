@@ -28,7 +28,9 @@ from app.core.hz_allocation_read_model_migration import (
     MIGRATION_REVISION as HZ_ALLOCATION_READ_MODEL_REVISION,
     upgrade_hz_allocation_read_model,
 )
-from app.core.party_library import MIGRATION_REVISION as PARTY_LIBRARY_REVISION, upgrade_party_library
+from app.core.party_library import (
+    MIGRATION_REVISION as PARTY_LIBRARY_REVISION, PARTY_MASTER_REVISION, upgrade_party_library, upgrade_party_master,
+)
 from app.legacy_schema import (
     align_legacy_column_types,
     align_legacy_constraints,
@@ -121,6 +123,10 @@ def _apply_party_library(connection: Connection, _upgrade_schema: Callable[[Conn
     upgrade_party_library(connection)
 
 
+def _apply_party_master(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    upgrade_party_master(connection)
+
+
 def _apply_hz_allocation_read_model(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     upgrade_hz_allocation_read_model(connection)
 
@@ -143,6 +149,7 @@ def _run_versioned_schema_migrations(
         (FINANCE_QUERY_REVISION, _apply_finance_query_revision),
         (CASE_LINK_JSON_INDEX_REVISION, _apply_case_link_json_indexes),
         (PARTY_LIBRARY_REVISION, _apply_party_library),
+        (PARTY_MASTER_REVISION, _apply_party_master),
     )
     for revision, migration in revisions:
         if connection.execute(

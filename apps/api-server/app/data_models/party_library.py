@@ -17,6 +17,7 @@ class PartyLibraryEntry(Base):
     # 当事人编号：从客户挪来的沿用原客户编号，新建的用 DSR 编号；案件里尚无档案的为空。
     party_no: Mapped[str] = mapped_column(String(64), index=True, default="")
     customer_record_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    party_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     subject_name: Mapped[str] = mapped_column(Text, index=True)
     # 客户：案件委托人或已登记的客户；当事人：案件中的其他主体。
     subject_type: Mapped[str] = mapped_column(String(16), index=True)

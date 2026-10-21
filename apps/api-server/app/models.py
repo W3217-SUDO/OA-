@@ -28,6 +28,7 @@ from app.data_models.records import (
     WorkflowEvent as WorkflowEvent,
     CommunicationLog as CommunicationLog,
 )
+from app.data_models.parties import PartyRecord as PartyRecord
 from app.data_models.party_library import PartyLibraryEntry as PartyLibraryEntry
 from app.data_models.tasks import (
     VipTask as VipTask,

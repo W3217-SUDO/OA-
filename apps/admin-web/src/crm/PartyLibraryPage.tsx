@@ -56,22 +56,10 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
     setLoading(true);
     try {
       const { data } = await api.post("/party-library/rebuild");
-      message.success(`已按案件重新生成，共 ${data.total} 条`);
+      message.success(`已按案件重新生成，共 ${data.total} 条，新编号已自动发放`);
       await load(1);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "重建失败");
-      setLoading(false);
-    }
-  };
-
-  const registerUnnumbered = async () => {
-    setLoading(true);
-    try {
-      const { data } = await api.post("/party-library/register-unnumbered");
-      message.success(`已补发 ${data.created} 个当事人编号`);
-      await load(1);
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || "补发失败");
       setLoading(false);
     }
   };
@@ -86,10 +74,7 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
       className="panel customer-list-panel"
       title={`${SCOPE_TITLES[scope] || "当事人中心"}${category ? ` · ${category === "法律顾问" ? category : `${category}案件`}` : ""}`}
       extra={isAdmin ? (
-        <span>
-          <Button onClick={() => void registerUnnumbered()} style={{ marginRight: 8 }}>补发当事人编号</Button>
-          <Button icon={<ReloadOutlined />} onClick={() => void rebuild()}>按案件重新生成</Button>
-        </span>
+        <Button icon={<ReloadOutlined />} onClick={() => void rebuild()}>按案件重新生成</Button>
       ) : null}
     >
       <div className="customer-query">

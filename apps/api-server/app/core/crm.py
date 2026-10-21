@@ -636,24 +636,11 @@ async def _next_customer_serial_no(db: AsyncSession) -> str:
 
 
 async def _next_party_serial_no(db: AsyncSession) -> str:
-    """新建当事人的独立编号：DSR + 两位年份 + 5 位流水（如 DSR2600001），与客户编号分开计数。"""
-    serial_prefix = f"DSR{datetime.now():%y}"
-    serial_candidates = (await db.scalars(
-        select(BusinessRecord.serial_no).where(
-            BusinessRecord.module == "customer",
-            BusinessRecord.serial_no.like(f"{serial_prefix}%"),
-        )
-    )).all()
-    serial_sequence = max(
-        (
-            int(item[len(serial_prefix):])
-            for item in serial_candidates
-            if item[len(serial_prefix):].isdigit()
-            and len(item[len(serial_prefix):]) == 5
-        ),
-        default=0,
-    ) + 1
-    return f"{serial_prefix}{serial_sequence:05d}"
+    """新建当事人编号：DSR + 两位年份 + 5 位流水（如 DSR2600001），只按当事人表里的编号计数。"""
+    from app.core.party_library import next_party_no
+    from app.data_models.parties import PartyRecord
+    numbers = (await db.scalars(select(PartyRecord.party_no).where(PartyRecord.party_no.like(f"DSR{datetime.now():%y}%")))).all()
+    return next_party_no(numbers)
 
 
 def _case_is_for_allocation_customer(record: BusinessRecord, customer: BusinessRecord | None, customer_title: str) -> bool:
@@ -815,20 +802,15 @@ async def _persist_case_litigant_customers(
     db: AsyncSession,
     *,
     party_identities: dict[str, dict] | None = None,
-) -> list[BusinessRecord]:
-    """Materialize newly typed case parties in the customer register.
+) -> list:
+    """案件里新录入的当事人登记进当事人表（DSR 编号），不写客户表和客户历史表。
 
-    The legacy case editor creates a CRM customer with the party/applicant
-    type before it links the person to the case.  Keep that invariant in one
-    backend transaction so every case entry point feeds customer conflict
-    searches and both personal and company party lists.
+    客户表或当事人表里已有同名记录的不重复登记；已有记录的老编号保持不变。
     """
     from app.core.formatters import (
         _normalize_customer_name,
     )
-    from app.core.legacy_sync import (
-        _sync_legacy_projection,
-    )
+    from app.data_models.parties import PartyRecord
     requested: dict[str, dict[str, object]] = {}
     for role, values in parties_by_role.items():
         for title in values:
@@ -845,77 +827,36 @@ async def _persist_case_litigant_customers(
     ))
     if not current_user:
         raise HTTPException(status_code=401, detail="当前用户不存在或已停用")
-    active_party_type = await db.scalar(select(SystemParameter.id).where(
-        SystemParameter.category == "customer_type",
-        SystemParameter.name == "当事人",
-        SystemParameter.is_active.is_(True),
-    ))
-    if not active_party_type:
-        raise HTTPException(status_code=422, detail="客户类型“当事人”不存在或已停用")
-
-    existing_customers = list((await db.scalars(
-        select(BusinessRecord).where(BusinessRecord.module == "customer")
-    )).all())
-    existing_by_name = {
-        _normalize_customer_name(item.title): item
-        for item in existing_customers
-        if _normalize_customer_name(item.title)
+    known_names = {
+        _normalize_customer_name(title)
+        for (title,) in (await db.execute(select(BusinessRecord.title).where(BusinessRecord.module == "customer"))).all()
+    } | {
+        _normalize_customer_name(name) for (name,) in (await db.execute(select(PartyRecord.name))).all()
     }
-    created: list[BusinessRecord] = []
+    created: list[PartyRecord] = []
     for normalized, entry in requested.items():
-        if normalized in existing_by_name:
+        if not normalized or normalized in known_names:
             continue
         title = str(entry["title"])
         roles = list(entry["roles"]) if isinstance(entry["roles"], list) else []
-        # 案件里新出现的当事人用 DSR 当事人编号；已有记录（含从客户挪来的）保留原编号。
-        serial_no = await _next_party_serial_no(db)
-        data = {
-            "customer_type": "当事人",
-            "level": "潜在客户",
-            "customer_managers": [current_user.username],
-            "shared_with": [],
-            "is_shared": "否",
-            "is_assisted": "否",
-            "fee_reduction": "否",
-            "customer_guid": str(uuid4()),
-            "customer_source": "案件当事人",
-            "file_date": date.today().isoformat(),
-            "contact_accounts": [],
-            "contact": "",
-            "case_litigant_origin": {
-                "case_id": case_record.id,
-                "case_no": case_record.serial_no,
-                "roles": roles,
-            },
-        }
+        data = {"customer_source": "案件当事人", "case_litigant_origin": {
+            "case_id": case_record.id, "case_no": case_record.serial_no, "roles": roles,
+        }}
         party_identity = (party_identities or {}).get(title) or {}
         organization_type = str(party_identity.get("organization_type") or "")
         identity_no = str(party_identity.get("identity_no") or "")
         if organization_type and identity_no:
             data["organization_type"] = organization_type
             data["identity_no" if organization_type == "个人" else "credit_code"] = identity_no
-        party = BusinessRecord(
-            module="customer",
-            serial_no=serial_no,
-            title=title,
-            customer=title,
-            status="潜在",
-            owner=current_user.username,
-            department=current_user.department,
-            description=f"由案件 {case_record.serial_no} 当事人信息自动建档",
-            data=data,
+        party = PartyRecord(
+            party_no=await _next_party_serial_no(db), name=title, party_type="当事人", source_customer_id=None,
+            owner=current_user.username, department=current_user.department or "",
+            managers=[current_user.username], status="潜在",
+            description=f"由案件 {case_record.serial_no} 当事人信息自动登记",
+            data=data, created_by=identity["username"],
         )
-        _mark_customer_modified(party, identity)
         db.add(party)
         await db.flush()
-        db.add(WorkflowEvent(
-            record_id=party.id,
-            action="创建当事人",
-            to_status=party.status,
-            operator=identity["username"],
-            comment=f"由案件 {case_record.serial_no} 自动同步：{'、'.join(roles)}",
-        ))
-        await _sync_legacy_projection(party, identity, db)
-        existing_by_name[normalized] = party
+        known_names.add(normalized)
         created.append(party)
     return created
