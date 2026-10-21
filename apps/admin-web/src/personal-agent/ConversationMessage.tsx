@@ -1,3 +1,4 @@
+import { ToolTrace } from "./ToolTrace";
 import { Button, Tooltip } from "antd";
 import { CopyOutlined, FileWordOutlined, FolderOpenOutlined, PaperClipOutlined, RobotOutlined } from "@ant-design/icons";
 import { AgentMessageContent } from "../AgentMessageContent";
@@ -35,6 +36,7 @@ export function ConversationMessage({ item, generating, readingMaterials, progre
         </div>
         {assistant && generating && !!item.content && !!progress && <p className="workspace-thinking workspace-tool-progress" role="status" aria-live="polite">{progress}</p>}
         {assistant && <AgentToolResult result={item.tool_result} />}
+        {assistant && !generating && <ToolTrace trace={item.tool_trace} />}
         {!!item.attachments?.length && <div className="workspace-message-files">
           {item.attachments.map((file) => <span key={file.id} className={file.status === "failed" ? "workspace-message-file is-failed" : "workspace-message-file"}>
             <button onClick={() => onPreview(file)}><PaperClipOutlined />{file.name}</button>

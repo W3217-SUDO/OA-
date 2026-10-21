@@ -504,6 +504,8 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
                       for item in projected.get("pending_actions", [])],
          "human_confirmations": [item for item in state["messages"] if item.get("source") == "human_confirmation"][-10:]},
         ensure_ascii=False, default=str)
+    from app.harness_agent import tool_trace
+    trace = tool_trace.begin()  # 本轮每次工具调用都记在这里，随回答保存，前端可展开查看
     raw = await request_model(prompt, on_delta, tools=tools, response_mode=response_mode,
                               on_progress=on_progress, model_tools=tools.model_tools, identity=identity, db=db,
                               workspace=workspace_key(state_workspace(state)), conversation=state["conversation_id"])
@@ -538,7 +540,8 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
                               "can_save_document": personal_save or materials["can_save_document"],
                               "can_save_personal_document": personal_save, "can_save_case_document": materials["can_save_document"],
                               "can_save_spreadsheet": personal_save and has_markdown_table(response),
-                              "personal_document_save_error": personal_capability["error"]})
+                              "personal_document_save_error": personal_capability["error"],
+                              **({"tool_trace": trace} if trace else {})})
     state["updated_at"] = _now()
     await _save_state(username, state)
     return {

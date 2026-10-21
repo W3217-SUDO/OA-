@@ -80,12 +80,49 @@ SCRIPT_TOOL = {"type": "function", "function": {
         "additionalProperties": False}}}
 
 
+CODE_TOOL = {"type": "function", "function": {
+    "name": "harness_run_code", "description": "在隔离沙箱里运行你写的 Python / Node / Bash 代码，用于计算、统计、数据整理、格式转换、调用公网接口等。沙箱没有 OA 数据库、凭据和内网，只准公网 HTTP/HTTPS，每次最多运行 45 秒、输出最多 64000 字节，文件不保留（/work 为临时目录）。需要的数据由你在代码里写入；用 print 输出结果。失败和缺依赖必须如实说明，不得声称已执行。",
+    "parameters": {"type": "object", "properties": {
+        "language": {"type": "string", "enum": ["python", "node", "bash"]},
+        "code": {"type": "string", "minLength": 1, "maxLength": 200000},
+        "args": {"type": "array", "maxItems": 32, "items": {"type": "string", "maxLength": 2000}}},
+        "required": ["language", "code"], "additionalProperties": False}}}
+
+
+def sandbox_allowed(identity) -> bool:
+    """沙箱可运行任意代码，只开放给系统管理员。"""
+    from app.agent_permissions import is_actual_system_admin
+    return is_actual_system_admin(identity)
+
+
 class WorkspaceTools:
     def __init__(self, delegate, identity, db, on_progress=None):
         self.delegate, self.identity, self.db = delegate, identity, db
         self.on_progress = on_progress
 
     async def execute(self, name, arguments):
+        """所有工具调用统一在这里记录：先告诉前端正在调用什么，结束后把名称、参数摘要和结果状态记入本轮调用记录。"""
+        import time
+        from . import tool_trace
+        label = tool_trace.describe(name, arguments)[0]
+        if self.on_progress:
+            await self.on_progress("正在调用：" + label)
+        started, ok = time.perf_counter(), False
+        try:
+            result = await self._execute(name, arguments)
+            ok = not (isinstance(result, dict) and result.get("isError"))
+            return result
+        finally:
+            tool_trace.record(name, arguments, ok=ok, started=started)
+
+    async def _execute(self, name, arguments):
+        if name == "harness_run_code":
+            if not sandbox_allowed(self.identity):
+                raise HTTPException(403, "沙箱运行代码仅限系统管理员")
+            from .script_runtime import run_code
+            if not isinstance(arguments, dict) or set(arguments) - {"language", "code", "args"}:
+                raise HTTPException(422, "沙箱参数错误")
+            return await run_code(arguments.get("language"), arguments.get("code"), arguments.get("args", []))
         if name not in {"harness_read_skill_resource", "harness_run_skill_script"}:
             return await self.delegate.execute(name, arguments)
         allowed = {"name", "path", "args"} if name == "harness_run_skill_script" else {"name", "path", "offset", "limit"}

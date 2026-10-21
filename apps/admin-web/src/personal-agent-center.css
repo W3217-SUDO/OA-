@@ -195,3 +195,12 @@
   margin-bottom: 12px;
   color: #475467;
 }
+
+.workspace-tool-trace { margin-top: 6px; }
+.workspace-tool-trace .ant-collapse-header { padding: 2px 0 !important; font-size: 12px; color: #667085; }
+.workspace-tool-trace-list { margin: 0; padding-left: 18px; font-size: 12px; display: grid; gap: 4px; }
+.workspace-tool-trace-list li { overflow-wrap: anywhere; }
+.workspace-tool-trace-list .is-ok { color: #1f9d55; margin-right: 6px; }
+.workspace-tool-trace-list .is-failed { color: #d92d20; margin-right: 6px; }
+.workspace-tool-trace-list small { margin-left: 8px; color: #98a2b3; }
+.workspace-tool-trace-list code { display: block; margin-top: 2px; color: #667085; white-space: pre-wrap; word-break: break-all; }

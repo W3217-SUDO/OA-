@@ -118,6 +118,32 @@ async def run_script(skill, path, arguments):
     files = {name: base64.b64encode(read_resource(skill.bundle, name)).decode("ascii") for name in skill.bundle["files"]}
     payload = json.dumps({"method": "run", "path": str(script), "args": arguments,
                           "files": files, "manifest": skill.bundle["files"]}, ensure_ascii=False).encode()
+    return {"skill": skill.id, **await _submit(endpoint, payload)}
+
+
+_CODE_FILES = {"python": "main.py", "node": "main.js", "bash": "main.sh"}
+
+
+async def run_code(language, code, arguments):
+    """沙箱运行模型写的代码：把代码当作一个临时单文件技能包交给同一个隔离运行服务，不增加任何宿主权限。"""
+    import hashlib
+    if language not in _CODE_FILES:
+        raise HTTPException(422, "沙箱只支持 python、node、bash")
+    if not isinstance(code, str) or not code.strip() or len(code) > 200_000 or "\0" in code:
+        raise HTTPException(422, "代码不能为空，且不能超过 200000 字符")
+    if not isinstance(arguments, list) or len(arguments) > 32 or any(
+        not isinstance(item, str) or len(item) > 2000 or "\0" in item for item in arguments
+    ):
+        raise HTTPException(422, "参数必须为有限的字符串数组")
+    name = _CODE_FILES[language]
+    data = code.encode("utf-8")
+    payload = json.dumps({"method": "run", "path": name, "args": arguments,
+                          "files": {name: base64.b64encode(data).decode("ascii")},
+                          "manifest": {name: hashlib.sha256(data).hexdigest()}}, ensure_ascii=False).encode()
+    return {"sandbox": language, **await _submit(_socket_path(), payload)}
+
+
+async def _submit(endpoint, payload):
     if len(payload) > MAX_REQUEST:
         raise HTTPException(413, "技能运行请求超过上限")
     writer = None
@@ -130,8 +156,7 @@ async def run_script(skill, path, arguments):
             size = struct.unpack("!I", await reader.readexactly(4))[0]
             if not 0 < size <= MAX_RESPONSE:
                 raise HTTPException(502, "技能运行服务响应超过上限")
-            result = _result(await reader.readexactly(size))
-            return {"skill": skill.id, **result}
+            return _result(await reader.readexactly(size))
     except TimeoutError as exc:
         raise HTTPException(504, "技能隔离运行服务响应超时，未取得完成结果") from exc
     except (OSError, asyncio.IncompleteReadError) as exc:
