@@ -10,6 +10,8 @@ interface PartyLibraryRow {
   case_no: string;
   case_category: string;
   party_id: number | null;
+  case_phase: string;
+  closed_at: string;
   party_no: string;
   subject_name: string;
   subject_position: string;
@@ -26,7 +28,7 @@ const joinNames = (names: string[]) => (names || []).join("、") || "—";
 interface PartyDetail {
   party_no: string; name: string; party_type: string; source_customer_id: number | null; owner: string; department: string;
   managers: string[]; status: string; description: string; organization_type: string; identity_no: string; created_by: string;
-  cases: { case_id: number; case_no: string; case_category: string; position: string; our_parties: string[]; our_position: string; opponent_parties: string[]; opponent_position: string }[];
+  cases: { case_id: number; case_no: string; case_category: string; case_phase: string; closed_at: string; closed: boolean; position: string; our_parties: string[]; our_position: string; opponent_parties: string[]; opponent_position: string }[];
 }
 
 const SCOPE_TITLES: Record<string, string> = { mine: "我的当事人", department: "部门当事人", company: "公司当事人", recycle: "当事人回收站" };
@@ -133,12 +135,13 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
           },
           { title: "我方当事人", dataIndex: "our_parties", render: joinNames },
           { title: "诉讼地位", dataIndex: "our_position", width: 90, render: (value: string) => value || "—" },
+          { title: "案件阶段", dataIndex: "case_phase", width: 110, render: (value: string) => value || "—" },
+          { title: "归档日期", dataIndex: "closed_at", width: 110, render: (value: string) => value || "—" },
           {
-            title: "姓名或名称", dataIndex: "subject_name",
+            title: "对方当事人", dataIndex: "subject_name",
             render: (value: string, row) => (row.party_id ? <a onClick={() => void openDetail(row.party_id)}>{value}</a> : value),
           },
-          { title: "对方当事人", dataIndex: "opponent_parties", render: joinNames },
-          { title: "诉讼地位", dataIndex: "opponent_position", width: 90, render: (value: string) => value || "—" },
+          { title: "诉讼地位", dataIndex: "subject_position", width: 90, render: (value: string) => value || "—" },
           { title: "管理人", dataIndex: "managers", width: 140, render: joinNames },
         ]}
       />
@@ -165,6 +168,8 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
                 { title: "案号", dataIndex: "case_no" },
                 { title: "案件类型", dataIndex: "case_category", render: (value: string) => (value === "法律顾问" ? value : `${value}案件`) },
                 { title: "诉讼地位", dataIndex: "position", render: (value: string) => value || "—" },
+                { title: "案件阶段", dataIndex: "case_phase", render: (value: string) => value || "—" },
+                { title: "结案时间", dataIndex: "closed_at", render: (value: string) => value || "未结案" },
                 { title: "我方当事人", dataIndex: "our_parties", render: (value: string[]) => (value || []).join("、") || "—" },
                 { title: "对方当事人", dataIndex: "opponent_parties", render: (value: string[]) => (value || []).join("、") || "—" },
               ]}

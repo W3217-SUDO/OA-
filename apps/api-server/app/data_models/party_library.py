@@ -30,5 +30,8 @@ class PartyLibraryEntry(Base):
     # "|u1|u2|" 形式，便于按用户名精确匹配“我的/部门”范围。
     manager_key: Mapped[str] = mapped_column(Text, default="")
     # 已删除的案件只在回收站范围显示。
+    # 案件阶段与归档/结案日期（利益冲突检索要看案件是否结案）。
+    case_phase: Mapped[str] = mapped_column(String(64), default="")
+    closed_at: Mapped[str] = mapped_column(String(32), default="")
     case_status: Mapped[str] = mapped_column(String(32), index=True, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

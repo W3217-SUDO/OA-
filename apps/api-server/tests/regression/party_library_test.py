@@ -82,6 +82,16 @@ class PartyLibraryLayoutTest(unittest.TestCase):
         self.assertEqual(next_party_no([]), f"DSR{yy}00001")
         self.assertEqual(next_party_no([f"DSR{yy}00007", f"SHKH{yy}00099", "HZKH2610001"]), f"DSR{yy}00008")  # 客户编号不影响当事人流水
 
+    def test_rows_carry_case_phase_and_close_date_for_conflict_checks(self):
+        rows = build_entries({"id": 1, "serial_no": "A", "customer": "甲", "status": "已归档",
+                              "data": {"plaintiff": "甲", "defendant": "乙", "case_phase": "二审", "archived_at": "2021-04-07T13:35:47.157000"}}, set(), [])
+        self.assertEqual((rows[0]["case_phase"], rows[0]["closed_at"]), ("二审", "2021-04-07"))
+        later = build_entries({"id": 2, "serial_no": "B", "customer": "甲", "status": "文书准备",
+                               "data": {"plaintiff": "甲", "defendant": "乙", "case_closed_at": "2022-01-02"}}, set(), [])
+        self.assertEqual((later[0]["case_phase"], later[0]["closed_at"]), ("文书准备", "2022-01-02"))  # 无阶段用状态，无归档时间用结案时间
+        open_case = build_entries({"id": 3, "serial_no": "C", "customer": "甲", "status": "一审", "data": {"plaintiff": "甲", "defendant": "乙"}}, set(), [])
+        self.assertEqual(open_case[0]["closed_at"], "")
+
     def test_case_without_parties_or_client_has_no_entries(self):
         self.assertEqual(build_entries(case(""), set(), []), [])
 
@@ -214,6 +224,7 @@ class PartyLibraryQueryTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(detail["party_no"].startswith("DSR"))
         self.assertEqual((detail["name"], detail["party_type"], detail["owner"], detail["managers"]), ("乙", "当事人", "u1", ["u1"]))
         self.assertEqual([(c["case_no"], c["position"], c["our_parties"]) for c in detail["cases"]], [("CODEX-PL-A1", "被告", ["甲"])])
+        self.assertEqual((detail["cases"][0]["case_phase"], detail["cases"][0]["closed"]), ("文书准备", False))  # 案件阶段、是否结案
         async with self.sessions() as db:
             with self.assertRaises(HTTPException) as missing:
                 await get_party(999999, identity=ADMIN, db=db)

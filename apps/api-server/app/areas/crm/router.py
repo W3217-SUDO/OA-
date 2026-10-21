@@ -1926,6 +1926,7 @@ async def list_party_library(
         "items": [{
             "id": row.id, "case_id": row.case_id, "case_no": row.case_no, "case_category": row.case_category, "party_no": row.party_no,
             "party_id": row.party_id, "customer_record_id": row.customer_record_id, "subject_name": row.subject_name,
+            "case_phase": row.case_phase, "closed_at": row.closed_at,
             "subject_type": row.subject_type, "subject_position": row.subject_position,
             "our_parties": row.our_parties, "our_position": row.our_position,
             "opponent_parties": row.opponent_parties, "opponent_position": row.opponent_position,
@@ -1985,6 +1986,7 @@ async def get_party(
         "created_by": party.created_by, "created_at": party.created_at,
         "cases": [{
             "case_id": row.case_id, "case_no": row.case_no, "case_category": row.case_category,
+            "case_phase": row.case_phase, "closed_at": row.closed_at, "closed": bool(row.closed_at),
             "position": row.subject_position, "our_parties": row.our_parties, "our_position": row.our_position,
             "opponent_parties": row.opponent_parties, "opponent_position": row.opponent_position,
         } for row in entries],

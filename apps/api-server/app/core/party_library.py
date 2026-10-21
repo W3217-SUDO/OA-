@@ -94,9 +94,17 @@ def case_party_layout(case: dict) -> dict:
             "positions": {name: position for name in ours} | their_positions | {name: _THIRD for name in others}}
 
 
+def case_phase_and_closed_at(data: dict, status) -> tuple[str, str]:
+    """案件阶段（没有阶段时用案件状态）和归档/结案日期（归档时间优先，其次结案时间，只保留日期）。"""
+    phase = str(data.get("case_phase") or status or "").strip()
+    closed = str(data.get("archived_at") or data.get("case_closed_at") or "").strip()
+    return phase, closed[:10]
+
+
 def build_entries(case: dict, client_titles: set[str], managers: list[str], party_records: dict | None = None) -> list[dict]:
     """party_records：规范化名称 -> (当事人表 id, 当事人编号, 来源客户记录 id)。"""
     manager_key = "|" + "|".join(managers) + "|" if managers else ""
+    case_phase, closed_at = case_phase_and_closed_at(case.get("data") or {}, case.get("status"))
     layout = case_party_layout(case)
     client = str(case.get("customer") or "").strip()
     category = case_category((case.get("data") or {}).get("case_type"))
@@ -116,6 +124,7 @@ def build_entries(case: dict, client_titles: set[str], managers: list[str], part
             "our_parties": layout["ours"], "our_position": label(layout["our_position"]),
             "opponent_parties": layout["theirs"], "opponent_position": label(layout["their_position"]),
             "managers": managers, "manager_key": manager_key, "case_status": str(case.get("status") or ""),
+            "case_phase": case_phase, "closed_at": closed_at,
         })
     return entries
 
@@ -260,12 +269,14 @@ def _non_litigation_entries(connection, managers_by_id, party_by_customer) -> li
             if linked_id not in party_by_customer:
                 continue  # 关联的是客户，不进当事人库
             party_id, number = party_by_customer[linked_id]
+            case_phase, closed_at = case_phase_and_closed_at(data, status)
             entries.append({
                 "party_id": party_id, "party_no": number, "customer_record_id": linked_id, "case_id": case_id, "case_no": serial_no,
                 "case_category": NON_LITIGATION, "subject_name": parties[party_id][1], "subject_type": "当事人",
                 "subject_position": "申请人", "our_parties": [client] if client else [], "our_position": "",
                 "opponent_parties": [], "opponent_position": "", "managers": managers,
                 "manager_key": "|" + "|".join(managers) + "|" if managers else "", "case_status": str(status or ""),
+                "case_phase": case_phase, "closed_at": closed_at,
             })
     return entries
 
