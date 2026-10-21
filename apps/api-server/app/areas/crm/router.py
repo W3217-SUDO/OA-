@@ -1557,7 +1557,7 @@ async def list_customers(
     active_customer_types = set((await db.scalars(select(SystemParameter.name).where(
         SystemParameter.category == "customer_type", SystemParameter.is_active.is_(True),
     ))).all())
-    if customer_type != "全部" and customer_type not in active_customer_types:
+    if customer_type not in active_customer_types:
         raise HTTPException(status_code=422, detail="客户类型不存在或已停用")
     # Customer managers are stored as a JSON array.  Do not use a serialized
     # JSON ``contains`` predicate here: a user named ``ann`` would otherwise
@@ -1612,10 +1612,9 @@ async def list_customers(
     if normalized_name:
         like = f"%{normalized_name}%"
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like)))
-    if customer_type != "全部":  # “全部”不限类型，客户、申请人、当事人等都能按名称查到
-        conditions.append(
-            func.coalesce(BusinessRecord.data["customer_type"].as_string(), "客户") == customer_type
-        )
+    conditions.append(
+        func.coalesce(BusinessRecord.data["customer_type"].as_string(), "客户") == customer_type
+    )
     normalized_manager = manager.strip()
     manager_search_tokens = {normalized_manager} if normalized_manager else set()
     if normalized_manager:
