@@ -1,4 +1,5 @@
-import { Modal, Form, Select, Input } from "antd";
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
+import { Modal, Form, Input } from "antd";
 import type { Row, PersonOption } from "./types";
 
 interface AssignInvestigatorModalProps {
@@ -33,7 +34,7 @@ export default function AssignInvestigatorModal({
           name="investigator"
           rules={[{ required: true, min: 1 }]}
         >
-          <Select
+          <KeywordPersonSelect
             showSearch
             optionFilterProp="label"
             options={systemPersonOptions}

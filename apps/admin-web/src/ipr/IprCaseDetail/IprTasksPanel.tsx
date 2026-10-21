@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../../components/KeywordPersonSelect";
 import { Alert,Button,Card,DatePicker,Form,Input,Modal,Select,Space,Tag } from "antd";
 import Table from "../../components/ResizableTable";
 import { personDisplayName } from "../constants";
@@ -126,7 +127,7 @@ export function IprTasksPanel({
             label="负责人"
             rules={[{ required: true, message: "请选择负责人" }]}
           >
-            <Select
+            <KeywordPersonSelect
               showSearch
               optionFilterProp="label"
               placeholder="请选择系统员工"

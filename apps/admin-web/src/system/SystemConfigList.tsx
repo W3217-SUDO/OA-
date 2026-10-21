@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { useEffect, useState } from "react";
 import {
   Button,
@@ -7,7 +8,6 @@ import {
   InputNumber,
   message,
   Modal,
-  Select,
   Space,
   Switch,
   Tag,
@@ -191,10 +191,10 @@ export function SystemConfigList({ configs }: SystemConfigListProps) {
                       <InputNumber min={1} precision={0} />
                     </Form.Item>
                     <Form.Item name={[field.name, "notaryHandover"]} label="公证书交接人员">
-                      <Select options={userOptions} showSearch optionFilterProp="label" allowClear style={{ width: 240 }} />
+                      <KeywordPersonSelect options={userOptions} showSearch optionFilterProp="label" allowClear style={{ width: 240 }} />
                     </Form.Item>
                     <Form.Item name={[field.name, "warehouse"]} label="证物仓库管理员">
-                      <Select options={userOptions} showSearch optionFilterProp="label" allowClear style={{ width: 240 }} />
+                      <KeywordPersonSelect options={userOptions} showSearch optionFilterProp="label" allowClear style={{ width: 240 }} />
                     </Form.Item>
                     <Button danger onClick={() => remove(field.name)}>删除</Button>
                   </Space>

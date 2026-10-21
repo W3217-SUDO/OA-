@@ -8,7 +8,7 @@ from app.core.formatters import _case_hearing_datetime
 from app.models import BusinessRecord, FileAttachment, HearingSchedule, SystemParameter, User, WorkflowEvent
 
 
-async def query_company_hearings(identity, db, *, page, page_size, filters, hearing_from, hearing_to, source_from, source_to):
+async def query_company_hearings(identity, db, *, page, page_size, filters, hearing_from, hearing_to, source_from, source_to, export_case_ids=False):
     from app.core.contracts import _contract_customer_record_dicts
     from app.core.permissions import _record_scope_conditions
     from app.core.system import _allowed_field_keys
@@ -150,9 +150,19 @@ async def query_company_hearings(identity, db, *, page, page_size, filters, hear
     if filters.get("hearing_lawyer", "").strip():
         schedule_conditions.append(matches(schedules.c.hearing_lawyer, "hearing_lawyer"))
     total = int(await db.scalar(select(func.count()).select_from(schedules).where(*schedule_conditions)) or 0)
-    rows = (await db.execute(select(schedules).where(*schedule_conditions).order_by(
+    ordered_query = select(schedules).where(*schedule_conditions).order_by(
         schedules.c.day, schedules.c.time, schedules.c.case_id, schedules.c.slot,
-    ).offset((page - 1) * page_size).limit(page_size))).mappings().all()
+    )
+    # 导出只需要权限内的排期关联和顺序，避免逐页重复统计及完整案件投影。
+    rows = (await db.execute(ordered_query if export_case_ids else ordered_query.offset((page - 1) * page_size).limit(page_size))).mappings().all()
+    if export_case_ids:
+        current_total = int(await db.scalar(select(func.count()).select_from(schedules).where(*schedule_conditions)) or 0)
+        if current_total != total or len(rows) != total or len({(row["case_id"], row["slot"]) for row in rows}) != len(rows):
+            raise HTTPException(409, "排期查询结果已变化，请刷新后重新导出")
+        for row in rows:
+            if _case_hearing_datetime(row["day"]) is None:
+                raise HTTPException(422, f'案件 {row["case_id"]} 的开庭日期格式无效，请修正法院或排期资料')
+        return list(dict.fromkeys(row["case_id"] for row in rows))
     ids = {row["case_id"] for row in rows}
     records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(ids)))).all()) if ids else []
     visible = await _contract_customer_record_dicts(records, await _allowed_field_keys(identity, db), db, identity)

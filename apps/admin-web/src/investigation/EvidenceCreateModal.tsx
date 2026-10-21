@@ -1,4 +1,5 @@
-import { Modal, Form, Input, Select } from "antd";
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
+import { Modal, Form, Input } from "antd";
 import type { Row } from "./types";
 
 interface EvidenceCreateModalProps {
@@ -33,7 +34,7 @@ export default function EvidenceCreateModal({
         </Form.Item>
         <div className="form-grid">
           <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label" options={systemPersonOptions} />
+            <KeywordPersonSelect showSearch optionFilterProp="label" options={systemPersonOptions} />
           </Form.Item>
           <Form.Item label="材料来源" name="source">
             <Input />

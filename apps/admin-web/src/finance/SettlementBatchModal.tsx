@@ -1,4 +1,5 @@
-import { Alert, Form, Input, InputNumber, Modal, Select } from "antd";
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
+import { Alert, Form, Input, InputNumber, Modal } from "antd";
 import type { FormInstance } from "antd";
 import type { SettlementBatchFormValues } from "./formTypes";
 import type { FinancePersonOption } from "./types";
@@ -43,7 +44,7 @@ export function SettlementBatchModal({
         <Form form={settlementBatchForm} layout="vertical">
           <div className="form-grid">
             <Form.Item label="开庭律师" name="hearing_lawyer">
-              <Select
+              <KeywordPersonSelect
                 showSearch
                 optionFilterProp="label"
                 allowClear
@@ -52,7 +53,7 @@ export function SettlementBatchModal({
               />
             </Form.Item>
             <Form.Item label="律师助理" name="assistant">
-              <Select
+              <KeywordPersonSelect
                 showSearch
                 optionFilterProp="label"
                 allowClear
@@ -65,7 +66,7 @@ export function SettlementBatchModal({
             <Input placeholder="不修改请留空，例如：张律师，李律师" />
           </Form.Item>
           <Form.Item label="案源人" name="source_lawyer">
-            <Select
+            <KeywordPersonSelect
               showSearch
               optionFilterProp="label"
               allowClear

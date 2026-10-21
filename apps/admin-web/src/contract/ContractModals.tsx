@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { CheckOutlined,CloseOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import { InvoiceApplicationForm } from "./InvoiceApplicationForm";
@@ -233,7 +234,7 @@ export function ContractSubmitModal({
     >
       <Form form={submitForm} layout="vertical">
         <Form.Item label={contractApproverLabel} name="approvers" rules={[{ required: true }]}>
-          <Select
+          <KeywordPersonSelect
             showSearch
             optionFilterProp="label"
             options={approvalOptions}

@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { Modal, Form, Input, Select, DatePicker, Checkbox } from "antd";
 import dayjs from "dayjs";
 import type { PersonOption } from "./types";
@@ -40,7 +41,7 @@ export default function InvestigationCreateModal({
             name="owner"
             rules={[{ required: true, message: "请填写负责人" }]}
           >
-            <Select showSearch optionFilterProp="label" options={systemPersonOptions} />
+            <KeywordPersonSelect showSearch optionFilterProp="label" options={systemPersonOptions} />
           </Form.Item>
           <Form.Item
             className="span-2"
@@ -54,7 +55,7 @@ export default function InvestigationCreateModal({
             <Input />
           </Form.Item>
           <Form.Item label="案源人" name="source_owner">
-            <Select allowClear showSearch optionFilterProp="label" options={systemPersonOptions} />
+            <KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={systemPersonOptions} />
           </Form.Item>
           <Form.Item
             label="调查区域"

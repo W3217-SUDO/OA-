@@ -1,5 +1,6 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Button, Descriptions, Image, Input, message, Select, Space, Spin, Tag, Timeline } from "antd";
+import { Alert, Button, Descriptions, Image, Input, message, Space, Spin, Tag, Timeline } from "antd";
 import dayjs from "dayjs";
 import { api } from "../api";
 import type { FeedbackDetails } from "./types";
@@ -153,7 +154,7 @@ export default function FeedbackDetail({ feedbackId, onBack }: Props) {
         onError={() => setImageError("截图无法显示，请重新打开详情重试")} />}
     </div>}
     {feedback.can_assign && <Space wrap style={{ marginTop: 20 }}>
-      <Select showSearch value={assignee || undefined} placeholder="选择处理人" aria-label="选择处理人"
+      <KeywordPersonSelect showSearch value={assignee || undefined} placeholder="选择处理人" aria-label="选择处理人"
         style={{ minWidth: 240 }} optionFilterProp="label"
         options={people.map((person) => ({ value: person.username, label: `${person.label}（${person.username}）` }))}
         onChange={setAssignee} />

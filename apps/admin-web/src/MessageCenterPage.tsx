@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "./components/KeywordPersonSelect";
 import {useEffect, useMemo, useState} from 'react'
 import {Button, Card, DatePicker, Drawer, Empty, Form, Input, message, Modal, Popconfirm, Select, Space, Tabs, Tag} from 'antd'
 import Table from "./components/ResizableTable";
@@ -118,6 +119,6 @@ export default function MessageCenterPage(){
       <p>时间：{selected?.created_at?new Date(selected.created_at).toLocaleString('zh-CN',{hour12:false}):''}</p>
       <Card size="small"><div className="message-content">{selected?.content}</div></Card>
     </Drawer>
-    <Modal open={composeOpen} title="发送站内消息" okText="发送" cancelText="取消" onOk={sendMessage} onCancel={()=>setComposeOpen(false)} destroyOnHidden><Form form={composeForm} layout="vertical"><Form.Item name="recipients" label="接收人" rules={[{required:true,message:'请选择接收人'}]}><Select mode="multiple" showSearch optionFilterProp="label" options={directory.map(user=>({value:user.username,label:`${personDisplayName(user.display_name)}｜${user.department||'未设置部门'}`}))}/></Form.Item><Form.Item name="title" label="标题" rules={[{required:true},{max:200}]}><Input/></Form.Item><Form.Item name="content" label="消息内容" rules={[{required:true},{max:4000}]}><Input.TextArea rows={6} showCount maxLength={4000}/></Form.Item></Form></Modal>
+    <Modal open={composeOpen} title="发送站内消息" okText="发送" cancelText="取消" onOk={sendMessage} onCancel={()=>setComposeOpen(false)} destroyOnHidden><Form form={composeForm} layout="vertical"><Form.Item name="recipients" label="接收人" rules={[{required:true,message:'请选择接收人'}]}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={directory.map(user=>({value:user.username,label:`${personDisplayName(user.display_name)}｜${user.department||'未设置部门'}`}))}/></Form.Item><Form.Item name="title" label="标题" rules={[{required:true},{max:200}]}><Input/></Form.Item><Form.Item name="content" label="消息内容" rules={[{required:true},{max:4000}]}><Input.TextArea rows={6} showCount maxLength={4000}/></Form.Item></Form></Modal>
   </>
 }

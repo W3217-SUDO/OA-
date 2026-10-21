@@ -32,6 +32,8 @@ export function useSpecialCaseRecords(route: string) {
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(Boolean(kind));
   const [error, setError] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const exportingRef = useRef(false);
   const sequence = useRef(0);
   const current = useRef({ query: {} as Record<string, any>, page: 1, pageSize: 20 });
 
@@ -77,10 +79,20 @@ export function useSpecialCaseRecords(route: string) {
     return () => { sequence.current += 1; };
   }, [route]);
 
-  const exportFile = () => api.get<Blob>("/cases/special-records", {
-    params: { ...queryParams(current.current.query, kind, scope, 1, 200), export_format: "xls" },
-    responseType: "blob",
-  });
+  const exportFile = async () => {
+    if (exportingRef.current) throw new Error("导出正在进行，请稍候");
+    exportingRef.current = true;
+    setExporting(true);
+    try {
+      return await api.get<Blob>("/cases/special-records", {
+        params: { ...queryParams(current.current.query, kind, scope, 1, 200), export_format: "xls" },
+        responseType: "blob",
+      });
+    } finally {
+      exportingRef.current = false;
+      setExporting(false);
+    }
+  };
 
-  return { active: Boolean(kind), rows, total, page, pageSize, loading, error, search, exportFile, reload: () => search() };
+  return { active: Boolean(kind), rows, total, page, pageSize, loading, error, exporting, search, exportFile, reload: () => search() };
 }

@@ -175,6 +175,8 @@ function loadModule(name, dependencies, globals = {}) {
     module, exports: module.exports,
     require: (specifier) => {
       if (specifier in dependencies) return dependencies[specifier];
+      if (specifier === "../components/KeywordPersonSelect") return loadModule("../components/KeywordPersonSelect.tsx", dependencies);
+      if (specifier === "./keyword-person-select.css") return {};
       if (specifier === "./financeCenterApi" || specifier === "../services/financeCenterApi") return loadModule("services/financeCenterApi.ts", dependencies);
       if (specifier === "../financialValueDisplay") return loadModule("../financialValueDisplay.ts", dependencies);
       if (specifier === "../settlementIdentity") return loadModule("settlementIdentity.ts", dependencies);
@@ -382,6 +384,8 @@ test("extracted incoming and settlement forms render scoped data and submit or c
   modal = tree.root.findByType("modal");
   assert.equal(modal.props.confirmLoading, true);
   assert.match(tree.root.findByType("alert").props.title, /2 个案件/);
+  assert.equal(tree.root.findAllByType("select")[0].props.options.length, 0);
+  await act(async () => tree.root.findAllByType("select")[0].props.onSearch("lawyer"));
   assert.equal(tree.root.findAllByType("select")[0].props.options[0].value, "lawyer");
   await act(async () => { await modal.props.onOk(); modal.props.onCancel(); });
   assert.deepEqual(calls.slice(5), ["settle", "close-settle"]);

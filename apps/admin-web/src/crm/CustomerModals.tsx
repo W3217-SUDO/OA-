@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import {
   Alert,
   Button,
@@ -313,7 +314,7 @@ export function CustomerModals({ viewingContact, onCloseViewContact, contactPhot
             name="manager"
             rules={[{ required: true, message: "请选择现客戶管理人" }]}
           >
-            <Select
+            <KeywordPersonSelect
               showSearch
               optionFilterProp="label"
               options={directoryOptions}
@@ -335,7 +336,7 @@ export function CustomerModals({ viewingContact, onCloseViewContact, contactPhot
             label="共享人员"
             name="recipients"
           >
-            <Select
+            <KeywordPersonSelect
               mode="multiple"
               showSearch
               optionFilterProp="label"

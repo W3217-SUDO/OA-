@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import {
   Button,
   DatePicker,
@@ -55,7 +56,7 @@ export default function TaskCreateModal(props: TaskCreateModalProps) {
         </Form.Item>
         <div className="form-grid">
           <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
-            <Select
+            <KeywordPersonSelect
               showSearch
               optionFilterProp="label"
               placeholder="请选择系统员工"
@@ -117,7 +118,7 @@ export default function TaskCreateModal(props: TaskCreateModalProps) {
           </Form.Item>
         </div>
         <Form.Item label="协作人" name="collaborators">
-          <Select
+          <KeywordPersonSelect
             mode="multiple"
             showSearch
             optionFilterProp="label"

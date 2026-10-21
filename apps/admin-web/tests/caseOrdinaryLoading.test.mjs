@@ -121,6 +121,89 @@ async function specialCaseSetup(t, route) {
   } };
 }
 
+test('hearing export reports busy immediately, blocks duplicate requests and releases after failure', async t => {
+  const env = await specialCaseSetup(t, 'case-company-schedule');
+  let search;
+  await act(async () => { search = env.current.search({ customer: 'CODEX1021UI客户' }); });
+  await act(async () => { env.requests[0].resolve({ data: { items: [], total: 201 } }); await search; });
+  let pending;
+  await act(async () => { pending = env.current.exportFile(); });
+  assert.equal(env.current.exporting, true);
+  await assert.rejects(env.current.exportFile(), /导出正在进行/);
+  assert.equal(env.requests.length, 2);
+  assert.equal(env.requests[1].params.customer, 'CODEX1021UI客户');
+  assert.equal(env.requests[1].params.export_format, 'xls');
+  const failure = assert.rejects(pending, /导出故障/);
+  await act(async () => { env.requests[1].reject(new Error('导出故障')); await failure; });
+  assert.equal(env.current.exporting, false);
+  await act(async () => { pending = env.current.exportFile(); });
+  const file = new Blob(['CODEX1021UI导出']);
+  await act(async () => { env.requests[2].resolve({ data: file }); assert.equal((await pending).data, file); });
+  assert.equal(env.current.exporting, false);
+});
+
+test('person selector hides an unsearched directory while retaining selected labels, values and role options', async t => {
+  const source = ts.transpileModule(fs.readFileSync(new URL('../src/components/KeywordPersonSelect.tsx', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText;
+  const loaded = { exports: {} };
+  new Function('require', 'module', 'exports', source)(name => {
+    if (name === 'react') return React;
+    if (name === 'react/jsx-runtime') return { jsx: React.createElement, jsxs: React.createElement };
+    if (name === 'antd') return { Select: 'PersonnelSelect' };
+    assert.equal(name, './keyword-person-select.css');
+    return {};
+  }, loaded, loaded.exports);
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const options = [{ value: 'CODEX1021UI-lawyer', label: '中文律师（诉讼部）' }, { value: 'CODEX1021UI-assistant', label: '中文助理（调查部）', disabled: true }];
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(loaded.exports.KeywordPersonSelect, { options, value: ['CODEX1021UI-lawyer'], mode: 'multiple', allowClear: true })); });
+  t.after(async () => { await act(async () => renderer.unmount()); delete globalThis.IS_REACT_ACT_ENVIRONMENT; });
+  const control = () => renderer.root.findByType('PersonnelSelect').props;
+  assert.deepEqual(control().options, []);
+  assert.equal(control().labelRender({ value: 'CODEX1021UI-lawyer' }), options[0].label);
+  await act(async () => control().onSearch('诉讼'));
+  assert.deepEqual(control().options, options);
+  assert.equal(control().filterOption('诉讼', options[0]), true);
+  assert.equal(control().filterOption('CODEX1021UI-lawyer', options[0]), true);
+  assert.equal(control().filterOption('诉讼', options[1]), false);
+  assert.equal(control().options[1].disabled, true);
+  await act(async () => control().onSelect(options[0].value, options[0]));
+  assert.deepEqual(control().options, []);
+  assert.deepEqual(control().value, ['CODEX1021UI-lawyer']);
+  await act(async () => control().onSearch('  '));
+  assert.deepEqual(control().options, []);
+});
+
+test('case table measurement reserves live header and pagination sizes when available space shrinks', async t => {
+  const source = ts.transpileModule(fs.readFileSync(new URL('../src/legal/hooks/useArchiveTableScroll.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const loaded = { exports: {} };
+  new Function('require', 'module', 'exports', source)(() => React, loaded, loaded.exports);
+  const original = { ResizeObserver: globalThis.ResizeObserver, requestAnimationFrame: globalThis.requestAnimationFrame, cancelAnimationFrame: globalThis.cancelAnimationFrame };
+  let observerCallback, frame, current, bodyHeight = 1, reserved = 96;
+  const container = { clientHeight: 500, querySelector: selector => selector === '.ant-table-body'
+    ? { getBoundingClientRect: () => ({ height: bodyHeight }) }
+    : { getBoundingClientRect: () => ({ height: bodyHeight + reserved }) } };
+  globalThis.ResizeObserver = class { constructor(callback) { observerCallback = callback; } observe() {} disconnect() {} };
+  globalThis.requestAnimationFrame = callback => { frame = callback; return 1; };
+  globalThis.cancelAnimationFrame = () => {};
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  function Host() { current = loaded.exports.useArchiveTableScroll(true, 'case-company-civil'); bodyHeight = current.scrollY; return React.createElement('div', { ref: current.containerRef }); }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Host), { createNodeMock: () => container }); });
+  t.after(async () => { await act(async () => renderer.unmount()); Object.assign(globalThis, original); delete globalThis.IS_REACT_ACT_ENVIRONMENT; });
+  assert.equal(current.scrollY, 404);
+  container.clientHeight = 310;
+  await act(async () => { observerCallback(); frame(); });
+  assert.equal(current.scrollY, 214);
+  reserved = 132;
+  await act(async () => { observerCallback(); frame(); });
+  assert.equal(current.scrollY, 178);
+  assert.equal(current.minHeight, 133);
+});
+
 test('special case query forwards filters and page size, retries exact query, ignores stale results', async t => {
   const env = await specialCaseSetup(t, 'case-company-no-refund');
   let first, second;

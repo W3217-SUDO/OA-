@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import {
   Alert,
   Button,
@@ -49,7 +50,7 @@ export function TaskMaintenanceModal({ row, form, peopleOptions, actionSubmittin
       okButtonProps={{ style: { minHeight: 44, minWidth: 44 } }} cancelButtonProps={{ style: { minHeight: 44, minWidth: 44 } }}>
       <Form form={form} layout="vertical">
         <Form.Item label="负责人" name="owner">
-          <Select allowClear showSearch style={{ height: 44 }} optionFilterProp="label" options={peopleOptions.map((person) => ({ value: person.username, label: person.label }))} />
+          <KeywordPersonSelect allowClear showSearch style={{ height: 44 }} optionFilterProp="label" options={peopleOptions.map((person) => ({ value: person.username, label: person.label }))} />
         </Form.Item>
         <Form.Item label="截止日期" name="deadline">
           <DatePicker style={{ width: "100%", height: 44 }} disabledDate={(value) => value.isBefore(dayjs(), "day") || value.isAfter(dayjs().add(30, "day"), "day")} />
@@ -103,7 +104,7 @@ export function HandoffModal(props: HandoffModalProps) {
           name="recipient"
           rules={[{ required: true, message: "请选择接收人" }]}
         >
-            <Select
+            <KeywordPersonSelect
               showSearch
               loading={handoffDirectoryLoading}
               optionFilterProp="label"

@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { Alert, Button, DatePicker, Drawer, Form, Input, InputNumber, Select, Space, Steps } from "antd";
 import type { FormInstance } from "antd";
@@ -141,7 +142,7 @@ export function RefundBatchFeeDrawer(props: RefundBatchFeeDrawerProps) {
                           <Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item>
                           {refundBatchFeeKind === "internal" ? <>
                             <Form.Item name={[field.name, "payee_username"]} rules={[{ required: true, message: "请选择支付对象" }]}>
-                              <Select showSearch optionFilterProp="label" options={financePeople.map((person) => ({ value: person.username, label: person.label }))} />
+                              <KeywordPersonSelect showSearch optionFilterProp="label" options={financePeople.map((person) => ({ value: person.username, label: person.label }))} />
                             </Form.Item>
                             <Form.Item name={[field.name, "base_amount"]} rules={[{ required: true, message: "请输入基数" }]}><InputNumber min={0} precision={2} style={{ width: "100%" }} /></Form.Item>
                             <Form.Item name={[field.name, "reference_commission"]} rules={[{ required: true, message: "请输入参考提成" }]}><InputNumber min={0} precision={2} style={{ width: "100%" }} /></Form.Item>

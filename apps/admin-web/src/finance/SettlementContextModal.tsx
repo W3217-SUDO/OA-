@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { Alert, Button, DatePicker, Form, Input, Modal, Select } from "antd";
 import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
@@ -112,7 +113,7 @@ export function SettlementContextModal({
             </Form.Item>
             <div className="form-grid">
               <Form.Item label="负责人" required>
-                <Select
+                <KeywordPersonSelect
                   showSearch
                   optionFilterProp="label"
                   value={settlementTaskForm.owner || undefined}

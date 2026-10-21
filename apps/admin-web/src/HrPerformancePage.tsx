@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "./components/KeywordPersonSelect";
 import {useEffect, useRef, useState} from 'react'
 import {Alert, Button, Card, DatePicker, Descriptions, Form, Input, InputNumber, message, Modal, Popconfirm, Select, Space} from 'antd'
 import Table from "./components/ResizableTable";
@@ -92,7 +93,7 @@ export default function HrPerformancePage({onNavigate}:{onNavigate:(route:string
     <Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={rows} scroll={{x:1160}} pagination={{current:page,pageSize,total,showSizeChanger:true,showTotal:count=>`共 ${count} 条`,onChange:(next,size)=>{setPage(size!==pageSize?1:next);setPageSize(size)}}}/>
     <Modal open={open} title={editing?'绩效设置 / 编辑':'新增绩效 / 方案设置'} width={740} okText="保存" cancelText="取消" confirmLoading={saving} onOk={()=>void save()} onCancel={()=>{if(!saving){setOpen(false);form.resetFields()}}} destroyOnHidden maskClosable={!saving} closable={!saving}>
       <Form form={form} layout="vertical">
-        <Form.Item name="employee_id" label="员工" rules={[{required:true,message:'请选择员工'}]}><Select showSearch filterOption={false} disabled={Boolean(editing)} loading={employeeLoading} options={employees} onSearch={value=>void searchEmployees(value)} placeholder="输入员工姓名搜索"/></Form.Item>
+        <Form.Item name="employee_id" label="员工" rules={[{required:true,message:'请选择员工'}]}><KeywordPersonSelect showSearch filterOption={false} disabled={Boolean(editing)} loading={employeeLoading} options={employees} onSearch={value=>void searchEmployees(value)} placeholder="输入员工姓名搜索"/></Form.Item>
         <Form.Item name="scheme_name" label="方案名称" rules={[{max:128,message:'方案名称最多 128 个字符'}]}><Input maxLength={128} placeholder="例如：年度提成方案"/></Form.Item>
         <div className="commission-form-grid">
           <Form.Item name="start_date" label="开始日期" rules={[{required:true,message:'请选择开始日期'}]}><DatePicker style={{width:'100%'}}/></Form.Item>

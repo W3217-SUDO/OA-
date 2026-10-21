@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { CheckOutlined,CloseOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import {
@@ -189,7 +190,7 @@ export function ContractWizardContent({ onDownloadAttachment, onClearLinkedCusto
               />
             </Form.Item>
             <Form.Item label={contractApproverLabel} name="approvers" rules={[{ required: true, message: "请选择一名合同审批人" }]}>
-              <Select
+              <KeywordPersonSelect
                 disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))}
                 showSearch
                 optionFilterProp="label"
@@ -328,7 +329,7 @@ export function ContractWizardContent({ onDownloadAttachment, onClearLinkedCusto
             <Form form={sealForm} layout="vertical" className="contract-seal-form">
               <div className="form-grid">
                 <Form.Item label="用印审批人" name="approver" rules={[{ required: true, message: "请选择用印审批人" }]}>
-                  <Select
+                  <KeywordPersonSelect
                     showSearch
                     optionFilterProp="label"
                     options={sealApprovalOptions}

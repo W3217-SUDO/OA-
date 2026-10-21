@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "./components/KeywordPersonSelect";
 import { useEffect, useState } from "react";
 import { DownloadOutlined } from "@ant-design/icons";
 import { Alert, Button, DatePicker, Empty, Form, Input, Select, Spin, message } from "antd";
@@ -184,7 +185,7 @@ function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options
         <Select mode="multiple" showSearch optionFilterProp="label" maxTagCount="responsive" placeholder="请选择客户" options={options.customers.map(value => ({ value, label: value }))} />
       </Form.Item>
       <Form.Item className="report-filter-wide" label="开庭律师" name="courtLawyer">
-        <Select mode="multiple" showSearch optionFilterProp="label" maxTagCount="responsive" placeholder="请选择" options={options.lawyers.map(value => ({ value, label: value }))} />
+        <KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" maxTagCount="responsive" placeholder="请选择" options={options.lawyers.map(value => ({ value, label: value }))} />
       </Form.Item>
       {kind === "brand" ? (
         <Form.Item label="经办律师" name="handlingLawyer">
@@ -317,7 +318,7 @@ function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => voi
       <Form form={form} className="report-filter report-customer-roi-filter" onFinish={values => void load(values)}>
         <Form.Item label="收付款日期" name="dateRange"><DatePicker.RangePicker /></Form.Item>
         <Form.Item label="归属部门" name="department"><Select allowClear showSearch optionFilterProp="label" placeholder="全部收付款归属部门" options={data.filter_options.departments.map(value => ({ value, label: value }))} /></Form.Item>
-        <Form.Item label="负责人" name="employee"><Select allowClear showSearch optionFilterProp="label" placeholder="全部收付款负责人" options={data.filter_options.employees.map(value => ({ value, label: value }))} /></Form.Item>
+        <Form.Item label="负责人" name="employee"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" placeholder="全部收付款负责人" options={data.filter_options.employees.map(value => ({ value, label: value }))} /></Form.Item>
         <div className="report-filter-action">
           <Button type="primary" htmlType="submit">查询</Button>
           <Button onClick={() => { form.resetFields(); void load({}); }}>重置</Button>

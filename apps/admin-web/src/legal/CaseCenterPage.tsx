@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { CaseClueContextPanel } from "./CaseClueContextPanel";
 import { CaseClueSelect } from "./CaseClueSelect";
 import { CaseLitigantAgentDataError, normalizeCaseLitigantAgentFields } from "./caseLitigantAgents";
@@ -1946,7 +1947,8 @@ export default function CaseCenterPage({
     window.clearTimeout(caseLitigantSearchTimerRef.current);
     ++caseLitigantSearchRequestRef.current;
     setCaseLitigantCandidates([]);
-    setCaseLitigantCandidatesLoading(true);
+    setCaseLitigantCandidatesLoading(Boolean(keyword.trim()));
+    if (!keyword.trim()) return;
     caseLitigantSearchTimerRef.current = window.setTimeout(() => void loadCaseLitigantCandidates(keyword), 350);
   };
   const openCasePartyCreator = (role: CaseLitigantPartyField) => {
@@ -1964,7 +1966,7 @@ export default function CaseCenterPage({
             showSearch
             filterOption={false}
             onSearch={searchCaseLitigantCandidates}
-            onOpenChange={(open) => { if (open) void loadCaseLitigantCandidates(""); }}
+            onOpenChange={(open) => { if (!open) searchCaseLitigantCandidates(""); }}
             loading={caseLitigantCandidatesLoading}
             placeholder={`输入关键字搜索${CASE_LITIGANT_PARTY_LABELS[role]}`}
             notFoundContent={caseLitigantCandidatesLoading ? "正在搜索..." : "未找到系统当事人，可点击右侧新增"}
@@ -2555,6 +2557,7 @@ export default function CaseCenterPage({
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archivePendingMode=initialView==="case-archive-pending";
   const archiveTableScroll = useArchiveTableScroll(originalArchiveMode && !isPhoneViewport, initialView);
+  const ordinaryTableScroll = useArchiveTableScroll(originalListMode && !isPhoneViewport, initialView);
   const archiveDone=initialView.includes("done"), archiveRefused=initialView.includes("refused");
   const originalArchiveRows = archiveList.rows;
   const selectedArchiveCases = originalArchiveRows.filter(row => selectedCaseKeySet.has(String(row.id)));
@@ -3025,7 +3028,7 @@ export default function CaseCenterPage({
         <Table className="case-original-table" rowKey="id" size="small" loading={specialCaseList.active?specialCaseList.loading:specialMode==="stage"?stageStatistics.loading:specialMode==="receipt"?receiptList.loading:specialMode==="invoice"?invoiceBatch.loading:loading} columns={specialColumns[specialMode]} dataSource={specialRows} rowSelection={specialMode==="invoice"||specialMode==="stage"?undefined:{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:specialMode==="stage"?800:1500}} pagination={specialPagination} />
         {shouldShowCompanyScheduleSinglePageJumper(initialView,specialCaseList.active?specialCaseList.total:specialRows.length,specialCaseList.active?specialCaseList.pageSize:companySchedulePageSize)&&<Space style={{display:"flex",justifyContent:"flex-end",marginTop:8}}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={()=>setCompanySchedulePage(1)}>GO</Button></Space>}
         {specialMode!=="invoice"&&specialMode!=="stage"&&shouldShowCompanyScheduleActions(initialView,specialRows.length)&&<div className="case-bottom-actions"><Space>
-          {(specialMode==="schedule"||specialMode==="execution"||specialMode==="unclaimed")&&<Button onClick={exportCases}>导出{specialMode==="schedule"?"案件":""}</Button>}
+          {(specialMode==="schedule"||specialMode==="execution"||specialMode==="unclaimed")&&<Button loading={specialCaseList.exporting} onClick={exportCases}>{specialCaseList.exporting ? "正在导出" : "导出"}{specialMode==="schedule"?"案件":""}</Button>}
           {specialMode==="refund"&&<Button onClick={()=>void exportSpecialRecords("refund","退费查询.csv")}>导出</Button>}
           {specialMode==="refund"&&<Dropdown menu={{items:[{key:"view",label:"案件任务"},{key:"export",label:"导出案件打印表"}],onClick:({key})=>{if(key==="export")exportRefundCasePrintTable();else if(selectedSpecialRow)void openSpecialCaseTasks({case_record_id:selectedSpecialRow.data.case_record_id||selectedSpecialRow.data.case_id,case_no:selectedSpecialRow.data.case_no||selectedSpecialRow.serial_no});else message.warning("请先选择退费记录")}}}><Button>更多操作</Button></Dropdown>}
           {specialMode==="refund"&&<Button onClick={operateRefund}>退费操作</Button>}
@@ -3119,7 +3122,9 @@ export default function CaseCenterPage({
             <Form.Item className="case-query-buttons"><Space><Button type="primary" htmlType="submit">{legacyCaseListOperationLabels.query}</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setOriginalPage(1);if(counselListMode)void loadCounselCases({},1,counselPageSize);else void loadOrdinaryCases({},1,originalPageSize);}}>{legacyCaseListOperationLabels.reset}</Button></Space></Form.Item>
           </ListFilterBar>
           <input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>
-          <Table className="case-original-table" rowKey="id" size="small" loading={counselListMode ? loading : ordinaryLoading} locale={counselListMode ? undefined : { emptyText: ordinaryLoading ? "案件加载中…" : ordinaryLoadError || "暂无案件" }} columns={responsiveOriginalListColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} sticky={isPhoneViewport ? false : undefined} scroll={isPhoneViewport ? undefined : {x:counselListMode?counselCaseTableScrollX:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseTableScrollX:originalCaseTableScrollX,y:"calc(100dvh - 465px)"}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize||legacyCaseListDefaults.pageSize,total:ordinaryTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:nextQuery}));void loadOrdinaryCases(nextQuery,nextPage,nextPageSize);return;}void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
+          <div className="case-list-table-viewport" ref={ordinaryTableScroll.containerRef} style={{ minHeight: ordinaryTableScroll.minHeight }}>
+          <Table className="case-original-table" rowKey="id" size="small" loading={counselListMode ? loading : ordinaryLoading} locale={counselListMode ? undefined : { emptyText: ordinaryLoading ? "案件加载中…" : ordinaryLoadError || "暂无案件" }} columns={responsiveOriginalListColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} sticky={isPhoneViewport ? false : undefined} scroll={isPhoneViewport ? undefined : {x:counselListMode?counselCaseTableScrollX:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseTableScrollX:originalCaseTableScrollX,y:ordinaryTableScroll.scrollY}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize||legacyCaseListDefaults.pageSize,total:ordinaryTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:nextQuery}));void loadOrdinaryCases(nextQuery,nextPage,nextPageSize);return;}void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
+          </div>
           {shouldShowCaseListActions(initialView)&&<div className={`case-bottom-actions case-mine-list-actions${isCompanyCaseListRoute(initialView) ? " case-company-list-actions" : ""}`}><Space size={5} wrap>
             <Dropdown
               trigger={["click"]}
@@ -3341,7 +3346,7 @@ export default function CaseCenterPage({
             <Input />
           </Form.Item>
           <Form.Item label="经办律师" name="handling_lawyers">
-            <Select
+            <KeywordPersonSelect
               mode="multiple"
               showSearch
               optionFilterProp="label"
@@ -3350,7 +3355,7 @@ export default function CaseCenterPage({
             />
           </Form.Item>
           <Form.Item label="律师助理" name="assistant">
-            <Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" />
+            <KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" />
           </Form.Item>
           <Form.Item label="分配说明" name="comment">
             <Input.TextArea rows={3} />
@@ -3602,7 +3607,7 @@ export default function CaseCenterPage({
             <Form.Item label="费用名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
             <div className="form-grid">
               <Form.Item label="费用类别" name="fee_type_id" rules={[{ required: true, message: "请选择末级费用类型" }]}><TreeSelect showSearch treeNodeFilterProp="title" treeDefaultExpandAll treeData={feeTypeTreeOptions} placeholder="请选择系统费用类型" onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldsValue({ expense_subtype: option?.name, fee_type: option?.base_fee_type }); }} /></Form.Item>
-              <Form.Item label="收款人" name="payee" rules={[{ required: true, message: "请选择收款人" }]}><Select showSearch optionFilterProp="label" options={feeEmployeeOptions} /></Form.Item>
+              <Form.Item label="收款人" name="payee" rules={[{ required: true, message: "请选择收款人" }]}><KeywordPersonSelect showSearch optionFilterProp="label" options={feeEmployeeOptions} /></Form.Item>
               <Form.Item label="基数" name="base_amount"><InputNumber min={0} precision={2} style={{ width: "100%" }} /></Form.Item>
               <Form.Item label="参考提成" name="reference_commission"><InputNumber min={0} precision={2} style={{ width: "100%" }} /></Form.Item>
               <Form.Item label="实际金额" name="amount" rules={[{ required: true, message: "请输入实际金额" }]}><InputNumber precision={2} style={{ width: "100%" }} /></Form.Item>
@@ -3644,7 +3649,7 @@ export default function CaseCenterPage({
               {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
                 <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
                 <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择末级费用类型" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" popupMatchSelectWidth={180} options={feeTypeSelectOptions} onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldValue(["items",field.name,"expense_subtype"],option?.name); feeForm.setFieldValue(["items",field.name,"fee_type"],option?.base_fee_type); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${option?.name || ""}`); }} /></Form.Item>
-                <Form.Item name={[field.name, "payee"]} rules={[{ required: true, message: "请选择收款人" }]}><Select showSearch optionFilterProp="label" placeholder="收款人" options={feeEmployeeOptions} /></Form.Item>
+                <Form.Item name={[field.name, "payee"]} rules={[{ required: true, message: "请选择收款人" }]}><KeywordPersonSelect showSearch optionFilterProp="label" placeholder="收款人" options={feeEmployeeOptions} /></Form.Item>
                 <Form.Item name={[field.name, "base_amount"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "reference_commission"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入实际金额" }]}><InputNumber precision={2} className="case-fee-amount-input" /></Form.Item>
@@ -3875,8 +3880,8 @@ export default function CaseCenterPage({
           <Form.Item label="优先级" name="priority"><Radio.Group options={[{value:"重要",label:"重要"},{value:"普通",label:"一般"}]} /></Form.Item>
           <Form.Item label="VIP任务" name="is_vip" valuePropName="checked"><Checkbox>标记为VIP任务</Checkbox></Form.Item>
           <div className="form-grid">
-            <Form.Item label="负责人" name="owner" rules={[{ required: true, message: "请选择负责人" }]}><Select showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
-            <Form.Item label="协作人" name="collaborators"><Select mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
+            <Form.Item label="负责人" name="owner" rules={[{ required: true, message: "请选择负责人" }]}><KeywordPersonSelect showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
+            <Form.Item label="协作人" name="collaborators"><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
             <Form.Item label="任务开始时间" name="start_at" rules={[{ required: true, message: "请选择开始时间" }]}><DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} /></Form.Item>
             <Form.Item label="结束时间" name="end_at" rules={[{ required: true, message: "请选择结束时间" }]}><DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} /></Form.Item>
           </div>
@@ -4340,8 +4345,8 @@ export default function CaseCenterPage({
         <Alert type="warning" showIcon title="只填写需要统一修改的字段；未填写字段保持原值。已进入归档流程的案件会被整体阻断。" style={{marginBottom:12}}/>
         <Form form={batchUpdateForm} layout="vertical">
           <Form.Item label="开庭律师" name="hearing_lawyer"><Input placeholder="不修改则留空" /></Form.Item>
-          <Form.Item label="经办律师" name="handling_lawyers"><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="不修改则留空"/></Form.Item>
-          <div className="form-grid"><Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="不修改则留空"/></Form.Item><Form.Item label="案件阶段" name="case_stage"><Input placeholder="不修改则留空"/></Form.Item></div>
+          <Form.Item label="经办律师" name="handling_lawyers"><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="不修改则留空"/></Form.Item>
+          <div className="form-grid"><Form.Item label="律师助理" name="assistant"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="不修改则留空"/></Form.Item><Form.Item label="案件阶段" name="case_stage"><Input placeholder="不修改则留空"/></Form.Item></div>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
@@ -4386,8 +4391,8 @@ export default function CaseCenterPage({
           <Form.Item label="顾问类型" name="counsel_type" rules={[{required:true,message:"请输入顾问类型"}]}><Input /></Form.Item>
           <Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input /></Form.Item>
           <Form.Item label="顾问期限" name="counsel_range" rules={[{required:true,message:"请选择顾问期限"}]}><DatePicker.RangePicker style={{width:"100%"}} /></Form.Item>
-          <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
-          <Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item>
+          <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
+          <Form.Item label="律师助理" name="assistant"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
@@ -4413,10 +4418,10 @@ export default function CaseCenterPage({
           <Form.Item label={editingNormalCase?.data.case_type === "刑事案件" ? "罪名/案由" : "案由"} name="cause_or_charge" rules={[{required:true,message:"请输入案由或罪名"}]}><Input/></Form.Item>
           <Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
           <div className="form-grid">
-            <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
-            <Form.Item label="律师助理" name="assistants" normalize={prioritizeCaseAssistantSelection}><Select mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人；最新选择的助理排在最前" /></Form.Item>
-            <Form.Item label="调查员" name="investigator"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>
-            {isCivilCaseType(editingNormalCase?.data.case_type) && <Form.Item label="案源人" name="business_owner"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>}
+            <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
+            <Form.Item label="律师助理" name="assistants" normalize={prioritizeCaseAssistantSelection}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人；最新选择的助理排在最前" /></Form.Item>
+            <Form.Item label="调查员" name="investigator"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>
+            {isCivilCaseType(editingNormalCase?.data.case_type) && <Form.Item label="案源人" name="business_owner"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>}
             {editingNormalCase?.data.case_type === "行政案件及国家赔偿" && <Form.Item label="权利类型" name="right_type"><Select allowClear options={rightTypeOptions}/></Form.Item>}
           </div>
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><CaseClueSelect caseId={editingNormalCase?.id} /></Form.Item>
@@ -4429,7 +4434,7 @@ export default function CaseCenterPage({
           <Form.Item name="case_phase" hidden><Input /></Form.Item>
           <Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select disabled={!Number(editingArbitrationCase?.data.customer_record_id || editingArbitrationCase?.data.customer_id)} showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
           <Form.Item label="案由" name="cause_or_charge" rules={[{required:true,message:"请输入案由"}]}><Input/></Form.Item><Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
-          <div className="form-grid"><Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><Select mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item><Form.Item label="律师助理" name="assistant"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item><Form.Item label="调查员" name="investigator"><Select allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item></div>
+          <div className="form-grid"><Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item><Form.Item label="律师助理" name="assistant"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions}/></Form.Item><Form.Item label="调查员" name="investigator"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item></div>
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><CaseClueSelect caseId={editingArbitrationCase?.id} /></Form.Item><Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
@@ -4520,7 +4525,7 @@ export default function CaseCenterPage({
       <Modal width={560} open={Boolean(editingCaseHearingLawyer)} title={`修改开庭律师：${editingCaseHearingLawyer?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseHearingLawyer} onCancel={()=>setEditingCaseHearingLawyer(null)} destroyOnHidden>
         <Form form={caseHearingLawyerForm} layout="vertical">
           <Form.Item label="开庭律师" name="hearing_lawyer" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}>
-            <Select allowClear showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="输入关键词选择在职律师" notFoundContent="暂无在职律师；请先在人事中心创建并启用律师账号" />
+            <KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="输入关键词选择在职律师" notFoundContent="暂无在职律师；请先在人事中心创建并启用律师账号" />
           </Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3} /></Form.Item>
         </Form>
@@ -4590,7 +4595,7 @@ export default function CaseCenterPage({
                 name="owner"
                 rules={[{ required: true }]}
               >
-                <Select showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" />
+                <KeywordPersonSelect showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" />
               </Form.Item>
               <Form.Item
                 label="开始时间"
@@ -4618,7 +4623,7 @@ export default function CaseCenterPage({
                 <Checkbox>标记为VIP任务</Checkbox>
               </Form.Item>
               <Form.Item label="协作人" name="collaborators">
-                <Select
+                <KeywordPersonSelect
                   mode="multiple"
                   showSearch
                   optionFilterProp="label"

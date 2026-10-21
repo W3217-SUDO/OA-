@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { Modal, Form, Input, Select, Radio, DatePicker, Cascader, Space } from "antd";
 import type { Row, PersonOption, Contract } from "./types";
 import { INVESTIGATION_REGION_GROUPS } from "../investigationRegionOptions.mjs";
@@ -136,7 +137,7 @@ export default function EditRecordModal({
               {/* Legacy field contract: <Form.List name="indictees">; each item exposes name={[name, "confirmation_method"]} and name={[name, "region"]}. */}
               <Form.Item label="主体信息" name="indictees" style={{ gridColumn: "1 / -1" }}><InvestigationPartyEditor /></Form.Item>
               <Form.Item label="调查辅助" name="investigation_assistant">
-                <Select
+                <KeywordPersonSelect
                   allowClear
                   showSearch
                   optionFilterProp="label"

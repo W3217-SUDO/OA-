@@ -63,6 +63,97 @@ class Batch0918Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([row["title"] for row in result.json()["items"]], ["当事人关键词"])
         self.assertNotIn("data", result.json()["items"][0])
 
+    async def test_hearing_export_keeps_filtered_order_full_template_and_case_deduplication(self):
+        import xlrd
+        from app.areas.legal.case_export_projection import CIVIL_HEADERS
+        from app.models import FileAttachment
+        from sqlalchemy import func
+
+        async with self.sessions() as db:
+            records = [BusinessRecord(
+                module="case", serial_no=f"CODEX1021UI-{index:03d}", title=f"排期案件{index}",
+                customer="CODEX1021UI客户", owner=IDENTITY["username"], department="test", status="一审立案受理",
+                data={"case_type": "民事争议", "first_court_hearing_date": "2026-10-22 09:00", "first_court_name": "CODEX1021UI法院"},
+            ) for index in range(201)]
+            db.add_all(records)
+            await db.flush()
+            records[0].data = {**records[0].data, "second_court_hearing_date": "2026-10-23 10:00"}
+            await db.commit()
+        url = f"{API}/cases/special-records"
+        params = {"kind": "schedule", "scope": "company", "customer": "CODEX1021UI客户", "hearing_from": "2026-10-22", "hearing_to": "2026-10-23"}
+        listed = await self.client.get(url, params={**params, "page_size": 200})
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual(listed.json()["total"], 202)
+        exported = await self.client.get(url, params={**params, "export_format": "xls"})
+        self.assertEqual(exported.status_code, 200, exported.text if exported.status_code != 200 else "")
+        self.assertIn("application/vnd.ms-excel", exported.headers["content-type"])
+        sheet = xlrd.open_workbook(file_contents=exported.content).sheet_by_index(0)
+        self.assertEqual(sheet.row_values(0), CIVIL_HEADERS)
+        self.assertEqual(sheet.nrows, 202)
+        self.assertEqual(sheet.col_values(0)[1:], [f"CODEX1021UI-{index:03d}" for index in range(201)])
+        empty = await self.client.get(url, params={**params, "customer": "CODEX1021UI不存在", "export_format": "xls"})
+        self.assertEqual(empty.status_code, 422, empty.text)
+        invalid = await self.client.get(url, params={**params, "hearing_to": "2026-10-21", "export_format": "xls"})
+        self.assertEqual(invalid.status_code, 422, invalid.text)
+        async with self.sessions() as db:
+            ids = list((await db.scalars(select(BusinessRecord.id).where(BusinessRecord.serial_no.like("CODEX1021UI-%")))).all())
+            self.assertEqual(len(ids), 201)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id.in_(ids))), 0)
+            self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent).where(WorkflowEvent.record_id.in_(ids))), 0)
+            await db.execute(delete(BusinessRecord).where(BusinessRecord.id.in_(ids)))
+            await db.commit()
+            self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.serial_no.like("CODEX1021UI-%"))), 0)
+
+    async def test_hearing_export_detects_query_changes_instead_of_exporting_partial_file(self):
+        from sqlalchemy import event
+
+        async with self.sessions() as db:
+            db.add(BusinessRecord(module="case", serial_no="CODEX1021UI-changing", title="排期变更",
+                customer="CODEX1021UI变更", owner=IDENTITY["username"], department="test", status="一审立案受理",
+                data={"case_type": "民事争议", "first_court_hearing_date": "2026-10-22"}))
+            await db.commit()
+        counts = 0
+
+        def change_before_second_count(connection, cursor, statement, parameters, context, executemany):
+            nonlocal counts
+            if statement.lstrip().upper().startswith("SELECT COUNT(") and "schedule:" in str(parameters):
+                counts += 1
+                if counts == 2:
+                    connection.exec_driver_sql("DELETE FROM business_records WHERE serial_no = ?", ("CODEX1021UI-changing",))
+
+        event.listen(self.engine.sync_engine, "before_cursor_execute", change_before_second_count)
+        try:
+            response = await self.client.get(f"{API}/cases/special-records", params={"kind": "schedule", "customer": "CODEX1021UI变更", "export_format": "xls"})
+            self.assertEqual(response.status_code, 409, response.text)
+            self.assertIn("排期查询结果已变化", response.text)
+        finally:
+            event.remove(self.engine.sync_engine, "before_cursor_execute", change_before_second_count)
+            async with self.sessions() as db:
+                await db.execute(delete(BusinessRecord).where(BusinessRecord.serial_no == "CODEX1021UI-changing"))
+                await db.commit()
+                self.assertIsNone(await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "CODEX1021UI-changing")))
+
+    async def test_hearing_export_does_not_bypass_module_permissions(self):
+        from app.main import app
+        from app.security import current_identity
+
+        async with self.sessions() as db:
+            db.add(User(username="CODEX1021UI-denied", display_name="无案件权限", role="user", department="隔离部门", password_hash="unused", is_active=True))
+            db.add(RolePermission(role="user", display_name="隔离无权限", data_scope="本人数据", menu_keys=[], field_keys=[]))
+            await db.commit()
+        original_identity = app.dependency_overrides[current_identity]
+        app.dependency_overrides[current_identity] = lambda: {"username": "CODEX1021UI-denied", "role": "user", "department": "隔离部门"}
+        try:
+            response = await self.client.get(f"{API}/cases/special-records", params={"kind": "schedule", "export_format": "xls"})
+            self.assertEqual(response.status_code, 403, response.text)
+        finally:
+            app.dependency_overrides[current_identity] = original_identity
+            async with self.sessions() as db:
+                await db.execute(delete(User).where(User.username == "CODEX1021UI-denied"))
+                await db.execute(delete(RolePermission).where(RolePermission.role == "user"))
+                await db.commit()
+                self.assertIsNone(await db.scalar(select(User.id).where(User.username == "CODEX1021UI-denied")))
+
     async def test_clue_eligibility_and_preserved_binding(self):
         from app.core.case_relations import validate_case_clues
         eligible = await self.add_clue()

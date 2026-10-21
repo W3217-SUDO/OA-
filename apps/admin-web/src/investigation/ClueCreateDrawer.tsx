@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { Drawer, Form, Alert, Input, Select, Radio, DatePicker, Button, Space, Typography } from "antd";
 import { CLUE_INFRINGEMENT_METHOD_OPTIONS, CLUE_SALES_CHANNEL_OPTIONS } from "./constants";
 import InvestigationPartyEditor from "./InvestigationPartyEditor";
@@ -137,7 +138,7 @@ export default function ClueCreateDrawer({
           </Form.Item>
           <Form.Item label="主体信息" name="indictees"><InvestigationPartyEditor /></Form.Item>
           <Form.Item label="调查辅助员" name="investigation_assistant">
-            <Select
+            <KeywordPersonSelect
               allowClear
               showSearch
               optionFilterProp="label"
@@ -153,7 +154,7 @@ export default function ClueCreateDrawer({
             />
           </Form.Item>
           <Form.Item label="案源人" name="source_owner">
-            <Select
+            <KeywordPersonSelect
               allowClear
               showSearch
               optionFilterProp="label"

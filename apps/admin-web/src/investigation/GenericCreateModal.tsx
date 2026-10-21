@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { Modal, Form, Input, Select } from "antd";
 import type { ModuleKey, PersonOption } from "./types";
 import { moduleMeta } from "./constants";
@@ -56,7 +57,7 @@ export default function GenericCreateModal({
             <Input />
           </Form.Item>
           <Form.Item label="负责人" name="owner">
-            <Select
+            <KeywordPersonSelect
               allowClear
               showSearch
               optionFilterProp="label"

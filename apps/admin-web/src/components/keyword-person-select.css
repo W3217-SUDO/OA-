@@ -1,0 +1,7 @@
+.keyword-person-select{max-width:100%;min-width:0}
+@media(max-width:767px){
+  .keyword-person-select.ant-select{min-height:44px!important}
+  .keyword-person-select .ant-select-selector{min-height:44px!important;align-items:center}
+  .keyword-person-select-popup .ant-select-item{min-height:44px;white-space:normal;overflow-wrap:anywhere}
+  .keyword-person-select-popup .ant-select-item-option-content{white-space:normal;overflow-wrap:anywhere}
+}

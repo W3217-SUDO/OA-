@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { Drawer, Card, Form, Alert, Input, Select, DatePicker, Button, Space, Tag } from "antd";
 import Table from "../components/ResizableTable";
 import { isLegacyInvestigationRecord } from "./constants";
@@ -168,7 +169,7 @@ export default function TaskDetailDrawer({
               name="owner"
               rules={[{ required: true }]}
             >
-              <Select
+              <KeywordPersonSelect
                 showSearch
                 filterOption={(input, option) =>
                   String(option?.search_text || option?.label || "").toLocaleLowerCase().includes(input.toLocaleLowerCase())

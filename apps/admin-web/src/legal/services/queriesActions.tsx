@@ -602,7 +602,8 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         const { caseLitigantSearchRequestRef, setCaseLitigantCandidatesLoading, setCaseLitigantCandidates } = context;
         const requestId = ++caseLitigantSearchRequestRef.current;
         setCaseLitigantCandidates([]);
-        setCaseLitigantCandidatesLoading(true);
+        setCaseLitigantCandidatesLoading(Boolean(keyword.trim()));
+        if (!keyword.trim()) return;
         try {
             const { data } = await api.get("/case-litigant-candidates", { params: { keyword: keyword.trim() } });
             if (requestId === caseLitigantSearchRequestRef.current) {

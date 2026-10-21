@@ -43,6 +43,8 @@ function loadFinanceModule(name, dependencies = {}, globals = {}) {
     exports: module.exports,
     require: (specifier) => {
       if (specifier in mocks) return mocks[specifier];
+      if (specifier === "../components/KeywordPersonSelect") return loadFinanceModule("../components/KeywordPersonSelect.tsx", dependencies);
+      if (specifier === "./keyword-person-select.css") return {};
       if (["../financialValueDisplay", "../../financialValueDisplay"].includes(specifier)) {
         return loadFinanceModule(new URL(`${specifier}.ts`, sourceUrl).href);
       }

@@ -1,3 +1,4 @@
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { Modal, Steps, Alert, Form, Descriptions, Select, Input, Button } from "antd";
 import type { Contract, ResolvedClueContract } from "./types";
 
@@ -92,10 +93,10 @@ export default function BatchCaseConversion({
             <Select options={["等待公证书", "新案待分配", "文书准备"].map((v) => ({ value: v, label: v }))} />
           </Form.Item>
           <Form.Item label="经办律师" name="handling_lawyer" rules={[{ required: true, message: "请选择经办律师" }]}>
-            <Select showSearch optionFilterProp="label" options={systemPersonOptions} placeholder="请选择系统人员" />
+            <KeywordPersonSelect showSearch optionFilterProp="label" options={systemPersonOptions} placeholder="请选择系统人员" />
           </Form.Item>
           <Form.Item label="律师助理" name="assistant">
-            <Select allowClear showSearch optionFilterProp="label" options={systemPersonOptions} placeholder="请选择系统人员" />
+            <KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={systemPersonOptions} placeholder="请选择系统人员" />
           </Form.Item>
           <Form.Item label="案件类型" name="case_type">
             <Select
