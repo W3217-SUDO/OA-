@@ -438,7 +438,9 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
     except TimeoutError as exc:
         raise HTTPException(504, "Harness 本轮执行超时，未取得完成结果") from exc
     except HarnessError as exc:
-        # 上游异常可能携带 stderr 或模型端点内容，只公开明确的故障类别。
+        # 上游异常可能携带 stderr 或模型端点内容，只公开明确的故障类别；详情只写服务端日志（截断）。
+        logger.warning("harness_error type=%s code=%s message=%s", type(exc).__name__, getattr(exc, "code", None),
+                       str(getattr(exc, "message", exc))[:500])
         raise HTTPException(502, "Harness 协议或运行时失败：" + type(exc).__name__) from None
     except OSError as exc:
         raise HTTPException(503, "Harness 本地运行资源不可用，系统错误码：" + str(exc.errno)) from None
