@@ -497,6 +497,7 @@ from app.routing import include_route_slice as include_route_slice, verify_route
 
 from app.core.request_metrics import RequestMetricsMiddleware
 from app.agent_mcp.gateway import install_gateway, mcp_lifespan
+from app.areas.data_query.router import router as data_query_router
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=mcp_lifespan)
 app.add_middleware(RequestMetricsMiddleware, api_prefix=settings.api_prefix,
@@ -504,6 +505,7 @@ app.add_middleware(RequestMetricsMiddleware, api_prefix=settings.api_prefix,
 app.include_router(feedback_router)
 app.include_router(personal_agent_router)
 app.include_router(agent_admin_router)
+app.include_router(data_query_router)
 app.include_router(case_statistics_router)
 app.include_router(stage_export_router)
 app.include_router(contract_template_exports_router)

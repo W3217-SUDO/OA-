@@ -1,4 +1,4 @@
-"""智能体工具调用记录（前端可见）与管理员沙箱运行代码。"""
+"""智能体工具调用记录（前端可见）与登录用户沙箱运行代码。"""
 import base64
 import hashlib
 import json
@@ -8,7 +8,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from app.harness_agent import script_runtime, tool_trace
-from app.harness_agent.skills import CODE_TOOL, WorkspaceTools, sandbox_allowed
+from app.harness_agent.skills import CODE_TOOL, WorkspaceTools
 
 ADMIN = {"username": "admin", "_actual_role_ids": ["admin"]}
 STAFF = {"username": "u1", "_actual_role_ids": ["user"]}
@@ -69,17 +69,15 @@ class ToolTraceTest(unittest.IsolatedAsyncioTestCase):
 
 
 class SandboxTest(unittest.IsolatedAsyncioTestCase):
-    def test_only_system_admins_get_the_sandbox_tool(self):
-        self.assertTrue(sandbox_allowed(ADMIN))
-        self.assertFalse(sandbox_allowed(STAFF))
-        self.assertEqual(CODE_TOOL["function"]["name"], "harness_run_code")
+    async def test_expired_or_mismatched_identity_cannot_run_code(self):
+        for actual in (HTTPException(401, "登录已失效"), {"username": "other"}):
+            with patch("app.agent_mcp.auth.authenticated_identity", side_effect=actual if isinstance(actual, Exception) else None,
+                       return_value=actual), patch.object(script_runtime, "run_code") as runner:
+                with self.assertRaises(HTTPException):
+                    await WorkspaceTools(FakeDelegate(), STAFF, None).execute("harness_run_code", {"language": "python", "code": "print(1)"})
+                runner.assert_not_called()
 
-    async def test_non_admin_cannot_run_code(self):
-        with self.assertRaises(HTTPException) as caught:
-            await WorkspaceTools(FakeDelegate(), STAFF, None).execute("harness_run_code", {"language": "python", "code": "print(1)"})
-        self.assertEqual(caught.exception.status_code, 403)
-
-    async def test_admin_code_is_sent_to_the_isolated_runner_as_a_single_file_package(self):
+    async def test_ordinary_user_code_uses_the_same_isolated_runner_and_has_no_credentials(self):
         sent = {}
 
         async def submit(endpoint, payload):
@@ -87,10 +85,12 @@ class SandboxTest(unittest.IsolatedAsyncioTestCase):
             return {"exit_code": 0, "stdout": "42\n", "stderr": "", "isError": False}
 
         trace = tool_trace.begin()
-        with patch.object(script_runtime, "_submit", submit), patch.object(script_runtime, "_socket_path", lambda: "/run/x.sock"):
-            result = await WorkspaceTools(FakeDelegate(), ADMIN, None).execute(
+        with patch("app.agent_mcp.auth.authenticated_identity", return_value=STAFF), patch.object(script_runtime, "_submit", submit), patch.object(script_runtime, "_socket_path", lambda: "/run/x.sock"):
+            result = await WorkspaceTools(FakeDelegate(), STAFF, None).execute(
                 "harness_run_code", {"language": "python", "code": "print(6*7)", "args": ["a"]})
+        self.assertEqual(CODE_TOOL["function"]["name"], "harness_run_code")
         payload = sent["payload"]
+        self.assertEqual(set(payload), {"method", "path", "args", "files", "manifest"})
         data = b"print(6*7)"
         self.assertEqual((payload["method"], payload["path"], payload["args"]), ("run", "main.py", ["a"]))
         self.assertEqual(base64.b64decode(payload["files"]["main.py"]), data)
@@ -103,7 +103,7 @@ class SandboxTest(unittest.IsolatedAsyncioTestCase):
                           {"language": "python", "code": "x" * 200_001}, {"language": "python", "code": "x", "args": ["a"] * 33},
                           {"language": "python", "code": "x", "extra": 1}):
             with self.subTest(arguments=str(arguments)[:40]):
-                with self.assertRaises(HTTPException) as caught:
+                with patch("app.agent_mcp.auth.authenticated_identity", return_value=ADMIN), self.assertRaises(HTTPException) as caught:
                     await WorkspaceTools(FakeDelegate(), ADMIN, None).execute("harness_run_code", arguments)
                 self.assertEqual(caught.exception.status_code, 422)
 

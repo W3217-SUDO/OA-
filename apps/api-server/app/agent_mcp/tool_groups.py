@@ -82,6 +82,8 @@ def classify_tool(route, method: str) -> tuple[str, str | None]:
     segments = set(parts)
     if root in {"dashboard"}:
         return "01", None
+    if root == "data-query":
+        return "25", "reporting"
     if root in {"people", "users"} or path.lower() == "system/users":
         return "02", None
     if root in {"warehouse", "wms"}:

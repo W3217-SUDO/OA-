@@ -10,6 +10,7 @@ from app.agent_mcp.operation_guidance import get_operation_guidance
 
 # 这些 POST 已逐项核对原处理函数及其查询调用链，不写业务记录。
 READ_ONLY_POSTS = {
+    ("POST", "/data-query", "query_interface_data"): "仅组合已登记的只读接口结果，原账号、字段与行权限由原路由逐次校验，不写数据库",
     ("POST", "/agent/skills/github/preview", "github_skill_preview"): "只读取 GitHub 技能元数据和正文，不安装技能",
     ("POST", "/agent/skills/catalog/preview", "skill_catalog_preview"): "只读取公开技能目录中的技能内容，不安装技能",
     ("POST", "/agent/global-skills/github/preview", "preview_global_github"): "按原管理员权限预览 GitHub 技能，不修改全局技能库",

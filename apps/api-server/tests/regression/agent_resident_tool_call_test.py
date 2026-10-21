@@ -21,7 +21,7 @@ class ResidentToolCallTest(unittest.IsolatedAsyncioTestCase):
         def choose(count):  # 每轮两次模型请求：先调用工具，再给出最终回答
             return {"name": "mcp__oa__metadata_probe", "arguments": "{}"} if count % 2 == 1 else None
 
-        with isolated_home() as home:
+        async with isolated_home() as home:
             async with model_server(requests, choose) as url:
                 with patch.object(settings, "deepseek_harness_root", home), patch.object(settings, "langgraph_api_base_url", url), \
                      patch.object(settings, "langgraph_api_key", "isolated-key"), patch.object(settings, "langgraph_model", "oa-probe"), \

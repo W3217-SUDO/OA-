@@ -89,12 +89,6 @@ CODE_TOOL = {"type": "function", "function": {
         "required": ["language", "code"], "additionalProperties": False}}}
 
 
-def sandbox_allowed(identity) -> bool:
-    """沙箱可运行任意代码，只开放给系统管理员。"""
-    from app.agent_permissions import is_actual_system_admin
-    return is_actual_system_admin(identity)
-
-
 class WorkspaceTools:
     def __init__(self, delegate, identity, db, on_progress=None):
         self.delegate, self.identity, self.db = delegate, identity, db
@@ -117,8 +111,10 @@ class WorkspaceTools:
 
     async def _execute(self, name, arguments):
         if name == "harness_run_code":
-            if not sandbox_allowed(self.identity):
-                raise HTTPException(403, "沙箱运行代码仅限系统管理员")
+            from app.agent_mcp.auth import authenticated_identity
+            actual = await authenticated_identity(self.db)
+            if actual["username"] != self.identity.get("username"):
+                raise HTTPException(403, "沙箱只能使用当前真实登录账号的工作区身份")
             from .script_runtime import run_code
             if not isinstance(arguments, dict) or set(arguments) - {"language", "code", "args"}:
                 raise HTTPException(422, "沙箱参数错误")
