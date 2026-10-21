@@ -96,7 +96,7 @@ def build_entries(case: dict, client_titles: set[str], managers: list[str], part
     label = (lambda position: ARBITRATION_POSITIONS.get(position, position)) if category == "仲裁" else (lambda position: position)
     entries = []
     for name in [*layout["ours"], *layout["theirs"], *layout["others"]]:
-        if name == client or name in client_titles:
+        if _normalize(name) == _normalize(client) or _normalize(name) in client_titles:
             continue  # 客户不进当事人库，只作为“我方当事人”出现在行里
         record = (party_records or {}).get(_normalize(name))
         entries.append({
@@ -117,7 +117,7 @@ def rebuild_party_library(connection) -> int:
     customers = connection.execute(select(
         BusinessRecord.id, BusinessRecord.title, BusinessRecord.owner, BusinessRecord.data, BusinessRecord.serial_no,
     ).where(BusinessRecord.module == "customer", BusinessRecord.status != "已回收").order_by(BusinessRecord.id)).all()
-    client_titles = {title.strip() for _, title, _, data, _ in customers if (data or {}).get("customer_type", "客户") == "客户" and title}
+    client_titles = {_normalize(title) for _, title, _, data, _ in customers if (data or {}).get("customer_type", "客户") == "客户" and _normalize(title)}
     # 当事人沿用档案里的编号：从客户挪来的是原客户编号，新建的是 DSR 编号；同名取最早的一条。
     party_records: dict[str, tuple[int, str]] = {}
     for record_id, title, _, data, record_serial in customers:
@@ -168,6 +168,7 @@ async def register_unnumbered_parties(db, identity: dict) -> dict:
 
     from app.core.crm import _mark_customer_modified, _next_party_serial_no
     from app.core.legacy_sync import _sync_legacy_projection
+    from app.data_models.identity import User
     from app.data_models.records import WorkflowEvent
 
     pending = (await db.execute(
@@ -186,9 +187,10 @@ async def register_unnumbered_parties(db, identity: dict) -> dict:
             continue
         role = _ROLE_BY_POSITION.get(position, position) or _DEFENDANT
         owner = (managers or [identity["username"]])[0]
+        owner_department = await db.scalar(select(User.department).where(User.username == owner))
         party = BusinessRecord(
             module="customer", serial_no=await _next_party_serial_no(db), title=name, customer=name,
-            status="潜在", owner=owner,
+            status="潜在", owner=owner, department=owner_department or "上海分所",
             description=f"由案件 {case_no} 当事人信息补发当事人编号",
             data={
                 "customer_type": "当事人", "level": "潜在客户", "customer_managers": list(managers or [owner]),

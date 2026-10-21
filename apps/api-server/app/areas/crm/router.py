@@ -1903,17 +1903,11 @@ async def list_party_library(
         conditions.append(Entry.case_no.ilike(f"%{case_no.strip()}%"))
     if name.strip():
         conditions.append(or_(Entry.subject_name.ilike(f"%{name.strip()}%"), Entry.party_no.ilike(f"%{name.strip()}%")))
-    category_conditions = list(conditions)  # 各案件类型页签的案件数不受当前所选案件类型影响
     if case_category:
         conditions.append(Entry.case_category == case_category)
     if identity.get("role") != "admin":
         # 只能看到自己有权查看的案件里的主体。
         conditions.append(scalar_in_values(Entry.case_id, list(await _visible_record_ids(identity, db))))
-    if identity.get("role") != "admin":
-        category_conditions.append(conditions[-1])
-    category_counts = dict((await db.execute(
-        select(Entry.case_category, func.count(Entry.case_id.distinct())).where(*category_conditions).group_by(Entry.case_category)
-    )).all())
     total = int(await db.scalar(select(func.count()).select_from(Entry).where(*conditions)) or 0)
     # 顶部统计按人数（不同的姓名或名称）计，不是列表里的行数。
     people_count = int(await db.scalar(select(func.count(Entry.subject_name.distinct())).where(*conditions)) or 0)
@@ -1930,7 +1924,6 @@ async def list_party_library(
         } for row in rows],
         "total": total, "page": page, "page_size": page_size,
         "people_count": people_count,
-        "category_counts": {name: category_counts.get(name, 0) for name in ("民事", "行政", "刑事", "仲裁", "法律顾问", "其他")},
     }
 
 

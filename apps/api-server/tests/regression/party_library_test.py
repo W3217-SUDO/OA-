@@ -41,6 +41,10 @@ class PartyLibraryLayoutTest(unittest.TestCase):
         self.assertEqual(rows[0]["our_parties"], ["甲", "乙"])
         self.assertEqual(rows[0]["manager_key"], "|u1|")
 
+    def test_client_matching_ignores_full_width_and_case_differences(self):
+        rows = build_entries(case("ＡＢＣ公司", plaintiff="ＡＢＣ公司,乙", defendant="丙"), {"abc公司"}, [])
+        self.assertEqual([r["subject_name"] for r in rows], ["乙", "丙"])  # 全角名字的客户同样不进库
+
     def test_party_number_is_the_existing_record_serial_or_blank(self):
         records = {"乙": (7, "HZKH2610001")}
         rows = {r["subject_name"]: r for r in build_entries(case("甲", plaintiff="甲", defendant="乙,丙"), set(), [], records)}
@@ -170,6 +174,7 @@ class PartyLibraryQueryTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             record = (await db.execute(BusinessRecord.__table__.select().where(BusinessRecord.title == "丙"))).first()
         self.assertEqual((record.serial_no, record.data["customer_type"], record.data["customer_managers"]), (f"DSR{yy}00001", "当事人", ["u1"]))
+        self.assertEqual(record.department, "一部")  # 部门取管理人所在部门，不是默认值
 
     async def test_company_scope_lists_parties_only_and_hides_deleted_cases(self):
         result = await self._list()
@@ -205,7 +210,6 @@ class PartyLibraryQueryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({r["case_no"] for r in civil["items"]}, {"CODEX-PL-MS"})
         self.assertEqual({r["case_no"] for r in admin_case["items"]}, {"CODEX-PL-XZ"})
         self.assertEqual(set(civil["items"][0]), set(admin_case["items"][0]))  # 民事、行政字段一致
-        self.assertEqual((civil["category_counts"]["民事"], civil["category_counts"]["行政"]), (1, 1))
 
     async def test_scopes_mine_department_and_recycle(self):
         mine = {"username": "u1", "role": "user", "_page_menu_capability": True}
