@@ -13,7 +13,7 @@ import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "../..
 import { type FeeTypeCatalogItem } from "../../feeTypeHierarchy.mjs";
 import { noCaseDetailWriteCapability, noCaseEventCapabilities } from "../constants";
 import type { CaseInvoiceBatch } from "../hooks/useCaseInvoiceBatch";
-import type { AttachmentRow, CaseDetailCapabilities, CaseEventCapabilities, CaseEventRow, CaseFileTypeOption, CaseRelationCatalog, CaseRow, CaseTaskAttachment, CaseTaskHistoryItem, CaseTaskPageState, ContractRow, Hearing, ParameterRelation, Profile, TaskRow, WarehouseCatalogOption } from "../types";
+import type { AttachmentRow, CaseDetailCapabilities, CaseEventCapabilities, CaseEventRow, CaseFileTypeOption, CaseLitigantCandidate, CaseRelationCatalog, CaseRow, CaseTaskAttachment, CaseTaskHistoryItem, CaseTaskPageState, ContractRow, Hearing, ParameterRelation, Profile, TaskRow, WarehouseCatalogOption } from "../types";
 /** legal queries operations; dependencies are read when each operation runs. */
 export interface CaseQueriesDependencies {
     readonly invoiceBatch: CaseInvoiceBatch;
@@ -144,6 +144,9 @@ export interface CaseQueriesDependencies {
     readonly setCounselCaseEventCapabilities: React.Dispatch<React.SetStateAction<CaseEventCapabilities>>;
     readonly setSelectedCounselCaseEventKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
     readonly setCounselCaseEventsError: React.Dispatch<React.SetStateAction<string>>;
+    readonly caseLitigantSearchRequestRef: React.RefObject<number>;
+    readonly setCaseLitigantCandidatesLoading: React.Dispatch<React.SetStateAction<boolean>>;
+    readonly setCaseLitigantCandidates: React.Dispatch<React.SetStateAction<CaseLitigantCandidate[]>>;
     readonly originalCases: CaseRow[];
     readonly selectedCaseKeys: React.Key[];
 }
@@ -595,6 +598,28 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             message.error(error?.response?.data?.detail || "案件事件加载失败");
         }
     };
+    const loadCaseLitigantCandidates = async (keyword = "") => {
+        const { caseLitigantSearchRequestRef, setCaseLitigantCandidatesLoading, setCaseLitigantCandidates } = context;
+        const requestId = ++caseLitigantSearchRequestRef.current;
+        setCaseLitigantCandidates([]);
+        setCaseLitigantCandidatesLoading(true);
+        try {
+            const { data } = await api.get("/case-litigant-candidates", { params: { keyword: keyword.trim() } });
+            if (requestId === caseLitigantSearchRequestRef.current) {
+                setCaseLitigantCandidates(Array.isArray(data.items) ? data.items : []);
+            }
+        }
+        catch (error: any) {
+            if (requestId === caseLitigantSearchRequestRef.current) {
+                setCaseLitigantCandidates([]);
+                message.error(error?.response?.data?.detail || "当事人候选加载失败");
+            }
+        }
+        finally {
+            if (requestId === caseLitigantSearchRequestRef.current)
+                setCaseLitigantCandidatesLoading(false);
+        }
+    };
     const exportCases = async () => {
         const { originalCases } = context;
         if (!(context.specialCaseList?.active ? context.specialCaseList.total : originalCases.length))
@@ -661,5 +686,5 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
             message.error("数据导出失败");
         }
     };
-    return { loadCaseInvoiceBatch, loadCaseCapabilities, loadCaseRelations, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, exportCases, exportCounselCases, exportCurrentOrdinaryCasesExcel, exportSpecialRecords };
+    return { loadCaseInvoiceBatch, loadCaseCapabilities, loadCaseRelations, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportCurrentOrdinaryCasesExcel, exportSpecialRecords };
 }

@@ -102,13 +102,6 @@ def _matter(record: BusinessRecord, customers: dict[int, BusinessRecord], ipr_li
         if linked_customer and link.customer_record_id != customer_id:
             linked_data = linked_customer.data or {}
             clients.append({"id": linked_customer.id, "name": linked_customer.title, "identity": str(linked_data.get("identity_no") or linked_data.get("credit_code") or "").strip().upper()})
-    if data.get("case_party_schema_version") == 1:
-        classified = data.get("case_parties") or []
-        opponent_parties = [{"name": item["name"], "identity": item.get("credit_code", "")}
-                            for item in classified if item["party_standpoint"] == "对方"]
-        for item in classified:
-            if item["party_standpoint"] == "我方" and item["party_type"] in {"当事人", "第三人", "关联方"}:
-                clients.append({"id": item.get("related_client_id"), "name": item["name"], "identity": item.get("credit_code", "")})
     merged = []
     for item in data.get("merged_sources") or []:
         if isinstance(item, dict) and item.get("id"):

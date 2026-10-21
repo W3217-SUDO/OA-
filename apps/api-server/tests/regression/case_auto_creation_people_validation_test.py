@@ -119,7 +119,7 @@ class CaseAutoCreationPeopleValidationTest(unittest.IsolatedAsyncioTestCase):
         self.mock_async("app.core.contracts._resolve_clue_source_contract", return_value=(contract, ""))
         self.patches.enter_context(patch("app.core.contracts._contract_allows_downstream_creation", return_value=True))
         self.mock_async("app.core.cases._next_case_serial", side_effect=[f"CODEX-NEW-{i}" for i in range(len(clues))])
-        self.mock_async("app.core.crm._persist_unclassified_case_parties")
+        self.mock_async("app.core.crm._persist_case_litigant_customers")
         self.mock_async("app.core.permissions._ensure_case_fixed_tasks")
         body = BatchClueCaseInput(clue_ids=[clue.id for clue in clues], **{"handling_lawyer": "", **overrides})
         return await batch_create_cases_from_clues(body, self.identity, db), db

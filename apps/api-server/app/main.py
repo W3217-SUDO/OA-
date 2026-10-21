@@ -16,7 +16,6 @@ from app.areas.contract.router import (
     review_contract_change as review_contract_change, review_contract_payment_application as review_contract_payment_application, revoke_contract_draft as revoke_contract_draft, save_contract_approver_settings as save_contract_approver_settings, submit_contract as submit_contract,
     update_contract_draft as update_contract_draft, update_contract_object as update_contract_object, writeoff_contract_payment_application as writeoff_contract_payment_application,
 )
-from app.areas.crm.party_directory import router as party_directory_router
 from app.areas.crm.router import (
     activate_customer_portal as activate_customer_portal, add_customer_contact as add_customer_contact, add_customer_note as add_customer_note, claim_customer as claim_customer, close_customer_portal as close_customer_portal,
     create_customer as create_customer, create_customer_event_by_guid as create_customer_event_by_guid, create_law_firm as create_law_firm, create_law_firm_contact as create_law_firm_contact, customer_conflicts as customer_conflicts,
@@ -235,7 +234,7 @@ from app.core.crm import (
     _customer_guid as _customer_guid, _customer_has_vip_marker as _customer_has_vip_marker, _customer_linked_business_counts as _customer_linked_business_counts, _customer_or_404 as _customer_or_404, _customer_reference_from_maps as _customer_reference_from_maps,
     _customer_roi_analytics as _customer_roi_analytics, _dashboard_customer_for_case as _dashboard_customer_for_case, _empty_customer_conflict_result as _empty_customer_conflict_result, _law_firm_audit_dict as _law_firm_audit_dict, _law_firm_contact_dict as _law_firm_contact_dict,
     _law_firm_dict as _law_firm_dict, _law_firm_license as _law_firm_license, _law_firm_or_404 as _law_firm_or_404, _locked_customer_or_404 as _locked_customer_or_404, _mark_customer_modified as _mark_customer_modified,
-    _next_customer_serial_no as _next_customer_serial_no, _persist_unclassified_case_parties as _persist_unclassified_case_parties, _portal_customer as _portal_customer, _prioritize_new_customer_managers as _prioritize_new_customer_managers, _resolve_active_customer_managers as _resolve_active_customer_managers,
+    _next_customer_serial_no as _next_customer_serial_no, _persist_case_litigant_customers as _persist_case_litigant_customers, _portal_customer as _portal_customer, _prioritize_new_customer_managers as _prioritize_new_customer_managers, _resolve_active_customer_managers as _resolve_active_customer_managers,
     _sync_customer_contact_metrics as _sync_customer_contact_metrics,
 )
 from app.core.dependencies import (
@@ -527,7 +526,6 @@ app.include_router(
     prefix=settings.api_prefix,
 )
 include_route_slice(app, system_router, 1, 36)
-app.include_router(party_directory_router)
 include_route_slice(app, crm_router, 0, 12)
 include_route_slice(app, system_router, 36, 48)
 include_route_slice(app, investigation_router, 0, 1)
@@ -612,7 +610,7 @@ include_route_slice(app, investigation_router, 41, len(investigation_router.rout
 include_route_slice(app, hr_router, 31, len(hr_router.routes))
 include_route_slice(app, system_router, 86, len(system_router.routes))
 include_route_slice(app, aws_router, 18, len(aws_router.routes))
-verify_route_coverage(app, [aws_router, contract_router, crm_router, party_directory_router, conflict_rules_router, conflict_reviews_router, finance_router, hr_router, investigation_router, ipr_router, legal_router, rpt_router, system_router, tp_router, wms_router])
+verify_route_coverage(app, [aws_router, contract_router, crm_router, conflict_rules_router, conflict_reviews_router, finance_router, hr_router, investigation_router, ipr_router, legal_router, rpt_router, system_router, tp_router, wms_router])
 from app.areas.finance.query_cache_routes import install_finance_query_cache
 install_finance_query_cache(app)
 install_gateway(app)

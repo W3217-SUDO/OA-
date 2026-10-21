@@ -3,7 +3,6 @@
 from datetime import date, datetime
 from pydantic import BaseModel, Field, field_validator
 from typing import Literal
-from app.api_schemas.case_parties import ClassifiedCasePartyInput
 
 
 class CaseAssignmentInput(BaseModel):
@@ -224,7 +223,6 @@ class CasePartyIdentityInput(BaseModel):
 
 
 class CaseLitigantsInput(BaseModel):
-    case_parties: list[ClassifiedCasePartyInput] | None = Field(default=None, max_length=150)
     plaintiffs: list[str] = Field(default_factory=list, max_length=50)
     plaintiff_identities: list[CasePartyIdentityInput] = Field(default_factory=list, max_length=50)
     # Strings remain accepted for historical case JSON and existing callers.
