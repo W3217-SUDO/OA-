@@ -160,6 +160,7 @@ const OrganizationCenterPage = lazyWithVersionRecovery("organization", () => imp
 const WarehousePage = lazyWithVersionRecovery("warehouse", () => import("./WarehousePage"));
 const ReportCenterPage = lazyWithVersionRecovery("report", () => import("./ReportCenterPage"));
 const CustomerCenterPage = lazyWithVersionRecovery("customer", () => import("./crm"));
+const PartyLibraryPage = lazyWithVersionRecovery("party-library", () => import("./crm/PartyLibraryPage"));
 const ContractCenterPage = lazyWithVersionRecovery("contract", () => import("./contract"));
 const AuditLogPage = lazyWithVersionRecovery("audit-log", () => import("./AuditLogPage"));
 const AgentDocumentPage = lazyWithVersionRecovery("agent-document", () => import("./AgentDocumentPage"));
@@ -285,9 +286,39 @@ const menuItems: NavItem[] = [
     icon: <TeamOutlined />,
     label: "当事人中心",
     children: [
-      { key: "party-mine", label: "我的当事人" },
-      { key: "party-dept", label: "部门当事人" },
-      { key: "party-company", label: "公司当事人" },
+      {
+        key: "party-mine",
+        label: "我的当事人",
+        children: [
+          { key: "party-mine-civil", label: "民事案件当事人" },
+          { key: "party-mine-admin", label: "行政案件当事人" },
+          { key: "party-mine-criminal", label: "刑事案件当事人" },
+          { key: "party-mine-arbitration", label: "仲裁案件当事人" },
+          { key: "party-mine-advisor", label: "法律顾问当事人" },
+        ],
+      },
+      {
+        key: "party-dept",
+        label: "部门当事人",
+        children: [
+          { key: "party-dept-civil", label: "民事案件当事人" },
+          { key: "party-dept-admin", label: "行政案件当事人" },
+          { key: "party-dept-criminal", label: "刑事案件当事人" },
+          { key: "party-dept-arbitration", label: "仲裁案件当事人" },
+          { key: "party-dept-advisor", label: "法律顾问当事人" },
+        ],
+      },
+      {
+        key: "party-company",
+        label: "公司当事人",
+        children: [
+          { key: "party-company-civil", label: "民事案件当事人" },
+          { key: "party-company-admin", label: "行政案件当事人" },
+          { key: "party-company-criminal", label: "刑事案件当事人" },
+          { key: "party-company-arbitration", label: "仲裁案件当事人" },
+          { key: "party-company-advisor", label: "法律顾问当事人" },
+        ],
+      },
       { key: "party-recycle", label: "当事人回收站" },
     ],
   },
@@ -1660,9 +1691,17 @@ export default function App() {
       <FeedbackPage onNavigate={navigate} />
     ) : route.startsWith("seal-") ? (
       <SealCenterPage initialView={active} onNavigate={navigate} />
+    ) : route.startsWith("party-") ? (
+      <PartyLibraryPage
+        key={route}
+        scope={({ mine: "mine", dept: "department", company: "company", recycle: "recycle" } as Record<string, string>)[route.split("-")[1]] || "company"}
+        category={({ civil: "民事", admin: "行政", criminal: "刑事", arbitration: "仲裁", advisor: "法律顾问" } as Record<string, string>)[route.split("-")[2]] || ""}
+        isAdmin={permissionAdministrator}
+        onOpenCase={(row) => navigate(`case-detail-${row.case_id}-${encodeURIComponent(row.case_no)}`)}
+      />
     ) : route === "customer-conflict" ? (
       <CustomerConflictPage />
-    ) : route.startsWith("customer-") || route.startsWith("party-") ? (
+    ) : route.startsWith("customer-") ? (
       <CustomerCenterPage initialView={route} onNavigate={navigate} />
     ) : route === "system-law-firms" ? (
       <LawFirmPage />

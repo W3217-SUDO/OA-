@@ -635,6 +635,27 @@ async def _next_customer_serial_no(db: AsyncSession) -> str:
     return f"{serial_prefix}{serial_sequence:05d}"
 
 
+async def _next_party_serial_no(db: AsyncSession) -> str:
+    """新建当事人的独立编号：DSR + 两位年份 + 5 位流水（如 DSR2600001），与客户编号分开计数。"""
+    serial_prefix = f"DSR{datetime.now():%y}"
+    serial_candidates = (await db.scalars(
+        select(BusinessRecord.serial_no).where(
+            BusinessRecord.module == "customer",
+            BusinessRecord.serial_no.like(f"{serial_prefix}%"),
+        )
+    )).all()
+    serial_sequence = max(
+        (
+            int(item[len(serial_prefix):])
+            for item in serial_candidates
+            if item[len(serial_prefix):].isdigit()
+            and len(item[len(serial_prefix):]) == 5
+        ),
+        default=0,
+    ) + 1
+    return f"{serial_prefix}{serial_sequence:05d}"
+
+
 def _case_is_for_allocation_customer(record: BusinessRecord, customer: BusinessRecord | None, customer_title: str) -> bool:
     """Require the claimed customer to be the party in its stored litigation role."""
     from app.core.cases import (
@@ -846,7 +867,8 @@ async def _persist_case_litigant_customers(
             continue
         title = str(entry["title"])
         roles = list(entry["roles"]) if isinstance(entry["roles"], list) else []
-        serial_no = await _next_customer_serial_no(db)
+        # 案件里新出现的当事人用 DSR 当事人编号；已有记录（含从客户挪来的）保留原编号。
+        serial_no = await _next_party_serial_no(db)
         data = {
             "customer_type": "当事人",
             "level": "潜在客户",

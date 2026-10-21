@@ -28,7 +28,7 @@ from app.core.hz_allocation_read_model_migration import (
     MIGRATION_REVISION as HZ_ALLOCATION_READ_MODEL_REVISION,
     upgrade_hz_allocation_read_model,
 )
-from app.core.party_table_migration import MIGRATION_REVISION as PARTY_TABLE_REVISION, upgrade_party_table
+from app.core.party_library import MIGRATION_REVISION as PARTY_LIBRARY_REVISION, upgrade_party_library
 from app.legacy_schema import (
     align_legacy_column_types,
     align_legacy_constraints,
@@ -117,8 +117,8 @@ def _apply_incoming_finance(connection: Connection, _upgrade_schema: Callable[[C
     upgrade_incoming_finance_schema(connection)
 
 
-def _apply_party_table(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
-    upgrade_party_table(connection)
+def _apply_party_library(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    upgrade_party_library(connection)
 
 
 def _apply_hz_allocation_read_model(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
@@ -142,7 +142,7 @@ def _run_versioned_schema_migrations(
         (DASHBOARD_REVISION, _apply_dashboard_revision),
         (FINANCE_QUERY_REVISION, _apply_finance_query_revision),
         (CASE_LINK_JSON_INDEX_REVISION, _apply_case_link_json_indexes),
-        (PARTY_TABLE_REVISION, _apply_party_table),
+        (PARTY_LIBRARY_REVISION, _apply_party_library),
     )
     for revision, migration in revisions:
         if connection.execute(

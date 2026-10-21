@@ -1856,113 +1856,106 @@ async def list_customers(
     }
 
 
-@router.get(f"{settings.api_prefix}/parties")
-async def list_parties(
-    scope: str = Query("company", pattern="^(mine|recycle|department|company)$"),
-    name: str = "",
-    party_type: str = Query("", max_length=64),
-    manager: str = "",
+@router.get(f"{settings.api_prefix}/party-library")
+async def list_party_library(
+    scope: str = Query("company", pattern="^(mine|department|company|recycle)$"),
+    case_no: str = Query("", max_length=64),
+    name: str = Query("", max_length=200),
+    case_category: str = Query("", pattern="^(民事|行政|刑事|仲裁|法律顾问|其他|)$"),
     page: int = Query(1, ge=0),
     page_size: int = Query(15, ge=0, le=200),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
-    """当事人中心列表：只读独立的 parties 表，不再经过客户记录。"""
-    from app.core.permissions import _permission_payload_for_identity
-    from app.core.system import _allowed_field_keys, _record_dict
-    from app.data_models.parties import Party
+    """当事人库：按主体所在的案件列表显示，客户与当事人分类。"""
+    from app.core.json_relation_query import scalar_in_values
+    from app.core.permissions import _permission_payload_for_identity, _visible_record_ids
+    from app.data_models.party_library import PartyLibraryEntry as Entry
     page = page or 1
     page_size = page_size or 15
+    # 菜单：当事人中心 → 我的/部门/公司当事人 → 各案件类型；回收站单独一项。
+    scope_short = {"mine": "mine", "department": "dept", "company": "company", "recycle": "recycle"}[scope]
+    category_suffix = {"民事": "civil", "行政": "admin", "刑事": "criminal", "仲裁": "arbitration", "法律顾问": "advisor"}.get(case_category)
+    permission = await _permission_payload_for_identity(identity, db)
+    granted = set(permission.get("menu_keys") or [])
+    allowed = f"party-{scope_short}" in granted or (category_suffix is not None and f"party-{scope_short}-{category_suffix}" in granted)
+    if not identity.get("_page_menu_capability") and not allowed:
+        raise HTTPException(status_code=403, detail="当前账号未开通该当事人页面权限")
     current_user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
     if not current_user:
         raise HTTPException(status_code=401, detail="当前用户不存在或已停用")
-    scope_menu_keys = {"mine": "party-mine", "recycle": "party-recycle", "department": "party-dept", "company": "party-company"}
-    permission = await _permission_payload_for_identity(identity, db)
-    if not identity.get("_page_menu_capability") and scope_menu_keys[scope] not in set(permission.get("menu_keys") or []):
-        raise HTTPException(status_code=403, detail="当前账号未开通该当事人页面权限")
-    conditions = [Party.status == "已回收"] if scope == "recycle" else [Party.status.not_in(["已回收", "公海"])]
+    # 已删除的案件只出现在回收站；我的/部门按管理人（客户管理人，没有则案件负责人）划分。
+    conditions = [Entry.case_status == "已删除"] if scope == "recycle" else [Entry.case_status != "已删除"]
+    if scope in {"mine", "recycle", "department"}:
+        if scope == "department":
+            people = {str(row[0]).strip() for row in (await db.execute(select(User.username).where(
+                User.is_active.is_(True), User.department == current_user.department))).all() if row[0]}
+        else:
+            people = {current_user.username}
+            display_name = str(current_user.display_name or "").strip()
+            if display_name and int(await db.scalar(select(func.count()).select_from(User).where(
+                    User.is_active.is_(True), User.display_name == display_name)) or 0) == 1:
+                people.add(display_name)
+        if scope != "recycle" or identity.get("role") != "admin":
+            conditions.append(or_(*[Entry.manager_key.contains(f"|{person}|") for person in sorted(people)]))
+    if case_no.strip():
+        conditions.append(Entry.case_no.ilike(f"%{case_no.strip()}%"))
     if name.strip():
-        like = f"%{name.strip()}%"
-        conditions.append(or_(Party.serial_no.ilike(like), Party.name.ilike(like)))
-    if party_type.strip():
-        conditions.append(Party.party_type == party_type.strip())
-    # 负责人/案源人/当事人管理人都按用户名或唯一的显示名匹配，规则与客户列表一致。
-    def tokens_of(user_rows) -> set[str]:
-        return {str(value or "").strip() for row in user_rows for value in row if str(value or "").strip()}
+        conditions.append(or_(Entry.subject_name.ilike(f"%{name.strip()}%"), Entry.party_no.ilike(f"%{name.strip()}%")))
+    category_conditions = list(conditions)  # 各案件类型页签的案件数不受当前所选案件类型影响
+    if case_category:
+        conditions.append(Entry.case_category == case_category)
+    if identity.get("role") != "admin":
+        # 只能看到自己有权查看的案件里的主体。
+        conditions.append(scalar_in_values(Entry.case_id, list(await _visible_record_ids(identity, db))))
+    if identity.get("role") != "admin":
+        category_conditions.append(conditions[-1])
+    category_counts = dict((await db.execute(
+        select(Entry.case_category, func.count(Entry.case_id.distinct())).where(*category_conditions).group_by(Entry.case_category)
+    )).all())
+    total = int(await db.scalar(select(func.count()).select_from(Entry).where(*conditions)) or 0)
+    # 顶部统计按人数（不同的姓名或名称）计，不是列表里的行数。
+    people_count = int(await db.scalar(select(func.count(Entry.subject_name.distinct())).where(*conditions)) or 0)
+    rows = (await db.scalars(select(Entry).where(*conditions).order_by(Entry.case_no.desc(), Entry.id)
+                             .offset((page - 1) * page_size).limit(page_size))).all()
+    return {
+        "items": [{
+            "id": row.id, "case_id": row.case_id, "case_no": row.case_no, "case_category": row.case_category, "party_no": row.party_no,
+            "customer_record_id": row.customer_record_id, "subject_name": row.subject_name,
+            "subject_type": row.subject_type, "subject_position": row.subject_position,
+            "our_parties": row.our_parties, "our_position": row.our_position,
+            "opponent_parties": row.opponent_parties, "opponent_position": row.opponent_position,
+            "managers": row.managers,
+        } for row in rows],
+        "total": total, "page": page, "page_size": page_size,
+        "people_count": people_count,
+        "category_counts": {name: category_counts.get(name, 0) for name in ("民事", "行政", "刑事", "仲裁", "法律顾问", "其他")},
+    }
 
-    needs_people = scope in {"mine", "recycle", "department"} or bool(manager.strip())
-    people: set[str] | None = None
-    if scope in {"mine", "recycle"}:
-        people = {current_user.username}
-        display_name = str(current_user.display_name or "").strip()
-        if display_name and int(await db.scalar(select(func.count()).select_from(User).where(
-                User.is_active.is_(True), User.display_name == display_name)) or 0) == 1:
-            people.add(display_name)
-    elif scope == "department":
-        people = tokens_of((await db.execute(select(User.username, User.display_name).where(
-            User.is_active.is_(True), User.department == current_user.department))).all())
-    manager_tokens: set[str] = set()
-    if manager.strip():
-        manager_tokens = {manager.strip()}
-        names = list((await db.scalars(select(User.username).where(
-            User.is_active.is_(True), User.display_name == manager.strip()))).all())
-        if len(names) == 1:
-            manager_tokens.add(names[0])
 
-    def participants(owner: str, data: dict) -> set[str]:
-        managers = data.get("customer_managers") or []
-        managers = managers if isinstance(managers, list) else [managers]
-        source = data.get("customer_source") or data.get("source_person") or ""
-        return {str(value).strip() for value in (owner, source, *managers) if str(value or "").strip()}
+@router.post(f"{settings.api_prefix}/party-library/rebuild")
+async def rebuild_party_library_entries(
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """案件当事人变动后按案件数据重新生成当事人库（只重建本表，不改案件和客户）。"""
+    from app.core.party_library import rebuild_party_library
+    if identity.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="只有管理员可以重建当事人库")
+    total = await db.run_sync(lambda session: rebuild_party_library(session.connection()))
+    await db.commit()
+    return {"total": total}
 
-    order = (Party.updated_at.desc(), Party.id.desc())
-    if not needs_people:
-        total = int(await db.scalar(select(func.count()).select_from(Party).where(*conditions)) or 0)
-        page_rows = (await db.scalars(select(Party).where(*conditions).order_by(*order)
-                                      .offset((page - 1) * page_size).limit(page_size))).all()
-    else:
-        candidates = (await db.execute(select(Party.id, Party.owner, Party.data["customer_managers"],
-                                              Party.data["customer_source"], Party.data["source_person"])
-                                       .where(*conditions).order_by(*order))).all()
-        matched = []
-        for pid, owner, managers, source, source_person in candidates:
-            data = {"customer_managers": managers, "customer_source": source, "source_person": source_person}
-            who = participants(owner, data)
-            if people is not None and not who & people:
-                continue
-            if manager_tokens and not who & manager_tokens:
-                continue
-            matched.append(pid)
-        total = len(matched)
-        ids = matched[(page - 1) * page_size: page * page_size]
-        by_id = {row.id: row for row in (await db.scalars(select(Party).where(Party.id.in_(ids)))).all()} if ids else {}
-        page_rows = [by_id[i] for i in ids if i in by_id]
-    from app.core.customer_readmodel import customer_person_names, customer_relationship_counts
-    allowed_fields = await _allowed_field_keys(identity, db)
-    views = [SimpleNamespace(
-        id=party.id, module="customer", serial_no=party.serial_no, title=party.name, customer="",
-        status=party.status, owner=party.owner, department=party.department, description=party.description,
-        data=party.data, created_at=party.created_at, updated_at=party.updated_at,
-    ) for party in page_rows]
-    counts = await customer_relationship_counts(db, views) if views else {}
-    person_names = await customer_person_names(db, views) if views else {}
 
-    def person_display(value: object) -> str:
-        token = str(value or "").strip()
-        return person_names.get(token.casefold(), token)
-
-    items = []
-    for view, party in zip(views, page_rows):
-        row = _record_dict(view, allowed_fields)
-        data = row.get("data") or {}
-        managers = data.get("customer_managers") or ([row.get("owner")] if row.get("owner") else [])
-        managers = managers if isinstance(managers, list) else [managers]
-        source = data.get("customer_source") or data.get("source_person") or row.get("owner")
-        row["data"] = {
-            **data, **counts[view.id], "customer_type": party.party_type or data.get("customer_type", ""),
-            "customer_manager_display_names": [person_display(value) for value in managers if str(value or "").strip()],
-            "customer_source_display_name": person_display(source),
-        }
-        items.append(row)
-    return {"items": items, "total": total, "page": page, "page_size": page_size, "summary": {}}
-
+@router.post(f"{settings.api_prefix}/party-library/register-unnumbered")
+async def register_unnumbered_party_library_parties(
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """给案件里没有档案的当事人建档并补发 DSR 当事人编号（仅管理员）。"""
+    from app.core.party_library import register_unnumbered_parties
+    if identity.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="只有管理员可以补发当事人编号")
+    result = await register_unnumbered_parties(db, identity)
+    await db.commit()
+    return result

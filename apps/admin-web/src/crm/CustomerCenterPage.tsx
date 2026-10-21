@@ -77,16 +77,12 @@ import {
 } from "./constants";
 
 export default function CustomerCenterPage({
-  initialView: routeView,
+  initialView,
   onNavigate,
 }: {
   initialView: string;
   onNavigate?: (key: string) => void;
 }) {
-  // 当事人中心复用客户列表的范围与权限，只固定类型为“当事人”；客户管理固定为“客户”。
-  const partyMode = routeView.startsWith("party-");
-  const initialView = partyMode ? routeView.replace(/^party-/, "customer-") : routeView;
-  const fixedCustomerType = partyMode ? "非客户" : "客户";
   const originalCustomerScope = {
     "customer-mine": "mine",
     "customer-recycle": "recycle",
@@ -106,11 +102,10 @@ export default function CustomerCenterPage({
   // ========== State ==========
   const [allRows, setAllRows] = useState<Customer[]>([]);
   const [keyword, setKeyword] = useState("");
-  const [customerType, setCustomerType] = useState(fixedCustomerType);
+  const [customerType, setCustomerType] = useState("客户");
   const [customerTypeOptions, setCustomerTypeOptions] = useState<{ value: string; label: string }[]>([
-    ...(partyMode
-      ? [{ value: "非客户", label: "全部当事人" }]
-      : [{ value: "客户", label: "客户" }, { value: "当事人", label: "当事人" }]),
+    { value: "客户", label: "客户" },
+    { value: "当事人", label: "当事人" },
   ]);
   const [managerKeyword, setManagerKeyword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -295,19 +290,7 @@ export default function CustomerCenterPage({
     const requestPage = overrides.page ?? page;
     setLoading(true);
     try {
-      const partyScope = ({ mine: "mine", recycle: "recycle", department: "department", company: "company" } as Record<string, string>)[originalCustomerScope || ""];
-      const recordsRequest = partyMode && partyScope
-        ? api.get("/parties", {
-            params: {
-              scope: partyScope,
-              name: requestKeyword,
-              party_type: requestCustomerType === "非客户" ? "" : requestCustomerType,
-              manager: requestManagerKeyword,
-              page: requestPage,
-              page_size: pageSize,
-            },
-          })
-        : isOriginalCustomerList
+      const recordsRequest = isOriginalCustomerList
         ? api.get("/customers", {
             params: {
               ...buildCustomerListParams({
@@ -370,10 +353,7 @@ export default function CustomerCenterPage({
       if (customerDirectoryResult.status === "fulfilled") setCustomerDirectory(customerDirectoryResult.value.data.items || []);
       else message.warning("客户账号目录加载失败，稍后可刷新重试");
       if (customerTypeResult.status === "fulfilled") {
-        const typeItems = (customerTypeResult.value.data.customer_types || []) as { value: string; label: string }[];
-        const options = partyMode
-          ? [{ value: "非客户", label: "全部当事人" }, ...typeItems.filter((item) => item.value !== "客户")]
-          : typeItems;
+        const options = customerTypeResult.value.data.customer_types || [];
         if (options.length) {
           setCustomerTypeOptions(options);
           if (!options.some((item: { value: string }) => item.value === customerType)) setCustomerType(options[0].value);
@@ -682,18 +662,15 @@ export default function CustomerCenterPage({
     };
     try {
       const [recordRes, fileRes, historyRes, customerEventRes, sharedObjectsRes, contactRes] = await Promise.all([
-        (partyMode
-          ? api.get("/parties", { params: { scope: originalCustomerScope, name: target.serial_no, page: 1, page_size: 10 } })
-          : api.get("/customers", {
-              params: {
-                scope: originalCustomerScope,
-                customer_name: target.serial_no,
-                customer_type: target.data.customer_type || "客户",
-                page: 1,
-                page_size: 10,
-              },
-            })
-        ).catch((error) => {
+        api.get("/customers", {
+          params: {
+            scope: originalCustomerScope,
+            customer_name: target.serial_no,
+            customer_type: target.data.customer_type || "客户",
+            page: 1,
+            page_size: 10,
+          },
+        }).catch((error) => {
           recordErrorMessage = getCustomerResponseMessage(error, "客户记录加载失败");
           return { data: { items: [] } };
         }),
@@ -1385,7 +1362,6 @@ export default function CustomerCenterPage({
       {isReadOnlyCustomerList && detailPageOpen && contacts && (
         <CustomerDetailView
           initialView={initialView}
-          partyMode={partyMode}
           customer={contacts}
           directory={directory}
           customerTypeOptions={customerTypeOptions}
@@ -1438,7 +1414,6 @@ export default function CustomerCenterPage({
       {initialView !== "customer-new" && !(isReadOnlyCustomerList && detailPageOpen) && (
         <CustomerList
           initialView={initialView}
-          partyMode={partyMode}
           rows={rows}
           total={total}
           page={page}

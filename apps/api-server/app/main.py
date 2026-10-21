@@ -234,7 +234,7 @@ from app.core.crm import (
     _customer_guid as _customer_guid, _customer_has_vip_marker as _customer_has_vip_marker, _customer_linked_business_counts as _customer_linked_business_counts, _customer_or_404 as _customer_or_404, _customer_reference_from_maps as _customer_reference_from_maps,
     _customer_roi_analytics as _customer_roi_analytics, _dashboard_customer_for_case as _dashboard_customer_for_case, _empty_customer_conflict_result as _empty_customer_conflict_result, _law_firm_audit_dict as _law_firm_audit_dict, _law_firm_contact_dict as _law_firm_contact_dict,
     _law_firm_dict as _law_firm_dict, _law_firm_license as _law_firm_license, _law_firm_or_404 as _law_firm_or_404, _locked_customer_or_404 as _locked_customer_or_404, _mark_customer_modified as _mark_customer_modified,
-    _next_customer_serial_no as _next_customer_serial_no, _persist_case_litigant_customers as _persist_case_litigant_customers, _portal_customer as _portal_customer, _prioritize_new_customer_managers as _prioritize_new_customer_managers, _resolve_active_customer_managers as _resolve_active_customer_managers,
+    _next_customer_serial_no as _next_customer_serial_no, _next_party_serial_no as _next_party_serial_no, _persist_case_litigant_customers as _persist_case_litigant_customers, _portal_customer as _portal_customer, _prioritize_new_customer_managers as _prioritize_new_customer_managers, _resolve_active_customer_managers as _resolve_active_customer_managers,
     _sync_customer_contact_metrics as _sync_customer_contact_metrics,
 )
 from app.core.dependencies import (
@@ -561,7 +561,7 @@ include_route_slice(app, system_router, 53, 55)
 include_route_slice(app, tp_router, 18, 35)
 include_route_slice(app, finance_router, 28, 42)
 include_route_slice(app, crm_router, 53, 55)
-include_route_slice(app, crm_router, 55, 56)
+include_route_slice(app, crm_router, 55, 58)
 app.include_router(conflict_rules_router)
 app.include_router(conflict_reviews_router)
 include_route_slice(app, finance_router, 42, 64)
