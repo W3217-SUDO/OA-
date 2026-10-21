@@ -31,6 +31,16 @@ def _invalid(loc: tuple, message: str, kind: str = "value_error") -> None:
     raise HTTPException(422, detail=[{"loc": list(loc), "msg": message, "type": kind}])
 
 
+_MISSING_MESSAGE = "缺少必填参数，请先向用户询问这一项，不要猜测或用默认值补填"
+
+
+def _require_all(loc: tuple, names: list[str], present) -> None:
+    """一次列出所有缺失的必填参数，让智能体能一次问全，而不是每次只报第一个。"""
+    missing = [name for name in names if name not in present]
+    if missing:
+        raise HTTPException(422, detail=[{"loc": [*loc, name], "msg": _MISSING_MESSAGE, "type": "missing"} for name in missing])
+
+
 def _reference(schema: dict, document: dict) -> dict:
     if "$ref" not in schema:
         return schema
@@ -117,9 +127,7 @@ def _strict_objects(value, schema: dict, document: dict, loc: tuple) -> None:
     if isinstance(value, dict) and schema.get("type") == "object":
         properties = schema.get("properties", {})
         additional = schema.get("additionalProperties", False if properties else True)
-        for name in schema.get("required", []):
-            if name not in value:
-                _invalid((*loc, name), "缺少必填参数", "missing")
+        _require_all(loc, schema.get("required", []), value)
         for key, item in value.items():
             if key in properties:
                 _strict_objects(item, properties[key], document, (*loc, key))
@@ -220,9 +228,7 @@ class ToolDefinition:
             if not isinstance(values, dict):
                 _invalid((group,), "参数分组必须是 JSON 对象", "dict_type")
             schema = self.input_schema["properties"][group]
-            for required in schema.get("required", []):
-                if required not in values:
-                    _invalid((group, required), "缺少必填参数", "missing")
+            _require_all((group,), schema.get("required", []), values)
             if group == "files":
                 for key, value in values.items():
                     items = value if self.file_fields[key] else [value]
@@ -249,9 +255,7 @@ class ToolDefinition:
             if not isinstance(body, dict):
                 _invalid(("body",), "表单字段必须是 JSON 对象", "dict_type")
             body_schema = self.input_schema["properties"]["body"]
-            for required in body_schema.get("required", []):
-                if required not in body:
-                    _invalid(("body", required), "缺少必填表单字段", "missing")
+            _require_all(("body",), body_schema.get("required", []), body)
             fields = {item.alias: item for item in get_flat_dependant(self._route.dependant).body_params}
             result["body"] = {key: _field_value(fields[key], value, ("body", key)) for key, value in body.items()}
         else:
