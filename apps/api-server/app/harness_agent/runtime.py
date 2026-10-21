@@ -42,7 +42,7 @@ def readiness() -> dict[str, Any]:
             "version": installed}
 
 
-def workspace_paths(owner: str, workspace: str, conversation: str):
+def storage_root():
     from app.areas.personal_agent.service import _storage_root
 
     configured = settings.deepseek_harness_root.strip()
@@ -54,6 +54,12 @@ def workspace_paths(owner: str, workspace: str, conversation: str):
     public = filesystem_path(UPLOAD_ROOT)
     if root == public or public in root.parents:
         raise HTTPException(503, "Harness 会话不能存放在公开附件目录中")
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return root
+
+
+def workspace_paths(owner: str, workspace: str, conversation: str):
+    root = storage_root()
     owner_key = hashlib.sha256(owner.casefold().encode()).hexdigest()
     workspace_key = hashlib.sha256(workspace.encode()).hexdigest()
     session_key = hashlib.sha256(json.dumps([owner_key, workspace, conversation]).encode()).hexdigest()
@@ -77,7 +83,7 @@ def _patch(url, token, schema, directories, mode_supported, response_mode, memor
         provider["compat"] = {"thinkingFormat": "deepseek", "supportsReasoningEffort": False}
         provider["reasoning"] = "off" if response_mode == "fast" else "high"
     allow = ["skill", *["mcp__oa__" + item["function"]["name"] for item in schema]]
-    persona = "你是沪知办公系统的 AI 助手，使用当前工作区已授权的技能和工具。技能使用 skill 加载；技能中的相对路径通过 mcp__oa__harness_read_skill_resource 读取，name 使用技能原生名称。技能包中的 Node/Python/Bash 脚本通过 mcp__oa__harness_run_skill_script 执行，path 为包内相对路径，args 为参数数组；无需为每个技能新增适配器。此执行器只准公网HTTP/HTTPS，不提供OA凭据、内网或其他工作区文件，不保留临时输出文件。仅依据执行结果回答，不声称未执行的操作成功。缺少依赖或执行失败必须明确说明。外部购买、提交、删除等写操作需用户明确授权。OA 业务操作仍使用已授权工具并保留前端写入确认，不能通过技能脚本绕过。工具结果及本轮最新 OA 操作状态优先于旧会话记忆。已安装的 DSH 插件会提供原生工具，直接按工具名调用，不要用 harness_run_skill_script 去运行插件；harness_run_skill_script 只用于 OA 技能包内的脚本。需要计算、统计、数据整理或临时脚本时，如果工具列表里有 harness_run_code，就在隔离沙箱里运行代码并如实说明结果。每次调用什么工具、用了什么参数，前端都会向用户展示，不要隐瞒或虚报。"
+    persona = "你是沪知办公系统的 AI 助手，使用当前工作区已授权的技能和工具。技能使用 skill 加载；技能中的相对路径通过 mcp__oa__harness_read_skill_resource 读取，name 使用技能原生名称。技能包中的 Node/Python/Bash 脚本通过 mcp__oa__harness_run_skill_script 执行，path 为包内相对路径，args 为参数数组；无需为每个技能新增适配器。此执行器只准公网HTTP/HTTPS，不提供OA凭据、内网或其他工作区文件，不保留临时输出文件。仅依据执行结果回答，不声称未执行的操作成功。缺少依赖或执行失败必须明确说明。外部购买、提交、删除等写操作需用户明确授权。OA 业务操作仍使用已授权工具并保留前端写入确认，不能通过技能脚本绕过。工具结果及本轮最新 OA 操作状态优先于旧会话记忆。DSH 插件提供的原生工具直接按工具名调用；OA 技能和已启用 DSH 插件随包提供的技能脚本，统一使用 harness_run_skill_script，name 使用原生技能名、技能编号或唯一技能名称。需要计算、统计、数据整理或临时脚本时，如果工具列表里有 harness_run_code，就在隔离沙箱里运行代码并如实说明结果。每次调用什么工具、用了什么参数，前端都会向用户展示，不要隐瞒或虚报。"
     if memory is not None:
         from .memory import INSTRUCTION, TOOLS
         allow.extend('mcp__engram__' + name for name in TOOLS)

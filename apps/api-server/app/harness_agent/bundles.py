@@ -4,10 +4,12 @@ import asyncio
 import hashlib
 from io import BytesIO
 import json
+import os
 from pathlib import PurePosixPath
 import re
 import stat
 from urllib.parse import quote
+from uuid import uuid4
 from zipfile import BadZipFile, ZipFile
 
 import httpx
@@ -71,6 +73,18 @@ def _unpack(content, location, expected, source_text=None):
         valid = hashlib.sha256(skill_content).hexdigest() == expected
     if "SKILL.md" not in selected or not valid:
         raise HTTPException(409, "技能内容在预览后发生变化，请重新预览安装")
+    return store_files(selected)
+
+
+def store_files(selected):
+    """将已校验来源中的完整技能文件保存为内容寻址快照。"""
+    if not selected or len(selected) > 512 or sum(map(len, selected.values())) > 32 * 1024 * 1024:
+        raise HTTPException(413, "技能目录超过文件大小或数量上限")
+    for name, data in selected.items():
+        relative = PurePosixPath(name)
+        if (not relative.parts or relative.is_absolute() or ".." in relative.parts or "\\" in name or ":" in name
+                or any(ord(char) < 32 for char in name) or len(data) > 8 * 1024 * 1024):
+            raise HTTPException(422, "技能包资源路径或大小无效")
     manifest = {path: hashlib.sha256(data).hexdigest() for path, data in sorted(selected.items())}
     identifier = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
     directory = bundle_directory(identifier)
@@ -78,12 +92,17 @@ def _unpack(content, location, expected, source_text=None):
     for path, data in selected.items():
         target = directory / path
         target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        try:
-            with target.open("xb") as handle:
-                handle.write(data)
-        except FileExistsError:
+        if target.exists():
             if target.is_symlink() or target.read_bytes() != data:
                 raise HTTPException(409, "已安装技能资源与摘要不符，未覆盖原文件")
+            continue
+        staging = target.with_name("." + uuid4().hex)
+        try:
+            with staging.open("xb") as handle:
+                handle.write(data)
+            os.replace(staging, target)
+        finally:
+            staging.unlink(missing_ok=True)
     return {"id": identifier, "files": manifest}
 
 

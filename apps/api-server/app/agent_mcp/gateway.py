@@ -160,3 +160,5 @@ async def mcp_lifespan(application):
                 # 服务停止时关停常驻的智能体运行时，避免残留子进程。
                 from app.harness_agent.runtime import close_all_residents
                 await close_all_residents()
+                from app.harness_agent.affinity import close
+                await close()

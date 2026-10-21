@@ -67,13 +67,13 @@ def publish(directory: Path, skills) -> dict[str, Path]:
 
 
 RESOURCE_TOOL = {"type": "function", "function": {
-    "name": "harness_read_skill_resource", "description": "读取当前账号已安装技能中的参考资料、脚本源码或资源清单。技能 name 使用原生 skill 目录中的名称，path 为相对路径；不能读取服务器其他文件。",
+    "name": "harness_read_skill_resource", "description": "读取当前账号已安装技能中的参考资料、脚本源码或资源清单。name 使用原生 skill 名、技能编号或当前账号可用的唯一技能名称，path 为相对路径；不能读取服务器其他文件。",
     "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "path": {"type": "string", "maxLength": 500},
                     "offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 1, "maximum": 16000}},
                     "required": ["name", "path"], "additionalProperties": False}}}
 
 SCRIPT_TOOL = {"type": "function", "function": {
-    "name": "harness_run_skill_script", "description": "在受控容器中执行当前账号已安装且启用技能包内的 Node/Python/Bash 脚本。先用 skill 加载指令；name 为原生技能名，path 为包内相对脚本路径，args 为独立参数数组，指令的baseDir在此环境对应/skill，临时输出目录为/work。仅准公网HTTP/HTTPS，不提供OA凭据和内网访问，不保留临时输出文件；失败和缺依赖必须如实说明。",
+    "name": "harness_run_skill_script", "description": "在受控容器中执行当前账号已安装且启用技能包内的 Node/Python/Bash 脚本。先用 skill 加载指令；name 为原生技能名、技能编号或当前账号可用的唯一技能名称，path 为包内相对脚本路径，args 为独立参数数组，指令的baseDir在此环境对应/skill，临时输出目录为/work。仅准公网HTTP/HTTPS，不提供OA凭据和内网访问，不保留临时输出文件；失败和缺依赖必须如实说明。",
     "parameters": {"type": "object", "properties": {"name": {"type": "string"},
         "path": {"type": "string", "maxLength": 500}, "args": {"type": "array", "maxItems": 32,
         "items": {"type": "string", "maxLength": 2000}}}, "required": ["name", "path", "args"],
@@ -129,9 +129,16 @@ class WorkspaceTools:
         if not isinstance(arguments, dict) or set(arguments) - allowed:
             raise HTTPException(422, "技能资源参数错误")
         available = await definitions(self.identity, self.db)
-        skill = next((item for item in available if native_name(item.id) == arguments.get("name")), None)
-        if skill is None:
+        # 原生插件自己的 skill 提供器可加载指令；资源执行同样只接受当前已启用插件的完整技能快照。
+        from .native_plugin_skills import definitions as plugin_definitions
+        available = [*available, *plugin_definitions()]
+        requested = arguments.get("name")
+        matched = [item for item in available if requested in (native_name(item.id), item.id, item.name)]
+        if not matched:
             raise HTTPException(404, "技能不存在或当前账号无权使用")
+        if len(matched) != 1:
+            raise HTTPException(409, "技能名称存在重复，请使用加载该技能时显示的原生技能名或技能编号")
+        skill = matched[0]
         if name == "harness_run_skill_script":
             from .script_runtime import run_script
             if self.on_progress:

@@ -85,6 +85,11 @@ async def model_server(requests, choose_function=None):
 
 
 class DeepSeekHarnessRuntimeTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        native_skills = patch("app.harness_agent.native_plugin_skills.definitions", return_value=[])
+        native_skills.start()
+        self.addCleanup(native_skills.stop)
+
     def test_response_modes_only_enable_verified_official_models(self):
         from app.areas.personal_agent.response_runtime import supports_response_modes
 
@@ -147,6 +152,22 @@ class DeepSeekHarnessRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 await tools.execute("harness_run_skill_script", arguments)
             self.assertEqual(failure.exception.status_code, 503)
             progress.assert_awaited_with("技能执行失败：隔离脚本")
+
+    async def test_skill_name_resolution_preserves_authorization_and_rejects_ambiguity(self):
+        skill = replace(GENERAL_SKILL, id="global:archify", name="archify")
+        tools = WorkspaceTools(AsyncMock(), {"username": "owner-one"}, None)
+        for identifier in (native_name(skill.id), skill.id, skill.name):
+            with self.subTest(identifier=identifier), patch("app.harness_agent.skills.definitions", AsyncMock(return_value=[skill])), \
+                 patch("app.harness_agent.script_runtime.run_script", AsyncMock(return_value={"isError": False})) as execute:
+                await tools.execute("harness_run_skill_script", {"name": identifier, "path": "bin/archify.mjs", "args": ["doctor"]})
+                execute.assert_awaited_once_with(skill, "bin/archify.mjs", ["doctor"])
+        for available, status in (([], 404), ([skill, replace(skill, id="personal:archify")], 409)):
+            with patch("app.harness_agent.skills.definitions", AsyncMock(return_value=available)), \
+                 patch("app.harness_agent.script_runtime.run_script", AsyncMock()) as execute:
+                with self.assertRaises(HTTPException) as failure:
+                    await tools.execute("harness_run_skill_script", {"name": "archify", "path": "bin/archify.mjs", "args": ["doctor"]})
+                self.assertEqual(failure.exception.status_code, status)
+                execute.assert_not_awaited()
 
     async def test_script_execution_fails_before_start_for_unavailable_sandbox(self):
         skill = replace(GENERAL_SKILL, bundle={"files": {"scripts/query.py": "digest"}})

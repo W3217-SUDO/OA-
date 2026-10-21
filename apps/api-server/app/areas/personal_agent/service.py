@@ -425,6 +425,8 @@ async def generate_response(identity: dict[str, Any], db: AsyncSession, text: st
     async with conversations.conversation_operation(_user_dir(identity["username"]), conversation_id, cancellable=True, workspace=workspace) as state:
         identity = await personal_identity(identity, db)
         await require_state_access(state, identity, db, workspace)
+        from app.harness_agent.affinity import claim
+        await claim(identity["username"], state["conversation_id"])
         if submission is not None:
             from .mcp_chat_connection import configure_chat_connection
             result = await configure_chat_connection(submission, identity, db, state, on_delta, on_progress)

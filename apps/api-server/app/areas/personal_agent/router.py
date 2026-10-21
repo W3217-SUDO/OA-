@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -326,8 +326,14 @@ async def personal_agent_delete_conversation(conversation_id: str, identity: dic
 
 
 @router.post(f"{settings.api_prefix}/personal-agent/conversations/{{conversation_id}}/stop")
-async def personal_agent_stop_generation(conversation_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    return await stop_response(await personal_identity(identity, db), conversation_id, db=db)
+async def personal_agent_stop_generation(conversation_id: str, request: Request, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.harness_agent.affinity import forward
+
+    safe_identity = await personal_identity(identity, db)
+    forwarded = await forward(request, safe_identity["username"], conversation_id)
+    if forwarded is not None:
+        return forwarded
+    return await stop_response(safe_identity, conversation_id, db=db)
 
 
 @router.get(f"{settings.api_prefix}/personal-agent/identity.md")
@@ -338,11 +344,16 @@ async def personal_agent_identity_file(identity: dict = Depends(current_identity
 
 
 @router.post(f"{settings.api_prefix}/personal-agent/messages")
-async def personal_agent_message(body: PersonalMessageInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def personal_agent_message(body: PersonalMessageInput, request: Request, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from .mcp_chat_input import extract_chat_connection
     if extract_chat_connection(body.content) is None:
         reject_mcp_chat_credentials(body.content)
     safe_identity = await personal_identity(identity, db)
+    from app.harness_agent.affinity import forward
+
+    forwarded = await forward(request, safe_identity["username"], body.conversation_id)
+    if forwarded is not None:
+        return forwarded
     queue: asyncio.Queue[dict] = asyncio.Queue()
 
     async def on_delta(content: str) -> None:
@@ -353,8 +364,10 @@ async def personal_agent_message(body: PersonalMessageInput, identity: dict = De
 
     async def run() -> None:
         try:
-            result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta, conversation_id=body.conversation_id, skill_id=body.skill_id, attachment_ids=body.attachment_ids, case_id=body.case_id, document_ids=body.document_ids, response_mode=body.response_mode, on_progress=on_progress,
-                                                               workspace=body.workspace.model_dump(exclude_none=True) if body.workspace is not None else None), timeout=180)
+            from app.harness_agent.affinity import request_turn
+            with request_turn(request.app):
+                result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta, conversation_id=body.conversation_id, skill_id=body.skill_id, attachment_ids=body.attachment_ids, case_id=body.case_id, document_ids=body.document_ids, response_mode=body.response_mode, on_progress=on_progress,
+                                                                   workspace=body.workspace.model_dump(exclude_none=True) if body.workspace is not None else None), timeout=180)
             await queue.put({"type": "state", "state": result["state"]})
         except TimeoutError:
             await queue.put({"type": "error", "detail": "个人智能体本轮处理超时，请查看待确认请求后继续"})
