@@ -8,6 +8,7 @@ from importlib.metadata import PackageNotFoundError, version
 import json
 import os
 import re
+import logging
 import tempfile
 import time
 from pathlib import Path
@@ -23,6 +24,7 @@ from .skills import RESOURCE_TOOL, SCRIPT_TOOL, WorkspaceTools, definitions, pub
 from .lease import session_lease
 from .paths import filesystem_path, native_path
 
+logger = logging.getLogger(__name__)
 SDK_VERSION = "0.2.1rc2"
 _SLOTS = asyncio.Semaphore(max(1, min(settings.langgraph_max_concurrency, 32)))
 
@@ -158,14 +160,117 @@ async def run(messages, on_delta, *, tools, schema, identity, db, workspace, con
         raise HTTPException(504, "Harness 排队或执行超时，未取得完成结果") from exc
 
 
+# ---- 常驻会话 ----
+# 每个会话的运行时启动（进程、工具通道、技能发布）约占每轮的固定开销。同一会话的后续提问复用它，
+# 空闲超过 agent_resident_idle_seconds 自动关停，数量超过上限时关停最久未用的。
+# 多个 API 进程各有各的常驻表：会话文件里记录最近一次由谁跑完，不是自己跑的就丢弃重建，避免用到过期的内存历史。
+
+class _Resident:
+    def __init__(self, key, fingerprint):
+        self.key, self.fingerprint = key, fingerprint
+        self.harness = None
+        self.session = None
+        self.stack = None
+        self.patch_path = None
+        self.holder = {"tools": None, "context": None}
+        self.turns = 0
+        self.last_used = time.monotonic()
+        self.closed = False
+
+
+_RESIDENTS: dict[str, _Resident] = {}
+_REAPER: asyncio.Task | None = None
+_OWNER = uuid4().hex  # 本 API 进程的标识
+
+
+def _resident_enabled() -> bool:
+    return settings.agent_resident_idle_seconds > 0 and settings.agent_resident_max_sessions > 0
+
+
+def _turn_marker(home: Path) -> Path:
+    return home / "oa-resident-turn.json"
+
+
+def _read_turn(home: Path):
+    try:
+        return json.loads(_turn_marker(home).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
+def _write_turn(home: Path, resident: _Resident) -> None:
+    _turn_marker(home).write_text(json.dumps({"owner": _OWNER, "turns": resident.turns}), encoding="utf-8")
+
+
+async def _close_resident(resident: _Resident) -> None:
+    if resident.closed:
+        return
+    resident.closed = True
+    if _RESIDENTS.get(resident.key) is resident:
+        _RESIDENTS.pop(resident.key, None)
+    try:
+        if resident.harness is not None:
+            await asyncio.to_thread(resident.harness.close)
+    except Exception:
+        logger.exception("关闭常驻智能体运行时失败")
+    try:
+        if resident.stack is not None:
+            await resident.stack.aclose()
+    except Exception:
+        logger.exception("关闭常驻智能体工具通道失败")
+    if resident.patch_path is not None:
+        resident.patch_path.unlink(missing_ok=True)
+
+
+async def _reap_idle() -> None:
+    while True:
+        await asyncio.sleep(30)
+        now = time.monotonic()
+        for resident in list(_RESIDENTS.values()):
+            if now - resident.last_used >= settings.agent_resident_idle_seconds and not resident.holder["tools"]:
+                await _close_resident(resident)
+        if not _RESIDENTS:
+            return
+
+
+def _start_reaper() -> None:
+    global _REAPER
+    if _REAPER is None or _REAPER.done():
+        _REAPER = asyncio.create_task(_reap_idle())
+
+
+async def close_all_residents() -> None:
+    """服务停止时关停全部常驻运行时。"""
+    for resident in list(_RESIDENTS.values()):
+        await _close_resident(resident)
+
+
+def _fingerprint(schemas, directories, mode_supported, response_mode, memory, profile) -> str:
+    material = json.dumps({
+        "tools": [(item["function"]["name"], item["function"].get("parameters")) for item in schemas],
+        "skills": sorted(str(path) for path in directories.values()),
+        "mode": [mode_supported, response_mode], "memory": memory, "profile": profile,
+    }, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(material.encode()).hexdigest()
+
+
+async def _evict_for_capacity() -> None:
+    while len(_RESIDENTS) >= settings.agent_resident_max_sessions:
+        oldest = min(_RESIDENTS.values(), key=lambda item: item.last_used)
+        if oldest.holder["tools"] is not None:
+            return  # 最久未用的正在运行，不强关；本轮不再新增常驻
+        await _close_resident(oldest)
+
+
 async def _run_session(messages, on_delta, *, tools, schema, identity, db, identifier, cwd, home,
                        response_mode, mode_supported, on_progress):
     from deepseek_harness import DeepSeekHarness
     from deepseek_harness.errors import HarnessError
+    from contextvars import copy_context
 
     marker = home / "oa-session.json"
-    patch_path = home / ("oa-run-" + uuid4().hex + ".yml")
-    harness = None
+    resident = None
+    one_shot = None
     runner = None
     try:
         resumed = marker.exists()
@@ -187,69 +292,121 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
             memory = memory_configuration(cwd, identity['username'])
             from .plugins import attach
             profile = attach(home)
-        async with workspace_mcp(guarded, schemas) as (url, secret):
-            patch_path.write_text(yaml.safe_dump(_patch(url, secret, schemas, directories, mode_supported, response_mode, memory,
-                                                      native_plugins=profile != "sdk"),
-                                                 allow_unicode=True, sort_keys=False), encoding="utf-8")
-            patch_path.chmod(0o600)
-            started = time.perf_counter()
-            harness = DeepSeekHarness(dsh_home=native_path(home), cwd=native_path(cwd), profile=profile, patches=(native_path(patch_path),),
-                                       provider="huzhi-oa", model=settings.langgraph_model, env=_environment(),
-                                       reasoning_effort=("off" if response_mode == "fast" else "high") if mode_supported else None,
-                                       initialize_timeout_seconds=40, request_timeout_seconds=180)
+        fingerprint = _fingerprint(schemas, directories, mode_supported, response_mode, memory, profile)
+
+        # 复用常驻会话：配置未变、仍是本进程跑完的最近一轮、没被关停。
+        key = identifier
+        resident = _RESIDENTS.get(key) if _resident_enabled() else None
+        if resident is not None:
+            turn = _read_turn(home)
+            stale = (resident.closed or resident.fingerprint != fingerprint or resident.holder["tools"] is not None
+                     or turn != {"owner": _OWNER, "turns": resident.turns})
+            if stale:
+                await _close_resident(resident)
+                resident = None
+        reused = resident is not None
+        started = time.perf_counter()
+        if resident is None:
+            # 冷启动：先作废其他进程里可能还留着的同一会话的常驻副本，它们不知道这一轮的对话。
+            _turn_marker(home).write_text(json.dumps({"owner": uuid4().hex, "turns": 0}), encoding="utf-8")
+            resident = _Resident(key, fingerprint)
+            resident.holder["context"] = copy_context()
+            resident.holder["tools"] = guarded
+            from contextlib import AsyncExitStack
+            from .bridge import _SwitchTools
+
+            resident.stack = AsyncExitStack()
+            try:
+                url, secret = await resident.stack.enter_async_context(
+                    workspace_mcp(_SwitchTools(resident.holder), schemas, lambda: resident.holder["context"]))
+                resident.patch_path = home / ("oa-run-" + uuid4().hex + ".yml")
+                resident.patch_path.write_text(yaml.safe_dump(
+                    _patch(url, secret, schemas, directories, mode_supported, response_mode, memory, native_plugins=profile != "sdk"),
+                    allow_unicode=True, sort_keys=False), encoding="utf-8")
+                resident.patch_path.chmod(0o600)
+                resident.harness = DeepSeekHarness(
+                    dsh_home=native_path(home), cwd=native_path(cwd), profile=profile, patches=(native_path(resident.patch_path),),
+                    provider="huzhi-oa", model=settings.langgraph_model, env=_environment(),
+                    reasoning_effort=("off" if response_mode == "fast" else "high") if mode_supported else None,
+                    initialize_timeout_seconds=40, request_timeout_seconds=180)
+            except BaseException:
+                await _close_resident(resident)
+                raise
             add_phase("agent.harness_init", time.perf_counter() - started, metrics)
-            loop = asyncio.get_running_loop()
-            queue = asyncio.Queue()
+        else:
+            resident.holder["context"] = copy_context()
+            resident.holder["tools"] = guarded
+            add_phase("agent.resident_reuse_x1000", 0.001, metrics)  # 次数：毫秒值即复用次数
 
-            def notification(item):
-                if item.method == "oa.assistant.delta" and item.payload.get("sessionId") == identifier:
-                    text = item.payload.get("text")
-                    if isinstance(text, str) and text:
-                        loop.call_soon_threadsafe(queue.put_nowait, ("delta", text))
-                elif item.method == "session.event" and (item.payload.get("event") or {}).get("type") == "tool/call":
-                    add_phase("agent.tool_calls_x1000", 0.001, metrics)  # 次数：毫秒值即调用次数
-                    loop.call_soon_threadsafe(queue.put_nowait, ("progress", "正在调用工作区工具…"))
+        loop = asyncio.get_running_loop()
+        queue = asyncio.Queue()
 
-            def execute():
-                try:
+        def notification(item):
+            if item.method == "oa.assistant.delta" and item.payload.get("sessionId") == identifier:
+                text = item.payload.get("text")
+                if isinstance(text, str) and text:
+                    loop.call_soon_threadsafe(queue.put_nowait, ("delta", text))
+            elif item.method == "session.event" and (item.payload.get("event") or {}).get("type") == "tool/call":
+                add_phase("agent.tool_calls_x1000", 0.001, metrics)  # 次数：毫秒值即调用次数
+                loop.call_soon_threadsafe(queue.put_nowait, ("progress", "正在调用工作区工具…"))
+
+        use_resume = resumed and not reused
+        run_resumed = resumed or reused
+
+        def execute():
+            try:
+                if resident.session is None:
                     opened = time.perf_counter()
-                    session = harness.resume_session(identifier) if resumed else harness.start_session(identifier)
-                    session.get_working_directory()
+                    resident.session = resident.harness.resume_session(identifier) if use_resume else resident.harness.start_session(identifier)
+                    resident.session.get_working_directory()
                     if not resumed:
                         marker.write_text(json.dumps({"format": 1, "session": identifier}), encoding="utf-8")
                     add_phase("agent.session_open", time.perf_counter() - opened, metrics)
-                    running = time.perf_counter()
-                    try:
-                        return session.run(_content(messages, resumed=resumed), on_notification=notification)
-                    finally:
-                        add_phase("agent.session_run", time.perf_counter() - running, metrics)
+                running = time.perf_counter()
+                try:
+                    return resident.session.run(_content(messages, resumed=run_resumed), on_notification=notification)
                 finally:
-                    loop.call_soon_threadsafe(queue.put_nowait, ("finished", ""))
+                    add_phase("agent.session_run", time.perf_counter() - running, metrics)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, ("finished", ""))
 
-            if on_progress:
-                await on_progress("正在启动工作区智能体…")
-            runner = asyncio.create_task(asyncio.to_thread(execute))
-            first_delta = None
-            async with asyncio.timeout(180):
-                while True:
-                    kind, value = await queue.get()
-                    if kind == "finished":
-                        break
-                    if kind == "delta":
-                        if first_delta is None:
-                            first_delta = time.perf_counter()
-                            add_phase("agent.first_delta", first_delta - started, metrics)
-                        await on_delta(value)
-                    elif on_progress:
-                        await on_progress(value)
-                result = await runner
-            if result.finish_reason != "completed" or not result.final_response.strip():
-                ending = next((item.get("data", {}).get("reason", {}) for item in reversed(result.events)
-                               if item.get("type") == "turn/end"), {})
-                code = str(ending.get("error", {}).get("code", ""))
-                safe_code = code if re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", code) else "unknown"
-                raise HTTPException(502, f"Harness 本轮未完成（{result.finish_reason} / {safe_code}），未确认任何未执行操作成功")
-            return result.final_response.strip()
+        if on_progress:
+            await on_progress("正在启动工作区智能体…" if not reused else "正在处理…")
+        runner = asyncio.create_task(asyncio.to_thread(execute))
+        first_delta = None
+        async with asyncio.timeout(180):
+            while True:
+                kind, value = await queue.get()
+                if kind == "finished":
+                    break
+                if kind == "delta":
+                    if first_delta is None:
+                        first_delta = time.perf_counter()
+                        add_phase("agent.first_delta", first_delta - started, metrics)
+                    await on_delta(value)
+                elif on_progress:
+                    await on_progress(value)
+            result = await runner
+        if result.finish_reason != "completed" or not result.final_response.strip():
+            ending = next((item.get("data", {}).get("reason", {}) for item in reversed(result.events)
+                           if item.get("type") == "turn/end"), {})
+            code = str(ending.get("error", {}).get("code", ""))
+            safe_code = code if re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", code) else "unknown"
+            raise HTTPException(502, f"Harness 本轮未完成（{result.finish_reason} / {safe_code}），未确认任何未执行操作成功")
+        resident.turns += 1
+        resident.last_used = time.monotonic()
+        keep = _resident_enabled()
+        if keep and not reused:
+            await _evict_for_capacity()
+            keep = len(_RESIDENTS) < settings.agent_resident_max_sessions
+        if keep:
+            _RESIDENTS[key] = resident
+            _write_turn(home, resident)
+            _start_reaper()
+            resident.holder["tools"] = None  # 本轮结束：不再持有本次请求的事务和身份
+            resident.holder["context"] = None
+            resident = None  # 交给常驻表，不在 finally 里关闭
+        return result.final_response.strip()
     except TimeoutError as exc:
         raise HTTPException(504, "Harness 本轮执行超时，未取得完成结果") from exc
     except HarnessError as exc:
@@ -258,10 +415,11 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
     except OSError as exc:
         raise HTTPException(503, "Harness 本地运行资源不可用，系统错误码：" + str(exc.errno)) from None
     finally:
-        if harness is not None:
-            closing = time.perf_counter()
-            await asyncio.to_thread(harness.close)
-            add_phase("agent.harness_close", time.perf_counter() - closing)
         if runner is not None:
             await asyncio.gather(runner, return_exceptions=True)
-        patch_path.unlink(missing_ok=True)
+        if resident is not None:
+            # 出错、超时、被停止或未被保留的会话一律关闭，下一轮冷启动并从磁盘恢复历史。
+            closing = time.perf_counter()
+            await _close_resident(resident)
+            from app.core.request_metrics import add_phase as _add
+            _add("agent.harness_close", time.perf_counter() - closing)

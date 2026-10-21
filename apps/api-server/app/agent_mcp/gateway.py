@@ -154,4 +154,9 @@ async def mcp_lifespan(application):
     async with lifespan(application):
         http_application = application.state.agent_mcp_http
         async with http_application.router.lifespan_context(http_application):
-            yield
+            try:
+                yield
+            finally:
+                # 服务停止时关停常驻的智能体运行时，避免残留子进程。
+                from app.harness_agent.runtime import close_all_residents
+                await close_all_residents()

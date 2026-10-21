@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Input, List, Tag, Tooltip, message } from "antd";
-import { ApiOutlined, ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileExcelOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ApiOutlined, ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import AgentAvatar from "./AgentAvatar";
 import { AgentToolResult } from "../AgentToolResult";
@@ -312,12 +312,11 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                     {item.role === "assistant" && <AgentToolResult result={item.tool_result} />}
                     {item.stopped && <span className="assistant-stopped">{item.content ? "已停止，已保留生成内容" : "已停止"}</span>}
                     {item.role === "assistant" && item.personal_document_save_error && !item.failed && !(sending && index === displayedState.messages.length - 1) && <Alert type="warning" showIcon title="个人文档暂不可保存" description={item.personal_document_save_error} />}
-                    {item.role === "assistant" && documentTarget && !!item.content && !item.failed && !item.stopped && !(sending && index === displayedState.messages.length - 1) && !displayedState.pending_actions.some((action) => action.status === "pending" && action.preview?.path?.endsWith("/ai-space/files")) && <div className="personal-ai-document-actions">
+                    {item.role === "assistant" && documentTarget === "case" && !!item.content && !item.failed && !item.stopped && !(sending && index === displayedState.messages.length - 1) && !displayedState.pending_actions.some((action) => action.status === "pending" && action.preview?.path?.endsWith("/ai-space/files")) && <div className="personal-ai-document-actions">
                       {workspace.savedDocuments[index] ? <>
-                        <span className="personal-ai-document-saved"><FileWordOutlined />{documentTarget === "case" ? "已存入案件 AI 空间" : "已存入个人 AI 空间"}</span>
-                        {documentTarget === "personal" ? <Button type="link" icon={<FolderOpenOutlined />} onClick={() => setPersonalSpaceOpen(true)}>查看文件</Button> : <Button type="link" icon={<FolderOpenOutlined />} href={`?page=case-detail-${item.case_id}-${encodeURIComponent(item.case_no || "")}`} title="在案件文档的 AI 空间目录中查看">查看案件文件</Button>}
-                      </> : <Tooltip title={documentTarget === "case" ? "保存 Word 到案件 AI 空间" : "保存 Word 到个人 AI 空间"}><Button type="text" icon={<FileWordOutlined />} disabled={loading || workspace.conversationBusy} onClick={() => void workspace.saveWord(item, index)}>{documentTarget === "case" ? "保存到案件 AI 空间" : "保存 Word"}</Button></Tooltip>}
-                      {documentTarget === "personal" && item.can_save_spreadsheet && (workspace.savedSpreadsheets[index] ? <span className="personal-ai-document-saved"><FileExcelOutlined />已存入个人 AI 空间</span> : <Tooltip title="将回答中的 Markdown 表格保存为 Excel 到个人 AI 空间"><Button type="text" icon={<FileExcelOutlined />} disabled={loading || workspace.conversationBusy} onClick={() => void workspace.saveSpreadsheet(item, index)}>保存 Excel</Button></Tooltip>)}
+                        <span className="personal-ai-document-saved"><FileWordOutlined />已存入案件 AI 空间</span>
+                        <Button type="link" icon={<FolderOpenOutlined />} href={`?page=case-detail-${item.case_id}-${encodeURIComponent(item.case_no || "")}`} title="在案件文档的 AI 空间目录中查看">查看案件文件</Button>
+                      </> : <Tooltip title="保存 Word 到案件 AI 空间"><Button type="text" icon={<FileWordOutlined />} disabled={loading || workspace.conversationBusy} onClick={() => void workspace.saveWord(item, index)}>保存到案件 AI 空间</Button></Tooltip>}
                     </div>}
                   </div>
                 </div>

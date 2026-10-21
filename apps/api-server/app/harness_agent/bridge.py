@@ -21,10 +21,25 @@ class _Server(uvicorn.Server):
         yield
 
 
+class _SwitchTools:
+    """常驻会话的工具代理：每轮把调用转给当前请求的工具集，两轮之间没有可用的请求上下文。"""
+
+    def __init__(self, holder):
+        self.holder = holder
+
+    async def execute(self, name, arguments):
+        tools = self.holder.get("tools")
+        if tools is None:
+            raise HTTPException(409, "当前没有正在处理的请求，不能调用工作区能力")
+        return await tools.execute(name, arguments)
+
+
 @asynccontextmanager
-async def workspace_mcp(tools, schemas):
+async def workspace_mcp(tools, schemas, context_provider=None):
+    """context_provider：常驻会话每轮提供当前请求的上下文（身份、事务等）；不传则固定使用创建时的上下文。"""
     secret = secrets.token_urlsafe(32)
-    context = copy_context()
+    fixed_context = copy_context()
+    current_context = context_provider or (lambda: fixed_context)
     serial = asyncio.Lock()
     application = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
     functions = {item["function"]["name"]: item["function"] for item in schemas}
@@ -81,7 +96,7 @@ async def workspace_mcp(tools, schemas):
                 identifier = payload["id"]
                 if type(identifier) not in {str, int} or identifier in script_calls:
                     raise HTTPException(422, "技能脚本请求编号无效或重复")
-                task = context.run(asyncio.create_task, execute())
+                task = current_context().run(asyncio.create_task, execute())
                 script_calls[identifier] = task
 
                 async def disconnected():
@@ -94,7 +109,7 @@ async def workspace_mcp(tools, schemas):
                     task.cancel()
                 result = await task
             else:
-                result = await context.run(asyncio.create_task, execute())
+                result = await current_context().run(asyncio.create_task, execute())
             return JSONResponse({"jsonrpc": "2.0", "id": payload["id"], "result": result})
         except asyncio.CancelledError:
             if not script:

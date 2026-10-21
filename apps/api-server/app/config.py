@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     langgraph_model_provider: str = ""
     langgraph_model: str = ""
     langgraph_max_concurrency: int = 4
+    # 智能体运行时常驻：同一会话的后续提问复用已启动的运行时，空闲超时自动关停；0 表示关闭常驻（每轮冷启动）。
+    agent_resident_idle_seconds: int = 600
+    agent_resident_max_sessions: int = 2  # 每个 API 进程最多常驻几个会话；生产有多个进程，总数 = 进程数 × 此值
     agent_runtime_backend: Literal["deepseek-harness"] = "deepseek-harness"
     # 原生运行时负责上下文压缩；长期记忆程序按部署环境显式配置。
     deepseek_harness_root: str = ""
