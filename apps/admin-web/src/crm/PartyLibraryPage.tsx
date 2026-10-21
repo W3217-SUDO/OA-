@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Descriptions, Drawer, Input, Spin, Table as SimpleTable, message } from "antd";
+import { Button, Card, Descriptions, Drawer, Input, Spin, message } from "antd";
 import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import Table from "../components/ResizableTable";
 import { api } from "../api";
@@ -159,7 +159,7 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
               <Descriptions.Item label="备注">{detail.description || "—"}</Descriptions.Item>
             </Descriptions>
             <h4 style={{ margin: "16px 0 8px" }}>所在案件（{detail.cases.length}）</h4>
-            <SimpleTable
+            <Table<PartyDetail["cases"][number]>
               size="small" rowKey={(row) => `${row.case_id}`} pagination={false} dataSource={detail.cases}
               columns={[
                 { title: "案号", dataIndex: "case_no" },
