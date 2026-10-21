@@ -1,7 +1,7 @@
 """原生 SDK 边界与协议回归；验证数据、模拟模型及文件仅存在隔离测试目录。"""
 import asyncio
 from dataclasses import replace
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager
 import json
 import os
 from pathlib import Path
@@ -19,7 +19,7 @@ from app.case_agent import CaseAgentRuntime
 from app.deepseek_harness import create_case_agent_runtime
 from app.harness_agent.bridge import _Server, workspace_mcp
 from app.harness_agent.lease import session_lease
-from app.harness_agent.runtime import _content, _environment, readiness, run, workspace_paths
+from app.harness_agent.runtime import _content, _environment, close_all_residents, readiness, run, workspace_paths
 from app.config import settings
 from app.agent_skills import GENERAL_SKILL
 from app.harness_agent.skills import SCRIPT_TOOL, WorkspaceTools, native_name
@@ -30,12 +30,14 @@ from app.harness_agent.script_network import LABEL, check_firewall, network_rule
 import uvicorn
 
 
-@contextmanager
-def isolated_home():
+@asynccontextmanager
+async def isolated_home():
     with tempfile.TemporaryDirectory(prefix="oa-harness-test-") as temporary:
         try:
             yield temporary
         finally:
+            # 常驻实例持有文件锁；先完成运行时关闭，再清理本次隔离目录。
+            await close_all_residents()
             # 官方日志把 cwd 编入目录名；Windows 清理时使用长路径语法。
             target = Path(temporary).resolve()
             if target.parent != Path(tempfile.gettempdir()).resolve() or not target.name.startswith("oa-harness-test-"):
@@ -285,7 +287,7 @@ class DeepSeekHarnessRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 return {'name': 'mcp__engram__mem_search', 'arguments': json.dumps({'query': marker})}
             return None
 
-        with isolated_home() as temporary:
+        async with isolated_home() as temporary:
             async with model_server(requests, choose) as url:
                 with patch.object(settings, 'deepseek_harness_root', str(Path(temporary) / 'harness')), \
                      patch.object(settings, 'personal_agent_root', str(Path(temporary) / 'personal')), \
@@ -363,7 +365,7 @@ class DeepSeekHarnessRuntimeTest(unittest.IsolatedAsyncioTestCase):
         schema = [{"type": "function", "function": {"name": "metadata_probe", "description": "隔离协议核验",
                   "parameters": {"type": "object", "properties": {}, "additionalProperties": False}}}]
         skill = replace(GENERAL_SKILL, id="isolated-skill", name="隔离技能", instruction="原生技能中文正文核验标记")
-        with isolated_home() as temporary:
+        async with isolated_home() as temporary:
             async with model_server(requests) as url:
                 with patch.object(settings, "deepseek_harness_root", temporary), patch.object(settings, "langgraph_api_base_url", url), patch.object(settings, "langgraph_api_key", "private-model-key-isolated"), patch.object(settings, "langgraph_model", "oa-probe"), patch("app.harness_agent.runtime.definitions", AsyncMock(return_value=[skill])):
                     async def on_delta(value):
@@ -373,6 +375,8 @@ class DeepSeekHarnessRuntimeTest(unittest.IsolatedAsyncioTestCase):
                                            identity={"username": "isolated-probe"}, db=None, workspace="personal", conversation="probe",
                                            mode_supported=True, response_mode=mode)
                         self.assertEqual(result, "核验完成")
+                    # 先完成持久化并释放文件锁，再审计全部落盘内容。
+                    await close_all_residents()
                     import zstandard
                     for file in Path("\\\\?\\" + temporary if os.name == "nt" else temporary).rglob("*"):
                         if file.is_file():
