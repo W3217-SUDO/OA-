@@ -7,6 +7,7 @@ from app.global_agent_skills import require_global_admin
 from app.config import settings
 from app.harness_agent.plugin_packages import run_operation
 from app.harness_agent.plugins import change, overview
+from app.harness_agent.plugin_catalog import catalog, install_spec
 from app.security import current_identity
 
 router = APIRouter(prefix=settings.api_prefix + "/agent-admin/dsh-plugins")
@@ -23,6 +24,11 @@ class PluginInput(BaseModel):
     name: str = Field(min_length=1, max_length=214)
 
 
+class CatalogInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    item_id: str = Field(min_length=1, max_length=80)
+
+
 class ToggleInput(PluginInput):
     enabled: bool
 
@@ -37,6 +43,18 @@ async def list_plugins(identity: dict = Depends(current_identity)):
 async def install_plugin(body: InstallInput, identity: dict = Depends(current_identity)):
     require_global_admin(identity)
     return await run_operation(change, "install", body.model_dump())
+
+
+@router.get("/catalog")
+async def list_catalog(identity: dict = Depends(current_identity)):
+    require_global_admin(identity)
+    return catalog()
+
+
+@router.post("/catalog/install")
+async def install_catalog_plugin(body: CatalogInput, identity: dict = Depends(current_identity)):
+    require_global_admin(identity)
+    return await run_operation(change, "install", {"spec": install_spec(body.item_id)})
 
 
 @router.post("/toggle")
