@@ -38,8 +38,14 @@
 .personal-ai-file-preview .ant-modal-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .personal-ai-file-preview .ant-modal-footer > .ant-btn { margin: 0; }
 .personal-ai-file-preview-content { min-height: 120px; min-width: 0; max-width: 100%; overflow: auto; }
+.personal-ai-file-share-name { overflow-wrap: anywhere; font-weight: 600; }
+.personal-ai-file-share .ant-modal-close, .personal-ai-file-share .ant-modal-footer .ant-btn { min-width: 44px; min-height: 44px; }
+.personal-ai-file-share .ant-modal-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.personal-ai-file-share .ant-modal-footer > .ant-btn { margin: 0; max-width: 100%; height: auto; white-space: normal; }
 .personal-ai-pdf-content { display: flex; min-width: 0; height: 60vh; min-height: 160px; }
 @media (max-width: 768px) {
+  .personal-ai-file-share .ant-modal { max-width: calc(100vw - 24px); margin-inline: auto; }
+  .personal-ai-file-share .ant-modal-body { max-height: 65vh; overflow: auto; overflow-wrap: anywhere; }
   .personal-ai-file-preview .ant-modal { max-width: calc(100vw - 24px); margin-inline: auto; }
   .personal-ai-file-preview .ant-modal-body { max-height: 65vh; overflow: auto; }
 }

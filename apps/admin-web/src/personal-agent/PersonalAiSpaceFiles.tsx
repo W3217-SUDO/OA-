@@ -1,6 +1,7 @@
 import { Button, Empty, Tag, Tooltip } from "antd";
 import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, MessageOutlined } from "@ant-design/icons";
 import { personalAiFilePreviewKind, type PersonalAiFile } from "./personalAiSpaceApi";
+import { PersonalAiFileShare } from "./PersonalAiFileShare";
 
 const STATUS_LABELS: Record<PersonalAiFile["status"], string> = { uploading: "保存中", available: "可下载", failed: "保存失败", uncertain: "保存结果待核对", deleting: "删除中", delete_failed: "删除失败", delete_uncertain: "删除结果待核对" };
 const STATUS_COLORS: Record<PersonalAiFile["status"], string> = { uploading: "processing", available: "success", failed: "error", uncertain: "warning", deleting: "processing", delete_failed: "error", delete_uncertain: "warning" };
@@ -46,6 +47,7 @@ export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestS
           {personalAiFilePreviewKind(item.name) && <Button icon={<EyeOutlined />} disabled={busy || !!downloadingId} onClick={() => onPreview(item)}>在线查看</Button>}
           {/\.(docx|xlsx|xls|md|txt)$/i.test(item.name) && <Button icon={<EditOutlined />} disabled={busy || !!downloadingId} onClick={() => onEdit(item)}>在线编辑</Button>}
           <Button icon={<DownloadOutlined />} loading={downloadingId === item.id} disabled={busy || (!!downloadingId && downloadingId !== item.id)} onClick={() => onDownload(item)}>下载 {item.name.includes(".") ? item.name.slice(item.name.lastIndexOf(".") + 1).toUpperCase() : "文件"}</Button>
+          <PersonalAiFileShare file={item} disabled={busy || !!downloadingId} />
         </>}
         {item.can_delete && <Tooltip title="删除生成文件"><Button danger icon={<DeleteOutlined />} aria-label={`删除生成文件：${item.name}`} loading={deletingId === item.id} disabled={busy || !!downloadingId} onClick={() => onDelete(item)}>删除文件</Button></Tooltip>}
       </div>

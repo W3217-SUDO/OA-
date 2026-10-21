@@ -5,6 +5,7 @@ import { api } from "../api";
 import { AttachmentPreviewContent, type PreviewAttachment } from "../components/common/AttachmentContent";
 import { personalAiFilePreviewKind, type PersonalAiFile } from "./personalAiSpaceApi";
 import { errorText } from "./types";
+import { PersonalAiFileShare } from "./PersonalAiFileShare";
 
 type Props = {
   file: PersonalAiFile;
@@ -76,6 +77,7 @@ export function PersonalAiFilePreview({ file, blob, downloading, downloadError, 
       <Button onClick={onClose}>关闭</Button>
       {/\.(docx|xlsx|xls|md|txt)$/i.test(file.name) && <Button icon={<EditOutlined />} disabled={loading || downloading} onClick={onEdit}>编辑并保存</Button>}
       <Button type="primary" icon={<DownloadOutlined />} loading={downloading} onClick={onDownload}>下载到本地</Button>
+      <PersonalAiFileShare file={file} disabled={loading || downloading} />
     </>}>
     {error && <Alert type="error" showIcon title="文件查看未完成" description={error} />}
     {downloadError && <Alert type="error" showIcon title="文件下载未完成" description={downloadError} />}
