@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.api_schemas.finance import FinanceFeeInput
 from app.core.case_create_requirements import missing_case_create_fields
+from app.core.customer_create_requirements import missing_customer_create_fields
 from app.core.task_lifecycle_policy import validate_task_lifecycle
 from app.models import BusinessRecord, SystemParameter
 
@@ -63,7 +64,20 @@ async def _resolve_fee_arguments(arguments, params, identity, db):
 async def prepare_business_arguments(spec, arguments, params, identity, db):
     endpoint = spec._route.endpoint
     if endpoint.__module__ == "app.areas.finance.router" and endpoint.__name__ == "create_finance_fee":
-        return await _resolve_fee_arguments(arguments, params, identity, db)
+        try:
+            return await _resolve_fee_arguments(arguments, params, identity, db)
+        except HTTPException as error:
+            # 费用类型、案件等核对不通过时，提示智能体先问用户，而不是原样重复提交。
+            hint = "请先向用户询问并确认缺少或有误的信息，补齐后再提交，不要自行猜测。"
+            if isinstance(error.detail, dict):
+                raise HTTPException(error.status_code, {**error.detail, "hint": hint}) from error
+            raise HTTPException(error.status_code, f"{error.detail}。{hint}") from error
+    if endpoint.__module__ == "app.areas.crm.router" and endpoint.__name__ == "create_customer":
+        missing = await missing_customer_create_fields(dict(params["body"]), db)
+        if missing:
+            raise HTTPException(422, "新建客户缺少或不合规的信息：" + "；".join(missing)
+                                + "。请先逐项向用户询问并确认，补齐后再提交，不要使用默认值或自行猜测。")
+        return arguments
     if endpoint.__module__ == "app.areas.legal.router" and endpoint.__name__ == "create_case":
         missing = missing_case_create_fields(dict(params["body"]))
         if missing:
