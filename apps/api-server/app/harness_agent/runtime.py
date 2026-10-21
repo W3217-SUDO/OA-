@@ -21,7 +21,7 @@ import yaml
 from app.config import settings
 from .bridge import workspace_mcp
 from .skills import CODE_TOOL, RESOURCE_TOOL, SCRIPT_TOOL, WorkspaceTools, definitions, publish, sandbox_allowed
-from .lease import session_lease
+from .lease import session_lease, wait_for_session_lease
 from .paths import filesystem_path, native_path
 
 logger = logging.getLogger(__name__)
@@ -166,8 +166,11 @@ async def run(messages, on_delta, *, tools, schema, identity, db, workspace, con
 # 多个 API 进程各有各的常驻表：会话文件里记录最近一次由谁跑完，不是自己跑的就丢弃重建，避免用到过期的内存历史。
 
 class _Resident:
-    def __init__(self, key, fingerprint):
+    def __init__(self, key, fingerprint, home):
         self.key, self.fingerprint = key, fingerprint
+        self.home = home
+        self.lease = None
+        self.close_task = None
         self.harness = None
         self.session = None
         self.stack = None
@@ -203,31 +206,43 @@ def _write_turn(home: Path, resident: _Resident) -> None:
 
 
 async def _close_resident(resident: _Resident) -> None:
-    if resident.closed:
-        return
-    resident.closed = True
-    if _RESIDENTS.get(resident.key) is resident:
-        _RESIDENTS.pop(resident.key, None)
+    if resident.close_task is None:
+        resident.closed = True
+        if _RESIDENTS.get(resident.key) is resident:
+            _RESIDENTS.pop(resident.key, None)
+        # 请求取消时关闭任务仍须完成，不能提前放行另一个进程的写句柄。
+        resident.close_task = asyncio.create_task(_dispose_resident(resident))
+    await asyncio.shield(resident.close_task)
+
+
+async def _dispose_resident(resident: _Resident) -> None:
     try:
-        if resident.harness is not None:
-            await asyncio.to_thread(resident.harness.close)
-    except Exception:
-        logger.exception("关闭常驻智能体运行时失败")
-    try:
-        if resident.stack is not None:
-            await resident.stack.aclose()
-    except Exception:
-        logger.exception("关闭常驻智能体工具通道失败")
-    if resident.patch_path is not None:
-        resident.patch_path.unlink(missing_ok=True)
+        try:
+            if resident.harness is not None:
+                await asyncio.to_thread(resident.harness.close)
+        except Exception:
+            logger.exception("关闭常驻智能体运行时失败")
+        try:
+            if resident.stack is not None:
+                await resident.stack.aclose()
+        except Exception:
+            logger.exception("关闭常驻智能体工具通道失败")
+        if resident.patch_path is not None:
+            resident.patch_path.unlink(missing_ok=True)
+    finally:
+        # 先关闭原生写句柄和工具通道，再允许其他进程恢复该会话。
+        if resident.lease is not None:
+            resident.lease.__exit__(None, None, None)
+            resident.lease = None
 
 
 async def _reap_idle() -> None:
     while True:
-        await asyncio.sleep(30)
+        await asyncio.sleep(0.5)
         now = time.monotonic()
         for resident in list(_RESIDENTS.values()):
-            if now - resident.last_used >= settings.agent_resident_idle_seconds and not resident.holder["tools"]:
+            handed_off = _read_turn(resident.home) != {"owner": _OWNER, "turns": resident.turns}
+            if (handed_off or now - resident.last_used >= settings.agent_resident_idle_seconds) and resident.holder["tools"] is None:
                 await _close_resident(resident)
         if not _RESIDENTS:
             return
@@ -308,7 +323,7 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
         if resident is None:
             # 冷启动：先作废其他进程里可能还留着的同一会话的常驻副本，它们不知道这一轮的对话。
             _turn_marker(home).write_text(json.dumps({"owner": uuid4().hex, "turns": 0}), encoding="utf-8")
-            resident = _Resident(key, fingerprint)
+            resident = _Resident(key, fingerprint, home)
             resident.holder["context"] = copy_context()
             resident.holder["tools"] = guarded
             from contextlib import AsyncExitStack
@@ -316,8 +331,10 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
 
             resident.stack = AsyncExitStack()
             try:
+                resident.lease = await wait_for_session_lease(home / "resident.lock")
+                holder = resident.holder
                 url, secret = await resident.stack.enter_async_context(
-                    workspace_mcp(_SwitchTools(resident.holder), schemas, lambda: resident.holder["context"]))
+                    workspace_mcp(_SwitchTools(holder), schemas, lambda: holder["context"]))
                 resident.patch_path = home / ("oa-run-" + uuid4().hex + ".yml")
                 resident.patch_path.write_text(yaml.safe_dump(
                     _patch(url, secret, schemas, directories, mode_supported, response_mode, memory, native_plugins=profile != "sdk"),

@@ -91,12 +91,16 @@ async def workspace_mcp(tools, schemas, context_provider=None):
         script = method == "tools/call" and isinstance(params, dict) and params.get("name") == "harness_run_skill_script"
         task, monitor = None, None
         try:
+            # 初始化、心跳和工具目录不执行业务；实际工具调用必须绑定当前请求。
+            context = current_context() if method == "tools/call" else None
+            if method == "tools/call" and context is None:
+                raise HTTPException(409, "当前没有正在处理的请求，不能调用工作区能力")
             # 继承原请求的身份、案件范围和事务，不接受模型提供的用户名或令牌。
             if script:
                 identifier = payload["id"]
                 if type(identifier) not in {str, int} or identifier in script_calls:
                     raise HTTPException(422, "技能脚本请求编号无效或重复")
-                task = current_context().run(asyncio.create_task, execute())
+                task = context.run(asyncio.create_task, execute())
                 script_calls[identifier] = task
 
                 async def disconnected():
@@ -108,8 +112,10 @@ async def workspace_mcp(tools, schemas, context_provider=None):
                 if monitor in done:
                     task.cancel()
                 result = await task
+            elif context is None:
+                result = await execute()
             else:
-                result = await current_context().run(asyncio.create_task, execute())
+                result = await context.run(asyncio.create_task, execute())
             return JSONResponse({"jsonrpc": "2.0", "id": payload["id"], "result": result})
         except asyncio.CancelledError:
             if not script:

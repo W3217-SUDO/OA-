@@ -1,7 +1,9 @@
 """智能体运行时常驻：同一会话复用，配置变了/别的进程跑过/出错就重建，空闲或超量时关停。"""
+import asyncio
 import json
 import sys
 import tempfile
+import threading
 import types
 import unittest
 from contextlib import asynccontextmanager
@@ -10,8 +12,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
+import httpx
 
 from app.harness_agent import runtime
+from app.harness_agent.lease import session_lease, wait_for_session_lease
+from app.harness_agent.bridge import _SwitchTools, workspace_mcp
 
 
 class FakeSession:
@@ -171,7 +176,94 @@ class ResidentRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 await runtime._reap_idle()
         self.assertNotIn("oa-s", runtime._RESIDENTS)
         self.assertTrue(FakeHarness.instances[0].closed)
-        self.assertEqual(sleeps[0], 30)  # 每 30 秒检查一次
+        self.assertEqual(sleeps[0], 0.5)  # 交接请求不能等待整个空闲过期周期
+
+    async def test_context_provider_survives_the_original_request_releasing_its_resident(self):
+        providers = []
+
+        @asynccontextmanager
+        async def capture_mcp(tools, schemas, context_provider=None):
+            providers.append(context_provider)
+            yield "http://127.0.0.1:1/mcp", "secret"
+
+        with patch.object(runtime, "workspace_mcp", capture_mcp):
+            await self.turn("第一问")
+            self.assertIsNone(providers[0]())
+            await self.turn("第二问")
+            self.assertIsNone(providers[0]())
+            self.assertEqual(len(providers), 1)
+
+    async def test_other_worker_handoff_releases_the_resident_lease_before_idle_timeout(self):
+        await self.turn("一")
+        harness = FakeHarness.instances[0]
+        (self.home / "oa-resident-turn.json").write_text(json.dumps({"owner": "交接请求", "turns": 0}))
+
+        async def immediate(seconds):
+            pass
+
+        with patch.object(runtime.asyncio, "sleep", immediate):
+            await runtime._reap_idle()
+        self.assertTrue(harness.closed)
+        self.assertNotIn("oa-s", runtime._RESIDENTS)
+        with session_lease(self.home / "resident.lock"):
+            pass
+
+    async def test_waiting_worker_acquires_only_after_previous_owner_releases(self):
+        with session_lease(self.home / "resident.lock"):
+            waiter = asyncio.create_task(wait_for_session_lease(self.home / "resident.lock", timeout=1))
+            await asyncio.sleep(0.1)
+            self.assertFalse(waiter.done())
+        acquired = await waiter
+        acquired.__exit__(None, None, None)
+
+    async def test_cancelling_a_handoff_wait_does_not_leave_a_lock(self):
+        with session_lease(self.home / "resident.lock"):
+            waiter = asyncio.create_task(wait_for_session_lease(self.home / "resident.lock", timeout=1))
+            await asyncio.sleep(0.1)
+            waiter.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await waiter
+        with session_lease(self.home / "resident.lock"):
+            pass
+
+    async def test_idle_bridge_serves_metadata_but_rejects_business_calls_without_context(self):
+        holder = {"tools": None, "context": None}
+        schemas = [{"function": {"name": "probe", "description": "协议检查", "parameters": {"type": "object"}}}]
+        async with workspace_mcp(_SwitchTools(holder), schemas, lambda: holder["context"]) as (url, secret):
+            async with httpx.AsyncClient(trust_env=False, headers={"authorization": "Bearer " + secret}) as client:
+                for index, method in enumerate(("initialize", "ping", "tools/list")):
+                    response = await client.post(url, json={"jsonrpc": "2.0", "id": index, "method": method})
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn("result", response.json())
+                response = await client.post(url, json={"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                                                       "params": {"name": "probe", "arguments": {}}})
+                self.assertEqual(response.json()["error"]["code"], -32000)
+                self.assertIn("当前没有正在处理的请求", response.json()["error"]["message"])
+
+    async def test_cancelling_close_keeps_ownership_until_native_handle_is_closed(self):
+        await self.turn("一")
+        resident = runtime._RESIDENTS["oa-s"]
+        started, release = threading.Event(), threading.Event()
+
+        def delayed_close():
+            started.set()
+            release.wait(timeout=2)
+
+        with patch.object(resident.harness, "close", delayed_close):
+            closing = asyncio.create_task(runtime._close_resident(resident))
+            await asyncio.to_thread(started.wait, 1)
+            try:
+                closing.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await closing
+                with self.assertRaises(HTTPException):
+                    with session_lease(self.home / "resident.lock"):
+                        self.fail("原生句柄尚未关闭，不能交出写入权")
+            finally:
+                release.set()
+                await resident.close_task
+        with session_lease(self.home / "resident.lock"):
+            pass
 
 
 if __name__ == "__main__":
