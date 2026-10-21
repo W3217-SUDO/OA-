@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -294,6 +296,27 @@ async def build_context(identity: dict[str, Any], db: AsyncSession) -> dict[str,
     }
 
 
+# 每轮对话开头的“当前待办”摘要只是给智能体的提示（真实数据由工具实时查询），
+# 同一身份 60 秒内复用，避免每句话都重跑几条较重的统计查询。
+_CONTEXT_TTL_SECONDS = 60
+_CONTEXT_CACHE_LIMIT = 256
+_context_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+async def cached_build_context(identity: dict[str, Any], db: AsyncSession) -> dict[str, Any]:
+    key = hashlib.sha256(json.dumps(identity, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()
+    now = time.monotonic()
+    hit = _context_cache.get(key)
+    if hit and now - hit[0] < _CONTEXT_TTL_SECONDS:
+        return copy.deepcopy(hit[1])
+    context = await build_context(identity, db)
+    if len(_context_cache) >= _CONTEXT_CACHE_LIMIT:
+        for stale in [item for item, (at, _) in _context_cache.items() if now - at >= _CONTEXT_TTL_SECONDS] or list(_context_cache)[:1]:
+            _context_cache.pop(stale, None)
+    _context_cache[key] = (now, copy.deepcopy(context))
+    return context
+
+
 def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: dict[str, Any], user_text: str, skill=None, materials: dict | None = None, recalled: list[dict[str, Any]] | None = None, created_memory: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     project_text = json.dumps(context["project_workspace"], ensure_ascii=False)
     context_text = json.dumps(model_result_view({key: value for key, value in context.items() if key != "project_workspace"}, 60_000), ensure_ascii=False, default=str)
@@ -453,7 +476,7 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
     if on_progress:
         await on_progress("正在获取当前待办…")
     with measure_phase("personal_agent.context"):
-        context = await build_context(identity, db)
+        context = await cached_build_context(identity, db)
         context["project_workspace"] = await project_workspace_context(state, identity, db)
     memory_case_id = case_id or (state.get("workspace") or {}).get("case_id")
     memory_owner_id = identity.get("_actual_user_id")
