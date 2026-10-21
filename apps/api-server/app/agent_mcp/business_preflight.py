@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.api_schemas.finance import FinanceFeeInput
+from app.core.case_create_requirements import missing_case_create_fields
 from app.core.task_lifecycle_policy import validate_task_lifecycle
 from app.models import BusinessRecord, SystemParameter
 
@@ -63,6 +64,13 @@ async def prepare_business_arguments(spec, arguments, params, identity, db):
     endpoint = spec._route.endpoint
     if endpoint.__module__ == "app.areas.finance.router" and endpoint.__name__ == "create_finance_fee":
         return await _resolve_fee_arguments(arguments, params, identity, db)
+    if endpoint.__module__ == "app.areas.legal.router" and endpoint.__name__ == "create_case":
+        missing = missing_case_create_fields(dict(params["body"]))
+        if missing:
+            # 提交前就把缺的信息一次列全，让智能体先向用户询问，而不是生成待确认操作后才保存失败。
+            raise HTTPException(422, "新建案件缺少或不合规的信息：" + "；".join(missing)
+                                + "。请先逐项向用户询问并确认，补齐后再提交，不要使用默认值或自行猜测。")
+        return arguments
     if endpoint.__module__ != "app.areas.tp.router":
         return arguments
     name = endpoint.__name__
