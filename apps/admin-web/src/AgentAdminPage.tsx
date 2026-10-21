@@ -7,6 +7,7 @@ import { SkillManager } from "./personal-agent/SkillManager";
 import { errorText, type WorkspaceSkill } from "./personal-agent/types";
 import { CapabilityMarket } from "./capability-market/CapabilityMarket";
 import { GlobalMcpWorkspace } from "./capability-market/GlobalMcpWorkspace";
+import { DshPluginCenter } from "./capability-market/DshPluginCenter";
 import { SystemSkillPanel } from "./SystemSkillPanel";
 import { SkillRuntimeStatus } from "./personal-agent/SkillRuntimeStatus";
 import type { AgentSkill } from "./agentSkillRouting";
@@ -162,12 +163,14 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
   return (
     <div className="agent-scope-admin" data-testid="agent-admin-page">
       <Tabs activeKey={tab} onChange={key => { if (!capabilityBusy) setTab(key); }} items={[
+        { key: "plugins", label: "DSH 插件中心", disabled: capabilityBusy },
         { key: "global", label: "全局 Skill", disabled: capabilityBusy },
         { key: "mcp", label: "全局 MCP", disabled: capabilityBusy },
         { key: "market", label: "能力市场", disabled: capabilityBusy },
         ...(overview ? [{ key: "overview", label: canViewUserLibraries ? "运行状态与个人库" : "运行状态", disabled: capabilityBusy }] : []),
       ]} />
       {error && <Alert type="error" showIcon title="智能体设置加载未完成" description={error} action={<Button loading={loading} onClick={() => void load()}>重试</Button>} />}
+      <div hidden={tab !== "plugins"}><DshPluginCenter active={tab === "plugins"} canManage={isSystemAdmin} onBusy={setCapabilityBusy} /></div>
       <div hidden={tab !== "global"}>
         <Card title="全局 Skill" loading={loading && !globalSkills.length} extra={<Space wrap>
           <Button loading={loading} icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>

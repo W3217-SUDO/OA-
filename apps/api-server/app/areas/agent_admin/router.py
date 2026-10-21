@@ -14,12 +14,14 @@ from app.security import current_identity
 from app.user_agent_skills import USER_SKILL_CONFIG_GROUP, USER_SKILL_CONFIG_PREFIX
 from app.areas.agent_admin.skills import router as skills_router
 from app.areas.agent_admin.system_skills import router as system_skills_router
+from app.areas.agent_admin.plugins import router as plugins_router
 from app.areas.capability_market.router import router as capability_router
 
 
 router = APIRouter()
 router.include_router(skills_router)
 router.include_router(system_skills_router)
+router.include_router(plugins_router)
 router.include_router(capability_router)
 
 

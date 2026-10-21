@@ -63,7 +63,7 @@ def workspace_paths(owner: str, workspace: str, conversation: str):
     return identifier, cwd, home
 
 
-def _patch(url, token, schema, directories, mode_supported, response_mode, memory=None):
+def _patch(url, token, schema, directories, mode_supported, response_mode, memory=None, native_plugins=False):
     model = {"id": settings.langgraph_model, "name": settings.langgraph_model, "input": ["text", "image"]}
     provider = {"displayName": "沪知已配置模型", "apiKeyEnv": "OA_MODEL_API_KEY", "api": "openai-completions",
                 "baseURL": settings.langgraph_api_base_url, "models": [model],
@@ -80,6 +80,12 @@ def _patch(url, token, schema, directories, mode_supported, response_mode, memor
         allow.extend('mcp__engram__' + name for name in TOOLS)
         persona += INSTRUCTION
     return [
+        # 安装外部插件不同时开放原有宿主编码工具；OA 业务权限仍由 MCP 校验。
+        *([{"id": name, "disabled": True} for name in (
+            "tool-plugin-manager", "tool-working-directory", "tool-bash", "tool-pwsh", "tool-jobs",
+            "tool-fs", "tool-fs-search", "tool-subagent-control", "tool-subagent-list-agents",
+            "tool-subagent", "tool-subagent-fork", "tool-workflow", "tool-todo", "tool-goal", "tool-web",
+        )] if native_plugins else []),
         {"id": "system-prompt", "config": {"personaPrefix": persona}},
         {"id": "llm-pi-ai", "config": {"providers": {"huzhi-oa": provider}}},
         {"id": "skill-filesystem", "config": {"includeDefaultRoots": False, "customSkillDirs": [native_path(path.parent) for path in directories.values()]}},
@@ -91,7 +97,8 @@ def _patch(url, token, schema, directories, mode_supported, response_mode, memor
                 "serverName": "oa", "transport": "streamable-http", "url": url,
                 "headers": {"Authorization": "Bearer " + token}, "failOnStartupError": True,
                 "reconnect": {"enabled": False}}},
-            {"id": "oa-stream", "name": (Path(__file__).parent / "stream.mjs").resolve().as_uri(), "config": {"allowedTools": allow}},
+            {"id": "oa-stream", "name": (Path(__file__).parent / "stream.mjs").resolve().as_uri(),
+             "config": {"allowedTools": allow, "nativePlugins": native_plugins}},
         ]},
     ]
 
@@ -109,6 +116,8 @@ def _environment():
     # 此目录仅用于可重建的运行库缓存；会话历史仍由显式 dsh_home 独立保存。
     environment.update({"HOME": str(cache), "USERPROFILE": str(cache), "OA_MODEL_API_KEY": settings.langgraph_api_key,
                         "DSH_TELEMETRY_DISABLED": "1", "DSH_PRIMARY_RUNTIME": "", "DSH_BUNDLED_OFFICE_CLI": ""})
+    if settings.deepseek_harness_plugin_path.strip():
+        environment["PATH"] = settings.deepseek_harness_plugin_path.strip() + os.pathsep + environment.get("PATH", "")
     return environment
 
 
@@ -172,11 +181,14 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
         schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL]
         from .memory import configuration as memory_configuration
         memory = memory_configuration(cwd, identity['username'])
+        from .plugins import attach
+        profile = attach(home)
         async with workspace_mcp(guarded, schemas) as (url, secret):
-            patch_path.write_text(yaml.safe_dump(_patch(url, secret, schemas, directories, mode_supported, response_mode, memory),
+            patch_path.write_text(yaml.safe_dump(_patch(url, secret, schemas, directories, mode_supported, response_mode, memory,
+                                                      native_plugins=profile != "sdk"),
                                                  allow_unicode=True, sort_keys=False), encoding="utf-8")
             patch_path.chmod(0o600)
-            harness = DeepSeekHarness(dsh_home=native_path(home), cwd=native_path(cwd), profile="sdk", patches=(native_path(patch_path),),
+            harness = DeepSeekHarness(dsh_home=native_path(home), cwd=native_path(cwd), profile=profile, patches=(native_path(patch_path),),
                                        provider="huzhi-oa", model=settings.langgraph_model, env=_environment(),
                                        reasoning_effort=("off" if response_mode == "fast" else "high") if mode_supported else None,
                                        initialize_timeout_seconds=40, request_timeout_seconds=180)
