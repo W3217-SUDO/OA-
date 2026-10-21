@@ -1524,6 +1524,8 @@ async def list_customers(
     page_size: int = Query(15, ge=0, le=200),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
+    customer_partition: str = "",
+    historical_type: str = "",
 ):
     """Original customer-list scopes with authoritative server-side filtering and paging."""
     from app.core.customer_readmodel import customer_summary, customer_relationship_counts, customer_person_names
@@ -1540,6 +1542,8 @@ async def list_customers(
     # that compatibility at the API boundary while still rejecting negatives.
     page = page or 1
     page_size = page_size or 15
+    if customer_partition not in {"", "clients", "review"}:
+        raise HTTPException(status_code=422, detail="客户名录分区无效")
     current_user = await db.scalar(
         select(User).where(User.username == identity["username"], User.is_active.is_(True))
     )
@@ -1559,7 +1563,7 @@ async def list_customers(
     active_customer_types = set((await db.scalars(select(SystemParameter.name).where(
         SystemParameter.category == "customer_type", SystemParameter.is_active.is_(True),
     ))).all())
-    if customer_type not in active_customer_types:
+    if (not customer_partition and customer_type not in active_customer_types) or (historical_type and historical_type not in active_customer_types):
         raise HTTPException(status_code=422, detail="客户类型不存在或已停用")
     # Customer managers are stored as a JSON array.  Do not use a serialized
     # JSON ``contains`` predicate here: a user named ``ann`` would otherwise
@@ -1614,9 +1618,17 @@ async def list_customers(
     if normalized_name:
         like = f"%{normalized_name}%"
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like)))
-    conditions.append(
-        func.coalesce(BusinessRecord.data["customer_type"].as_string(), "客户") == customer_type
-    )
+    if customer_partition:
+        # 只分离读取视图，不改历史类型，也不按名称猜测主体立场。
+        stored_type = func.coalesce(BusinessRecord.data["customer_type"].as_string(), "")
+        client_type = stored_type.in_(["客户", "委托客户"])
+        conditions.append(client_type if customer_partition == "clients" else ~client_type)
+        if customer_partition == "review" and historical_type:
+            conditions.append(stored_type == historical_type)
+    else:
+        conditions.append(
+            func.coalesce(BusinessRecord.data["customer_type"].as_string(), "客户") == customer_type
+        )
     normalized_manager = manager.strip()
     manager_search_tokens = {normalized_manager} if normalized_manager else set()
     if normalized_manager:

@@ -10,7 +10,24 @@
 .case-party-directory{min-width:0;display:grid;gap:12px}
 .case-party-directory-item{padding:12px;background:#f6faf8;border:1px solid #d3e5de;border-radius:8px;overflow-wrap:anywhere}
 .case-party-directory-item a{display:inline-block;margin:4px 12px 4px 0}
+.customer-registry-description{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:12px;min-width:0}
+.customer-registry-description .ant-alert{flex:1;min-width:0;overflow-wrap:anywhere}
+.customer-list-panel .customer-registry-query{display:flex;flex-wrap:wrap;width:100%;gap:8px;margin-bottom:12px}
+.customer-registry-query>.ant-input,.customer-registry-query>.ant-input-affix-wrapper{width:180px;min-width:0}
+.customer-registry-query>.ant-select{width:180px;min-width:0}
+.customer-registry-tabs .ant-tabs-tab{min-height:44px}
 @media(max-width:767px){
+ .customer-list-panel .customer-registry-query{display:grid;grid-template-columns:auto minmax(0,1fr)}
+ .customer-list-panel .customer-registry-query>:nth-child(n){display:block}
+ .customer-list-panel .customer-registry-query>.ant-select,.customer-list-panel .customer-registry-query>.ant-btn{display:inline-flex}
+ .customer-list-panel .customer-registry-query>.ant-input,.customer-list-panel .customer-registry-query>.ant-input-affix-wrapper,.customer-list-panel .customer-registry-query>.ant-select{width:100%;min-width:0}
+ .customer-list-panel .customer-registry-query .ant-input,.customer-list-panel .customer-registry-query .ant-select-selector,.customer-list-panel .customer-registry-query .ant-btn{height:44px!important;min-height:44px}
+ .customer-registry-description{align-items:stretch;flex-direction:column}
+ .customer-registry-description>.ant-btn{min-height:44px;white-space:normal;height:auto}
+ .customer-registry-tabs .ant-tabs-nav-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;transform:none!important}
+ .customer-registry-tabs .ant-tabs-tab{margin:0!important;justify-content:center;padding:8px 4px;white-space:normal;min-width:0}
+ .customer-registry-tabs .ant-tabs-nav-operations,.customer-registry-tabs .ant-tabs-ink-bar{display:none!important}
+ .customer-registry-tabs .ant-tabs-tab-active{background:#e5f3ec;border-radius:6px}
  .case-party-fields{grid-template-columns:minmax(0,1fr)}
  .case-party-classification .ant-btn,.case-party-directory .ant-btn{min-width:44px;min-height:44px;height:auto;white-space:normal}
  .case-party-fields .ant-select,.case-party-fields .ant-select-selector,.case-party-fields .ant-input,.case-party-directory .ant-input,.case-party-directory .ant-select{min-height:44px;height:auto}

@@ -55,12 +55,12 @@ export function DshPluginCenter({ active, canManage, onBusy }: {
     {state?.error && <Alert type="warning" showIcon title={state.error} />}
     {!!busy && <p role="status">正在安装或更新插件并校验配置，请勿重复操作。</p>}
     {canManage && <div className="dsh-plugin-install">
-      <h3>安装原生插件</h3><p>填写 npm 包名（可带版本）或 GitHub 仓库地址。Skill 仍在“全局 Skill”中管理。</p>
+      <h3>安装原生插件</h3><p>粘贴 npm 包名、GitHub 仓库地址，或作者提供的 dsh plugin add 安装命令。Skill 仍在“全局 Skill”中管理。</p>
       <Form form={form} layout="vertical" onFinish={values => void mutate("install", {
         spec: values.spec.trim(), allow_builds: (values.builds || "").split(/[,，\s]+/).filter(Boolean),
       }, "install")} disabled={!!busy || !state?.package_manager_ready}>
-        <div className="dsh-plugin-install-row"><Form.Item name="spec" label="插件来源" rules={[{ required: true, whitespace: true, message: "请输入插件包名或 GitHub 地址" }]}>
-          <Input placeholder="npm 包名@版本 或 github:作者/仓库#提交" autoComplete="off" maxLength={500} />
+        <div className="dsh-plugin-install-row"><Form.Item name="spec" label="插件来源" extra="安装命令只用于提取包名；其中的 profile 不会切换 OA 配置。" rules={[{ required: true, whitespace: true, message: "请输入插件包名、GitHub 地址或 dsh 安装命令" }]}>
+          <Input placeholder="例如 dsh plugin --profile web add @作者/插件名" autoComplete="off" maxLength={500} />
         </Form.Item><Button type="primary" htmlType="submit" icon={<DownloadOutlined />} loading={busy === "install"}>安装到系统</Button></div>
         <details><summary>需要运行构建脚本的插件</summary>
           <Form.Item name="builds" label="允许构建的准确包名" extra="仅在插件要求 prepare / 构建步骤时填写，多个包名用逗号分隔。">
@@ -71,7 +71,7 @@ export function DshPluginCenter({ active, canManage, onBusy }: {
     </div>}
     <section className="dsh-plugin-community" aria-label="开源插件社区">
       <h3>去开源社区找插件</h3>
-      <p>在社区中浏览插件，将作者提供的 npm 包名或 GitHub 仓库地址复制到上方安装；不用粘贴整条安装命令。</p>
+      <p>在社区中浏览插件，将作者提供的 npm 包名、GitHub 仓库地址或 dsh plugin add 安装命令复制到上方安装。</p>
       <div className="dsh-plugin-community-links">
         <Button href="https://dshmarketplace.dev/" target="_blank" rel="noopener noreferrer" icon={<LinkOutlined />}>DSH Marketplace · 社区插件目录</Button>
         <Button href="https://github.com/deepseek-ai/deepseek-harness/discussions/categories/show-your-plugins" target="_blank" rel="noopener noreferrer" icon={<LinkOutlined />}>官方插件交流区</Button>

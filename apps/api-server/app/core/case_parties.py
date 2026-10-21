@@ -60,7 +60,7 @@ async def prepare_case_parties(record, values: list[ClassifiedCasePartyInput], i
             raise HTTPException(422, f"{row['name']}：必须关联实际委托客户")
         if row["related_client_id"]:
             client = await _customer_or_404(row["related_client_id"], identity, db)
-            if str((client.data or {}).get("customer_type") or "客户") != "客户" or client.status in {"已回收", "已删除"}:
+            if str((client.data or {}).get("customer_type") or "客户") not in {"客户", "委托客户"} or client.status in {"已回收", "已删除"}:
                 raise HTTPException(422, "关联客户必须是有效 CRM 委托客户，历史当事人须先人工确认身份")
             clients[client.id] = client
             row["related_client_name"] = client.title

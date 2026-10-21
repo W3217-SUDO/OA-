@@ -103,6 +103,8 @@ export default function CustomerCenterPage({
   const [allRows, setAllRows] = useState<Customer[]>([]);
   const [keyword, setKeyword] = useState("");
   const [customerType, setCustomerType] = useState("客户");
+  const [customerPartition, setCustomerPartition] = useState("clients");
+  const listRequest = useRef(0);
   const [customerTypeOptions, setCustomerTypeOptions] = useState<{ value: string; label: string }[]>([
     { value: "客户", label: "委托客户" },
     { value: "当事人", label: "历史当事人（待复核）" },
@@ -207,8 +209,10 @@ export default function CustomerCenterPage({
       // Dedicated APIs already apply the personal/department/company/public/shared/recent scope and paging.
     }
     else list = list.filter((x) => x.status !== "已回收");
-    if (!isOriginalCustomerList && customerType)
-      list = list.filter((x) => (x.data.customer_type || "客户") === customerType);
+    if (!isOriginalCustomerList) {
+      list = list.filter((x) => ["客户", "委托客户"].includes(x.data.customer_type || "") === (customerPartition === "clients"));
+      if (customerPartition === "review" && customerType) list = list.filter((x) => x.data.customer_type === customerType);
+    }
     if (!isOriginalCustomerList && managerKeyword.trim())
       list = list.filter((x) =>
         (x.data.customer_managers || [x.owner]).some((name) =>
@@ -216,7 +220,7 @@ export default function CustomerCenterPage({
         ),
       );
     return list;
-  }, [allRows, initialView, profile, customerType, managerKeyword]);
+  }, [allRows, initialView, profile, customerType, managerKeyword, customerPartition]);
 
   const customerPageCount = Math.max(1, Math.ceil(total / pageSize));
   const customerPageNumbers = Array.from(
@@ -284,6 +288,8 @@ export default function CustomerCenterPage({
   };
 
   const load = async (overrides: Partial<{ keyword: string; customerType: string; managerKeyword: string; page: number }> = {}) => {
+    const requestId = ++listRequest.current;
+    if (["parties", "opponents"].includes(customerPartition)) { setLoading(false); return; }
     const requestKeyword = overrides.keyword ?? keyword;
     const requestCustomerType = overrides.customerType ?? customerType;
     const requestManagerKeyword = overrides.managerKeyword ?? managerKeyword;
@@ -302,7 +308,9 @@ export default function CustomerCenterPage({
                 pageSize,
               }),
               customer_name: requestKeyword,
-              customer_type: requestCustomerType,
+              customer_type: "客户",
+              customer_partition: customerPartition,
+              historical_type: customerPartition === "review" ? requestCustomerType : "",
               ...(["customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView) ? {} : { manager: requestManagerKeyword }),
               page_size: pageSize,
             },
@@ -311,6 +319,7 @@ export default function CustomerCenterPage({
             params: { module: "customer", keyword: requestKeyword, page_size: 100 },
           });
       const recordsRes = await recordsRequest;
+      if (requestId !== listRequest.current) return;
       const responseItems = recordsRes.data.items || [];
       const responseTotal = Number(recordsRes.data.total || responseItems.length);
       const responseLastPage = Math.max(1, Math.ceil(responseTotal / pageSize));
@@ -346,6 +355,7 @@ export default function CustomerCenterPage({
         api.get("/users/directory", { params: { purpose: "customer_contact" } }),
         api.get("/customers/reference-options"),
       ]);
+      if (requestId !== listRequest.current) return;
       if (profileResult.status === "fulfilled") setProfile(profileResult.value.data);
       else message.warning("当前登录身份加载失败，已保留客户列表和详情入口");
       if (directoryResult.status === "fulfilled") setDirectory(directoryResult.value.data.items || []);
@@ -353,16 +363,17 @@ export default function CustomerCenterPage({
       if (customerDirectoryResult.status === "fulfilled") setCustomerDirectory(customerDirectoryResult.value.data.items || []);
       else message.warning("客户账号目录加载失败，稍后可刷新重试");
       if (customerTypeResult.status === "fulfilled") {
-        const options = (customerTypeResult.value.data.customer_types || []).map((item:any)=>({...item,label:item.value==="客户"?"委托客户":item.value==="当事人"?"历史当事人（待复核）":item.label}));
+        const options: { value: string; label: string }[] = Array.from(new Map<string, { value: string; label: string }>(
+          (customerTypeResult.value.data.customer_types || []).map((item: { value: string; label: string }) => [item.value, item]),
+        ).values());
         if (options.length) {
           setCustomerTypeOptions(options);
-          if (!options.some((item: { value: string }) => item.value === customerType)) setCustomerType(options[0].value);
         }
       } else message.warning("客户类型加载失败，暂使用缓存选项");
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "客户数据加载失败");
+      if (requestId === listRequest.current) message.error(error?.response?.data?.detail || "客户数据加载失败");
     } finally {
-      setLoading(false);
+      if (requestId === listRequest.current) setLoading(false);
     }
   };
 
@@ -387,7 +398,7 @@ export default function CustomerCenterPage({
 
   useEffect(() => {
     load();
-  }, [initialView, page, pageSize]);
+  }, [initialView, page, pageSize, customerPartition]);
 
   useEffect(() => {
     if (initialView === "customer-new") startCreate();
@@ -1303,7 +1314,7 @@ export default function CustomerCenterPage({
   };
 
   const handleResetSearch = () => {
-    const resetCustomerType = customerTypeOptions[0]?.value || "客户";
+    const resetCustomerType = customerPartition === "review" ? "" : "客户";
     setKeyword("");
     setCustomerType(resetCustomerType);
     setManagerKeyword("");
@@ -1426,6 +1437,15 @@ export default function CustomerCenterPage({
           customerType={customerType}
           customerTypeOptions={customerTypeOptions}
           managerKeyword={managerKeyword}
+          customerPartition={customerPartition}
+          onCustomerPartitionChange={value => {
+            ++listRequest.current;
+            setCustomerPartition(value);
+            setCustomerType(value === "review" ? "" : "客户");
+            setKeyword(""); setSelectedRowKeys([]); setAllRows([]); setTotal(0);
+            setListSummary(normalizeCustomerSummary());
+            setPage(1); setJumpPage("1");
+          }}
           managerLocked={managerLocked}
           managerDisplay={managerDisplay}
           isOriginalCustomerList={isOriginalCustomerList}

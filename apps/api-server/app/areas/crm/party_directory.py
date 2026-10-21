@@ -48,7 +48,7 @@ async def party_client_choices(keyword: str = "", identity: dict = Depends(curre
     await _require_record_module_menu("case", identity, db, action="查看")
 
     conditions = [BusinessRecord.module == "customer", BusinessRecord.status.not_in(["已回收", "已删除"]),
-                  func.coalesce(BusinessRecord.data["customer_type"].as_string(), "客户") == "客户", *(await _record_scope_conditions(identity, db))]
+                  func.coalesce(BusinessRecord.data["customer_type"].as_string(), "客户").in_(["客户", "委托客户"]), *(await _record_scope_conditions(identity, db))]
     if keyword.strip():
         conditions.append(BusinessRecord.title.ilike(f"%{keyword.strip()}%"))
     rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.title, BusinessRecord.id).limit(50))).all()

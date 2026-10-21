@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -33,10 +34,44 @@ def package_environment(home: Path) -> dict:
 
 def validate_spec(spec: str) -> str:
     spec = spec.strip()
+    if len(spec) > 500:
+        raise HTTPException(422, "插件来源过长，请填写一个 npm 包名或 GitHub 仓库地址")
+    if re.match(r"^dsh\s", spec):
+        # 只读取安装命令中的来源，不执行命令，也不使用外部配置名称。
+        try:
+            tokens = shlex.split(spec)
+        except ValueError as exc:
+            raise HTTPException(422, "安装命令的引号不完整，请检查后重试") from exc
+        tokens = tokens[1:]
+        profile_seen = False
+        for position in (0, 1):
+            if len(tokens) > position and tokens[position].startswith("--profile"):
+                option = tokens[position]
+                if profile_seen:
+                    raise HTTPException(422, "安装命令不能重复指定 profile")
+                if option == "--profile" and len(tokens) > position + 1:
+                    profile = tokens[position + 1]
+                    del tokens[position:position + 2]
+                elif option.startswith("--profile="):
+                    profile = option.removeprefix("--profile=")
+                    del tokens[position]
+                else:
+                    raise HTTPException(422, "安装命令的 profile 参数无效")
+                if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", profile):
+                    raise HTTPException(422, "安装命令的 profile 参数无效")
+                profile_seen = True
+        if tokens[:2] != ["plugin", "add"]:
+            raise HTTPException(422, "这里只接受 dsh plugin add 安装命令、npm 包名或 GitHub 仓库地址")
+        sources = tokens[2:]
+        if sources[:1] == ["--save-exact"]:
+            sources = sources[1:]
+        if len(sources) != 1:
+            raise HTTPException(422, "每次只安装一个插件，请移除额外参数或其他命令")
+        spec = sources[0]
     npm = r"(?:@[a-z0-9._-]+/)?[a-z0-9][a-z0-9._-]*(?:@[a-zA-Z0-9.*^~+<>=| -]+)?"
     github = r"(?:github:|https://github\.com/)[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+(?:#[a-zA-Z0-9_./-]+)?"
     if len(spec) > 500 or not re.fullmatch(f"(?:{npm}|{github})", spec):
-        raise HTTPException(422, "请输入 npm 包名（可带版本）或 GitHub 仓库地址，不接受命令或服务器路径")
+        raise HTTPException(422, "未识别到有效插件来源，请填写 npm 包名、GitHub 仓库地址或单条 dsh plugin add 安装命令")
     return spec
 
 

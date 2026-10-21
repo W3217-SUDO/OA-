@@ -1,12 +1,13 @@
 import { CasePartyDirectory } from "./CasePartyDirectory";
 import {
+  Alert,
   Button,
   Card,
   Checkbox,
   Dropdown,
   Input,
   Select,
-  Space,
+  Tabs,
 } from "antd";
 import Table from "../components/ResizableTable";
 import {
@@ -34,6 +35,8 @@ interface CustomerListProps {
   keyword: string;
   customerType: string;
   customerTypeOptions: { value: string; label: string }[];
+  customerPartition: string;
+  onCustomerPartitionChange: (value: string) => void;
   managerKeyword: string;
   managerLocked: boolean;
   managerDisplay: string;
@@ -62,7 +65,7 @@ interface CustomerListProps {
   onPageSizeChange: (value: number) => void;
 }
 
-export function CustomerList({ initialView, rows, total, page, pageSize, customerPageCount, customerPageNumbers, jumpPage, loading, keyword, customerType, customerTypeOptions, managerLocked, managerDisplay, isOriginalCustomerList, isReadOnlyCustomerList, selectedRowKeys, listSummary, directory, originalActionItems, onKeywordChange, onCustomerTypeChange, onManagerKeywordChange, onSearch, onReset, onSelectedRowKeysChange, onStartCreate, onOpenDetail, onOpenCustomerCommunication, onOpenCustomerContracts, onOpenCustomerCivilCases, onOpenCustomerIprCases, onRunOriginalAction, onGoToPage, onJumpPageChange, onPageSizeChange }: CustomerListProps) {
+export function CustomerList({ initialView, rows, total, page, pageSize, customerPageCount, customerPageNumbers, jumpPage, loading, keyword, customerType, customerTypeOptions, customerPartition, onCustomerPartitionChange, managerLocked, managerDisplay, isOriginalCustomerList, isReadOnlyCustomerList, selectedRowKeys, listSummary, directory, originalActionItems, onKeywordChange, onCustomerTypeChange, onManagerKeywordChange, onSearch, onReset, onSelectedRowKeysChange, onStartCreate, onOpenDetail, onOpenCustomerCommunication, onOpenCustomerContracts, onOpenCustomerCivilCases, onOpenCustomerIprCases, onRunOriginalAction, onGoToPage, onJumpPageChange, onPageSizeChange }: CustomerListProps) {
   const amount = (value?: number) => Number(value || 0).toFixed(2);
   const displayDate = (value?: string) => {
     const parsed = dayjs(value);
@@ -80,6 +83,8 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
   ].includes(initialView);
 
   const columns = [
+    ...(customerPartition === "review" ? [{ title: "历史原类型", key: "historicalType", width: 140,
+      render: (_: unknown, row: Customer) => row.data.customer_type || "未设置（待复核）" }] : []),
     {
       title: "客户编号",
       dataIndex: "serial_no",
@@ -277,12 +282,23 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
   return (
     <Card
       className="panel customer-list-panel"
-      title="客户列表"
+      title="客户与案件主体"
       extra={(
-        <Space wrap><CasePartyDirectory /><Button type="primary" icon={<PlusOutlined />} onClick={()=>onStartCreate("客户")}>新建委托客户</Button></Space>
+        <Button type="primary" icon={<PlusOutlined />} onClick={()=>onStartCreate("客户")}>新建委托客户</Button>
       )}
     >
-      <div className="customer-query">
+      <Tabs className="customer-registry-tabs" activeKey={customerPartition} onChange={onCustomerPartitionChange} items={[
+        { key: "clients", label: "委托客户" }, { key: "parties", label: "案件当事人" },
+        { key: "opponents", label: "对手方名录" }, { key: "review", label: "历史待复核" },
+      ]} />
+      {["parties", "opponents"].includes(customerPartition) ? <CasePartyDirectory key={customerPartition} embedded initialScope={customerPartition === "parties" ? "all" : "opponents"} /> : <>
+      <div className="customer-registry-description">
+        <Alert type={customerPartition === "review" ? "warning" : "info"} showIcon title={customerPartition === "review"
+          ? "历史客户库中的其他类型及未设置类型记录单独保留，尚未确认是否为委托人；不会自动归入委托客户或对手方。"
+          : "这里只展示原类型为客户或委托客户的 CRM 记录。案件当事人和对手方使用独立名录，历史类型不明记录另行复核。"} />
+        {customerPartition === "review" && <CasePartyDirectory initialScope="review" />}
+      </div>
+      <div className="customer-query customer-registry-query">
         <label>客户名称</label>
         <Input
           value={keyword}
@@ -290,12 +306,12 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
           onPressEnter={onSearch}
           allowClear
         />
-        <label>委托客户/历史待复核</label>
+        {customerPartition === "review" && <><label>历史原类型</label>
         <Select
           value={customerType}
           onChange={onCustomerTypeChange}
-          options={customerTypeOptions}
-        />
+          options={[{ value: "", label: "全部历史记录" }, ...customerTypeOptions.filter(item => !["客户", "委托客户"].includes(item.value))]}
+        /></>}
         <label>客户管理人</label>
         <Input
           disabled={managerLocked}
@@ -406,6 +422,7 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
           <Button onClick={() => onGoToPage(Number(jumpPage || page))}>GO</Button>
         </div>}
       </div>}
+      </>}
     </Card>
   );
 }
