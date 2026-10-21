@@ -270,7 +270,6 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
 
     marker = home / "oa-session.json"
     resident = None
-    one_shot = None
     runner = None
     try:
         resumed = marker.exists()
