@@ -78,7 +78,9 @@ class GitHubSkillDownloadTest(unittest.IsolatedAsyncioTestCase):
             if request.url.path.endswith('/git/trees/' + 'c' * 40):
                 return httpx.Response(200, json={'tree': [{'path': 'scripts/query.mjs', 'type': 'blob',
                     'mode': '100644', 'size': len(body), 'sha': blob_sha}]})
-            self.assertEqual(request.url.host, 'raw.githubusercontent.com')
+            self.assertEqual(request.url.host, 'api.github.com')
+            self.assertEqual(request.url.path, '/repos/a/b/git/blobs/' + blob_sha)
+            self.assertEqual(request.headers['Accept'], 'application/vnd.github.raw+json')
             return httpx.Response(200, content=body)
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:

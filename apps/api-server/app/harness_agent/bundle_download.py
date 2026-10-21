@@ -9,11 +9,18 @@ from zipfile import ZipFile
 from fastapi import HTTPException
 
 
+def _require_download_response(response, message):
+    if response.status_code == 200:
+        return
+    if response.status_code == 429 or (response.status_code == 403 and response.headers.get("x-ratelimit-remaining") == "0"):
+        raise HTTPException(429, "GitHub 下载请求额度已用尽，请在额度恢复后重试，未安装")
+    raise HTTPException(422, f"{message}（HTTP {response.status_code}）")
+
+
 async def _tree(client, repository, sha, *, recursive=False):
     response = await client.get("https://api.github.com/repos/" + repository + "/git/trees/" + sha,
                                 params={"recursive": "1"} if recursive else None)
-    if response.status_code != 200:
-        raise HTTPException(422, "无法读取固定提交的技能资源目录")
+    _require_download_response(response, "无法读取固定提交的技能资源目录")
     if len(response.content) > 8 * 1024 * 1024:
         raise HTTPException(413, "技能资源目录索引超过 8 MiB 上限")
     value = response.json()
@@ -44,12 +51,12 @@ async def download_directory(client, repository, commit, location):
         parsed = PurePosixPath(path)
         if parsed.is_absolute() or ".." in parsed.parts or "\\" in path or ":" in path:
             raise HTTPException(422, "技能资源目录含非法路径")
-        remote_path = "/".join(quote(part, safe="") for part in (*relative.parts, *parsed.parts))
         async with semaphore:
             data = bytearray()
-            async with client.stream("GET", "https://raw.githubusercontent.com/" + repository + "/" + commit + "/" + remote_path) as response:
-                if response.status_code != 200:
-                    raise HTTPException(422, "无法下载固定提交的技能资源文件")
+            # 按目录中的固定对象摘要读取原始字节，预览和安装统一使用 GitHub API。
+            async with client.stream("GET", "https://api.github.com/repos/" + repository + "/git/blobs/" + quote(item["sha"], safe=""),
+                                     headers={"Accept": "application/vnd.github.raw+json", "Accept-Encoding": "identity"}) as response:
+                _require_download_response(response, "无法下载固定提交的技能资源文件")
                 async for chunk in response.aiter_bytes():
                     data.extend(chunk)
                     if len(data) > item["size"]:
