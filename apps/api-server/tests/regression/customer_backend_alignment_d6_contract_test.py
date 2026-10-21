@@ -232,8 +232,8 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(recycled.json()["status"], "公海")
         self.assertEqual(recycled.json()["owner"], "公海")
 
-    async def test_auto_customer_serial_uses_legacy_short_sequence(self):
-        serial_prefix = f"SHKH{datetime.now():%y}"
+    async def test_auto_customer_serial_uses_hz_short_sequence(self):
+        serial_prefix = f"HZKH{datetime.now():%y}"
         async with self.sessions() as db:
             db.add(BusinessRecord(
                 module="customer", serial_no=f"{serial_prefix}00007", title="CODEX-I11-existing",
@@ -254,7 +254,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         serial_no = response.json()["serial_no"]
         self.assertEqual(serial_no, f"{serial_prefix}00008")
-        self.assertRegex(serial_no, r"^SHKH\d{7}$")
+        self.assertRegex(serial_no, r"^HZKH\d{7}$")
         self.assertNotRegex(serial_no, r"\d{10,}")
 
     async def test_create_customer_preserves_multiple_contact_accounts(self):

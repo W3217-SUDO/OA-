@@ -113,8 +113,8 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
                       {self.normal_source_id, self.refund_source_id})
         payments = await self.client.get(f"{settings.api_prefix}/finance/payment-applications/query")
         self.assertEqual(payments.status_code, 200, payments.text)
-        self.assertEqual({row["id"] for row in payments.json()["items"]},
-                         {self.normal_source_id, self.refund_source_id})
+        # 仅生成来源费用不代表已经申请付款，不能显示为真实请款单。
+        self.assertEqual(payments.json()["items"], [])
         results = {}
         for kind in ("commission", "other", "refund"):
             response = await self.client.get(f"{settings.api_prefix}/finance/internal-review-requests", params={"kind": kind})
@@ -150,15 +150,8 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
             "page_size": 1,
         })
         self.assertEqual(payments.status_code, 200, payments.text)
-        self.assertEqual(payments.json()["total"], 3)
-        payment_ids = set()
-        for page in (1, 2, 3):
-            listed = await self.client.get(f"{settings.api_prefix}/finance/payment-applications/query", params={
-                "page_size": 1, "page": page,
-            })
-            self.assertEqual(listed.status_code, 200, listed.text)
-            payment_ids.add(listed.json()["items"][0]["id"])
-        self.assertEqual(payment_ids, listed_ids)
+        self.assertEqual(payments.json()["total"], 0)
+        self.assertEqual(payments.json()["items"], [])
 
     async def test_refund_commissions_review_from_positive_refund_source(self):
         response = await self.client.post(f"{settings.api_prefix}/finance/internal-applications/batch-review", params={

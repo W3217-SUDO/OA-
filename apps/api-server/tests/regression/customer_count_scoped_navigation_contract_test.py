@@ -109,7 +109,7 @@ class CustomerCountScopedNavigationContractTest(unittest.IsolatedAsyncioTestCase
         self.assertEqual(second.status_code, 201, second.text)
         serials = {first.json()["serial_no"], second.json()["serial_no"]}
         self.assertEqual(len(serials), 2)
-        self.assertTrue(all(serial.startswith("SHHT") for serial in serials))
+        self.assertTrue(all(serial.startswith("HZHT") for serial in serials))
 
 
 if __name__ == "__main__":

@@ -418,14 +418,14 @@ async def _has_explicit_contract_approval_action(identity: dict, action_key: str
 
 
 async def _next_contract_serial_no(db: AsyncSession) -> str:
-    """Generate the compact legacy contract number: SHHT + YY + 5 digits."""
+    """新建合同使用 HZHT、两位年份及五位流水，保留原有事务锁。"""
     get_bind = getattr(db, "get_bind", None)
     if get_bind is not None and get_bind().dialect.name == "postgresql":
         # 进程内锁只能串行化同一工作进程；事务级 advisory lock 持有到调用方提交，
         # 保证多个工作进程不会读到同一最大编号而生成重复合同号。
         from app.core.process_coordination import advisory_lock_id
         await db.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": advisory_lock_id("contract-serial")})
-    prefix = f"SHHT{datetime.now():%y}"
+    prefix = f"HZHT{datetime.now():%y}"
     existing = (await db.scalars(select(BusinessRecord.serial_no).where(
         BusinessRecord.module == "contract",
         BusinessRecord.serial_no.like(f"{prefix}%"),

@@ -786,6 +786,7 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
     from app.core.permissions import (
         _ensure_record_visible,
     )
+    from app.core.formatters import _case_fee_display_type
     objects = (await db.scalars(select(ContractObject).where(
         ContractObject.contract_record_id == contract.id
     ).order_by(ContractObject.id))).all()
@@ -877,6 +878,10 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
             _round_fee_amount(float(data.get("payment_requested_amount") or 0)),
         )
         used = _round_fee_amount(used_by_fee.get(fee.id, 0) + direct_committed)
+        # 有细类时沿用案件费用名称解析；缺少细类的历史费用保持原大类文案。
+        fee_label = (_case_fee_display_type(fee) if any(data.get(key) for key in (
+            "fee_type_name", "case_fee_type_name", "expense_subtype",
+        )) else str(data.get("fee_type") or fee.title))
         rows.append({
             "source": "case_fee",
             "contract_object_id": None,
@@ -884,7 +889,7 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
             "case_record_id": case.id,
             "case_no": case.serial_no,
             "case_title": case.title,
-            "fee_type": str(data.get("fee_type_path") or data.get("fee_type_name") or data.get("fee_type") or fee.title),
+            "fee_type": str(data.get("fee_type_path") or fee_label),
             "case_type": str((case.data or {}).get("case_type") or ""),
             "inform_date": str(data.get("inform_date") or ""),
             "contract_amount": amount,

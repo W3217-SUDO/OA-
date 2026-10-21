@@ -24,14 +24,14 @@ class _FakeSession:
 
 
 class ContractLegacySerialContractTest(unittest.TestCase):
-    def test_next_contract_serial_uses_legacy_shht_year_sequence(self):
-        prefix = f"SHHT{datetime.now():%y}"
+    def test_next_contract_serial_uses_hzht_year_sequence(self):
+        prefix = f"HZHT{datetime.now():%y}"
         db = _FakeSession([f"{prefix}00001", f"{prefix}00009", "HT20260802123456"])
 
         serial = asyncio.run(_next_contract_serial_no(db))
 
         self.assertEqual(serial, f"{prefix}00010")
-        self.assertRegex(serial, rf"^SHHT{datetime.now():%y}\d{{5}}$")
+        self.assertRegex(serial, rf"^HZHT{datetime.now():%y}\d{{5}}$")
         self.assertLessEqual(len(serial), 11)
 
     def test_contract_create_ignores_non_legacy_client_serial(self):

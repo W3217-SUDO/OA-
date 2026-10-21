@@ -75,6 +75,52 @@ class ContractPaymentLifecycleTest(unittest.IsolatedAsyncioTestCase):
     async def remaining(self):
         return (await _contract_payment_candidate_rows(self.contract, ADMIN, self.db))[0]["remaining_amount"]
 
+    async def test_selected_fees_only_and_refund_display_do_not_create_phantom_applications(self):
+        """同案四费用只申请两笔，未选费用不能伪装为请款单。"""
+        source = {"case_id": self.case.id, "case_no": self.case.serial_no,
+                  "contract_id": self.contract.id, "contract_no": self.contract.serial_no}
+        refund = self.record("finance", "UNSELECTED-REFUND", data={**source, "fee_type": "代理费",
+            "expense_subtype": "律师代理费(退费)", "refund_fee": True, "amount": 50})
+        agency = self.record("finance", "UNSELECTED-AGENCY", data={**source, "fee_type": "代理费",
+            "fee_type_name": "律师代理费", "amount": 1000})
+        search = self.record("finance", "SELECTED-SEARCH", data={**source, "fee_type": "其他费用",
+            "expense_subtype": "检索费", "amount": 1})
+        await self.db.commit()
+        candidates = await _contract_payment_candidate_rows(self.contract, ADMIN, self.db)
+        self.assertEqual(next(row for row in candidates if row["case_fee_id"] == refund.id)["fee_type"], "律师代理费(退费)")
+        body = self.body(100).model_copy(update={"lines": [*self.body(100).lines,
+            self.body(1).lines[0].model_copy(update={"case_fee_id": search.id})]})
+        response = await self.client.post(f"/api/v1/contracts/{self.contract.id}/payment-applications", json=body.model_dump(mode="json"))
+        self.assertEqual(response.status_code, 201, response.text)
+        result = response.json()
+        self.assertEqual(result["data"]["amount"], 101)
+        self.assertEqual({line["case_fee_id"] for line in result["data"]["lines"]}, {self.fee.id, search.id})
+        queried = await self.client.get("/api/v1/finance/payment-applications/query", params={"scope": "mine"})
+        self.assertEqual(queried.status_code, 200, queried.text)
+        self.assertEqual(queried.json()["total"], 1)
+        self.assertEqual(queried.json()["items"][0]["id"], result["id"])
+        for fee in (refund, agency):
+            await self.db.refresh(fee)
+            self.assertEqual(fee.status, "草稿")
+            self.assertFalse(fee.data.get("payment_requested_amount"))
+        self.assertEqual(await self.db.scalar(select(func.count(FinanceTransaction.id))), 0)
+
+    async def test_direct_application_history_survives_withdrawal_without_including_expense_approval(self):
+        """付款申请身份取真实提交标记或事件，费用审批不是付款申请。"""
+        direct = self.record("finance", "DIRECT-WITHDRAWN", status="草稿",
+            data={"amount": 20, "payment_applied_at": "2026-10-21T10:00:00"})
+        historic = self.record("finance", "DIRECT-EVENT", status="已撤回", data={"amount": 30})
+        expense = self.record("finance", "EXPENSE-REVIEW", status="待审批", data={"amount": 40})
+        await self.db.flush()
+        self.db.add_all([
+            WorkflowEvent(record_id=historic.id, action="提交费用付款申请", operator="admin", to_status="待审批"),
+            WorkflowEvent(record_id=expense.id, action="提交费用审批", operator="admin", to_status="待审批"),
+        ])
+        await self.db.commit()
+        result = await query_payments({"scope": "mine", "page": 1, "page_size": 20}, ADMIN, self.db)
+        self.assertEqual({row["id"] for row in result["items"]}, {direct.id, historic.id})
+        self.assertEqual(result["total"], 2)
+
     async def test_reject_edit_resubmit_keeps_identity_and_history(self):
         original = await self.create()
         self.assertEqual(await self.remaining(), 40)

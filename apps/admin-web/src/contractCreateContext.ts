@@ -15,7 +15,7 @@ const MAX_CONTEXT_AGE_MS = 60 * 60 * 1000;
 export const createContractNumber = (value: Dayjs = dayjs()): string => {
   const sequenceSeed = value.month() * 31 + value.date();
   const compactSequence = 10000 + sequenceSeed;
-  return `SHHT${value.format("YY")}${compactSequence.toString().padStart(5, "0")}`;
+  return `HZHT${value.format("YY")}${compactSequence.toString().padStart(5, "0")}`;
 };
 
 export const createContractCustomerContextConsumer = (

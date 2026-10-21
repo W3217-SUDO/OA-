@@ -264,8 +264,19 @@ async def query_payments(filters, identity, db):
     record = BusinessRecord
     data = record.data
     legacy_kind = func.coalesce(data["legacy_kind"].as_string(), "")
+    # 案件费用是请款来源，只有真实提交过付款申请才进入请款列表；撤回后仍保留申请历史。
+    submitted_direct_payment = or_(
+        func.coalesce(data["payment_applied_at"].as_string(), "") != "",
+        select(WorkflowEvent.id).where(
+            WorkflowEvent.record_id == record.id,
+            WorkflowEvent.action == "提交费用付款申请",
+        ).exists(),
+    )
     conditions = [or_(record.module == "contract_payment", and_(
-        record.module == "finance", legacy_kind.in_(["", "ap_payment"]),
+        record.module == "finance", or_(
+            legacy_kind == "ap_payment",
+            and_(legacy_kind == "", submitted_direct_payment),
+        ),
         external_finance_condition(),
     )), *(await _record_scope_conditions(identity, db))]
     scope = filters.get("scope", "all")

@@ -615,8 +615,13 @@ async def _cascade_customer_owner_change(
 
 
 async def _next_customer_serial_no(db: AsyncSession) -> str:
-    """Allocate the next visible customer number using the legacy SHKH rule."""
-    serial_prefix = f"SHKH{datetime.now():%y}"
+    """新建客户使用 HZKH、两位年份及五位流水，历史编号保持不变。"""
+    if db.get_bind().dialect.name == "postgresql":
+        from sqlalchemy import text
+        from app.core.process_coordination import advisory_lock_id
+        await db.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                         {"lock_id": advisory_lock_id("customer-serial")})
+    serial_prefix = f"HZKH{datetime.now():%y}"
     serial_candidates = (await db.scalars(
         select(BusinessRecord.serial_no).where(
             BusinessRecord.module == "customer",
@@ -632,6 +637,8 @@ async def _next_customer_serial_no(db: AsyncSession) -> str:
         ),
         default=0,
     ) + 1
+    if serial_sequence > 99999:
+        raise HTTPException(status_code=409, detail=f"{datetime.now():%Y} 客户编号已用尽")
     return f"{serial_prefix}{serial_sequence:05d}"
 
 
