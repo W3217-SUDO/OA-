@@ -16,9 +16,11 @@ ProgressCallback = Callable[[str], Awaitable[None]]
 
 
 def supports_response_modes() -> bool:
-    # 仅向已经确认支持 thinking 的方舟模型传参，不影响其他 OpenAI 兼容服务。
+    # 仅向已经确认支持 thinking 的官方模型传参，不影响其他 OpenAI 兼容服务。
     host = urlsplit(settings.langgraph_api_base_url).hostname or ""
-    return host.startswith("ark.") and host.endswith(".volces.com") and settings.langgraph_model == "ark-code-latest"
+    ark = host.startswith("ark.") and host.endswith(".volces.com") and settings.langgraph_model == "ark-code-latest"
+    deepseek = host == "api.deepseek.com" and settings.langgraph_model == "deepseek-flash"
+    return ark or deepseek
 
 
 async def request_model(

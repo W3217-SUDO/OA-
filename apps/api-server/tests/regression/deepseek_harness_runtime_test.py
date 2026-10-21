@@ -85,6 +85,21 @@ async def model_server(requests, choose_function=None):
 
 
 class DeepSeekHarnessRuntimeTest(unittest.IsolatedAsyncioTestCase):
+    def test_response_modes_only_enable_verified_official_models(self):
+        from app.areas.personal_agent.response_runtime import supports_response_modes
+
+        cases = (
+            ("https://api.deepseek.com", "deepseek-flash", True),
+            ("https://api.deepseek.com/v1", "deepseek-flash", True),
+            ("https://api.deepseek.com", "unknown-model", False),
+            ("https://api.deepseek.com.example.org", "deepseek-flash", False),
+            ("https://ark.cn-beijing.volces.com/api/v3", "ark-code-latest", True),
+            ("https://compatible.example.org/v1", "deepseek-flash", False),
+        )
+        for base_url, model, expected in cases:
+            with self.subTest(base_url=base_url, model=model), patch.object(settings, "langgraph_api_base_url", base_url), patch.object(settings, "langgraph_model", model):
+                self.assertEqual(supports_response_modes(), expected)
+
     def test_script_status_keeps_network_and_missing_runtime_explicit(self):
         self.assertTrue(runtime_status(None, "整理摘要")["ready"])
         with patch("app.harness_agent.script_runtime.sys.platform", "win32"):
