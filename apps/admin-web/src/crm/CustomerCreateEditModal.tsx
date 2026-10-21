@@ -1,3 +1,4 @@
+import { CustomerPartyConflictHint } from "./CustomerPartyConflictHint";
 import {
   Alert,
   Button,
@@ -235,6 +236,7 @@ export function CustomerCreateEditModal({ open, editing, customerTypeOptions, di
       destroyOnHidden
     >
       <Form form={form} layout="horizontal" className="customer-create-form">
+        <CustomerPartyConflictHint form={form} />
         <section>
           <h3>基本信息</h3>
           <div className="customer-create-grid">
@@ -245,7 +247,7 @@ export function CustomerCreateEditModal({ open, editing, customerTypeOptions, di
             <Form.Item label="客户状态" name="status">
               <Select allowClear placeholder="请选择" options={["潜在", "目标", "立项", "关怀", "签约", "谈判", "价值"].map(value => ({ value, label: value }))} />
             </Form.Item>
-            <Form.Item label="客户类型" name="customer_type"><Select options={customerTypeOptions} /></Form.Item>
+            <Form.Item label="客户类型" name="customer_type"><Select options={customerTypeOptions.filter(item=>item.value==="客户")} /></Form.Item>
             <Form.Item label="组织类型" name="organization_type" rules={[{ required: true, message: "请选择组织类型" }]}>
               <Select options={["公司企业","事业单位","机关团体","个人","个体工商户","其他"].map(value=>({value,label:value}))} onChange={()=>form.setFieldsValue({ identity_no: undefined, credit_code: undefined })} />
             </Form.Item>

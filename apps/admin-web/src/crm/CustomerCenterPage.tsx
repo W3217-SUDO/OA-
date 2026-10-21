@@ -104,8 +104,8 @@ export default function CustomerCenterPage({
   const [keyword, setKeyword] = useState("");
   const [customerType, setCustomerType] = useState("客户");
   const [customerTypeOptions, setCustomerTypeOptions] = useState<{ value: string; label: string }[]>([
-    { value: "客户", label: "客户" },
-    { value: "当事人", label: "当事人" },
+    { value: "客户", label: "委托客户" },
+    { value: "当事人", label: "历史当事人（待复核）" },
   ]);
   const [managerKeyword, setManagerKeyword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -353,7 +353,7 @@ export default function CustomerCenterPage({
       if (customerDirectoryResult.status === "fulfilled") setCustomerDirectory(customerDirectoryResult.value.data.items || []);
       else message.warning("客户账号目录加载失败，稍后可刷新重试");
       if (customerTypeResult.status === "fulfilled") {
-        const options = customerTypeResult.value.data.customer_types || [];
+        const options = (customerTypeResult.value.data.customer_types || []).map((item:any)=>({...item,label:item.value==="客户"?"委托客户":item.value==="当事人"?"历史当事人（待复核）":item.label}));
         if (options.length) {
           setCustomerTypeOptions(options);
           if (!options.some((item: { value: string }) => item.value === customerType)) setCustomerType(options[0].value);

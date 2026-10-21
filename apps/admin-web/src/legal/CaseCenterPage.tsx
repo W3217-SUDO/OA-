@@ -1,3 +1,4 @@
+import { CasePartyClassificationSummary } from "./CasePartyClassificationSummary";
 import { CaseClueContextPanel } from "./CaseClueContextPanel";
 import { CaseClueSelect } from "./CaseClueSelect";
 import { CaseLitigantAgentDataError, normalizeCaseLitigantAgentFields } from "./caseLitigantAgents";
@@ -126,7 +127,8 @@ import { useSpecialCaseRecords } from "./hooks/useSpecialCaseRecords";
 import { ReceiptBatchUploadModal } from "./ReceiptBatchUploadModal";
 import { createCaseColumns } from "./columns/caseColumns";
 import { createExternalCaseFeeColumns, createFirmCaseFeeColumns } from "./columns/externalCaseFeeColumns";
-import { CasePartyIdentityFields, casePartyIdentityFormValues } from "./CasePartyIdentityFields";
+import { CasePartyClassificationEditor } from "./CasePartyClassificationEditor";
+import { casePartiesForEditor, classifiedPartyPayload } from "./casePartyClassification";
 import { rememberTaskDetailTarget } from "../taskDetailNavigation";
 import { createGroupedOriginalCaseColumns } from "./columns/groupedOriginalCaseColumns";
 import { createHearingColumns } from "./columns/hearingColumns";
@@ -161,8 +163,6 @@ CaseEventRow,
 CaseFeeIncomingPaymentLink,
 CaseFileTypeOption,
 CaseLitigantAgentField,
-CaseLitigantCandidate,
-CaseLitigantPartyField,
 CaseLogKind,
 CaseLogRow,
 CasePaymentTypeOption,
@@ -193,7 +193,6 @@ ARCHIVE_REVIEW_STATUSES,
 buildCasePhaseItems,
 buildCasePhaseItemsFromCounts,
 CASE_LITIGANT_AGENT_LABELS,
-CASE_LITIGANT_PARTY_LABELS,
 CASE_PHASE_ROOT_LABELS,
 CASE_TASK_DEFAULT_PAGE,
 CASE_TASK_DEFAULT_PAGE_SIZE,
@@ -526,11 +525,6 @@ export default function CaseCenterPage({
   const [editingNormalCase, setEditingNormalCase] = useState<CaseRow | null>(null);
   const [editingArbitrationCase, setEditingArbitrationCase] = useState<CaseRow | null>(null);
   const [editingCaseLitigants, setEditingCaseLitigants] = useState<CaseRow | null>(null);
-  const [caseLitigantCandidates, setCaseLitigantCandidates] = useState<CaseLitigantCandidate[]>([]);
-  const [caseLitigantCandidatesLoading, setCaseLitigantCandidatesLoading] = useState(false);
-  const [creatingCasePartyRole, setCreatingCasePartyRole] = useState<CaseLitigantPartyField | null>(null);
-  const [creatingCasePartySubmitting, setCreatingCasePartySubmitting] = useState(false);
-  const [createDefendantEditorOpen, setCreateDefendantEditorOpen] = useState(false);
   const [editingCaseHearingLawyer, setEditingCaseHearingLawyer] = useState<CaseRow | null>(null);
   const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts"}|null>(null);
   const [feeCase, setFeeCase] = useState<CaseRow | null>(null);
@@ -599,10 +593,8 @@ export default function CaseCenterPage({
   const counselDetailUploadRef = useRef<HTMLInputElement>(null);
   const counselDetailClueRequestRef = useRef(0);
     const counselDetailCaseIdRef = useRef<number | null>(null);
-  const counselDetailAssistedFeeRequestRef = useRef(0);  const caseLitigantSearchTimerRef = useRef<number | undefined>(undefined);
-  const caseLitigantSearchRequestRef = useRef(0);
+  const counselDetailAssistedFeeRequestRef = useRef(0);
   const [createForm] = Form.useForm();
-  const [createDefendantEditorForm] = Form.useForm();
   const [clueConversionForm] = Form.useForm();
   const createCustomer = Form.useWatch("customer", createForm);
 
@@ -692,7 +684,6 @@ export default function CaseCenterPage({
   const [arbitrationBasicForm] = Form.useForm();
   const [criminalMaintenanceForm] = Form.useForm();
   const [caseLitigantsForm] = Form.useForm();
-  const [casePartyCreateForm] = Form.useForm();
   const [caseHearingLawyerForm] = Form.useForm();
   const [caseQueryForm] = Form.useForm();
   const [refundCompleteForm] = Form.useForm();
@@ -715,27 +706,9 @@ export default function CaseCenterPage({
   const [notaryInfoForm] = Form.useForm();
   const [settlementAmountForm] = Form.useForm();
   const [caseClueEvidenceForm] = Form.useForm();
-  const openCreateDefendantEditor = () => {
-    const customer = String(createForm.getFieldValue("customer") || "").trim();
-    const groups = [
-      ["原告/申请人", createForm.getFieldValue("plaintiffs") || [], createForm.getFieldValue("plaintiff_identities") || []],
-      ["被告/被申请人", createForm.getFieldValue("defendants") || [], createForm.getFieldValue("defendant_identities") || []],
-      ["第三人", createForm.getFieldValue("third_parties") || [], createForm.getFieldValue("third_party_identities") || []],
-    ] as const;
-    createDefendantEditorForm.setFieldsValue({
-      party_identities: groups.flatMap(([party_role, names, existing]) => names
-        .filter((name: string) => String(name || "").trim() !== customer)
-        .map((name: string) => ({
-          ...(existing.find((item: any) => item.name === name) || { name, organization_type: undefined, identity_no: "" }),
-          party_role,
-        }))),
-    });
-    setCreateDefendantEditorOpen(true);
-  };
-  const { saveCreateDefendants, advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseParty, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, submitCompanyScheduleCourtInfo, saveProgress, downloadCaseExport, openSelectedScheduleHearing } = createCaseWorkflowActions({
-    get createDefendantEditorForm() { return createDefendantEditorForm; },
+
+  const { advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, submitCompanyScheduleCourtInfo, saveProgress, downloadCaseExport, openSelectedScheduleHearing } = createCaseWorkflowActions({
     get createForm() { return createForm; },
-    get setCreateDefendantEditorOpen() { return setCreateDefendantEditorOpen; },
     get createStep() { return createStep; },
     get isCounselCreate() { return isCounselCreate; },
     get setCreateSubmitting() { return setCreateSubmitting; },
@@ -863,12 +836,7 @@ export default function CaseCenterPage({
     get criminalMaintenance() { return criminalMaintenance; },
     get criminalMaintenanceForm() { return criminalMaintenanceForm; },
     get setCriminalMaintenance() { return setCriminalMaintenance; },
-    get creatingCasePartyRole() { return creatingCasePartyRole; },
-    get casePartyCreateForm() { return casePartyCreateForm; },
-    get setCreatingCasePartySubmitting() { return setCreatingCasePartySubmitting; },
-    get setCaseLitigantCandidates() { return setCaseLitigantCandidates; },
     get caseLitigantsForm() { return caseLitigantsForm; },
-    get setCreatingCasePartyRole() { return setCreatingCasePartyRole; },
     get editingCaseLitigants() { return editingCaseLitigants; },
     get setEditingCaseLitigants() { return setEditingCaseLitigants; },
     get editingCaseHearingLawyer() { return editingCaseHearingLawyer; },
@@ -947,7 +915,7 @@ export default function CaseCenterPage({
     if (viewingCounselCase?.id === row.id) return counselDetailCapabilities;
     return caseActionCapabilities[row.id] || noCaseDetailWriteCapability;
   };
-  const { loadCaseInvoiceBatch, loadCaseCapabilities, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, loadCaseLitigantCandidates, exportCases, exportCounselCases, exportCurrentOrdinaryCasesExcel, exportSpecialRecords } = createCaseQueriesActions({
+  const { loadCaseInvoiceBatch, loadCaseCapabilities, load, loadOrdinaryCases, loadPendingExecutionCases, loadCounselCases, loadCaseTasksPage, loadCounselDetailTasksPage, loadCounselDetailCustomerTasksPage, loadCounselDetailCluesPage, openRelatedCustomer, loadCaseTaskDetail, resolveVisibleCase, loadCounselCaseEvents, exportCases, exportCounselCases, exportCurrentOrdinaryCasesExcel, exportSpecialRecords } = createCaseQueriesActions({
     get invoiceBatch() { return invoiceBatch; },
     get setCaseActionCapabilities() { return setCaseActionCapabilities; },
     get setCaseRelations() { return setCaseRelations; },
@@ -1034,9 +1002,6 @@ export default function CaseCenterPage({
     get setCounselCaseEventCapabilities() { return setCounselCaseEventCapabilities; },
     get setSelectedCounselCaseEventKeys() { return setSelectedCounselCaseEventKeys; },
     get setCounselCaseEventsError() { return setCounselCaseEventsError; },
-    get caseLitigantSearchRequestRef() { return caseLitigantSearchRequestRef; },
-    get setCaseLitigantCandidatesLoading() { return setCaseLitigantCandidatesLoading; },
-    get setCaseLitigantCandidates() { return setCaseLitigantCandidates; },
     get originalCases() { return originalCases; },
     get selectedCaseKeys() { return selectedCaseKeys; },
   });
@@ -1937,48 +1902,12 @@ export default function CaseCenterPage({
     criminalMaintenanceForm.setFieldsValue({
       ...row.data,
       ...agentFields,
+      case_parties: casePartiesForEditor(row.data),
       ...Object.fromEntries(dateFields.map(key=>[key,row.data[key]?dayjs(row.data[key]):undefined])),
       comment:"",
     }); setCriminalMaintenance({row,kind});
   };
 
-  const searchCaseLitigantCandidates = (keyword: string) => {
-    window.clearTimeout(caseLitigantSearchTimerRef.current);
-    ++caseLitigantSearchRequestRef.current;
-    setCaseLitigantCandidates([]);
-    setCaseLitigantCandidatesLoading(true);
-    caseLitigantSearchTimerRef.current = window.setTimeout(() => void loadCaseLitigantCandidates(keyword), 350);
-  };
-  const openCasePartyCreator = (role: CaseLitigantPartyField) => {
-    casePartyCreateForm.resetFields();
-    casePartyCreateForm.setFieldsValue({ title: "", organization_type: undefined, identity_no: "", phone: "", legal_representative: "", registered_address: "" });
-    setCreatingCasePartyRole(role);
-  };
-
-  const renderCasePartySelector = (role: CaseLitigantPartyField, required = false) => (
-    <Form.Item label={CASE_LITIGANT_PARTY_LABELS[role]} required={required}>
-      <Space.Compact block>
-        <Form.Item name={role} noStyle rules={required ? [{ required: true, message: `请至少选择一名${CASE_LITIGANT_PARTY_LABELS[role]}` }] : undefined}>
-          <Select
-            mode="multiple"
-            showSearch
-            filterOption={false}
-            onSearch={searchCaseLitigantCandidates}
-            onOpenChange={(open) => { if (open) void loadCaseLitigantCandidates(""); }}
-            loading={caseLitigantCandidatesLoading}
-            placeholder={`输入关键字搜索${CASE_LITIGANT_PARTY_LABELS[role]}`}
-            notFoundContent={caseLitigantCandidatesLoading ? "正在搜索..." : "未找到系统当事人，可点击右侧新增"}
-            options={caseLitigantCandidates.map((item) => ({
-              value: item.title,
-              label: item.serial_no ? `${item.title}（${item.serial_no}）` : item.title,
-            }))}
-            style={{ flex: 1 }}
-          />
-        </Form.Item>
-        <Button icon={<PlusOutlined />} aria-label={`新增${CASE_LITIGANT_PARTY_LABELS[role]}当事人`} title={`新增${CASE_LITIGANT_PARTY_LABELS[role]}当事人`} onClick={() => openCasePartyCreator(role)} />
-      </Space.Compact>
-    </Form.Item>
-  );
   const renderCaseLitigantAgentEditor = (fieldName: CaseLitigantAgentField, label = CASE_LITIGANT_AGENT_LABELS[fieldName]) => (
     <Card
       key={fieldName}
@@ -2013,11 +1942,10 @@ export default function CaseCenterPage({
       ...agentFields,
       defendants: row.data.defendants || (row.data.opponent ? [row.data.opponent] : []),
       third_parties: row.data.third_parties || [],
-      party_identities: casePartyIdentityFormValues(row.data),
+      case_parties: casePartiesForEditor(row.data),
       comment: "",
     });
     setEditingCaseLitigants(row);
-    void loadCaseLitigantCandidates("");
   };
 
   const openCaseHearingLawyer = (row: CaseRow) => {
@@ -2998,7 +2926,6 @@ export default function CaseCenterPage({
           retrialCourtName={retrialCourtName}
           courtOptions={courtOptions}
           officersForCourt={officersForCourt}
-          openCreateDefendantEditor={openCreateDefendantEditor}
           advanceCreateStep={advanceCreateStep}
           saveLitigants={saveLitigants}
           finishCreateFlow={finishCreateFlow}
@@ -4001,6 +3928,7 @@ export default function CaseCenterPage({
             }}
             items={[
               ...(legacyLsHistoryCaseIds[viewingCounselCase.id] ? [{ key: "legacy-ls-history", label: "历史诉讼", children: <LegacyLsHistoryPanel initialCaseId={legacyLsHistoryCaseIds[viewingCounselCase.id]} currentCaseRecordId={viewingCounselCase.id} /> }] : []),
+              {key:"classified-parties",label:"当事人分类",children:<CasePartyClassificationSummary classified={viewingCounselCase.data.case_party_schema_version===1} parties={viewingCounselCase.data.case_parties||[]} onNavigate={onNavigate} />},
               {key:"documents",label:"文档信息",children:<CaseDocumentsPanel
                 viewingCase={viewingCounselCase}
                 counselDocTree={counselDocTree}
@@ -4435,7 +4363,7 @@ export default function CaseCenterPage({
       </Modal>
       <Modal width={760} open={Boolean(criminalMaintenance)} title={`维护刑事案件资料：${criminalMaintenance?.row.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveCriminalMaintenance} onCancel={()=>setCriminalMaintenance(null)} destroyOnHidden>
         <Form form={criminalMaintenanceForm} layout="vertical">
-          {criminalMaintenance?.kind==="litigants"&&<><div className="form-grid">{[["plaintiffs","受害人"],["defendants","被告/犯罪嫌疑人"],["third_parties","第三人"]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Select mode="tags" tokenSeparators={[",","，"]}/></Form.Item>)}</div>{renderCaseLitigantAgentEditor("plaintiff_agents", "受害人代理人")}{renderCaseLitigantAgentEditor("defendant_agents")}{renderCaseLitigantAgentEditor("third_party_agents")}</>}
+          {criminalMaintenance?.kind==="litigants"&&<><Form.Item name="case_parties" rules={[{validator:async(_,value)=>{classifiedPartyPayload(value);}}]}><CasePartyClassificationEditor /></Form.Item>{renderCaseLitigantAgentEditor("plaintiff_agents", "受害人代理人")}{renderCaseLitigantAgentEditor("defendant_agents")}{renderCaseLitigantAgentEditor("third_party_agents")}</>}
           {criminalMaintenance?.kind==="public-security"&&<div className="form-grid">{[["public_security_name","公安机关"],["public_security_case_no","公安案件号"],["public_security_address","地址"],["public_security_phone","联系电话"],["public_security_operator","承办人"]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}</div>}
           {criminalMaintenance?.kind==="procuratorates"&&["first","second","retrial"].map(level=><div className="form-grid" key={level}>{[[`${level}_procuratorate_name`,`${level==="first"?"一审":level==="second"?"二审":"再审"}检察院`],[`${level}_procuratorate_case_no`,`案件号`],[`${level}_procuratorate_address`,`地址`],[`${level}_procuratorate_phone`,`联系电话`],[`${level}_procuratorate_operator`,`承办人`]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}</div>)}
           {criminalMaintenance?.kind==="courts"&&["first","second","execution","retrial"].map(level=>{
@@ -4449,74 +4377,17 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal width={960} open={Boolean(editingCaseLitigants)} title={`修改当事人：${editingCaseLitigants?.serial_no || ""}`} okText="保存修改" cancelText="取消" onOk={saveCaseLitigants} onCancel={()=>setEditingCaseLitigants(null)} forceRender destroyOnHidden style={{ top: 24 }} styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto" } }}>
-        <Alert type="info" showIcon title="输入关键字可搜索系统已有当事人；点击字段右侧加号可新增并立即选中。下方三组代理人按本案独立维护，保存后仅更新本案当事人。" style={{marginBottom:12}} />
+        <Alert type="info" showIcon title="按本案维护主体分类，委托人关联 CRM 客户，对方主体不进入客户库。历史主体须人工确认立场；代理人仍按本案独立维护。" style={{marginBottom:12}} />
         <Form form={caseLitigantsForm} layout="vertical">
-          <div className="form-grid">
-            {renderCasePartySelector("plaintiffs", true)}
-            {renderCasePartySelector("defendants", true)}
-            {renderCasePartySelector("third_parties")}
-          </div>
-          {(["plaintiffs", "defendants", "third_parties"] as CaseLitigantPartyField[]).map((role) =>
-            <CasePartyIdentityFields key={role} form={caseLitigantsForm} role={role} originals={casePartyIdentityFormValues(editingCaseLitigants?.data || {})} />)}
+          <Form.Item name="case_parties" rules={[{validator:async(_,value)=>{classifiedPartyPayload(value);}}]}><CasePartyClassificationEditor /></Form.Item>
           {renderCaseLitigantAgentEditor("plaintiff_agents")}
           {renderCaseLitigantAgentEditor("defendant_agents")}
           {renderCaseLitigantAgentEditor("third_party_agents")}
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
-      <Modal
-        width={620}
-        open={Boolean(creatingCasePartyRole)}
-        title={`新增${creatingCasePartyRole ? CASE_LITIGANT_PARTY_LABELS[creatingCasePartyRole] : ""}当事人`}
-        okText={creatingCasePartyRole === "defendants" ? "保存被告到案件" : "保存并选中"}
-        cancelText="取消"
-        confirmLoading={creatingCasePartySubmitting}
-        onOk={() => void saveCaseParty()}
-        onCancel={() => { setCreatingCasePartyRole(null); casePartyCreateForm.resetFields(); }}
-        forceRender
-        destroyOnHidden
-      >
-        <Form form={casePartyCreateForm} layout="vertical">
-          <Form.Item label="当事人名称" name="title" rules={[{ required: true, whitespace: true, message: "请输入当事人名称" }]}><Input maxLength={256} /></Form.Item>
-          <div className="form-grid">
-            <Form.Item label="组织类型" name="organization_type" rules={[{ required: true, message: "请选择组织类型" }]}><Select options={["公司企业","事业单位","机关团体","个人","个体工商户","其他"].map(value=>({value,label:value}))} /></Form.Item>
-            <Form.Item noStyle shouldUpdate={(previous,current)=>previous.organization_type!==current.organization_type}>
-              {({getFieldValue})=>{const isPerson=getFieldValue("organization_type")==="个人";return <Form.Item label={isPerson?"身份证号":"统一社会信用代码"} name="identity_no" rules={[{required:true,message:"请输入证件号"},{pattern:isPerson?/^\d{17}[\dXx]$/:/^[0-9A-Za-z]{18}$/,message:isPerson?"请输入18位身份证号":"请输入18位统一社会信用代码"}]}><Input maxLength={18}/></Form.Item>}}
-            </Form.Item>
-            <Form.Item label="联系电话" name="phone"><Input maxLength={64} /></Form.Item>
-            <Form.Item label="法定代表人" name="legal_representative"><Input maxLength={128} /></Form.Item>
-            <Form.Item label="注册地址" name="registered_address"><Input maxLength={256} /></Form.Item>
-          </div>
-        </Form>
-      </Modal>
-      <Modal
-        width={560}
-        open={createDefendantEditorOpen}
-        className="case-create-party-identities"
-        zIndex={1300}
-        title="填写对方当事人证件"
-        okText="确定"
-        cancelText="取消"
-        onOk={() => void saveCreateDefendants()}
-        onCancel={() => setCreateDefendantEditorOpen(false)}
-        destroyOnHidden
-      >
-        <Alert type="info" showIcon title="每名对方当事人都必须填写组织类型和对应证件号。" style={{ marginBottom: 12 }} />
-        <Form form={createDefendantEditorForm} layout="vertical">
-          <Form.List name="party_identities">
-            {(fields) => <Space direction="vertical" style={{ width: "100%" }}>
-              {fields.map((field) => <div key={field.key} className="form-grid">
-                <Form.Item {...field} label="角色" name={[field.name,"party_role"]}><Input disabled /></Form.Item>
-                <Form.Item {...field} label="对方当事人" name={[field.name,"name"]} rules={[{required:true,message:"请输入名称"}]}><Input disabled /></Form.Item>
-                <Form.Item {...field} label="组织类型" name={[field.name,"organization_type"]} rules={[{required:true,message:"请选择组织类型"}]}><Select options={["公司企业","事业单位","机关团体","个人","个体工商户","其他"].map(value=>({value,label:value}))} /></Form.Item>
-                <Form.Item noStyle shouldUpdate={(prev,next)=>prev?.party_identities?.[field.name]?.organization_type!==next?.party_identities?.[field.name]?.organization_type}>
-                  {({getFieldValue})=>{const isPerson=getFieldValue(["party_identities",field.name,"organization_type"])==="个人";return <Form.Item {...field} label={isPerson?"身份证号":"统一社会信用代码"} name={[field.name,"identity_no"]} rules={[{required:true,message:"请输入证件号"},{pattern:isPerson?/^\d{17}[\dXx]$/:/^[0-9A-Za-z]{18}$/,message:isPerson?"请输入18位身份证号":"请输入18位统一社会信用代码"}]}><Input maxLength={18}/></Form.Item>}}
-                </Form.Item>
-              </div>)}
-            </Space>}
-          </Form.List>
-        </Form>
-      </Modal>
+
+
       <Modal width={560} open={Boolean(editingCaseHearingLawyer)} title={`修改开庭律师：${editingCaseHearingLawyer?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseHearingLawyer} onCancel={()=>setEditingCaseHearingLawyer(null)} destroyOnHidden>
         <Form form={caseHearingLawyerForm} layout="vertical">
           <Form.Item label="开庭律师" name="hearing_lawyer" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}>

@@ -350,6 +350,8 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
     data["is_shared"] = "否"
     data["customer_guid"] = str(uuid4())
     customer_type = str(data.get("customer_type") or "客户").strip()
+    if customer_type != "客户":
+        raise HTTPException(422, "CRM 只创建委托客户；案件当事人请在所属案件中分类维护")
     active_customer_types = set((await db.scalars(select(SystemParameter.name).where(
         SystemParameter.category == "customer_type", SystemParameter.is_active.is_(True),
     ))).all())

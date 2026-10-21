@@ -5,7 +5,7 @@ from app.core.constants import (
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, FileAttachment, FinanceTransaction, HTTPException,
     LawFirm, LawFirmAudit, LawFirmContact, NAMESPACE_URL, Path,
-    SystemParameter, User, WorkflowEvent, date, datetime,
+    User, WorkflowEvent, date, datetime,
     or_, select, uuid4, uuid5, verify_password,
 )
 from app.core.json_relation_query import scalar_in_values
@@ -787,113 +787,13 @@ async def _portal_customer(body: CustomerPortalLoginInput, db: AsyncSession) -> 
     return customer
 
 
-async def _persist_case_litigant_customers(
-    case_record: BusinessRecord,
-    parties_by_role: dict[str, list[str]],
-    identity: dict,
-    db: AsyncSession,
-    *,
-    party_identities: dict[str, dict] | None = None,
-) -> list[BusinessRecord]:
-    """Materialize newly typed case parties in the customer register.
-
-    The legacy case editor creates a CRM customer with the party/applicant
-    type before it links the person to the case.  Keep that invariant in one
-    backend transaction so every case entry point feeds customer conflict
-    searches and both personal and company party lists.
-    """
-    from app.core.formatters import (
-        _normalize_customer_name,
-    )
-    from app.core.legacy_sync import (
-        _sync_legacy_projection,
-    )
-    requested: dict[str, dict[str, object]] = {}
-    for role, values in parties_by_role.items():
-        for title in values:
-            normalized = _normalize_customer_name(title)
-            entry = requested.setdefault(normalized, {"title": title, "roles": []})
-            roles = entry["roles"]
-            if isinstance(roles, list) and role not in roles:
-                roles.append(role)
-    if not requested:
-        return []
-
-    current_user = await db.scalar(select(User).where(
-        User.username == identity["username"], User.is_active.is_(True),
-    ))
-    if not current_user:
-        raise HTTPException(status_code=401, detail="当前用户不存在或已停用")
-    active_party_type = await db.scalar(select(SystemParameter.id).where(
-        SystemParameter.category == "customer_type",
-        SystemParameter.name == "当事人",
-        SystemParameter.is_active.is_(True),
-    ))
-    if not active_party_type:
-        raise HTTPException(status_code=422, detail="客户类型“当事人”不存在或已停用")
-
-    existing_customers = list((await db.scalars(
-        select(BusinessRecord).where(BusinessRecord.module == "customer")
-    )).all())
-    existing_by_name = {
-        _normalize_customer_name(item.title): item
-        for item in existing_customers
-        if _normalize_customer_name(item.title)
-    }
-    created: list[BusinessRecord] = []
-    for normalized, entry in requested.items():
-        if normalized in existing_by_name:
-            continue
-        title = str(entry["title"])
-        roles = list(entry["roles"]) if isinstance(entry["roles"], list) else []
-        serial_no = await _next_customer_serial_no(db)
-        data = {
-            "customer_type": "当事人",
-            "level": "潜在客户",
-            "customer_managers": [current_user.username],
-            "shared_with": [],
-            "is_shared": "否",
-            "is_assisted": "否",
-            "fee_reduction": "否",
-            "customer_guid": str(uuid4()),
-            "customer_source": "案件当事人",
-            "file_date": date.today().isoformat(),
-            "contact_accounts": [],
-            "contact": "",
-            "case_litigant_origin": {
-                "case_id": case_record.id,
-                "case_no": case_record.serial_no,
-                "roles": roles,
-            },
-        }
-        party_identity = (party_identities or {}).get(title) or {}
-        organization_type = str(party_identity.get("organization_type") or "")
-        identity_no = str(party_identity.get("identity_no") or "")
-        if organization_type and identity_no:
-            data["organization_type"] = organization_type
-            data["identity_no" if organization_type == "个人" else "credit_code"] = identity_no
-        party = BusinessRecord(
-            module="customer",
-            serial_no=serial_no,
-            title=title,
-            customer=title,
-            status="潜在",
-            owner=current_user.username,
-            department=current_user.department,
-            description=f"由案件 {case_record.serial_no} 当事人信息自动建档",
-            data=data,
-        )
-        _mark_customer_modified(party, identity)
-        db.add(party)
-        await db.flush()
-        db.add(WorkflowEvent(
-            record_id=party.id,
-            action="创建当事人",
-            to_status=party.status,
-            operator=identity["username"],
-            comment=f"由案件 {case_record.serial_no} 自动同步：{'、'.join(roles)}",
-        ))
-        await _sync_legacy_projection(party, identity, db)
-        existing_by_name[normalized] = party
-        created.append(party)
-    return created
+async def _persist_unclassified_case_parties(case_record: BusinessRecord, parties_by_role: dict[str, list[str]], identity: dict, db: AsyncSession) -> list[dict]:
+    """快速建案只保存来源原文与待复核标记，不再把诉讼主体建为 CRM 客户。"""
+    if (case_record.data or {}).get("case_party_schema_version") == 1:
+        raise HTTPException(409, "已分类案件须使用分类当事人入口")
+    parties = [{"name": str(name).strip(), "legacy_role": role} for role, names in parties_by_role.items()
+               for name in names if str(name).strip()]
+    case_record.data = {**(case_record.data or {}), "unclassified_case_parties": parties,
+                        "party_classification_status": "待复核", "party_source_recorded_by": identity["username"]}
+    await db.flush()
+    return parties

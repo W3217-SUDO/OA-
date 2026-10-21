@@ -11,14 +11,12 @@ import { getCaseReminderDateValidationError } from "../../caseFifthBatchParity.m
 import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload } from "../../caseSecondBatchParity";
 import { buildCaseHearingPayload, buildCaseUnarchiveReviewPayload, getCaseArchiveReviewValidationError, getCaseHearingValidationError, getCaseUnarchiveReviewValidationError } from "../../caseWorkflowFrontendParity.mjs";
 import { formatRequiredDate } from "../../formSafety";
-import { collectCasePartyIdentities } from "../CasePartyIdentityFields";
-import { CASE_LITIGANT_PARTY_LABELS, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE, getCompanyScheduleCourtLevels, isCompanyCaseListRoute, noCaseDetailWriteCapability } from "../constants";
-import type { AttachmentRow, CaseClueEvidenceRow, CaseClueWorkspace, CaseDetailCapabilities, CaseEventRow, CaseFileTypeOption, CaseLitigantCandidate, CaseLitigantPartyField, CaseLogKind, CaseLogRow, CaseRow, CaseTaskKind, CaseTaskPageState, ContractRow, Profile } from "../types";
+import { classifiedPartyPayload } from "../casePartyClassification";
+import { CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE, getCompanyScheduleCourtLevels, isCompanyCaseListRoute, noCaseDetailWriteCapability } from "../constants";
+import type { AttachmentRow, CaseClueEvidenceRow, CaseClueWorkspace, CaseDetailCapabilities, CaseEventRow, CaseFileTypeOption, CaseLogKind, CaseLogRow, CaseRow, CaseTaskKind, CaseTaskPageState, ContractRow, Profile } from "../types";
 /** legal workflow operations; dependencies are read when each operation runs. */
 export interface CaseWorkflowDependencies {
-    readonly createDefendantEditorForm: FormInstance<any>;
     readonly createForm: FormInstance<any>;
-    readonly setCreateDefendantEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly createStep: number;
     readonly isCounselCreate: boolean;
     readonly setCreateSubmitting: React.Dispatch<React.SetStateAction<boolean>>;
@@ -177,12 +175,7 @@ export interface CaseWorkflowDependencies {
         row: CaseRow;
         kind: "litigants" | "public-security" | "procuratorates" | "courts";
     } | null>>;
-    readonly creatingCasePartyRole: CaseLitigantPartyField | null;
-    readonly casePartyCreateForm: FormInstance<any>;
-    readonly setCreatingCasePartySubmitting: React.Dispatch<React.SetStateAction<boolean>>;
-    readonly setCaseLitigantCandidates: React.Dispatch<React.SetStateAction<CaseLitigantCandidate[]>>;
     readonly caseLitigantsForm: FormInstance<any>;
-    readonly setCreatingCasePartyRole: React.Dispatch<React.SetStateAction<CaseLitigantPartyField | null>>;
     readonly editingCaseLitigants: CaseRow | null;
     readonly setEditingCaseLitigants: React.Dispatch<React.SetStateAction<CaseRow | null>>;
     readonly editingCaseHearingLawyer: CaseRow | null;
@@ -209,17 +202,6 @@ export interface CaseWorkflowDependencies {
     readonly openHearing: (row: CaseRow) => MessageType | undefined;
 }
 export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
-    const saveCreateDefendants = async () => {
-        const { createDefendantEditorForm, createForm, setCreateDefendantEditorOpen } = context;
-        const values = await createDefendantEditorForm.validateFields();
-        const identities = values.party_identities || [];
-        createForm.setFieldsValue({
-            plaintiff_identities: identities.filter((item: any) => item.party_role === "原告/申请人").map(({ party_role: _partyRole, ...item }: any) => item),
-            defendant_identities: identities.filter((item: any) => item.party_role === "被告/被申请人").map(({ party_role: _partyRole, ...item }: any) => item),
-            third_party_identities: identities.filter((item: any) => item.party_role === "第三人").map(({ party_role: _partyRole, ...item }: any) => item),
-        });
-        setCreateDefendantEditorOpen(false);
-    };
     const advanceCreateStep = async () => {
         const { createStep, createForm, isCounselCreate, setCreateSubmitting, createRouteType, profile, setCreatedCaseId, setCreateStep, createdCaseId } = context;
         if (createStep === 0) {
@@ -278,20 +260,21 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             return;
         }
         const values = createForm.getFieldsValue(true);
-        if (!isCounselCreate && (!Array.isArray(values.defendants) || !values.defendants.some((item: unknown) => String(item || "").trim()))) {
+        let classified;
+        try { classified = classifiedPartyPayload(values.case_parties); }
+        catch (error) { message.warning(error instanceof Error ? error.message : "请完成当事人分类"); return; }
+        if (!isCounselCreate && !classified.defendants.length) {
             Modal.info({ title: "提示", content: "请输入至少一名被告", okText: "确定" });
             return;
         }
         setCreateSubmitting(true);
         try {
             await api.put(`/cases/${createdCaseId}/litigants`, {
-                plaintiffs: values.plaintiffs || [],
+                ...classified,
                 plaintiff_identities: values.plaintiff_identities || [],
                 plaintiff_agents: values.plaintiff_agents || [],
-                defendants: values.defendants || [],
                 defendant_identities: values.defendant_identities || [],
                 defendant_agents: values.defendant_agents || [],
-                third_parties: values.third_parties || [],
                 third_party_identities: values.third_party_identities || [],
                 third_party_agents: values.third_party_agents || [],
                 comment: values.litigant_comment || "",
@@ -1149,101 +1132,13 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             message.error(error?.response?.data?.detail || "刑事案件资料保存失败");
         }
     };
-    const saveCaseParty = async () => {
-        const { creatingCasePartyRole, casePartyCreateForm, setCreatingCasePartySubmitting, setCaseLitigantCandidates, setCaseCustomers, caseLitigantsForm, setCreatingCasePartyRole, editingCaseLitigants, setEditingCaseLitigants, setViewingCounselCase, load } = context;
-        if (!creatingCasePartyRole)
-            return;
-        if (creatingCasePartyRole === "defendants") {
-            if (!editingCaseLitigants)
-                return;
-            const { title, organization_type, identity_no } = await casePartyCreateForm.validateFields();
-            const name = String(title || "").trim();
-            const currentValues: string[] = caseLitigantsForm.getFieldValue("defendants") || [];
-            if (currentValues.includes(name)) {
-                message.warning("该被告已在本案当事人名单中");
-                return;
-            }
-            caseLitigantsForm.setFieldValue("defendants", [...currentValues, name]);
-            caseLitigantsForm.setFieldValue(["party_identities", "defendants", name], {
-                organization_type: String(organization_type || "").trim(),
-                identity_no: String(identity_no || "").trim(),
-            });
-            setCreatingCasePartySubmitting(true);
-            try {
-                await caseLitigantsForm.validateFields();
-                const values = caseLitigantsForm.getFieldsValue(true);
-                const payload = { ...values, ...collectCasePartyIdentities(values) };
-                delete payload.party_identities;
-                const { data } = await api.put(`/cases/${editingCaseLitigants.id}/litigants-detail`, payload);
-                message.success("被告已保存到案件");
-                setCreatingCasePartyRole(null);
-                setEditingCaseLitigants(null);
-                setViewingCounselCase(data);
-                casePartyCreateForm.resetFields();
-            }
-            catch (error: any) {
-                caseLitigantsForm.setFieldValue("defendants", currentValues);
-                caseLitigantsForm.setFieldValue(["party_identities", "defendants", name], undefined);
-                message.error(error?.response?.data?.detail || "新增被告失败");
-                return;
-            }
-            finally {
-                setCreatingCasePartySubmitting(false);
-            }
-            try {
-                await load();
-            }
-            catch (error: any) {
-                message.error(error?.response?.data?.detail || "被告已保存，但案件列表刷新失败");
-            }
-            return;
-        }
-        const values = await casePartyCreateForm.validateFields();
-        setCreatingCasePartySubmitting(true);
-        try {
-            const { data } = await api.post("/customers", {
-                title: String(values.title || "").trim(),
-                customer_type: "当事人",
-                status: "潜在",
-                organization_type: String(values.organization_type || "").trim(),
-                identity_no: values.organization_type === "个人" ? String(values.identity_no || "").trim() : "",
-                credit_code: values.organization_type === "个人" ? "" : String(values.identity_no || "").trim(),
-                phone: String(values.phone || "").trim(),
-                legal_representative: String(values.legal_representative || "").trim(),
-                registered_address: String(values.registered_address || "").trim(),
-            });
-            const candidate: CaseLitigantCandidate = {
-                id: Number(data.id),
-                serial_no: String(data.serial_no || ""),
-                title: String(data.title || values.title).trim(),
-                customer_type: String(data.data?.customer_type || "当事人"),
-            };
-            setCaseLitigantCandidates((current) => [candidate, ...current.filter((item) => item.id !== candidate.id)]);
-            setCaseCustomers((current) => current.some((item) => item.id === data.id) ? current : [data, ...current]);
-            const currentValues = caseLitigantsForm.getFieldValue(creatingCasePartyRole) || [];
-            caseLitigantsForm.setFieldValue(creatingCasePartyRole, Array.from(new Set([...currentValues, candidate.title])));
-            caseLitigantsForm.setFieldValue(["party_identities", creatingCasePartyRole, candidate.title], {
-                organization_type: String(values.organization_type || ""),
-                identity_no: String(values.identity_no || "").trim(),
-            });
-            message.success(`${CASE_LITIGANT_PARTY_LABELS[creatingCasePartyRole]}当事人已新增并选中`);
-            setCreatingCasePartyRole(null);
-            casePartyCreateForm.resetFields();
-        }
-        catch (error: any) {
-            message.error(error?.response?.data?.detail || "新增当事人失败");
-        }
-        finally {
-            setCreatingCasePartySubmitting(false);
-        }
-    };
     const saveCaseLitigants = async () => {
         const { editingCaseLitigants, caseLitigantsForm, setEditingCaseLitigants, setViewingCounselCase, load } = context;
         if (!editingCaseLitigants)
             return;
         const values = await caseLitigantsForm.validateFields();
         try {
-            const payload = { ...values, ...collectCasePartyIdentities(values) };
+            const payload = { ...values, ...classifiedPartyPayload(values.case_parties) };
             delete payload.party_identities;
             const { data } = await api.put(`/cases/${editingCaseLitigants.id}/litigants-detail`, payload);
             message.success("当事人信息已保存");
@@ -1453,5 +1348,5 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         if (target)
             openHearing(target);
     };
-    return { saveCreateDefendants, advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, closeCase, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselReminder, saveCaseEvent, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, ensureCaseCustomerOption, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseParty, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, submitCompanyScheduleCourtInfo, saveProgress, saveExecutionStatus, downloadCaseExport, openSelectedScheduleHearing };
+    return { advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, closeCase, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselReminder, saveCaseEvent, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, ensureCaseCustomerOption, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, submitCompanyScheduleCourtInfo, saveProgress, saveExecutionStatus, downloadCaseExport, openSelectedScheduleHearing };
 }

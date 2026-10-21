@@ -1276,7 +1276,7 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
         _contract_allows_downstream_creation,
     )
     from app.core.crm import (
-        _customer_reference_from_maps, _persist_case_litigant_customers,
+        _customer_reference_from_maps, _persist_unclassified_case_parties,
     )
     from app.core.formatters import (
         _normalized_customer_name, _person_display_name,
@@ -1447,7 +1447,7 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
     except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(status_code=409, detail="业务编号已存在") from exc
-    await _persist_case_litigant_customers(
+    await _persist_unclassified_case_parties(
         record,
         {"对方当事人": [opponent] if opponent else []},
         identity,
@@ -2424,9 +2424,6 @@ async def maintain_criminal_litigants(case_id: int, body: CaseLitigantsInput, id
     from app.core.cases import (
         _clean_case_litigant_values, _criminal_detail_maintenance_case,
     )
-    from app.core.crm import (
-        _persist_case_litigant_customers,
-    )
     from app.core.documents import (
         _clean_case_litigant_agents,
     )
@@ -2434,6 +2431,11 @@ async def maintain_criminal_litigants(case_id: int, body: CaseLitigantsInput, id
         _save_criminal_detail,
     )
     record = await _criminal_detail_maintenance_case(case_id, identity, db, "case.litigants.update")
+    if body.case_parties is not None:
+        from app.core.case_parties import persist_classified_litigants
+        return await persist_classified_litigants(record, body, identity, db, advance_creation=False, action="修改刑事案件当事人")
+    if (record.data or {}).get("case_party_schema_version") == 1:
+        raise HTTPException(409, "本案已采用分类当事人，请刷新后通过分类编辑器保存")
     payload = {
         "plaintiffs": _clean_case_litigant_values(body.plaintiffs),
         "plaintiff_agents": _clean_case_litigant_agents(body.plaintiff_agents),
@@ -2442,12 +2444,6 @@ async def maintain_criminal_litigants(case_id: int, body: CaseLitigantsInput, id
         "third_parties": _clean_case_litigant_values(body.third_parties),
         "third_party_agents": _clean_case_litigant_agents(body.third_party_agents),
     }
-    await _persist_case_litigant_customers(
-        record,
-        {"原告": payload["plaintiffs"], "被告": payload["defendants"], "第三人": payload["third_parties"]},
-        identity,
-        db,
-    )
     return await _save_criminal_detail(record, payload, "修改刑事案件当事人", body.comment, identity, db)
 
 

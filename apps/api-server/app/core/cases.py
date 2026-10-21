@@ -1581,9 +1581,6 @@ async def _persist_case_litigants(
     action: str,
 ):
     from app.core.conflict_review import assess_conflict_review
-    from app.core.crm import (
-        _persist_case_litigant_customers,
-    )
     from app.core.documents import (
         _clean_case_litigant_agents,
     )
@@ -1598,6 +1595,17 @@ async def _persist_case_litigants(
     )
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改当事人")
+    if body.case_parties is not None:
+        from app.core.case_parties import persist_classified_litigants
+        case_type = str((case_record.data or {}).get("case_type") or "")
+        permission_key = CASE_CREATE_PERMISSION_BY_TYPE.get(case_type)
+        if enforce_create_permission and permission_key and identity.get("role") != "admin":
+            permission = await _permission_payload_for_identity(identity, db)
+            if permission_key not in set(permission.get("menu_keys", [])):
+                raise HTTPException(403, "当前角色没有该案件类型的新建权限")
+        return await persist_classified_litigants(case_record, body, identity, db, advance_creation=advance_creation, action=action)
+    if (case_record.data or {}).get("case_party_schema_version") == 1:
+        raise HTTPException(409, "本案已采用分类当事人，请刷新页面后通过分类编辑器保存")
     plaintiffs = _clean_case_litigant_values(body.plaintiffs)
     plaintiff_agents = _clean_case_litigant_agents(body.plaintiff_agents)
     defendants = _clean_case_litigant_values(body.defendants)
@@ -1690,13 +1698,6 @@ async def _persist_case_litigants(
             raise HTTPException(status_code=403, detail="当前角色没有该案件类型的新建权限")
     if case_type in {"行政案件及国家赔偿", "仲裁"} and (not plaintiffs or not defendants):
         raise HTTPException(status_code=422, detail="请录入原告/申请人与被告/被申请人")
-    await _persist_case_litigant_customers(
-        case_record,
-        {"原告": plaintiffs, "被告": defendants, "第三人": third_parties},
-        identity,
-        db,
-        party_identities={item["name"]: item for item in [*plaintiff_identities, *defendant_identities, *third_party_identities]},
-    )
     next_creation_step = current_data.get("case_creation_step")
     if advance_creation and str(next_creation_step or "") in {"basic", "litigants"}:
         next_creation_step = "litigants"

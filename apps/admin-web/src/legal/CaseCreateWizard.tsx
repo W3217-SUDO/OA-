@@ -1,4 +1,3 @@
-import { EditOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import { Button,Checkbox,DatePicker,Form,Input,Select,Space,Steps } from "antd";
 import dayjs from "dayjs";
@@ -8,6 +7,8 @@ import { useConflictReview } from "../conflict-review/useConflictReview";
 import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 import { useCaseCreatePartyInputs } from "./useCaseCreatePartyInputs";
 import "./case-create-parties.css";
+import { CasePartyClassificationEditor } from "./CasePartyClassificationEditor";
+import { classifiedPartyPayload, defaultCasePartyPosition } from "./casePartyClassification";
 
 interface LitigantLabels {
   plaintiff: string;
@@ -51,7 +52,6 @@ interface CaseCreateWizardProps {
   retrialCourtName: string;
   courtOptions: { value: string; label: string; code?: string }[];
   officersForCourt: (courtName: string | undefined, role: string) => { value: string; label: string }[];
-  openCreateDefendantEditor: () => void;
   advanceCreateStep: () => Promise<void>;
   saveLitigants: (complete: boolean) => Promise<void>;
   finishCreateFlow: () => Promise<void>;
@@ -90,7 +90,6 @@ export const CaseCreateWizard = ({
   retrialCourtName,
   courtOptions,
   officersForCourt,
-  openCreateDefendantEditor,
   advanceCreateStep,
   saveLitigants,
   finishCreateFlow,
@@ -161,22 +160,17 @@ export const CaseCreateWizard = ({
           </div>
         )}
         {createStep === 1 && (
-          <div className="case-create-step"><div className="case-create-section-title">当事人信息</div><div className="case-create-fields">
-            <Form.Item label={litigantLabels.plaintiff} name="plaintiffs"><Select mode="tags" {...partyInputs.selectProps("plaintiffs")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
-            <Form.Item label={litigantLabels.plaintiffAgent} name="plaintiff_agents"><Select mode="tags" {...partyInputs.selectProps("plaintiff_agents")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
-            <Form.Item label={litigantLabels.defendant} required={!isCounselCreate}>
-              <div className="case-create-defendant-input">
-                <Form.Item name="defendants" noStyle rules={[{ required: true, message: "请输入至少一名被告" }]}>
-                  <Select mode="tags" {...partyInputs.selectProps("defendants")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" />
-                </Form.Item>
-                <Button icon={<EditOutlined />} onClick={() => withPartyInputs(openCreateDefendantEditor)}>填写对方当事人证件</Button>
-              </div>
+          <div className="case-create-step"><div className="case-create-section-title">案件当事人分类</div>
+            <Form.Item name="case_parties" className="case-party-classification-host" wrapperCol={{span:24}} rules={[{validator:async(_,value)=>{classifiedPartyPayload(value);}}]}>
+              <CasePartyClassificationEditor defaultLitigationStatus={defaultCasePartyPosition(createForm.getFieldValue("case_type"), createForm.getFieldValue("client_position"))} />
             </Form.Item>
-            <Form.Item label={litigantLabels.defendantAgent} name="defendant_agents"><Select mode="tags" {...partyInputs.selectProps("defendant_agents")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
-            <Form.Item label={litigantLabels.third} name="third_parties"><Select mode="tags" {...partyInputs.selectProps("third_parties")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
-            <Form.Item label={litigantLabels.thirdAgent} name="third_party_agents"><Select mode="tags" {...partyInputs.selectProps("third_party_agents")} tokenSeparators={[",", "，"]} placeholder="输入名称后回车，可添加多人" /></Form.Item>
-            <Form.Item label="备注" name="litigant_comment"><Input.TextArea rows={3} /></Form.Item>
-          </div></div>
+            <div className="case-create-fields">
+              <Form.Item label={litigantLabels.plaintiffAgent} name="plaintiff_agents"><Select mode="tags" {...partyInputs.selectProps("plaintiff_agents")} tokenSeparators={[",", "，"]} /></Form.Item>
+              <Form.Item label={litigantLabels.defendantAgent} name="defendant_agents"><Select mode="tags" {...partyInputs.selectProps("defendant_agents")} tokenSeparators={[",", "，"]} /></Form.Item>
+              <Form.Item label={litigantLabels.thirdAgent} name="third_party_agents"><Select mode="tags" {...partyInputs.selectProps("third_party_agents")} tokenSeparators={[",", "，"]} /></Form.Item>
+              <Form.Item label="备注" name="litigant_comment"><Input.TextArea rows={3}/></Form.Item>
+            </div>
+          </div>
         )}
         {createStep === 2 && !isCounselCreate && (
           <div className="case-create-step"><div className="case-create-section-title">司法机关信息</div><div className="case-create-fields">

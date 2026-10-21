@@ -1,3 +1,4 @@
+import { CasePartyDirectory } from "./CasePartyDirectory";
 import {
   Button,
   Card,
@@ -5,6 +6,7 @@ import {
   Dropdown,
   Input,
   Select,
+  Space,
 } from "antd";
 import Table from "../components/ResizableTable";
 import {
@@ -277,18 +279,7 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
       className="panel customer-list-panel"
       title="客户列表"
       extra={(
-        <Dropdown
-          trigger={["click"]}
-          menu={{
-            items: [
-              { key: "客户", label: "新建非诉客户" },
-              { key: "当事人", label: "新建诉讼客户" },
-            ],
-            onClick: ({ key }) => onStartCreate(key),
-          }}
-        >
-          <Button type="primary" icon={<PlusOutlined />}>新建客户</Button>
-        </Dropdown>
+        <Space wrap><CasePartyDirectory /><Button type="primary" icon={<PlusOutlined />} onClick={()=>onStartCreate("客户")}>新建委托客户</Button></Space>
       )}
     >
       <div className="customer-query">
@@ -299,7 +290,7 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
           onPressEnter={onSearch}
           allowClear
         />
-        <label>客户/当事人</label>
+        <label>委托客户/历史待复核</label>
         <Select
           value={customerType}
           onChange={onCustomerTypeChange}

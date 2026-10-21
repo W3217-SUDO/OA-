@@ -1584,7 +1584,7 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         _contract_allows_downstream_creation, _resolve_clue_source_contract,
     )
     from app.core.crm import (
-        _persist_case_litigant_customers,
+        _persist_unclassified_case_parties,
     )
     from app.core.permissions import (
         _ensure_case_fixed_tasks, _record_scope_conditions,
@@ -1676,7 +1676,7 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
         )
         case_record = BusinessRecord(module="case", serial_no=serial_no, title=case_title or clue.title, customer=case_customer, status=body.case_phase.strip() or "新案待分配", owner=clue.owner, department=case_department, description=f"由已取证线索 {clue.serial_no} 自动转案", data=case_data)
         db.add(case_record); await db.flush()
-        await _persist_case_litigant_customers(
+        await _persist_unclassified_case_parties(
             case_record,
             {"对方当事人": [str(clue_data.get("opponent") or "").strip()] if str(clue_data.get("opponent") or "").strip() else []},
             identity,
