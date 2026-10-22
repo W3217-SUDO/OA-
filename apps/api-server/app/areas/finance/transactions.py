@@ -1,4 +1,5 @@
 """按独立业务职责组织的路由，注册顺序与端点行为保持稳定。"""
+from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     FINANCE_TRANSACTION_TYPES,
     UPLOAD_ROOT,
@@ -179,7 +180,7 @@ async def delete_finance_transaction(transaction_id: int, identity: dict = Depen
     await db.commit()
     for path in paths:
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-            path.unlink()
+            keep_deleted_file(path)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

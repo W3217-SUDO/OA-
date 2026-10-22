@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     CONTRACT_APPROVAL_ACTION_CODE, CONTRACT_APPROVED_STATUS, CONTRACT_PERSON_NAME_PATTERN, RECORD_PERSON_FIELDS_BY_MODULE, UPLOAD_ROOT,
 )
@@ -505,7 +506,7 @@ async def _delete_contract_records(
         for attachment in attachments:
             path = Path(attachment.path)
             if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-                path.unlink()
+                keep_deleted_file(path)
     return {"IsSuccess": True, "Message": "删除成功", "deleted": len(prepared)}
 
 

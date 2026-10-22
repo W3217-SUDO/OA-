@@ -109,6 +109,11 @@ def _headers(method, bucket, key, credentials):
 
 
 async def delete_personal_blob(plan):
+    """逻辑删除：个人空间文件在库里标记已删除，OSS 里的对象本体保留，不发任何删除请求。"""
+    return {"blob_status": "absent", "blob_retained": True, "checked_at": _now(), "historical_versions_purged": False}
+
+
+async def _delete_personal_blob_physically(plan):  # 保留旧实现仅作参考，业务路径不再调用
     """只删除当前对象，不传 versionId；404 才确认当前对象不可读取。"""
     bucket, key = plan["bucket"], plan["key"]
     scheme, host = _endpoint_host(plan["endpoint"])

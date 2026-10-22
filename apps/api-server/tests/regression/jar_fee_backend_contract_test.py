@@ -81,7 +81,7 @@ class JarFeeBackendContractTest(unittest.IsolatedAsyncioTestCase):
         attachment_id = response.json()["id"]
         async with self.sessions() as db:
             attachment = await db.get(FileAttachment, attachment_id); path = Path(attachment.path)
-        response = await self.client.delete(f"{API}/finance/jar-fees/{jar_id}/files/{attachment_id}"); self.assertEqual(response.status_code, 204, response.text); self.assertFalse(path.exists())
+        response = await self.client.delete(f"{API}/finance/jar-fees/{jar_id}/files/{attachment_id}"); self.assertEqual(response.status_code, 204, response.text); self.assertTrue(path.exists())  # 逻辑删除：文件本体保留
         response = await self.client.delete(f"{API}/finance/jar-fees/{jar_id}"); self.assertEqual(response.status_code, 204, response.text)
         async with self.sessions() as db:
             self.assertIsNone(await db.get(BusinessRecord, jar_id)); self.assertIsNotNone(await db.scalar(select(JarFeeAuditLog.id).where(JarFeeAuditLog.jar_fee_serial_no == serial_no, JarFeeAuditLog.action == "删除交案费")))

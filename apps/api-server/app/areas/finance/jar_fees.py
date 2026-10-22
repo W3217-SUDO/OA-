@@ -1,4 +1,5 @@
 """按独立业务职责组织的路由，注册顺序与端点行为保持稳定。"""
+from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     JAR_FEE_MODULE,
     JAR_FEE_STATUSES,
@@ -171,7 +172,7 @@ async def delete_jar_fee(jar_fee_id: int, identity: dict = Depends(current_ident
     db.add(WorkflowEvent(record_id=item.id, action="删除交案费", from_status=item.status, to_status="已删除", operator=identity["username"], comment=item.serial_no)); db.add(_jar_fee_audit(item, "删除交案费", identity)); await db.flush(); await db.delete(item); await db.commit()
     for attachment in files:
         path = _attachment_storage_path(attachment)
-        if path: path.unlink(missing_ok=True)
+        if path: keep_deleted_file(path)
     return None
 
 
@@ -280,5 +281,5 @@ async def delete_jar_fee_file(jar_fee_id: int, attachment_id: int, identity: dic
     item = await _editable_jar_fee(jar_fee_id, identity, db); attachment = await db.get(FileAttachment, attachment_id)
     if not attachment or attachment.record_id != item.id: raise HTTPException(status_code=404, detail="交案费文件不存在")
     path = _attachment_storage_path(attachment); db.add(WorkflowEvent(record_id=item.id, action="删除交案费文件", from_status=item.status, to_status=item.status, operator=identity["username"], comment=attachment.original_name)); db.add(_jar_fee_audit(item, "删除交案费文件", identity, {"attachment_id": attachment.id, "name": attachment.original_name})); await db.delete(attachment); await db.commit()
-    if path: path.unlink(missing_ok=True)
+    if path: keep_deleted_file(path)
     return None

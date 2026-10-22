@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     INVESTIGATION_CREATE_STATUS_BY_MODULE, INVESTIGATION_EDIT_DATA_FIELDS, INVESTIGATION_MATERIAL_CATEGORIES, INVESTIGATION_RECORD_MODULES, UPLOAD_ROOT,
 )
@@ -1063,7 +1064,7 @@ async def delete_investigation_evidence(evidence_id: int, identity: dict = Depen
     await db.commit()
     for path in paths:
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-            path.unlink()
+            keep_deleted_file(path)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -1225,7 +1226,7 @@ async def batch_delete_investigation_records(body: InvestigationBatchDeleteInput
         await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == record.id)); await db.delete(record); deleted += 1
     await db.commit()
     for path in paths:
-        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents: path.unlink(missing_ok=True)
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents: keep_deleted_file(path)
     return {"deleted": deleted, "failed": len(errors), "errors": errors}
 
 

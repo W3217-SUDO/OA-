@@ -172,7 +172,7 @@ export default function JarFeeManager({ onNavigate }: { onNavigate?: (route: str
   const remove = (row: JarFee) => {
     Modal.confirm({
       title: "删除JAR交案费",
-      content: `确定删除“${row.title || row.serial_no || row.id}”吗？此操作不可恢复。`,
+      content: `确定删除“${row.title || row.serial_no || row.id}”吗？删除后仅系统管理员可在回收站恢复。`,
       okButtonProps: { danger: true },
       onOk: async () => {
         try { await api.delete(`/finance/jar-fees/${row.id}`); message.success("JAR交案费已删除"); await loadRows(pagination); }

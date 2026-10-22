@@ -1,4 +1,5 @@
 """普通案件与法律业务路由编排。"""
+from app.core.soft_delete import keep_deleted_file
 from app.core.case_archive import ArchiveSearchInput, ArchiveBatchReviewInput, ArchiveExportInput, search_archive_cases
 from app.core.case_invoice_files import InvoiceFileImportInput
 from app.core.constants import (
@@ -1531,7 +1532,7 @@ async def _delete_company_cases(case_ids: list[int], identity: dict, db: AsyncSe
             if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
                 # Imported attachments may share a physical file with another record.
                 if not await db.scalar(select(FileAttachment.id).where(FileAttachment.path == str(path)).limit(1)):
-                    path.unlink()
+                    keep_deleted_file(path)
         except (OSError, SQLAlchemyError):
             cleanup_pending += 1
             logger.exception("Case deletion committed; attachment cleanup pending for case_ids=%s", case_ids)
@@ -4080,7 +4081,7 @@ async def delete_record(record_id: int, identity: dict = Depends(current_identit
     await db.commit()
     for path in attachment_paths:
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-            path.unlink()
+            keep_deleted_file(path)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

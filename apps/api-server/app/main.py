@@ -502,7 +502,9 @@ from app.areas.data_query.router import router as data_query_router
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=mcp_lifespan)
 app.add_middleware(RequestMetricsMiddleware, api_prefix=settings.api_prefix,
                    threshold_seconds=settings.slow_request_log_seconds)
+from app.areas.system.recycle_bin import router as recycle_bin_router
 app.include_router(feedback_router)
+app.include_router(recycle_bin_router)
 app.include_router(personal_agent_router)
 app.include_router(agent_admin_router)
 app.include_router(data_query_router)

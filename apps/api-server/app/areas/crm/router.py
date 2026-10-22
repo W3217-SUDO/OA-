@@ -2,6 +2,7 @@
 from calendar import monthrange
 from datetime import timezone
 from types import SimpleNamespace
+from app.core.soft_delete import keep_deleted_file
 from app.core.customer_identity import validate_customer_identity as _validate_customer_identity
 from app.core.constants import (
     CASE_DEFENDANT_FIELDS, CASE_PLAINTIFF_FIELDS, CASE_THIRD_PARTY_FIELDS, CUSTOMER_CREATE_DATA_FIELDS, CUSTOMER_CREATE_STATUSES,
@@ -151,7 +152,7 @@ async def delete_law_firm(law_firm_id: int, identity: dict = Depends(current_ide
     await db.commit()
     if attachment:
         try:
-            Path(attachment.path).unlink(missing_ok=True)
+            keep_deleted_file(Path(attachment.path))
         except OSError:
             pass
     return {"deleted": True, "id": law_firm_id}
@@ -970,7 +971,7 @@ async def delete_customer_contact(customer_id: int, contact_id: str, identity: d
     await db.commit()
     if attachment:
         path = Path(attachment.path)
-        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents: path.unlink(missing_ok=True)
+        if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents: keep_deleted_file(path)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, FileAttachment, Notification, User, WorkflowEvent
+from app.models import BusinessRecord, FileAttachment, LegacyCaseParticipantRelation, Notification, User, WorkflowEvent
 from app.security import current_identity
 from app.areas.legal import router as legal
 
@@ -95,8 +95,7 @@ class CaseBatchDeleteTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await db.scalar(select(func.count()).select_from(Notification)), 0)
             self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent)), 0)
             self.assertEqual(await db.scalar(select(func.count()).select_from(FileAttachment)), 1)
-        self.assertFalse(any(path.exists() for path in self.paths[:3]))
-        self.assertTrue(self.paths[3].is_file())
+        self.assertTrue(all(path.is_file() for path in self.paths))  # 逻辑删除：附件文件本体保留
 
     async def test_empty_duplicate_negative_and_oversized_selection_rejected(self):
         for ids in ([], [self.ids[0], self.ids[0]], [-1], list(range(1, 202))):
@@ -150,9 +149,10 @@ class CaseBatchDeleteTest(unittest.IsolatedAsyncioTestCase):
         await self.assert_untouched()
 
     async def test_foreign_key_block_returns_conflict_and_rolls_back(self):
-        async with self.engine.begin() as connection:
-            await connection.execute(text("CREATE TABLE codex_delete_block (case_id INTEGER REFERENCES business_records(id) ON DELETE RESTRICT)"))
-            await connection.execute(text("INSERT INTO codex_delete_block VALUES (:id)"), {"id": self.ids[1]})
+        # 逻辑删除不再触发数据库外键，RESTRICT 由 soft_delete 按模型里声明的外键复现：旧系统历史关系仍引用该案件。
+        async with self.sessions() as db:
+            db.add(LegacyCaseParticipantRelation(case_record_id=self.ids[1], legacy_case_no="CODEX-CASE-1", legacy_staff_name="CODEX"))
+            await db.commit()
         response = await self.delete_batch(self.ids[:2])
         self.assertEqual(response.status_code, 409, response.text)
         await self.assert_untouched()
@@ -173,11 +173,12 @@ class CaseBatchDeleteTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertTrue(self.paths[0].is_file())
 
-    async def test_file_cleanup_failure_does_not_report_database_failure(self):
-        with patch.object(Path, "unlink", side_effect=PermissionError("CODEX locked file")):
+    async def test_deleting_cases_never_touches_files_so_nothing_is_pending(self):
+        with patch.object(Path, "unlink", side_effect=PermissionError("CODEX locked file")) as unlink:
             response = await self.delete_batch(self.ids[:2])
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()["cleanup_pending"], 3)
+        self.assertEqual(response.json()["cleanup_pending"], 0)
+        unlink.assert_not_called()  # 不再物理删除附件文件
         async with self.sessions() as db:
             self.assertEqual(list(await db.scalars(select(BusinessRecord.id))), [self.ids[2]])
 

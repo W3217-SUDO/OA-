@@ -184,7 +184,7 @@ async def list_feedback(
 ):
     if status and status not in FEEDBACK_STATUSES:
         raise HTTPException(422, "反馈状态无效")
-    conditions = [BusinessRecord.module == "bug_feedback"]
+    conditions = [BusinessRecord.module == "bug_feedback", BusinessRecord.deleted_at.is_(None)]  # 核心 Table 联接不带自动过滤，显式排除已删除
     if not _is_admin(identity):
         conditions.append(or_(
             BusinessRecord.owner == identity["username"],

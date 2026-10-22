@@ -850,7 +850,7 @@ export default function TaskCenterPage({
   const deleteTaskAttachment = (item: TaskFeedbackAttachment, categoryLabel: "任务反馈附件" | "任务资料附件") => {
     Modal.confirm({
       title: `删除${categoryLabel}`,
-      content: `确定删除“${item.original_name}”吗？此操作不可恢复。`,
+      content: `确定删除“${item.original_name}”吗？删除后仅系统管理员可在回收站恢复。`,
       okText: "删除",
       cancelText: "取消",
       okButtonProps: { danger: true },

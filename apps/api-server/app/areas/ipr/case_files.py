@@ -1,5 +1,6 @@
 """知识产权案件文件与自定义导入接口。"""
 from fastapi import APIRouter
+from app.core.soft_delete import keep_deleted_file
 from app.core.constants import IPR_CASE_KINDS, UPLOAD_ROOT
 from app.core.dependencies import AsyncSession, BusinessRecord, CPC_APPLICATION_CATEGORY, Depends, File, FileAttachment, Form, HTTPException, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, Path, Query, Response, SystemParameter, UploadFile, User, WorkflowEvent, current_identity, date, datetime, func, get_db, io, is_cpc_application_attachment, json, or_, select, settings, status, uuid4, zipfile
 from app.models_shared import IprCaseFileBatchTransmitInput, IprCaseFileCustomCandidateConfirmInput, IprCaseFileCustomCandidateCorrectInput, IprCaseFileCustomCandidateMatchInput, IprCaseFileTransmitInput
@@ -482,5 +483,5 @@ async def delete_ipr_case_file(case_id: int, attachment_id: int, identity: dict 
     db.add(WorkflowEvent(record_id=record.id, action="删除知识产权案件文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{attachment.category}｜{attachment.original_name}"))
     await db.delete(attachment); await db.commit()
     if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-        path.unlink(missing_ok=True)
+        keep_deleted_file(path)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

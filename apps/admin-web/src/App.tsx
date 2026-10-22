@@ -581,6 +581,7 @@ const menuItems: NavItem[] = [
           { key: "system-management-cache", label: "缓存管理" },
           { key: "system-management-menu", label: "菜单管理" },
           { key: "system-management-config", label: "系统配置" },
+          { key: "system-management-recycle", label: "回收站" },
         ],
       },
     ],

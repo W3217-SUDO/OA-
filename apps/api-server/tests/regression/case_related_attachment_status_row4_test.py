@@ -151,7 +151,7 @@ class CaseRelatedAttachmentStatusRow4Test(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(events), 2)
             self.assertTrue(all(event.record_id == self.case_id for event in events))
             self.assertTrue(all(event.operator == IDENTITY["username"] for event in events))
-        self.assertTrue(all(not path.exists() for path in self.paths))
+        self.assertTrue(all(path.exists() for path in self.paths))  # 逻辑删除：附件文件本体保留
 
     async def test_unrelated_contract_rejects_mixed_delete_and_preserves_every_attachment(self):
         async with self.sessions() as db:

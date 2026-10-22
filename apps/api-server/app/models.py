@@ -163,3 +163,8 @@ from app.data_models.notifications import (
     NotificationDelivery as NotificationDelivery,
     NotificationSyncSchedule as NotificationSyncSchedule,
 )
+
+# 所有模型加载完成后启用逻辑删除（加 deleted_at/deleted_by 列、部分唯一索引、删除/查询拦截）。
+from app.core.soft_delete import install as _install_soft_delete  # noqa: E402
+
+_install_soft_delete(Base)

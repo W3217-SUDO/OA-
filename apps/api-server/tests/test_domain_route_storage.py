@@ -169,7 +169,7 @@ class DomainRouteStorageAssertions:
             attachment_id = item.id
         response = await self.client.delete(f"/api/v1/attachments/{attachment_id}")
         self.assertEqual(response.status_code, 204, response.text)
-        self.assertFalse(path.exists())
+        self.assertTrue(path.exists())  # 逻辑删除：附件文件本体保留
         self.assertEqual(list(self.upload_root.glob(".pending-delete-*")), [])
         async with self.sessions() as db:
             self.assertIsNone(await db.get(FileAttachment, attachment_id))
@@ -188,7 +188,7 @@ class DomainRouteStorageAssertions:
             self.assertIsNone(await db.get(FileAttachment, first_id))
             self.assertIsNotNone(await db.get(FileAttachment, second_id))
         self.assertEqual((await self.client.delete(f"/api/v1/attachments/{second_id}")).status_code, 204)
-        self.assertFalse(shared_path.exists())
+        self.assertTrue(shared_path.exists())  # 逻辑删除：最后一个引用删除后文件仍保留
 
         path.write_bytes(b"rollback body")
         async with self.sessions() as db:
@@ -208,28 +208,12 @@ class DomainRouteStorageAssertions:
             self.assertIsNotNone(await db.get(FileAttachment, rollback_id))
 
         original_unlink = Path.unlink
-
-        def fail_staged_unlink(candidate, *args, **kwargs):
-            if candidate.name.startswith(".pending-delete-") and not candidate.name.startswith(".pending-delete-lock-"):
-                raise OSError("injected unlink failure")
-            return original_unlink(candidate, *args, **kwargs)
-
-        async with self.sessions() as db:
-            with patch.object(Path, "unlink", fail_staged_unlink):
-                with self.assertRaises(HTTPException) as failure:
-                    await attachments.delete_attachment(rollback_id, self.identity, db)
-        self.assertEqual(failure.exception.status_code, 500)
-        staged = [item for item in self.upload_root.glob(".pending-delete-*") if not item.name.startswith(".pending-delete-lock-")]
-        self.assertEqual(len(staged), 1)
-        pending_locks = list(self.upload_root.glob(".pending-delete-lock-*"))
-        self.assertEqual(len(pending_locks), 1, "暂存正文仍存在时必须保留同一把协调锁")
-        self.assertFalse(path.exists())
+        async with self.sessions() as db:  # 逻辑删除不再有“暂存文件清理失败”：记录标记删除，文件本体保留，不留暂存文件
+            await attachments.delete_attachment(rollback_id, self.identity, db)
+        self.assertTrue(path.exists())
+        self.assertEqual([item for item in self.upload_root.glob(".pending-delete-*")], [])
         async with self.sessions() as db:
             self.assertIsNone(await db.get(FileAttachment, rollback_id))
-            with patch.object(settings, "attachment_delete_reconcile_min_age_seconds", 0):
-                await attachment_deletion.reconcile_pending_attachment_deletes(db)
-        self.assertFalse(staged[0].exists())
-        self.assertFalse(pending_locks[0].exists())
 
         path.write_bytes(b"orphan lock body")
         async with self.sessions() as db:
@@ -251,7 +235,7 @@ class DomainRouteStorageAssertions:
                 with self.assertRaises(HTTPException) as failure:
                     await attachments.delete_attachment(orphan_id, self.identity, db)
         self.assertEqual(failure.exception.status_code, 500)
-        self.assertFalse(path.exists())
+        self.assertTrue(path.exists())  # 文件已放回原位（保留），只剩一把孤立锁
         orphan_locks = list(self.upload_root.glob(".pending-delete-lock-*"))
         self.assertEqual(len(orphan_locks), 1)
         async with self.sessions() as db:
@@ -419,7 +403,7 @@ class DomainRouteStorageAssertions:
         async with self.sessions() as db:
             result = await seals.batch_delete_seal_attachments(AttachmentBatchInput(attachment_ids=[first_id, second_id]), self.identity, db)
         self.assertEqual(result["deleted"], 2)
-        self.assertFalse(path.exists(), "同批次删除所有引用时只能暂存并清理原文件一次")
+        self.assertTrue(path.exists(), "逻辑删除：同批次删除所有引用后文件本体仍保留")
         async with self.sessions() as db:
             self.assertIsNone(await db.get(FileAttachment, first_id))
             self.assertIsNone(await db.get(FileAttachment, second_id))
@@ -437,28 +421,15 @@ class DomainRouteStorageAssertions:
             await db.commit()
             failure_ids = [first.id, second.id]
 
-        original_unlink = Path.unlink
-
-        def fail_one_cleanup(candidate, *args, **kwargs):
-            if candidate.name.startswith(".pending-delete-") and not candidate.name.startswith(".pending-delete-lock-") and candidate.name.endswith(first_path.name):
-                raise OSError("injected seal cleanup failure")
-            return original_unlink(candidate, *args, **kwargs)
-
-        async with self.sessions() as db:
-            with patch.object(Path, "unlink", fail_one_cleanup):
-                with self.assertRaises(HTTPException) as failure:
-                    await seals.batch_delete_seal_attachments(AttachmentBatchInput(attachment_ids=failure_ids), self.identity, db)
-        self.assertEqual(failure.exception.status_code, 500)
-        self.assertFalse(first_path.exists())
-        self.assertFalse(second_path.exists())
-        staged = [item for item in self.upload_root.glob(".pending-delete-*") if not item.name.startswith(".pending-delete-lock-")]
-        self.assertEqual(len(staged), 1)
+        async with self.sessions() as db:  # 逻辑删除不再有“清理失败”：记录标记删除，文件本体保留且不留暂存文件
+            await seals.batch_delete_seal_attachments(AttachmentBatchInput(attachment_ids=failure_ids), self.identity, db)
+        self.assertTrue(first_path.exists())
+        self.assertTrue(second_path.exists())
+        staged = [item for item in self.upload_root.glob(".pending-delete-*")]
+        self.assertEqual(staged, [])
         async with self.sessions() as db:
             for item_id in failure_ids:
                 self.assertIsNone(await db.get(FileAttachment, item_id))
-            with patch.object(settings, "attachment_delete_reconcile_min_age_seconds", 0):
-                await attachment_deletion.reconcile_pending_attachment_deletes(db)
-        self.assertFalse(staged[0].exists())
 
         rollback_path = self.upload_root / f"enterprise-seal-{uuid4().hex}.pdf"
         rollback_path.write_bytes(b"rollback failure seal")

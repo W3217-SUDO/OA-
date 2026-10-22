@@ -144,10 +144,14 @@ def restore_attachment_delete(stage: StagedAttachmentDelete) -> None:
 
 
 def finish_attachment_delete(stage: StagedAttachmentDelete) -> None:
+    """逻辑删除：数据库记录只标记已删除，文件本体保留——把暂存文件放回原位，不做物理删除。"""
     try:
         if stage.staged.is_symlink() or not stage.staged.is_file():
             raise OSError(f"附件暂存文件已变化，不能清理：{stage.staged.name}")
-        stage.staged.unlink()
+        if stage.original.exists() or stage.original.is_symlink():
+            stage.staged.replace(stage.staged.with_name(f"{stage.original.name}.kept-{stage.staged.name.split('-')[3] if stage.staged.name.count('-') >= 3 else 'x'}"))
+        else:
+            stage.staged.replace(stage.original)
     finally:
         _release(stage)
 

@@ -161,7 +161,7 @@ class CaseDocumentOperationsRow37Test(unittest.IsolatedAsyncioTestCase):
                 )
             )
         self.assertEqual(audit_count, 1)
-        self.assertFalse(self.foreign_path.exists())
+        self.assertTrue(self.foreign_path.exists())  # 逻辑删除：附件文件本体保留
 
     async def test_generation_returns_persisted_downloadable_attachment_visible_after_refresh(self) -> None:
         self.identity = ADMIN

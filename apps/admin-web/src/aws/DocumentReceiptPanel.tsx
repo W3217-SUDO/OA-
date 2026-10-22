@@ -354,7 +354,7 @@ export function DocumentReceiptPanel({ tab, loading, receiptForm, searchedReceip
               title="确定删除选中的收文记录？"
               description={
                 selectedFormalReceipts.length
-                  ? `将永久删除 ${selectedFormalReceipts.length} 条正式记录及其附件。`
+                  ? `将删除 ${selectedFormalReceipts.length} 条正式记录及其附件（仅系统管理员可在回收站恢复）。`
                   : "请先选择需要删除的正式收文记录。"
               }
               onConfirm={onDeleteSelected}

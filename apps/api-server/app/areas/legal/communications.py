@@ -1,5 +1,6 @@
 """按业务职责组织的 API 路由，保留原有端点行为与注册顺序。"""
 
+from app.core.soft_delete import keep_deleted_file
 from app.core.constants import UPLOAD_ROOT
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, CommunicationLog, Depends, File, FileAttachment, HTTPException, Path,
@@ -108,7 +109,7 @@ async def delete_communication_attachment(communication_id: int, attachment_id: 
     db.add(_customer_event(customer, "删除沟通记录附件", identity, f"沟通记录 #{communication_id}：{name}"))
     await db.commit()
     if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-        path.unlink(missing_ok=True)
+        keep_deleted_file(path)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -196,5 +197,5 @@ async def delete_communication(communication_id: int, identity: dict = Depends(c
     for raw_path in attachment_paths:
         path = Path(raw_path)
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-            path.unlink(missing_ok=True)
+            keep_deleted_file(path)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

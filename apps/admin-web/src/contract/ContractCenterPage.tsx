@@ -665,7 +665,7 @@ export default function ContractCenterPage({
     }
     confirmOperation({
       title: "撤销合同草稿",
-      content: "将删除该草稿及其附件、事项记录，且无法恢复。仅未提交、未产生后续业务的草稿可以撤销。",
+      content: "将删除该草稿及其附件、事项记录（仅系统管理员可在回收站恢复）。仅未提交、未产生后续业务的草稿可以撤销。",
       okText: "确认撤销",
       okButtonProps: { danger: true },
       cancelText: "保留草稿",
@@ -695,7 +695,7 @@ export default function ContractCenterPage({
   const deleteRecycledContract = (contract: Contract) => {
     confirmOperation({
       title: "删除合同",
-      content: "仅回收站合同可以物理删除；删除会同时清理合同附件和关联记录，且无法恢复。",
+      content: "仅回收站合同可以删除；删除会同时删除合同附件和关联记录，之后仅系统管理员可在回收站恢复。",
       okText: "确认删除",
       okButtonProps: { danger: true },
       cancelText: "取消",
@@ -718,7 +718,7 @@ export default function ContractCenterPage({
   const deleteCompanyContract = (contract: Contract) => {
     confirmOperation({
       title: "删除合同",
-      content: "将永久删除该公司合同及其附件和无关联记录，且无法恢复。已关联案件、任务、线索、收款、实际用印或财务业务的合同不能删除；单独的审批记录不影响空合同删除。",
+      content: "将删除该公司合同及其附件和无关联记录，之后仅系统管理员可在回收站恢复。已关联案件、任务、线索、收款、实际用印或财务业务的合同不能删除；单独的审批记录不影响空合同删除。",
       okText: "确认删除",
       okButtonProps: { danger: true },
       cancelText: "取消",

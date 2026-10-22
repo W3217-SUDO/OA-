@@ -62,6 +62,7 @@ _PAGE_MENU_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("/system/security-policy", ("@root:system",)),
     ("/system/configs", ("system-management-config", "@root:system")),
     ("/system/caches", ("system-management-cache", "@root:system")),
+    ("/system/recycle-bin", ("system-management-recycle", "@root:system")),
     ("/system/menus", ("system-management-menu", "@root:system")),
     ("/system/role-permissions", ("@root:system",)),
     ("/system/roles", ("@root:system",)),
@@ -242,6 +243,8 @@ async def current_identity(request: Request, token: str = Depends(oauth2_scheme)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="账号已停用或不存在")
     if user.must_change_password and request.url.path != f"{settings.api_prefix}/auth/me":
         raise HTTPException(status_code=428, detail="首次登录必须先修改初始密码")
+    from app.core.soft_delete import set_actor
+    set_actor(user.username)  # 本次请求里发生的逻辑删除记录删除人
     role_ids = user_role_ids(user)
     profile = user.profile or {}
     # Permission resolution lives with the main application because it also

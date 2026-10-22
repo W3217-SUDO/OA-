@@ -1180,7 +1180,7 @@ export default function CaseCenterPage({
     if (permissionError) return message.warning(permissionError);
     Modal.confirm({
       title: `确认删除开庭排期：${row.case_no || row.id}`,
-      content: "删除后不可恢复，并会刷新案件排期列表。",
+      content: "删除后仅系统管理员可在回收站恢复，并会刷新案件排期列表。",
       okText: "删除",
       okButtonProps: { danger: true },
       cancelText: "取消",
@@ -1813,7 +1813,7 @@ export default function CaseCenterPage({
     if (!viewingCounselCase) return;
     Modal.confirm({
       title: `删除 AI 草稿：${item.original_name}`,
-      content: "删除后无法恢复，且不会影响已经转入正式系统的文件。",
+      content: "删除后仅系统管理员可在回收站恢复，且不会影响已经转入正式系统的文件。",
       okText: "删除",
       okButtonProps: { danger: true },
       cancelText: "取消",
@@ -2122,7 +2122,7 @@ export default function CaseCenterPage({
 
   const deleteCaseFee = (row: CaseRow) => {
     if (!counselDetailCapabilities.can_delete_finance) return message.warning("当前角色没有删除案件费用权限");
-    Modal.confirm({ title: `删除费用：${row.serial_no}`, content: "删除后不可恢复，是否继续？", okText: "确认删除", cancelText: "取消", onOk: async () => {
+    Modal.confirm({ title: `删除费用：${row.serial_no}`, content: "删除后仅系统管理员可在回收站恢复，是否继续？", okText: "确认删除", cancelText: "取消", onOk: async () => {
       try { await api.delete(isInternalCaseFee(row) ? `/finance/internal-fees/${row.id}` : `/finance/fees/${row.id}`); message.success("费用草稿已删除"); await load(); if (viewingCounselCase) await openCounselDetail(viewingCounselCase); }
       catch (error: any) { message.error(error?.response?.data?.detail || "费用删除失败"); }
     }});

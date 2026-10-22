@@ -2,6 +2,7 @@
 from shutil import copyfile
 
 from starlette.concurrency import run_in_threadpool
+from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     ARCHIVE_REQUIRED_CATEGORIES, UPLOAD_ROOT, WORKFLOW_TRANSITIONS,
 )
@@ -231,7 +232,7 @@ async def delete_official_documents(body: OfficialDocumentDeleteInput, identity:
     await db.commit()
     for path in attachment_paths:
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-            path.unlink(missing_ok=True)
+            keep_deleted_file(path)
     return {"deleted": deleted}
 
 

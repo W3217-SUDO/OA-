@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     CONTRACT_APPROVED_STATUS, CONTRACT_PERSON_NAME_PLACEHOLDER, UPLOAD_ROOT, _contract_serial_lock, logger,
 )
@@ -229,7 +230,7 @@ async def revoke_contract_draft(contract_id: int, identity: dict = Depends(curre
     await db.commit()
     for path in attachment_paths:
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-            path.unlink()
+            keep_deleted_file(path)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -1436,11 +1437,12 @@ async def batch_delete_contract_attachments(contract_id: int, body: ContractAtta
             if staged_path.is_file():
                 staged_path.replace(original)
         raise
-    for _, staged_path in staged:
+    for original, staged_path in staged:  # 逻辑删除：文件本体保留，把暂存文件放回原位
         try:
-            staged_path.unlink(missing_ok=True)
+            if staged_path.is_file() and not original.exists():
+                staged_path.replace(original)
         except OSError:
-            logger.exception("无法清理已删除的合同附件临时文件: %s", staged_path)
+            logger.exception("无法还原已删除合同附件的暂存文件: %s", staged_path)
     return {"IsSuccess": True, "Message": "删除成功！", "fileIds": ids, "deleted": len(prepared)}
 
 

@@ -1,4 +1,5 @@
 """按独立业务职责组织的路由，注册顺序与端点行为保持稳定。"""
+from app.core.soft_delete import keep_deleted_file
 from app.areas.finance.fee_action_guards import (
     _require_linked_case_fee_action,
 )
@@ -317,5 +318,5 @@ async def delete_finance_fee_inform(inform_id: int, identity: dict = Depends(cur
     await db.delete(notice)
     await db.commit()
     for attachment_path in attachment_paths:
-        attachment_path.unlink(missing_ok=True)
+        keep_deleted_file(attachment_path)
     return None

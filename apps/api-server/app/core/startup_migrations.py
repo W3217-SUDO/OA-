@@ -11,6 +11,7 @@ from app.database import Base
 from app.core.notification_schema_migration import upgrade_notification_delivery_schema
 from app.core.record_read_model_migration import upgrade_record_read_model
 from app.core.schema_alignment import align_business_record_json_indexes
+from app.core.soft_delete_migration import MIGRATION_REVISION as SOFT_DELETE_REVISION, upgrade_soft_delete
 from app.core.incoming_finance_schema_migration import (
     MIGRATION_REVISION as INCOMING_FINANCE_REVISION, upgrade_incoming_finance_schema,
 )
@@ -141,6 +142,10 @@ def _apply_mcp_token_write(connection: Connection, _upgrade_schema: Callable[[Co
             connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"))
 
 
+def _apply_soft_delete(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    upgrade_soft_delete(connection)
+
+
 def _apply_hz_allocation_read_model(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     upgrade_hz_allocation_read_model(connection)
 
@@ -153,6 +158,7 @@ def _run_versioned_schema_migrations(
     connection.execute(text("CREATE TABLE IF NOT EXISTS schema_migrations (key VARCHAR(128) PRIMARY KEY)"))
     revisions = (
         (SCHEMA_BOOTSTRAP_REVISION, _apply_schema_bootstrap),
+        (SOFT_DELETE_REVISION, _apply_soft_delete),  # 先于其他修订：后面的 ORM 读写会带上 deleted_at 列
         (LEGACY_SETTLEMENT_INDEX_REVISION, _apply_legacy_settlement_indexes),
         (INCOMING_FINANCE_REVISION, _apply_incoming_finance),
         (HZ_ALLOCATION_READ_MODEL_REVISION, _apply_hz_allocation_read_model),

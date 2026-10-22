@@ -1,5 +1,6 @@
 """知识产权案件路由编排。"""
 from typing import Literal
+from app.core.soft_delete import keep_deleted_file
 from app.models_shared import IprCaseBatchCreateRow
 from app.core.constants import (
     IPR_CASE_CATEGORIES, IPR_CASE_DOCUMENT_TYPES, IPR_CASE_DRAFT_STATUSES,
@@ -2089,7 +2090,7 @@ async def delete_ipr_official_file(official_id: int, identity: dict = Depends(cu
     await db.commit()
     for path in attachment_paths:
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-            path.unlink()
+            keep_deleted_file(path)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

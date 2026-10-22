@@ -1,4 +1,5 @@
 """按独立业务职责组织的路由，注册顺序与端点行为保持稳定。"""
+from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     AI_SPACE_CATEGORY,
     AI_SPACE_EDITABLE_SUFFIXES,
@@ -593,7 +594,7 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
     await db.commit()
     for _, _, path in prepared:
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
-            path.unlink()
+            keep_deleted_file(path)
     return {"deleted": len(prepared)}
 
 

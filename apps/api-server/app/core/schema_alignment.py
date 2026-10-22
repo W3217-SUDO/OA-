@@ -245,7 +245,7 @@ def align_integration_legacy_schema(connection: Connection) -> None:
     }.items():
         if column not in reminder_type_columns:
             connection.execute(text(f"ALTER TABLE ipr_case_reminder_types ADD COLUMN {column} {definition}"))
-    connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_ipr_case_reminder_types_legacy_id ON ipr_case_reminder_types (legacy_reminder_type_id)"))
+    connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_ipr_case_reminder_types_legacy_id ON ipr_case_reminder_types (legacy_reminder_type_id) WHERE deleted_at IS NULL"))
     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_ipr_case_reminder_types_owner ON ipr_case_reminder_types (owner)"))
     for model in (
         LegacyCaseTaskHistory,

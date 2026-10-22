@@ -697,7 +697,7 @@ export default function IprCenterPage({
   const deleteReminderType = (item: IprReminderType) => {
     confirmOperation({
       title: `删除案件提醒类型：${item.name}`,
-      content: "删除后不能恢复，已按该类型筛选的案件不会被删除。",
+      content: "删除后仅系统管理员可在回收站恢复，已按该类型筛选的案件不会被删除。",
       okButtonProps: { danger: true },
       onConfirm: async () => {
         try {
@@ -1242,7 +1242,7 @@ export default function IprCenterPage({
     confirmOperation({
       title: `删除预警规则：${rule.name}`,
       content:
-        "删除规则会一并清理该规则已生成的预警记录及其站内通知，且不能恢复。",
+        "删除规则会一并删除该规则已生成的预警记录及其站内通知，之后仅系统管理员可在回收站恢复。",
       okButtonProps: { danger: true },
       onConfirm: async () => {
         try {

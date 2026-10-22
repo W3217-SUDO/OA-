@@ -193,6 +193,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("system-parameters-court-officer", "system-parameters", "法院工作人员", "", 13),
     ("system-law-firms", "system", "律所档案", "", 13),
     ("system-management-cache", "system-management", "缓存管理", "", 1),
+    ("system-management-recycle", "system-management", "回收站", "", 4),
     ("system-management-menu", "system-management", "菜单管理", "", 2),
     ("system-management-config", "system-management", "系统配置", "", 3),
 ]
@@ -839,7 +840,7 @@ INTERNAL_REVIEW_REJECT_ACTION = "finance.internal.review.reject"
 
 SYSTEM_ACTION_OPERATION_LABELS = {
     "query": "查询", "create": "新增", "update": "编辑", "delete": "删除",
-    "clear": "清理", "reset": "重置", "permissions": "维护权限",
+    "clear": "清理", "reset": "重置", "permissions": "维护权限", "restore": "恢复",
 }
 
 
@@ -857,6 +858,8 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
             operations = ("query", "permissions")
         elif menu_key == "system-management-cache":
             operations = ("query", "clear")
+        elif menu_key == "system-management-recycle":
+            operations = ("query", "restore")
         elif menu_key == "system-management-menu":
             operations = ("query", "create", "update", "delete", "reset")
         elif menu_key == "system-management-config":

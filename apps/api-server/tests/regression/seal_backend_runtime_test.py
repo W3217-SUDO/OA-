@@ -364,8 +364,8 @@ class SealBackendRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["deleted"], 2)
         self.assertIsNone(await self.db.get(FileAttachment, first.id))
         self.assertIsNone(await self.db.get(FileAttachment, second.id))
-        self.assertFalse(first_path.exists())
-        self.assertFalse(second_path.exists())
+        self.assertTrue(first_path.exists())  # 逻辑删除：附件文件本体保留
+        self.assertTrue(second_path.exists())
         self.assertEqual(await self.event_count([record.id]), 2)
 
         rollback_record = await self.add_record("草稿", suffix="FILES-ROLLBACK")

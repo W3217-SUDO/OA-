@@ -53,7 +53,7 @@ async def read_dashboard_finance_fee_pool(db, conditions, *, where_data=None):
         relation.data_is_object, relation.record_id,
     ).select_from(records).outerjoin(
         finance_relations, relation.record_id == records.c.id,
-    ).where(*conditions)
+    ).where(records.c.deleted_at.is_(None), *conditions)  # 核心 Table 查询不带自动过滤，显式排除已删除
     if where_data is not None:
         # 保留原 JSON 标量转换；补读条件还会读取四个费用类型和对象编号。
         filters = where_data({name: relation[name][()] for name in RAW_FIELDS})

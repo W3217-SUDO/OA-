@@ -143,7 +143,7 @@ class ContractRecycleDeleteBackendTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(await db.get(BusinessRecord, self.recycled_id))
             self.assertIsNone(await db.scalar(select(FileAttachment.id).where(FileAttachment.record_id == self.recycled_id)))
             self.assertIsNone(await db.scalar(select(WorkflowEvent.id).where(WorkflowEvent.record_id == self.recycled_id)))
-        self.assertFalse(self.attachment_path.exists())
+        self.assertTrue(self.attachment_path.exists())  # 逻辑删除：附件文件本体保留
 
     async def test_company_delete_removes_an_unrecycled_contract_for_an_administrator(self):
         response = await self.client.post(
