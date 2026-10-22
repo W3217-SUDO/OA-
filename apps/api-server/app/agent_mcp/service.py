@@ -90,9 +90,45 @@ def public_tool(spec) -> dict:
     }
 
 
+def token_visible_tools(context, catalog):
+    """个人令牌能用到的工具：去掉系统管理类，没有写入授权时再去掉写入类。"""
+    from app.agent_mcp.personal_tokens import token_tool_allowed
+    return [spec for spec in catalog.tools if token_tool_allowed(spec) and (context.write_allowed or not spec.is_write)]
+
+
 def list_tool_groups(query: str | None = None) -> dict:
-    catalog = get_catalog(get_auth_context().application)
+    from app.agent_mcp.tool_groups import group_summaries
+    context = get_auth_context()
+    catalog = get_catalog(context.application)
+    if context.readonly:  # 分组数量只统计这把令牌实际能用的工具
+        tools = token_visible_tools(context, catalog)
+        return {"groups": group_summaries(tools, query), "total_tool_count": len(tools)}
     return {"groups": catalog.list_groups(query), "total_tool_count": len(catalog.tools)}
+
+
+def list_group_tools(group_id: str, subgroup_id: str | None = None) -> dict:
+    """某个分组里的工具清单（只有名称、标题、方法、路径和读/写，不含参数 schema），按需再用 oa_describe_tool 取参数。"""
+    from app.agent_mcp.tool_groups import require_group
+    context = get_auth_context()
+    catalog = get_catalog(context.application)
+    require_group(group_id, subgroup_id)
+    tools = [spec for spec in token_visible_tools(context, catalog) if spec.group_id == group_id and (subgroup_id is None or spec.subgroup_id == subgroup_id)]
+    if group_id == "25" and subgroup_id is None:
+        raise HTTPException(422, "第 25 组必须指定 subgroup_id")
+    return {"group_id": group_id, "subgroup_id": subgroup_id, "count": len(tools),
+            "tools": [{"name": spec.name, "title": spec.title, "method": spec.method, "path": spec.path.removeprefix(settings.api_prefix),
+                       "is_write": spec.is_write} for spec in tools]}
+
+
+def describe_tool(name: str) -> dict:
+    """单个工具的完整定义（含参数 schema）。"""
+    from app.agent_mcp.personal_tokens import direct_write_view, token_tool_allowed
+    context = get_auth_context()
+    spec = get_catalog(context.application).get(name)
+    if context.readonly and (not token_tool_allowed(spec) or (spec.is_write and not context.write_allowed)):
+        raise HTTPException(403, "该接口不对当前令牌开放")
+    view = public_tool(spec)
+    return direct_write_view(view, spec.method) if context.readonly and spec.is_write else view
 
 
 def search_tools(query: str, limit: int = 8, *, group_id: str | None = None, subgroup_id: str | None = None) -> list[dict]:

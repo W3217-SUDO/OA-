@@ -175,7 +175,8 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
         writer = SimpleNamespace(name="create_case", is_write=True, method="POST", path="/api/v1/cases", to_mcp=lambda: {
             "name": "create_case", "description": "建案", "inputSchema": {"type": "object"}})
         catalog = SimpleNamespace(tools=[reader, writer], get=lambda name: {"list_cases": reader, "create_case": writer}[name])
-        for token_id, expected in ((7, {"oa_list_tool_groups", "oa_search_tools", "list_cases"}),
+        entry = {"oa_list_tool_groups", "oa_list_group_tools", "oa_search_tools", "oa_describe_tool", "oa_call_read_tool"}
+        for token_id, expected in ((7, entry),  # 个人令牌：只给入口工具，按需加载，不一次列出全部接口
                                    (None, {"oa_list_tool_groups", "oa_search_tools", "list_cases", "create_case"})):
             with patch.object(gateway, "get_auth_context", lambda token_id=token_id: self._context(token_id)), \
                  patch.object(gateway, "get_catalog", lambda _app: catalog):
@@ -197,10 +198,17 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
         catalog = SimpleNamespace(tools=[remover], get=lambda name: remover)
         with patch.object(gateway, "get_auth_context", lambda: self._context(7, write=True)), patch.object(gateway, "get_catalog", lambda _app: catalog):
             listed = await gateway._list_tools(None, None)
-        tool = next(item for item in listed.tools if item.name == "delete_case")
-        self.assertTrue(tool.description.startswith("【删除操作】"))
-        self.assertIn("直接执行", tool.description)
-        self.assertNotIn("须持久化人工确认", tool.description)
+        self.assertEqual({tool.name for tool in listed.tools},  # 有写入权限时多一个写入入口，且业务接口仍不逐个列出
+                         {"oa_list_tool_groups", "oa_list_group_tools", "oa_search_tools", "oa_describe_tool", "oa_call_read_tool", "oa_call_write_tool"})
+        write_entry = next(item for item in listed.tools if item.name == "oa_call_write_tool")
+        self.assertFalse(write_entry.annotations.read_only_hint)
+        self.assertTrue(write_entry.annotations.destructive_hint)
+        with patch.object(service, "get_auth_context", lambda: self._context(7, write=True)), patch.object(service, "get_catalog", lambda _app: catalog), \
+             patch.object(service, "public_tool", lambda spec: spec.to_mcp()):
+            described = service.describe_tool("delete_case")
+        self.assertTrue(described["description"].startswith("【删除操作】"))
+        self.assertIn("直接执行", described["description"])
+        self.assertNotIn("须持久化人工确认", described["description"])
 
         executed = []
 
@@ -232,6 +240,34 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException) as caught:
                 await service.call_tool("delete_case", {})
         self.assertEqual(caught.exception.status_code, 403)
+
+    async def test_entry_call_tools_route_by_read_write_and_audit_the_real_target(self):
+        from app.agent_mcp import gateway
+        reader = SimpleNamespace(name="list_cases", is_write=False, method="GET", path="/api/v1/cases")
+        writer = SimpleNamespace(name="create_case", is_write=True, method="POST", path="/api/v1/cases")
+        catalog = SimpleNamespace(tools=[reader, writer], get=lambda name: {"list_cases": reader, "create_case": writer}[name])
+        calls = []
+
+        async def fake_call_tool(name, arguments, **kwargs):
+            calls.append((name, arguments))
+            return {"ok": name}
+
+        def params(entry, name, arguments=None):
+            return SimpleNamespace(name=entry, arguments={"name": name, "arguments": arguments or {}})
+
+        with patch.object(gateway, "get_auth_context", lambda: self._context(7, write=True)), patch.object(gateway, "get_catalog", lambda _app: catalog), \
+             patch.object(gateway, "call_tool", fake_call_tool):
+            ok = await gateway._dispatch_tool(params("oa_call_read_tool", "list_cases", {"query": {"page": 1}}))
+            self.assertFalse(ok.is_error)
+            wrong_read = await gateway._dispatch_tool(params("oa_call_read_tool", "create_case"))
+            wrong_write = await gateway._dispatch_tool(params("oa_call_write_tool", "list_cases"))
+            ok_write = await gateway._dispatch_tool(params("oa_call_write_tool", "create_case", {"body": {"a": 1}}))
+        self.assertTrue(wrong_read.is_error and wrong_write.is_error)  # 读写入口不能混用，客户端才能分别设置确认策略
+        self.assertFalse(ok_write.is_error)
+        self.assertEqual([name for name, _ in calls], ["list_cases", "create_case"])
+        # 非个人令牌不能用入口调用工具
+        with patch.object(gateway, "get_auth_context", lambda: self._context(None)), patch.object(gateway, "get_catalog", lambda _app: catalog):
+            self.assertTrue((await gateway._dispatch_tool(params("oa_call_read_tool", "list_cases"))).is_error)
 
     async def test_personal_token_never_valid_outside_mcp_entry(self):
         from app.agent_mcp.auth import RequestAuthContextMiddleware
