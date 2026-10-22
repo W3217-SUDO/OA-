@@ -164,6 +164,48 @@ class BusinessOnlyTest(unittest.TestCase):
             self.assertFalse(allowed(self._spec(method, path)), (method, path))
 
 
+class BusinessScopeTest(unittest.IsolatedAsyncioTestCase):
+    def _context(self, groups, write=True):
+        return AuthContext(application=object(), bearer="jwt", scope={}, token_id=7, write_allowed=write, groups=groups)
+
+    def test_connection_address_resolves_businesses_and_groups(self):
+        from app.agent_mcp.tool_groups import BUSINESS_BUNDLES, resolve_business_scope
+        self.assertIsNone(resolve_business_scope(None, None))
+        self.assertEqual(resolve_business_scope("finance", None), frozenset(BUSINESS_BUNDLES["finance"][1]))
+        self.assertEqual(resolve_business_scope("customer", "15"), frozenset((*BUSINESS_BUNDLES["customer"][1], "15")))
+        for bad in (("nope", None), (None, "99")):
+            with self.assertRaises(HTTPException) as caught:
+                resolve_business_scope(*bad)
+            self.assertEqual(caught.exception.status_code, 400)
+
+    async def test_selected_business_lists_only_its_tools_directly_and_refuses_others(self):
+        from app.agent_mcp import gateway, service
+        case_tool = SimpleNamespace(name="list_cases", title="查询案件", is_write=False, method="GET", path="/api/v1/cases", group_id="06",
+                                    to_mcp=lambda: {"name": "list_cases", "description": "查案", "inputSchema": {"type": "object"}, "annotations": {"readOnlyHint": True}})
+        pay_tool = SimpleNamespace(name="list_payments", title="付款", is_write=False, method="GET", path="/api/v1/finance/payments", group_id="19",
+                                   to_mcp=lambda: {"name": "list_payments", "description": "付款", "inputSchema": {"type": "object"}})
+        catalog = SimpleNamespace(tools=[case_tool, pay_tool], get=lambda name: {"list_cases": case_tool, "list_payments": pay_tool}[name])
+        scope = frozenset({"06", "07"})
+        with patch.object(gateway, "get_auth_context", lambda: self._context(scope)), patch.object(gateway, "get_catalog", lambda _app: catalog):
+            listed = await gateway._list_tools(None, None)
+        # 所选业务的接口直接列出（带完整定义），外加两个范围内的发现工具；其他业务的接口不出现
+        self.assertEqual({tool.name for tool in listed.tools}, {"list_cases", "oa_list_tool_groups", "oa_search_tools", "oa_describe_tool"})
+        light = next(tool for tool in listed.tools if tool.name == "list_cases")
+        self.assertIn("GET /cases", light.description)  # 精简形式：标题 + 方法路径，参数定义按需取
+        self.assertIn("oa_describe_tool", light.description)
+        self.assertNotIn("PARAMETER", str(light.input_schema))
+        with patch.object(service, "get_auth_context", lambda: self._context(scope)), patch.object(service, "get_catalog", lambda _app: catalog), \
+             patch.object(service, "authenticated_identity", lambda: _async({"username": "boss"})):
+            with self.assertRaises(HTTPException) as caught:
+                await service.call_tool("list_payments", {})
+            self.assertEqual(caught.exception.status_code, 403)
+            self.assertEqual([spec.name for spec in service.token_visible_tools(self._context(scope), catalog)], ["list_cases"])
+        with patch.object(gateway, "get_auth_context", lambda: self._context(None)), patch.object(gateway, "get_catalog", lambda _app: catalog):
+            listed = await gateway._list_tools(None, None)
+        self.assertIn("oa_list_tool_groups", {tool.name for tool in listed.tools})  # 没选业务：只给入口工具
+        self.assertNotIn("list_cases", {tool.name for tool in listed.tools})
+
+
 class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
     def _context(self, token_id, write=False):
         return AuthContext(application=object(), bearer="jwt", scope={}, token_id=token_id, write_allowed=write)

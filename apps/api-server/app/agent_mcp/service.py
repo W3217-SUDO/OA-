@@ -93,7 +93,8 @@ def public_tool(spec) -> dict:
 def token_visible_tools(context, catalog):
     """个人令牌能用到的工具：去掉系统管理类，没有写入授权时再去掉写入类。"""
     from app.agent_mcp.personal_tokens import token_tool_allowed
-    return [spec for spec in catalog.tools if token_tool_allowed(spec) and (context.write_allowed or not spec.is_write)]
+    return [spec for spec in catalog.tools if token_tool_allowed(spec) and (context.write_allowed or not spec.is_write)
+            and (not context.groups or spec.group_id in context.groups)]
 
 
 def list_tool_groups(query: str | None = None) -> dict:
@@ -125,8 +126,9 @@ def describe_tool(name: str) -> dict:
     from app.agent_mcp.personal_tokens import direct_write_view, token_tool_allowed
     context = get_auth_context()
     spec = get_catalog(context.application).get(name)
-    if context.readonly and (not token_tool_allowed(spec) or (spec.is_write and not context.write_allowed)):
-        raise HTTPException(403, "该接口不对当前令牌开放")
+    if context.readonly and (not token_tool_allowed(spec) or (spec.is_write and not context.write_allowed)
+                             or (context.groups and spec.group_id not in context.groups)):
+        raise HTTPException(403, "该接口不对当前令牌或当前连接的业务范围开放")
     view = public_tool(spec)
     return direct_write_view(view, spec.method) if context.readonly and spec.is_write else view
 
@@ -140,7 +142,8 @@ def search_tools(query: str, limit: int = 8, *, group_id: str | None = None, sub
         from app.agent_mcp.personal_tokens import direct_write_view
         found = catalog.search(query.strip(), limit=50, group_id=group_id, subgroup_id=subgroup_id)
         from app.agent_mcp.personal_tokens import token_tool_allowed
-        usable = [spec for spec in found if (context.write_allowed or not spec.is_write) and token_tool_allowed(spec)][:limit]
+        usable = [spec for spec in found if (context.write_allowed or not spec.is_write) and token_tool_allowed(spec)
+                  and (not context.groups or spec.group_id in context.groups)][:limit]
         return [direct_write_view(public_tool(spec), spec.method) if spec.is_write else public_tool(spec) for spec in usable]
     return [public_tool(spec) for spec in catalog.search(query.strip(), limit=limit, group_id=group_id, subgroup_id=subgroup_id)]
 
@@ -216,6 +219,8 @@ async def call_tool(name: str, arguments: dict, *, conversation_id: str | None =
         from app.agent_mcp.personal_tokens import token_tool_allowed
         if not token_tool_allowed(spec):
             raise HTTPException(403, "该接口属于系统管理类，不对个人访问令牌开放；个人令牌只开放业务接口")
+        if context.groups and spec.group_id not in context.groups:
+            raise HTTPException(403, "该接口不在这个连接地址选定的业务范围内；请用包含该业务的连接地址")
     if context.readonly and spec.is_write and not context.write_allowed:
         raise HTTPException(403, "该账号没有 MCP 写入授权，只能读取；需要新增、修改、删除请联系管理员授予")
     reject_credentials(arguments)

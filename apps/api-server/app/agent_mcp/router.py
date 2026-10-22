@@ -4,7 +4,7 @@ import asyncio
 from datetime import date
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import Response
 
@@ -149,11 +149,16 @@ def _require_admin(identity: dict) -> None:
 
 
 @router.get("/access-tokens")
-async def access_token_list(identity=Depends(current_identity), db=Depends(get_db)):
+async def access_token_list(request: Request, identity=Depends(current_identity), db=Depends(get_db)):
     _require_admin(identity)
     from app.agent_mcp import personal_tokens
+    from app.agent_mcp.personal_tokens import token_tool_allowed
+    from app.agent_mcp.tool_groups import BUSINESS_BUNDLES
     from app.agent_permissions import can_write_with_mcp_token
-    return {"items": await personal_tokens.list_tokens(identity, db), "can_write": can_write_with_mcp_token(identity),
+    tools = [spec for spec in get_catalog(request.app).tools if token_tool_allowed(spec) and (can_write_with_mcp_token(identity) or not spec.is_write)]
+    businesses = [{"key": key, "label": label, "tool_count": sum(1 for spec in tools if spec.group_id in groups)}
+                  for key, (label, groups) in BUSINESS_BUNDLES.items()]
+    return {"items": await personal_tokens.list_tokens(identity, db), "can_write": can_write_with_mcp_token(identity), "businesses": businesses,
             "calls": await personal_tokens.list_calls(identity, db),
             "mcp_endpoint": settings.api_prefix + "/mcp",
             "max_days": personal_tokens.MAX_DAYS, "rate_limit_per_minute": personal_tokens.RATE_LIMIT_PER_MINUTE}

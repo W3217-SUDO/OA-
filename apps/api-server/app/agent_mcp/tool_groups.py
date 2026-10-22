@@ -36,6 +36,35 @@ GROUPS = {
     "25": ("报表平台辅助", "按子组查询报表、通知反馈、系统参数或智能文书技能", "报表 通知 反馈 系统 参数 智能 文书 技能 report notification system agent"),
 }
 
+# 按业务区分：个人令牌的连接地址可以只选若干业务（?biz=case,finance），只加载并只允许调用所选业务的接口。
+BUSINESS_BUNDLES = {
+    "customer": ("客户与合同", ("02", "03", "04", "05")),
+    "case": ("案件", ("02", "06", "07", "09", "10", "11")),
+    "ipr": ("知识产权", ("02", "08", "11")),
+    "task": ("任务协作", ("02", "12")),
+    "investigation": ("调查取证", ("02", "13", "14")),
+    "finance": ("财务", ("15", "16", "17", "18", "19", "20", "21")),
+    "seal": ("用印收发文", ("22",)),
+    "hr": ("人事组织", ("23",)),
+    "warehouse": ("仓库", ("24",)),
+    "workbench": ("工作台与报表", ("01", "25")),
+}
+
+
+def resolve_business_scope(biz: str | None, groups: str | None) -> frozenset[str] | None:
+    """把连接地址里的 biz（业务名）和 groups（分组编号）解析成分组编号集合；都没给返回 None（只给入口工具）。"""
+    selected: set[str] = set()
+    for key in [item.strip() for item in (biz or "").split(",") if item.strip()]:
+        if key not in BUSINESS_BUNDLES:
+            raise HTTPException(400, f"未知业务 {key}，可选：{', '.join(BUSINESS_BUNDLES)}")
+        selected.update(BUSINESS_BUNDLES[key][1])
+    for group_id in [item.strip() for item in (groups or "").split(",") if item.strip()]:
+        if group_id not in GROUPS:
+            raise HTTPException(400, f"未知分组 {group_id}")
+        selected.add(group_id)
+    return frozenset(selected) if selected else None
+
+
 SUBGROUPS = {
     "reporting": ("报表", "报表 财务汇总 reports summary"),
     "notifications_feedback": ("通知反馈", "通知 反馈 notifications feedback"),

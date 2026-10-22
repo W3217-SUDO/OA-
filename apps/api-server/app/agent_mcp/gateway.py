@@ -57,6 +57,21 @@ META_SCHEMAS = {
 }
 
 
+_LIGHT_SCHEMA = {"type": "object", "properties": {"path": {"type": "object"}, "query": {"type": "object"}, "body": {"type": "object"}, "files": {"type": "object"}}}
+
+
+def _light_tool(spec) -> dict:
+    """选了业务后列表里用精简形式：名称、标题、方法和路径；完整参数定义用 oa_describe_tool 按需取（服务端调用时仍按完整定义校验）。"""
+    path = spec.path.removeprefix(settings.api_prefix)
+    if spec.is_write:
+        kind = "【删除】" if spec.method == "DELETE" else "【写入】"
+        note = "直接执行，调用前须先向用户确认。"
+    else:
+        kind, note = "【查询】", ""
+    return {"name": spec.name, "title": f"{kind}{spec.title}", "description": f"{spec.title}（{spec.method} {path}）。{note}参数先用 oa_describe_tool 获取。",
+            "inputSchema": _LIGHT_SCHEMA, "annotations": spec.to_mcp().get("annotations")}
+
+
 def _token_entry_tools(write_allowed: bool) -> list:
     """个人令牌的工具列表只放几个入口工具：按分组/关键词找接口，再按需取定义和调用，不一次加载全部业务接口。"""
     read_hint = types.ToolAnnotations(read_only_hint=True, open_world_hint=False)
@@ -84,15 +99,18 @@ async def _list_tools(_, params):
     if params is not None and params.cursor:
         raise MCPError(-32602, "工具目录不接收未知分页游标")
     context = get_auth_context()
-    if context.readonly:
-        return types.ListToolsResult(tools=_token_entry_tools(context.write_allowed))
+    if context.readonly and not context.groups:
+        return types.ListToolsResult(tools=_token_entry_tools(context.write_allowed))  # 没选业务：只给入口工具，按需发现
     catalog = get_catalog(context.application)
     from app.agent_mcp.personal_tokens import direct_write_view, token_tool_allowed
+    scoped = bool(context.readonly and context.groups)
     tools = [
-        types.Tool.model_validate(direct_write_view(spec.to_mcp(), spec.method) if context.readonly and spec.is_write else spec.to_mcp())
+        types.Tool.model_validate(_light_tool(spec) if scoped
+                                  else direct_write_view(spec.to_mcp(), spec.method) if context.readonly and spec.is_write else spec.to_mcp())
         for spec in catalog.tools
-        if not (context.readonly and ((spec.is_write and not context.write_allowed) or not token_tool_allowed(spec)))
-    ]
+        if not (context.readonly and ((spec.is_write and not context.write_allowed) or not token_tool_allowed(spec)
+                                      or (context.groups and spec.group_id not in context.groups)))
+    ]  # 选了业务：只直接列出所选业务的接口（含完整参数定义）
     tools.insert(0, types.Tool(
         name="oa_search_tools", title="发现 OA 业务操作", description="按业务目标搜索全部已挂载的 OA 工具；结果按 domain 业务域分组，并返回真实参数模式、必填参数和 files 参数说明。",
         input_schema=SEARCH_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=True, open_world_hint=False),
@@ -101,6 +119,9 @@ async def _list_tools(_, params):
         name="oa_list_tool_groups", title="发现 OA 业务工具组", description="仅返回 25 个一级组及第 25 组四个子组的用途摘要与数量，不包含工具 schema。",
         input_schema=GROUP_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=True, open_world_hint=False),
     ))
+    if scoped:  # 选了业务时也带上按需取参数定义的入口
+        tools.insert(0, types.Tool(name="oa_describe_tool", title="查看接口参数定义", description="按接口名取完整参数定义（path/query/body/files 与必填项）。调用任何业务接口前先用它。",
+                                   input_schema=DESCRIBE_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=True, open_world_hint=False)))
     return types.ListToolsResult(tools=tools)
 
 

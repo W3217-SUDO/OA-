@@ -23,6 +23,7 @@ class AuthContext:
     active: bool = True
     token_id: int | None = None  # 个人访问令牌进来的请求：令牌编号；此时一律只读
     username: str = ""
+    groups: frozenset | None = None  # 连接地址选定的业务分组；None=没选业务，只给入口工具
     write_allowed: bool = False  # 账号当前有“写入”授权（管理员默认有；同一把令牌，写不写由账号权限决定）：写入类工具直接执行，确认由本地 agent 负责
 
     @property
@@ -114,6 +115,10 @@ class RequestAuthContextMiddleware:
                 try:
                     from app.agent_mcp import personal_tokens
                     if personal_tokens.is_personal_token(bearer):
+                        from urllib.parse import parse_qs
+                        from app.agent_mcp.tool_groups import resolve_business_scope
+                        query = parse_qs(scope.get("query_string", b"").decode("latin-1"))
+                        context.groups = resolve_business_scope(",".join(query.get("biz", [])), ",".join(query.get("groups", [])))
                         # 个人访问令牌只在这个入口有效：换成 5 分钟的内部登录凭据，后续业务接口权限照常重新计算。
                         context.token_id, context.username, context.bearer = await personal_tokens.authenticate(bearer)
                     identity = await authenticated_identity()

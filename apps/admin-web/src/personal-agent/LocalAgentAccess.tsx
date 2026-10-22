@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Input, Modal, Popconfirm, Select, Tag, Typography, message } from "antd";
+import { Alert, Button, Checkbox, Input, Modal, Popconfirm, Select, Tag, Typography, message } from "antd";
 import { CopyOutlined, LaptopOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import Table from "../components/ResizableTable";
@@ -9,7 +9,8 @@ type AccessToken = {
   created_at: string; expires_at: string; last_used_at: string | null; call_count: number;
 };
 type CallLog = { id: number; token_id: number; tool_name: string; ok: boolean; is_write: boolean; detail: string; created_at: string };
-type Listing = { items: AccessToken[]; calls: CallLog[]; can_write: boolean; mcp_endpoint: string; max_days: number; rate_limit_per_minute: number };
+type Business = { key: string; label: string; tool_count: number };
+type Listing = { items: AccessToken[]; calls: CallLog[]; can_write: boolean; businesses: Business[]; mcp_endpoint: string; max_days: number; rate_limit_per_minute: number };
 
 const STATUS: Record<AccessToken["status"], { text: string; color: string }> = {
   active: { text: "有效", color: "success" }, expired: { text: "已过期", color: "default" }, revoked: { text: "已撤销", color: "error" },
@@ -24,6 +25,7 @@ export function LocalAgentAccess() {
   const [days, setDays] = useState(30);
   const [busy, setBusy] = useState(false);
   const [fresh, setFresh] = useState("");
+  const [businesses, setBusinesses] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -36,7 +38,9 @@ export function LocalAgentAccess() {
   useEffect(() => { void load(); }, [load]);
   if (!listing) return null;
 
-  const endpoint = (typeof window === "undefined" ? "" : window.location.origin) + listing.mcp_endpoint;
+  // 连接地址按业务区分：选了业务，本地 agent 只加载并只能调用这些业务的接口；不选则只有几个入口工具，按需发现。
+  const endpoint = (typeof window === "undefined" ? "" : window.location.origin) + listing.mcp_endpoint + (businesses.length ? `?biz=${businesses.join(",")}` : "");
+  const selectedCount = listing.businesses.filter((item) => businesses.includes(item.key)).reduce((sum, item) => sum + item.tool_count, 0);
   const command = `claude mcp add --transport http oa ${endpoint} --header "Authorization: Bearer ${fresh || "<令牌>"}"`;
   const json = JSON.stringify({ mcpServers: { oa: { type: "http", url: endpoint, headers: { Authorization: `Bearer ${fresh || "<令牌>"}` } } } }, null, 2);
   const copy = (text: string) => navigator.clipboard.writeText(text).then(() => message.success("已复制"), () => message.error("复制失败，请手动选择复制"));
@@ -76,6 +80,14 @@ export function LocalAgentAccess() {
         <Select value={days} onChange={setDays} style={{ width: 140 }}
           options={[7, 30, 90].filter((value) => value <= listing.max_days).map((value) => ({ value, label: `有效 ${value} 天` }))} />
         <Button type="primary" loading={busy} disabled={!name.trim()} onClick={() => void create()}>生成令牌</Button>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 4 }}><strong>按业务选择要加载的接口</strong>（不要一次加载全部；选哪些业务，本地 agent 就只会看到并能调用这些业务的接口）</div>
+        <Checkbox.Group value={businesses} onChange={(values) => setBusinesses(values as string[])}
+          options={listing.businesses.map((item) => ({ value: item.key, label: `${item.label}（${item.tool_count}）` }))} />
+        <div style={{ marginTop: 4, color: "var(--oa-text-secondary, #666)" }}>
+          {businesses.length ? `已选 ${businesses.length} 个业务，共 ${selectedCount} 个接口；复制下面的命令/配置时会带上这个业务范围。` : "没有选业务：连接后只有几个入口工具，需要时再按分组查找接口。"}
+        </div>
       </div>
       {fresh && <Alert type="success" showIcon style={{ marginBottom: 12 }} title="令牌已生成，只显示这一次，关闭后无法再查看" description={<div>
         <Typography.Paragraph code copyable={{ text: fresh }} style={{ wordBreak: "break-all" }}>{fresh}</Typography.Paragraph>
