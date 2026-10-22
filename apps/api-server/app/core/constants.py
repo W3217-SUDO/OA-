@@ -194,6 +194,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("system-law-firms", "system", "律所档案", "", 13),
     ("system-management-cache", "system-management", "缓存管理", "", 1),
     ("system-management-recycle", "system-management", "回收站", "", 4),
+    ("system-management-changes", "system-management", "变更记录", "", 5),
     ("system-management-menu", "system-management", "菜单管理", "", 2),
     ("system-management-config", "system-management", "系统配置", "", 3),
 ]
@@ -859,6 +860,8 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
         elif menu_key == "system-management-cache":
             operations = ("query", "clear")
         elif menu_key == "system-management-recycle":
+            operations = ("query", "restore")
+        elif menu_key == "system-management-changes":
             operations = ("query", "restore")
         elif menu_key == "system-management-menu":
             operations = ("query", "create", "update", "delete", "reset")

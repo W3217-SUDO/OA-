@@ -91,7 +91,7 @@ async def revoke_token(identity: dict, db, token_id: int) -> dict:
 
 
 async def list_calls(identity: dict, db, limit: int = 50) -> list[dict]:
-    rows = (await db.scalars(select(McpCallLog).where(McpCallLog.username == identity["username"])
+    rows = (await db.scalars(select(McpCallLog).where(McpCallLog.username == identity["username"], McpCallLog.token_id != 0)
                              .order_by(McpCallLog.id.desc()).limit(limit))).all()
     return [{"id": row.id, "token_id": row.token_id, "tool_name": row.tool_name, "ok": bool(row.ok),
              "is_write": bool(row.is_write), "detail": row.detail, "created_at": row.created_at} for row in rows]
@@ -155,17 +155,14 @@ async def record_call(token_id: int, username: str, tool_name: str, ok: bool, ar
         logger.exception("MCP 调用审计写入失败 token=%s tool=%s", token_id, tool_name)
 
 
-_CONFIRM_TAIL = "须持久化人工确认后调用，继续执行原权限、数据范围、校验和业务审批。"
-_DIRECT_TAIL = "此工具直接执行，服务端不再二次确认：调用前必须把将要执行的内容展示给用户并取得用户确认；仍执行原权限、数据范围、校验和业务审批。"
+_LEGACY_TAIL = "须持久化人工确认后调用，继续执行原权限、数据范围、校验和业务审批。"
 
 
 def direct_write_view(tool: dict, method: str) -> dict:
-    """读写令牌看到的写入类工具：说明改为“直接执行，由本地 agent 向用户确认”，标题标明新增/修改/删除。"""
+    """令牌看到的写入类工具：标题标明新增/修改/删除；说明已按是否“不可撤回”写好（直接执行并留痕，或生成待确认）。"""
     kind = "删除" if method == "DELETE" else "写入"
-    description = tool["description"].replace(_CONFIRM_TAIL, _DIRECT_TAIL)
-    if _DIRECT_TAIL not in description:
-        description += _DIRECT_TAIL
     prefix = "【删除操作】" if method == "DELETE" else "【写入操作】"
+    description = tool["description"].replace(_LEGACY_TAIL, "")
     return {**tool, "title": f"{kind}：{tool.get('title', '')}", "description": prefix + description}
 
 

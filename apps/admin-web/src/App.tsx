@@ -582,6 +582,7 @@ const menuItems: NavItem[] = [
           { key: "system-management-menu", label: "菜单管理" },
           { key: "system-management-config", label: "系统配置" },
           { key: "system-management-recycle", label: "回收站" },
+          { key: "system-management-changes", label: "变更记录" },
         ],
       },
     ],

@@ -19,7 +19,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 # 不做逻辑删除的表：技术数据、派生/重建数据、访问令牌、通知投递等；它们仍可物理清理。
 EXCLUDED_TABLES = frozenset({
     "mcp_access_tokens", "mcp_call_logs", "notification_deliveries", "notification_sync_schedules", "notifications",
-    "security_policies", "system_configs", "role_permissions", "party_library",
+    "security_policies", "system_configs", "role_permissions", "party_library", "data_change_logs",
 })
 _PARTIAL_WHERE = {"postgresql_where": text("deleted_at IS NULL"), "sqlite_where": text("deleted_at IS NULL")}
 
@@ -154,6 +154,7 @@ def _soft_delete_flush(session, flush_context, instances):
         row_id = getattr(obj, _pk(table).name)
         _mark_children(connection, table, [row_id], now, actor, seen, exempt)
         connection.execute(update(table).where(_pk(table) == row_id, table.c.deleted_at.is_(None)).values(deleted_at=now, deleted_by=actor))
+        _log(session, connection, table, [row_id], "delete")
         set_committed_value(obj, "deleted_at", now)
         set_committed_value(obj, "deleted_by", actor)
         session.expunge(obj)  # 取消这条 DELETE；行已被上面标记
@@ -185,7 +186,8 @@ def _soft_delete_statement(state, statement, table):
         _mark_children(connection, table, ids, now, actor, seen, set(seen))
     result = state.invoke_statement(
         statement=update(table).where(pk.in_(ids), table.c.deleted_at.is_(None)).values(deleted_at=now, deleted_by=actor),
-        execution_options={"synchronize_session": False})
+        execution_options={"synchronize_session": False, "skip_change_log": True})
+    _log(state.session, connection, table, ids, "delete")
     # 原语句是 DELETE：命中的对象要从会话里移走，之后 session.get() 不能再返回它们。
     id_set = set(ids)
     for obj in list(state.session.identity_map.values()):
@@ -196,6 +198,14 @@ def _soft_delete_statement(state, statement, table):
     return result
 
 
+def _log(session, connection, table, ids, action) -> None:
+    """删除 / 恢复留痕（逐行一条）；系统维护明确跳过时不记。"""
+    if not ids or session.info.get("skip_change_log"):
+        return
+    from app.core import change_log
+    change_log.record_rows(connection, table, ids, action)
+
+
 # ---------- 恢复 ----------
 
 def restore_rows(session_sync, table_name: str, ids: list) -> int:
@@ -204,9 +214,12 @@ def restore_rows(session_sync, table_name: str, ids: list) -> int:
     connection = session_sync.connection()
     pk = _pk(table)
     count = 0
+    restored = []
     for row_id, stamp in connection.execute(select(pk, table.c.deleted_at).where(pk.in_(ids), table.c.deleted_at.is_not(None))).all():
         _restore(connection, table, [row_id], stamp)
+        restored.append(row_id)
         count += 1
+    _log(session_sync, connection, table, restored, "restore")
     return count
 
 

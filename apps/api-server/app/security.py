@@ -63,6 +63,7 @@ _PAGE_MENU_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("/system/configs", ("system-management-config", "@root:system")),
     ("/system/caches", ("system-management-cache", "@root:system")),
     ("/system/recycle-bin", ("system-management-recycle", "@root:system")),
+    ("/system/change-logs", ("system-management-changes", "@root:system")),
     ("/system/menus", ("system-management-menu", "@root:system")),
     ("/system/role-permissions", ("@root:system",)),
     ("/system/roles", ("@root:system",)),
@@ -244,7 +245,10 @@ async def current_identity(request: Request, token: str = Depends(oauth2_scheme)
     if user.must_change_password and request.url.path != f"{settings.api_prefix}/auth/me":
         raise HTTPException(status_code=428, detail="首次登录必须先修改初始密码")
     from app.core.soft_delete import set_actor
-    set_actor(user.username)  # 本次请求里发生的逻辑删除记录删除人
+    from app.core import change_log
+    set_actor(user.username)  # 本次请求里的删除和变更记录操作人
+    if change_log.source_var.get() == "system":  # MCP / 智能体发起的内部请求已带来源，这里不覆盖
+        change_log.set_source("web")
     role_ids = user_role_ids(user)
     profile = user.profile or {}
     # Permission resolution lives with the main application because it also

@@ -221,7 +221,7 @@ class UsageSkillTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(read_only.startswith("---\nname: oa-mcp-usage"))
         self.assertIn("只读", read_only)
         self.assertIn("当前可用接口：1 个", read_only)  # 只读令牌看不到写入类
-        for rule in ("oa_describe_tool", "先问用户", "明确说", "逻辑删除", "429"):
+        for rule in ("oa_describe_tool", "先问用户", "直接执行", "待确认", "逻辑删除", "429"):
             self.assertIn(rule, read_only)
         writable = AuthContext(application=object(), bearer="jwt", scope={}, token_id=7, write_allowed=True, groups=None)
         text = usage_skill.build_skill(writable, catalog)
@@ -242,6 +242,62 @@ class UsageSkillTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("oa-mcp-usage", resource.contents[0].text)
         self.assertIn("oa-mcp-usage", prompt.messages[0].content.text)
         self.assertIn("oa_get_usage_guide", usage_skill.INSTRUCTIONS)  # 握手说明指向使用指南
+
+
+class IrreversibleTest(unittest.IsolatedAsyncioTestCase):
+    def _spec(self, method, path):
+        return SimpleNamespace(name="x", is_write=True, method=method, path="/api/v1" + path, validate_arguments=lambda a: {"path": {}, "query": {}, "body": None, "files": {}})
+
+    def test_categories(self):
+        from app.agent_mcp.irreversible import irreversible_category
+        cases = {
+            ("POST", "/notifications/send"): "发送通知", ("POST", "/tasks/{task_id}/resend"): "发送通知",
+            ("POST", "/contracts/{contract_id}/approve"): "审批", ("POST", "/finance/fees/{fee_id}/review"): "审批",
+            ("POST", "/conflict-reviews/{review_id}/decision"): "审批", ("POST", "/finance/fees/batch-review"): "审批",
+            ("POST", "/seals/applications/{record_id}/stamp"): "盖章与对外转交", ("POST", "/official-outgoing/mark-stamped"): "盖章与对外转交",
+            ("POST", "/ipr/official-files/{official_id}/transmit"): "盖章与对外转交",
+            ("POST", "/contract-payment-applications/{payment_id}/pay"): "付款与核销", ("POST", "/finance/fees/{fee_id}/writeoff"): "付款与核销",
+            ("POST", "/finance/invoices/{invoice_id}/issue"): "开票与作废", ("POST", "/finance/invoices/{invoice_id}/void"): "开票与作废",
+            ("POST", "/finance/refunds/{refund_id}/complete"): "退费完成",
+        }
+        for (method, path), expected in cases.items():
+            self.assertEqual(irreversible_category(self._spec(method, path)), expected, path)
+        for method, path in (("POST", "/customers"), ("PATCH", "/cases/{case_id}"), ("DELETE", "/hr/departments/{department_id}"),
+                             ("POST", "/contracts/{contract_id}/submit"), ("POST", "/cases/{case_id}/assign"), ("POST", "/finance/invoices")):
+            self.assertIsNone(irreversible_category(self._spec(method, path)), path)
+        self.assertIsNone(irreversible_category(SimpleNamespace(is_write=False, path="/api/v1/notifications/send")))
+
+    async def test_in_app_agent_write_executes_directly_and_is_labelled_agent(self):
+        from app.agent_mcp import service
+        from app.core import change_log
+        spec = self._spec("PATCH", "/cases/{case_id}")
+        seen = []
+
+        async def fake_execute(spec, params, **kwargs):
+            seen.append(change_log.source_var.get())
+            return {"updated": True}
+
+        class FakeSession:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+
+        async def passthrough(spec, arguments, params, identity, db):
+            return arguments
+
+        async def nothing(*args, **kwargs):
+            return None
+
+        context = AuthContext(application=object(), bearer="jwt", scope={})  # 站内智能体：不是个人令牌
+        catalog = SimpleNamespace(get=lambda name: spec)
+        with patch.object(service, "get_auth_context", lambda: context), patch.object(service, "get_catalog", lambda _app: catalog), \
+             patch.object(service, "authenticated_identity", lambda: _async({"username": "boss", "department": "d"})), \
+             patch.object(service, "SessionLocal", FakeSession), patch.object(service, "require_business_record_target", nothing), \
+             patch.object(service, "prepare_business_arguments", passthrough), patch.object(service, "execute_original", fake_execute), \
+             patch.object(service, "trusted_case_origin", lambda: None), patch.object(service, "_record_agent_call", nothing) as _:
+            result = await service.call_tool("x", {})
+        self.assertEqual(result, {"updated": True})  # 不再生成待确认，直接执行
+        self.assertEqual(seen, ["agent"])  # 变更留痕记为“智能体”来源
+        self.assertEqual(change_log.source_var.get(), "system")  # 调用结束后来源复原
 
 
 class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
@@ -287,8 +343,7 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
              patch.object(service, "public_tool", lambda spec: spec.to_mcp()):
             described = service.describe_tool("delete_case")
         self.assertTrue(described["description"].startswith("【删除操作】"))
-        self.assertIn("直接执行", described["description"])
-        self.assertNotIn("须持久化人工确认", described["description"])
+        self.assertNotIn("须持久化人工确认", described["description"])  # 旧的“人工确认”说法已去掉
 
         executed = []
 

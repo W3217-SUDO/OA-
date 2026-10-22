@@ -505,6 +505,8 @@ app.add_middleware(RequestMetricsMiddleware, api_prefix=settings.api_prefix,
 from app.areas.system.recycle_bin import router as recycle_bin_router
 app.include_router(feedback_router)
 app.include_router(recycle_bin_router)
+from app.areas.system.change_logs import router as change_logs_router  # noqa: E402
+app.include_router(change_logs_router)
 app.include_router(personal_agent_router)
 app.include_router(agent_admin_router)
 app.include_router(data_query_router)

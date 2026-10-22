@@ -212,6 +212,49 @@ async def list_tool_requests(identity: dict, db, *, status: str = "pending", pag
 
 
 async def call_tool(name: str, arguments: dict, *, conversation_id: str | None = None):
+    """整次调用（包括不可撤回操作生成的待确认记录）在变更留痕里都记为 MCP 或智能体来源；
+    站内智能体的每次调用（查询、写入、失败、待确认）也写入操作日志（MCP 的调用由网关记录）。"""
+    from app.core import change_log
+    context = get_auth_context()
+    token = change_log.set_source("mcp" if context.readonly else "agent")
+    ok, outcome = False, None
+    try:
+        outcome = await _call_tool(name, arguments, conversation_id=conversation_id)
+        ok = True
+        return outcome
+    except HTTPException as exc:
+        outcome = {"status_code": exc.status_code, "detail": exc.detail}
+        raise
+    finally:
+        change_log.source_var.reset(token)
+        if not context.readonly:
+            await _record_agent_call(context, name, arguments, ok, outcome)
+
+
+async def _record_agent_call(context, name, arguments, ok, outcome) -> None:
+    """站内智能体调用写入操作日志（token_id=0 表示站内智能体），失败只记服务日志，不影响调用本身。"""
+    try:
+        from app.agent_mcp.personal_tokens import record_call
+        from app.core.soft_delete import actor_var
+        spec = None
+        try:
+            spec = get_catalog(context.application).get(name)
+        except Exception:
+            pass
+        is_write = bool(spec is not None and spec.is_write)
+        extra = {}
+        if isinstance(outcome, dict) and outcome.get("status") == "pending":
+            extra["status"] = "pending"
+        if not ok and isinstance(outcome, dict):
+            extra["error"] = str(outcome)[:300]
+        detail = json.dumps({**({"method": spec.method, "path": spec.path} if spec is not None else {}), "arguments": arguments, **extra},
+                            ensure_ascii=False, default=str)
+        await record_call(0, actor_var.get(), name, ok, arguments, detail=detail, is_write=is_write)
+    except Exception:
+        logger.exception("站内智能体操作日志写入失败 tool=%s", name)
+
+
+async def _call_tool(name: str, arguments: dict, *, conversation_id: str | None = None):
     context = get_auth_context()
     identity = await authenticated_identity()
     spec = get_catalog(context.application).get(name)
@@ -238,11 +281,15 @@ async def call_tool(name: str, arguments: dict, *, conversation_id: str | None =
         arguments = await prepare_business_arguments(spec, arguments, params, identity, db)
         params = spec.validate_arguments(arguments)
         reject_credentials(params)
-        if context.write_allowed:
-            # 读写令牌：确认由本地 agent 向用户负责，这里直接执行原接口（原权限、数据范围、校验照常生效）。
-            from app.agent_mcp.personal_tokens import check_write_rate
-            check_write_rate(context.token_id)
+        from app.agent_mcp.irreversible import irreversible_category
+        category = irreversible_category(spec)
+        if category is None:
+            # 普通写入：直接执行原接口（原权限、数据范围、校验、审批流程照常生效），每次变更在服务器留痕、可还原。
+            if context.readonly:
+                from app.agent_mcp.personal_tokens import check_write_rate
+                check_write_rate(context.token_id)
             return await execute_original(spec, params, case_origin=case_origin, conversation_id=conversation_id)
+        # 不可撤回的操作（通知、审批、盖章对外、付款核销、开票、退费完成）：仍生成待确认请求，须用户在 OA 网页确认。
         path = render_path(spec, params)
         # 写操作只落准备记录，不调用任何业务写入或新建附件。
         request_id = uuid4().hex
@@ -269,6 +316,8 @@ async def call_tool(name: str, arguments: dict, *, conversation_id: str | None =
         await db.commit()
         return {
             "request_id": request_id, "status": "pending", "summary": summary, "preview": preview,
+            "irreversible_category": category,
+            "next_step": f"这是不可撤回的操作（{category}），已生成待确认请求，需要用户在 OA 网页的智能体中心确认后才会执行。",
             "confirmation_url": settings.api_prefix + f"/agent-tools/requests/{request_id}",
         }
 
@@ -315,6 +364,8 @@ async def decide_tool_request(
     await db.commit()
     if decision == "rejected":
         return await get_tool_request(request_id, actual_identity, db)
+    from app.core import change_log
+    source_token = change_log.set_source("agent")  # 智能体准备、用户在网页确认后执行
     try:
         result = await execute_original(
             spec, params, case_origin=data["case_origin"],
@@ -331,6 +382,8 @@ async def decide_tool_request(
             exc.status_code if isinstance(exc, HTTPException) else 502,
             {"request_id": request_id, "status": "failed", "error": error},
         ) from exc
+    finally:
+        change_log.source_var.reset(source_token)
     await _finish_request(record.id, execution_id, actual_identity, db, "已执行", result=result)
     return await get_tool_request(request_id, actual_identity, db)
 

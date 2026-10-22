@@ -27,6 +27,7 @@ import { SystemCacheManagement } from "./SystemCacheManagement";
 import { SystemMenuManagement } from "./SystemMenuManagement";
 import { SystemConfigList } from "./SystemConfigList";
 import { SystemRecycleBin } from "./SystemRecycleBin";
+import { SystemChangeLog } from "./SystemChangeLog";
 import { SystemUserManagement } from "./SystemUserManagement";
 import { SystemPermissionManagement } from "./SystemPermissionManagement";
 import { SystemSecurityPolicy } from "./SystemSecurityPolicy";
@@ -809,6 +810,8 @@ export default function SystemCenterPage({
     content = <SystemConfigList configs={configs} />;
   } else if (initialView === "system-management-recycle") {
     content = <SystemRecycleBin />;
+  } else if (initialView === "system-management-changes") {
+    content = <SystemChangeLog />;
   } else if (initialView === "system-users") {
     content = (
       <SystemUserManagement

@@ -67,8 +67,10 @@ def _light_tool(spec) -> dict:
     """选了业务后列表里用精简形式：名称、标题、方法和路径；完整参数定义用 oa_describe_tool 按需取（服务端调用时仍按完整定义校验）。"""
     path = spec.path.removeprefix(settings.api_prefix)
     if spec.is_write:
+        from app.agent_mcp.irreversible import irreversible_category
         kind = "【删除】" if spec.method == "DELETE" else "【写入】"
-        note = "直接执行，调用前须先向用户确认。"
+        category = irreversible_category(spec)
+        note = f"不可撤回（{category}），调用后生成待确认，须用户在 OA 网页确认。" if category else "直接执行，留痕可还原。"
     else:
         kind, note = "【查询】", ""
     return {"name": spec.name, "title": f"{kind}{spec.title}", "description": f"{spec.title}（{spec.method} {path}）。{note}参数先用 oa_describe_tool 获取。",
@@ -101,7 +103,7 @@ def _token_entry_tools(write_allowed: bool) -> list:
     if write_allowed:
         tools.append(types.Tool(
             name="oa_call_write_tool", title="调用写入接口（新增/修改/删除）",
-            description="调用一个写入类业务接口（新增、修改、删除、状态流转等），直接执行，服务端不再二次确认：调用前必须把将要执行的内容展示给用户并取得用户确认。",
+            description="调用一个写入类业务接口（新增、修改、删除、状态流转等）。普通写入直接执行，每次变更在服务器留痕、可由管理员还原；通知发送、审批、盖章对外、付款核销、开票、退费完成等不可撤回操作只生成待确认请求，须用户在 OA 网页确认。",
             input_schema=CALL_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False)))
     return tools
 
@@ -153,7 +155,9 @@ async def _call_tool(_, params):
         is_write = bool(spec is not None and spec.is_write)
         detail = ""
         if is_write:  # 写入类调用留完整请求（方法、路径、参数）和失败原因
+            pending = isinstance(result.structured_content, dict) and result.structured_content.get("status") == "pending"
             detail = json.dumps({"method": spec.method, "path": spec.path, "arguments": arguments,
+                                 **({"status": "pending"} if pending else {}),
                                  **({"error": str(result.structured_content)[:300]} if result.is_error else {})},
                                 ensure_ascii=False, default=str)
         await record_call(context.token_id, context.username, name, not result.is_error, arguments,

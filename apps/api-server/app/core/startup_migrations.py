@@ -146,6 +146,11 @@ def _apply_soft_delete(connection: Connection, _upgrade_schema: Callable[[Connec
     upgrade_soft_delete(connection)
 
 
+def _apply_change_log(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    from app.data_models.change_logs import DataChangeLog
+    DataChangeLog.__table__.create(connection, checkfirst=True)
+
+
 def _apply_hz_allocation_read_model(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     upgrade_hz_allocation_read_model(connection)
 
@@ -159,6 +164,7 @@ def _run_versioned_schema_migrations(
     revisions = (
         (SCHEMA_BOOTSTRAP_REVISION, _apply_schema_bootstrap),
         (SOFT_DELETE_REVISION, _apply_soft_delete),  # 先于其他修订：后面的 ORM 读写会带上 deleted_at 列
+        ("data_change_logs_v1", _apply_change_log),  # 变更留痕表要在任何 ORM 写入之前就有
         (LEGACY_SETTLEMENT_INDEX_REVISION, _apply_legacy_settlement_indexes),
         (INCOMING_FINANCE_REVISION, _apply_incoming_finance),
         (HZ_ALLOCATION_READ_MODEL_REVISION, _apply_hz_allocation_read_model),

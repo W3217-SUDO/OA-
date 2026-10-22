@@ -1,6 +1,7 @@
 """MCP 目录的业务语义及可审计的安全分类。"""
 
 import re
+from types import SimpleNamespace
 
 from fastapi.routing import APIRoute
 
@@ -207,6 +208,10 @@ def title_for(route: APIRoute, method: str) -> str:
     return (verb + subject)[:80]
 
 
+DIRECT_WRITE_TEXT = "直接执行（原权限、数据范围、校验和业务审批照常生效），每次变更在服务器留痕、可由管理员还原；参数齐全时不需要再向用户确认。"
+IRREVERSIBLE_TEXT = "属于不可撤回操作，调用后只生成待确认请求，须用户在 OA 网页确认后才执行。"
+
+
 def describe(route: APIRoute, method: str, write: bool) -> tuple[str, bool]:
     key = operation_key(route, method)
     words = route.endpoint.__name__.lower().split("_")
@@ -247,5 +252,10 @@ def describe(route: APIRoute, method: str, write: bool) -> tuple[str, bool]:
         for field, label in (("usage", "使用方式"), ("prerequisites", "前置查询"), ("limitations", "范围限制")):
             if guidance[field]:
                 text += f"{label}：{'；'.join(guidance[field])}。"
-    text += "须持久化人工确认后调用，继续执行原权限、数据范围、校验和业务审批。" if write else "继续执行原权限和当前用户数据范围。"
+    if write:
+        from app.agent_mcp.irreversible import irreversible_category
+        category = irreversible_category(SimpleNamespace(is_write=True, path=route.path))
+        text += f"{category}类，{IRREVERSIBLE_TEXT}" if category else DIRECT_WRITE_TEXT
+    else:
+        text += "继续执行原权限和当前用户数据范围。"
     return text, corrupted
