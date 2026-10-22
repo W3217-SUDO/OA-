@@ -103,7 +103,7 @@ def _token_entry_tools(write_allowed: bool) -> list:
     if write_allowed:
         tools.append(types.Tool(
             name="oa_call_write_tool", title="调用写入接口（新增/修改/删除）",
-            description="调用一个写入类业务接口（新增、修改、删除、状态流转等）。普通写入直接执行，每次变更在服务器留痕、可由管理员还原；通知发送、审批、盖章对外、付款核销、开票、退费完成等不可撤回操作只生成待确认请求，须用户在 OA 网页确认。",
+            description="调用一个写入类业务接口（新增、修改、删除、状态流转等）。普通写入直接执行，每次变更在服务器留痕、可由管理员还原；审批、盖章与对外转交、付款与核销、开具或作废发票等不可撤回操作只生成待确认请求，须用户在 OA 网页确认。",
             input_schema=CALL_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False)))
     return tools
 
