@@ -19,6 +19,7 @@ from app.agent_mcp.config import trusted_origins
 from app.agent_mcp.router import router
 from app.agent_mcp.safety import safe_result
 from app.agent_mcp.service import call_tool, describe_tool, list_group_tools, list_tool_groups, search_tools
+from app.agent_mcp import usage_skill
 from app.agent_mcp.model_context import discovered_tools_view
 from app.config import settings
 from app.core.lifecycle import lifespan
@@ -51,7 +52,9 @@ CALL_SCHEMA = {
         "arguments": {"type": "object", "description": "该工具的参数，结构见 oa_describe_tool 返回的 inputSchema（path/query/body/files）"},
     }, "required": ["name"], "additionalProperties": False,
 }
+GUIDE_SCHEMA = {"type": "object", "properties": {}, "additionalProperties": False}
 META_SCHEMAS = {
+    usage_skill.GUIDE_TOOL: GUIDE_SCHEMA,
     "oa_list_tool_groups": GROUP_SCHEMA, "oa_search_tools": SEARCH_SCHEMA, "oa_list_group_tools": GROUP_TOOLS_SCHEMA,
     "oa_describe_tool": DESCRIBE_SCHEMA, "oa_call_read_tool": CALL_SCHEMA, "oa_call_write_tool": CALL_SCHEMA,
 }
@@ -72,10 +75,18 @@ def _light_tool(spec) -> dict:
             "inputSchema": _LIGHT_SCHEMA, "annotations": spec.to_mcp().get("annotations")}
 
 
+def _guide_tool() -> types.Tool:
+    return types.Tool(
+        name=usage_skill.GUIDE_TOOL, title="【先读这个】OA 使用指南",
+        description="连接后第一步先调用：返回 OA MCP 的使用指南（技能），写明怎么找接口、怎么调用、写入前必须向用户确认、权限和错误怎么处理，以及本次连接的业务范围和读写权限。",
+        input_schema=GUIDE_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=True, open_world_hint=False))
+
+
 def _token_entry_tools(write_allowed: bool) -> list:
     """个人令牌的工具列表只放几个入口工具：按分组/关键词找接口，再按需取定义和调用，不一次加载全部业务接口。"""
     read_hint = types.ToolAnnotations(read_only_hint=True, open_world_hint=False)
     tools = [
+        _guide_tool(),
         types.Tool(name="oa_list_tool_groups", title="列出 OA 业务分组", description="先调用这个：返回业务分组（案件、客户、合同、财务……）及各组可用工具数量，不含接口定义。",
                    input_schema=GROUP_SCHEMA, annotations=read_hint),
         types.Tool(name="oa_list_group_tools", title="列出某个分组的接口", description="返回指定分组里的接口清单（名称、标题、方法、路径、读/写），不含参数定义。",
@@ -122,6 +133,7 @@ async def _list_tools(_, params):
     if scoped:  # 选了业务时也带上按需取参数定义的入口
         tools.insert(0, types.Tool(name="oa_describe_tool", title="查看接口参数定义", description="按接口名取完整参数定义（path/query/body/files 与必填项）。调用任何业务接口前先用它。",
                                    input_schema=DESCRIBE_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=True, open_world_hint=False)))
+    tools.insert(0, _guide_tool())  # “先读这个”永远排第一
     return types.ListToolsResult(tools=tools)
 
 
@@ -152,6 +164,12 @@ async def _call_tool(_, params):
 async def _dispatch_tool(params):
     try:
         arguments = params.arguments or {}
+        if params.name == usage_skill.GUIDE_TOOL:
+            if arguments:
+                raise HTTPException(422, "使用指南不需要参数")
+            context = get_auth_context()
+            guide = usage_skill.build_skill(context, get_catalog(context.application))
+            return types.CallToolResult(content=[types.TextContent(type="text", text=guide)], structured_content={"guide": guide})
         if params.name == "oa_list_tool_groups":
             if set(arguments) - {"query"}:
                 raise HTTPException(422, "组发现只接受可选 query")
@@ -205,6 +223,10 @@ async def _dispatch_tool(params):
 
 async def _read_resource(_, params):
     uri = str(params.uri)
+    if uri == usage_skill.SKILL_URI:
+        context = get_auth_context()
+        return types.ReadResourceResult(contents=[types.TextResourceContents(
+            uri=uri, mime_type="text/markdown", text=usage_skill.build_skill(context, get_catalog(context.application)))])
     match = re.fullmatch(r"oa-mcp-(artifact|source)://([0-9a-f]{32})", uri)
     if match is None:
         raise MCPError(-32602, "只允许读取本 OA 生成的受控资源标识")
@@ -228,9 +250,25 @@ async def _list_resources(_, __):
         raise MCPError(-32002, json.dumps(error, ensure_ascii=False)) from exc
     except Exception as exc:
         raise MCPError(-32603, f"工具资源目录读取失败（{type(exc).__name__}）") from exc
-    return types.ListResourcesResult(resources=[types.Resource(
+    skill = types.Resource(uri=usage_skill.SKILL_URI, name=usage_skill.SKILL_NAME, title="OA MCP 使用指南（技能）",
+                           description="连接 OA 后先读：怎么找接口、怎么调用、写入前向用户确认、错误处理。", mime_type="text/markdown")
+    return types.ListResourcesResult(resources=[skill, *[types.Resource(
         uri=item["uri"], name=item["name"], mime_type=item["mimeType"], size=item["size"],
-    ) for item in resources])
+    ) for item in resources]])
+
+
+async def _list_prompts(_, params):
+    return types.ListPromptsResult(prompts=[types.Prompt(
+        name=usage_skill.PROMPT_NAME, title="OA 使用指南", description="先阅读 OA MCP 的使用指南，再开始操作。")])
+
+
+async def _get_prompt(_, params):
+    if params.name != usage_skill.PROMPT_NAME:
+        raise MCPError(-32602, "未知提示")
+    context = get_auth_context()
+    guide = usage_skill.build_skill(context, get_catalog(context.application))
+    return types.GetPromptResult(description="OA MCP 使用指南", messages=[types.PromptMessage(
+        role="user", content=types.TextContent(type="text", text="请先阅读下面的 OA 使用指南，之后严格按它操作：\n\n" + guide))])
 
 
 def install_gateway(application) -> None:
@@ -243,8 +281,8 @@ def install_gateway(application) -> None:
         hostname = parsed.hostname
         hosts.add(f"[{hostname}]" if ":" in hostname else hostname)
     server = Server(
-        "sunhold-oa", title="OA业务操作", on_list_tools=_list_tools, on_call_tool=_call_tool,
-        on_list_resources=_list_resources, on_read_resource=_read_resource,
+        "sunhold-oa", title="OA业务操作", instructions=usage_skill.INSTRUCTIONS, on_list_tools=_list_tools, on_call_tool=_call_tool,
+        on_list_resources=_list_resources, on_read_resource=_read_resource, on_list_prompts=_list_prompts, on_get_prompt=_get_prompt,
         get_tool_input_schema=lambda name: (
             META_SCHEMAS[name] if name in META_SCHEMAS else get_catalog(application).get(name).input_schema
         ),

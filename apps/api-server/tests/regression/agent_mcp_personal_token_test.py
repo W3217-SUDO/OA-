@@ -189,7 +189,7 @@ class BusinessScopeTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(gateway, "get_auth_context", lambda: self._context(scope)), patch.object(gateway, "get_catalog", lambda _app: catalog):
             listed = await gateway._list_tools(None, None)
         # 所选业务的接口直接列出（带完整定义），外加两个范围内的发现工具；其他业务的接口不出现
-        self.assertEqual({tool.name for tool in listed.tools}, {"list_cases", "oa_list_tool_groups", "oa_search_tools", "oa_describe_tool"})
+        self.assertEqual({tool.name for tool in listed.tools}, {"list_cases", "oa_get_usage_guide", "oa_list_tool_groups", "oa_search_tools", "oa_describe_tool"})
         light = next(tool for tool in listed.tools if tool.name == "list_cases")
         self.assertIn("GET /cases", light.description)  # 精简形式：标题 + 方法路径，参数定义按需取
         self.assertIn("oa_describe_tool", light.description)
@@ -206,6 +206,44 @@ class BusinessScopeTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("list_cases", {tool.name for tool in listed.tools})
 
 
+class UsageSkillTest(unittest.IsolatedAsyncioTestCase):
+    def _catalog(self):
+        reader = SimpleNamespace(name="list_cases", is_write=False, method="GET", path="/api/v1/cases", group_id="06", title="查询案件")
+        writer = SimpleNamespace(name="create_case", is_write=True, method="POST", path="/api/v1/cases", group_id="07", title="新建案件")
+        return SimpleNamespace(tools=[reader, writer], get=lambda name: {"list_cases": reader, "create_case": writer}[name])
+
+    def test_skill_states_current_scope_permission_and_rules(self):
+        from app.agent_mcp import service, usage_skill
+        catalog = self._catalog()
+        ctx = AuthContext(application=object(), bearer="jwt", scope={}, token_id=7, write_allowed=False, groups=frozenset({"06", "07"}))
+        with patch.object(service, "get_auth_context", lambda: ctx):
+            read_only = usage_skill.build_skill(ctx, catalog)
+        self.assertTrue(read_only.startswith("---\nname: oa-mcp-usage"))
+        self.assertIn("只读", read_only)
+        self.assertIn("当前可用接口：1 个", read_only)  # 只读令牌看不到写入类
+        for rule in ("oa_describe_tool", "先问用户", "明确说", "逻辑删除", "429"):
+            self.assertIn(rule, read_only)
+        writable = AuthContext(application=object(), bearer="jwt", scope={}, token_id=7, write_allowed=True, groups=None)
+        text = usage_skill.build_skill(writable, catalog)
+        self.assertIn("可新增、修改、删除", text)
+        self.assertIn("未选业务", text)
+        self.assertIn("当前可用接口：2 个", text)
+
+    async def test_guide_is_served_as_tool_resource_and_prompt(self):
+        from app.agent_mcp import gateway, usage_skill
+        catalog = self._catalog()
+        ctx = AuthContext(application=object(), bearer="jwt", scope={}, token_id=7, write_allowed=True, groups=None)
+        with patch.object(gateway, "get_auth_context", lambda: ctx), patch.object(gateway, "get_catalog", lambda _app: catalog):
+            tool = await gateway._dispatch_tool(SimpleNamespace(name=usage_skill.GUIDE_TOOL, arguments={}))
+            resource = await gateway._read_resource(None, SimpleNamespace(uri=usage_skill.SKILL_URI))
+            prompt = await gateway._get_prompt(None, SimpleNamespace(name=usage_skill.PROMPT_NAME))
+        self.assertFalse(tool.is_error)
+        self.assertIn("oa-mcp-usage", tool.content[0].text)
+        self.assertIn("oa-mcp-usage", resource.contents[0].text)
+        self.assertIn("oa-mcp-usage", prompt.messages[0].content.text)
+        self.assertIn("oa_get_usage_guide", usage_skill.INSTRUCTIONS)  # 握手说明指向使用指南
+
+
 class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
     def _context(self, token_id, write=False):
         return AuthContext(application=object(), bearer="jwt", scope={}, token_id=token_id, write_allowed=write)
@@ -217,9 +255,9 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
         writer = SimpleNamespace(name="create_case", is_write=True, method="POST", path="/api/v1/cases", to_mcp=lambda: {
             "name": "create_case", "description": "建案", "inputSchema": {"type": "object"}})
         catalog = SimpleNamespace(tools=[reader, writer], get=lambda name: {"list_cases": reader, "create_case": writer}[name])
-        entry = {"oa_list_tool_groups", "oa_list_group_tools", "oa_search_tools", "oa_describe_tool", "oa_call_read_tool"}
+        entry = {"oa_get_usage_guide", "oa_list_tool_groups", "oa_list_group_tools", "oa_search_tools", "oa_describe_tool", "oa_call_read_tool"}
         for token_id, expected in ((7, entry),  # 个人令牌：只给入口工具，按需加载，不一次列出全部接口
-                                   (None, {"oa_list_tool_groups", "oa_search_tools", "list_cases", "create_case"})):
+                                   (None, {"oa_get_usage_guide", "oa_list_tool_groups", "oa_search_tools", "list_cases", "create_case"})):
             with patch.object(gateway, "get_auth_context", lambda token_id=token_id: self._context(token_id)), \
                  patch.object(gateway, "get_catalog", lambda _app: catalog):
                 listed = await gateway._list_tools(None, None)
@@ -241,7 +279,7 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(gateway, "get_auth_context", lambda: self._context(7, write=True)), patch.object(gateway, "get_catalog", lambda _app: catalog):
             listed = await gateway._list_tools(None, None)
         self.assertEqual({tool.name for tool in listed.tools},  # 有写入权限时多一个写入入口，且业务接口仍不逐个列出
-                         {"oa_list_tool_groups", "oa_list_group_tools", "oa_search_tools", "oa_describe_tool", "oa_call_read_tool", "oa_call_write_tool"})
+                         {"oa_get_usage_guide", "oa_list_tool_groups", "oa_list_group_tools", "oa_search_tools", "oa_describe_tool", "oa_call_read_tool", "oa_call_write_tool"})
         write_entry = next(item for item in listed.tools if item.name == "oa_call_write_tool")
         self.assertFalse(write_entry.annotations.read_only_hint)
         self.assertTrue(write_entry.annotations.destructive_hint)
