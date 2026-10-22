@@ -109,7 +109,7 @@ class IncomingFinanceMigrationAssertions:
                 self.assertEqual(tuple(sync.execute(self.old_incoming.select()).one()), self.old_snapshot)
                 self.assertEqual(tuple(sync.execute(text("SELECT finance_scope, legacy_finance_record_id, payment_method, local_allocation_summary FROM incoming_payments")).one()), (None, None, "", None))
                 self.assertEqual(sync.scalar(text("SELECT count(*) FROM schema_migrations WHERE key=:key"), {"key": MIGRATION_REVISION}), 1)
-                self.assertEqual(sync.scalar(text("SELECT count(*) FROM schema_migrations")), 12)
+                self.assertEqual(sync.scalar(text("SELECT count(*) FROM schema_migrations")), 13)
                 sync.execute(self.old_incoming.insert().values(id=2, receipt_no="EXISTING-WRITER-COMPATIBILITY",
                     received_date=date(2026, 10, 16), amount=1, allocated_amount=0, status="待认领",
                     payer_name="独立旧写入", operator="admin"))

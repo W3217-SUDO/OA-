@@ -41,8 +41,9 @@ GROUP_SCHEMA = {
 async def _list_tools(_, params):
     if params is not None and params.cursor:
         raise MCPError(-32602, "工具目录不接收未知分页游标")
-    catalog = get_catalog(get_auth_context().application)
-    tools = [types.Tool.model_validate(spec.to_mcp()) for spec in catalog.tools]
+    context = get_auth_context()
+    catalog = get_catalog(context.application)
+    tools = [types.Tool.model_validate(spec.to_mcp()) for spec in catalog.tools if not (context.readonly and spec.is_write)]
     tools.insert(0, types.Tool(
         name="oa_search_tools", title="发现 OA 业务操作", description="按业务目标搜索全部已挂载的 OA 工具；结果按 domain 业务域分组，并返回真实参数模式、必填参数和 files 参数说明。",
         input_schema=SEARCH_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=True, open_world_hint=False),
@@ -55,6 +56,15 @@ async def _list_tools(_, params):
 
 
 async def _call_tool(_, params):
+    result = await _dispatch_tool(params)
+    context = get_auth_context()
+    if context.readonly:
+        from app.agent_mcp.personal_tokens import record_call
+        await record_call(context.token_id, context.username, params.name, not result.is_error, params.arguments or {})
+    return result
+
+
+async def _dispatch_tool(params):
     try:
         arguments = params.arguments or {}
         if params.name == "oa_list_tool_groups":

@@ -1160,6 +1160,7 @@ test("homepage pending summary is shown once and direct cancellation retains fai
     "./PersonalAiSpace": { PersonalAiSpace: component("personal-ai-space") },
     "./CaseWorkspaceSelector": { CaseWorkspaceSelector: component("case-workspace-selector") },
     "./ActionConfirmation": { ActionConfirmation: component("action-confirmation") },
+    "./LocalAgentAccess": { LocalAgentAccess: () => null },
   };
   const { default: AssistantPanel } = loadModule("../personal-agent/AssistantPanel.tsx", dependencies);
   const action = { id: "a1", type: "mcp.call", summary: "为2个案件新增期限提醒", status: "pending" };

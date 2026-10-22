@@ -21,6 +21,12 @@ class AuthContext:
     bearer: str = field(repr=False)
     scope: dict = field(repr=False)
     active: bool = True
+    token_id: int | None = None  # 个人访问令牌进来的请求：令牌编号；此时一律只读
+    username: str = ""
+
+    @property
+    def readonly(self) -> bool:
+        return self.token_id is not None
 
 
 _auth_context: ContextVar[AuthContext | None] = ContextVar("oa_mcp_auth_context", default=None)
@@ -105,7 +111,15 @@ class RequestAuthContextMiddleware:
         try:
             if scope["path"].rstrip("/") == settings.api_prefix + "/mcp":
                 try:
-                    await authenticated_identity()
+                    from app.agent_mcp import personal_tokens
+                    if personal_tokens.is_personal_token(bearer):
+                        # 个人访问令牌只在这个入口有效：换成 5 分钟的内部登录凭据，后续业务接口权限照常重新计算。
+                        context.token_id, context.username, context.bearer = await personal_tokens.authenticate(bearer)
+                    identity = await authenticated_identity()
+                    if context.readonly:
+                        from app.agent_permissions import is_actual_system_admin
+                        if not is_actual_system_admin(identity):
+                            raise HTTPException(403, "个人访问令牌目前只对系统管理员开放")
                 except HTTPException as exc:
                     await JSONResponse(
                         {"detail": exc.detail}, status_code=exc.status_code,

@@ -98,7 +98,11 @@ def list_tool_groups(query: str | None = None) -> dict:
 def search_tools(query: str, limit: int = 8, *, group_id: str | None = None, subgroup_id: str | None = None) -> list[dict]:
     if not isinstance(query, str) or not query.strip() or type(limit) is not int or not 1 <= limit <= 12:
         raise HTTPException(422, "工具搜索需要非空关键词和 1 至 12 的结果数量")
-    catalog = get_catalog(get_auth_context().application)
+    context = get_auth_context()
+    catalog = get_catalog(context.application)
+    if context.readonly:  # 只读令牌：多取一些再去掉写入类工具，避免结果被写工具占满
+        found = catalog.search(query.strip(), limit=50, group_id=group_id, subgroup_id=subgroup_id)
+        return [public_tool(spec) for spec in found if not spec.is_write][:limit]
     return [public_tool(spec) for spec in catalog.search(query.strip(), limit=limit, group_id=group_id, subgroup_id=subgroup_id)]
 
 
@@ -169,8 +173,10 @@ async def call_tool(name: str, arguments: dict, *, conversation_id: str | None =
     context = get_auth_context()
     identity = await authenticated_identity()
     spec = get_catalog(context.application).get(name)
+    if context.readonly and spec.is_write:
+        raise HTTPException(403, "个人访问令牌是只读的，不能调用写入类工具")
     reject_credentials(arguments)
-    if context.bearer in json.dumps(arguments, ensure_ascii=False):
+    if context.bearer in json.dumps(arguments, ensure_ascii=False) or "oamcp_" in json.dumps(arguments, ensure_ascii=False):
         raise HTTPException(422, "工具参数不能包含当前登录凭据")
     params = spec.validate_arguments(arguments)
     reject_credentials(params)

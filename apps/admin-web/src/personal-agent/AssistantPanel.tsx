@@ -14,6 +14,7 @@ import { ConfirmationHistory } from "./ConfirmationHistory";
 import { PersonalAiSpace } from "./PersonalAiSpace";
 import { CaseAgentFileFolderModal } from "./CaseAgentFileFolderModal";
 import { PersonalMcpConnectionCard } from "./PersonalMcpConnectionCard";
+import { LocalAgentAccess } from "./LocalAgentAccess";
 import { McpConnectionTurn } from "./McpConnectionTurn";
 import { agentOperationMessage, userFacingAgentText } from "../AgentOperationPreview";
 import { errorText, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
@@ -371,7 +372,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         }}
       >
         <AssistantWorkspaceTools key={workspace.draftKey} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} onOpenMemory={() => setMemoryOpen(true)} />
-        <div><Button type="text" icon={<ApiOutlined />} disabled={sendBlocked} onClick={() => submit("帮我连接一个 MCP 服务")}>连接我的 MCP</Button><Button type="text" onClick={mcp.show}>管理已有连接</Button></div>
+        <div><Button type="text" icon={<ApiOutlined />} disabled={sendBlocked} onClick={() => submit("帮我连接一个 MCP 服务")}>连接我的 MCP</Button><Button type="text" onClick={mcp.show}>管理已有连接</Button><LocalAgentAccess /></div>
         <form className="assistant-composer-input" onSubmit={(event) => { event.preventDefault(); submit(); }}>
           <Input.TextArea
             ref={inputRef}

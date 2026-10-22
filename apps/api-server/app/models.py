@@ -30,6 +30,7 @@ from app.data_models.records import (
 )
 from app.data_models.parties import PartyRecord as PartyRecord
 from app.data_models.party_library import PartyLibraryEntry as PartyLibraryEntry
+from app.data_models.mcp_tokens import McpAccessToken as McpAccessToken, McpCallLog as McpCallLog
 from app.data_models.tasks import (
     VipTask as VipTask,
     VipTaskNode as VipTaskNode,

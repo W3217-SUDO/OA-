@@ -134,3 +134,39 @@ async def download_tool_artifact(artifact_id: str, _=Depends(current_identity)):
 @router.get("/resources/{resource_id}")
 async def download_tool_resource(resource_id: str, _=Depends(current_identity)):
     return await _download(resource_id, "source")
+
+
+class AccessTokenInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=100)
+    days: int = Field(default=30, ge=1, le=90)
+
+
+def _require_admin(identity: dict) -> None:
+    from app.agent_permissions import is_actual_system_admin
+    if not is_actual_system_admin(identity):
+        raise HTTPException(403, "个人访问令牌目前只对系统管理员开放")
+
+
+@router.get("/access-tokens")
+async def access_token_list(identity=Depends(current_identity), db=Depends(get_db)):
+    _require_admin(identity)
+    from app.agent_mcp import personal_tokens
+    return {"items": await personal_tokens.list_tokens(identity, db),
+            "calls": await personal_tokens.list_calls(identity, db),
+            "mcp_endpoint": settings.api_prefix + "/mcp", "read_only": True,
+            "max_days": personal_tokens.MAX_DAYS, "rate_limit_per_minute": personal_tokens.RATE_LIMIT_PER_MINUTE}
+
+
+@router.post("/access-tokens", status_code=201)
+async def access_token_create(body: AccessTokenInput, identity=Depends(current_identity), db=Depends(get_db)):
+    _require_admin(identity)
+    from app.agent_mcp import personal_tokens
+    return await personal_tokens.create_token(identity, db, body.name, body.days)
+
+
+@router.delete("/access-tokens/{token_id}")
+async def access_token_revoke(token_id: int, identity=Depends(current_identity), db=Depends(get_db)):
+    _require_admin(identity)
+    from app.agent_mcp import personal_tokens
+    return await personal_tokens.revoke_token(identity, db, token_id)

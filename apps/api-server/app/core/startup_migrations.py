@@ -127,6 +127,12 @@ def _apply_party_master(connection: Connection, _upgrade_schema: Callable[[Conne
     upgrade_party_master(connection)
 
 
+def _apply_mcp_access_tokens(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    from app.data_models.mcp_tokens import McpAccessToken, McpCallLog
+    McpAccessToken.__table__.create(connection, checkfirst=True)
+    McpCallLog.__table__.create(connection, checkfirst=True)
+
+
 def _apply_hz_allocation_read_model(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     upgrade_hz_allocation_read_model(connection)
 
@@ -150,6 +156,7 @@ def _run_versioned_schema_migrations(
         (CASE_LINK_JSON_INDEX_REVISION, _apply_case_link_json_indexes),
         (PARTY_LIBRARY_REVISION, _apply_party_library),
         (PARTY_MASTER_REVISION, _apply_party_master),
+        ("mcp_access_tokens_v1", _apply_mcp_access_tokens),
     )
     for revision, migration in revisions:
         if connection.execute(
