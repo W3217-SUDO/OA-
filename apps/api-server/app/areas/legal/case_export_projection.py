@@ -1,9 +1,9 @@
 """案件模板字段投影，只读取有明确关系的案件、线索与到账来源。"""
 
-from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.models import BusinessRecord, SystemParameter, User
+from app.core.court_display import court_name as _court_name, court_names_by_code
+from app.models import BusinessRecord, User
 
 
 CIVIL_HEADERS = [
@@ -32,23 +32,6 @@ def _people(value: str, users: dict) -> str:
     return ",".join(users.get(part.strip(), part.strip()) for part in value.replace("、", ",").split(",") if part.strip())
 
 
-def _court_name(value: str, names_by_code: dict[str, str], case_no: str) -> str:
-    value = value.strip()
-    if not value:
-        return ""
-    name = names_by_code.get(value.casefold())
-    if name:
-        return name
-    # 代码只能由权威参数解析；历史名称字段中的中文法院全称保持原值。
-    is_saved_name = value in names_by_code.values() or (
-        any("\u4e00" <= char <= "\u9fff" for char in value)
-        and value.endswith(("法院", "法庭", "仲裁委员会"))
-    )
-    if value.casefold() not in names_by_code and is_saved_name:
-        return value
-    raise HTTPException(422, f"案件 {case_no} 的法院代码或名称 {value} 无法解析，请先完善法院参数")
-
-
 async def case_export_projections(records, identity: dict, db, *, include_courts: bool = True) -> list[dict]:
     from app.core.permissions import _record_scope_conditions
     from app.core.query_batches import _scalars_in_batches
@@ -59,8 +42,7 @@ async def case_export_projections(records, identity: dict, db, *, include_courts
     users = {user.username: user.display_name for user in loaded_users}
     users_by_username = {user.username.lower(): user for user in loaded_users}
     # 历史案件也需要解析已停用法院的名称，不改变新建案件的可选范围。
-    courts = (await db.scalars(select(SystemParameter).where(SystemParameter.category == "court"))).all() if include_courts else []
-    court_names = {str(court.code).strip().casefold(): str(court.name or "").strip() for court in courts}
+    court_names = await court_names_by_code(db) if include_courts else {}
     customer_refs = {record.id: int((record.data or {}).get("customer_id") or (record.data or {}).get("customer_record_id") or 0) for record in records}
     customers_by_id = {item.id: item for item in await _scalars_in_batches(
         db, {customer_id for customer_id in customer_refs.values() if customer_id},

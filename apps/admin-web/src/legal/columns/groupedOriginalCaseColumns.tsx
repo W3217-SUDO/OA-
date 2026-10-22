@@ -1,6 +1,7 @@
 import { Button } from "antd";
 import { getLegacyGroupedCaseColumnSchema } from "../constants";
 import type { CaseRow } from "../types";
+import { caseCourtDisplay } from "../courtDisplay";
 export function createGroupedOriginalCaseColumns(context: {
     readonly openCounselDetail: (row: CaseRow, preferredTab?: string | undefined) => Promise<void>;
     readonly casePersonDisplayNames: (sources: unknown) => string;
@@ -22,7 +23,7 @@ export function createGroupedOriginalCaseColumns(context: {
                 case "parties":
                     return <><p>原告:{row.data.plaintiff || row.customer}</p><p>被告:{row.data.opponent || row.data.defendant || ""}</p></>;
                 case "court":
-                    return <><p>法院:<Button type="link" className="case-cell-link case-inline-cell-link" onClick={() => void context.openCounselDetail(row)}>{row.data.court || ""}</Button></p><p>案号:{row.data.court_case_no || ""}</p></>;
+                    return <><p>法院:<Button type="link" title={caseCourtDisplay(row.data, "court")} className="case-cell-link case-inline-cell-link" onClick={() => void context.openCounselDetail(row)}>{caseCourtDisplay(row.data, "court")}</Button></p><p>案号:{row.data.court_case_no || ""}</p></>;
                 case "lawyer":
                     return <>
             <p>律师:{context.casePersonDisplayNames(row.data.handling_lawyers)}</p>

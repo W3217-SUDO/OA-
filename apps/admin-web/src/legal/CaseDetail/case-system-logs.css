@@ -1,0 +1,21 @@
+.case-system-logs { min-width: 0; }
+.case-system-logs .ant-pagination { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.case-system-log-content { white-space: pre-wrap; overflow-wrap: anywhere; }
+.case-system-logs-cards { display: none; }
+.case-system-log-detail .ant-descriptions-item-content { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 768px) {
+  .case-system-logs-table { display: none; }
+  .case-system-logs-cards { display: block; }
+  .case-system-log-card { padding: 12px 0; border-bottom: 1px solid #e8e8e8; min-width: 0; overflow-wrap: anywhere; }
+  .case-system-log-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; color: #666; }
+  .case-system-log-card .ant-btn { min-height: 44px; min-width: 44px; }
+  .case-system-logs .ant-pagination-item,
+  .case-system-logs .ant-pagination-prev,
+  .case-system-logs .ant-pagination-next { min-width: 44px; height: 44px; line-height: 42px; }
+  .case-system-logs .ant-pagination-options .ant-select-selector { min-height: 44px; }
+}
+
+@media (max-width: 768px) {
+  .case-system-logs .ant-btn { min-height: 44px; min-width: 44px; }
+  .case-system-log-modal .ant-modal-close { width: 44px; height: 44px; }
+}

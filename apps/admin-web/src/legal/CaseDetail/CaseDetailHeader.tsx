@@ -3,6 +3,7 @@ import { Button,Card,Collapse } from "antd";
 import { useEffect, useId, useState } from "react";
 import { getCaseDetailSectionVisibility } from "../../caseDetailSectionVisibility";
 import type { CaseRow } from "../types";
+import { caseCourtDisplay } from "../courtDisplay";
 
 interface CaseDetailHeaderProps {
   viewingCase: CaseRow;
@@ -111,7 +112,7 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
         </div>
         <div id={courtPanelId} className="case-court-summary-grid" hidden={!courtExpanded}>
           {(sectionVisibility.firstCourt || !sectionVisibility.court) && <>
-            <p><strong>一审法院</strong><span>{viewingCase.data.first_court_name||viewingCase.data.first_instance_court||viewingCase.data.court||"—"}</span></p>
+            <p><strong>一审法院</strong><span title={caseCourtDisplay(viewingCase.data, "first")}>{caseCourtDisplay(viewingCase.data, "first")}</span></p>
             <p><strong>法庭</strong><span>{viewingCase.data.first_court_courtroom||viewingCase.data.courtroom||"—"}</span></p>
             <p><strong>一审案号</strong><span>{viewingCase.data.first_court_case_no||viewingCase.data.first_instance_case_no||viewingCase.data.court_case_no||"—"}</span></p>
             <p><strong>立案时间</strong><span>{viewingCase.data.first_court_filing_date||viewingCase.data.filing_date||"—"}</span></p>
@@ -119,14 +120,14 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
             <p><strong>判决日期</strong><span>{viewingCase.data.first_court_judgment_date||viewingCase.data.judgment_date||"—"}</span></p>
           </>}
           {sectionVisibility.secondCourt && <>
-            <p><strong>二审法院</strong><span>{viewingCase.data.second_court_name||viewingCase.data.second_instance_court||"—"}</span></p>
+            <p><strong>二审法院</strong><span title={caseCourtDisplay(viewingCase.data, "second")}>{caseCourtDisplay(viewingCase.data, "second")}</span></p>
             <p><strong>二审法庭</strong><span>{viewingCase.data.second_court_courtroom||"—"}</span></p>
             <p><strong>二审案号</strong><span>{viewingCase.data.second_court_case_no||viewingCase.data.second_instance_case_no||"—"}</span></p>
             <p><strong>二审立案日期</strong><span>{viewingCase.data.second_court_filing_date||"—"}</span></p>
             <p><strong>二审开庭日期</strong><span>{viewingCase.data.second_court_hearing_date||"—"}</span></p>
           </>}
           {sectionVisibility.executionCourt && <>
-            <p><strong>执行法院</strong><span>{viewingCase.data.execution_court_name||"—"}</span></p>
+            <p><strong>执行法院</strong><span title={caseCourtDisplay(viewingCase.data, "execution")}>{caseCourtDisplay(viewingCase.data, "execution")}</span></p>
             <p><strong>法庭</strong><span>{viewingCase.data.execution_court_courtroom||"—"}</span></p>
             <p><strong>执行案号</strong><span>{viewingCase.data.execution_court_case_no||"—"}</span></p>
             <p><strong>立案时间</strong><span>{viewingCase.data.execution_court_filing_date||"—"}</span></p>
@@ -134,7 +135,7 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
             <p><strong>生效日期</strong><span>{viewingCase.data.effective_date||"—"}</span></p>
           </>}
           {sectionVisibility.retrialCourt && <>
-            <p><strong>再审法院</strong><span>{viewingCase.data.retrial_court_name||"—"}</span></p>
+            <p><strong>再审法院</strong><span title={caseCourtDisplay(viewingCase.data, "retrial")}>{caseCourtDisplay(viewingCase.data, "retrial")}</span></p>
             <p><strong>法庭</strong><span>{viewingCase.data.retrial_court_courtroom||"—"}</span></p>
             <p><strong>再审案号</strong><span>{viewingCase.data.retrial_court_case_no||"—"}</span></p>
             <p><strong>立案时间</strong><span>{viewingCase.data.retrial_court_filing_date||"—"}</span></p>

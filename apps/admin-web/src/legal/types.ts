@@ -13,7 +13,9 @@ export type CaseRow = {
   department: string;
   description: string;
   created_at?: string;
-  data: Record<string, any>;
+  data: Record<string, any> & {
+    court_displays?: Record<string, { status: "resolved" | "empty" | "unresolved"; raw: string; name: string; error: string }>;
+  };
 };
 
 export type CaseFeeIncomingPaymentLink = {

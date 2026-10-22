@@ -103,6 +103,7 @@ async def _contract_customer_record_dict(
     contract_context: dict | None = None,
     identity: dict | None = None,
     payment_totals: dict | None = None,
+    court_names: dict[str, str] | None = None,
 ) -> dict:
     from app.core.cases import (
         _case_phase_changed_days,
@@ -132,6 +133,9 @@ async def _contract_customer_record_dict(
         return result
     data = result["data"]
     if record.module == "case":
+        from app.core.court_display import case_court_displays, court_names_by_code
+        names = court_names if court_names is not None else await court_names_by_code(db)
+        data["court_displays"] = case_court_displays(data, names, record.serial_no)
         phase_changed_date = _case_phase_changed_date(record)
         phase_changed_days = _case_phase_changed_days(record)
         data["phase_changed_at"] = phase_changed_date.isoformat()
@@ -316,6 +320,8 @@ async def _contract_customer_record_dicts(
     users_by_username = {user.username.lower(): user for user in users}
     from app.core.case_fee_payments import fee_payment_totals
     payment_totals = await fee_payment_totals(records, db) if allowed_fields is None or "finance.amount" in allowed_fields else {}
+    from app.core.court_display import court_names_by_code
+    court_names = await court_names_by_code(db) if any(record.module == "case" for record in records) else {}
     results = [
         await _contract_customer_record_dict(
             record, allowed_fields, db,
@@ -325,6 +331,7 @@ async def _contract_customer_record_dicts(
             contract_context=contract_context,
             identity=identity,
             payment_totals=payment_totals,
+            court_names=court_names,
         )
         for record in records
     ]

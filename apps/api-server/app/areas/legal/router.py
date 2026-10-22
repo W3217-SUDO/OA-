@@ -3872,7 +3872,11 @@ async def get_record_shell(record_id: int, identity: dict = Depends(current_iden
     record = await _ensure_case_read_visible(record_id, identity, db)
     if record.module != "case" or not await _can_search_all_cases_from_global_search(identity, db):
         await _require_record_module_menu(record.module, identity, db, action="查看")
-    return _record_dict(record, await _allowed_field_keys(identity, db))
+    result = _record_dict(record, await _allowed_field_keys(identity, db))
+    if record.module == "case":
+        from app.core.court_display import case_court_displays, court_names_by_code
+        result["data"]["court_displays"] = case_court_displays(result["data"], await court_names_by_code(db), record.serial_no)
+    return result
 
 
 @router.get(f"{settings.api_prefix}/records/{{record_id}}/history")
