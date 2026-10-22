@@ -142,6 +142,25 @@ test('hearing export reports busy immediately, blocks duplicate requests and rel
   assert.equal(env.current.exporting, false);
 });
 
+test('three hearing routes query their server scopes and preserve one-sided date boundaries', async t => {
+  const day = text => ({ format: () => text });
+  for (const [route, scope] of [['case-mine-schedule', 'mine'], ['case-dept-schedule', 'department'], ['case-company-schedule', 'company']]) {
+    const env = await specialCaseSetup(t, route);
+    assert.equal(env.current.active, true);
+    let pending;
+    await act(async () => { pending = env.current.search({ hearing_range: [day('2026-10-15'), null] }); });
+    assert.equal(env.requests[0].params.kind, 'schedule');
+    assert.equal(env.requests[0].params.scope, scope);
+    assert.equal(env.requests[0].params.hearing_from, '2026-10-15');
+    assert.equal(env.requests[0].params.hearing_to, undefined);
+    await act(async () => { env.requests[0].resolve({ data: { items: [], total: 0 } }); await pending; });
+    await act(async () => { pending = env.current.search({ hearing_range: [null, day('2026-10-18')] }); });
+    assert.equal(env.requests[1].params.hearing_from, undefined);
+    assert.equal(env.requests[1].params.hearing_to, '2026-10-18');
+    await act(async () => { env.requests[1].resolve({ data: { items: [], total: 0 } }); await pending; });
+  }
+});
+
 test('person selector hides an unsearched directory while retaining selected labels, values and role options', async t => {
   const source = ts.transpileModule(fs.readFileSync(new URL('../src/components/KeywordPersonSelect.tsx', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
@@ -256,7 +275,7 @@ test('special query submit and reset clear selected rows and start filtered serv
     setCompanySchedulePage: value => calls.push(['local-page', value]), specialCaseList: { active: true, pageSize: 200,
       search: (...args) => calls.push(['search', ...args]) }, caseQueryForm: { resetFields: () => calls.push(['reset']) } };
   const bar = find(page, node => ts.isJsxOpeningElement(node) && node.tagName.getText(page) === 'ListFilterBar'
-    && node.attributes.properties.some(attr => ts.isJsxAttribute(attr) && attr.name.getText(page) === 'className' && attr.initializer?.text === 'case-special-query'));
+    && node.attributes.properties.some(attr => ts.isJsxAttribute(attr) && attr.name.getText(page) === 'className' && attr.initializer?.getText(page).includes('case-special-query')));
   const finish = bar.attributes.properties.find(attr => attr.name?.getText(page) === 'onFinish').initializer.expression;
   runExpression(finish, page, bindings)({ customer: 'CODEX' });
   assert.deepEqual(calls.at(-1), ['search', { customer: 'CODEX' }, 1, 200]);

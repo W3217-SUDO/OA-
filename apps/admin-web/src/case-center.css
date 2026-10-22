@@ -287,8 +287,9 @@
 .case-detail-side-panel,.case-detail-side-panel section{min-width:0;max-width:100%}
 .case-detail-side-title{height:auto;min-height:31px;flex-wrap:wrap;gap:4px;padding:4px 8px}
 .case-detail-log-list{min-width:0;max-height:min(520px,60vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
-.case-log-entry.ant-btn{display:block;width:100%;min-width:0;max-width:100%;height:auto;padding:8px;text-align:left;font-size:12px;line-height:18px;white-space:normal;border-bottom:1px solid #eef2f6}
-.case-log-entry-time,.case-log-entry-content{display:block;min-width:0;max-width:100%;overflow-wrap:anywhere}
+.case-log-entry.ant-btn{display:block;width:100%;min-width:0;max-width:100%;min-height:44px;height:auto;padding:8px;text-align:left;font-size:12px;line-height:18px;white-space:normal;border-bottom:1px solid #eef2f6}
+.case-log-entry-time,.case-log-entry-operator,.case-log-entry-content{display:block;min-width:0;max-width:100%;overflow-wrap:anywhere}
+.case-log-entry-operator{margin-bottom:4px;color:#315c56;font-weight:600}
 .case-log-entry-time{margin-bottom:4px;color:#68727d;font-size:11px}
 .case-log-entry-content,.case-log-detail-content{white-space:pre-wrap;overflow-wrap:anywhere}
 .case-documents-layout{grid-template-columns:280px minmax(0,1fr);min-height:420px}
@@ -669,4 +670,21 @@
   .case-list-table-viewport{width:100%;min-width:0}
   .case-special-panel .case-bottom-actions>.ant-space{max-width:100%;flex-wrap:wrap}
   .case-special-panel .case-bottom-actions .ant-btn{min-height:44px;height:auto;white-space:normal}
+}
+
+/* 排期筛选在窄屏按可用宽度重排，日期范围不挤出表单。 */
+@media(max-width:900px){
+  .case-schedule-query{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .case-schedule-query .ant-form-item-control{min-width:0}
+  .case-schedule-query .ant-picker{width:100%;min-width:0}
+}
+@media(max-width:767px){
+  .case-schedule-query{grid-template-columns:minmax(0,1fr);gap:8px;padding:8px}
+  .case-schedule-query .ant-form-item-row{flex-direction:column;align-items:stretch}
+  .case-schedule-query .ant-form-item-label{flex:0 0 auto;text-align:left}
+  .case-schedule-query .ant-form-item-control,.case-schedule-query .ant-form-item-control-input{min-width:0;width:100%}
+  .case-schedule-query .ant-input,.case-schedule-query .ant-picker,.case-schedule-query .ant-select-selector,.case-schedule-query .ant-btn{height:auto!important;min-height:44px;font-size:14px}
+  .case-schedule-query .ant-picker-input,.case-schedule-query .ant-picker-input input{min-width:0}
+  .case-schedule-query .case-special-query-actions{padding-left:0}
+  .case-schedule-query .ant-space{max-width:100%;flex-wrap:wrap}
 }

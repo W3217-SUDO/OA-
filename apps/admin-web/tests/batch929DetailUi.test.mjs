@@ -129,3 +129,18 @@ test('R14/15/17/19 任务详情真实关联、分页、错误、重开刷新和�
   assert.equal(calls.length,before+1);
   await act(async()=>view.unmount());
 });
+
+
+test('案件日志侧栏展示真实记录人并保留正文、时间和查看对象', async () => {
+  const { CaseLogEntry } = await load('../src/legal/CaseDetail/CaseLogEntry.tsx');
+  const row = { id: 17, operator: 'operator-account', operator_display_name: '记录人姓名较长仍应完整显示', content: '第一行\n原始备注', created_at: '2026-09-29T10:42:45' };
+  const viewed = [];
+  const resolved = [];
+  const tree = CaseLogEntry({ log: row, personDisplayName: (account, name) => { resolved.push([account, name]); return name; }, onOpen: item => viewed.push(item) });
+  assert.deepEqual(resolved, [[row.operator, row.operator_display_name]]);
+  assert.equal(walk(tree, node => node.props?.className === 'case-log-entry-operator')[0].props.children, row.operator_display_name);
+  assert.equal(walk(tree, node => node.props?.className === 'case-log-entry-content')[0].props.children, row.content);
+  assert.equal(walk(tree, node => node.type === 'time')[0].props.dateTime, row.created_at);
+  tree.props.onClick();
+  assert.deepEqual(viewed, [row]);
+});

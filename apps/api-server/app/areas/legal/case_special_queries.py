@@ -42,13 +42,13 @@ async def query_special_case_records(
     if export_format and kind != "schedule":
         raise HTTPException(422, "此导出入口仅支持公司开庭排期")
     if kind == "schedule":
-        if scope != "company":
-            raise HTTPException(422, "公司开庭排期仅支持公司查询范围")
+        if export_format and scope != "company":
+            raise HTTPException(422, "此导出入口仅支持公司查询范围")
         from app.areas.legal.hearing_query import query_company_hearings
         from app.areas.legal.case_hearing_export import export_company_hearing_cases
         query = export_company_hearing_cases if export_format else query_company_hearings
         return await query(
-            identity, db, page=page, page_size=page_size,
+            identity, db, page=page, page_size=page_size, scope=scope,
             hearing_from=hearing_from, hearing_to=hearing_to, source_from=source_from, source_to=source_to,
             filters={"serial_no": serial_no, "customer": customer, "notary_no": notary_no,
                      "hearing_lawyer": hearing_lawyer, "assistant": assistant, "investigator": investigator,

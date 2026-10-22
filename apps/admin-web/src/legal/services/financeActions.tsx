@@ -34,7 +34,7 @@ export interface CaseFinanceDependencies {
     readonly setAssistedFeeSaving: React.Dispatch<React.SetStateAction<boolean>>;
     readonly assistedFeeForm: FormInstance<any>;
     readonly assistedFeeEditor: CaseAssistedFee | null;
-    readonly setCounselDetailHistory: React.Dispatch<React.SetStateAction<any[]>>;
+    readonly refreshCounselSystemLogs: () => void;
     readonly setAssistedFeeModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setAssistedFeeEditor: React.Dispatch<React.SetStateAction<CaseAssistedFee | null>>;
     readonly assistedFeeConfirming: CaseAssistedFee | null;
@@ -164,7 +164,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         }
     };
     const saveCounselDetailAssistedFee = async () => {
-        const { viewingCounselCase, setAssistedFeeSaving, assistedFeeForm, assistedFeeEditor, setCounselDetailHistory, setAssistedFeeModalOpen, setAssistedFeeEditor, counselDetailAssistedFeePageSize } = context;
+        const { viewingCounselCase, setAssistedFeeSaving, assistedFeeForm, assistedFeeEditor, refreshCounselSystemLogs, setAssistedFeeModalOpen, setAssistedFeeEditor, counselDetailAssistedFeePageSize } = context;
         if (!viewingCounselCase)
             return;
         setAssistedFeeSaving(true);
@@ -185,8 +185,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 await api.post(`/cases/${viewingCounselCase.id}/assisted-fees`, payload);
                 message.success("资助费用已提交，等待办理确认");
             }
-            const historyResponse = await api.get(`/records/${viewingCounselCase.id}/history`);
-            setCounselDetailHistory(historyResponse.data.items || []);
+            refreshCounselSystemLogs();
             setAssistedFeeModalOpen(false);
             setAssistedFeeEditor(null);
             assistedFeeForm.resetFields();
@@ -201,7 +200,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         }
     };
     const confirmCounselDetailAssistedFee = async () => {
-        const { viewingCounselCase, assistedFeeConfirming, setAssistedFeeSaving, assistedFeeConfirmForm, setCounselDetailHistory, setAssistedFeeConfirming, counselDetailAssistedFeePage, counselDetailAssistedFeePageSize } = context;
+        const { viewingCounselCase, assistedFeeConfirming, setAssistedFeeSaving, assistedFeeConfirmForm, refreshCounselSystemLogs, setAssistedFeeConfirming, counselDetailAssistedFeePage, counselDetailAssistedFeePageSize } = context;
         if (!viewingCounselCase || !assistedFeeConfirming)
             return;
         setAssistedFeeSaving(true);
@@ -211,8 +210,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 confirmed_date: formatRequiredDate(values.confirmed_date, "确认日期"),
                 remark: String(values.remark || "").trim(),
             });
-            const historyResponse = await api.get(`/records/${viewingCounselCase.id}/history`);
-            setCounselDetailHistory(historyResponse.data.items || []);
+            refreshCounselSystemLogs();
             message.success("资助费用已确认办理");
             setAssistedFeeConfirming(null);
             assistedFeeConfirmForm.resetFields();

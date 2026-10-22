@@ -1,4 +1,4 @@
-"""公司排期从案件法院资料和独立排期记录统一查询，不回填业务表。"""
+"""排期从权限范围内案件法院资料和独立排期记录统一查询，不回填业务表。"""
 
 from fastapi import HTTPException
 from sqlalchemy import String, case as sql_case, cast, func, literal, or_, select, union_all
@@ -8,7 +8,7 @@ from app.core.formatters import _case_hearing_datetime
 from app.models import BusinessRecord, FileAttachment, HearingSchedule, SystemParameter, User, WorkflowEvent
 
 
-async def query_company_hearings(identity, db, *, page, page_size, filters, hearing_from, hearing_to, source_from, source_to, export_case_ids=False):
+async def query_company_hearings(identity, db, *, page, page_size, filters, hearing_from, hearing_to, source_from, source_to, export_case_ids=False, scope="company"):
     from app.core.contracts import _contract_customer_record_dicts
     from app.core.permissions import _record_scope_conditions
     from app.core.system import _allowed_field_keys
@@ -60,7 +60,16 @@ async def query_company_hearings(identity, db, *, page, page_size, filters, hear
             raise RuntimeError(f"开庭排期查询不支持数据库方言：{dialect}")
         return select(1).select_from(values).where(matches(cast(values.c.value, String), filter_key)).exists()
 
-    conditions = [BusinessRecord.module == "case", BusinessRecord.status != "已合并", *(await _record_scope_conditions(identity, db))]
+    conditions = [BusinessRecord.module == "case", BusinessRecord.status != "已合并"]
+    # 与普通案件列表共用范围规则，不能将公司排期全量交给前端筛选。
+    if scope == "department":
+        from app.core.case_department_scope import department_case_condition
+        conditions.append(await department_case_condition(identity, db))
+    else:
+        conditions.extend(await _record_scope_conditions(identity, db))
+        if scope == "mine":
+            from app.core.permissions import _case_mine_scope_condition
+            conditions.append(await _case_mine_scope_condition(identity, db))
     columns = {
         "serial_no": BusinessRecord.serial_no, "customer": BusinessRecord.customer,
         "plaintiff": field("plaintiff"), "defendant": field("opponent", "defendant"),

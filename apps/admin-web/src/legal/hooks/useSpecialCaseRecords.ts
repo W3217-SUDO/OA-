@@ -24,7 +24,7 @@ function queryParams(query: Record<string, any>, kind: string, scope: string, pa
 }
 
 export function useSpecialCaseRecords(route: string) {
-  const kind = route === "case-company-schedule" ? "schedule" : route.endsWith("-unclaimed") ? "unclaimed" : route.endsWith("-no-refund") ? "refund" : "";
+  const kind = ["case-mine-schedule", "case-dept-schedule", "case-company-schedule"].includes(route) ? "schedule" : route.endsWith("-unclaimed") ? "unclaimed" : route.endsWith("-no-refund") ? "refund" : "";
   const scope = route.startsWith("case-mine") ? "mine" : route.startsWith("case-dept") ? "department" : "company";
   const [rows, setRows] = useState<SpecialCaseRow[]>([]);
   const [total, setTotal] = useState(0);

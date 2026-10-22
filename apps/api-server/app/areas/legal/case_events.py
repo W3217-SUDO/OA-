@@ -26,8 +26,11 @@ from app.models_shared import (
     CaseReminderInput,
 )
 from fastapi import APIRouter
+from app.areas.legal.case_system_logs import router as case_system_logs_router
 
 router = APIRouter()
+
+router.include_router(case_system_logs_router)
 
 @router.get(f"{settings.api_prefix}/cases/{{case_id}}/reminders")
 async def list_case_reminders(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):

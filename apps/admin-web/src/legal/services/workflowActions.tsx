@@ -82,7 +82,6 @@ export interface CaseWorkflowDependencies {
     readonly setExpandedCounselDocGroups: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
     readonly contracts: ContractRow[];
     readonly caseCustomers: CaseRow[];
-    readonly setCounselDetailHistory: React.Dispatch<React.SetStateAction<any[]>>;
     readonly applyCounselDetailTaskPageState: (payload: any, fallbackPage: number, fallbackPageSize: number) => CaseTaskPageState;
     readonly applyCounselDetailCustomerTaskPageState: (payload: any, fallbackPage: number, fallbackPageSize: number) => CaseTaskPageState;
     readonly setCounselDetailAttachments: React.Dispatch<React.SetStateAction<AttachmentRow[]>>;

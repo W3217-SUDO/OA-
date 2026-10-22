@@ -1,3 +1,4 @@
+import { CaseLogEntry } from "./CaseDetail/CaseLogEntry";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { CaseClueContextPanel } from "./CaseClueContextPanel";
 import { CaseClueSelect } from "./CaseClueSelect";
@@ -426,7 +427,7 @@ export default function CaseCenterPage({
   const [mergingCase, setMergingCase] = useState<CaseRow | null>(null);
   const [notaryInfoCase, setNotaryInfoCase] = useState<CaseRow | null>(null);
   const [settlementAmountCase, setSettlementAmountCase] = useState<CaseRow | null>(null);
-  const [counselDetailHistory, setCounselDetailHistory] = useState<any[]>([]);
+  const [counselSystemLogsRevision, setCounselSystemLogsRevision] = useState(0);
   const [counselDetailTasks, setCounselDetailTasks] = useState<TaskRow[]>([]);
   const [counselDetailCustomerTasks, setCounselDetailCustomerTasks] = useState<TaskRow[]>([]);
   const [counselDetailFinance, setCounselDetailFinance] = useState<CaseRow[]>([]);
@@ -792,7 +793,7 @@ export default function CaseCenterPage({
     get setExpandedCounselDocGroups() { return setExpandedCounselDocGroups; },
     get contracts() { return contracts; },
     get caseCustomers() { return caseCustomers; },
-    get setCounselDetailHistory() { return setCounselDetailHistory; },
+
     get applyCounselDetailTaskPageState() { return applyCounselDetailTaskPageState; },
     get applyCounselDetailCustomerTaskPageState() { return applyCounselDetailCustomerTaskPageState; },
     get setCounselDetailAttachments() { return setCounselDetailAttachments; },
@@ -1419,7 +1420,7 @@ export default function CaseCenterPage({
     get setAssistedFeeSaving() { return setAssistedFeeSaving; },
     get assistedFeeForm() { return assistedFeeForm; },
     get assistedFeeEditor() { return assistedFeeEditor; },
-    get setCounselDetailHistory() { return setCounselDetailHistory; },
+    get refreshCounselSystemLogs() { return () => setCounselSystemLogsRevision(value => value + 1); },
     get setAssistedFeeModalOpen() { return setAssistedFeeModalOpen; },
     get setAssistedFeeEditor() { return setAssistedFeeEditor; },
     get assistedFeeConfirming() { return assistedFeeConfirming; },
@@ -3016,8 +3017,8 @@ export default function CaseCenterPage({
           </Space>
         </div>}
         {specialMode==="invoice"&&invoiceBatch.error&&<Alert type="error" showIcon title={invoiceBatch.error} action={<Button disabled={invoiceBatch.loading||!invoiceBatch.attachmentIds.length} onClick={()=>void loadCaseInvoiceBatch()}>重试查询</Button>}/>}
-        {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className="case-special-query" onFinish={values=>{setCaseQuery(values);setSelectedCaseKeys([]);setCompanySchedulePage(1);if(specialCaseList.active)void specialCaseList.search(values,1,specialCaseList.pageSize);else if(specialMode==="receipt")void receiptList.search(values,1,receiptList.pageSize);}}>
-          {(specialFilters[specialMode]||[]).map(([key,label,type,placeholder])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker placeholder={placeholder!==undefined?[placeholder,placeholder]:undefined}/>:type==="select"?<Select allowClear placeholder={placeholder} options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input placeholder={placeholder}/>}</Form.Item>)}
+        {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className={`case-special-query${specialMode === "schedule" ? " case-schedule-query" : ""}`} onFinish={values=>{setCaseQuery(values);setSelectedCaseKeys([]);setCompanySchedulePage(1);if(specialCaseList.active)void specialCaseList.search(values,1,specialCaseList.pageSize);else if(specialMode==="receipt")void receiptList.search(values,1,receiptList.pageSize);}}>
+          {(specialFilters[specialMode]||[]).map(([key,label,type,placeholder])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker allowEmpty={specialMode === "schedule" ? [true,true] : undefined} placeholder={placeholder!==undefined?[placeholder,placeholder]:undefined}/>:type==="select"?<Select allowClear placeholder={placeholder} options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input placeholder={placeholder}/>}</Form.Item>)}
           <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button>{specialMode==="receipt"&&receiptList.canUpload&&<Button type="primary" onClick={()=>{const rows=receiptRows.filter(row=>selectedCaseKeySet.has(String(row.id)));if(!rows.length)return message.warning("请选择费用记录");if(new Set(rows.map(row=>row.customer)).size>1)return message.warning("批量上传的费用必须属于同一客户");setReceiptUploadRows(rows);}}>批量上传</Button>}<Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setSelectedCaseKeys([]);setCompanySchedulePage(1);if(specialCaseList.active)void specialCaseList.search({},1,specialCaseList.pageSize);else if(specialMode==="receipt")void receiptList.search({},1,receiptList.pageSize);}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>
         </ListFilterBar>}
         {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void stageStatistics.load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
@@ -4000,7 +4001,7 @@ export default function CaseCenterPage({
                   .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索加载失败"));
               }
               if (key === "logs" && viewingCounselCase) {
-                void api.get(`/records/${viewingCounselCase.id}/history`).then(({ data }) => setCounselDetailHistory(data.items || []));
+                setCounselSystemLogsRevision(value => value + 1);
                 void api.get(`/cases/${viewingCounselCase.id}/logs`).then(({ data }) => setCounselLogs(data.items || []));
               }
             }}
@@ -4107,10 +4108,9 @@ export default function CaseCenterPage({
                 openInformDateBatchUpdate={openInformDateBatchUpdate}
               />},
               {key:"logs",label:"系统日志",children:<CaseSystemLogsPanel
-                logs={counselDetailHistory}
-                capabilities={counselDetailCapabilities}
+                caseId={viewingCounselCase.id}
+                refreshKey={counselSystemLogsRevision}
                 casePersonDisplayName={casePersonDisplayName}
-                onCreateLog={openCounselLogCreator}
               />},
               {key:"tasks",label:"案件任务",children:<CaseCaseTasksPanel
                 tasks={counselDetailTasks}
@@ -4154,10 +4154,7 @@ export default function CaseCenterPage({
                 <div className="case-detail-side-title"><span>案件日志</span>{counselDetailCapabilities.can_create_log && <Space size={0}><Button type="link" size="small" icon={<PlusOutlined />} onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button type="link" size="small" onClick={()=>openCounselLogCreator("refund")}>退费日志</Button></Space>}</div>
                 <div className="case-detail-log-list">
                   {counselLogs.length ? counselLogs.map((item) => (
-                    <Button key={item.id} className="case-log-entry" type="text" block onClick={() => setViewingCaseLog(item)}>
-                      <time className="case-log-entry-time" dateTime={item.created_at}>{item.created_at}</time>
-                      <span className="case-log-entry-content">{item.content}</span>
-                    </Button>
+                    <CaseLogEntry key={item.id} log={item} personDisplayName={casePersonDisplayName} onOpen={setViewingCaseLog} />
                   )) : <p className="case-detail-empty">暂无日志</p>}
                 </div>
               </section>
