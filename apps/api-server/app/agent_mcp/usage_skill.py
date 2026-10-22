@@ -18,7 +18,7 @@ INSTRUCTIONS = (
 _BODY = """\
 ## 一、你在做什么
 
-你通过用户本人的 OA 账号操作沪知办公系统。**权限和用户在 OA 里的权限完全一致**：用户看不到、办不了的，你也看不到、办不了。系统参数、菜单、角色权限、用户授权、回收站、技能插件管理等系统管理类接口不开放；OA 里的删除都是**逻辑删除**（管理员可在回收站恢复）。
+你通过用户本人的 OA 账号操作沪知办公系统。**权限和用户在 OA 里的权限完全一致**：用户看不到、办不了的，你也看不到、办不了。系统参数、菜单、角色权限、用户授权、回收站、技能插件管理等系统管理类接口不开放；OA 里的删除都是**逻辑删除**；每一次改动都在服务器留痕，管理员可在“变更记录”里一键还原。
 
 ## 二、先做什么（每次连接后）
 
@@ -85,7 +85,7 @@ def _scope_line(context, catalog) -> str:
         tools = token_visible_tools(context, catalog)
     else:
         tools = list(catalog.tools)
-    write = "可新增、修改、删除（写入前必须先让用户确认）" if getattr(context, "write_allowed", False) or not getattr(context, "readonly", False) else "只读（不能新增、修改、删除）"
+    write = "可新增、修改、删除（普通写入直接执行并留痕；审批、盖章与对外转交、付款与核销、开具或作废发票需用户在网页确认）" if getattr(context, "write_allowed", False) or not getattr(context, "readonly", False) else "只读（不能新增、修改、删除）"
     groups = getattr(context, "groups", None)
     if groups:
         names = [label for _, (label, ids) in BUSINESS_BUNDLES.items() if set(ids) <= set(groups)]
@@ -101,7 +101,7 @@ def build_skill(context, catalog) -> str:
     """完整技能文本（Markdown，带 frontmatter），开头按当前连接动态写明业务范围和读写权限。"""
     return (
         f"---\nname: {SKILL_NAME}\n"
-        "description: 沪知办公系统（OA）MCP 的使用方法：如何查找接口、查询与写入分开、写入前向用户确认、权限与错误处理。连接 OA 后先读它。\n---\n\n"
+        "description: 沪知办公系统（OA）MCP 的使用方法：如何查找接口、怎么调用、普通写入直接执行并留痕、四类操作需网页确认、权限与错误处理。连接 OA 后先读它。\n---\n\n"
         "# 沪知办公系统（OA）MCP 使用指南\n\n"
         f"## 当前连接\n\n{_scope_line(context, catalog)}\n\n" + _BODY
     )
