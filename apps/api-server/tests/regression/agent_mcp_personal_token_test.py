@@ -109,6 +109,18 @@ class PersonalTokenTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(listed[0]["last_used_at"])
 
 
+class PermissionTest(unittest.TestCase):
+    def test_admin_or_granted_action_may_use_personal_token(self):
+        from app.agent_permissions import MCP_PERSONAL_TOKEN_ACTION, USER_ACTION_KEYS, can_use_mcp_personal_token
+        self.assertIn(MCP_PERSONAL_TOKEN_ACTION, USER_ACTION_KEYS)
+        staff = {"username": "tgn", "role": "user", "_user_action_keys": []}
+        with patch("app.agent_permissions.is_actual_system_admin", lambda identity: identity["role"] == "admin"):
+            self.assertFalse(can_use_mcp_personal_token(staff))
+            self.assertTrue(can_use_mcp_personal_token({**staff, "_user_action_keys": [MCP_PERSONAL_TOKEN_ACTION]}))
+            self.assertFalse(can_use_mcp_personal_token({**staff, "_user_action_keys": ["agent.settings.global.manage"]}))
+            self.assertTrue(can_use_mcp_personal_token({"username": "boss", "role": "admin"}))
+
+
 class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
     def _context(self, token_id):
         return AuthContext(application=object(), bearer="jwt", scope={}, token_id=token_id)

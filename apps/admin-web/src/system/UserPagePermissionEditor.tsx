@@ -21,6 +21,7 @@ type UserPagePermissions = {
 type PagePermissionNode = ReturnType<typeof buildMenuTreeData>[number];
 const BASE_MENU_KEYS = ["dashboard", "user-center"];
 const AGENT_GLOBAL_MANAGE_ACTION = "agent.settings.global.manage";
+const MCP_PERSONAL_TOKEN_ACTION = "agent.mcp.personal_token";
 
 function menuTreeKeys(nodes: PagePermissionNode[]): string[] {
   return nodes.flatMap((node) => [String(node.key), ...menuTreeKeys(node.children || [])]);
@@ -96,6 +97,7 @@ export function UserPagePermissionEditor({
   const [menuRows, setMenuRows] = useState<MenuRow[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [agentGlobalManagement, setAgentGlobalManagement] = useState(false);
+  const [mcpPersonalToken, setMcpPersonalToken] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -113,6 +115,7 @@ export function UserPagePermissionEditor({
     setSnapshot(null);
     setSelectedKeys([]);
     setAgentGlobalManagement(false);
+    setMcpPersonalToken(false);
     setMenuRows([]);
     setError("");
     setSaving(false);
@@ -150,6 +153,7 @@ export function UserPagePermissionEditor({
         if (!Array.isArray(menuResponse.data.items)) throw new Error("页面目录返回不完整，请重新加载");
         setSnapshot(permissionResponse.data);
         setAgentGlobalManagement(permissionResponse.data.effective.user_action_keys.includes(AGENT_GLOBAL_MANAGE_ACTION));
+        setMcpPersonalToken(permissionResponse.data.effective.user_action_keys.includes(MCP_PERSONAL_TOKEN_ACTION));
         setMenuRows(menuResponse.data.items);
         const nextMenuTree = buildMenuTreeData(menuResponse.data.items.filter((item) => item.is_active));
         setSelectedKeys(effectiveSelectedPageKeys(permissionResponse.data.effective.menu_keys, nextMenuTree));
@@ -174,12 +178,13 @@ export function UserPagePermissionEditor({
     setError("");
     try {
       // 菜单保存只在明确切换复选框时提交动作授权，恢复菜单继承不改变动作授权。
-      const actionChanged = agentGlobalManagement !== snapshot.effective.user_action_keys.includes(AGENT_GLOBAL_MANAGE_ACTION);
+      const actionChanged = agentGlobalManagement !== snapshot.effective.user_action_keys.includes(AGENT_GLOBAL_MANAGE_ACTION)
+        || mcpPersonalToken !== snapshot.effective.user_action_keys.includes(MCP_PERSONAL_TOKEN_ACTION);
       const payload = inherit
         ? { clear_menu_keys: true }
         : {
           menu_keys: selectedPagePermissionKeys(selectedKeys, menuTree),
-          ...(actionChanged ? { action_keys: agentGlobalManagement ? [AGENT_GLOBAL_MANAGE_ACTION] : [] } : {}),
+          ...(actionChanged ? { action_keys: [...(agentGlobalManagement ? [AGENT_GLOBAL_MANAGE_ACTION] : []), ...(mcpPersonalToken ? [MCP_PERSONAL_TOKEN_ACTION] : [])] } : {}),
         };
       const { data } = await api.patch<UserPagePermissions>(
         `/system/users/${snapshot.user_id}/permissions`,
@@ -190,6 +195,7 @@ export function UserPagePermissionEditor({
       validatePermissionResponse(data, snapshot.user_id);
       setSnapshot(data);
       setAgentGlobalManagement(data.effective.user_action_keys.includes(AGENT_GLOBAL_MANAGE_ACTION));
+      setMcpPersonalToken(data.effective.user_action_keys.includes(MCP_PERSONAL_TOKEN_ACTION));
       setSelectedKeys(effectiveSelectedPageKeys(data.effective.menu_keys, menuTree));
       notifyPermissionsUpdated();
       message.success(inherit ? "已恢复岗位/角色页面授权" : "用户页面授权已保存");
@@ -247,6 +253,11 @@ export function UserPagePermissionEditor({
             <div style={{ marginBottom: 12 }}>
               <Checkbox checked={agentGlobalManagement} disabled={saving} onChange={event => setAgentGlobalManagement(event.target.checked)}>
                 管理全所智能体技能和连接器
+              </Checkbox>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <Checkbox checked={mcpPersonalToken} disabled={saving} onChange={event => setMcpPersonalToken(event.target.checked)}>
+                允许在自己电脑上用 MCP 只读连接 OA（个人访问令牌，权限不超出本人账号）
               </Checkbox>
             </div>
             <div style={{ maxHeight: "55vh", overflow: "auto" }}>

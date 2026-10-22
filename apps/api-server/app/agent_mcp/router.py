@@ -143,9 +143,9 @@ class AccessTokenInput(BaseModel):
 
 
 def _require_admin(identity: dict) -> None:
-    from app.agent_permissions import is_actual_system_admin
-    if not is_actual_system_admin(identity):
-        raise HTTPException(403, "个人访问令牌目前只对系统管理员开放")
+    from app.agent_permissions import can_use_mcp_personal_token
+    if not can_use_mcp_personal_token(identity):
+        raise HTTPException(403, "该账号没有使用 MCP 个人访问令牌的授权")
 
 
 @router.get("/access-tokens")
