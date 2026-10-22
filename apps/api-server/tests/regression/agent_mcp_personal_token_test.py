@@ -145,15 +145,34 @@ class PermissionTest(unittest.TestCase):
         self.assertTrue(can_write_with_mcp_token({**staff, "_user_action_keys": [MCP_PERSONAL_TOKEN_WRITE_ACTION]}))
 
 
+class BusinessOnlyTest(unittest.TestCase):
+    def _spec(self, method, path):
+        return SimpleNamespace(method=method, path="/api/v1" + path)
+
+    def test_system_admin_interfaces_are_not_exposed_but_business_and_lookups_are(self):
+        allowed = personal_tokens.token_tool_allowed
+        for method, path in (("GET", "/cases"), ("POST", "/customers"), ("DELETE", "/contracts/{contract_id}"), ("GET", "/records"),
+                             ("GET", "/agent/documents"), ("GET", "/templates"), ("GET", "/hr/departments"),
+                             ("GET", "/system/parameters/options"), ("GET", "/system/parameters/cause/autocomplete")):
+            self.assertTrue(allowed(self._spec(method, path)), (method, path))
+        for method, path in (("GET", "/system/parameters"), ("POST", "/system/parameters"), ("DELETE", "/system/parameters/{parameter_id}"),
+                             ("PATCH", "/system/configs/{config_key}"), ("POST", "/system/menus"), ("PATCH", "/system/role-permissions/{role}"),
+                             ("PATCH", "/system/users/{user_id}/permissions"), ("POST", "/system/recycle-bin/restore"),
+                             ("POST", "/agent/global-skills"), ("GET", "/agent/skills"), ("POST", "/agent-admin/dsh-plugins/install"),
+                             ("GET", "/capability-market/resources/{item_id}"), ("GET", "/hr/job-roles/{role_id}/permissions"),
+                             ("PATCH", "/hr/job-roles/{role_id}/permissions")):
+            self.assertFalse(allowed(self._spec(method, path)), (method, path))
+
+
 class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
     def _context(self, token_id, write=False):
         return AuthContext(application=object(), bearer="jwt", scope={}, token_id=token_id, write_allowed=write)
 
     async def test_write_tools_are_hidden_and_refused_for_personal_token(self):
         from app.agent_mcp import gateway, service
-        reader = SimpleNamespace(name="list_cases", is_write=False, to_mcp=lambda: {
+        reader = SimpleNamespace(name="list_cases", is_write=False, method="GET", path="/api/v1/cases", to_mcp=lambda: {
             "name": "list_cases", "description": "查案", "inputSchema": {"type": "object"}})
-        writer = SimpleNamespace(name="create_case", is_write=True, to_mcp=lambda: {
+        writer = SimpleNamespace(name="create_case", is_write=True, method="POST", path="/api/v1/cases", to_mcp=lambda: {
             "name": "create_case", "description": "建案", "inputSchema": {"type": "object"}})
         catalog = SimpleNamespace(tools=[reader, writer], get=lambda name: {"list_cases": reader, "create_case": writer}[name])
         for token_id, expected in ((7, {"oa_list_tool_groups", "oa_search_tools", "list_cases"}),

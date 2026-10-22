@@ -43,10 +43,11 @@ async def _list_tools(_, params):
         raise MCPError(-32602, "工具目录不接收未知分页游标")
     context = get_auth_context()
     catalog = get_catalog(context.application)
-    from app.agent_mcp.personal_tokens import direct_write_view
+    from app.agent_mcp.personal_tokens import direct_write_view, token_tool_allowed
     tools = [
         types.Tool.model_validate(direct_write_view(spec.to_mcp(), spec.method) if context.readonly and spec.is_write else spec.to_mcp())
-        for spec in catalog.tools if not (context.readonly and spec.is_write and not context.write_allowed)
+        for spec in catalog.tools
+        if not (context.readonly and ((spec.is_write and not context.write_allowed) or not token_tool_allowed(spec)))
     ]
     tools.insert(0, types.Tool(
         name="oa_search_tools", title="发现 OA 业务操作", description="按业务目标搜索全部已挂载的 OA 工具；结果按 domain 业务域分组，并返回真实参数模式、必填参数和 files 参数说明。",

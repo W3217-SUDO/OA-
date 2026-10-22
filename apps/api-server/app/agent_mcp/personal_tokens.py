@@ -167,3 +167,18 @@ def direct_write_view(tool: dict, method: str) -> dict:
         description += _DIRECT_TAIL
     prefix = "【删除操作】" if method == "DELETE" else "【写入操作】"
     return {**tool, "title": f"{kind}：{tool.get('title', '')}", "description": prefix + description}
+
+
+# 个人令牌只开放业务接口：系统管理类（系统参数/配置/菜单/角色权限/回收站/用户授权）和智能体技能、插件、连接器管理不开放。
+_SYSTEM_PREFIXES = ("/system/", "/agent/skills", "/agent/global-skills", "/agent/system-skills", "/agent-admin/", "/capability-market")
+# 业务表单取值用的只读字典（案由联想、参数选项）保留，否则 agent 填不出合法的案件类型等取值。
+_SYSTEM_READ_LOOKUPS = {("GET", "/system/parameters/options"), ("GET", "/system/parameters/cause/autocomplete")}
+
+
+def token_tool_allowed(spec) -> bool:
+    from app.config import settings
+    path = spec.path.removeprefix(settings.api_prefix)
+    if (spec.method, path) in _SYSTEM_READ_LOOKUPS:
+        return True
+    # 任何“…/permissions”都是授权配置（含岗位权限），不属于业务接口。
+    return not path.startswith(_SYSTEM_PREFIXES) and "/permissions" not in path

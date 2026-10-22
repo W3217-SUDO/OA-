@@ -103,7 +103,8 @@ def search_tools(query: str, limit: int = 8, *, group_id: str | None = None, sub
     if context.readonly:  # 令牌：多取一些再按读写范围过滤，避免结果被不可用的工具占满
         from app.agent_mcp.personal_tokens import direct_write_view
         found = catalog.search(query.strip(), limit=50, group_id=group_id, subgroup_id=subgroup_id)
-        usable = [spec for spec in found if context.write_allowed or not spec.is_write][:limit]
+        from app.agent_mcp.personal_tokens import token_tool_allowed
+        usable = [spec for spec in found if (context.write_allowed or not spec.is_write) and token_tool_allowed(spec)][:limit]
         return [direct_write_view(public_tool(spec), spec.method) if spec.is_write else public_tool(spec) for spec in usable]
     return [public_tool(spec) for spec in catalog.search(query.strip(), limit=limit, group_id=group_id, subgroup_id=subgroup_id)]
 
@@ -175,6 +176,10 @@ async def call_tool(name: str, arguments: dict, *, conversation_id: str | None =
     context = get_auth_context()
     identity = await authenticated_identity()
     spec = get_catalog(context.application).get(name)
+    if context.readonly:
+        from app.agent_mcp.personal_tokens import token_tool_allowed
+        if not token_tool_allowed(spec):
+            raise HTTPException(403, "该接口属于系统管理类，不对个人访问令牌开放；个人令牌只开放业务接口")
     if context.readonly and spec.is_write and not context.write_allowed:
         raise HTTPException(403, "该账号没有 MCP 写入授权，只能读取；需要新增、修改、删除请联系管理员授予")
     reject_credentials(arguments)
