@@ -101,7 +101,7 @@ export function SystemMenuManagement({
 
   return (
     <>
-      <Card className="panel system-focused" title="菜单列表">
+      <Card className="panel system-focused system-menu-list-panel" title="菜单列表">
         <Alert
           type="info"
           showIcon
@@ -130,6 +130,20 @@ export function SystemMenuManagement({
           <Button onClick={() => onMenuSearch(menuSearchInput)}>查询</Button>
           <Button onClick={onResetMenuSearch}>重置</Button>
         </Space>
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 8px 8px" }}>
+          <Space size="small">
+            <Input
+              aria-label="菜单页码"
+              value={menuJumpPage}
+              onChange={(event) => onMenuJumpPageChange(event.target.value.replace(/\D/g, ""))}
+              onPressEnter={onJumpToMenuPage}
+              placeholder="页码"
+              size="small"
+              style={{ width: 64 }}
+            />
+            <Button size="small" onClick={onJumpToMenuPage}>GO</Button>
+          </Space>
+        </div>
         <Table
           rowKey="id"
           size="small"
@@ -173,24 +187,11 @@ export function SystemMenuManagement({
             total: filteredSystemMenus.length,
             showSizeChanger: true,
             pageSizeOptions: ["10", "15", "20", "30", "50", "100", "200"],
-            showQuickJumper: true,
-            onChange: (page, size) => { onMenuPageChange(page, size); },
+                        onChange: (page, size) => { onMenuPageChange(page, size); },
             showTotal: (total) => `共 ${total} 项`,
           }}
           scroll={{ x: 1100 }}
         />
-        <Space size="small" style={{ float: "right", marginTop: -40, marginRight: 8 }}>
-          <Input
-            aria-label="菜单页码"
-            value={menuJumpPage}
-            onChange={(event) => onMenuJumpPageChange(event.target.value.replace(/\D/g, ""))}
-            onPressEnter={onJumpToMenuPage}
-            placeholder="页码"
-            size="small"
-            style={{ width: 64 }}
-          />
-          <Button size="small" onClick={onJumpToMenuPage}>GO</Button>
-        </Space>
       </Card>
       {legacyMenus.length > 0 && (
         <Card

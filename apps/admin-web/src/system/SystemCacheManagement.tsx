@@ -69,6 +69,20 @@ export function SystemCacheManagement({
         description={`下次计划时间：${formatTime(cacheSummary.next_auto_cleanup_at)}；手动清理仅用于管理员立即刷新缓存。`}
         style={{ marginBottom: 12 }}
       />}
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 8px 8px" }}>
+        <Space size="small">
+          <Input
+            aria-label="缓存页码"
+            value={cacheJumpPage}
+            onChange={(event) => onCacheJumpPageChange(event.target.value.replace(/\D/g, ""))}
+            onPressEnter={onJumpToCachePage}
+            placeholder="页码"
+            size="small"
+            style={{ width: 64 }}
+          />
+          <Button size="small" onClick={onJumpToCachePage}>GO</Button>
+        </Space>
+      </div>
       <Table
         rowKey="key"
         size="small"
@@ -124,20 +138,8 @@ export function SystemCacheManagement({
         dataSource={caches}
         scroll={{ x: 1250 }}
         locale={{ emptyText: empty }}
-        pagination={{ current: cachePage, pageSize: cachePageSize, total: cacheTotal, showTotal: (total) => `共有${total}条`, showSizeChanger: true, pageSizeOptions: ["10", "15", "20", "50", "100", "200"], showQuickJumper: { goButton: "GO" }, onChange: (page, pageSize) => { onLoadCaches(page, pageSize); } }}
+        pagination={{ current: cachePage, pageSize: cachePageSize, total: cacheTotal, showTotal: (total) => `共有${total}条`, showSizeChanger: true, pageSizeOptions: ["10", "15", "20", "50", "100", "200"], onChange: (page, pageSize) => { onLoadCaches(page, pageSize); } }}
       />
-      <Space size="small" style={{ float: "right", marginTop: -40, marginRight: 8 }}>
-        <Input
-          aria-label="缓存页码"
-          value={cacheJumpPage}
-          onChange={(event) => onCacheJumpPageChange(event.target.value.replace(/\D/g, ""))}
-          onPressEnter={onJumpToCachePage}
-          placeholder="页码"
-          size="small"
-          style={{ width: 64 }}
-        />
-        <Button size="small" onClick={onJumpToCachePage}>GO</Button>
-      </Space>
     </Card>
   );
 }

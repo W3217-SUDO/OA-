@@ -206,6 +206,15 @@ body {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
+/* 分页条固定在结果区底部：表格内容比结果区高时也始终看得见、点得到。 */
+.page-workbench .ant-table-pagination {
+  position: sticky;
+  z-index: 3;
+  bottom: 0;
+  margin: 0;
+  padding: 8px 0 6px;
+  background: #fff;
+}
 .page-workbench > .ant-card > .ant-card-body > .ant-table-wrapper .ant-table-thead > tr > th {
   position: sticky;
   z-index: 2;

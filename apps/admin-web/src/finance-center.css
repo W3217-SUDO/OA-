@@ -2164,3 +2164,13 @@
   padding-right: 5px !important;
   font-variant-numeric: tabular-nums;
 }
+
+/* 查询/清空按钮跟随筛选区顺序排列。原先按像素钉在固定的 top/left，页面上方出现提示条或筛选项换行时就会压在筛选项上。 */
+.finance-original-query-actions.finance-original-query-actions {
+  position: static;
+  top: auto;
+  left: auto;
+  min-height: 24px;
+  padding: 6px 8px 6px 68px;
+  border-bottom: 1px solid #ddd;
+}
