@@ -100,9 +100,11 @@ def search_tools(query: str, limit: int = 8, *, group_id: str | None = None, sub
         raise HTTPException(422, "工具搜索需要非空关键词和 1 至 12 的结果数量")
     context = get_auth_context()
     catalog = get_catalog(context.application)
-    if context.readonly:  # 只读令牌：多取一些再去掉写入类工具，避免结果被写工具占满
+    if context.readonly:  # 令牌：多取一些再按读写范围过滤，避免结果被不可用的工具占满
+        from app.agent_mcp.personal_tokens import direct_write_view
         found = catalog.search(query.strip(), limit=50, group_id=group_id, subgroup_id=subgroup_id)
-        return [public_tool(spec) for spec in found if not spec.is_write][:limit]
+        usable = [spec for spec in found if context.write_allowed or not spec.is_write][:limit]
+        return [direct_write_view(public_tool(spec), spec.method) if spec.is_write else public_tool(spec) for spec in usable]
     return [public_tool(spec) for spec in catalog.search(query.strip(), limit=limit, group_id=group_id, subgroup_id=subgroup_id)]
 
 
@@ -173,8 +175,8 @@ async def call_tool(name: str, arguments: dict, *, conversation_id: str | None =
     context = get_auth_context()
     identity = await authenticated_identity()
     spec = get_catalog(context.application).get(name)
-    if context.readonly and spec.is_write:
-        raise HTTPException(403, "个人访问令牌是只读的，不能调用写入类工具")
+    if context.readonly and spec.is_write and not context.write_allowed:
+        raise HTTPException(403, "该账号没有 MCP 写入授权，只能读取；需要新增、修改、删除请联系管理员授予")
     reject_credentials(arguments)
     if context.bearer in json.dumps(arguments, ensure_ascii=False) or "oamcp_" in json.dumps(arguments, ensure_ascii=False):
         raise HTTPException(422, "工具参数不能包含当前登录凭据")
@@ -190,6 +192,11 @@ async def call_tool(name: str, arguments: dict, *, conversation_id: str | None =
         arguments = await prepare_business_arguments(spec, arguments, params, identity, db)
         params = spec.validate_arguments(arguments)
         reject_credentials(params)
+        if context.write_allowed:
+            # 读写令牌：确认由本地 agent 向用户负责，这里直接执行原接口（原权限、数据范围、校验照常生效）。
+            from app.agent_mcp.personal_tokens import check_write_rate
+            check_write_rate(context.token_id)
+            return await execute_original(spec, params, case_origin=case_origin, conversation_id=conversation_id)
         path = render_path(spec, params)
         # 写操作只落准备记录，不调用任何业务写入或新建附件。
         request_id = uuid4().hex

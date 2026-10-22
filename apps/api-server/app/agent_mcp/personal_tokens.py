@@ -23,8 +23,10 @@ DEFAULT_DAYS = 30
 MAX_DAYS = 90
 MAX_ACTIVE_PER_USER = 5
 RATE_LIMIT_PER_MINUTE = 120
+WRITE_RATE_LIMIT_PER_MINUTE = 30  # 写入类调用，每分钟上限；写入没有服务端人工确认，上限更低
 SESSION_MINUTES = 5  # 令牌换出的内部登录凭据有效期，只在单次请求内使用
 _calls: dict[int, deque] = defaultdict(deque)
+_write_calls: dict[int, deque] = defaultdict(deque)
 
 
 def token_hash(plain: str) -> str:
@@ -92,7 +94,7 @@ async def list_calls(identity: dict, db, limit: int = 50) -> list[dict]:
     rows = (await db.scalars(select(McpCallLog).where(McpCallLog.username == identity["username"])
                              .order_by(McpCallLog.id.desc()).limit(limit))).all()
     return [{"id": row.id, "token_id": row.token_id, "tool_name": row.tool_name, "ok": bool(row.ok),
-             "detail": row.detail, "created_at": row.created_at} for row in rows]
+             "is_write": bool(row.is_write), "detail": row.detail, "created_at": row.created_at} for row in rows]
 
 
 def _check_rate(token_id: int) -> None:
@@ -102,6 +104,16 @@ def _check_rate(token_id: int) -> None:
         window.popleft()
     if len(window) >= RATE_LIMIT_PER_MINUTE:
         raise HTTPException(429, f"调用过于频繁，每分钟最多 {RATE_LIMIT_PER_MINUTE} 次")
+    window.append(now)
+
+
+def check_write_rate(token_id: int) -> None:
+    window = _write_calls[token_id]
+    now = time.monotonic()
+    while window and now - window[0] > 60:
+        window.popleft()
+    if len(window) >= WRITE_RATE_LIMIT_PER_MINUTE:
+        raise HTTPException(429, f"写入调用过于频繁，每分钟最多 {WRITE_RATE_LIMIT_PER_MINUTE} 次")
     window.append(now)
 
 
@@ -121,22 +133,37 @@ async def authenticate(plain: str) -> tuple[int, str, str]:
         return row.id, row.username, create_session(row.username, role, SESSION_MINUTES)
 
 
-def _summary(arguments) -> str:
+def _summary(arguments, limit: int = 300) -> str:
     try:
         text = json.dumps(arguments, ensure_ascii=False, default=str)
     except (TypeError, ValueError):
         text = "?"
-    return text[:300]
+    return text[:limit]
 
 
-async def record_call(token_id: int, username: str, tool_name: str, ok: bool, arguments=None, detail: str = "") -> None:
+async def record_call(token_id: int, username: str, tool_name: str, ok: bool, arguments=None, detail: str = "", is_write: bool = False) -> None:
     """审计不能影响调用本身：失败只记日志。"""
     try:
         async with SessionLocal() as db:
-            db.add(McpCallLog(token_id=token_id, username=username, tool_name=tool_name[:200], ok=int(ok),
-                              detail=(detail or _summary(arguments))[:1000]))
+            # 写入类调用没有服务端人工确认，审计留完整参数（上限 4000 字符）以便事后追溯。
+            db.add(McpCallLog(token_id=token_id, username=username, tool_name=tool_name[:200], ok=int(ok), is_write=int(is_write),
+                              detail=(detail or _summary(arguments, 4000 if is_write else 300))[:4000]))
             await db.execute(update(McpAccessToken).where(McpAccessToken.id == token_id).values(
                 last_used_at=datetime.now(timezone.utc), call_count=McpAccessToken.call_count + 1))
             await db.commit()
     except Exception:
         logger.exception("MCP 调用审计写入失败 token=%s tool=%s", token_id, tool_name)
+
+
+_CONFIRM_TAIL = "须持久化人工确认后调用，继续执行原权限、数据范围、校验和业务审批。"
+_DIRECT_TAIL = "此工具直接执行，服务端不再二次确认：调用前必须把将要执行的内容展示给用户并取得用户确认；仍执行原权限、数据范围、校验和业务审批。"
+
+
+def direct_write_view(tool: dict, method: str) -> dict:
+    """读写令牌看到的写入类工具：说明改为“直接执行，由本地 agent 向用户确认”，标题标明新增/修改/删除。"""
+    kind = "删除" if method == "DELETE" else "写入"
+    description = tool["description"].replace(_CONFIRM_TAIL, _DIRECT_TAIL)
+    if _DIRECT_TAIL not in description:
+        description += _DIRECT_TAIL
+    prefix = "【删除操作】" if method == "DELETE" else "【写入操作】"
+    return {**tool, "title": f"{kind}：{tool.get('title', '')}", "description": prefix + description}

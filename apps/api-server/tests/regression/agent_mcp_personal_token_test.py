@@ -18,7 +18,7 @@ from app.models import User
 ADMIN = {"username": "boss"}
 
 
-class PersonalTokenTest(unittest.IsolatedAsyncioTestCase):
+class _Base(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
@@ -38,6 +38,9 @@ class PersonalTokenTest(unittest.IsolatedAsyncioTestCase):
     async def _create(self, name="笔记本", days=30):
         async with self.sessions() as db:
             return await personal_tokens.create_token(ADMIN, db, name, days)
+
+
+class PersonalTokenTest(_Base):
 
     async def test_plain_token_is_returned_once_and_only_hash_is_stored(self):
         created = await self._create()
@@ -109,6 +112,24 @@ class PersonalTokenTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(listed[0]["last_used_at"])
 
 
+class WriteTokenTest(_Base):
+    async def test_write_rate_limit_is_lower_than_read_limit(self):
+        with patch.object(personal_tokens, "WRITE_RATE_LIMIT_PER_MINUTE", 2):
+            personal_tokens.check_write_rate(9)
+            personal_tokens.check_write_rate(9)
+            with self.assertRaises(HTTPException) as caught:
+                personal_tokens.check_write_rate(9)
+        self.assertEqual(caught.exception.status_code, 429)
+
+    async def test_write_audit_keeps_full_request(self):
+        created = await self._create()
+        await personal_tokens.record_call(created["id"], "boss", "delete_case", True, detail='{"method":"DELETE","path":"/cases/1"}', is_write=True)
+        async with self.sessions() as db:
+            log = (await personal_tokens.list_calls(ADMIN, db))[0]
+        self.assertTrue(log["is_write"])
+        self.assertIn("DELETE", log["detail"])
+
+
 class PermissionTest(unittest.TestCase):
     def test_admin_or_granted_action_may_use_personal_token(self):
         from app.agent_permissions import MCP_PERSONAL_TOKEN_ACTION, USER_ACTION_KEYS, can_use_mcp_personal_token
@@ -119,11 +140,14 @@ class PermissionTest(unittest.TestCase):
             self.assertTrue(can_use_mcp_personal_token({**staff, "_user_action_keys": [MCP_PERSONAL_TOKEN_ACTION]}))
             self.assertFalse(can_use_mcp_personal_token({**staff, "_user_action_keys": ["agent.settings.global.manage"]}))
             self.assertTrue(can_use_mcp_personal_token({"username": "boss", "role": "admin"}))
+        from app.agent_permissions import MCP_PERSONAL_TOKEN_WRITE_ACTION, can_write_with_mcp_token
+        self.assertFalse(can_write_with_mcp_token({**staff, "_user_action_keys": [MCP_PERSONAL_TOKEN_ACTION]}))
+        self.assertTrue(can_write_with_mcp_token({**staff, "_user_action_keys": [MCP_PERSONAL_TOKEN_WRITE_ACTION]}))
 
 
 class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
-    def _context(self, token_id):
-        return AuthContext(application=object(), bearer="jwt", scope={}, token_id=token_id)
+    def _context(self, token_id, write=False):
+        return AuthContext(application=object(), bearer="jwt", scope={}, token_id=token_id, write_allowed=write)
 
     async def test_write_tools_are_hidden_and_refused_for_personal_token(self):
         from app.agent_mcp import gateway, service
@@ -143,6 +167,51 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
              patch.object(service, "authenticated_identity", lambda: _async({"username": "boss"})):
             with self.assertRaises(HTTPException) as caught:
                 await service.call_tool("create_case", {})
+        self.assertEqual(caught.exception.status_code, 403)
+
+    async def test_write_token_lists_writes_and_executes_directly_without_pending_record(self):
+        from app.agent_mcp import gateway, service
+        remover = SimpleNamespace(name="delete_case", is_write=True, method="DELETE", path="/api/v1/cases/{case_id}",
+                                  title="删除案件", validate_arguments=lambda arguments: {"path": {"case_id": 1}, "query": {}, "body": None, "files": {}},
+                                  to_mcp=lambda: {"name": "delete_case", "title": "删除案件", "description": "删。须持久化人工确认后调用，继续执行原权限、数据范围、校验和业务审批。",
+                                                  "inputSchema": {"type": "object"}})
+        catalog = SimpleNamespace(tools=[remover], get=lambda name: remover)
+        with patch.object(gateway, "get_auth_context", lambda: self._context(7, write=True)), patch.object(gateway, "get_catalog", lambda _app: catalog):
+            listed = await gateway._list_tools(None, None)
+        tool = next(item for item in listed.tools if item.name == "delete_case")
+        self.assertTrue(tool.description.startswith("【删除操作】"))
+        self.assertIn("直接执行", tool.description)
+        self.assertNotIn("须持久化人工确认", tool.description)
+
+        executed = []
+
+        async def fake_execute(spec, params, **kwargs):
+            executed.append((spec.name, params))
+            return {"deleted": True}
+
+        class FakeSession:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+
+        async def passthrough(spec, arguments, params, identity, db):
+            return arguments
+
+        async def nothing(*args, **kwargs):
+            return None
+
+        with patch.object(service, "get_auth_context", lambda: self._context(7, write=True)), patch.object(service, "get_catalog", lambda _app: catalog), \
+             patch.object(service, "authenticated_identity", lambda: _async({"username": "boss", "department": "d"})), \
+             patch.object(service, "SessionLocal", FakeSession), patch.object(service, "require_business_record_target", nothing), \
+             patch.object(service, "prepare_business_arguments", passthrough), patch.object(service, "execute_original", fake_execute), \
+             patch.object(service, "trusted_case_origin", lambda: None):
+            result = await service.call_tool("delete_case", {})
+        self.assertEqual(result, {"deleted": True})
+        self.assertEqual(executed[0][0], "delete_case")
+        # 只读令牌即使点名调用也被拒绝
+        with patch.object(service, "get_auth_context", lambda: self._context(7, write=False)), patch.object(service, "get_catalog", lambda _app: catalog), \
+             patch.object(service, "authenticated_identity", lambda: _async({"username": "boss"})):
+            with self.assertRaises(HTTPException) as caught:
+                await service.call_tool("delete_case", {})
         self.assertEqual(caught.exception.status_code, 403)
 
     async def test_personal_token_never_valid_outside_mcp_entry(self):

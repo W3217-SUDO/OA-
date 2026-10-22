@@ -133,6 +133,14 @@ def _apply_mcp_access_tokens(connection: Connection, _upgrade_schema: Callable[[
     McpCallLog.__table__.create(connection, checkfirst=True)
 
 
+def _apply_mcp_token_write(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    from sqlalchemy import inspect
+    inspector = inspect(connection)
+    for table, column in (("mcp_call_logs", "is_write"),):
+        if column not in {item["name"] for item in inspector.get_columns(table)}:
+            connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"))
+
+
 def _apply_hz_allocation_read_model(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     upgrade_hz_allocation_read_model(connection)
 
@@ -157,6 +165,7 @@ def _run_versioned_schema_migrations(
         (PARTY_LIBRARY_REVISION, _apply_party_library),
         (PARTY_MASTER_REVISION, _apply_party_master),
         ("mcp_access_tokens_v1", _apply_mcp_access_tokens),
+        ("mcp_access_tokens_write_v1", _apply_mcp_token_write),
     )
     for revision, migration in revisions:
         if connection.execute(

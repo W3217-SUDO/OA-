@@ -43,7 +43,11 @@ async def _list_tools(_, params):
         raise MCPError(-32602, "工具目录不接收未知分页游标")
     context = get_auth_context()
     catalog = get_catalog(context.application)
-    tools = [types.Tool.model_validate(spec.to_mcp()) for spec in catalog.tools if not (context.readonly and spec.is_write)]
+    from app.agent_mcp.personal_tokens import direct_write_view
+    tools = [
+        types.Tool.model_validate(direct_write_view(spec.to_mcp(), spec.method) if context.readonly and spec.is_write else spec.to_mcp())
+        for spec in catalog.tools if not (context.readonly and spec.is_write and not context.write_allowed)
+    ]
     tools.insert(0, types.Tool(
         name="oa_search_tools", title="发现 OA 业务操作", description="按业务目标搜索全部已挂载的 OA 工具；结果按 domain 业务域分组，并返回真实参数模式、必填参数和 files 参数说明。",
         input_schema=SEARCH_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=True, open_world_hint=False),
@@ -60,7 +64,19 @@ async def _call_tool(_, params):
     context = get_auth_context()
     if context.readonly:
         from app.agent_mcp.personal_tokens import record_call
-        await record_call(context.token_id, context.username, params.name, not result.is_error, params.arguments or {})
+        spec = None
+        try:
+            spec = get_catalog(context.application).get(params.name)
+        except Exception:  # 发现类工具或未知名称：不是业务接口，按只读记
+            pass
+        is_write = bool(spec is not None and spec.is_write)
+        detail = ""
+        if is_write:  # 写入类调用留完整请求（方法、路径、参数）和失败原因
+            detail = json.dumps({"method": spec.method, "path": spec.path, "arguments": params.arguments or {},
+                                 **({"error": str(result.structured_content)[:300]} if result.is_error else {})},
+                                ensure_ascii=False, default=str)
+        await record_call(context.token_id, context.username, params.name, not result.is_error, params.arguments or {},
+                          detail=detail, is_write=is_write)
     return result
 
 

@@ -31,4 +31,5 @@ class McpCallLog(Base):
     tool_name: Mapped[str] = mapped_column(String(200), default="")
     ok: Mapped[int] = mapped_column(Integer, default=1)
     detail: Mapped[str] = mapped_column(Text, default="")
+    is_write: Mapped[int] = mapped_column(Integer, default=0, server_default="0", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

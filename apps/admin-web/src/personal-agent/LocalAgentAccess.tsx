@@ -8,8 +8,8 @@ type AccessToken = {
   id: number; name: string; token_prefix: string; status: "active" | "expired" | "revoked";
   created_at: string; expires_at: string; last_used_at: string | null; call_count: number;
 };
-type CallLog = { id: number; token_id: number; tool_name: string; ok: boolean; detail: string; created_at: string };
-type Listing = { items: AccessToken[]; calls: CallLog[]; mcp_endpoint: string; max_days: number; rate_limit_per_minute: number };
+type CallLog = { id: number; token_id: number; tool_name: string; ok: boolean; is_write: boolean; detail: string; created_at: string };
+type Listing = { items: AccessToken[]; calls: CallLog[]; can_write: boolean; mcp_endpoint: string; max_days: number; rate_limit_per_minute: number };
 
 const STATUS: Record<AccessToken["status"], { text: string; color: string }> = {
   active: { text: "有效", color: "success" }, expired: { text: "已过期", color: "default" }, revoked: { text: "已撤销", color: "error" },
@@ -65,9 +65,12 @@ export function LocalAgentAccess() {
 
   return <>
     <Button type="text" icon={<LaptopOutlined />} onClick={() => setOpen(true)}>电脑连接 OA</Button>
-    <Modal title="让我电脑上的 agent 连接 OA（只读）" open={open} width={860} footer={null} onCancel={() => { setOpen(false); setFresh(""); }} destroyOnHidden>
-      <Alert type="warning" showIcon style={{ marginBottom: 12 }}
-        title="令牌只能读取、不能修改；权限和你的账号一致。OA 数据会进入你电脑上的 agent（及其所用的模型），请确认符合律所保密要求。令牌等同密码，不要发给他人或写进共享文件，不用时请撤销。" />
+    <Modal title={listing.can_write ? "让我电脑上的 agent 连接 OA（可读写）" : "让我电脑上的 agent 连接 OA（只读）"} open={open} width={860} footer={null} onCancel={() => { setOpen(false); setFresh(""); }} destroyOnHidden>
+      {listing.can_write
+        ? <Alert type="error" showIcon style={{ marginBottom: 12 }}
+          title="这把令牌可以新增、修改、删除 OA 数据，权限和你的账号一致。写入会直接执行，OA 不再二次确认：请在本地 agent 里保持“每次调用前询问”，不要对写入类工具设置“始终允许”。OA 数据会进入你电脑上的 agent（及其所用的模型），请确认符合律所保密要求。令牌等同密码，不要发给他人，不用时请撤销。" />
+        : <Alert type="warning" showIcon style={{ marginBottom: 12 }}
+          title="令牌只能读取、不能修改；权限和你的账号一致。OA 数据会进入你电脑上的 agent（及其所用的模型），请确认符合律所保密要求。令牌等同密码，不要发给他人或写进共享文件，不用时请撤销。" />}
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <Input value={name} maxLength={100} placeholder="令牌名称，例如：我的笔记本" onChange={(event) => setName(event.target.value)} />
         <Select value={days} onChange={setDays} style={{ width: 140 }}
@@ -97,7 +100,7 @@ export function LocalAgentAccess() {
         size="small" rowKey="id" pagination={{ pageSize: 8 }} dataSource={listing.calls} locale={{ emptyText: "暂无调用" }}
         columns={[
           { title: "时间", dataIndex: "created_at", render: when },
-          { title: "工具", dataIndex: "tool_name" },
+          { title: "工具", dataIndex: "tool_name", render: (value: string, row: CallLog) => <>{row.is_write && <Tag color="volcano">写入</Tag>}{value}</> },
           { title: "结果", dataIndex: "ok", render: (value: boolean) => <Tag color={value ? "success" : "error"}>{value ? "成功" : "失败"}</Tag> },
           { title: "参数", dataIndex: "detail", ellipsis: true },
         ]}

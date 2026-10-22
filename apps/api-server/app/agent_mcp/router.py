@@ -152,9 +152,10 @@ def _require_admin(identity: dict) -> None:
 async def access_token_list(identity=Depends(current_identity), db=Depends(get_db)):
     _require_admin(identity)
     from app.agent_mcp import personal_tokens
-    return {"items": await personal_tokens.list_tokens(identity, db),
+    from app.agent_permissions import can_write_with_mcp_token
+    return {"items": await personal_tokens.list_tokens(identity, db), "can_write": can_write_with_mcp_token(identity),
             "calls": await personal_tokens.list_calls(identity, db),
-            "mcp_endpoint": settings.api_prefix + "/mcp", "read_only": True,
+            "mcp_endpoint": settings.api_prefix + "/mcp",
             "max_days": personal_tokens.MAX_DAYS, "rate_limit_per_minute": personal_tokens.RATE_LIMIT_PER_MINUTE}
 
 

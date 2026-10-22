@@ -23,6 +23,7 @@ class AuthContext:
     active: bool = True
     token_id: int | None = None  # 个人访问令牌进来的请求：令牌编号；此时一律只读
     username: str = ""
+    write_allowed: bool = False  # 账号当前有“写入”授权（管理员默认有；同一把令牌，写不写由账号权限决定）：写入类工具直接执行，确认由本地 agent 负责
 
     @property
     def readonly(self) -> bool:
@@ -120,6 +121,8 @@ class RequestAuthContextMiddleware:
                         from app.agent_permissions import can_use_mcp_personal_token
                         if not can_use_mcp_personal_token(identity):
                             raise HTTPException(403, "该账号没有使用 MCP 个人访问令牌的授权")
+                        from app.agent_permissions import can_write_with_mcp_token
+                        context.write_allowed = can_write_with_mcp_token(identity)
                 except HTTPException as exc:
                     await JSONResponse(
                         {"detail": exc.detail}, status_code=exc.status_code,
