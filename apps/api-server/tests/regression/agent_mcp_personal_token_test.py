@@ -221,7 +221,7 @@ class UsageSkillTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(read_only.startswith("---\nname: oa-mcp-usage"))
         self.assertIn("只读", read_only)
         self.assertIn("当前可用接口：1 个", read_only)  # 只读令牌看不到写入类
-        for rule in ("oa_describe_tool", "先问用户", "直接执行", "待确认", "逻辑删除", "429"):
+        for rule in ("oa_describe_tool", "先问用户", "直接执行", "待确认", "逻辑删除", "429", "等用户明确说"):
             self.assertIn(rule, read_only)
         writable = AuthContext(application=object(), bearer="jwt", scope={}, token_id=7, write_allowed=True, groups=None)
         text = usage_skill.build_skill(writable, catalog)
@@ -242,6 +242,16 @@ class UsageSkillTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("oa-mcp-usage", resource.contents[0].text)
         self.assertIn("oa-mcp-usage", prompt.messages[0].content.text)
         self.assertIn("oa_get_usage_guide", usage_skill.INSTRUCTIONS)  # 握手说明指向使用指南
+
+
+class LocalConfirmTest(unittest.TestCase):
+    def test_local_agent_is_told_to_confirm_with_user_before_ordinary_writes(self):
+        from app.agent_mcp.personal_tokens import LOCAL_CONFIRM_TEXT, direct_write_view
+        from app.agent_mcp.semantic_metadata import DIRECT_WRITE_TEXT
+        view = direct_write_view({"name": "update_case", "title": "修改案件", "description": "案件：修改。" + DIRECT_WRITE_TEXT}, "PATCH")
+        self.assertIn(LOCAL_CONFIRM_TEXT, view["description"])  # 给本地智能体看的：先向用户确认
+        self.assertNotIn(DIRECT_WRITE_TEXT, view["description"])  # 站内智能体那句“不需要再确认”不出现在 MCP 里
+        self.assertIn("明确同意", LOCAL_CONFIRM_TEXT)
 
 
 class IrreversibleTest(unittest.IsolatedAsyncioTestCase):

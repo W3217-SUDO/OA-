@@ -156,13 +156,17 @@ async def record_call(token_id: int, username: str, tool_name: str, ok: bool, ar
 
 
 _LEGACY_TAIL = "须持久化人工确认后调用，继续执行原权限、数据范围、校验和业务审批。"
+# 本地智能体（MCP）的普通写入：OA 不再二次确认，但调用前必须先在对话里向用户确认。
+LOCAL_CONFIRM_TEXT = ("OA 收到后直接执行、不再二次确认，每次变更在服务器留痕、可由管理员还原；"
+                      "调用前必须先在对话里把将要执行的内容（对象、字段、新值）列给用户，等用户明确同意后再调用。")
 
 
 def direct_write_view(tool: dict, method: str) -> dict:
     """令牌看到的写入类工具：标题标明新增/修改/删除；说明已按是否“不可撤回”写好（直接执行并留痕，或生成待确认）。"""
     kind = "删除" if method == "DELETE" else "写入"
     prefix = "【删除操作】" if method == "DELETE" else "【写入操作】"
-    description = tool["description"].replace(_LEGACY_TAIL, "")
+    from app.agent_mcp.semantic_metadata import DIRECT_WRITE_TEXT
+    description = tool["description"].replace(_LEGACY_TAIL, "").replace(DIRECT_WRITE_TEXT, LOCAL_CONFIRM_TEXT)
     return {**tool, "title": f"{kind}：{tool.get('title', '')}", "description": prefix + description}
 
 

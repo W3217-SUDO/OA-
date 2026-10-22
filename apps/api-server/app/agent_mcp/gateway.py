@@ -70,7 +70,7 @@ def _light_tool(spec) -> dict:
         from app.agent_mcp.irreversible import irreversible_category
         kind = "【删除】" if spec.method == "DELETE" else "【写入】"
         category = irreversible_category(spec)
-        note = f"不可撤回（{category}），调用后生成待确认，须用户在 OA 网页确认。" if category else "直接执行，留痕可还原。"
+        note = f"不可撤回（{category}），调用后生成待确认，须用户在 OA 网页确认。" if category else "调用前先在对话里向用户确认；OA 直接执行，留痕可还原。"
     else:
         kind, note = "【查询】", ""
     return {"name": spec.name, "title": f"{kind}{spec.title}", "description": f"{spec.title}（{spec.method} {path}）。{note}参数先用 oa_describe_tool 获取。",
@@ -103,7 +103,7 @@ def _token_entry_tools(write_allowed: bool) -> list:
     if write_allowed:
         tools.append(types.Tool(
             name="oa_call_write_tool", title="调用写入接口（新增/修改/删除）",
-            description="调用一个写入类业务接口（新增、修改、删除、状态流转等）。普通写入直接执行，每次变更在服务器留痕、可由管理员还原；审批、盖章与对外转交、付款与核销、开具或作废发票、退费登记到账等不可撤回操作只生成待确认请求，须用户在 OA 网页确认。",
+            description="调用一个写入类业务接口（新增、修改、删除、状态流转等）。调用前必须先在对话里把将要执行的内容列给用户，等用户明确同意后再调用；普通写入 OA 收到后直接执行，每次变更在服务器留痕、可由管理员还原；审批、盖章与对外转交、付款与核销、开具或作废发票、退费登记到账这五类只生成待确认请求，还须用户在 OA 网页确认。",
             input_schema=CALL_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False)))
     return tools
 
