@@ -1,4 +1,4 @@
-"""需要网页确认的写入：执行后影响已发生在系统之外（审批结论及其下游流程、盖章与对外转交、付款核销、开具或作废发票），
+"""需要网页确认的写入：审批结论及其下游流程、盖章与对外转交、付款核销、开具或作废发票、退费登记到账（资金类），
 恢复数据也撤不回，所以智能体和 MCP 调用这些接口时仍生成待确认请求，须用户在 OA 网页确认后才执行。其余写入直接执行，靠变更留痕兜底。"""
 
 import re
@@ -11,6 +11,7 @@ _RULES = (
                                 r"|^/ipr/official-files/\{official_id\}/transmit$")),
     ("付款与核销", re.compile(r"/(pay|writeoff)$|^/finance/general-settlements/applications/payment$")),
     ("开票与作废", re.compile(r"^/finance/invoices/\{invoice_id\}/(issue|void)$")),
+    ("退费登记到账", re.compile(r"^/finance/refunds/\{refund_id\}/complete$")),
 )
 
 

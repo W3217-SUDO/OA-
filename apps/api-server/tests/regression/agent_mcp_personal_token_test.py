@@ -257,12 +257,13 @@ class IrreversibleTest(unittest.IsolatedAsyncioTestCase):
             ("POST", "/ipr/official-files/{official_id}/transmit"): "盖章与对外转交",
             ("POST", "/contract-payment-applications/{payment_id}/pay"): "付款与核销", ("POST", "/finance/fees/{fee_id}/writeoff"): "付款与核销",
             ("POST", "/finance/invoices/{invoice_id}/issue"): "开票与作废", ("POST", "/finance/invoices/{invoice_id}/void"): "开票与作废",
+            ("POST", "/finance/refunds/{refund_id}/complete"): "退费登记到账",
         }
         for (method, path), expected in cases.items():
             self.assertEqual(irreversible_category(self._spec(method, path)), expected, path)
         for method, path in (("POST", "/customers"), ("PATCH", "/cases/{case_id}"), ("DELETE", "/hr/departments/{department_id}"),
                              ("POST", "/contracts/{contract_id}/submit"), ("POST", "/cases/{case_id}/assign"), ("POST", "/finance/invoices"),
-                             ("POST", "/notifications/send"), ("POST", "/tasks/{task_id}/resend"), ("POST", "/finance/refunds/{refund_id}/complete")):
+                             ("POST", "/notifications/send"), ("POST", "/tasks/{task_id}/resend")):
             self.assertIsNone(irreversible_category(self._spec(method, path)), path)
         self.assertIsNone(irreversible_category(SimpleNamespace(is_write=False, path="/api/v1/notifications/send")))
 

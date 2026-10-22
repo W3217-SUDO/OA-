@@ -289,7 +289,7 @@ async def _call_tool(name: str, arguments: dict, *, conversation_id: str | None 
                 from app.agent_mcp.personal_tokens import check_write_rate
                 check_write_rate(context.token_id)
             return await execute_original(spec, params, case_origin=case_origin, conversation_id=conversation_id)
-        # 需要网页确认的四类（审批、盖章与对外转交、付款与核销、开具或作废发票）：仍生成待确认请求，须用户在 OA 网页确认。
+        # 需要网页确认的五类（审批、盖章与对外转交、付款与核销、开具或作废发票、退费登记到账）：仍生成待确认请求，须用户在 OA 网页确认。
         path = render_path(spec, params)
         # 写操作只落准备记录，不调用任何业务写入或新建附件。
         request_id = uuid4().hex
