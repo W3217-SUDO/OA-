@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+import hashlib
 import os
 import re
 from html.parser import HTMLParser
@@ -24,11 +25,60 @@ from app.models_shared import (
 from app.pdf_runtime import serialized_pdfium
 
 
-def _attachment_storage_path(item: FileAttachment) -> Path | None:
-    """仅从当前上传目录或可访问的历史 Docker 附件目录读取文件。"""
+OSS_CACHE_DIR = ".oss-cache"
+
+
+def oss_cache_path(item: FileAttachment) -> Path:
+    """OSS 附件在本机的缓存位置（按路径摘要命名，与原文件名无关）。"""
+    digest = hashlib.sha256(str(item.path).encode("utf-8")).hexdigest()
+    return UPLOAD_ROOT / OSS_CACHE_DIR / f"{digest}{Path(item.original_name or '').suffix.lower()[:16]}"
+
+
+def _cached_oss_file(item: FileAttachment) -> Path | None:
+    """同步上 OSS 前写在本机的原文件，或按需取回的缓存；都不存在返回 None。"""
+    root = UPLOAD_ROOT.expanduser().resolve()
+    candidates = [UPLOAD_ROOT / Path(item.stored_name).name] if item.stored_name and not item.stored_name.startswith("oss-") else []
+    candidates.append(oss_cache_path(item))
+    for candidate in candidates:
+        resolved = candidate.expanduser().resolve()
+        if root in resolved.parents and resolved.is_file() and (item.size in (None, 0) or resolved.stat().st_size == item.size):
+            return resolved
+    return None
+
+
+def attachment_local_path(item: FileAttachment) -> Path:
+    """删除留档等只处理本机文件的场景：OSS 附件返回本机缓存（若有），否则返回原路径。"""
     from app.core.oss_attachments import oss_attachment_location
     if oss_attachment_location(item) is not None:
-        return None
+        return _cached_oss_file(item) or Path(str(item.path))
+    return _attachment_storage_path(item) or Path(str(item.path))
+
+
+async def ensure_attachment_local(item: FileAttachment) -> Path | None:
+    """需要本机文件的读取场景：OSS 附件没有缓存时先从 OSS 取回到缓存目录。"""
+    from app.core.oss_attachments import oss_attachment_bytes, oss_attachment_location
+    if oss_attachment_location(item) is None:
+        return _attachment_storage_path(item)
+    cached = _cached_oss_file(item)
+    if cached is not None:
+        return cached
+    content = await oss_attachment_bytes(item)
+    target = oss_cache_path(item)
+
+    def write() -> Path:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(f".{uuid4().hex}.tmp")
+        temporary.write_bytes(content)
+        temporary.replace(target)
+        return target.resolve()
+    return await run_in_threadpool(write)
+
+
+def _attachment_storage_path(item: FileAttachment) -> Path | None:
+    """仅从当前上传目录或可访问的历史 Docker 附件目录读取文件；OSS 附件返回本机缓存（若有）。"""
+    from app.core.oss_attachments import oss_attachment_location
+    if oss_attachment_location(item) is not None:
+        return _cached_oss_file(item)
     current_root = UPLOAD_ROOT.expanduser().resolve()
     for index, configured_root in enumerate((UPLOAD_ROOT, *LEGACY_UPLOAD_ROOTS)):
         root = configured_root.expanduser()

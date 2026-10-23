@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from app.core.storage import attachment_local_path
 from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     CONTRACT_APPROVAL_ACTION_CODE, CONTRACT_APPROVED_STATUS, CONTRACT_PERSON_NAME_PATTERN, RECORD_PERSON_FIELDS_BY_MODULE, UPLOAD_ROOT,
@@ -6,7 +7,7 @@ from app.core.constants import (
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, ContractApprovalStep, ContractEvent, ContractObject,
     ContractObjectLog, ContractPaymentLine, FileAttachment, HTTPException, IncomingPayment,
-    JSONResponse, Path, ReceivablePlan, User, WorkflowEvent,
+    JSONResponse, ReceivablePlan, User, WorkflowEvent,
     date, datetime, delete, func, or_,
     re, select, status, text, unicodedata,
 )
@@ -504,7 +505,7 @@ async def _delete_contract_records(
         return JSONResponse(status_code=status.HTTP_200_OK, content={"IsSuccess": False, "Message": str(exc.detail), "deleted": 0})
     for _, attachments, _ in prepared:
         for attachment in attachments:
-            path = Path(attachment.path)
+            path = attachment_local_path(attachment)
             if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:
                 keep_deleted_file(path)
     return {"IsSuccess": True, "Message": "删除成功", "deleted": len(prepared)}

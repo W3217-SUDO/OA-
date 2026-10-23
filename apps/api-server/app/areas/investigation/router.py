@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from app.core.storage import attachment_local_path
 from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     INVESTIGATION_CREATE_STATUS_BY_MODULE, INVESTIGATION_EDIT_DATA_FIELDS, INVESTIGATION_MATERIAL_CATEGORIES, INVESTIGATION_RECORD_MODULES, UPLOAD_ROOT,
@@ -1041,7 +1042,7 @@ async def delete_investigation_evidence(evidence_id: int, identity: dict = Depen
     clue_id = _optional_record_id(data.get("clue_id") or data.get("clue_record_id"))
     clue = await db.get(BusinessRecord, clue_id) if clue_id else None
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == item.id))).all())
-    paths = [Path(attachment.path) for attachment in attachments]
+    paths = [attachment_local_path(attachment) for attachment in attachments]
     for attachment in attachments:
         await db.delete(attachment)
     canonical = await db.scalar(select(InvestigationEvidence).where(InvestigationEvidence.record_id == item.id))
@@ -1220,7 +1221,7 @@ async def batch_delete_investigation_records(body: InvestigationBatchDeleteInput
                 errors.append({"record_id": record_id, "record_no": record.serial_no, "error": "调查任务存在子任务，不能删除"}); continue
         attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.record_id == record.id))).all()
         for attachment in attachments:
-            paths.append(Path(attachment.path)); await db.delete(attachment)
+            paths.append(attachment_local_path(attachment)); await db.delete(attachment)
         if record.module == "task":
             await _delete_task_notifications(record.id, db)
         await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == record.id)); await db.delete(record); deleted += 1

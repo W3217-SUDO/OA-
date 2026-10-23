@@ -1,4 +1,5 @@
 """普通案件与法律业务路由编排。"""
+from app.core.storage import attachment_local_path
 from app.core.soft_delete import keep_deleted_file
 from app.core.case_archive import ArchiveSearchInput, ArchiveBatchReviewInput, ArchiveExportInput, search_archive_cases
 from app.core.case_invoice_files import InvoiceFileImportInput
@@ -1506,7 +1507,7 @@ async def _delete_case_owned_records(record: BusinessRecord, db: AsyncSession) -
     ))).all())
     owned_ids = [case_id, *(task.id for task in related_tasks)]
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id.in_(owned_ids)))).all())
-    attachment_paths = [Path(item.path) for item in attachments]
+    attachment_paths = [attachment_local_path(item) for item in attachments]
     for attachment in attachments:
         await db.delete(attachment)
     for task in related_tasks:
@@ -4096,7 +4097,7 @@ async def delete_record(record_id: int, identity: dict = Depends(current_identit
         if asset:
             asset.usage_count = max(0, asset.usage_count - int((record.data or {}).get("actual_copies") or 0))
     attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.record_id == record_id))).all()
-    attachment_paths = [Path(item.path) for item in attachments]
+    attachment_paths = [attachment_local_path(item) for item in attachments]
     for attachment in attachments:
         await db.delete(attachment)
     await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id == record_id))

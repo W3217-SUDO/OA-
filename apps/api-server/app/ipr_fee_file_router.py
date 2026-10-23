@@ -446,7 +446,8 @@ async def get_ipr_fee_bill_attachment(case_id: int, header_id: int, item_id: int
     attachment = await db.get(FileAttachment, attachment_id)
     if not attachment or attachment.record_id != case_id:
         raise HTTPException(status_code=404, detail="票据附件不存在")
-    path = Path(attachment.path).resolve()
+    from app.core.storage import ensure_attachment_local
+    path = (await ensure_attachment_local(attachment) or Path(str(attachment.path))).resolve()
     if not path.is_file() or UPLOAD_ROOT not in path.parents:
         raise HTTPException(status_code=404, detail="票据附件文件不存在")
     return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)

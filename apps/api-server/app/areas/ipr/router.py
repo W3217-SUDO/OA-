@@ -1,4 +1,5 @@
 """知识产权案件路由编排。"""
+from app.core.storage import attachment_local_path
 from typing import Literal
 from app.core.soft_delete import keep_deleted_file
 from app.models_shared import IprCaseBatchCreateRow
@@ -2013,9 +2014,11 @@ async def download_ipr_official_files_zip(
         raise HTTPException(status_code=409, detail="所选官文没有可下载的原件")
     archive_content = io.BytesIO()
     missing: list[str] = []
+    from app.core.storage import ensure_attachment_local
+    local_paths = {item.id: (await ensure_attachment_local(item) or Path(str(item.path))) for item in attachments}
     with zipfile.ZipFile(archive_content, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for attachment in attachments:
-            path = Path(attachment.path)
+            path = local_paths[attachment.id]
             if not path.exists() or not path.is_file():
                 missing.append(attachment.original_name)
                 continue
@@ -2081,7 +2084,7 @@ async def delete_ipr_official_file(official_id: int, identity: dict = Depends(cu
     if official.status != "待校验":
         raise HTTPException(status_code=409, detail="仅待校验官文可以删除")
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == official.id))).all())
-    attachment_paths = [Path(item.path) for item in attachments]
+    attachment_paths = [attachment_local_path(item) for item in attachments]
     for attachment in attachments:
         await db.delete(attachment)
     await db.execute(delete(FinanceTransaction).where(FinanceTransaction.finance_record_id == official.id))

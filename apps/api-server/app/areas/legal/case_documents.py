@@ -1,4 +1,5 @@
 """按独立业务职责组织的路由，注册顺序与端点行为保持稳定。"""
+from app.core.storage import attachment_local_path
 from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     AI_SPACE_CATEGORY,
@@ -524,7 +525,8 @@ async def download_case_attachments(body: AttachmentBatchInput, identity: dict =
         if not item.record_id:
             raise HTTPException(status_code=422, detail="所选文件不是案件文件")
         await _ensure_record_module(item.record_id, "case", identity, db)
-        path = Path(item.path)
+        from app.core.storage import ensure_attachment_local
+        path = (await ensure_attachment_local(item) or Path(str(item.path)))
         if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
             raise HTTPException(status_code=404, detail=f"文件 {item.original_name} 的实体不存在")
         paths.append((item, path))
@@ -576,7 +578,7 @@ async def delete_case_attachments(body: AttachmentBatchInput, identity: dict = D
             if record.module != "case":
                 raise HTTPException(status_code=422, detail="所选文件不是案件文件")
             await _require_case_detail_write_access(record, identity, db)
-        prepared.append((item, record, Path(item.path)))
+        prepared.append((item, record, attachment_local_path(item)))
     affected_cases: dict[int, BusinessRecord] = {}
     for item, record, path in prepared:
         _ensure_case_word_editor_not_locked(item)

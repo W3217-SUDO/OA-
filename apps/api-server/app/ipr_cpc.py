@@ -184,7 +184,8 @@ def create_ipr_cpc_router(
         ))
         if not attachment:
             raise HTTPException(status_code=404, detail="CPC申报记录不存在或不属于当前案件")
-        path = Path(attachment.path)
+        from app.core.storage import ensure_attachment_local
+        path = (await ensure_attachment_local(attachment) or Path(str(attachment.path)))
         if not path.is_file() or upload_root().resolve() not in path.resolve().parents:
             raise HTTPException(status_code=404, detail="CPC申报快照文件不存在")
         return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)

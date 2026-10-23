@@ -1,4 +1,5 @@
 """知识产权案件文件与自定义导入接口。"""
+from app.core.storage import attachment_local_path
 from fastapi import APIRouter
 from app.core.soft_delete import keep_deleted_file
 from app.core.constants import IPR_CASE_KINDS, UPLOAD_ROOT
@@ -437,7 +438,8 @@ async def generate_ipr_case_application_file(case_id: int, attachment_id: int, i
         raise HTTPException(status_code=409, detail="CPC申报历史快照不可重新打包")
     if attachment.is_locked:
         raise HTTPException(status_code=409, detail="已生成申请文件包的文档处于锁定状态，请先解锁")
-    source_path = Path(attachment.path)
+    from app.core.storage import ensure_attachment_local
+    source_path = (await ensure_attachment_local(attachment) or Path(str(attachment.path)))
     if not source_path.is_file():
         raise HTTPException(status_code=422, detail="案件文档源文件不存在，无法生成申请文件包")
     source_bytes = source_path.read_bytes()
@@ -479,7 +481,7 @@ async def delete_ipr_case_file(case_id: int, attachment_id: int, identity: dict 
         raise HTTPException(status_code=409, detail="CPC申报历史快照不可删除")
     if attachment.is_locked:
         raise HTTPException(status_code=409, detail="锁定文档必须先解锁才能删除")
-    path = Path(attachment.path)
+    path = attachment_local_path(attachment)
     db.add(WorkflowEvent(record_id=record.id, action="删除知识产权案件文档", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{attachment.category}｜{attachment.original_name}"))
     await db.delete(attachment); await db.commit()
     if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents:

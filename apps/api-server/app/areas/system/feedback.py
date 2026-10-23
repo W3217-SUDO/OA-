@@ -358,9 +358,11 @@ async def feedback_screenshot(feedback_id: int, identity: dict = Depends(current
     await _get_feedback(db, feedback_id, identity)
     attachment = await db.scalar(select(FileAttachment).where(
         FileAttachment.record_id == feedback_id, FileAttachment.category == "问题反馈截图"))
-    if not attachment or not Path(attachment.path).is_file():
+    from app.core.storage import ensure_attachment_local
+    path = (await ensure_attachment_local(attachment) or Path(str(attachment.path))) if attachment else None
+    if not path or not path.is_file():
         raise HTTPException(404, "截图不存在")
-    return FileResponse(attachment.path, media_type=attachment.content_type, filename=attachment.original_name)
+    return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
 
 
 @router.get(f"{settings.api_prefix}/feedback/{{feedback_id}}/events/{{event_id}}/screenshot")
@@ -372,6 +374,8 @@ async def feedback_event_screenshot(
         FileAttachment.record_id == feedback_id, FileAttachment.category == "问题反馈补充截图",
         FileAttachment.remark == str(event_id),
     ))
-    if not attachment or not Path(attachment.path).is_file():
+    from app.core.storage import ensure_attachment_local
+    path = (await ensure_attachment_local(attachment) or Path(str(attachment.path))) if attachment else None
+    if not path or not path.is_file():
         raise HTTPException(404, "补充截图不存在")
-    return FileResponse(attachment.path, media_type=attachment.content_type, filename=attachment.original_name)
+    return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)

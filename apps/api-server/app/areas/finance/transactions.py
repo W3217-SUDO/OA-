@@ -1,4 +1,5 @@
 """按独立业务职责组织的路由，注册顺序与端点行为保持稳定。"""
+from app.core.storage import attachment_local_path
 from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     FINANCE_TRANSACTION_TYPES,
@@ -11,7 +12,6 @@ from app.core.dependencies import (
     FileAttachment,
     FinanceTransaction,
     HTTPException,
-    Path,
     Query,
     ReconciliationBatch,
     Response,
@@ -166,7 +166,7 @@ async def delete_finance_transaction(transaction_id: int, identity: dict = Depen
     if record and (record.data or {}).get("legacy_kind") == "internal_fee_source":
         raise HTTPException(409, "导入费用的付款流水须通过关联付款包冲正")
     attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.finance_transaction_id == item.id))).all()
-    paths = [Path(x.path) for x in attachments]
+    paths = [attachment_local_path(x) for x in attachments]
     for attachment in attachments:
         await db.delete(attachment)
     await db.delete(item); await db.flush()

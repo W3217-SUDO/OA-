@@ -1,4 +1,5 @@
 """系统附件上传、查看与删除接口。"""
+from app.core.storage import attachment_local_path
 from fastapi import APIRouter
 import jwt
 from app.core.storage import _xls_preview_sheets
@@ -723,7 +724,7 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
         may_manage_hr_document = True
     if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document and not may_manage_case_document and not may_manage_task_attachment and not may_manage_seal_attachment and not may_manage_official_outgoing_attachment:
         raise HTTPException(status_code=403, detail="仅管理员可删除附件；客户负责人可删除客户文档，部门负责人可删除员工档案")
-    path = Path(item.path)
+    path = attachment_local_path(item)
     await db.delete(item)
     await db.flush()
     if record and record.module == "case":

@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from app.core.storage import attachment_local_path
 from app.core.soft_delete import keep_deleted_file
 from app.core.constants import (
     CONTRACT_APPROVED_STATUS, CONTRACT_PERSON_NAME_PLACEHOLDER, UPLOAD_ROOT, _contract_serial_lock, logger,
@@ -220,7 +221,7 @@ async def revoke_contract_draft(contract_id: int, identity: dict = Depends(curre
             detail="合同已有审批、收款或下游案件/用印/财务关联，不能撤销草稿；请按对应业务流程处理",
         )
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id == contract.id))).all())
-    attachment_paths = [Path(item.path) for item in attachments]
+    attachment_paths = [attachment_local_path(item) for item in attachments]
     for attachment in attachments:
         await db.delete(attachment)
     await db.execute(delete(ContractEvent).where(ContractEvent.contract_record_id == contract.id))
@@ -1415,7 +1416,8 @@ async def batch_delete_contract_attachments(contract_id: int, body: ContractAtta
             if item.category != "合同附件":
                 raise HTTPException(status_code=422, detail="所选文件不是合同附件")
             await _require_contract_attachment_write_access(contract, identity, db)
-            path = Path(item.path)
+            from app.core.storage import ensure_attachment_local
+            path = (await ensure_attachment_local(item) or Path(str(item.path)))
             if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
                 raise HTTPException(status_code=422, detail=f"合同附件文件 {item.original_name} 不存在")
             prepared.append((item, path))

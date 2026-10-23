@@ -51,7 +51,8 @@ async def batch_delete_seal_attachments(body: AttachmentBatchInput, identity: di
             raise HTTPException(status_code=409, detail="只有草稿用印申请可以删除用印文件")
         if item.category != "用印文件":
             raise HTTPException(status_code=422, detail="用印申请附件类型无效")
-        path = Path(item.path)
+        from app.core.storage import ensure_attachment_local
+        path = (await ensure_attachment_local(item) or Path(str(item.path)))
         if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
             raise HTTPException(status_code=404, detail=f"附件文件 {item.original_name} 不存在")
         prepared.append((item, record, path))
@@ -599,7 +600,8 @@ async def stamp_seal_application(record_id: int, body: SealStampInput, identity:
         stamp_attachment = await db.get(FileAttachment, attachment_id)
         if not stamp_attachment or stamp_attachment.record_id != item.id or stamp_attachment.category != SEAL_STAMPED_FILE_CATEGORY:
             raise HTTPException(status_code=404, detail="所选盖章附件不存在")
-        stamp_path = Path(stamp_attachment.path)
+        from app.core.storage import ensure_attachment_local
+        stamp_path = (await ensure_attachment_local(stamp_attachment) or Path(str(stamp_attachment.path)))
         if not stamp_path.is_file() or UPLOAD_ROOT.resolve() not in stamp_path.resolve().parents:
             raise HTTPException(status_code=404, detail="所选盖章附件文件不存在")
     old = item.status; item.status = "已用印"; data = dict(item.data or {})
@@ -637,12 +639,13 @@ async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dic
     prepared: list[tuple[BusinessRecord, SealAsset]] = []
     source_attachment: FileAttachment | None = None
     created_targets: list[Path] = []
+    from app.core.storage import ensure_attachment_local
     try:
         if body.stamp_attachment_id:
             source_attachment = await db.get(FileAttachment, body.stamp_attachment_id)
             if not source_attachment or source_attachment.category != SEAL_STAMPED_FILE_CATEGORY or source_attachment.record_id not in ids:
                 raise HTTPException(status_code=404, detail="所选盖章附件不存在")
-            source_path = Path(source_attachment.path)
+            source_path = (await ensure_attachment_local(source_attachment) or Path(str(source_attachment.path)))
             if not source_path.is_file() or UPLOAD_ROOT.resolve() not in source_path.resolve().parents:
                 raise HTTPException(status_code=404, detail="所选盖章附件文件不存在")
         for item in ordered:
@@ -661,7 +664,7 @@ async def batch_stamp_seal_applications(body: SealBatchStampInput, identity: dic
             stamp_attachment_id = body.stamp_attachment_id
             if source_attachment is not None:
                 if item.id != source_attachment.record_id:
-                    source_path = Path(source_attachment.path)
+                    source_path = (await ensure_attachment_local(source_attachment) or Path(str(source_attachment.path)))
                     target = UPLOAD_ROOT / f"{uuid4().hex}{source_path.suffix.lower()}"
                     target.write_bytes(source_path.read_bytes())
                     created_targets.append(target)

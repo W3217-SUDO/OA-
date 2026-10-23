@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from app.core.storage import attachment_local_path
 from shutil import copyfile
 
 from starlette.concurrency import run_in_threadpool
@@ -225,7 +226,7 @@ async def delete_official_documents(body: OfficialDocumentDeleteInput, identity:
         attachments = list((await db.scalars(select(FileAttachment).where(
             FileAttachment.id == attachment_id if attachment_id else FileAttachment.record_id == item.id,
         ))).all())
-        attachment_paths.extend(Path(attachment.path) for attachment in attachments)
+        attachment_paths.extend(attachment_local_path(attachment) for attachment in attachments)
         for attachment in attachments:
             await db.delete(attachment)
         await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == item.id))
@@ -363,7 +364,8 @@ async def create_official_outgoing_document(body: OfficialOutgoingCreateInput, i
     copied_paths: list[Path] = []
     try:
         for source_file in files:
-            source_path = Path(source_file.path)
+            from app.core.storage import ensure_attachment_local
+            source_path = (await ensure_attachment_local(source_file) or Path(str(source_file.path)))
             if not source_path.is_file() or UPLOAD_ROOT.resolve() not in source_path.resolve().parents:
                 raise HTTPException(status_code=409, detail=f"来源附件不存在或不可读取：{source_file.original_name}")
             target = UPLOAD_ROOT / f"{uuid4().hex}{source_path.suffix.lower()}"
@@ -520,7 +522,7 @@ async def upload_official_outgoing_stamp_file(record_id: int, file: UploadFile =
         raise
     await db.refresh(record); await db.refresh(detail)
     if previous_file:
-        previous_path = Path(previous_file.path); await db.delete(previous_file); await db.commit()
+        previous_path = attachment_local_path(previous_file); await db.delete(previous_file); await db.commit()
         if previous_path.is_file() and UPLOAD_ROOT.resolve() in previous_path.resolve().parents: previous_path.unlink(missing_ok=True)
     return await _official_outgoing_dict(detail, record, identity, db)
 
@@ -533,9 +535,10 @@ async def download_official_outgoing_documents(body: OfficialOutgoingBatchInput,
     record_ids = list(dict.fromkeys(body.record_ids)); records = [await _ensure_record_module(record_id, "official_outgoing", identity, db) for record_id in record_ids]
     if any(record.status not in {"已通过", "已盖章"} for record in records): raise HTTPException(status_code=409, detail="仅审批通过或已盖章的正式发文可以打包下载")
     attachments = (await db.scalars(select(FileAttachment).where(FileAttachment.record_id.in_(record_ids)).order_by(FileAttachment.id))).all()
+    from app.core.storage import ensure_attachment_local
     serial_by_id = {record.id: record.serial_no for record in records}
     entries = [
-        (serial_by_id[attachment.record_id], attachment.id, attachment.original_name, attachment.path)
+        (serial_by_id[attachment.record_id], attachment.id, attachment.original_name, str(await ensure_attachment_local(attachment) or attachment.path))
         for attachment in attachments
     ]
 

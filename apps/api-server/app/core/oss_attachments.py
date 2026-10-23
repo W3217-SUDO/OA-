@@ -99,7 +99,8 @@ def oss_attachment_preview_kind(item) -> str | None:
 
 def oss_editor_revision_key(attachment_id: int, session_id: str, version: str) -> str:
     """在线编辑只能使用显式配置的新对象前缀，不覆盖历史对象。"""
-    prefix = settings.office_oss_write_prefix.strip().rstrip("/")
+    # 未单独配置时写到附件目录下的“在线编辑”，与附件同在 OSS。
+    prefix = (settings.office_oss_write_prefix.strip() or f"{settings.attachment_oss_prefix.strip().strip('/')}/在线编辑").rstrip("/")
     if (not prefix or prefix.startswith("/") or "\\" in prefix
             or any(part in {"", ".", ".."} for part in prefix.split("/"))):
         raise HTTPException(status_code=503, detail="Office OSS 新版本写入前缀未配置或无效")

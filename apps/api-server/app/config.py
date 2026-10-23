@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     ai_oss_credentials_file: str = ""
     # 法院收文文件放在 AI 文件桶的独立目录（不在 AI空间 下）；桶未配置时退回本机附件目录。
     court_intake_oss_prefix: str = "法院收文"
+    # 所有附件以 OSS 为准（AI 文件桶“附件/”目录），服务器上的文件只做缓存；新附件写入本机后由后台同步上 OSS 并切换路径。
+    attachment_oss_prefix: str = "附件"
+    attachment_oss_sync_delay_seconds: int = Field(default=120, ge=10, le=3600)
     dify_base_url: str = ""
     dify_api_key: str = ""
     langgraph_enabled: bool = False

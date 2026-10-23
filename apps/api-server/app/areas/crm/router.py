@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from app.core.storage import attachment_local_path
 from calendar import monthrange
 from datetime import timezone
 from types import SimpleNamespace
@@ -152,7 +153,7 @@ async def delete_law_firm(law_firm_id: int, identity: dict = Depends(current_ide
     await db.commit()
     if attachment:
         try:
-            keep_deleted_file(Path(attachment.path))
+            keep_deleted_file(attachment_local_path(attachment))
         except OSError:
             pass
     return {"deleted": True, "id": law_firm_id}
@@ -254,7 +255,7 @@ async def upload_law_firm_license(law_firm_id: int, file: UploadFile = File(...)
     if old_attachment: await db.delete(old_attachment)
     await db.commit(); await db.refresh(attachment)
     if old_attachment:
-        old_path = Path(old_attachment.path)
+        old_path = attachment_local_path(old_attachment)
         if old_path.is_file() and UPLOAD_ROOT.resolve() in old_path.resolve().parents: old_path.unlink(missing_ok=True)
     return _attachment_dict(attachment)
 
@@ -269,7 +270,8 @@ async def download_law_firm_license(law_firm_id: int, identity: dict = Depends(c
     )
     _require_admin(identity); firm = await _law_firm_or_404(law_firm_id, db); attachment = await _law_firm_license(firm, db)
     if not attachment: raise HTTPException(status_code=404, detail="该律所尚未上传营业执照")
-    path = Path(attachment.path)
+    from app.core.storage import ensure_attachment_local
+    path = (await ensure_attachment_local(attachment) or Path(str(attachment.path)))
     if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents: raise HTTPException(status_code=404, detail="营业执照文件不存在")
     return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
 
@@ -647,7 +649,8 @@ async def download_customer_file_by_guid(customer_guid: str, attachment_id: int,
     attachment = await db.get(FileAttachment, attachment_id)
     if not attachment or attachment.record_id != customer.id:
         raise HTTPException(status_code=404, detail="客户文件不存在")
-    path = Path(attachment.path)
+    from app.core.storage import ensure_attachment_local
+    path = (await ensure_attachment_local(attachment) or Path(str(attachment.path)))
     if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
         raise HTTPException(status_code=404, detail="客户文件不存在")
     return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
@@ -992,7 +995,7 @@ async def delete_customer_contact(customer_id: int, contact_id: str, identity: d
     if attachment: await db.delete(attachment)
     await db.commit()
     if attachment:
-        path = Path(attachment.path)
+        path = attachment_local_path(attachment)
         if path.is_file() and UPLOAD_ROOT.resolve() in path.resolve().parents: keep_deleted_file(path)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -1018,7 +1021,7 @@ async def upload_customer_contact_photo(customer_id: int, contact_id: str, file:
     if old_attachment: await db.delete(old_attachment)
     await db.commit(); await db.refresh(attachment)
     if old_attachment:
-        old_path = Path(old_attachment.path)
+        old_path = attachment_local_path(old_attachment)
         if old_path.is_file() and UPLOAD_ROOT.resolve() in old_path.resolve().parents: old_path.unlink(missing_ok=True)
     return {"attachment_id": attachment.id, "original_name": filename, "size": attachment.size}
 
@@ -1033,7 +1036,8 @@ async def download_customer_contact_photo(customer_id: int, contact_id: str, ide
     if not attachment_id: raise HTTPException(status_code=404, detail="该联系人尚未上传照片")
     attachment = await db.get(FileAttachment, int(attachment_id))
     if not attachment: raise HTTPException(status_code=404, detail="联系人照片记录不存在")
-    path = Path(attachment.path)
+    from app.core.storage import ensure_attachment_local
+    path = (await ensure_attachment_local(attachment) or Path(str(attachment.path)))
     if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents: raise HTTPException(status_code=404, detail="联系人照片文件不存在")
     return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
 
@@ -1410,7 +1414,8 @@ async def customer_portal_download(attachment_id: int, body: CustomerPortalLogin
     record = await db.get(BusinessRecord, attachment.record_id) if attachment and attachment.record_id else None
     if not attachment or not record or record.customer != customer.title or record.module not in {"contract", "case"}:
         raise HTTPException(status_code=404, detail="客户文档不存在")
-    path = Path(attachment.path)
+    from app.core.storage import ensure_attachment_local
+    path = (await ensure_attachment_local(attachment) or Path(str(attachment.path)))
     if not path.is_file():
         raise HTTPException(status_code=404, detail="客户文档文件不存在")
     return FileResponse(path, media_type=attachment.content_type, filename=Path(attachment.original_name).name)

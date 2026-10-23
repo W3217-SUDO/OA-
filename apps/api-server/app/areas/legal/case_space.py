@@ -492,7 +492,8 @@ async def send_case_agent_message(
             mime_type = mime_types.get(suffix)
             if not mime_type:
                 raise HTTPException(status_code=422, detail="截图证据仅支持 PNG、JPG、JPEG 或 WebP")
-            path = Path(item.path)
+            from app.core.storage import ensure_attachment_local
+            path = (await ensure_attachment_local(item) or Path(str(item.path)))
             if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
                 raise HTTPException(status_code=404, detail="截图附件文件不存在")
             content = path.read_bytes()
@@ -525,7 +526,8 @@ async def send_case_agent_message(
             if dedupe_key in seen_files:
                 continue
             seen_files.add(dedupe_key)
-            path = Path(item.path)
+            from app.core.storage import ensure_attachment_local
+            path = (await ensure_attachment_local(item) or Path(str(item.path)))
             if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents or path.stat().st_size > 30 * 1024 * 1024:
                 continue
             try:
