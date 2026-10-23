@@ -96,6 +96,22 @@ async def _match_case(numbers: list[str], plaintiffs: list[str], defendants: lis
     return {"level": "", "basis": "", "records": [], "tried": tried}
 
 
+async def _already_received(case_id: int, source: FileAttachment, db: AsyncSession) -> FileAttachment | None:
+    """同一案件已有内容相同的官方收文（不看文件名，手工收过的也算）就不再入库。"""
+    from app.core.storage import _attachment_storage_path
+    candidates = (await db.scalars(select(FileAttachment).where(
+        FileAttachment.record_id == case_id, FileAttachment.category == "官方收文", FileAttachment.size == source.size))).all()
+    if not candidates:
+        return None
+    path = _attachment_storage_path(source)
+    content = path.read_bytes() if path else None
+    for item in candidates:
+        other = _attachment_storage_path(item)
+        if content is None or other is None or other.read_bytes() == content:
+            return item
+    return None
+
+
 def _stem(name: str) -> str:
     stem = Path(name).stem
     return re.sub(r"(?i)\.(pdf|ofd|docx?)$", "", stem)
@@ -107,12 +123,9 @@ async def _receive(case: BusinessRecord, document: dict, court_no: str, received
     from app.core.storage import _attachment_storage_path
     source = await db.get(FileAttachment, document["attachment_id"])
     suffix = Path(source.original_name).suffix.lower() or ".pdf"
-    expected = "_".join(part for part in (case.serial_no, court_no, _stem(source.original_name)) if part)[:200] + suffix
-    existing = await db.scalar(select(FileAttachment).where(
-        FileAttachment.record_id == case.id, FileAttachment.category == "官方收文",
-        FileAttachment.original_name == expected, FileAttachment.size == source.size))
+    existing = await _already_received(case.id, source, db)
     if existing is not None:
-        return {"name": expected, "attachment_id": existing.id, "skipped": True}
+        return {"name": existing.original_name, "attachment_id": existing.id, "skipped": True}
     path = _attachment_storage_path(source)
     if path is None:
         raise HTTPException(409, f"法院文书附件暂不可读取：{source.original_name}")
@@ -211,7 +224,7 @@ async def _prepare_fee(case: BusinessRecord, document: dict, court_no: str, leve
             "bank": account.get("开户行", "")}
 
 
-def _preview(case: BusinessRecord, documents: list[dict], court_no: str, level: str, court_name: str) -> dict:
+def _preview(case: BusinessRecord, documents: list[dict], court_no: str, level: str, court_name: str, received: dict[int, str]) -> dict:
     """列出确认后将写入的内容，不改任何业务数据。"""
     data = case.data or {}
     hearings = {(item["fields"].get("开庭日期"), item["fields"].get("开庭时刻"), item["fields"].get("开庭法庭") or "")
@@ -220,7 +233,8 @@ def _preview(case: BusinessRecord, documents: list[dict], court_no: str, level: 
              "deadline": _deadline(item["fields"], documents), "payee": (item["fields"].get("收款账户") or {}).get("户名", "")}
             for item in documents if item["fields"].get("文书类型") == "交纳诉讼费用通知书"]
     return {
-        "receipts": ["_".join(part for part in (case.serial_no, court_no, _stem(item["name"])) if part) + (Path(item["name"]).suffix or ".pdf")
+        "receipts": [f"已收过，跳过：{received[item['attachment_id']]}" if item["attachment_id"] in received else
+                     "_".join(part for part in (case.serial_no, court_no, _stem(item["name"])) if part) + (Path(item["name"]).suffix or ".pdf")
                      for item in documents],
         "court_case_no": court_no if not str(data.get("court_case_no") or "").strip() else f"已登记 {data.get('court_case_no')}，不覆盖",
         "hearing": ([f"{day} {clock} {room}" for day, clock, room in hearings] if hearings else []),
@@ -265,9 +279,14 @@ async def intake_court_service(body: CourtIntakeInput, identity: dict = Depends(
     court_no = numbers[0] if numbers else ""
     level = parse_case_no(court_no)["审级"] if court_no else ""
     court_name = fetched["court"] or next((item["fields"].get("受理机关") for item in documents if item["fields"].get("受理机关")), "")
+    received_before = {}
+    for item in documents:
+        existing = await _already_received(case.id, await db.get(FileAttachment, item["attachment_id"]), db)
+        if existing is not None:
+            received_before[item["attachment_id"]] = existing.original_name
     if not body.confirm:
         report.update({"status": "待确认入库", "case": _brief(case), "instance_level": level,
-                       "plan": _preview(case, documents, court_no, level, court_name),
+                       "plan": _preview(case, documents, court_no, level, court_name, received_before),
                        "next_step": f"把匹配结果和 plan 列给用户，用户确认后带 case_id={case.id}、confirm=true 再调用本工具入库；用户不确认则不入库。"})
         return report
     received = [await _receive(case, item, court_no, item["fields"].get("落款日期") or date.today().isoformat(), identity, db)

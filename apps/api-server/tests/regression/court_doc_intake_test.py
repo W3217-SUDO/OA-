@@ -134,7 +134,8 @@ class _CourtApiBase(unittest.IsolatedAsyncioTestCase):
             self.court_requests.append(request)
             if request.url.path.endswith("getWsListBySdbhNew"):
                 return httpx.Response(200, json=payload)
-            return httpx.Response(200, content=b"%PDF-1.7 summons")
+            # 每份文书内容不同（按地址区分），便于按内容判断是否已收过。
+            return httpx.Response(200, content=b"%PDF-1.7 summons" if request.url.path.endswith("1.pdf") else b"%PDF-1.7 " + request.url.path.encode())
         return patch.object(court_service, "_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
 
 
@@ -308,6 +309,24 @@ class CourtIntakeTest(_CourtApiBase):
         async with self.sessions() as db:
             task = await db.get(BusinessRecord, result["task"]["task_id"])
         self.assertEqual(task.title, "缴纳一审诉讼费900元（最后期限2026-10-29）")
+
+    async def test_documents_received_before_under_other_names_are_not_duplicated(self):
+        root = Path(self.temporary.name)
+        manual = root / "manual.pdf"
+        manual.write_bytes(b"%PDF-1.7 /2.pdf")  # 与第 2 份文书内容相同，但之前手工收文用了别的文件名
+        async with self.sessions() as db:
+            db.add(FileAttachment(record_id=self.case_id, category="官方收文", original_name="GDMS2401010_手工收的传票.pdf",
+                                  stored_name="manual.pdf", size=manual.stat().st_size, path=str(manual), uploader=IDENTITY["username"]))
+            await db.commit()
+        with self.court(self.payload), patch("app.areas.finance.router.create_finance_fee", AsyncMock(return_value={"id": 1, "serial_no": "FY"})):
+            plan = (await self.client.post(f"{API}/documents/court-service/intake", json={"link": LINK})).json()
+            self.assertEqual(plan["plan"]["receipts"][1], "已收过，跳过：GDMS2401010_手工收的传票.pdf")
+            done = (await self.client.post(f"{API}/documents/court-service/intake",
+                                           json={"link": LINK, "case_id": self.case_id, "confirm": True})).json()
+        self.assertEqual([item["skipped"] for item in done["received"]], [False, True])
+        async with self.sessions() as db:
+            official = (await db.scalars(select(FileAttachment).where(FileAttachment.category == "官方收文"))).all()
+        self.assertEqual(len(official), 2)
 
     async def test_ambiguous_or_missing_case_stops_without_writing(self):
         async with self.sessions() as db:
