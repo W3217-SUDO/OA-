@@ -106,7 +106,9 @@ def hearing(text: str) -> dict:
                     hour += 12
                 if 0 <= hour < 24 and 0 <= minute < 60:
                     result["开庭时刻"] = f"{hour:02d}:{minute:02d}"
-            room = re.search(r"((?:本院)?(?:第[0-9一二三四五六七八九十百]+|[一-鿿]{0,8})(?:法庭|审判庭))", text[anchor.start():anchor.end() + 200])
+            nearby = text[anchor.start():anchor.end() + 200]
+            room = (re.search(r"(?:应到处所|地点|在)[:：]?((?:本院)?[\u4e00-\u9fff0-9]{0,20}?(?:法庭|审判庭))", nearby)
+                    or re.search(r"((?:本院)?第[0-9一二三四五六七八九十百]+(?:法庭|审判庭))", nearby))
             result["开庭法庭"] = room.group(1).removeprefix("本院") if room else ""
             return result
     return {"开庭日期": "", "开庭时刻": "", "开庭法庭": ""}
@@ -118,7 +120,7 @@ def fee(text: str) -> dict:
     account = {
         "户名": _first(r"(?:户\s*名|收款单位|收款人)[:：]\s*([^\s；;，,。]{2,60})", text),
         "账号": _first(r"(?:账\s*号|帐\s*号)[:：]\s*([0-9\s-]{6,40})", text).replace(" ", ""),
-        "开户行": _first(r"(?:开户行|开户银行)[:：]\s*([^\s；;，,。]{2,60})", text),
+        "开户行": _first(r"(?:开户行|开户银行|收款银行)[:：]\s*([^\s；;，,。]{2,60})", text),
     }
     return {"缴费金额": amount.replace(",", ""), "预交天数": cn_number(days) if days else None,
             "收款账户": {key: value for key, value in account.items() if value}}
@@ -130,8 +132,29 @@ def signing_date(text: str) -> str:
     return dates[-1] if dates else ""
 
 
+_PARTY = r"([^，,。；;：:\s]{2,40}?(?:有限责任公司|股份有限公司|有限公司|公司|商行|经营部|店|厂))"
+
+
+def _sued_parties(compact: str) -> tuple[list[str], list[str]]:
+    """“原告甲诉被告乙……纠纷”“甲与乙……纠纷”这类无冒号写法；只认以单位后缀结尾的名称。"""
+    match = re.search(r"原告" + _PARTY + r"诉被告" + _PARTY, compact) or re.search(_PARTY + r"(?:与|诉)" + _PARTY + r"[\u4e00-\u9fff、]{0,20}?纠纷", compact)
+    return ([match.group(1)], [match.group(2)]) if match else ([], [])
+
+
+def _cause(compact: str) -> str:
+    labelled = _first(r"案由[:：]?([\u4e00-\u9fff、]{2,20}?纠纷)", compact)
+    if labelled:
+        return labelled
+    # “甲公司与乙公司侵害商标权纠纷”：去掉最后一个当事人名称及之前的部分。
+    segment = _first(r"([\u4e00-\u9fff、]{2,60}?纠纷)", compact)
+    return re.sub(r"^.*(?:公司|商行|经营部|店|厂|与|诉)", "", segment)
+
+
 def extract(text: str, name: str = "") -> dict:
     text = text or ""
+    # PDF 抽出的文字常把数字、年月日拆开甚至断行（“2026 年 11 月 13\n日”），日期、时间和案由在去空白文本上识别。
+    compact = re.sub(r"\s+", "", text)
+    sued_plaintiffs, sued_defendants = _sued_parties(compact)
     numbers = normalize_case_no.find_case_numbers(name + "\n" + text)
     primary = normalize_case_no.parse(numbers[0]) if numbers else None
     result = {
@@ -139,17 +162,21 @@ def extract(text: str, name: str = "") -> dict:
         "文书类型": doc_type(name, text),
         "官方案号": numbers,
         "主案号解析": primary,
-        "受理机关": _first(r"([一-鿿]{2,30}?(?:人民法院|仲裁委员会|人民检察院))", text),
-        "案由": _first(r"([一-鿿、]{2,30}?纠纷)", text),
-        "原告": _parties(text, "原告") or _parties(text, "上诉人") or _parties(text, "申请人"),
-        "被告": _parties(text, "被告") or _parties(text, "被上诉人") or _parties(text, "被申请人"),
-        "落款日期": signing_date(text),
+        "受理机关": _first(r"([\u4e00-\u9fff]{2,30}?(?:人民法院|仲裁委员会|人民检察院))", compact),
+        "案由": _cause(compact),
+        "原告": _parties(text, "原告") or _parties(text, "上诉人") or _parties(text, "申请人") or sued_plaintiffs,
+        "被告": _parties(text, "被告") or _parties(text, "被上诉人") or _parties(text, "被申请人") or sued_defendants,
+        "落款日期": signing_date(compact),
     }
     kind = result["文书类型"]
     if kind in {"传票", "出庭通知书"} or "开庭" in text:
-        result.update(hearing(text))
+        result.update(hearing(compact))
     if kind == "交纳诉讼费用通知书" or "预交" in text:
-        result.update(fee(text))
+        fields = fee(text)
+        compact_fields = fee(compact)
+        fields["缴费金额"] = fields["缴费金额"] or compact_fields["缴费金额"]
+        fields["预交天数"] = fields["预交天数"] or compact_fields["预交天数"]
+        result.update(fields)
     review = [key for key in ("文书类型", "官方案号", "受理机关") if not result.get(key)]
     if kind in {"传票", "出庭通知书"} and not result.get("开庭日期"):
         review.append("开庭日期")

@@ -68,6 +68,7 @@ def documents_from_response(payload: dict) -> list[dict]:
             continue
         extension = str(item.get("c_wjgs") or "pdf").lower().lstrip(".")
         name = re.sub(r'[\\/:*?"<>|\s]+', "_", str(item.get("c_wsmc") or "法院文书")).strip("_") or "法院文书"
+        name = re.sub(r"(?i)\.(pdf|ofd|docx?|jpe?g|png)$", "", name) or "法院文书"
         result.append({"name": name, "extension": extension, "url": str(item["wjlj"]),
                        "document_no": str(item.get("c_wsbh") or ""), "court": str(item.get("c_fymc") or ""),
                        "court_code": str(item.get("c_fybh") or "")})

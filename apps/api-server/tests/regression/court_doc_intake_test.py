@@ -68,6 +68,22 @@ class CaseNumberAndFieldTest(unittest.TestCase):
         self.assertEqual(empty["识别状态"], "需人工核对")
         self.assertEqual(empty["官方案号"], [])
 
+    def test_pdf_text_with_broken_spacing_and_unlabelled_parties(self):
+        # PDF 抽字常把日期拆行、数字间夹空格，当事人写成“原告甲诉被告乙”无冒号形式。
+        summons = extract("某某区人民法院\n传 票\n案 号：（2026）皖 0402 民初 4093 号\n案 由：侵害商标权纠纷\n被传事由\n开庭审理\n"
+                          "应到时间\n2026 年 11 月 13\n日 08:40\n应到处所\n某某区法院第\n二法庭\n二〇二六年十月二十二日", "传票-某某法院.pdf")
+        self.assertEqual((summons["开庭日期"], summons["开庭时刻"], summons["开庭法庭"]), ("2026-11-13", "08:40", "某某区法院第二法庭"))
+        notice = extract("出 庭 通 知 书\n（2026）皖 0402 民初 4093 号\n本院受理原告甲眼镜有限公司诉被告乙眼镜有\n限公司侵害商标权纠纷一案，"
+                         "定于 2026 年 11 月 13 日 08:40 在某某区法院第二法庭开庭审理。\n二〇二六年十月二十二日", "出庭通知书")
+        self.assertEqual((notice["开庭日期"], notice["开庭时刻"], notice["落款日期"]), ("2026-11-13", "08:40", "2026-10-22"))
+        self.assertEqual((notice["原告"], notice["被告"], notice["案由"]), (["甲眼镜有限公司"], ["乙眼镜有限公司"], "侵害商标权纠纷"))
+        fee = extract("交纳诉讼费用通知书\n（2026）皖0 402民初4093号\n甲公司与乙公司侵害商标权纠纷一案，你应当交纳案件受理费900元，"
+                      "合计900元。限你于收到本通知书次日起七日内向本\n院预交。\n收款户名：某市财政局\n收款银行：某银行某支行\n收 款 银 行 账 号：0 00006110", "通知书")
+        self.assertEqual((fee["案由"], fee["缴费金额"], fee["预交天数"]), ("侵害商标权纠纷", "900", 7))
+        self.assertEqual(fee["收款账户"], {"户名": "某市财政局", "账号": "000006110", "开户行": "某银行某支行"})
+        listed = fetch_court_docs.documents_from_response({"code": 200, "data": [{"wjlj": "https://x/1", "c_wsmc": "甲_交纳诉讼费用通知书.pdf", "c_wjgs": "pdf"}]})
+        self.assertEqual(listed[0]["name"], "甲_交纳诉讼费用通知书")
+
     def test_service_link_is_parsed_from_sms_and_other_hosts_are_rejected(self):
         self.assertEqual(fetch_court_docs.parse_service_link(LINK)["sdbh"], "072201dbce1349b29ced07493bd13292")
         for bad in ("https://evil.example/zxfw/#/x?qdbh=a1234567&sdbh=b1234567&sdsin=c1234567",
