@@ -87,7 +87,9 @@ class ContractPaymentLifecycleTest(unittest.IsolatedAsyncioTestCase):
             "expense_subtype": "检索费", "amount": 1})
         await self.db.commit()
         candidates = await _contract_payment_candidate_rows(self.contract, ADMIN, self.db)
-        self.assertEqual(next(row for row in candidates if row["case_fee_id"] == refund.id)["fee_type"], "律师代理费(退费)")
+        # 律师代理费（退费）只走内部退费提成请款，不进入合同付款候选。
+        self.assertNotIn(refund.id, {row["case_fee_id"] for row in candidates})
+        self.assertIn(agency.id, {row["case_fee_id"] for row in candidates})
         body = self.body(100).model_copy(update={"lines": [*self.body(100).lines,
             self.body(1).lines[0].model_copy(update={"case_fee_id": search.id})]})
         response = await self.client.post(f"/api/v1/contracts/{self.contract.id}/payment-applications", json=body.model_dump(mode="json"))

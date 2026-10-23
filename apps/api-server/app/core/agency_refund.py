@@ -4,6 +4,17 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from app.models import BusinessRecord, FinanceTransaction, SystemParameter, WorkflowEvent
 
+# 律师代理费（退费）的提成只走内部费用请款，不能进入付款管理的外部请款单。
+AGENCY_REFUND_EXTERNAL_PAYMENT_DETAIL = (
+    "律师代理费（退费）不能在付款管理申请付款；请在案件律所费用中“新建提成(选择费用)”，"
+    "再在内部费用中申请付款，进入内部提成(退费)-待审核"
+)
+
+
+def is_agency_refund_fee(data: dict | None) -> bool:
+    data = data or {}
+    return data.get("refund_fee") is True and data.get("fee_type") == "代理费"
+
 
 async def create_agency_refund_fee(refund, source, identity, db):
     fee_type = await db.scalar(select(SystemParameter).where(

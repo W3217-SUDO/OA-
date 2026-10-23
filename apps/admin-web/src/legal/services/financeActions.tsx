@@ -628,6 +628,9 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         const { counselDetailCapabilities, paymentRequestForm, setPaymentTypeSearch, setPaymentRequestFee } = context;
         if (!counselDetailCapabilities.can_create_finance)
             return message.warning("当前账号没有申请付款权限");
+        // 律师代理费（退费）只通过退费提成走内部费用请款，不能生成付款管理请款单。
+        if (row.data.refund_fee === true && row.data.fee_type === "代理费")
+            return message.warning("律师代理费（退费）不能在付款管理申请付款；请用“新增案件费用 → 新建提成(选择费用)”生成退费提成，再在内部费用中申请付款");
         if (!["草稿", "已退回", "已审批", "部分付款", "已驳回", "已撤回"].includes(row.status)) {
             return message.warning(`当前费用状态“${row.status}”不能申请付款`);
         }
@@ -1103,7 +1106,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 })),
             });
             setCaseCommissionResult(data as CaseCommissionResult);
-            message.success(`付款申请 ${data.application_no} 已提交`);
+            message.success(`提成 ${data.application_no} 已生成，请在内部费用中申请付款`);
             await openCounselDetail(viewingCounselCase, "internal-fees");
         }
         catch (error: any) {

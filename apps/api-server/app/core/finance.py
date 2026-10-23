@@ -840,8 +840,10 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
         ).order_by(BusinessRecord.id))).all()
         if _is_contract_payment_case_fee(fee) and _fee_matches_contract(fee, contract)
     ]
+    from app.core.agency_refund import is_agency_refund_fee
     from app.core.contract_payment_sources import merged_contract_fees
-    fee_records = list({fee.id: fee for fee in [*fee_records, *await merged_contract_fees(contract, db)]}.values())
+    fee_records = list({fee.id: fee for fee in [*fee_records, *await merged_contract_fees(contract, db)]
+                        if not is_agency_refund_fee(fee.data)}.values())
     fee_ids = {fee.id for fee in fee_records}
     # 合并来源费用可从两个合同入口请款，占额必须按费用全局汇总。
     used_by_fee = await _active_contract_payment_fee_reservations(fee_ids, db)

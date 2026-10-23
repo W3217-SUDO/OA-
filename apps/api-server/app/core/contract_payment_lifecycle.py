@@ -112,8 +112,10 @@ async def normalized_payment(body, contract, identity, db, payment=None):
     # 案件入口与合同入口使用同一费用锁，SQLite 也串行核对余额。
     fee_ids = sorted({line.case_fee_id for line in body.lines if line.case_fee_id})
     if fee_ids:
+        from app.core.agency_refund import AGENCY_REFUND_EXTERNAL_PAYMENT_DETAIL, is_agency_refund_fee
         from app.core.case_fee_payments import lock_case_fee_rows
-        await lock_case_fee_rows(fee_ids, db)
+        if any(is_agency_refund_fee(fee.data) for fee in await lock_case_fee_rows(fee_ids, db)):
+            raise HTTPException(409, AGENCY_REFUND_EXTERNAL_PAYMENT_DETAIL)
     payment_type = await _active_payment_type(body.payment_type_id, db)
     type_data = _finance_payment_type_dict(payment_type)
     rows = await payment_candidates(contract, identity, db, payment)

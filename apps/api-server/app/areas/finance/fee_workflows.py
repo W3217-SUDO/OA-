@@ -185,8 +185,11 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
     await _require_record_owner_or_manager(item, identity, db)
     is_payment_request = body.amount is not None
     if is_payment_request:
+        from app.core.agency_refund import AGENCY_REFUND_EXTERNAL_PAYMENT_DETAIL, is_agency_refund_fee
         from app.core.case_fee_payments import lock_case_fee_rows
         item = (await lock_case_fee_rows([item.id], db))[0]
+        if is_agency_refund_fee(item.data):
+            raise HTTPException(409, AGENCY_REFUND_EXTERNAL_PAYMENT_DETAIL)
     await _require_linked_case_fee_action(
         item, "case.fee.payment" if is_payment_request else "case.fee.update", identity, db,
     )

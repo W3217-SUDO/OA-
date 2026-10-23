@@ -896,7 +896,8 @@ export default function CaseCenterPage({
   const batchExpenseScope = Form.useWatch("expense_scope", batchFeeForm);
   const feeExpenseScope = Form.useWatch("expense_scope", feeForm);
   const selectedPaymentTypeId = Form.useWatch("payment_type_id", paymentRequestForm);
-  const feeItems = Form.useWatch("items", feeForm) || [];
+  // 申请付款步骤不挂载费用明细表单，仍需按已选费用判断内部/律所付款布局。
+  const feeItems = Form.useWatch("items", { form: feeForm, preserve: true }) || [];
   const agencyOnlyFeeDraft = !editingFeeRow
     && feeItems.length > 0
     && feeItems.every((item: any) => item?.fee_type === "代理费");
@@ -3703,7 +3704,7 @@ export default function CaseCenterPage({
         </Space>}
       >
         {caseCommissionResult ? <>
-          <Alert type="success" showIcon title={`付款申请 ${caseCommissionResult.application_no} 已提交审批`} style={{ marginBottom: 12 }} />
+          <Alert type="success" showIcon title={`提成 ${caseCommissionResult.application_no} 已生成`} description="请在案件“内部费用”中勾选这些提成并点击“申请付款”，提交后进入内部费用的我的请款单和对应审核页。" style={{ marginBottom: 12 }} />
           <Table
             rowKey="record_id"
             size="small"
